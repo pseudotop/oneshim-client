@@ -1,0 +1,148 @@
+[workspace]
+members = [
+    "crates/oneshim-core",
+    "crates/oneshim-monitor",
+    "crates/oneshim-vision",
+    "crates/oneshim-network",
+    "crates/oneshim-storage",
+    "crates/oneshim-suggestion",
+    "crates/oneshim-ui",
+    "crates/oneshim-web",
+    "crates/oneshim-automation",
+    "crates/oneshim-app",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.3"
+license = "Apache-2.0"
+rust-version = "1.75"
+repository = "https://github.com/pseudotop/oneshim-client"
+homepage = "https://github.com/pseudotop/oneshim-client"
+authors = ["ONESHIM Contributors"]
+keywords = ["desktop-agent", "monitoring", "ai", "productivity", "automation"]
+categories = ["gui", "os", "network-programming", "asynchronous"]
+
+[workspace.dependencies]
+# 비동기 런타임
+tokio = { version = "1", features = ["full"] }
+
+# 직렬화
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP 클라이언트 (native-tls로 ring 의존성 회피)
+reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "native-tls"] }
+
+# SSE 수신 (reqwest 기반 - native-tls 사용)
+reqwest-eventsource = "0.6"
+
+# WebSocket (native-tls로 ring 의존성 회피)
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+
+# 시스템 모니터링
+sysinfo = "0.32"
+
+# 로컬 DB
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# 압축
+flate2 = "1"
+zstd = "0.13"
+lz4_flex = "0.11"
+
+# 이미지 처리 (Edge Processing)
+image = "0.25"
+fast_image_resize = "4"
+webp = "0.3"
+xcap = "0.8"
+leptess = "0.14"
+base64 = "0.22"
+
+# UI
+iced = { version = "0.13", features = ["tokio", "debug", "canvas"] }
+
+# 시스템 트레이
+tray-icon = "0.19"
+notify-rust = "4"
+
+# 에러 처리
+thiserror = "2"
+anyhow = "1"
+
+# 비동기 trait (dyn Trait + async fn 지원)
+async-trait = "0.1"
+
+# 로깅
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 설정
+config = "0.14"
+directories = "5"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# 유틸리티
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+futures = "0.3"
+semver = { version = "1", features = ["serde"] }
+
+# 성능 최적화 (Phase 31-33)
+lru = "0.12"
+crossbeam = "0.8"
+parking_lot = "0.12"
+once_cell = "1.19"
+
+# gRPC (Phase 34 - Protobuf API 통합)
+tonic = "0.12"
+tonic-health = "0.12"
+tonic-build = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+
+# 입력 시뮬레이션 (크로스 플랫폼 마우스/키보드)
+enigo = { version = "0.6", features = ["serde"] }
+
+# 자동 업데이트 (native-tls로 ring 의존성 회피)
+self_update = { version = "0.41", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2"] }
+tar = "0.4"
+zip = "2"
+
+# 웹 프레임워크 (Axum)
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors", "fs"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+rust-embed = { version = "8", features = ["include-exclude"] }
+mime_guess = "2"
+
+# macOS 네이티브 API
+core-graphics = "0.24"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSRunningApplication"] }
+objc2-foundation = "0.3"
+
+# Windows 플랫폼 API
+windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Foundation", "Win32_System_Threading", "Win32_System_Registry", "Win32_System_SystemInformation"] }
+
+# 내부 크레이트
+oneshim-core = { path = "crates/oneshim-core" }
+oneshim-monitor = { path = "crates/oneshim-monitor" }
+oneshim-vision = { path = "crates/oneshim-vision" }
+oneshim-network = { path = "crates/oneshim-network" }
+oneshim-storage = { path = "crates/oneshim-storage" }
+oneshim-suggestion = { path = "crates/oneshim-suggestion" }
+oneshim-ui = { path = "crates/oneshim-ui" }
+oneshim-web = { path = "crates/oneshim-web" }
+oneshim-automation = { path = "crates/oneshim-automation" }
+
+# 테스트 의존성 (각 crate의 [dev-dependencies]에서 workspace = true로 참조)
+mockito = "1"
+tokio-test = "0.4"
+tempfile = "3"
+assert_matches = "1"
+criterion = { version = "0.5", features = ["html_reports"] }

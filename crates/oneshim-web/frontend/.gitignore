@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output (keep the directory itself for cargo check without a prior build)
+dist/*
+!dist/.gitkeep
+
+# Test output
+playwright-report/
+test-results/
+coverage/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
