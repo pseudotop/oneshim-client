@@ -57,13 +57,13 @@ cargo run -p oneshim-app
 ### Test
 
 ```bash
-# Rust tests (620 total)
+# Rust tests (current metrics: docs/STATUS.md)
 cargo test --workspace
 
-# E2E tests (72 total) — web dashboard
+# E2E tests (current metrics: docs/STATUS.md) — web dashboard
 cd crates/oneshim-web/frontend && pnpm test:e2e
 
-# Lint (0 warnings)
+# Lint (policy: zero warnings in CI)
 cargo clippy --workspace
 
 # Format check
@@ -232,6 +232,9 @@ oneshim-client/
 Full documentation index: [docs/crates/README.md](./docs/crates/README.md)
 
 For a detailed development guide, see [CLAUDE.md](./CLAUDE.md).
+
+Current quality and release metrics are tracked in [docs/STATUS.md](./docs/STATUS.md).
+Documentation language and consistency rules are defined in [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
 
 ## Development
 

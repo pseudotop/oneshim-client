@@ -117,6 +117,8 @@ cargo clippy --workspace --all-features
 - **All comments and documentation should be written in English.**
 - Add `///` doc comments to all `pub` items.
 - Use inline comments (`//`) to explain intent in complex logic.
+- For documentation governance, follow [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
+- For mutable quality metrics, update [docs/STATUS.md](./docs/STATUS.md) only.
 
 ```rust
 /// Screen capture trigger — decides whether to capture based on event importance.

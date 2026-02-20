@@ -76,6 +76,6 @@ GPL 의존성 위험            →    MIT/Apache-2.0 전체 (오픈소스 안�
 
 **Python 클라이언트**: `client/` 폴더는 **DEPRECATED** 처리됨 (2026-01-28)
 
-> **📌 참고**: 마이그레이션 이후 Phase 8-37 + Privacy & Permission Control System이 추가 구현되어
-> 현재 10 crates, 620 Rust tests + 72 E2E tests, 0 failures 상태입니다.
-> 최신 현황은 [CLAUDE.md](../../CLAUDE.md)를 참조하세요.
+> **📌 참고**: 마이그레이션 이후 기능은 계속 확장되었습니다.
+> 현재 품질 지표(테스트 수, 실패 수, lint/build 상태)의 단일 소스는 [STATUS.md](../STATUS.md)입니다.
+> 최신 개발 가이드는 [CLAUDE.md](../../CLAUDE.md)를 참조하세요.

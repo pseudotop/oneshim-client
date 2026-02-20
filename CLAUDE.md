@@ -218,6 +218,8 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ## Reference Documents
 
 - [ADR-001: Rust Client Architecture Patterns](docs/architecture/ADR-001-rust-client-architecture-patterns.md)
+- [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-only docs + metrics consistency rules
+- [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history
 - [Server API](docs/migration/04-server-api.md) — 29 REST endpoints + gRPC RPCs
 - [Migration Phases](docs/migration/05-migration-phases.md) — Phase 0-36 plans
@@ -229,11 +231,12 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ## Current Status
 
-- Phase 0-35 + Privacy & Permission Control System implementation completed (10 crates, **530+ Rust tests** + **72 E2E tests**, 0 failures (1 known flaky: thumbnail cache parallel test))
+- Phase 0-35 + Privacy & Permission Control System implementation completed (10 crates)
+- Current quality metrics (test counts, pass/fail, lint/build status) are maintained in `docs/STATUS.md` as the single source of truth
 - Actual adapters connected to all ports: `SmartCaptureTrigger`, `EdgeFrameProcessor`, `DesktopNotifierImpl`
 - Windows active window detection implemented (`windows-sys` + `sysinfo`)
 - 32 cross-crate integration tests (`crates/oneshim-app/tests/`)
-- `cargo check/test/clippy/fmt` all passed (0 warnings)
+- `cargo check/test/clippy/fmt` pass status is tracked in `docs/STATUS.md`
 - **GA Ready**: CI/CD, installers, documentation completed
 - **Web Dashboard**: Available at http://localhost:9090
 - **Notification System**: Desktop notifications (idle, long session, high usage)
