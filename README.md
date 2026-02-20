@@ -1,6 +1,41 @@
 # ONESHIM Rust Client
 
-The Rust native desktop client for the AI-powered autonomous office work assistant agent.
+The Rust-native desktop client for AI-assisted office productivity, with local context capture, real-time suggestions, and a built-in dashboard.
+
+## Why ONESHIM
+
+- **Turn activity into actionable insight**: Track context, timeline, focus trends, and interruptions in one place.
+- **Stay lightweight on-device**: Edge processing (delta encoding, thumbnailing, OCR) reduces transfer volume and keeps response fast.
+- **Use a production-ready desktop stack**: Cross-platform binary, auto-update, system tray integration, and local web dashboard.
+
+## Who It's For
+
+- Individual contributors who want visibility into focus patterns and work context
+- Teams building AI-assisted workflow tooling on top of rich desktop signals
+- Developers who want a Rust-first, modular client with clear architecture boundaries
+
+## 2-Minute Quickstart
+
+```bash
+# 1) Set credentials provisioned by your ONESHIM server/admin
+export ONESHIM_EMAIL="your@email.com"
+export ONESHIM_PASSWORD="your-password"
+
+# 2) Run client
+cargo run -p oneshim-app
+
+# 3) Open local dashboard
+# http://localhost:9090
+```
+
+If you do not have credentials yet, contact your ONESHIM server administrator first.
+
+## Safety and Privacy at a Glance
+
+- PII filtering levels (Off/Basic/Standard/Strict) are applied in the vision pipeline
+- Local data is stored in SQLite and managed with retention controls
+- Security reporting and response policy: [SECURITY.md](./SECURITY.md)
+- Current quality and release metrics: [docs/STATUS.md](./docs/STATUS.md)
 
 ## Features
 
@@ -31,7 +66,7 @@ The Rust native desktop client for the AI-powered autonomous office work assista
 - Rust 1.75 or later
 - macOS 10.15+ / Windows 10+ / Linux (X11/Wayland)
 
-## Quick Start
+## Developer Quick Start (Build from Source)
 
 ### Build
 
