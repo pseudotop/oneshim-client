@@ -463,8 +463,8 @@ cargo run -p oneshim-app
 
 | 변수 | 필수 | 설명 |
 |------|------|------|
-| `ONESHIM_EMAIL` | ✅ | 로그인 이메일 |
-| `ONESHIM_PASSWORD` | ✅ | 로그인 비밀번호 |
+| `ONESHIM_EMAIL` | 연결 모드에서만 ✅ | 로그인 이메일 (standalone 모드에서는 선택) |
+| `ONESHIM_PASSWORD` | 연결 모드에서만 ✅ | 로그인 비밀번호 (standalone 모드에서는 선택) |
 | `RUST_LOG` | ❌ | 로그 레벨 (기본: `info`) |
 | `ONESHIM_CONFIG` | ❌ | 설정 파일 경로 |
 

@@ -4,7 +4,7 @@
 >
 > **작성일**: 2026-01-28
 > **완료일**: 2026-01-28
-> **상태**: ✅ **마이그레이션 완료** (Phase 0-6, 163 tests, GA Ready)
+> **상태**: ✅ **마이그레이션 완료** (Phase 0-6, historical snapshot: 163 tests, GA Ready)
 > **결정 사항**: Python Client → Pure Rust Native (Tauri/Sidecar 아님)
 > **UI**: 순수 Rust (iced)
 > **테스트**: 전체 Rust (#[test], #[tokio::test])
@@ -79,3 +79,4 @@ GPL 의존성 위험            →    MIT/Apache-2.0 전체 (오픈소스 안�
 > **📌 참고**: 마이그레이션 이후 기능은 계속 확장되었습니다.
 > 현재 품질 지표(테스트 수, 실패 수, lint/build 상태)의 단일 소스는 [STATUS.md](../STATUS.md)입니다.
 > 최신 개발 가이드는 [CLAUDE.md](../../CLAUDE.md)를 참조하세요.
+> 한글 문서는 companion 문서로 유지하며, 영문 기본 문서와 의미를 동기화합니다.

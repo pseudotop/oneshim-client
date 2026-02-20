@@ -175,53 +175,56 @@ chmod +x oneshim
 
 | Variable | Description | Default |
 |------|------|--------|
-| `ONESHIM_EMAIL` | Login email | (required) |
-| `ONESHIM_PASSWORD` | Login password | (required) |
+| `ONESHIM_EMAIL` | Login email (connected mode only) | (optional in standalone) |
+| `ONESHIM_PASSWORD` | Login password (connected mode only) | (optional in standalone) |
 | `ONESHIM_TESSDATA` | Tesseract data path | (optional) |
 | `RUST_LOG` | Log level | `info` |
 
 ### Config File
 
-`~/.config/oneshim/config.toml` (Linux/macOS) or `%APPDATA%\oneshim\config.toml` (Windows):
+`~/.config/oneshim/config.json` (Linux) / `~/Library/Application Support/com.oneshim.agent/config.json` (macOS) / `%APPDATA%\oneshim\agent\config.json` (Windows):
 
-```toml
-[server]
-base_url = "https://api.oneshim.com"
-request_timeout_ms = 30000
-sse_max_retry_secs = 30
-
-[monitor]
-poll_interval_ms = 1000
-sync_interval_ms = 10000
-heartbeat_interval_ms = 30000
-
-[storage]
-retention_days = 30
-max_storage_mb = 500
-
-[vision]
-capture_throttle_ms = 5000
-thumbnail_width = 480
-thumbnail_height = 270
-ocr_enabled = false
-
-[update]
-enabled = true
-repo_owner = "pseudotop"
-repo_name = "oneshim-client"
-check_interval_hours = 24
-include_prerelease = false
-
-[web]
-enabled = true
-port = 9090
-allow_external = false
-
-[notification]
-enabled = true
-idle_threshold_mins = 30
-long_session_threshold_mins = 60
-high_usage_threshold_percent = 90
+```json
+{
+  "server": {
+    "base_url": "https://api.oneshim.com",
+    "request_timeout_ms": 30000,
+    "sse_max_retry_secs": 30
+  },
+  "monitor": {
+    "poll_interval_ms": 1000,
+    "sync_interval_ms": 10000,
+    "heartbeat_interval_ms": 30000
+  },
+  "storage": {
+    "retention_days": 30,
+    "max_storage_mb": 500
+  },
+  "vision": {
+    "capture_throttle_ms": 5000,
+    "thumbnail_width": 480,
+    "thumbnail_height": 270,
+    "ocr_enabled": false
+  },
+  "update": {
+    "enabled": true,
+    "repo_owner": "pseudotop",
+    "repo_name": "oneshim-client",
+    "check_interval_hours": 24,
+    "include_prerelease": false
+  },
+  "web": {
+    "enabled": true,
+    "port": 9090,
+    "allow_external": false
+  },
+  "notification": {
+    "enabled": true,
+    "idle_threshold_mins": 30,
+    "long_session_threshold_mins": 60,
+    "high_usage_threshold_percent": 90
+  }
+}
 ```
 
 ## Architecture
@@ -266,12 +269,14 @@ For a detailed development guide, see [CLAUDE.md](./CLAUDE.md).
 
 Current quality and release metrics are tracked in [docs/STATUS.md](./docs/STATUS.md).
 Documentation language and consistency rules are defined in [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
+Korean companion guide: [README.ko.md](./README.ko.md).
+Korean companion policy/status docs: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md), [docs/STATUS.ko.md](./docs/STATUS.ko.md).
 
 ## Development
 
 ### Code Style
 
-- **Language**: Comments and documentation in English
+- **Language**: English-first documentation with Korean companion docs for key public guides
 - **Format**: `cargo fmt` default settings
 - **Lint**: `cargo clippy` with 0 warnings
 

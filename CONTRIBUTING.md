@@ -114,10 +114,12 @@ cargo clippy --workspace --all-features
 
 ### Comments and Documentation
 
-- **All comments and documentation should be written in English.**
+- **Code comments/docstrings should be written in English by default.**
+- **Public documentation is English-primary with Korean companion docs for key guides.**
 - Add `///` doc comments to all `pub` items.
 - Use inline comments (`//`) to explain intent in complex logic.
 - For documentation governance, follow [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
+- Korean companion policy: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md)
 - For mutable quality metrics, update [docs/STATUS.md](./docs/STATUS.md) only.
 
 ```rust

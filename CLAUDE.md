@@ -207,7 +207,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ## Coding Conventions
 
-- Comments/Documentation: **English** (Note: Server is in Korean, but this OSS Client uses English)
+- Comments/Documentation: **English-first** (public docs require Korean companion docs for key guides)
 - Rust edition: **2021**, Minimum version: **1.75**
 - Code Formatting: `cargo fmt` (rustfmt default settings)
 - Linting: `cargo clippy` — `dead_code` warnings are allowed only for variants intended for future use
@@ -218,7 +218,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ## Reference Documents
 
 - [ADR-001: Rust Client Architecture Patterns](docs/architecture/ADR-001-rust-client-architecture-patterns.md)
-- [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-only docs + metrics consistency rules
+- [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history
 - [Server API](docs/migration/04-server-api.md) — 29 REST endpoints + gRPC RPCs
