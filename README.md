@@ -17,18 +17,16 @@ The Rust-native desktop client for AI-assisted office productivity, with local c
 ## 2-Minute Quickstart
 
 ```bash
-# 1) Set credentials provisioned by your ONESHIM server/admin
-export ONESHIM_EMAIL="your@email.com"
-export ONESHIM_PASSWORD="your-password"
+# 1) Run in standalone mode (recommended for security-sensitive environments)
+cargo run -p oneshim-app -- --offline
 
-# 2) Run client
-cargo run -p oneshim-app
-
-# 3) Open local dashboard
+# 2) Open local dashboard
 # http://localhost:9090
 ```
 
-If you do not have credentials yet, contact your ONESHIM server administrator first.
+Standalone mode is available now.
+
+Online features are currently in progress and will be announced when production-ready.
 
 ## Safety and Privacy at a Glance
 
@@ -42,7 +40,7 @@ If you do not have credentials yet, contact your ONESHIM server administrator fi
 ### Core Features
 - **Real-time Context Monitoring**: Tracks active windows, system resources, and user activity
 - **Edge Image Processing**: Screenshot capture, delta encoding, thumbnails, and OCR
-- **Server SSE Connection**: Receives real-time suggestions and sends feedback
+- **Connected Server Features (In Progress)**: Real-time suggestions and feedback sync are currently being prepared
 - **System Tray**: Runs in the background with quick access
 - **Auto-Update**: Automatic updates based on GitHub Releases
 - **Cross-Platform**: Supports macOS, Windows, and Linux
@@ -81,13 +79,11 @@ cargo build --release -p oneshim-app
 ### Run
 
 ```bash
-# Set environment variables
-export ONESHIM_EMAIL="your@email.com"
-export ONESHIM_PASSWORD="your-password"
-
-# Run
-cargo run -p oneshim-app
+# Standalone mode (recommended)
+cargo run -p oneshim-app -- --offline
 ```
+
+Connected mode is in progress and not yet the recommended default path.
 
 ### Test
 
