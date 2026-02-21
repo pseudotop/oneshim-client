@@ -2,29 +2,29 @@
 
 # oneshim-storage
 
-The SQLite-based local data storage crate.
+SQLite 기반 로컬 데이터 저장소 크레이트.
 
-## Role
+## 역할
 
-- **Offline Support**: Local storage when network is unavailable
-- **Event History**: Persistent storage of context events
-- **Frame Cache**: Temporary storage of processed frames
-- **Data Retention**: Automatic cleanup based on configured period/capacity
+- **오프라인 지원**: 네트워크 불가 시 로컬 저장
+- **이벤트 이력**: 컨텍스트 이벤트 영구 저장
+- **프레임 캐시**: 처리된 프레임 임시 저장
+- **데이터 보존**: 설정된 기간/용량 기반 자동 정리
 
-## Directory Structure
+## 디렉토리 구조
 
 ```
 oneshim-storage/src/
-├── lib.rs         # Crate root
-├── sqlite.rs      # SqliteStorage - StorageService implementation
-└── migration.rs   # Schema migration
+├── lib.rs         # 크레이트 루트
+├── sqlite.rs      # SqliteStorage - StorageService 구현
+└── migration.rs   # 스키마 마이그레이션
 ```
 
-## Key Components
+## 주요 컴포넌트
 
 ### SqliteStorage (sqlite.rs)
 
-`StorageService` port implementation:
+`StorageService` 포트 구현:
 
 ```rust
 pub struct SqliteStorage {
@@ -46,7 +46,7 @@ impl SqliteStorage {
 }
 ```
 
-### StorageService Implementation
+### StorageService 구현
 
 ```rust
 #[async_trait]
@@ -76,7 +76,7 @@ impl StorageService for SqliteStorage {
         )?;
 
         let events = stmt.query_map([since.to_rfc3339()], |row| {
-            // Convert to ContextEvent
+            // ContextEvent 변환
         })?;
 
         Ok(events.collect::<Result<Vec<_>, _>>()?)
@@ -118,12 +118,12 @@ impl StorageService for SqliteStorage {
 }
 ```
 
-## Database Schema
+## 데이터베이스 스키마
 
-### V1 Schema (migration.rs)
+### V1 스키마 (migration.rs)
 
 ```sql
--- events table: stores context events
+-- events 테이블: 컨텍스트 이벤트 저장
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id TEXT NOT NULL UNIQUE,
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX idx_events_timestamp ON events(timestamp);
 CREATE INDEX idx_events_event_type ON events(event_type);
 
--- frames table: stores processed frames
+-- frames 테이블: 처리된 프레임 저장
 CREATE TABLE IF NOT EXISTS frames (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     frame_id TEXT NOT NULL UNIQUE,
@@ -154,7 +154,7 @@ CREATE TABLE IF NOT EXISTS frames (
 CREATE INDEX idx_frames_captured_at ON frames(captured_at);
 ```
 
-### WAL Mode
+### WAL 모드
 
 ```rust
 fn configure_connection(conn: &Connection) -> Result<(), CoreError> {
@@ -168,28 +168,28 @@ fn configure_connection(conn: &Connection) -> Result<(), CoreError> {
 }
 ```
 
-**WAL Benefits**:
-- Concurrent read/write operations
-- Improved write performance
-- Crash recovery stability
+**WAL 장점**:
+- 읽기/쓰기 동시 수행
+- 쓰기 성능 향상
+- 크래시 복구 안정성
 
-## Data Retention Policy
+## 데이터 보존 정책
 
-Automatic cleanup based on configuration:
+설정 기반 자동 정리:
 
 ```rust
 pub struct RetentionPolicy {
-    pub max_days: u32,       // Default 30 days
-    pub max_size_mb: u32,    // Default 500MB
+    pub max_days: u32,       // 기본 30일
+    pub max_size_mb: u32,    // 기본 500MB
 }
 
 impl SqliteStorage {
     pub async fn enforce_retention(&self, policy: &RetentionPolicy) -> Result<(), CoreError> {
-        // Time-based cleanup
+        // 기간 기반 정리
         let cutoff = Utc::now() - Duration::days(policy.max_days as i64);
         self.cleanup_old_data(cutoff).await?;
 
-        // Capacity-based cleanup (if needed)
+        // 용량 기반 정리 (필요 시)
         let size = self.get_database_size()?;
         if size > policy.max_size_mb * 1024 * 1024 {
             self.vacuum().await?;
@@ -200,21 +200,21 @@ impl SqliteStorage {
 }
 ```
 
-## Database Location
+## 데이터베이스 위치
 
-| Platform | Path |
-|----------|------|
+| 플랫폼 | 경로 |
+|--------|------|
 | macOS | `~/Library/Application Support/oneshim/data.db` |
 | Windows | `%APPDATA%\oneshim\data.db` |
 | Linux | `~/.local/share/oneshim/data.db` |
 
-## Offline Synchronization
+## 오프라인 동기화
 
-Syncs unsent data when network is restored:
+네트워크 복구 시 미전송 데이터 동기화:
 
 ```rust
 impl SqliteStorage {
-    /// Query events not yet sent to the server
+    /// 서버에 전송되지 않은 이벤트 조회
     pub async fn get_pending_events(&self) -> Result<Vec<ContextEvent>, CoreError> {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
@@ -223,7 +223,7 @@ impl SqliteStorage {
         // ...
     }
 
-    /// Mark events as synced
+    /// 전송 완료 마킹
     pub async fn mark_synced(&self, event_ids: &[String]) -> Result<(), CoreError> {
         let conn = self.pool.get()?;
         let sql = format!(
@@ -235,13 +235,13 @@ impl SqliteStorage {
 }
 ```
 
-## Dependencies
+## 의존성
 
-- `rusqlite`: SQLite bindings (bundled mode)
-- `r2d2`: Connection pool
-- `directories`: Platform-specific data directories
+- `rusqlite`: SQLite 바인딩 (bundled 모드)
+- `r2d2`: 커넥션 풀
+- `directories`: 플랫폼별 데이터 디렉토리
 
-## Tests
+## 테스트
 
 ```rust
 #[tokio::test]
@@ -250,7 +250,7 @@ async fn test_event_crud() {
     let db_path = temp_dir.path().join("test.db");
     let storage = SqliteStorage::new(&db_path).unwrap();
 
-    // Save event
+    // 이벤트 저장
     let event = ContextEvent {
         event_id: "evt_001".to_string(),
         event_type: EventType::WindowFocus,
@@ -261,7 +261,7 @@ async fn test_event_crud() {
     };
     storage.save_event(&event).await.unwrap();
 
-    // Query events
+    // 이벤트 조회
     let since = Utc::now() - Duration::hours(1);
     let events = storage.get_events(since).await.unwrap();
     assert_eq!(events.len(), 1);
@@ -274,25 +274,25 @@ async fn test_cleanup() {
     let db_path = temp_dir.path().join("test.db");
     let storage = SqliteStorage::new(&db_path).unwrap();
 
-    // Save old event
+    // 오래된 이벤트 저장
     let old_event = ContextEvent {
         timestamp: Utc::now() - Duration::days(60),
         // ...
     };
     storage.save_event(&old_event).await.unwrap();
 
-    // Run cleanup
+    // 정리 실행
     let cutoff = Utc::now() - Duration::days(30);
     let deleted = storage.cleanup_old_data(cutoff).await.unwrap();
     assert_eq!(deleted, 1);
 }
 ```
 
-## Performance Characteristics
+## 성능 특성
 
-| Operation | Expected Time |
-|-----------|--------------|
-| Single event save | < 1ms |
-| Query 100 events | < 5ms |
-| Save frame (100KB) | < 10ms |
-| VACUUM | Several seconds (depends on data volume) |
+| 작업 | 예상 시간 |
+|------|----------|
+| 단일 이벤트 저장 | < 1ms |
+| 100개 이벤트 조회 | < 5ms |
+| 프레임 저장 (100KB) | < 10ms |
+| VACUUM | 수초 (데이터량 의존) |

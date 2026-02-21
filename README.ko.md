@@ -115,6 +115,20 @@ cargo fmt --check
 
 ## 설치
 
+### 패키지 매니저 (권장)
+
+**Homebrew (macOS/Linux):**
+```bash
+brew tap pseudotop/tap
+brew install oneshim
+```
+
+**Scoop (Windows):**
+```powershell
+scoop bucket add oneshim https://github.com/pseudotop/scoop-bucket
+scoop install oneshim
+```
+
 ### 바이너리 다운로드
 
 [Releases](https://github.com/pseudotop/oneshim-client/releases) 페이지에서 해당 플랫폼용 바이너리를 다운로드하세요.
@@ -124,7 +138,8 @@ cargo fmt --check
 | macOS Universal | `oneshim-macos-universal.tar.gz` |
 | macOS Apple Silicon | `oneshim-macos-arm64.tar.gz` |
 | macOS Intel | `oneshim-macos-x64.tar.gz` |
-| Windows x64 | `oneshim-windows-x64.zip` |
+| Windows x64 (zip) | `oneshim-windows-x64.zip` |
+| Windows x64 (MSI) | `oneshim-app-*.msi` |
 | Linux x64 | `oneshim-linux-x64.tar.gz` |
 
 ### macOS

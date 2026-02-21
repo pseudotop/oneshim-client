@@ -2,24 +2,24 @@
 
 # oneshim-core
 
-The core crate that defines domain models, port interfaces, error types, and configuration.
+도메인 모델, 포트 인터페이스, 에러 타입, 설정을 정의하는 핵심 크레이트.
 
-## Role
+## 역할
 
-- **Central Hub**: The foundation layer that all other crates depend on
-- **Contract Definition**: Standardizes adapter interfaces via Port traits
-- **Type Safety**: Ensures consistent data flow through domain models and error types
+- **중심 허브**: 다른 모든 크레이트가 의존하는 기반 레이어
+- **계약 정의**: Port trait으로 어댑터 인터페이스 표준화
+- **타입 안전성**: 도메인 모델과 에러 타입으로 일관된 데이터 흐름 보장
 
-## Directory Structure
+## 디렉토리 구조
 
 ```
 oneshim-core/src/
-├── lib.rs           # Crate root, module re-exports
-├── config.rs        # AppConfig and configuration sections
-├── config_manager.rs # JSON-based config file management + platform-specific paths
-├── consent.rs       # ConsentManager, GDPR Article 17/20 compliance
-├── error.rs         # CoreError enum (thiserror, 23 variants)
-├── models/          # Domain models
+├── lib.rs           # 크레이트 루트, 모듈 재export
+├── config.rs        # AppConfig 및 설정 섹션
+├── config_manager.rs # JSON 기반 설정 파일 관리 + 플랫폼별 경로
+├── consent.rs       # ConsentManager, GDPR Article 17/20 준수
+├── error.rs         # CoreError enum (thiserror, 23개 변형)
+├── models/          # 도메인 모델
 │   ├── mod.rs
 │   ├── suggestion.rs   # Suggestion, SuggestionType, Priority
 │   ├── event.rs        # ContextEvent, EventType, InputActivityEvent
@@ -27,10 +27,10 @@ oneshim-core/src/
 │   ├── context.rs      # ContextPayload, DeviceInfo
 │   ├── session.rs      # SessionInfo, SessionStatus
 │   ├── system.rs       # SystemMetrics, CpuMetrics, MemoryMetrics
-│   ├── telemetry.rs    # Telemetry-related models
+│   ├── telemetry.rs    # Telemetry 관련 모델
 │   ├── automation.rs   # AutomationAction, MouseButton
 │   └── intent.rs       # AutomationIntent, UiElement, WorkflowPreset
-└── ports/           # Port interfaces (traits)
+└── ports/           # 포트 인터페이스 (trait)
     ├── mod.rs
     ├── api_client.rs   # ApiClient, SseClient, SseEvent
     ├── storage.rs      # StorageService
@@ -38,14 +38,14 @@ oneshim-core/src/
     ├── vision.rs       # CaptureTrigger, FrameProcessor
     ├── notifier.rs     # DesktopNotifier
     ├── compressor.rs   # Compressor
-    ├── element_finder.rs # ElementFinder — UI element discovery
-    ├── input_driver.rs   # InputDriver — mouse/keyboard input
-    ├── ocr_provider.rs   # OcrProvider — OCR text recognition
-    ├── llm_provider.rs   # LlmProvider — LLM inference
-    └── sandbox.rs        # Sandbox — OS native sandbox
+    ├── element_finder.rs # ElementFinder — UI 요소 탐색
+    ├── input_driver.rs   # InputDriver — 마우스/키보드 입력
+    ├── ocr_provider.rs   # OcrProvider — OCR 텍스트 인식
+    ├── llm_provider.rs   # LlmProvider — LLM 추론
+    └── sandbox.rs        # Sandbox — OS 네이티브 샌드박스
 ```
 
-## Key Models
+## 주요 모델
 
 ### Suggestion
 ```rust
@@ -84,9 +84,9 @@ pub struct CapturedFrame {
 }
 ```
 
-### Automation Models
+### 자동화 모델 (Automation)
 
-#### AutomationAction — Low-Level Automation Action
+#### AutomationAction — 저수준 자동화 액션
 ```rust
 pub enum AutomationAction {
     MouseMove { x: f64, y: f64 },
@@ -100,7 +100,7 @@ pub enum AutomationAction {
 pub enum MouseButton { Left, Right, Middle }
 ```
 
-#### AutomationIntent — Server→Client High-Level Intent
+#### AutomationIntent — 서버→클라이언트 고수준 의도
 ```rust
 pub enum AutomationIntent {
     ClickElement { text: String, role: Option<String>, app_name: Option<String>, button: MouseButton },
@@ -112,7 +112,7 @@ pub enum AutomationIntent {
 }
 ```
 
-#### UiElement — UI Element Found on Screen
+#### UiElement — 화면에서 발견된 UI 요소
 ```rust
 pub struct UiElement {
     pub text: String,
@@ -128,7 +128,7 @@ pub struct ElementBounds {
 }
 ```
 
-#### WorkflowPreset — Workflow Preset
+#### WorkflowPreset — 워크플로우 프리셋
 ```rust
 pub struct WorkflowPreset {
     pub id: String,
@@ -148,14 +148,14 @@ pub struct WorkflowStep {
 }
 
 pub enum PresetCategory {
-    Productivity,    // Productivity
-    AppManagement,   // App management
-    Workflow,        // Workflow
-    Custom,          // User-defined
+    Productivity,    // 생산성
+    AppManagement,   // 앱 관리
+    Workflow,        // 워크플로우
+    Custom,          // 사용자 정의
 }
 ```
 
-#### IntentResult / IntentConfig — Execution Result and Configuration
+#### IntentResult / IntentConfig — 실행 결과 및 설정
 ```rust
 pub struct IntentResult {
     pub success: bool,
@@ -175,7 +175,7 @@ pub struct IntentConfig {
 }
 ```
 
-## Port Interfaces
+## 포트 인터페이스
 
 ### ApiClient
 ```rust
@@ -228,9 +228,9 @@ pub trait FrameProcessor: Send + Sync {
 }
 ```
 
-### Automation Ports
+### 자동화 포트 (Automation Ports)
 
-#### Sandbox — OS Native Kernel Sandbox
+#### Sandbox — OS 네이티브 커널 샌드박스
 ```rust
 #[async_trait]
 pub trait Sandbox: Send + Sync {
@@ -246,7 +246,7 @@ pub struct SandboxCapabilities {
 }
 ```
 
-#### ElementFinder — UI Element Discovery
+#### ElementFinder — UI 요소 탐색
 ```rust
 #[async_trait]
 pub trait ElementFinder: Send + Sync {
@@ -254,7 +254,7 @@ pub trait ElementFinder: Send + Sync {
 }
 ```
 
-#### InputDriver — Mouse/Keyboard Input
+#### InputDriver — 마우스/키보드 입력
 ```rust
 #[async_trait]
 pub trait InputDriver: Send + Sync {
@@ -262,7 +262,7 @@ pub trait InputDriver: Send + Sync {
 }
 ```
 
-#### OcrProvider — OCR Text Recognition
+#### OcrProvider — OCR 텍스트 인식
 ```rust
 #[async_trait]
 pub trait OcrProvider: Send + Sync {
@@ -270,7 +270,7 @@ pub trait OcrProvider: Send + Sync {
 }
 ```
 
-#### LlmProvider — LLM Inference
+#### LlmProvider — LLM 추론
 ```rust
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
@@ -278,49 +278,49 @@ pub trait LlmProvider: Send + Sync {
 }
 ```
 
-## Error Handling
+## 에러 처리
 
 ```rust
 #[derive(Debug, Error)]
 pub enum CoreError {
-    // Basic errors
-    #[error("Serialization failed")] Serialization(#[from] serde_json::Error),
-    #[error("Config error: {0}")] Config(String),
-    #[error("Validation failed: {field}")] Validation { field: String, message: String },
-    #[error("Authentication failed: {0}")] Auth(String),
-    #[error("{resource_type} not found: {id}")] NotFound { resource_type: String, id: String },
-    #[error("Internal error: {0}")] Internal(String),
-    #[error("I/O error")] Io(#[from] std::io::Error),
+    // 기본 에러
+    #[error("직렬화 실패")] Serialization(#[from] serde_json::Error),
+    #[error("설정 에러: {0}")] Config(String),
+    #[error("유효성 검증 실패: {field}")] Validation { field: String, message: String },
+    #[error("인증 실패: {0}")] Auth(String),
+    #[error("{resource_type} 미발견: {id}")] NotFound { resource_type: String, id: String },
+    #[error("내부 오류: {0}")] Internal(String),
+    #[error("I/O 오류")] Io(#[from] std::io::Error),
 
-    // Network errors
-    #[error("Network error: {0}")] Network(String),
-    #[error("Rate limit exceeded")] RateLimit { retry_after_secs: Option<u64> },
-    #[error("Service temporarily unavailable: {0}")] ServiceUnavailable(String),
+    // 네트워크 에러
+    #[error("네트워크 오류: {0}")] Network(String),
+    #[error("요청 한도 초과")] RateLimit { retry_after_secs: Option<u64> },
+    #[error("서비스 일시 불가: {0}")] ServiceUnavailable(String),
 
-    // Policy/automation errors
-    #[error("Policy denied: {0}")] PolicyDenied(String),
-    #[error("Process not allowed: {0}")] ProcessNotAllowed(String),
-    #[error("Invalid arguments: {0}")] InvalidArguments(String),
-    #[error("Binary hash mismatch")] BinaryHashMismatch { expected: String, actual: String },
+    // 정책/자동화 에러
+    #[error("정책 거부: {0}")] PolicyDenied(String),
+    #[error("프로세스 불허: {0}")] ProcessNotAllowed(String),
+    #[error("잘못된 인자: {0}")] InvalidArguments(String),
+    #[error("바이너리 해시 불일치")] BinaryHashMismatch { expected: String, actual: String },
 
-    // Consent errors
-    #[error("Consent required: {0}")] ConsentRequired(String),
-    #[error("Consent expired")] ConsentExpired,
+    // 동의 에러
+    #[error("동의 필요: {0}")] ConsentRequired(String),
+    #[error("동의 만료")] ConsentExpired,
 
-    // Sandbox errors
-    #[error("Sandbox init failed: {0}")] SandboxInit(String),
-    #[error("Sandbox execution failed: {0}")] SandboxExecution(String),
-    #[error("Sandbox unsupported: {0}")] SandboxUnsupported(String),
+    // 샌드박스 에러
+    #[error("샌드박스 초기화 실패: {0}")] SandboxInit(String),
+    #[error("샌드박스 실행 실패: {0}")] SandboxExecution(String),
+    #[error("샌드박스 미지원: {0}")] SandboxUnsupported(String),
 
-    // Automation errors
-    #[error("Execution timeout: {timeout_ms}ms")] ExecutionTimeout { timeout_ms: u64 },
-    #[error("UI element not found: {0}")] ElementNotFound(String),
-    #[error("Privacy denied: {0}")] PrivacyDenied(String),
-    #[error("OCR processing failed: {0}")] OcrError(String),
+    // 자동화 에러
+    #[error("실행 타임아웃: {timeout_ms}ms")] ExecutionTimeout { timeout_ms: u64 },
+    #[error("UI 요소 미발견: {0}")] ElementNotFound(String),
+    #[error("프라이버시 거부: {0}")] PrivacyDenied(String),
+    #[error("OCR 처리 실패: {0}")] OcrError(String),
 }
 ```
 
-## Configuration Structure
+## 설정 구조
 
 ```rust
 pub struct AppConfig {
@@ -335,23 +335,23 @@ pub struct AppConfig {
     pub privacy: PrivacyConfig,
     pub schedule: ScheduleConfig,
     pub file_access: FileAccessConfig,
-    // Automation system
+    // 자동화 시스템
     pub automation: AutomationConfig,
     pub ai_provider: AiProviderConfig,
 }
 ```
 
-### Automation Configuration
+### 자동화 설정
 
 ```rust
-/// Automation control configuration
+/// 자동화 제어 설정
 pub struct AutomationConfig {
     pub enabled: bool,
     pub sandbox: SandboxConfig,
     pub custom_presets: Vec<WorkflowPreset>,
 }
 
-/// OS native sandbox configuration
+/// OS 네이티브 샌드박스 설정
 pub struct SandboxConfig {
     pub enabled: bool,
     pub profile: SandboxProfile,     // Permissive | Standard | Strict
@@ -363,16 +363,16 @@ pub struct SandboxConfig {
 }
 
 pub enum SandboxProfile {
-    Permissive,  // Minimal restrictions
-    Standard,    // Standard restrictions (default)
-    Strict,      // Strict restrictions
+    Permissive,  // 최소 제한
+    Standard,    // 표준 제한 (기본)
+    Strict,      // 엄격한 제한
 }
 ```
 
-### AI Provider Configuration
+### AI 제공자 설정
 
 ```rust
-/// AI OCR/LLM provider configuration
+/// AI OCR/LLM 제공자 설정
 pub struct AiProviderConfig {
     pub ocr_provider: OcrProviderType,   // Local | Remote
     pub llm_provider: LlmProviderType,   // Local | Remote
@@ -382,45 +382,44 @@ pub struct AiProviderConfig {
     pub fallback_to_local: bool,
 }
 
-/// External API endpoint
+/// 외부 API 엔드포인트
 pub struct ExternalApiEndpoint {
     pub endpoint: String,
-    pub api_key: String,        // Stored directly in config.json
+    pub api_key: String,        // config.json에 직접 저장
     pub model: Option<String>,
-    pub timeout_secs: u64,      // Default 30 seconds
+    pub timeout_secs: u64,      // 기본 30초
 }
 
-/// External data transmission policy
+/// 외부 데이터 전송 정책
 pub enum ExternalDataPolicy {
-    PiiFilterStrict,    // PII filter Strict + sensitive app blocking
-    PiiFilterStandard,  // PII filter Standard
-    AllowFiltered,      // Use user settings as-is
+    PiiFilterStrict,    // PII 필터 Strict + 민감 앱 차단
+    PiiFilterStandard,  // PII 필터 Standard
+    AllowFiltered,      // 사용자 설정 그대로
 }
 
-/// AI API provider type
+/// AI API 제공자 타입
 ///
-/// Distinguishes providers via explicit enum instead of URL string matching.
-/// Designed with a config-file-driven approach so no specific vendor holds
-/// privileges in the OSS architecture.
-/// `ai_llm_client.rs` and `ai_ocr_client.rs` read this value to perform
-/// vendor-neutral branching that determines request format and auth headers.
+/// URL 문자열 매칭 대신 명시적 enum으로 제공자를 구분한다.
+/// OSS 아키텍처에서 특정 벤더가 특권을 갖지 않도록 설정 파일 주도 방식으로 설계.
+/// `ai_llm_client.rs`와 `ai_ocr_client.rs`가 이 값을 읽어 요청 형식과
+/// 인증 헤더를 결정하는 벤더 중립적 분기를 수행한다.
 pub enum AiProviderType {
-    Anthropic,  // Anthropic Claude API — x-api-key header + /v1/messages format
-    OpenAi,     // OpenAI-compatible API — Authorization: Bearer header + /v1/chat/completions format
-    Generic,    // Other providers — no custom headers, uses generic response parsing (default)
+    Anthropic,  // Anthropic Claude API — x-api-key 헤더 + /v1/messages 형식
+    OpenAi,     // OpenAI 호환 API — Authorization: Bearer 헤더 + /v1/chat/completions 형식
+    Generic,    // 기타 제공자 — 커스텀 헤더 없음, 범용 응답 파싱 사용 (기본값)
 }
 ```
 
-## Dependencies
+## 의존성
 
-This crate maintains minimal dependencies:
-- `serde`: Serialization
-- `chrono`: Time handling
-- `thiserror`: Error derive
-- `async-trait`: Async traits
-- `tokio`: mpsc channels
+이 크레이트는 최소 의존성을 유지합니다:
+- `serde`: 직렬화
+- `chrono`: 시간 처리
+- `thiserror`: 에러 derive
+- `async-trait`: 비동기 trait
+- `tokio`: mpsc 채널
 
-## Usage Example
+## 사용 예시
 
 ```rust
 use oneshim_core::models::suggestion::Suggestion;

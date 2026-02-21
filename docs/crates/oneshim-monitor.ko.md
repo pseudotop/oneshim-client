@@ -2,31 +2,31 @@
 
 # oneshim-monitor
 
-The crate for system and user activity monitoring.
+시스템 및 사용자 활동 모니터링 크레이트.
 
-## Role
+## 역할
 
-- **System Metrics**: CPU, memory, disk, and network usage
-- **Process Tracking**: Active windows, running processes
-- **Activity Detection**: Keyboard/mouse activity, idle state
+- **시스템 메트릭**: CPU, 메모리, 디스크, 네트워크 사용량
+- **프로세스 추적**: 활성 창, 실행 중인 프로세스
+- **활동 감지**: 키보드/마우스 활동, 유휴 상태
 
-## Directory Structure
+## 디렉토리 구조
 
 ```
 oneshim-monitor/src/
-├── lib.rs        # Crate root
-├── system.rs     # SysInfoMonitor - system metrics
-├── process.rs    # ProcessTracker - process/window tracking
-├── activity.rs   # ActivityTracker - idle detection
-├── macos.rs      # macOS-specific implementation
-└── windows.rs    # Windows-specific implementation
+├── lib.rs        # 크레이트 루트
+├── system.rs     # SysInfoMonitor - 시스템 메트릭
+├── process.rs    # ProcessTracker - 프로세스/창 추적
+├── activity.rs   # ActivityTracker - 유휴 감지
+├── macos.rs      # macOS 전용 구현
+└── windows.rs    # Windows 전용 구현
 ```
 
-## Key Components
+## 주요 컴포넌트
 
 ### SysInfoMonitor (system.rs)
 
-System metrics collection based on `sysinfo` (`SystemMonitor` port):
+`sysinfo` 기반 시스템 메트릭 수집 (`SystemMonitor` 포트):
 
 ```rust
 pub struct SysInfoMonitor {
@@ -55,17 +55,17 @@ impl SystemMonitor for SysInfoMonitor {
 }
 ```
 
-**Collected Metrics**:
-| Category | Metrics |
-|----------|---------|
-| CPU | Usage (%), core count |
-| Memory | Total/used/available bytes |
-| Disk | Total/used bytes, read/write speed |
-| Network | Received/sent bytes, packet count |
+**수집 메트릭**:
+| 카테고리 | 메트릭 |
+|----------|--------|
+| CPU | 사용률(%), 코어 수 |
+| 메모리 | 전체/사용/가용 바이트 |
+| 디스크 | 전체/사용 바이트, 읽기/쓰기 속도 |
+| 네트워크 | 수신/송신 바이트, 패킷 수 |
 
 ### ProcessTracker (process.rs)
 
-Active process and window tracking (`ProcessMonitor` port):
+활성 프로세스 및 창 추적 (`ProcessMonitor` 포트):
 
 ```rust
 pub struct ProcessTracker {
@@ -78,7 +78,7 @@ impl ProcessMonitor for ProcessTracker {
 }
 ```
 
-**WindowInfo Structure**:
+**WindowInfo 구조**:
 ```rust
 pub struct WindowInfo {
     pub window_id: u64,
@@ -91,7 +91,7 @@ pub struct WindowInfo {
 
 ### ActivityTracker (activity.rs)
 
-User activity detection (`ActivityMonitor` port):
+사용자 활동 감지 (`ActivityMonitor` 포트):
 
 ```rust
 pub struct ActivityTracker {
@@ -112,11 +112,11 @@ impl ActivityMonitor for ActivityTracker {
 }
 ```
 
-## Platform-Specific Implementations
+## 플랫폼별 구현
 
 ### macOS (macos.rs)
 
-Active window detection based on `osascript`:
+`osascript` 기반 활성 창 감지:
 
 ```rust
 #[cfg(target_os = "macos")]
@@ -136,13 +136,13 @@ pub fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
         .args(["-e", script])
         .output()?;
 
-    // Parse and create WindowInfo
+    // 파싱 및 WindowInfo 생성
 }
 ```
 
 ### Windows (windows.rs)
 
-Active window detection based on Win32 API:
+Win32 API 기반 활성 창 감지:
 
 ```rust
 #[cfg(target_os = "windows")]
@@ -156,27 +156,27 @@ pub fn get_active_window_windows() -> Result<Option<WindowInfo>, CoreError> {
             return Ok(None);
         }
 
-        // Get window title
+        // 창 제목 가져오기
         let mut title = [0u16; 256];
         GetWindowTextW(hwnd, title.as_mut_ptr(), 256);
 
-        // Get PID
+        // PID 가져오기
         let mut pid: u32 = 0;
         GetWindowThreadProcessId(hwnd, &mut pid);
 
-        // Look up process name via sysinfo
+        // sysinfo로 프로세스 이름 조회
         // ...
     }
 }
 ```
 
-## Monitoring Loop
+## 모니터링 루프
 
-Called from the scheduler in `oneshim-app`:
+`oneshim-app`의 스케줄러에서 호출:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Scheduler (1-second interval)         │
+│                    Scheduler (1초 간격)                   │
 └─────────────────────────────────────────────────────────┘
         │                    │                    │
         ▼                    ▼                    ▼
@@ -193,9 +193,9 @@ Called from the scheduler in `oneshim-app`:
                       BatchUploader
 ```
 
-## Event Generation
+## 이벤트 생성
 
-Converts monitoring results to `ContextEvent`:
+모니터링 결과를 `ContextEvent`로 변환:
 
 ```rust
 pub fn create_context_event(
@@ -229,20 +229,20 @@ pub fn create_context_event(
 }
 ```
 
-## Dependencies
+## 의존성
 
-- `sysinfo`: System information (0.32)
+- `sysinfo`: 시스템 정보 (0.32)
 - `windows-sys`: Windows API (Windows only)
 
-## Platform Support
+## 플랫폼 지원
 
-| Platform | System Metrics | Active Window | Process List |
-|----------|---------------|---------------|--------------|
+| 플랫폼 | 시스템 메트릭 | 활성 창 | 프로세스 목록 |
+|--------|-------------|---------|--------------|
 | macOS | ✅ | ✅ (osascript) | ✅ |
 | Windows | ✅ | ✅ (Win32) | ✅ |
 | Linux | ✅ | ⚠️ (X11 only) | ✅ |
 
-## Tests
+## 테스트
 
 ```rust
 #[tokio::test]
@@ -257,19 +257,19 @@ async fn test_system_metrics() {
 
 #[tokio::test]
 async fn test_idle_detection() {
-    let tracker = ActivityTracker::new(5); // 5-second threshold
+    let tracker = ActivityTracker::new(5); // 5초 임계값
 
-    // Record activity
+    // 활동 기록
     tracker.record_activity().await.unwrap();
     assert!(!tracker.is_idle().await.unwrap());
 
-    // After time elapses (simulated in tests)
+    // 시간 경과 후 (테스트에서는 시뮬레이션)
     // assert!(tracker.is_idle().await.unwrap());
 }
 ```
 
-## Performance Considerations
+## 성능 고려사항
 
-1. **Polling interval**: 1 second default, configurable
-2. **sysinfo caching**: Minimize `refresh_all()` calls
-3. **Platform optimization**: Use native APIs for each OS
+1. **폴링 간격**: 1초 기본값, 설정 가능
+2. **sysinfo 캐싱**: `refresh_all()` 호출 최소화
+3. **플랫폼 최적화**: 각 OS의 네이티브 API 활용

@@ -1,12 +1,12 @@
 [English](./07-code-sketches.md) | [한국어](./07-code-sketches.ko.md)
 
-# 7. Core Rust Code Sketches
+# 7. 핵심 Rust 코드 스케치
 
-[← UI Framework](./06-ui-framework.md) | [Edge Vision →](./08-edge-vision.md)
+[← UI 프레임워크](./06-ui-framework.ko.md) | [Edge Vision →](./08-edge-vision.ko.md)
 
 ---
 
-## Model Example (oneshim-core)
+## 모델 예시 (oneshim-core)
 
 ```rust
 // models/suggestion.rs
@@ -46,7 +46,7 @@ pub enum Priority {
 }
 ```
 
-## SSE Client Sketch (oneshim-network)
+## SSE 클라이언트 스케치 (oneshim-network)
 
 ```rust
 // sse_client.rs
@@ -60,7 +60,7 @@ pub struct SseClient {
 }
 
 impl SseClient {
-    /// SSE stream connection — receives suggestions, heartbeats, and update events
+    /// SSE 스트림 연결 — 제안, 하트비트, 업데이트 이벤트 수신
     pub async fn connect(
         &self,
         session_id: &str,
@@ -92,8 +92,8 @@ impl SseClient {
                 }
                 Ok(es::SSE::Comment(_)) => {}
                 Err(e) => {
-                    tracing::warn!("SSE error: {}", e);
-                    // Auto-reconnect is handled by eventsource-client
+                    tracing::warn!("SSE 에러: {}", e);
+                    // 자동 재연결은 eventsource-client가 처리
                 }
             }
         }
@@ -112,7 +112,7 @@ pub enum SseEvent {
 }
 ```
 
-## Suggestion Reception → Notification Pipeline Sketch
+## 제안 수신 → 알림 파이프라인 스케치
 
 ```rust
 // oneshim-suggestion/receiver.rs
@@ -124,40 +124,40 @@ pub struct SuggestionReceiver {
 }
 
 impl SuggestionReceiver {
-    /// Receives suggestions from SSE and delivers them to UI/notifications
+    /// SSE에서 제안을 수신하고 UI/알림으로 전달
     pub async fn run(&self, session_id: &str) -> Result<(), ClientError> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
 
-        // SSE stream connection (separate task)
+        // SSE 스트림 연결 (별도 태스크)
         let sse = self.sse_client.clone();
         let sid = session_id.to_string();
         tokio::spawn(async move {
             if let Err(e) = sse.connect(&sid, tx).await {
-                tracing::error!("SSE connection failed: {}", e);
+                tracing::error!("SSE 연결 실패: {}", e);
             }
         });
 
-        // Event processing loop
+        // 이벤트 처리 루프
         while let Some(event) = rx.recv().await {
             match event {
                 SseEvent::Suggestion(suggestion) => {
-                    // Add to queue
+                    // 큐에 추가
                     self.queue.push(suggestion.clone()).await;
 
-                    // Desktop notification
+                    // 데스크톱 알림
                     self.notifier.show_suggestion(&suggestion).await?;
 
                     tracing::info!(
-                        "Suggestion received: [{}] {}",
+                        "제안 수신: [{}] {}",
                         suggestion.suggestion_type,
                         &suggestion.content[..80.min(suggestion.content.len())]
                     );
                 }
                 SseEvent::Heartbeat { timestamp } => {
-                    tracing::trace!("Heartbeat: {}", timestamp);
+                    tracing::trace!("하트비트: {}", timestamp);
                 }
                 SseEvent::Error(msg) => {
-                    tracing::warn!("Server error: {}", msg);
+                    tracing::warn!("서버 에러: {}", msg);
                 }
                 _ => {}
             }

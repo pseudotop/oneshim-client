@@ -1,180 +1,182 @@
-# 5. 마이그레이션 단계 + 성공 기준
+[English](./05-migration-phases.md) | [한국어](./05-migration-phases.ko.md)
 
-[← Server API](./04-server-api.md) | [UI 프레임워크 →](./06-ui-framework.md)
+# 5. Migration Phases + Success Criteria
+
+[← Server API](./04-server-api.md) | [UI Framework →](./06-ui-framework.md)
 
 ---
 
-## Phase 0: 프로젝트 기반 구축
+## Phase 0: Project Foundation
 
-**목표**: Rust workspace 생성, 빌드 파이프라인 설정
-
-```
-[ ] Cargo workspace 초기화 (8개 크레이트)
-[ ] CI/CD 설정 (cargo test, cargo clippy, cargo fmt)
-[ ] 크로스 컴파일 설정 (macOS universal + Windows x64)
-[ ] .cargo/config.toml 빌드 최적화
-```
-
-## Phase 1: 핵심 모델 + 네트워크 (P0 — SSE 연결)
-
-**목표**: 서버와 SSE로 연결하여 제안을 수신하는 최소 파이프라인
+**Goal**: Create Rust workspace, set up build pipeline
 
 ```
-[ ] oneshim-core: 모델 구조체 (serde), trait 정의, 에러 타입
-[ ] oneshim-network/auth.rs: 로그인 → JWT 토큰 저장 → 자동 갱신
-[ ] oneshim-network/http_client.rs: reqwest 기반 API 클라이언트
-[ ] oneshim-network/sse_client.rs: SSE 스트림 연결 + 이벤트 파싱
-[ ] oneshim-suggestion/receiver.rs: SSE 이벤트 → Suggestion 구조체 변환
-[ ] oneshim-suggestion/feedback.rs: 수락/거절 HTTP POST
-[ ] oneshim-app/main.rs: 최소 실행 — 로그인 → SSE 연결 → stdout 출력
+[ ] Initialize Cargo workspace (8 crates)
+[ ] Set up CI/CD (cargo test, cargo clippy, cargo fmt)
+[ ] Cross-compilation setup (macOS universal + Windows x64)
+[ ] .cargo/config.toml build optimizations
 ```
 
-**검증**: `cargo run` → 서버에서 SSE 제안 수신 → 터미널에 출력
+## Phase 1: Core Models + Network (P0 — SSE Connection)
 
-## Phase 2: 로컬 저장소 + 모니터링 + Edge Vision
-
-**목표**: 컨텍스트 수집 + 이미지 Edge 처리 → 로컬 저장 → 배치 업로드
+**Goal**: Minimal pipeline to receive suggestions from server via SSE
 
 ```
-[ ] oneshim-storage/sqlite.rs: 이벤트 로그 + 프레임 인덱스 테이블, CRUD, 보존 정책
-[ ] oneshim-storage/migration.rs: 스키마 버전 관리
-[ ] oneshim-monitor/system.rs: sysinfo 기반 CPU/메모리/디스크/네트워크
-[ ] oneshim-monitor/process.rs: 활성 창 정보 (플랫폼 분기)
-[ ] oneshim-monitor/macos.rs: CoreGraphics 프론트 앱 감지
+[ ] oneshim-core: Model structs (serde), trait definitions, error types
+[ ] oneshim-network/auth.rs: Login → JWT token storage → auto refresh
+[ ] oneshim-network/http_client.rs: reqwest-based API client
+[ ] oneshim-network/sse_client.rs: SSE stream connection + event parsing
+[ ] oneshim-suggestion/receiver.rs: SSE event → Suggestion struct conversion
+[ ] oneshim-suggestion/feedback.rs: Accept/reject HTTP POST
+[ ] oneshim-app/main.rs: Minimal execution — login → SSE connect → stdout output
+```
+
+**Verification**: `cargo run` → Receive SSE suggestions from server → Print to terminal
+
+## Phase 2: Local Storage + Monitoring + Edge Vision
+
+**Goal**: Context collection + image Edge processing → local storage → batch upload
+
+```
+[ ] oneshim-storage/sqlite.rs: Event log + frame index tables, CRUD, retention policy
+[ ] oneshim-storage/migration.rs: Schema version management
+[ ] oneshim-monitor/system.rs: sysinfo-based CPU/memory/disk/network
+[ ] oneshim-monitor/process.rs: Active window info (platform branching)
+[ ] oneshim-monitor/macos.rs: CoreGraphics front app detection
 [ ] oneshim-monitor/windows.rs: Win32 GetForegroundWindow
-[ ] oneshim-vision/capture.rs: xcap 기반 스크린 캡처 (멀티모니터)
-[ ] oneshim-vision/trigger.rs: 스마트 캡처 트리거 (이벤트 기반, 5초 쓰로틀)
-[ ] oneshim-vision/processor.rs: Edge 전처리 오케스트레이터 (중요도별 분기)
-[ ] oneshim-vision/delta.rs: 델타 인코딩 (이전 프레임 대비 변경 영역만 추출)
-[ ] oneshim-vision/encoder.rs: WebP/JPEG 인코딩 + 품질 자동 선택
-[ ] oneshim-vision/thumbnail.rs: 480×270 썸네일 생성
-[ ] oneshim-vision/ocr.rs: Tesseract FFI 로컬 OCR (텍스트 메타 추출)
-[ ] oneshim-vision/timeline.rs: 프레임 인덱스 관리 (SQLite 연동, 리와인드 지원)
-[ ] oneshim-vision/privacy.rs: PII 필터링 (창 제목 새니타이징)
-[ ] oneshim-network/batch_uploader.rs: 배치 큐 + 재시도 + 압축 (메타+이미지 혼합)
-[ ] oneshim-network/compression.rs: gzip/zstd/lz4 선택적 압축
-[ ] oneshim-app/scheduler.rs: 모니터링 루프 (1초), 동기화 루프 (10초), 하트비트
+[ ] oneshim-vision/capture.rs: xcap-based screen capture (multi-monitor)
+[ ] oneshim-vision/trigger.rs: Smart capture trigger (event-based, 5s throttle)
+[ ] oneshim-vision/processor.rs: Edge preprocessing orchestrator (importance-based branching)
+[ ] oneshim-vision/delta.rs: Delta encoding (extract changed regions vs previous frame)
+[ ] oneshim-vision/encoder.rs: WebP/JPEG encoding + automatic quality selection
+[ ] oneshim-vision/thumbnail.rs: 480×270 thumbnail generation
+[ ] oneshim-vision/ocr.rs: Tesseract FFI local OCR (text metadata extraction)
+[ ] oneshim-vision/timeline.rs: Frame index management (SQLite integration, rewind support)
+[ ] oneshim-vision/privacy.rs: PII filtering (window title sanitization)
+[ ] oneshim-network/batch_uploader.rs: Batch queue + retry + compression (metadata+image mixed)
+[ ] oneshim-network/compression.rs: Selective compression (gzip/zstd/lz4)
+[ ] oneshim-app/scheduler.rs: Monitor loop (1s), sync loop (10s), heartbeat
 ```
 
-**검증**: 컨텍스트 수집 + 스크린샷 Edge 처리 → SQLite 저장 → 메타+전처리 이미지 배치 업로드 → SSE 수신
+**Verification**: Context collection + screenshot Edge processing → SQLite storage → metadata+preprocessed image batch upload → SSE reception
 
-## Phase 3: UI 기반
+## Phase 3: UI Foundation
 
-**목표**: 시스템 트레이 + 제안 알림 + 메인 창 + 리와인드 타임라인
-
-```
-[ ] oneshim-ui/tray.rs: 시스템 트레이 아이콘 + 메뉴 (Show/Hide, Settings, Quit)
-[ ] oneshim-ui/views/suggestion_popup.rs: 제안 토스트/팝업 (수락/거절 버튼)
-[ ] oneshim-ui/views/main_window.rs: 현재 컨텍스트 + 상태 표시
-[ ] oneshim-ui/views/status_bar.rs: 연결 상태, 메트릭
-[ ] oneshim-ui/views/context_panel.rs: 활성 앱, 시스템 리소스
-[ ] oneshim-ui/views/timeline_view.rs: 스크린샷 리와인드 타임라인 (썸네일 스크롤)
-[ ] oneshim-ui/theme.rs: 다크/라이트 테마
-[ ] oneshim-suggestion/presenter.rs: 제안 → UI 데이터 변환 (파이프라인 프리뷰 포함)
-[ ] oneshim-suggestion/queue.rs: 로컬 제안 큐 (최대 50개, 우선순위)
-```
-
-**검증**: 트레이 아이콘 → SSE 제안 수신 → 데스크톱 알림/팝업 → 수락/거절 → 타임라인 리와인드
-
-## Phase 4: 완성도
-
-**목표**: 기능 완전성 + 배포 준비
+**Goal**: System tray + suggestion notifications + main window + rewind timeline
 
 ```
-[ ] oneshim-ui/views/settings.rs: 설정 화면
-[ ] oneshim-network/ws_client.rs: WebSocket (대화 모드)
-[ ] oneshim-suggestion/history.rs: 제안 이력 로컬 캐시
-[ ] oneshim-app/lifecycle.rs: 시작/종료, 리소스 정리
-[ ] oneshim-app/event_bus.rs: 내부 이벤트 (tokio::broadcast)
-[ ] 자동 시작 설정 (launchd / 레지스트리)
-[ ] 자동 업데이트 메커니즘
-[ ] 인스톨러 빌드 (.dmg, .exe/.msi)
-[ ] README, 사용자 가이드
+[ ] oneshim-ui/tray.rs: System tray icon + menu (Show/Hide, Settings, Quit)
+[ ] oneshim-ui/views/suggestion_popup.rs: Suggestion toast/popup (accept/reject buttons)
+[ ] oneshim-ui/views/main_window.rs: Current context + status display
+[ ] oneshim-ui/views/status_bar.rs: Connection status, metrics
+[ ] oneshim-ui/views/context_panel.rs: Active app, system resources
+[ ] oneshim-ui/views/timeline_view.rs: Screenshot rewind timeline (thumbnail scroll)
+[ ] oneshim-ui/theme.rs: Dark/light theme
+[ ] oneshim-suggestion/presenter.rs: Suggestion → UI data conversion (pipeline preview included)
+[ ] oneshim-suggestion/queue.rs: Local suggestion queue (max 50, priority)
 ```
 
-## Phase 5: 자동 업데이트
+**Verification**: Tray icon → SSE suggestion received → Desktop notification/popup → Accept/reject → Timeline rewind
 
-**목표**: GitHub Releases 기반 자동 업데이트
+## Phase 4: Completeness
+
+**Goal**: Feature completeness + deployment readiness
 
 ```
-[x] oneshim-app/updater.rs: 버전 확인 + 다운로드 + 바이너리 교체
-[x] UpdateConfig: repo, 주기, prerelease 옵션
-[x] 플랫폼별 에셋 자동 감지 (macOS arm64/x64, Windows, Linux)
-[x] tar.gz, zip 압축 해제
+[ ] oneshim-ui/views/settings.rs: Settings screen
+[ ] oneshim-network/ws_client.rs: WebSocket (conversation mode)
+[ ] oneshim-suggestion/history.rs: Suggestion history local cache
+[ ] oneshim-app/lifecycle.rs: Start/shutdown, resource cleanup
+[ ] oneshim-app/event_bus.rs: Internal events (tokio::broadcast)
+[ ] Auto-start setup (launchd / registry)
+[ ] Auto-update mechanism
+[ ] Installer builds (.dmg, .exe/.msi)
+[ ] README, user guide
 ```
 
-## Phase 6: GA 준비
+## Phase 5: Auto-Update
 
-**목표**: CI/CD + 인스톨러 + 문서화
+**Goal**: GitHub Releases-based auto-update
+
+```
+[x] oneshim-app/updater.rs: Version check + download + binary replacement
+[x] UpdateConfig: repo, interval, prerelease options
+[x] Platform-specific asset auto-detection (macOS arm64/x64, Windows, Linux)
+[x] tar.gz, zip decompression
+```
+
+## Phase 6: GA Preparation
+
+**Goal**: CI/CD + Installers + Documentation
 
 ```
 [x] GitHub Actions (rust-ci.yml, rust-release.yml)
-[x] 4개 플랫폼 빌드 (macOS arm64/x64, Windows x64, Linux x64)
-[x] macOS Universal Binary 자동 생성
-[x] 태그 푸시 시 자동 릴리즈
-[x] cargo-bundle, cargo-wix, cargo-deb 인스톨러
+[x] 4-platform builds (macOS arm64/x64, Windows x64, Linux x64)
+[x] macOS Universal Binary auto-generation
+[x] Auto-release on tag push
+[x] cargo-bundle, cargo-wix, cargo-deb installers
 ```
 
-## Phase 8-35: 기능 강화
+## Phase 8-35: Feature Enhancements
 
-**상세**: CLAUDE.md "Phase N 추가사항" 섹션 참조
+**Details**: See CLAUDE.md "Phase N Additions" sections
 
-- **Phase 8**: 시스템 메트릭 저장, 유휴 감지, 세션 통계
-- **Phase 9-14**: 로컬 웹 대시보드 (Axum + React)
-- **Phase 15-19**: 알림, 내보내기, Dark/Light 테마, 키보드 단축키
-- **Phase 20-24**: i18n, 디자인 시스템, 태그, 리포트
-- **Phase 25-27**: 백업/복원, E2E 테스트, 세션 리플레이
-- **Phase 28-30**: Edge Intelligence, SQLite 성능 최적화
-- **Phase 31-33**: 썸네일 캐싱, Lock-free 큐, 버퍼 풀
-- **Phase 34-35**: 서버 통합 강화, 이벤트 페이로드 확장
+- **Phase 8**: System metrics storage, idle detection, session statistics
+- **Phase 9-14**: Local web dashboard (Axum + React)
+- **Phase 15-19**: Notifications, export, Dark/Light theme, keyboard shortcuts
+- **Phase 20-24**: i18n, design system, tags, reports
+- **Phase 25-27**: Backup/restore, E2E tests, session replay
+- **Phase 28-30**: Edge Intelligence, SQLite performance optimization
+- **Phase 31-33**: Thumbnail caching, lock-free queue, buffer pool
+- **Phase 34-35**: Server integration hardening, event payload extension
 
-## Phase 36: gRPC 클라이언트 ★ NEW
+## Phase 36: gRPC Client ★ NEW
 
-**목표**: gRPC API 통합 (SSE 대체)
+**Goal**: gRPC API integration (SSE replacement)
 
 ```
-[x] oneshim-network/grpc/mod.rs: GrpcConfig + 모듈 export
+[x] oneshim-network/grpc/mod.rs: GrpcConfig + module export
 [x] oneshim-network/grpc/auth_client.rs: Login, Logout, RefreshToken, ValidateToken
 [x] oneshim-network/grpc/session_client.rs: CreateSession, EndSession, Heartbeat
 [x] oneshim-network/grpc/context_client.rs: UploadBatch, SubscribeSuggestions, SendFeedback, ListSuggestions
-[x] oneshim-network/grpc/unified_client.rs: gRPC + REST 통합 클라이언트
+[x] oneshim-network/grpc/unified_client.rs: gRPC + REST unified client
 [x] Feature Flag: --features grpc
-[x] REST Fallback: gRPC 실패 시 자동 전환
-[x] 산업 현장 ASCII 출력: NO_EMOJI=1 환경변수
+[x] REST Fallback: Automatic switch on gRPC failure
+[x] Industrial ASCII output: NO_EMOJI=1 environment variable
 ```
 
-**검증**: Mock 서버 통신 테스트 — 8개 RPC 모두 성공
+**Verification**: Mock server communication test — all 8 RPCs successful
 
 ---
 
-## 성공 기준
+## Success Criteria
 
-### Phase 1 완료 기준 (MVP)
-- [ ] `cargo run` → 서버 로그인 → SSE 연결 → 제안 수신 → 터미널 출력
-- [ ] 제안 수락/거절 피드백 전송 → 서버에서 확인
+### Phase 1 Completion Criteria (MVP)
+- [ ] `cargo run` → Server login → SSE connection → Suggestion reception → Terminal output
+- [ ] Suggestion accept/reject feedback sent → Confirmed on server
 
-### Phase 2 완료 기준
-- [ ] 컨텍스트 수집 (활성 창, CPU, 메모리) → SQLite 저장 → 배치 업로드
-- [ ] 스크린 캡처 → Edge 전처리 (델타/썸네일/OCR) → 메타+이미지 배치 전송
-- [ ] 프레임 인덱스 SQLite 저장 + 보존 정책 동작
-- [ ] 서버에서 컨텍스트 기반 제안 생성 → SSE로 수신
+### Phase 2 Completion Criteria
+- [ ] Context collection (active window, CPU, memory) → SQLite storage → Batch upload
+- [ ] Screen capture → Edge preprocessing (delta/thumbnail/OCR) → Metadata+image batch transmission
+- [ ] Frame index SQLite storage + retention policy working
+- [ ] Server generates context-based suggestion → Received via SSE
 
-### Phase 3 완료 기준
-- [ ] 시스템 트레이 아이콘 + 메뉴
-- [ ] 제안 수신 → 데스크톱 알림 → 수락/거절 UI
-- [ ] 메인 창: 현재 컨텍스트 + 상태 표시
-- [ ] 타임라인 리와인드: 썸네일 스크롤 + 텍스트 검색
+### Phase 3 Completion Criteria
+- [ ] System tray icon + menu
+- [ ] Suggestion received → Desktop notification → Accept/reject UI
+- [ ] Main window: current context + status display
+- [ ] Timeline rewind: thumbnail scroll + text search
 
-### Phase 4 완료 기준 (GA)
-- [x] .dmg / .exe 단일 바이너리 배포
-- [x] 자동 시작 + 자동 업데이트
-- [x] Python Client 전면 대체
-- [x] 전체 테스트 통과 (cargo test --workspace)
+### Phase 4 Completion Criteria (GA)
+- [x] .dmg / .exe single binary distribution
+- [x] Auto-start + auto-update
+- [x] Full replacement of Python Client
+- [x] All tests passing (cargo test --workspace)
 
-### Phase 36 완료 기준 (gRPC)
-- [x] gRPC 인증 RPC: Login, Logout, RefreshToken, ValidateToken
-- [x] gRPC 세션 RPC: CreateSession, EndSession, Heartbeat
-- [x] gRPC 컨텍스트 RPC: UploadBatch, SubscribeSuggestions, SendFeedback, ListSuggestions
-- [x] Server Streaming: 실시간 제안 수신 (SSE 대체)
-- [x] REST Fallback: 산업 현장 지원
-- [x] Mock 서버 통신 검증 완료
+### Phase 36 Completion Criteria (gRPC)
+- [x] gRPC auth RPCs: Login, Logout, RefreshToken, ValidateToken
+- [x] gRPC session RPCs: CreateSession, EndSession, Heartbeat
+- [x] gRPC context RPCs: UploadBatch, SubscribeSuggestions, SendFeedback, ListSuggestions
+- [x] Server Streaming: Real-time suggestion reception (SSE replacement)
+- [x] REST Fallback: Industrial environment support
+- [x] Mock server communication verification complete

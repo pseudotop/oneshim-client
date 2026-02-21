@@ -1,26 +1,28 @@
-# 10. 빌드/배포 + 리스크
+[English](./10-build-deploy.md) | [한국어](./10-build-deploy.ko.md)
 
-[← 테스트 전략](./09-testing.md) | [README →](./README.md)
+# 10. Build/Deploy + Risks
+
+[← Testing Strategy](./09-testing.md) | [README →](./README.md)
 
 ---
 
-## 빌드 및 배포
+## Build and Deployment
 
-### 바이너리 크기 최적화
+### Binary Size Optimization
 
 ```toml
 # .cargo/config.toml
 [profile.release]
-opt-level = "z"          # 크기 최적화
+opt-level = "z"          # Size optimization
 lto = true               # Link-Time Optimization
-codegen-units = 1        # 단일 코드젠 유닛
-strip = true             # 디버그 심볼 제거
-panic = "abort"          # unwind 제거
+codegen-units = 1        # Single codegen unit
+strip = true             # Strip debug symbols
+panic = "abort"          # Remove unwind
 ```
 
-**예상 바이너리 크기**: ~15-25MB (UI 포함)
+**Expected binary size**: ~15-25MB (including UI)
 
-### 크로스 컴파일
+### Cross-Compilation
 
 ```bash
 # macOS Universal (ARM + Intel)
@@ -35,50 +37,50 @@ cargo build --release --target x86_64-pc-windows-msvc
 cargo build --release --target x86_64-unknown-linux-gnu
 ```
 
-### 인스톨러
+### Installers
 
-| 플랫폼 | 형식 | 도구 |
-|--------|------|------|
+| Platform | Format | Tool |
+|----------|--------|------|
 | macOS | .dmg | create-dmg |
 | Windows | .msi | cargo-wix |
 | Linux | .deb, .AppImage | cargo-deb, appimage-builder |
 
 ---
 
-## 기존 Python Client와의 공존
+## Coexistence with Legacy Python Client
 
-### 병행 운영 전략
+### Parallel Operation Strategy
 
 ```
-Phase 1-2: Rust CLI 모드 (터미널에서 SSE 수신 확인)
-           Python Client 계속 사용 (UI 담당)
+Phase 1-2: Rust CLI mode (verify SSE reception in terminal)
+           Python Client continues in use (handles UI)
 
-Phase 3:   Rust UI 완성 → Python Client 대체 시작
-           Python Client 유지보수 모드 진입
+Phase 3:   Rust UI complete → Begin replacing Python Client
+           Python Client enters maintenance mode
 
-Phase 4:   Rust Client 전면 전환
-           Python Client 아카이브 (client-legacy/)
+Phase 4:   Full switch to Rust Client
+           Python Client archived (client-legacy/)
 ```
 
-### 데이터 마이그레이션
+### Data Migration
 
 ```
 Python SQLite DB → Rust SQLite DB
-  - 스키마 호환 유지 (동일 테이블 구조)
-  - 기존 DB 파일 그대로 사용 가능하도록 설계
-  - rusqlite로 Python sqlite3 DB 직접 읽기
+  - Maintain schema compatibility (same table structure)
+  - Designed to use existing DB file directly
+  - Read Python sqlite3 DB directly with rusqlite
 ```
 
 ---
 
-## 리스크 및 대응
+## Risks and Mitigations
 
-| 리스크 | 심각도 | 대응 |
-|--------|--------|------|
-| macOS 접근성 권한 (CGWindowListCreate) | High | `CoreGraphics` FFI + Info.plist 설정 |
-| Windows 서명 없는 바이너리 경고 | High | 코드 서명 인증서 취득 |
-| UI 프레임워크 성숙도 | Medium | iced/egui 모두 활발한 개발 중, Phase 3에서 최종 선택 |
-| Tesseract OCR 시스템 의존성 | Medium | `ocr` feature flag optional, 미설치 시 OCR 없이 동작 |
-| SSE 재연결 안정성 | Medium | eventsource-client 자동 재연결 + 수동 fallback |
-| 이미지 처리 메모리 사용 | Low | 프레임별 처리 후 즉시 해제, 동시 1프레임만 메모리에 |
-| 크로스 컴파일 CI 복잡도 | Low | GitHub Actions matrix 빌드 |
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| macOS accessibility permissions (CGWindowListCreate) | High | `CoreGraphics` FFI + Info.plist configuration |
+| Windows unsigned binary warning | High | Obtain code signing certificate |
+| UI framework maturity | Medium | Both iced/egui actively developed, final selection in Phase 3 |
+| Tesseract OCR system dependency | Medium | `ocr` feature flag optional, operates without OCR when not installed |
+| SSE reconnection stability | Medium | eventsource-client auto-reconnect + manual fallback |
+| Image processing memory usage | Low | Release immediately after per-frame processing, only 1 frame in memory at a time |
+| Cross-compilation CI complexity | Low | GitHub Actions matrix builds |

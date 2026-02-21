@@ -2,46 +2,46 @@
 
 # oneshim-app
 
-The binary entry point. DI wiring, scheduler, and lifecycle management.
+바이너리 진입점. DI 와이어링, 스케줄러, 라이프사이클 관리.
 
-## Role
+## 역할
 
-- **Entry Point**: `main()` function, application startup
-- **DI Wiring**: Assembly and injection of all components
-- **Scheduling**: Periodic task execution
-- **Lifecycle**: Startup/shutdown handling
-- **Auto Update**: Updates based on GitHub Releases
+- **진입점**: `main()` 함수, 애플리케이션 시작
+- **DI 와이어링**: 모든 컴포넌트 조립 및 주입
+- **스케줄링**: 주기적 태스크 실행
+- **라이프사이클**: 시작/종료 처리
+- **자동 업데이트**: GitHub Releases 기반 업데이트
 
-## Directory Structure
+## 디렉토리 구조
 
 ```
 oneshim-app/src/
-├── main.rs       # Entry point, DI wiring
-├── scheduler.rs  # Scheduler - periodic tasks
-├── lifecycle.rs  # Lifecycle - signal handling
-├── event_bus.rs  # Internal event routing
-├── autostart.rs  # Auto-start configuration
-└── updater.rs    # Auto update
+├── main.rs       # 진입점, DI 와이어링
+├── scheduler.rs  # 스케줄러 - 주기적 태스크
+├── lifecycle.rs  # 라이프사이클 - 시그널 처리
+├── event_bus.rs  # 내부 이벤트 라우팅
+├── autostart.rs  # 자동 시작 설정
+└── updater.rs    # 자동 업데이트
 ```
 
-## Key Components
+## 주요 컴포넌트
 
 ### main.rs
 
-Application entry point and DI assembly:
+애플리케이션 진입점 및 DI 조립:
 
 ```rust
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 1. Initialize logging
+    // 1. 로깅 초기화
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    // 2. Load configuration
+    // 2. 설정 로드
     let config = AppConfig::load()?;
 
-    // 3. Create components (DI wiring)
+    // 3. 컴포넌트 생성 (DI 와이어링)
     let token_manager = Arc::new(TokenManager::new(
         &config.server.base_url,
         &std::env::var("ONESHIM_EMAIL")?,
@@ -75,22 +75,22 @@ async fn main() -> anyhow::Result<()> {
     let suggestion_queue = Arc::new(PriorityQueue::new(50));
     let suggestion_history = Arc::new(SuggestionHistory::new(100));
 
-    // 4. Create scheduler
-    let scheduler = Scheduler::new(/* inject all components */);
+    // 4. 스케줄러 생성
+    let scheduler = Scheduler::new(/* 모든 컴포넌트 주입 */);
 
-    // 5. Set up lifecycle
+    // 5. 라이프사이클 설정
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let lifecycle = Lifecycle::new(shutdown_tx);
 
-    // 6. Start tasks
+    // 6. 태스크 시작
     let monitor_task = tokio::spawn(scheduler.run_monitor_loop(shutdown_rx.clone()));
     let sync_task = tokio::spawn(scheduler.run_sync_loop(shutdown_rx.clone()));
-    let sse_task = tokio::spawn(/* SSE connection */);
+    let sse_task = tokio::spawn(/* SSE 연결 */);
 
-    // 7. Wait for shutdown signal
+    // 7. 종료 시그널 대기
     lifecycle.wait_for_shutdown().await;
 
-    // 8. Cleanup
+    // 8. 정리
     monitor_task.abort();
     sync_task.abort();
     sse_task.abort();
@@ -101,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
 
 ### Scheduler (scheduler.rs)
 
-Three periodic task loops:
+3개의 주기적 태스크 루프:
 
 ```rust
 pub struct Scheduler {
@@ -117,7 +117,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    /// Monitoring loop (1-second interval)
+    /// 모니터링 루프 (1초 간격)
     pub async fn run_monitor_loop(&self, mut shutdown: watch::Receiver<bool>) {
         let mut interval = tokio::time::interval(
             Duration::from_millis(self.config.poll_interval_ms)
@@ -127,12 +127,12 @@ impl Scheduler {
             tokio::select! {
                 _ = interval.tick() => {
                     if let Err(e) = self.monitor_tick().await {
-                        warn!("Monitoring error: {}", e);
+                        warn!("모니터링 오류: {}", e);
                     }
                 }
                 _ = shutdown.changed() => {
                     if *shutdown.borrow() {
-                        info!("Monitoring loop terminated");
+                        info!("모니터링 루프 종료");
                         break;
                     }
                 }
@@ -141,19 +141,19 @@ impl Scheduler {
     }
 
     async fn monitor_tick(&self) -> Result<(), CoreError> {
-        // 1. Collect system metrics
+        // 1. 시스템 메트릭 수집
         let metrics = self.system_monitor.get_metrics().await?;
 
-        // 2. Check active window
+        // 2. 활성 창 확인
         let window = self.process_monitor.get_active_window().await?;
 
-        // 3. Create event
+        // 3. 이벤트 생성
         let event = create_context_event(window, metrics, self.activity_monitor.is_idle().await?);
 
-        // 4. Store locally
+        // 4. 로컬 저장
         self.storage.save_event(&event).await?;
 
-        // 5. Capture decision
+        // 5. 캡처 결정
         if let CaptureDecision::Capture { importance } = self.capture_trigger.should_capture(&event).await? {
             let frame = ScreenCapture::capture_active_window()?;
             let processed = self.frame_processor.process(frame).await?;
@@ -161,13 +161,13 @@ impl Scheduler {
             self.batch_uploader.queue_frame(processed).await;
         }
 
-        // 6. Add to batch queue
+        // 6. 배치 큐에 추가
         self.batch_uploader.queue_event(event).await;
 
         Ok(())
     }
 
-    /// Sync loop (10-second interval)
+    /// 동기화 루프 (10초 간격)
     pub async fn run_sync_loop(&self, mut shutdown: watch::Receiver<bool>) {
         let mut interval = tokio::time::interval(
             Duration::from_millis(self.config.sync_interval_ms)
@@ -177,7 +177,7 @@ impl Scheduler {
             tokio::select! {
                 _ = interval.tick() => {
                     if let Err(e) = self.batch_uploader.flush().await {
-                        warn!("Sync error: {}", e);
+                        warn!("동기화 오류: {}", e);
                     }
                 }
                 _ = shutdown.changed() => break,
@@ -185,7 +185,7 @@ impl Scheduler {
         }
     }
 
-    /// Heartbeat loop (30-second interval)
+    /// 하트비트 루프 (30초 간격)
     pub async fn run_heartbeat_loop(&self, mut shutdown: watch::Receiver<bool>) {
         let mut interval = tokio::time::interval(
             Duration::from_millis(self.config.heartbeat_interval_ms)
@@ -194,7 +194,7 @@ impl Scheduler {
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    // Send server heartbeat
+                    // 서버 하트비트 전송
                 }
                 _ = shutdown.changed() => break,
             }
@@ -205,7 +205,7 @@ impl Scheduler {
 
 ### Lifecycle (lifecycle.rs)
 
-Signal handling and graceful shutdown:
+시그널 처리 및 graceful shutdown:
 
 ```rust
 pub struct Lifecycle {
@@ -221,13 +221,13 @@ impl Lifecycle {
         let ctrl_c = async {
             tokio::signal::ctrl_c()
                 .await
-                .expect("Failed to install Ctrl+C handler");
+                .expect("Ctrl+C 핸들러 설치 실패");
         };
 
         #[cfg(unix)]
         let terminate = async {
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("Failed to install SIGTERM handler")
+                .expect("SIGTERM 핸들러 설치 실패")
                 .recv()
                 .await;
         };
@@ -236,11 +236,11 @@ impl Lifecycle {
         let terminate = std::future::pending::<()>();
 
         tokio::select! {
-            _ = ctrl_c => info!("Ctrl+C received"),
-            _ = terminate => info!("SIGTERM received"),
+            _ = ctrl_c => info!("Ctrl+C 수신"),
+            _ = terminate => info!("SIGTERM 수신"),
         }
 
-        info!("Starting shutdown...");
+        info!("종료 시작...");
         let _ = self.shutdown_tx.send(true);
     }
 }
@@ -248,7 +248,7 @@ impl Lifecycle {
 
 ### EventBus (event_bus.rs)
 
-Internal event routing:
+내부 이벤트 라우팅:
 
 ```rust
 pub struct EventBus {
@@ -281,7 +281,7 @@ impl EventBus {
 
 ### Autostart (autostart.rs)
 
-Auto-start at login configuration:
+로그인 시 자동 시작 설정:
 
 ```rust
 pub struct Autostart;
@@ -328,7 +328,7 @@ impl Autostart {
 
 ### Updater (updater.rs)
 
-Auto update based on GitHub Releases:
+GitHub Releases 기반 자동 업데이트:
 
 ```rust
 pub struct Updater {
@@ -367,9 +367,9 @@ impl Updater {
     }
 
     pub async fn download_and_install(&self, release: &Release) -> Result<(), CoreError> {
-        info!("Downloading update: {}", release.version);
+        info!("업데이트 다운로드 중: {}", release.version);
 
-        // 1. Download asset
+        // 1. 에셋 다운로드
         let bytes = self.http_client
             .get(&release.download_url)
             .send()
@@ -377,15 +377,15 @@ impl Updater {
             .bytes()
             .await?;
 
-        // 2. Extract to temporary directory
+        // 2. 임시 디렉토리에 압축 해제
         let temp_dir = tempfile::tempdir()?;
         Self::extract_archive(&bytes, temp_dir.path())?;
 
-        // 3. Replace binary (using self_update)
+        // 3. 바이너리 교체 (self_update 사용)
         self_update::Move::from_source(temp_dir.path().join("oneshim"))
             .to_dest(&std::env::current_exe()?)?;
 
-        info!("Update complete. Restart required.");
+        info!("업데이트 완료. 재시작 필요.");
         Ok(())
     }
 
@@ -395,37 +395,37 @@ impl Updater {
             ("macos", "x86_64") => "macos-x64",
             ("windows", _) => "windows-x64",
             ("linux", _) => "linux-x64",
-            _ => return Err(CoreError::Internal("Unsupported platform".into())),
+            _ => return Err(CoreError::Internal("지원하지 않는 플랫폼".into())),
         };
 
         release.assets
             .iter()
             .find(|a| a.name.contains(pattern))
             .map(|a| a.browser_download_url.clone())
-            .ok_or_else(|| CoreError::Internal("Asset not found".into()))
+            .ok_or_else(|| CoreError::Internal("에셋을 찾을 수 없음".into()))
     }
 }
 ```
 
-## Execution Flow
+## 실행 흐름
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         main.rs                                  │
 │                                                                  │
-│  1. Initialize logging                                           │
-│  2. Load configuration                                           │
-│  3. Create components (DI)                                       │
-│  4. Start scheduler                                              │
-│  5. SSE connection                                               │
-│  6. Wait for shutdown signal                                     │
+│  1. 로깅 초기화                                                   │
+│  2. 설정 로드                                                     │
+│  3. 컴포넌트 생성 (DI)                                            │
+│  4. 스케줄러 시작                                                  │
+│  5. SSE 연결                                                      │
+│  6. 종료 시그널 대기                                               │
 └─────────────────────────────────────────────────────────────────┘
         │
         ├─────────────────┬─────────────────┬─────────────────┐
         ▼                 ▼                 ▼                 ▼
 ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────┐
 │ Monitor Loop  │ │  Sync Loop    │ │ Heartbeat Loop│ │ SSE Task  │
-│   (1s)        │ │   (10s)       │ │   (30s)       │ │           │
+│   (1초)       │ │   (10초)      │ │   (30초)      │ │           │
 └───────────────┘ └───────────────┘ └───────────────┘ └───────────┘
         │                 │                 │                 │
         │                 │                 │                 │
@@ -438,39 +438,39 @@ impl Updater {
                           └─────────────────┘
 ```
 
-## Dependencies
+## 의존성
 
-- `anyhow`: Binary error handling
-- `tokio`: Async runtime
-- `tracing-subscriber`: Logging
-- `config`: Config file parsing
-- `directories`: Platform-specific directories
-- `self_update`: Binary update
-- `semver`: Version comparison
+- `anyhow`: 바이너리 에러 처리
+- `tokio`: 비동기 런타임
+- `tracing-subscriber`: 로깅
+- `config`: 설정 파일 파싱
+- `directories`: 플랫폼별 디렉토리
+- `self_update`: 바이너리 업데이트
+- `semver`: 버전 비교
 
-## Build
+## 빌드
 
 ```bash
-# Development build
+# 개발 빌드
 cargo build -p oneshim-app
 
-# Release build
+# 릴리즈 빌드
 cargo build --release -p oneshim-app
 
-# Run
+# 실행
 cargo run -p oneshim-app
 ```
 
-## Environment Variables
+## 환경 변수
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ONESHIM_EMAIL` | Connected mode only ✅ | Login email (optional in standalone mode) |
-| `ONESHIM_PASSWORD` | Connected mode only ✅ | Login password (optional in standalone mode) |
-| `RUST_LOG` | ❌ | Log level (default: `info`) |
-| `ONESHIM_CONFIG` | ❌ | Config file path |
+| 변수 | 필수 | 설명 |
+|------|------|------|
+| `ONESHIM_EMAIL` | 연결 모드에서만 ✅ | 로그인 이메일 (standalone 모드에서는 선택) |
+| `ONESHIM_PASSWORD` | 연결 모드에서만 ✅ | 로그인 비밀번호 (standalone 모드에서는 선택) |
+| `RUST_LOG` | ❌ | 로그 레벨 (기본: `info`) |
+| `ONESHIM_CONFIG` | ❌ | 설정 파일 경로 |
 
-## Tests
+## 테스트
 
 ```rust
 #[tokio::test]
@@ -478,13 +478,13 @@ async fn test_lifecycle_shutdown() {
     let (tx, rx) = watch::channel(false);
     let lifecycle = Lifecycle::new(tx);
 
-    // Send shutdown signal
+    // 종료 시그널 전송
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(100)).await;
-        // In practice, simulates Ctrl+C
+        // 실제로는 Ctrl+C 시뮬레이션
     });
 
-    // wait_for_shutdown test requires signal mocking
+    // wait_for_shutdown 테스트는 시그널 모킹 필요
 }
 
 #[test]

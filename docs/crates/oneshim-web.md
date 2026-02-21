@@ -1,25 +1,27 @@
+[English](./oneshim-web.md) | [한국어](./oneshim-web.ko.md)
+
 # oneshim-web
 
-로컬 웹 대시보드 크레이트. Axum 0.7 기반 REST API와 React 18 프론트엔드를 제공합니다.
+The local web dashboard crate. Provides a REST API based on Axum 0.7 and a React 18 frontend.
 
-## 기능
+## Features
 
-- **REST API**: 60개+ 엔드포인트 (메트릭, 프로세스, 프레임, 이벤트, 태그, 리포트, 자동화 등)
-- **실시간 SSE**: Server-Sent Events 스트림 (메트릭, 프레임, 유휴 상태)
-- **React 프론트엔드**: rust-embed로 바이너리에 임베드
-- **자동 포트 찾기**: 포트 충돌 시 다음 포트 자동 시도
-- **자동화 대시보드**: 자동화 상태, 감사 로그, 워크플로우 프리셋, 실행 통계
+- **REST API**: 60+ endpoints (metrics, processes, frames, events, tags, reports, automation, etc.)
+- **Real-time SSE**: Server-Sent Events stream (metrics, frames, idle state)
+- **React Frontend**: Embedded in the binary via rust-embed
+- **Auto Port Finding**: Automatically tries the next port on conflict
+- **Automation Dashboard**: Automation status, audit logs, workflow presets, execution statistics
 
-## 구조
+## Structure
 
 ```
 oneshim-web/
 ├── src/
-│   ├── lib.rs          # WebServer + AppState (audit_logger 포함)
-│   ├── routes.rs       # 라우트 정의 (60개+ 엔드포인트)
-│   ├── error.rs        # ApiError 타입
-│   ├── embedded.rs     # 정적 파일 서빙
-│   └── handlers/       # API 핸들러
+│   ├── lib.rs          # WebServer + AppState (includes audit_logger)
+│   ├── routes.rs       # Route definitions (60+ endpoints)
+│   ├── error.rs        # ApiError type
+│   ├── embedded.rs     # Static file serving
+│   └── handlers/       # API handlers
 │       ├── metrics.rs
 │       ├── processes.rs
 │       ├── idle.rs
@@ -34,17 +36,17 @@ oneshim-web/
 │       ├── focus.rs
 │       ├── backup.rs
 │       ├── export.rs
-│       ├── settings.rs    # AppSettings DTO + 자동화/샌드박스/AI 설정
-│       └── automation.rs  # 자동화 API (10개 엔드포인트)
-└── frontend/           # React 프론트엔드
+│       ├── settings.rs    # AppSettings DTO + automation/sandbox/AI settings
+│       └── automation.rs  # Automation API (10 endpoints)
+└── frontend/           # React frontend
     ├── src/
-    │   ├── pages/      # 페이지 컴포넌트 (Dashboard, Automation, Settings 등)
-    │   ├── components/ # UI 컴포넌트
-    │   ├── api/        # API 클라이언트
-    │   ├── hooks/      # React 훅
-    │   ├── i18n/       # 다국어 번역 (한/영)
-    │   └── styles/     # 디자인 토큰
-    └── e2e/            # Playwright E2E 테스트
+    │   ├── pages/      # Page components (Dashboard, Automation, Settings, etc.)
+    │   ├── components/ # UI components
+    │   ├── api/        # API client
+    │   ├── hooks/      # React hooks
+    │   ├── i18n/       # Internationalization translations (ko/en)
+    │   └── styles/     # Design tokens
+    └── e2e/            # Playwright E2E tests
 ```
 
 ## AppState
@@ -60,7 +62,7 @@ pub struct AppState {
 }
 ```
 
-### WebServer 빌더
+### WebServer Builder
 
 ```rust
 let server = WebServer::new(storage, web_config)
@@ -72,89 +74,89 @@ let server = WebServer::new(storage, web_config)
 server.run(shutdown_rx).await?;
 ```
 
-## API 엔드포인트
+## API Endpoints
 
-### 메트릭
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/metrics` | 최신 시스템 메트릭 |
-| GET | `/api/metrics/history` | 메트릭 히스토리 |
-| GET | `/api/stats/heatmap` | 활동 히트맵 |
+### Metrics
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/metrics` | Latest system metrics |
+| GET | `/api/metrics/history` | Metrics history |
+| GET | `/api/stats/heatmap` | Activity heatmap |
 
-### 프로세스/세션
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/processes` | 현재 프로세스 목록 |
-| GET | `/api/idle` | 유휴 기간 목록 |
-| GET | `/api/sessions` | 세션 통계 |
+### Processes/Sessions
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/processes` | Current process list |
+| GET | `/api/idle` | Idle period list |
+| GET | `/api/sessions` | Session statistics |
 
-### 프레임/이벤트
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/frames` | 프레임 목록 (페이지네이션) |
-| GET | `/api/frames/:id` | 프레임 상세 |
-| GET | `/api/frames/:id/image` | 프레임 이미지 |
-| GET | `/api/events` | 이벤트 목록 |
+### Frames/Events
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/frames` | Frame list (paginated) |
+| GET | `/api/frames/:id` | Frame details |
+| GET | `/api/frames/:id/image` | Frame image |
+| GET | `/api/events` | Event list |
 
-### 태그
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/tags` | 모든 태그 |
-| POST | `/api/tags` | 태그 생성 |
-| PUT | `/api/tags/:id` | 태그 수정 |
-| DELETE | `/api/tags/:id` | 태그 삭제 |
-| POST | `/api/frames/:id/tags/:tag_id` | 프레임에 태그 추가 |
-| DELETE | `/api/frames/:id/tags/:tag_id` | 프레임에서 태그 제거 |
+### Tags
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/tags` | All tags |
+| POST | `/api/tags` | Create tag |
+| PUT | `/api/tags/:id` | Update tag |
+| DELETE | `/api/tags/:id` | Delete tag |
+| POST | `/api/frames/:id/tags/:tag_id` | Add tag to frame |
+| DELETE | `/api/frames/:id/tags/:tag_id` | Remove tag from frame |
 
-### 검색/리포트
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/search` | 통합 검색 |
-| GET | `/api/reports` | 활동 리포트 |
-| GET | `/api/timeline` | 통합 타임라인 |
+### Search/Reports
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/search` | Unified search |
+| GET | `/api/reports` | Activity reports |
+| GET | `/api/timeline` | Unified timeline |
 
-### 집중도 분석
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/focus/metrics` | 집중도 메트릭 |
-| GET | `/api/focus/sessions` | 작업 세션 |
-| GET | `/api/focus/interruptions` | 중단 이벤트 |
-| GET | `/api/focus/suggestions` | 로컬 제안 |
-| POST | `/api/focus/suggestions/:id/feedback` | 제안 피드백 |
+### Focus Analytics
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/focus/metrics` | Focus metrics |
+| GET | `/api/focus/sessions` | Work sessions |
+| GET | `/api/focus/interruptions` | Interruption events |
+| GET | `/api/focus/suggestions` | Local suggestions |
+| POST | `/api/focus/suggestions/:id/feedback` | Suggestion feedback |
 
-### 설정/백업
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/settings` | 설정 조회 (자동화/샌드박스/AI 포함) |
-| POST | `/api/settings` | 설정 변경 |
-| GET | `/api/backup` | 백업 생성 |
-| POST | `/api/backup/restore` | 백업 복원 |
-| GET | `/api/export/:type` | 데이터 내보내기 |
+### Settings/Backup
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/settings` | Get settings (includes automation/sandbox/AI) |
+| POST | `/api/settings` | Update settings |
+| GET | `/api/backup` | Create backup |
+| POST | `/api/backup/restore` | Restore backup |
+| GET | `/api/export/:type` | Export data |
 
-### 자동화 (Automation)
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/automation/status` | 자동화 시스템 상태 |
-| GET | `/api/automation/audit` | 감사 로그 조회 (limit, status 필터) |
-| GET | `/api/automation/policies` | 활성 정책 요약 |
-| GET | `/api/automation/stats` | 실행 통계 (성공/실패/거부/타임아웃) |
-| GET | `/api/automation/presets` | 프리셋 목록 (내장 + 사용자) |
-| POST | `/api/automation/presets` | 사용자 프리셋 생성 |
-| PUT | `/api/automation/presets/:id` | 사용자 프리셋 수정 |
-| DELETE | `/api/automation/presets/:id` | 사용자 프리셋 삭제 |
-| POST | `/api/automation/presets/:id/run` | 프리셋 실행 |
+### Automation
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/automation/status` | Automation system status |
+| GET | `/api/automation/audit` | Query audit logs (limit, status filter) |
+| GET | `/api/automation/policies` | Active policy summary |
+| GET | `/api/automation/stats` | Execution statistics (success/failure/denied/timeout) |
+| GET | `/api/automation/presets` | Preset list (builtin + user) |
+| POST | `/api/automation/presets` | Create user preset |
+| PUT | `/api/automation/presets/:id` | Update user preset |
+| DELETE | `/api/automation/presets/:id` | Delete user preset |
+| POST | `/api/automation/presets/:id/run` | Run preset |
 
-### 실시간 스트림
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/stream` | SSE 이벤트 스트림 |
+### Real-time Stream
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/stream` | SSE event stream |
 
-## 자동화 API 상세
+## Automation API Details
 
-### DTO 타입
+### DTO Types
 
 ```rust
-/// 자동화 시스템 상태
+/// Automation system status
 pub struct AutomationStatusDto {
     pub enabled: bool,
     pub sandbox_enabled: bool,
@@ -165,7 +167,7 @@ pub struct AutomationStatusDto {
     pub pending_audit_entries: usize,
 }
 
-/// 감사 로그 엔트리
+/// Audit log entry
 pub struct AuditEntryDto {
     pub entry_id: String,
     pub timestamp: String,
@@ -177,7 +179,7 @@ pub struct AuditEntryDto {
     pub elapsed_ms: Option<u64>,
 }
 
-/// 실행 통계
+/// Execution statistics
 pub struct AutomationStatsDto {
     pub total_executions: usize,
     pub successful: usize,
@@ -187,7 +189,7 @@ pub struct AutomationStatsDto {
     pub avg_elapsed_ms: f64,
 }
 
-/// 정책 요약
+/// Policy summary
 pub struct PoliciesDto {
     pub automation_enabled: bool,
     pub sandbox_profile: String,
@@ -196,7 +198,7 @@ pub struct PoliciesDto {
     pub external_data_policy: String,
 }
 
-/// 프리셋 실행 결과
+/// Preset run result
 pub struct PresetRunResult {
     pub preset_id: String,
     pub success: bool,
@@ -204,13 +206,13 @@ pub struct PresetRunResult {
 }
 ```
 
-## Settings DTO (자동화 관련)
+## Settings DTO (Automation Related)
 
-`AppSettings`에 3개 자동화 섹션 추가:
+Three automation sections added to `AppSettings`:
 
 ```rust
 pub struct AppSettings {
-    // ... 기존 모니터/비전/알림/프라이버시 설정 ...
+    // ... existing monitor/vision/notification/privacy settings ...
     pub automation: AutomationSettings,
     pub sandbox: SandboxSettings,
     pub ai_provider: AiProviderSettings,
@@ -239,59 +241,59 @@ pub struct AiProviderSettings {
 
 pub struct ExternalApiSettings {
     pub endpoint: String,
-    pub api_key_masked: String,        // GET: 마스킹 / POST: 전체 키
+    pub api_key_masked: String,        // GET: masked / POST: full key
     pub model: Option<String>,
     pub timeout_secs: u64,
 }
 ```
 
-### API 키 마스킹
+### API Key Masking
 
-- **GET**: `mask_api_key("sk-1234567890abcdef")` → `"sk...cdef"` (앞 2자 + `...` + 뒤 4자)
-- **POST**: 전체 키 수신 시 저장, 마스킹된 값(`is_masked_key()`)이면 기존 키 유지
+- **GET**: `mask_api_key("sk-1234567890abcdef")` → `"sk...cdef"` (first 2 chars + `...` + last 4 chars)
+- **POST**: Stores full key when received, retains existing key when masked value (`is_masked_key()`) is sent
 
-## 프론트엔드 페이지
+## Frontend Pages
 
-| 경로 | 페이지 | 단축키 | 설명 |
-|------|--------|--------|------|
-| `/` | Dashboard | `D` | 시스템 요약, CPU/Memory 차트, 집중도 |
-| `/timeline` | Timeline | `T` | 스크린샷 썸네일 그리드 |
-| `/search` | Search | — | 통합 검색 + 태그 필터 |
-| `/reports` | Reports | `R` | 활동 리포트 + 통계 |
-| `/replay` | Session Replay | — | 세션 리플레이 |
-| `/focus` | Focus Analytics | — | 집중도 분석 |
-| `/automation` | **Automation** | `A` | 자동화 대시보드 |
-| `/settings` | Settings | `S` | 설정 (자동화/샌드박스/AI 포함) |
-| `/privacy` | Privacy | `P` | 개인정보 관리 |
+| Path | Page | Shortcut | Description |
+|------|------|----------|-------------|
+| `/` | Dashboard | `D` | System summary, CPU/Memory charts, focus |
+| `/timeline` | Timeline | `T` | Screenshot thumbnail grid |
+| `/search` | Search | — | Unified search + tag filters |
+| `/reports` | Reports | `R` | Activity reports + statistics |
+| `/replay` | Session Replay | — | Session replay |
+| `/focus` | Focus Analytics | — | Focus analysis |
+| `/automation` | **Automation** | `A` | Automation dashboard |
+| `/settings` | Settings | `S` | Settings (automation/sandbox/AI included) |
+| `/privacy` | Privacy | `P` | Privacy management |
 
-### Automation 페이지
+### Automation Page
 
-5개 패널로 구성 (React Query 기반):
+Composed of 5 panels (React Query based):
 
-1. **상태 카드** — 활성화 여부, 샌드박스 프로필, OCR/LLM 제공자, 대기 감사 항목
-2. **워크플로우 프리셋** — 카테고리별 탭 (생산성/앱 관리/워크플로우/사용자), 프리셋 카드 그리드, 실행/CRUD
-3. **실행 통계** — 성공/실패/거부/타임아웃 카운트 + 평균 소요 시간
-4. **감사 로그** — 테이블 (시각, 명령ID, 액션, 상태 배지, 소요시간), 상태별 필터, 30초 자동 새로고침
-5. **정책 정보** — 현재 적용된 정책 요약
+1. **Status Card** — Enabled status, sandbox profile, OCR/LLM provider, pending audit entries
+2. **Workflow Presets** — Category tabs (Productivity/App Management/Workflow/Custom), preset card grid, run/CRUD
+3. **Execution Statistics** — Success/failure/denied/timeout counts + average elapsed time
+4. **Audit Log** — Table (timestamp, command ID, action, status badge, elapsed time), status filter, 30-second auto-refresh
+5. **Policy Info** — Current applied policy summary
 
-### Settings 페이지 (자동화 섹션)
+### Settings Page (Automation Section)
 
-기존 설정에 3개 섹션 추가:
+Three sections added to existing settings:
 
-1. **자동화** — 활성화 토글
-2. **샌드박스** — 활성화, 프로필 드롭다운, 네트워크 허용 토글
-3. **AI 제공자** — OCR/LLM 타입 선택, 데이터 정책, 폴백 토글, 외부 API 설정 (`type="password"`)
+1. **Automation** — Enable toggle
+2. **Sandbox** — Enable, profile dropdown, network allow toggle
+3. **AI Provider** — OCR/LLM type selection, data policy, fallback toggle, external API settings (`type="password"`)
 
-## i18n 지원
+## i18n Support
 
-한국어/영어 번역 220개+ 키:
-- `automation.*` — 자동화 UI 번역 (40개+)
-- `settingsAutomation.*` — 자동화 설정 번역 (26개+)
-- 기존 번역 유지 (dashboard, timeline, settings, privacy, search, reports 등)
+220+ Korean/English translation keys:
+- `automation.*` — Automation UI translations (40+)
+- `settingsAutomation.*` — Automation settings translations (26+)
+- Existing translations retained (dashboard, timeline, settings, privacy, search, reports, etc.)
 
-## 사용법
+## Usage
 
-### 기본 실행
+### Basic Execution
 
 ```rust
 use oneshim_web::WebServer;
@@ -304,7 +306,7 @@ let server = WebServer::new(storage, web_config)
 server.run(shutdown_rx).await?;
 ```
 
-### 설정
+### Configuration
 
 ```toml
 [web]
@@ -313,27 +315,27 @@ port = 9090
 allow_external = false
 ```
 
-## 프론트엔드 개발
+## Frontend Development
 
 ```bash
 cd crates/oneshim-web/frontend
 
-# 의존성 설치
+# Install dependencies
 pnpm install
 
-# 개발 서버
+# Development server
 pnpm dev
 
-# 빌드
+# Build
 pnpm build
 
-# E2E 테스트
+# E2E tests
 pnpm test:e2e
 ```
 
-## 테스트
+## Tests
 
-- **Rust 테스트**: 78개 — API 핸들러, 라우트, 에러 핸들링, 자동화 DTO 직렬화, 설정 매핑
-- **E2E 테스트**: Playwright 기반 72개 테스트
-  - 네비게이션, 대시보드, 타임라인
-  - 설정, 개인정보, 검색, 리포트
+- **Rust tests**: 78 — API handlers, routes, error handling, automation DTO serialization, settings mapping
+- **E2E tests**: 72 Playwright-based tests
+  - Navigation, dashboard, timeline
+  - Settings, privacy, search, reports

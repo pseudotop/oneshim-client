@@ -2,32 +2,32 @@
 
 # oneshim-suggestion
 
-The crate responsible for AI suggestion reception, processing, and feedback.
+AI 제안 수신, 처리, 피드백을 담당하는 크레이트.
 
-## Role
+## 역할
 
-- **Suggestion Reception**: Receives suggestion events from SSE streams
-- **Priority Management**: Sorts suggestions based on importance
-- **Feedback Sending**: Sends user reactions (accept/reject) to the server
-- **History Management**: Suggestion history cache
+- **제안 수신**: SSE 스트림에서 제안 이벤트 수신
+- **우선순위 관리**: 중요도 기반 제안 정렬
+- **피드백 전송**: 사용자 반응(수락/거절) 서버 전송
+- **이력 관리**: 제안 히스토리 캐시
 
-## Directory Structure
+## 디렉토리 구조
 
 ```
 oneshim-suggestion/src/
-├── lib.rs        # Crate root
-├── receiver.rs   # SuggestionReceiver - SSE event → suggestion conversion
-├── queue.rs      # PriorityQueue - priority queue
-├── feedback.rs   # FeedbackSender - feedback transmission
-├── presenter.rs  # SuggestionPresenter - UI data conversion
-└── history.rs    # SuggestionHistory - history cache
+├── lib.rs        # 크레이트 루트
+├── receiver.rs   # SuggestionReceiver - SSE 이벤트 → 제안 변환
+├── queue.rs      # PriorityQueue - 우선순위 큐
+├── feedback.rs   # FeedbackSender - 피드백 전송
+├── presenter.rs  # SuggestionPresenter - UI 데이터 변환
+└── history.rs    # SuggestionHistory - 이력 캐시
 ```
 
-## Key Components
+## 주요 컴포넌트
 
 ### SuggestionReceiver (receiver.rs)
 
-Converts SSE events into suggestions:
+SSE 이벤트를 제안으로 변환:
 
 ```rust
 pub struct SuggestionReceiver {
@@ -40,14 +40,14 @@ impl SuggestionReceiver {
     pub async fn start(&self, session_id: &str) -> Result<(), CoreError> {
         let (tx, mut rx) = mpsc::channel::<SseEvent>(100);
 
-        // SSE connection task
+        // SSE 연결 태스크
         let sse = self.sse_client.clone();
         let sid = session_id.to_string();
         tokio::spawn(async move {
             sse.connect(&sid, tx).await
         });
 
-        // Event processing loop
+        // 이벤트 처리 루프
         let queue = self.queue.clone();
         let notifier = self.notifier.clone();
         while let Some(event) = rx.recv().await {
@@ -73,7 +73,7 @@ impl SuggestionReceiver {
 
 ### PriorityQueue (queue.rs)
 
-Priority queue based on `BTreeSet`:
+`BTreeSet` 기반 우선순위 큐:
 
 ```rust
 pub struct PriorityQueue {
@@ -83,13 +83,13 @@ pub struct PriorityQueue {
 
 #[derive(Eq, PartialEq)]
 struct PrioritizedSuggestion {
-    priority_score: u32,  // Higher = more priority
+    priority_score: u32,  // 높을수록 우선
     suggestion: Suggestion,
 }
 
 impl Ord for PrioritizedSuggestion {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Priority descending, then time ascending for ties
+        // 우선순위 내림차순, 같으면 시간 오름차순
         other.priority_score.cmp(&self.priority_score)
             .then(self.suggestion.created_at.cmp(&other.suggestion.created_at))
     }
@@ -102,7 +102,7 @@ impl PriorityQueue {
         let priority_score = self.calculate_score(&suggestion);
         queue.insert(PrioritizedSuggestion { priority_score, suggestion });
 
-        // Remove lowest priority when exceeding max size
+        // 최대 크기 초과 시 낮은 우선순위 제거
         while queue.len() > self.max_size {
             queue.pop_last();
         }
@@ -130,20 +130,20 @@ impl PriorityQueue {
 }
 ```
 
-**Priority Criteria**:
-| Factor | Weight |
-|--------|--------|
-| Critical priority | +1000 |
-| High priority | +750 |
-| Medium priority | +500 |
-| Low priority | +250 |
-| Confidence (0-1) | +0~100 |
-| Relevance (0-1) | +0~100 |
-| Actionable | +50 |
+**우선순위 기준**:
+| 항목 | 가중치 |
+|------|--------|
+| Critical 우선순위 | +1000 |
+| High 우선순위 | +750 |
+| Medium 우선순위 | +500 |
+| Low 우선순위 | +250 |
+| 신뢰도 (0-1) | +0~100 |
+| 관련성 (0-1) | +0~100 |
+| 실행 가능 | +50 |
 
 ### FeedbackSender (feedback.rs)
 
-User feedback transmission:
+사용자 피드백 전송:
 
 ```rust
 pub struct FeedbackSender {
@@ -173,7 +173,7 @@ impl FeedbackSender {
 
 ### SuggestionPresenter (presenter.rs)
 
-Data conversion for UI display:
+UI 표시용 데이터 변환:
 
 ```rust
 pub struct SuggestionPresenter;
@@ -201,23 +201,23 @@ impl SuggestionPresenter {
 
     fn priority_to_badge(priority: &Priority) -> String {
         match priority {
-            Priority::Critical => "🔴 Critical".to_string(),
-            Priority::High => "🟠 High".to_string(),
-            Priority::Medium => "🟡 Medium".to_string(),
-            Priority::Low => "🟢 Low".to_string(),
+            Priority::Critical => "🔴 긴급".to_string(),
+            Priority::High => "🟠 높음".to_string(),
+            Priority::Medium => "🟡 보통".to_string(),
+            Priority::Low => "🟢 낮음".to_string(),
         }
     }
 
     fn format_time_ago(created_at: DateTime<Utc>) -> String {
         let duration = Utc::now() - created_at;
         if duration.num_minutes() < 1 {
-            "Just now".to_string()
+            "방금 전".to_string()
         } else if duration.num_hours() < 1 {
-            format!("{} min ago", duration.num_minutes())
+            format!("{}분 전", duration.num_minutes())
         } else if duration.num_days() < 1 {
-            format!("{} hr ago", duration.num_hours())
+            format!("{}시간 전", duration.num_hours())
         } else {
-            format!("{} days ago", duration.num_days())
+            format!("{}일 전", duration.num_days())
         }
     }
 }
@@ -225,7 +225,7 @@ impl SuggestionPresenter {
 
 ### SuggestionHistory (history.rs)
 
-Suggestion history cache:
+제안 이력 캐시:
 
 ```rust
 pub struct SuggestionHistory {
@@ -263,7 +263,7 @@ impl SuggestionHistory {
 }
 ```
 
-## Suggestion Flow
+## 제안 흐름
 
 ```
 ┌─────────────┐    ┌───────────────────┐    ┌───────────────┐
@@ -274,13 +274,13 @@ impl SuggestionHistory {
                           ▼                        ▼
                    ┌─────────────────┐    ┌───────────────────┐
                    │DesktopNotifier  │    │ SuggestionPresenter│
-                   │  (notification) │    │   (UI display)     │
+                   │    (알림)        │    │   (UI 표시)        │
                    └─────────────────┘    └───────────────────┘
                                                    │
                           ┌────────────────────────┘
                           ▼
                    ┌─────────────────┐    ┌───────────────────┐
-                   │ FeedbackSender  │◀───│  User reaction     │
+                   │ FeedbackSender  │◀───│  사용자 반응       │
                    └─────────────────┘    └───────────────────┘
                           │
                           ▼
@@ -289,32 +289,32 @@ impl SuggestionHistory {
                    └─────────────────┘
 ```
 
-## Suggestion Types
+## 제안 타입
 
 ```rust
 pub enum SuggestionType {
-    WorkGuidance,      // Work guidance
-    RiskAlert,         // Risk alert
-    ProductivityTip,   // Productivity tip
-    ContextAwareness,  // Context awareness
-    ScheduleReminder,  // Schedule reminder
+    WorkGuidance,      // 업무 안내
+    RiskAlert,         // 위험 알림
+    ProductivityTip,   // 생산성 팁
+    ContextAwareness,  // 컨텍스트 인식
+    ScheduleReminder,  // 일정 알림
 }
 ```
 
-## Dependencies
+## 의존성
 
-- `oneshim-core`: Models, ports
-- `oneshim-network`: SSE client (indirect)
-- `tokio`: Async runtime, mpsc channels
+- `oneshim-core`: 모델, 포트
+- `oneshim-network`: SSE 클라이언트 (간접)
+- `tokio`: 비동기 런타임, mpsc 채널
 
-## Tests
+## 테스트
 
 ```rust
 #[tokio::test]
 async fn test_priority_queue_ordering() {
     let queue = PriorityQueue::new(50);
 
-    // Add Low first
+    // Low 먼저 추가
     let low = Suggestion {
         priority: Priority::Low,
         confidence_score: 0.5,
@@ -322,7 +322,7 @@ async fn test_priority_queue_ordering() {
     };
     queue.push(low).await;
 
-    // Add High later
+    // High 나중에 추가
     let high = Suggestion {
         priority: Priority::High,
         confidence_score: 0.9,
@@ -330,7 +330,7 @@ async fn test_priority_queue_ordering() {
     };
     queue.push(high).await;
 
-    // High should come out first
+    // High가 먼저 나와야 함
     let first = queue.pop().await.unwrap();
     assert_eq!(first.priority, Priority::High);
 }
@@ -339,12 +339,12 @@ async fn test_priority_queue_ordering() {
 fn test_presenter_time_ago() {
     let now = Utc::now();
 
-    // 30 seconds ago
+    // 30초 전
     let recent = now - Duration::seconds(30);
-    assert_eq!(SuggestionPresenter::format_time_ago(recent), "Just now");
+    assert_eq!(SuggestionPresenter::format_time_ago(recent), "방금 전");
 
-    // 5 minutes ago
+    // 5분 전
     let minutes = now - Duration::minutes(5);
-    assert_eq!(SuggestionPresenter::format_time_ago(minutes), "5 min ago");
+    assert_eq!(SuggestionPresenter::format_time_ago(minutes), "5분 전");
 }
 ```

@@ -1,28 +1,28 @@
 [English](./grpc-client.md) | [한국어](./grpc-client.ko.md)
 
-# Rust gRPC Client Guide
+# Rust gRPC 클라이언트 가이드
 
-> **Written**: 2026-02-04
-> **Phase**: 36 (gRPC Client)
-> **Related docs**: [oneshim-network crate](../crates/oneshim-network.md)
+> **작성일**: 2026-02-04
+> **Phase**: 36 (gRPC 클라이언트)
+> **관련 문서**: [oneshim-network 크레이트](../crates/oneshim-network.md)
 
-## Overview
+## 개요
 
-The ONESHIM Rust client provides a **tonic + prost** based gRPC client. Through Feature Flags, gRPC and REST can be selectively used, and on gRPC failure it automatically falls back to REST.
+ONESHIM Rust 클라이언트는 **tonic + prost** 기반 gRPC 클라이언트를 제공합니다. Feature Flag를 통해 gRPC와 REST를 선택적으로 사용할 수 있으며, gRPC 실패 시 자동으로 REST로 폴백됩니다.
 
-## Quick Start
+## 빠른 시작
 
-### 1. Enable Feature Flag
+### 1. Feature Flag 활성화
 
 ```bash
-# Build with gRPC support
+# gRPC 기능 포함 빌드
 cargo build -p oneshim-app --features grpc
 
-# Or build oneshim-network only
+# 또는 oneshim-network만 빌드
 cargo build -p oneshim-network --features grpc
 ```
 
-### 2. Basic Usage
+### 2. 기본 사용법
 
 ```rust
 use oneshim_network::grpc::{GrpcConfig, UnifiedClient};
@@ -31,14 +31,14 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create token manager
+    // 토큰 매니저 생성
     let token_manager = Arc::new(TokenManager::new(
         "http://localhost:8000",
         "user@example.com",
         "password",
     ));
 
-    // gRPC configuration
+    // gRPC 설정
     let config = GrpcConfig {
         use_grpc_auth: true,
         use_grpc_context: true,
@@ -47,52 +47,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    // Create UnifiedClient (gRPC + REST integrated)
+    // UnifiedClient 생성 (gRPC + REST 통합)
     let client = UnifiedClient::new(config, token_manager);
 
-    // Login
+    // 로그인
     let login_response = client.login("user@example.com", "password", None).await?;
-    println!("Login successful: {}", login_response.user_id);
+    println!("로그인 성공: {}", login_response.user_id);
 
     Ok(())
 }
 ```
 
-## Configuration
+## 설정
 
 ### GrpcConfig
 
 ```rust
-/// gRPC client configuration
+/// gRPC 클라이언트 설정
 #[derive(Debug, Clone)]
 pub struct GrpcConfig {
-    /// Whether to use gRPC for auth (Login, Logout, RefreshToken, ValidateToken)
+    /// gRPC 인증 사용 여부 (Login, Logout, RefreshToken, ValidateToken)
     pub use_grpc_auth: bool,
 
-    /// Whether to use gRPC for context (UploadBatch, SubscribeSuggestions, etc.)
+    /// gRPC 컨텍스트 사용 여부 (UploadBatch, SubscribeSuggestions, etc.)
     pub use_grpc_context: bool,
 
-    /// gRPC server endpoint
+    /// gRPC 서버 엔드포인트
     pub grpc_endpoint: String,
 
-    /// REST API endpoint (for fallback)
+    /// REST API 엔드포인트 (폴백용)
     pub rest_endpoint: String,
 
-    /// Connection timeout (seconds)
+    /// 연결 타임아웃 (초)
     pub connect_timeout_secs: u64,
 
-    /// Request timeout (seconds)
+    /// 요청 타임아웃 (초)
     pub request_timeout_secs: u64,
 
-    /// Whether to use TLS
+    /// TLS 사용 여부
     pub use_tls: bool,
 }
 
 impl Default for GrpcConfig {
     fn default() -> Self {
         Self {
-            use_grpc_auth: false,      // Default: use REST
-            use_grpc_context: false,   // Default: use REST
+            use_grpc_auth: false,      // 기본값: REST 사용
+            use_grpc_context: false,   // 기본값: REST 사용
             grpc_endpoint: "http://127.0.0.1:50052".to_string(),
             rest_endpoint: "http://127.0.0.1:8000".to_string(),
             connect_timeout_secs: 10,
@@ -103,74 +103,74 @@ impl Default for GrpcConfig {
 }
 ```
 
-### Environment Variable Configuration
+### 환경 변수 설정
 
 ```bash
-# Enable gRPC
+# gRPC 활성화
 export GRPC_ENABLED=true
 export GRPC_ENDPOINT=http://localhost:50052
 
-# REST fallback endpoint
+# REST 폴백 엔드포인트
 export REST_ENDPOINT=http://localhost:8000
 
-# Industrial ASCII output (disable emojis)
+# 산업 현장용 ASCII 출력 (이모지 비활성화)
 export NO_EMOJI=1
 ```
 
-## Client Modules
+## 클라이언트 모듈
 
-### GrpcAuthClient — Authentication Service
+### GrpcAuthClient — 인증 서비스
 
 ```rust
 use oneshim_network::grpc::GrpcAuthClient;
 
 let auth_client = GrpcAuthClient::new(&config).await?;
 
-// Login
+// 로그인
 let response = auth_client.login(
     "user@example.com",
     "password123",
     Some("org-id"),
 ).await?;
 
-// Token refresh
+// 토큰 갱신
 let response = auth_client.refresh_token(&refresh_token).await?;
 
-// Token validation
+// 토큰 검증
 let validation = auth_client.validate_token(&access_token).await?;
 
-// Logout
+// 로그아웃
 auth_client.logout(&session_id).await?;
 ```
 
-### GrpcSessionClient — Session Service
+### GrpcSessionClient — 세션 서비스
 
 ```rust
 use oneshim_network::grpc::GrpcSessionClient;
 
 let session_client = GrpcSessionClient::new(&config, token_manager).await?;
 
-// Create session
+// 세션 생성
 let session = session_client.create_session(
     "client-123",
     DeviceInfo { os: "macOS".into(), ..Default::default() },
 ).await?;
 
-// Heartbeat
+// 하트비트
 session_client.heartbeat(&session.id, ClientStatus::Active).await?;
 
-// End session
+// 세션 종료
 session_client.end_session(&session.id).await?;
 ```
 
-### GrpcContextClient — Context Service
+### GrpcContextClient — 컨텍스트 서비스
 
 ```rust
 use oneshim_network::grpc::GrpcContextClient;
 
 let context_client = GrpcContextClient::new(&config, token_manager).await?;
 
-// Batch upload
+// 배치 업로드
 let response = context_client.upload_batch(
     ContextBatchUploadRequest {
         session_id: session.id.clone(),
@@ -180,7 +180,7 @@ let response = context_client.upload_batch(
     },
 ).await?;
 
-// Suggestion feedback
+// 제안 피드백
 context_client.send_feedback(
     SuggestionFeedback {
         suggestion_id: "sugg-123".into(),
@@ -189,7 +189,7 @@ context_client.send_feedback(
     },
 ).await?;
 
-// List suggestions
+// 제안 목록 조회
 let suggestions = context_client.list_suggestions(
     ListSuggestionsRequest {
         session_id: session.id.clone(),
@@ -200,73 +200,73 @@ let suggestions = context_client.list_suggestions(
 ).await?;
 ```
 
-### Server Streaming — Real-time Suggestion Subscription
+### Server Streaming — 실시간 제안 구독
 
 ```rust
 use oneshim_network::grpc::GrpcContextClient;
 use futures::StreamExt;
 
-// Subscribe to suggestion stream
+// 제안 스트림 구독
 let mut stream = context_client.subscribe_suggestions(
     &session_id,
     &client_id,
 ).await?;
 
-// Suggestion reception loop
+// 제안 수신 루프
 while let Some(result) = stream.next().await {
     match result {
         Ok(suggestion) => {
-            println!("Suggestion received: {:?}", suggestion);
-            // Process suggestion
+            println!("제안 수신: {:?}", suggestion);
+            // 제안 처리
             handle_suggestion(suggestion).await;
         }
         Err(e) => {
-            eprintln!("Stream error: {}", e);
-            // Reconnection logic
+            eprintln!("스트림 에러: {}", e);
+            // 재연결 로직
             break;
         }
     }
 }
 ```
 
-### GrpcHealthClient — Server Health Check
+### GrpcHealthClient — 서버 상태 확인
 
 ```rust
 use oneshim_network::grpc::{GrpcHealthClient, ServingStatus};
 
-// Connect Health Check client
+// Health Check 클라이언트 연결
 let mut health = GrpcHealthClient::connect(config).await?;
 
-// Check overall server status
+// 전체 서버 상태 확인
 let status = health.check("").await?;
 match status {
-    ServingStatus::Serving => println!("Server healthy"),
-    ServingStatus::NotServing => println!("Server stopped"),
-    _ => println!("Status unknown"),
+    ServingStatus::Serving => println!("서버 정상"),
+    ServingStatus::NotServing => println!("서버 중지됨"),
+    _ => println!("상태 알 수 없음"),
 }
 
-// Quick health check (convenience method)
+// 서버 정상 여부 확인 (간편 메서드)
 if health.is_healthy().await {
-    println!("Server ready");
+    println!("서버 준비 완료");
 }
 
-// Check specific service status
+// 특정 서비스 상태 확인
 let auth_status = health.check("oneshim.v1.auth.AuthenticationService").await?;
-println!("Auth service: {}", auth_status);
+println!("인증 서비스: {}", auth_status);
 
-// Check all ONESHIM service statuses
+// 모든 ONESHIM 서비스 상태 확인
 let statuses = health.check_oneshim_services().await;
 for s in statuses {
     println!("{}: {}", s.service, s.status);
 }
-// Example output:
+// 출력 예시:
 // <server>: SERVING
 // oneshim.v1.auth.AuthenticationService: SERVING
 // oneshim.v1.auth.SessionService: SERVING
 // oneshim.v1.user_context.UserContextService: SERVING
 ```
 
-### Health Check Before Connection Pattern
+### 연결 전 Health Check 패턴
 
 ```rust
 use oneshim_network::grpc::{GrpcHealthClient, GrpcConfig, UnifiedClient};
@@ -275,82 +275,82 @@ async fn create_client_with_health_check(
     config: GrpcConfig,
     token_manager: Arc<TokenManager>,
 ) -> Result<UnifiedClient, CoreError> {
-    // 1. Check server status via Health Check
+    // 1. Health Check로 서버 상태 확인
     match GrpcHealthClient::connect(config.clone()).await {
         Ok(mut health) => {
             if health.is_healthy().await {
-                info!("gRPC server healthy, using gRPC");
+                info!("gRPC 서버 정상, gRPC 사용");
             } else {
-                warn!("gRPC server NOT_SERVING, falling back to REST");
+                warn!("gRPC 서버 NOT_SERVING, REST 폴백");
             }
         }
         Err(e) => {
-            warn!("gRPC connection unavailable ({}), using REST", e);
+            warn!("gRPC 연결 불가 ({}), REST 사용", e);
         }
     }
 
-    // 2. Create UnifiedClient (auto-fallback supported)
+    // 2. UnifiedClient 생성 (자동 폴백 지원)
     Ok(UnifiedClient::new(config, token_manager))
 }
 ```
 
-## UnifiedClient — Integrated Client
+## UnifiedClient — 통합 클라이언트
 
-### REST Fallback Mechanism
+### REST 폴백 메커니즘
 
-`UnifiedClient` automatically falls back to REST API on gRPC failure.
+`UnifiedClient`는 gRPC 실패 시 자동으로 REST API로 폴백합니다.
 
 ```rust
 use oneshim_network::grpc::UnifiedClient;
 
 let client = UnifiedClient::new(config, token_manager);
 
-// gRPC tried first, REST fallback on failure
+// gRPC 우선 시도, 실패 시 REST 폴백
 let response = client.upload_batch(request).await?;
 
-// Internal behavior:
-// 1. use_grpc_context == true → Try gRPC
-// 2. gRPC fails (connection error, timeout, etc.) → Call REST API
-// 3. REST also fails → Return error
+// 내부 동작:
+// 1. use_grpc_context == true → gRPC 시도
+// 2. gRPC 실패 (연결 오류, 타임아웃 등) → REST API 호출
+// 3. REST도 실패 → 에러 반환
 ```
 
-### Fallback Scenarios
+### 폴백 시나리오
 
-| Situation | gRPC | REST | Result |
-|-----------|------|------|--------|
-| Normal | ✅ | - | gRPC response |
-| gRPC connection failure | ❌ | ✅ | REST response |
-| Both fail | ❌ | ❌ | Error returned |
-| Industrial environment (HTTP/2 blocked) | ❌ | ✅ | REST response |
+| 상황 | gRPC | REST | 결과 |
+|------|------|------|------|
+| 정상 | ✅ | - | gRPC 응답 |
+| gRPC 연결 실패 | ❌ | ✅ | REST 응답 |
+| 둘 다 실패 | ❌ | ❌ | 에러 반환 |
+| 산업 현장 (HTTP/2 차단) | ❌ | ✅ | REST 응답 |
 
-### Features Without REST Support
+### REST 미지원 기능
 
-Some features do not support REST fallback:
+일부 기능은 REST fallback을 지원하지 않습니다:
 
 ```rust
-// Batch upload — frame data not supported via REST
+// 배치 업로드 — 프레임 데이터는 REST 미지원
 let response = client.upload_batch(request).await;
-// On gRPC failure: only events sent via REST, frames logged as warning
+// gRPC 실패 시: 이벤트만 REST로 전송, 프레임은 경고 로그
 
-// Suggestion list — REST not supported
+// 제안 목록 — REST 미지원
 let suggestions = client.list_suggestions(request).await;
-// On gRPC failure: empty list returned + warning log
+// gRPC 실패 시: 빈 목록 반환 + 경고 로그
 ```
 
-## Error Handling
+## 에러 처리
 
-### CoreError Mapping
+### CoreError 매핑
 
 ```rust
 use oneshim_core::error::CoreError;
 
 match client.login(email, password, org_id).await {
     Ok(response) => {
-        // Success
+        // 성공
     }
     Err(CoreError::Network(msg)) => {
-        // Network connection error
-        eprintln!("Network error: {}", msg);
+        // 네트워크 연결 오류
+        eprintln!("네트워크 오류: {}", msg);
     }
     Err(CoreError::RateLimit { retry_after }) => {
         // 429 Too Many Requests
@@ -360,15 +360,15 @@ match client.login(email, password, org_id).await {
     }
     Err(CoreError::ServiceUnavailable) => {
         // 503 Service Unavailable
-        // Retry with backoff
+        // 백오프 후 재시도
     }
     Err(e) => {
-        eprintln!("Other error: {}", e);
+        eprintln!("기타 오류: {}", e);
     }
 }
 ```
 
-### gRPC Status → CoreError Mapping
+### gRPC Status → CoreError 매핑
 
 | gRPC Status | CoreError |
 |-------------|-----------|
@@ -379,14 +379,14 @@ match client.login(email, password, org_id).await {
 | `NOT_FOUND` | `NotFound` |
 | `RESOURCE_EXHAUSTED` | `RateLimit` |
 
-## Retry Logic
+## 재시도 로직
 
-### Automatic Retry
+### 자동 재시도
 
-`UnifiedClient` performs automatic retries for specific errors:
+`UnifiedClient`는 특정 에러에 대해 자동 재시도를 수행합니다:
 
 ```rust
-// Internal retry logic
+// 내부 재시도 로직
 async fn execute_with_retry<F, T>(&self, operation: F) -> Result<T, CoreError>
 where
     F: Fn() -> Pin<Box<dyn Future<Output = Result<T, CoreError>>>>,
@@ -414,50 +414,50 @@ where
 }
 ```
 
-## Build and Test
+## 빌드 및 테스트
 
-### Feature Flag Build
+### Feature Flag 빌드
 
 ```bash
-# Build with gRPC
+# gRPC 포함 빌드
 cargo build --features grpc
 
-# Build without gRPC (REST only)
+# gRPC 없이 빌드 (REST만)
 cargo build
 
-# Run tests
+# 테스트 실행
 cargo test --features grpc
 ```
 
-### Proto Code Regeneration
+### Proto 코드 재생성
 
 ```bash
-# From the api directory
+# api 디렉토리에서
 cd api
 ./scripts/generate.sh
 
-# Rust code is auto-generated in build.rs
+# Rust 코드는 build.rs에서 자동 생성
 cargo build --features grpc
 ```
 
-### Mock Server Testing
+### Mock 서버 테스트
 
 ```bash
-# Run server-side mock server
+# 서버 측 Mock 서버 실행
 uv run python scripts/run_grpc_server.py
 
-# Client tests
+# 클라이언트 테스트
 cargo test --features grpc -- --test-threads=1
 ```
 
-## Industrial Environment Support
+## 산업 현장 지원
 
-### HTTP/2 Blocked Environments
+### HTTP/2 차단 환경
 
-Some industrial environments may block HTTP/2:
+일부 산업 현장에서는 HTTP/2가 차단될 수 있습니다:
 
 ```rust
-// Enable automatic REST fallback
+// 자동 REST 폴백 활성화
 let config = GrpcConfig {
     use_grpc_auth: true,
     use_grpc_context: true,
@@ -466,25 +466,25 @@ let config = GrpcConfig {
 
 let client = UnifiedClient::new(config, token_manager);
 
-// Automatically uses REST when HTTP/2 is blocked
+// HTTP/2 차단 시 자동으로 REST 사용
 let response = client.upload_batch(request).await?;
 ```
 
-### ASCII Output Mode
+### ASCII 출력 모드
 
 ```bash
-# Disable emojis (industrial terminal compatibility)
+# 이모지 비활성화 (산업 터미널 호환)
 NO_EMOJI=1 cargo run -p oneshim-app --features grpc
 ```
 
-## References
+## 참조
 
-- Proto definitions — `api/proto/oneshim/v1/` (see server repository)
-- [Server API Specification](../migration/04-server-api.md) — REST + gRPC endpoints
-- [Migration Phases](../migration/05-migration-phases.md) — Phase 36
-- [tonic documentation](https://github.com/hyperium/tonic)
-- [prost documentation](https://github.com/tokio-rs/prost)
+- Proto 정의 — `api/proto/oneshim/v1/` (서버 저장소 참조)
+- [Server API 명세](../migration/04-server-api.md) — REST + gRPC 엔드포인트
+- [마이그레이션 단계](../migration/05-migration-phases.md) — Phase 36
+- [tonic 문서](https://github.com/hyperium/tonic)
+- [prost 문서](https://github.com/tokio-rs/prost)
 
 ---
 
-_Last updated: 2026-02-04_
+_마지막 업데이트: 2026-02-04_

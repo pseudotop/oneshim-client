@@ -1,43 +1,45 @@
+[English](./oneshim-network.md) | [한국어](./oneshim-network.ko.md)
+
 # oneshim-network
 
-HTTP/SSE/WebSocket/gRPC 통신을 담당하는 네트워크 어댑터 크레이트.
+The network adapter crate responsible for HTTP/SSE/WebSocket/gRPC communication.
 
-## 역할
+## Role
 
-- **서버 통신**: REST API 요청, SSE 스트림 수신, gRPC RPC 호출
-- **인증 관리**: JWT 토큰 획득/갱신/저장
-- **데이터 압축**: 적응형 압축 알고리즘 선택
-- **배치 업로드**: 이벤트/프레임 배치 전송
-- **gRPC 클라이언트**: 인증, 세션, 컨텍스트 서비스 (Feature Flag)
+- **Server Communication**: REST API requests, SSE stream reception, gRPC RPC calls
+- **Authentication Management**: JWT token acquisition/refresh/storage
+- **Data Compression**: Adaptive compression algorithm selection
+- **Batch Upload**: Batch transmission of events/frames
+- **gRPC Client**: Authentication, session, and context services (Feature Flag)
 
-## 디렉토리 구조
+## Directory Structure
 
 ```
 oneshim-network/src/
-├── lib.rs            # 크레이트 루트
-├── auth.rs           # TokenManager - JWT 인증
+├── lib.rs            # Crate root
+├── auth.rs           # TokenManager - JWT authentication
 ├── http_client.rs    # HttpApiClient - REST API
-├── sse_client.rs     # SseStreamClient - SSE 수신
-├── ws_client.rs      # WebSocket 클라이언트
+├── sse_client.rs     # SseStreamClient - SSE reception
+├── ws_client.rs      # WebSocket client
 ├── compression.rs    # AdaptiveCompressor
-├── batch_uploader.rs # BatchUploader - 배치 전송
-├── ai_llm_client.rs  # RemoteLlmProvider — AI LLM 의도 해석
-├── ai_ocr_client.rs  # RemoteOcrProvider — AI OCR 요소 추출
-├── grpc/             # gRPC 클라이언트 (#[cfg(feature = "grpc")])
-│   ├── mod.rs            # 모듈 export + GrpcConfig
+├── batch_uploader.rs # BatchUploader - batch transmission
+├── ai_llm_client.rs  # RemoteLlmProvider — AI LLM intent interpretation
+├── ai_ocr_client.rs  # RemoteOcrProvider — AI OCR element extraction
+├── grpc/             # gRPC client (#[cfg(feature = "grpc")])
+│   ├── mod.rs            # Module exports + GrpcConfig
 │   ├── auth_client.rs    # GrpcAuthClient
 │   ├── session_client.rs # GrpcSessionClient
 │   ├── context_client.rs # GrpcContextClient
-│   └── unified_client.rs # UnifiedClient (gRPC + REST 통합)
-└── proto/            # tonic/prost 생성 코드
+│   └── unified_client.rs # UnifiedClient (gRPC + REST unified)
+└── proto/            # tonic/prost generated code
     └── oneshim/v1/
 ```
 
-## 주요 컴포넌트
+## Key Components
 
 ### TokenManager (auth.rs)
 
-JWT 토큰 라이프사이클 관리:
+JWT token lifecycle management:
 
 ```rust
 pub struct TokenManager {
@@ -47,25 +49,25 @@ pub struct TokenManager {
 }
 
 impl TokenManager {
-    /// 토큰 획득 (캐시된 토큰이 있으면 반환, 없으면 로그인)
+    /// Get token (returns cached token if available, otherwise logs in)
     pub async fn get_token(&self) -> Result<String, CoreError>;
 
-    /// 토큰 갱신
+    /// Refresh token
     pub async fn refresh_token(&self) -> Result<String, CoreError>;
 
-    /// 로그아웃
+    /// Logout
     pub async fn logout(&self) -> Result<(), CoreError>;
 }
 ```
 
-**기능**:
-- 이메일/비밀번호 로그인
-- 토큰 만료 전 자동 갱신
-- `RwLock`으로 thread-safe 토큰 관리
+**Features**:
+- Email/password login
+- Automatic refresh before token expiration
+- Thread-safe token management via `RwLock`
 
 ### HttpApiClient (http_client.rs)
 
-REST API 통신 구현 (`ApiClient` 포트):
+REST API communication implementation (`ApiClient` port):
 
 ```rust
 pub struct HttpApiClient {
@@ -76,16 +78,16 @@ pub struct HttpApiClient {
 }
 ```
 
-**엔드포인트**:
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/user_context/contexts` | 컨텍스트 업로드 |
-| POST | `/user_context/frames` | 프레임 배치 업로드 |
-| POST | `/suggestions/{id}/feedback` | 제안 피드백 |
+**Endpoints**:
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/user_context/contexts` | Upload context |
+| POST | `/user_context/frames` | Batch upload frames |
+| POST | `/suggestions/{id}/feedback` | Suggestion feedback |
 
 ### SseStreamClient (sse_client.rs)
 
-Server-Sent Events 수신 (`SseClient` 포트):
+Server-Sent Events reception (`SseClient` port):
 
 ```rust
 pub struct SseStreamClient {
@@ -96,19 +98,19 @@ pub struct SseStreamClient {
 }
 ```
 
-**기능**:
-- `reqwest-eventsource` 기반 SSE 연결
-- Exponential backoff 재연결 (1s → 30s)
-- 이벤트 타입별 파싱: `connection`, `suggestion`, `heartbeat`, `update`, `error`, `close`
+**Features**:
+- SSE connection based on `reqwest-eventsource`
+- Exponential backoff reconnection (1s → 30s)
+- Per-event-type parsing: `connection`, `suggestion`, `heartbeat`, `update`, `error`, `close`
 
-**SSE 이벤트 흐름**:
+**SSE Event Flow**:
 ```
-서버 → SseStreamClient → mpsc::Sender<SseEvent> → SuggestionReceiver
+Server → SseStreamClient → mpsc::Sender<SseEvent> → SuggestionReceiver
 ```
 
 ### AdaptiveCompressor (compression.rs)
 
-적응형 압축 알고리즘 선택 (`Compressor` 포트):
+Adaptive compression algorithm selection (`Compressor` port):
 
 ```rust
 pub struct AdaptiveCompressor {
@@ -128,56 +130,56 @@ impl AdaptiveCompressor {
 }
 ```
 
-**알고리즘 선택 기준**:
-| 데이터 크기 | 알고리즘 | 이유 |
-|------------|----------|------|
-| ≤ 1KB | None | 오버헤드가 압축 이득보다 큼 |
-| 1KB-10KB | LZ4 | 빠른 압축/해제 |
-| 10KB-100KB | Gzip | 균형 잡힌 압축률 |
-| > 100KB | Zstd | 최고 압축률 |
+**Algorithm Selection Criteria**:
+| Data Size | Algorithm | Reason |
+|-----------|-----------|--------|
+| ≤ 1KB | None | Overhead exceeds compression benefit |
+| 1KB-10KB | LZ4 | Fast compression/decompression |
+| 10KB-100KB | Gzip | Balanced compression ratio |
+| > 100KB | Zstd | Best compression ratio |
 
 ### BatchUploader (batch_uploader.rs)
 
-이벤트/프레임 배치 전송:
+Batch transmission of events/frames:
 
 ```rust
 pub struct BatchUploader {
     api_client: Arc<dyn ApiClient>,
-    /// Lock-free 큐 — 여러 producer에서 동시 push 가능 (crossbeam SegQueue)
+    /// Lock-free queue — concurrent push from multiple producers (crossbeam SegQueue)
     queue: Arc<SegQueue<Event>>,
-    /// 큐 크기 (lock-free 카운터)
+    /// Queue size (lock-free counter)
     queue_size: AtomicUsize,
     session_id: String,
     max_batch_size: usize,
     max_retries: u32,
-    /// 동적 배치 크기 활성화
+    /// Dynamic batch size enabled
     dynamic_batch: bool,
 }
 ```
 
-**기능**:
-- `crossbeam::SegQueue` 기반 lock-free MPSC 큐 — 여러 스레드에서 무경합 enqueue
-- `AtomicUsize`로 락 없이 큐 크기 추적
-- 동적 배치 크기: 큐 10개 미만이면 즉시 전송, 50개 초과이면 2배 배치로 빠른 처리
-- 실패 시 이벤트 자동 재큐잉, exponential backoff 재시도 (최대 3회)
+**Features**:
+- Lock-free MPSC queue based on `crossbeam::SegQueue` — contention-free enqueue from multiple threads
+- Lock-free queue size tracking via `AtomicUsize`
+- Dynamic batch size: immediate send when queue < 10, double batch for fast processing when > 50
+- Automatic event re-queuing on failure, exponential backoff retry (max 3 attempts)
 
-### AI 클라이언트
+### AI Clients
 
-외부 AI API를 호출하는 두 클라이언트. 모두 `oneshim-core`의 `AiProviderType` enum으로 제공자를 분기한다.
+Two clients that call external AI APIs. Both branch by provider using the `AiProviderType` enum from `oneshim-core`.
 
 ```rust
 // oneshim-core/config.rs
 pub enum AiProviderType {
     Anthropic,  // Claude API
-    OpenAi,     // OpenAI 호환 API
-    Generic,    // 범용 JSON 엔드포인트
+    OpenAi,     // OpenAI-compatible API
+    Generic,    // Generic JSON endpoint
 }
 ```
 
 #### RemoteLlmProvider (ai_llm_client.rs)
 
-`LlmProvider` 포트 구현 — 세정된 텍스트를 외부 LLM API로 전송해 UI 자동화 의도를 해석한다.
-이미지는 전송하지 않으며, Privacy Gateway를 통해 PII 필터가 적용된 텍스트만 전달한다.
+`LlmProvider` port implementation — sends sanitized text to an external LLM API to interpret UI automation intents.
+Does not send images; only PII-filtered text is transmitted through the Privacy Gateway.
 
 ```rust
 pub struct RemoteLlmProvider {
@@ -190,7 +192,7 @@ pub struct RemoteLlmProvider {
 }
 
 impl LlmProvider for RemoteLlmProvider {
-    /// 화면 컨텍스트와 의도 힌트를 받아 InterpretedAction 반환
+    /// Receives screen context and intent hint, returns InterpretedAction
     async fn interpret_intent(
         &self,
         screen_context: &ScreenContext,
@@ -199,14 +201,14 @@ impl LlmProvider for RemoteLlmProvider {
 }
 ```
 
-**제공자별 분기**:
-- `AiProviderType::Anthropic` → `POST /v1/messages`, `x-api-key` 헤더, `content[0].text` 파싱
-- `AiProviderType::OpenAi` / `Generic` → `POST /v1/chat/completions`, `Bearer` 토큰, `choices[0].message.content` 파싱
+**Provider-specific branching**:
+- `AiProviderType::Anthropic` → `POST /v1/messages`, `x-api-key` header, parses `content[0].text`
+- `AiProviderType::OpenAi` / `Generic` → `POST /v1/chat/completions`, `Bearer` token, parses `choices[0].message.content`
 
 #### RemoteOcrProvider (ai_ocr_client.rs)
 
-`OcrProvider` 포트 구현 — 스크린샷(Base64)을 외부 AI Vision API로 전송해 텍스트와 바운딩 박스를 추출한다.
-이미지 전송 전 Privacy Gateway를 통한 PII 블러 및 사용자 동의 확인이 필수다.
+`OcrProvider` port implementation — sends screenshots (Base64) to an external AI Vision API to extract text and bounding boxes.
+PII blurring through the Privacy Gateway and user consent verification are required before sending images.
 
 ```rust
 pub struct RemoteOcrProvider {
@@ -219,7 +221,7 @@ pub struct RemoteOcrProvider {
 }
 
 impl OcrProvider for RemoteOcrProvider {
-    /// Base64 인코딩 이미지를 받아 OcrResult 목록 반환
+    /// Receives Base64-encoded image and returns OcrResult list
     async fn extract_elements(
         &self,
         image: &[u8],
@@ -228,20 +230,20 @@ impl OcrProvider for RemoteOcrProvider {
 }
 ```
 
-**제공자별 분기**:
-- `AiProviderType::Anthropic` → Claude Vision 형식 (`content[].text` 줄 단위 파싱)
-- `AiProviderType::OpenAi` / `Generic` → 범용 JSON 형식 (`{ "results": [...] }`)
+**Provider-specific branching**:
+- `AiProviderType::Anthropic` → Claude Vision format (line-by-line parsing of `content[].text`)
+- `AiProviderType::OpenAi` / `Generic` → Generic JSON format (`{ "results": [...] }`)
 
-## gRPC 클라이언트 (`#[cfg(feature = "grpc")]`)
+## gRPC Client (`#[cfg(feature = "grpc")]`)
 
 ### GrpcConfig
 
 ```rust
 pub struct GrpcConfig {
-    pub use_grpc_auth: bool,      // gRPC 인증 사용 여부
-    pub use_grpc_context: bool,   // gRPC 컨텍스트 사용 여부
-    pub grpc_endpoint: String,    // gRPC 서버 주소
-    pub rest_endpoint: String,    // REST fallback 주소
+    pub use_grpc_auth: bool,      // Whether to use gRPC authentication
+    pub use_grpc_context: bool,   // Whether to use gRPC context
+    pub grpc_endpoint: String,    // gRPC server address
+    pub rest_endpoint: String,    // REST fallback address
     pub connect_timeout_secs: u64,
     pub request_timeout_secs: u64,
     pub use_tls: bool,
@@ -250,52 +252,52 @@ pub struct GrpcConfig {
 
 ### GrpcAuthClient (grpc/auth_client.rs)
 
-인증 서비스 gRPC 클라이언트:
+Authentication service gRPC client:
 
-| RPC | 설명 |
-|-----|------|
-| `Login` | 로그인 (identifier, password, organization_id) |
-| `Logout` | 로그아웃 |
-| `RefreshToken` | 토큰 갱신 |
-| `ValidateToken` | 토큰 검증 |
+| RPC | Description |
+|-----|-------------|
+| `Login` | Login (identifier, password, organization_id) |
+| `Logout` | Logout |
+| `RefreshToken` | Token refresh |
+| `ValidateToken` | Token validation |
 
 ### GrpcSessionClient (grpc/session_client.rs)
 
-세션 서비스 gRPC 클라이언트:
+Session service gRPC client:
 
-| RPC | 설명 |
-|-----|------|
-| `CreateSession` | 세션 생성 (client_id, device_info) |
-| `EndSession` | 세션 종료 |
-| `Heartbeat` | 세션 하트비트 |
-| `GetSession` | 세션 조회 |
+| RPC | Description |
+|-----|-------------|
+| `CreateSession` | Create session (client_id, device_info) |
+| `EndSession` | End session |
+| `Heartbeat` | Session heartbeat |
+| `GetSession` | Get session |
 
 ### GrpcContextClient (grpc/context_client.rs)
 
-사용자 컨텍스트 서비스 gRPC 클라이언트:
+User context service gRPC client:
 
-| RPC | 설명 |
-|-----|------|
-| `UploadBatch` | 이벤트/프레임 배치 업로드 |
-| `SubscribeSuggestions` | 제안 스트림 구독 (Server Streaming) |
-| `SendFeedback` | 제안 피드백 전송 |
-| `ListSuggestions` | 제안 목록 조회 (타입 필터링) |
-| `Heartbeat` | 컨텍스트 하트비트 |
+| RPC | Description |
+|-----|-------------|
+| `UploadBatch` | Batch upload of events/frames |
+| `SubscribeSuggestions` | Subscribe to suggestion stream (Server Streaming) |
+| `SendFeedback` | Send suggestion feedback |
+| `ListSuggestions` | List suggestions (type filtering) |
+| `Heartbeat` | Context heartbeat |
 
 ### UnifiedClient (grpc/unified_client.rs)
 
-gRPC와 REST를 통합하는 하이브리드 클라이언트:
+A hybrid client that unifies gRPC and REST:
 
 ```rust
 pub struct UnifiedClient {
     config: GrpcConfig,
     token_manager: Arc<TokenManager>,
     http_client: HttpApiClient,
-    // gRPC 클라이언트는 지연 초기화
+    // gRPC clients are lazily initialized
 }
 
 impl UnifiedClient {
-    /// gRPC 우선, 실패 시 REST fallback
+    /// gRPC first, REST fallback on failure
     pub async fn upload_batch(&self, request: ContextBatchUploadRequest)
         -> Result<ContextBatchUploadResponse, CoreError>;
 
@@ -305,12 +307,12 @@ impl UnifiedClient {
 }
 ```
 
-**Feature Flag 기반 전환**:
-- `use_grpc_auth: true` → gRPC 인증, 실패 시 REST
-- `use_grpc_context: true` → gRPC 컨텍스트, 실패 시 REST
-- 산업 현장 지원: HTTP/2 차단 환경에서 자동 REST fallback
+**Feature Flag-based switching**:
+- `use_grpc_auth: true` → gRPC authentication, REST on failure
+- `use_grpc_context: true` → gRPC context, REST on failure
+- Industrial environment support: automatic REST fallback in HTTP/2 blocked environments
 
-## 인증 흐름
+## Authentication Flow
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────┐
@@ -319,59 +321,59 @@ impl UnifiedClient {
        │                   │
        │  get_token()      │
        │──────────────────▶│
-       │                   │  (캐시 확인)
-       │                   │  (만료 시 갱신)
+       │                   │  (check cache)
+       │                   │  (refresh if expired)
        │◀──────────────────│
        │   Bearer Token    │
 ```
 
-## 의존성
+## Dependencies
 
-- `reqwest`: HTTP 클라이언트 (native-tls 백엔드)
-- `reqwest-eventsource`: SSE 스트림
+- `reqwest`: HTTP client (native-tls backend)
+- `reqwest-eventsource`: SSE stream
 - `tokio-tungstenite`: WebSocket (native-tls)
-- `flate2`: Gzip 압축
-- `zstd`: Zstd 압축
-- `lz4_flex`: LZ4 압축
-- `tonic`: gRPC 클라이언트 (`#[cfg(feature = "grpc")]`)
-- `prost`: Protocol Buffers 메시지 (`#[cfg(feature = "grpc")]`)
+- `flate2`: Gzip compression
+- `zstd`: Zstd compression
+- `lz4_flex`: LZ4 compression
+- `tonic`: gRPC client (`#[cfg(feature = "grpc")]`)
+- `prost`: Protocol Buffers messages (`#[cfg(feature = "grpc")]`)
 
-## 테스트
+## Tests
 
 ```rust
 #[tokio::test]
 async fn test_compression_selection() {
     let compressor = AdaptiveCompressor::default();
 
-    // 작은 데이터: 압축 안함
+    // Small data: no compression
     let small = vec![0u8; 500];
     let (_, comp_type) = compressor.compress(&small).unwrap();
     assert_eq!(comp_type, CompressionType::None);
 
-    // 큰 데이터: Zstd
+    // Large data: Zstd
     let large = vec![0u8; 200_000];
     let (_, comp_type) = compressor.compress(&large).unwrap();
     assert_eq!(comp_type, CompressionType::Zstd);
 }
 ```
 
-## 사용 예시
+## Usage Example
 
 ```rust
 use oneshim_network::{TokenManager, HttpApiClient, SseStreamClient};
 
-// 초기화
+// Initialization
 let token_manager = Arc::new(TokenManager::new("https://api.example.com", "user@email.com", "password"));
 let api_client = HttpApiClient::new("https://api.example.com", token_manager.clone(), compressor);
 let sse_client = SseStreamClient::new("https://api.example.com", token_manager, 30);
 
-// SSE 연결
+// SSE connection
 let (tx, mut rx) = mpsc::channel(100);
 tokio::spawn(async move {
     sse_client.connect("session_123", tx).await
 });
 
-// 이벤트 수신
+// Event reception
 while let Some(event) = rx.recv().await {
     match event {
         SseEvent::Suggestion(s) => handle_suggestion(s),

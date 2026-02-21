@@ -277,10 +277,19 @@ jobs:
 
           ### Installation
 
-          **macOS (DMG — 권장):**
-          DMG 파일을 열어 Applications 폴더로 드래그하세요.
+          **Homebrew (macOS/Linux):**
+          ```bash
+          brew tap pseudotop/tap
+          brew install oneshim
+          ```
 
-          **macOS (tar.gz):**
+          **Scoop (Windows):**
+          ```powershell
+          scoop bucket add oneshim https://github.com/pseudotop/scoop-bucket
+          scoop install oneshim
+          ```
+
+          **macOS/Linux (manual):**
           ```bash
           tar -xzf oneshim-macos-universal.tar.gz
           chmod +x oneshim
@@ -324,3 +333,56 @@ jobs:
             dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-package-managers:
+    name: Update Package Managers
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Compute checksums
+        id: checksums
+        run: |
+          BASE="https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}"
+          for asset in oneshim-macos-arm64.tar.gz oneshim-macos-x64.tar.gz oneshim-linux-x64.tar.gz oneshim-windows-x64.zip; do
+            curl -sL "${BASE}/${asset}.sha256" -o "${asset}.sha256"
+          done
+          echo "macos_arm64=$(awk '{print $1}' oneshim-macos-arm64.tar.gz.sha256)" >> $GITHUB_OUTPUT
+          echo "macos_x64=$(awk '{print $1}' oneshim-macos-x64.tar.gz.sha256)" >> $GITHUB_OUTPUT
+          echo "linux_x64=$(awk '{print $1}' oneshim-linux-x64.tar.gz.sha256)" >> $GITHUB_OUTPUT
+          echo "windows_x64=$(awk '{print $1}' oneshim-windows-x64.zip.sha256)" >> $GITHUB_OUTPUT
+
+      - name: Update Homebrew tap
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: pseudotop/homebrew-tap
+          event-type: update-formula
+          client-payload: |
+            {
+              "version": "${{ steps.version.outputs.version }}",
+              "tag": "${{ steps.version.outputs.tag }}",
+              "macos_arm64_sha256": "${{ steps.checksums.outputs.macos_arm64 }}",
+              "macos_x64_sha256": "${{ steps.checksums.outputs.macos_x64 }}",
+              "linux_x64_sha256": "${{ steps.checksums.outputs.linux_x64 }}"
+            }
+
+      - name: Update Scoop bucket
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: pseudotop/scoop-bucket
+          event-type: update-manifest
+          client-payload: |
+            {
+              "version": "${{ steps.version.outputs.version }}",
+              "tag": "${{ steps.version.outputs.tag }}",
+              "windows_x64_sha256": "${{ steps.checksums.outputs.windows_x64 }}"
+            }

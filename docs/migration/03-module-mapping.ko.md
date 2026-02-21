@@ -1,12 +1,12 @@
 [English](./03-module-mapping.md) | [한국어](./03-module-mapping.ko.md)
 
-# 3. Python → Rust Module Mapping
+# 3. Python → Rust 모듈 매핑
 
-[← Project Structure](./02-project-structure.md) | [Server API →](./04-server-api.md)
+[← 프로젝트 구조](./02-project-structure.ko.md) | [Server API →](./04-server-api.ko.md)
 
 ---
 
-## Core Models (Pydantic → serde)
+## 핵심 모델 (Pydantic → serde)
 
 | Python (client/core/models/) | Rust (oneshim-core/src/models/) |
 |-----|------|
@@ -14,9 +14,9 @@
 | `system.py` — SystemMetrics, NetworkInfo | `system.rs` |
 | `event.py` — Event, UserEvent, SystemEvent | `event.rs` — enum Event { User(..), System(..) } |
 | `telemetry.py` — Metric, SessionMetrics | `telemetry.rs` |
-| `batch.py` — EventBatch | Included in event.rs |
+| `batch.py` — EventBatch | event.rs 내 포함 |
 
-## Interfaces (ABC → trait)
+## 인터페이스 (ABC → trait)
 
 | Python (client/core/interfaces/) | Rust (oneshim-core/src/ports/) |
 |-----|------|
@@ -24,19 +24,19 @@
 | `communicator.py` — IAPIClient, IWebSocketClient | `api_client.rs` — trait ApiClient, trait SseClient |
 | `storage.py` — IStorageService | `storage.rs` — trait StorageService |
 | `compressor.py` — ICompressor | `compressor.rs` — trait Compressor |
-| `batcher.py` — IBatchUploader | Included in api_client.rs |
+| `batcher.py` — IBatchUploader | api_client.rs 내 포함 |
 
-## Services (Application Layer)
+## 서비스 (Application Layer)
 
 | Python (client/core/services/) | Rust Crate |
 |-----|------|
-| `context_service.py` | `oneshim-app/scheduler.rs` (monitoring loop) |
+| `context_service.py` | `oneshim-app/scheduler.rs` (모니터링 루프) |
 | `telemetry_service.py` | `oneshim-network/batch_uploader.rs` |
 | `event_service.py` | `oneshim-app/event_bus.rs` |
 | `screenshot_service.py` | `oneshim-vision/capture.rs` + `processor.rs` ★ |
-| `rum_service.py` | `oneshim-app/` (telemetry integration) |
+| `rum_service.py` | `oneshim-app/` (텔레메트리 통합) |
 
-## Infrastructure Adapters
+## 인프라 어댑터
 
 | Python (client/infrastructure/) | Rust Crate |
 |-----|------|
@@ -48,8 +48,8 @@
 | `storage/sqlite_storage.py` (sqlite3) | `oneshim-storage/sqlite.rs` (rusqlite) |
 | `compression/adaptive_compressor.py` | `oneshim-network/compression.rs` |
 | `network/batch_uploader.py` | `oneshim-network/batch_uploader.rs` |
-| `tracking/screenshot_trigger.py` | `oneshim-vision/trigger.rs` (smart capture trigger) |
-| `tracking/pattern_analyzer.py` | **Removed** — Server handles analysis (only edge metadata extraction retained) |
+| `tracking/screenshot_trigger.py` | `oneshim-vision/trigger.rs` (스마트 캡처 트리거) |
+| `tracking/pattern_analyzer.py` | **삭제** — 서버가 분석 담당 (Edge 메타추출만 유지) |
 
 ## UI (CustomTkinter → iced/egui)
 
@@ -58,8 +58,8 @@
 | `views/main_window.py` | `views/main_window.rs` |
 | `widgets/status_bar.py` | `views/status_bar.rs` |
 | `widgets/context_display.py` | `views/context_panel.rs` |
-| `widgets/command_input.py` | Included in main_window.rs |
-| `widgets/tray_icon.py` | `tray.rs` (tray-icon crate) |
+| `widgets/command_input.py` | main_window.rs 내 포함 |
+| `widgets/tray_icon.py` | `tray.rs` (tray-icon 크레이트) |
 | `widgets/settings_dialog.py` | `views/settings.rs` |
-| **N/A** (not implemented) | `views/suggestion_popup.rs` ★ New |
-| **N/A** (not implemented) | `views/timeline_view.rs` ★ New (rewind) |
+| **없음** (미구현) | `views/suggestion_popup.rs` ★ 신규 |
+| **없음** (미구현) | `views/timeline_view.rs` ★ 신규 (리와인드) |

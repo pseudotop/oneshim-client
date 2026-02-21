@@ -1,28 +1,30 @@
-# 6. UI 프레임워크 선택
+[English](./06-ui-framework.md) | [한국어](./06-ui-framework.ko.md)
 
-[← 마이그레이션 단계](./05-migration-phases.md) | [코드 스케치 →](./07-code-sketches.md)
+# 6. UI Framework Selection
+
+[← Migration Phases](./05-migration-phases.md) | [Code Sketches →](./07-code-sketches.md)
 
 ---
 
-## 후보 비교
+## Candidate Comparison
 
-| 프레임워크 | 장점 | 단점 | 적합도 |
-|-----------|------|------|--------|
-| **iced** | Elm 아키텍처, 크로스플랫폼, 네이티브 렌더링 | GPU 필요, 트레이 별도 처리 | ★★★★☆ |
-| **egui** (+ eframe) | 즉시모드, 가볍고 빠름, WebAssembly 지원 | 네이티브 UX 부족 | ★★★★☆ |
-| **gtk4-rs** | 네이티브 GTK, 성숙도 높음 | Windows 배포 복잡, macOS 비네이티브 | ★★★☆☆ |
-| **slint** | 선언형 UI, 디자이너 도구 | 라이선스 이슈 (GPL/상용) | ★★★☆☆ |
+| Framework | Pros | Cons | Fit |
+|-----------|------|------|-----|
+| **iced** | Elm architecture, cross-platform, native rendering | Requires GPU, tray handled separately | ★★★★☆ |
+| **egui** (+ eframe) | Immediate mode, lightweight and fast, WebAssembly support | Lacks native UX | ★★★★☆ |
+| **gtk4-rs** | Native GTK, high maturity | Complex Windows deployment, non-native on macOS | ★★★☆☆ |
+| **slint** | Declarative UI, designer tools | License issues (GPL/commercial) | ★★★☆☆ |
 
-## 권장: iced 또는 egui
+## Recommendation: iced or egui
 
-**iced 선택 시**:
-- Elm-like 아키텍처 → 상태 관리 명확
-- 커스텀 위젯 용이
-- tokio 통합 네이티브
+**If choosing iced**:
+- Elm-like architecture → clear state management
+- Easy custom widgets
+- Native tokio integration
 
-**egui 선택 시**:
-- 즉시모드 → 프로토타이핑 빠름
-- AI 코드 생성에 더 적합 (단순한 API)
-- 가볍고 빠른 렌더링
+**If choosing egui**:
+- Immediate mode → fast prototyping
+- Better suited for AI code generation (simpler API)
+- Lightweight and fast rendering
 
-> 결정은 Phase 3 진입 시 확정. Phase 1-2는 UI 없이 진행하므로 블로킹 없음.
+> Decision to be finalized at Phase 3 entry. Phase 1-2 proceed without UI, so no blocking.

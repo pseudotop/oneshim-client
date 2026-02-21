@@ -115,6 +115,20 @@ cargo fmt --check
 
 ## Installation
 
+### Package Managers (Recommended)
+
+**Homebrew (macOS/Linux):**
+```bash
+brew tap pseudotop/tap
+brew install oneshim
+```
+
+**Scoop (Windows):**
+```powershell
+scoop bucket add oneshim https://github.com/pseudotop/scoop-bucket
+scoop install oneshim
+```
+
 ### Download Binaries
 
 Download the binary for your platform from the [Releases](https://github.com/pseudotop/oneshim-client/releases) page.
@@ -124,7 +138,8 @@ Download the binary for your platform from the [Releases](https://github.com/pse
 | macOS Universal | `oneshim-macos-universal.tar.gz` |
 | macOS Apple Silicon | `oneshim-macos-arm64.tar.gz` |
 | macOS Intel | `oneshim-macos-x64.tar.gz` |
-| Windows x64 | `oneshim-windows-x64.zip` |
+| Windows x64 (zip) | `oneshim-windows-x64.zip` |
+| Windows x64 (MSI) | `oneshim-app-*.msi` |
 | Linux x64 | `oneshim-linux-x64.tar.gz` |
 
 ### macOS

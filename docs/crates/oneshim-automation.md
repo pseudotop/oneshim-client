@@ -1,67 +1,69 @@
+[English](./oneshim-automation.md) | [한국어](./oneshim-automation.ko.md)
+
 # oneshim-automation
 
-자동화 제어 크레이트. 정책 기반 명령 실행, 감사 로깅, OS 네이티브 샌드박스, UI 자동화 의도 해석, 워크플로우 프리셋을 담당한다.
+The automation control crate. Handles policy-based command execution, audit logging, OS native sandbox, UI automation intent resolution, and workflow presets.
 
-## 개요
+## Overview
 
-서버에서 수신한 자동화 명령을 정책 토큰 검증 후 실행하며, 모든 명령은 감사 로그에 기록된다.
-2-레이어 액션 모델을 사용: **AutomationIntent** (서버→클라이언트 고수준 의도) → **AutomationAction** (클라이언트 내부 저수준 액션).
+Executes automation commands received from the server after policy token verification, with all commands recorded in audit logs.
+Uses a 2-layer action model: **AutomationIntent** (server→client high-level intent) → **AutomationAction** (client internal low-level action).
 
-## 디렉토리 구조
+## Directory Structure
 
 ```
 oneshim-automation/src/
-├── lib.rs              # 크레이트 루트 (9개 모듈)
-├── audit.rs            # AuditLogger — 감사 로깅 (14개 메서드)
-├── controller.rs       # AutomationController — 정책 검증 + 명령 실행
-├── input_driver.rs     # NoOpInputDriver — 테스트/기본 입력 드라이버
-├── intent_resolver.rs  # IntentResolver + IntentExecutor — 의도 해석 + 실행
-├── local_llm.rs        # LocalLlmProvider — 로컬 LLM (규칙 기반)
-├── policy.rs           # PolicyClient — 서버 정책 동기화 + 검증
-├── presets.rs          # builtin_presets() — 내장 워크플로우 10개
-├── resolver.rs         # 정책 → 샌드박스 프로필 리졸버 (순수 함수 3개)
-└── sandbox/            # OS 네이티브 커널 샌드박스
-    ├── mod.rs          # create_platform_sandbox() 팩토리
-    ├── noop.rs         # NoOpSandbox — 비활성 시 기본
+├── lib.rs              # Crate root (9 modules)
+├── audit.rs            # AuditLogger — audit logging (14 methods)
+├── controller.rs       # AutomationController — policy verification + command execution
+├── input_driver.rs     # NoOpInputDriver — test/default input driver
+├── intent_resolver.rs  # IntentResolver + IntentExecutor — intent resolution + execution
+├── local_llm.rs        # LocalLlmProvider — local LLM (rule-based)
+├── policy.rs           # PolicyClient — server policy sync + verification
+├── presets.rs          # builtin_presets() — 10 builtin workflows
+├── resolver.rs         # Policy → sandbox profile resolver (3 pure functions)
+└── sandbox/            # OS native kernel sandbox
+    ├── mod.rs          # create_platform_sandbox() factory
+    ├── noop.rs         # NoOpSandbox — passthrough when disabled
     ├── linux.rs        # LinuxSandbox — seccomp + namespaces
     ├── macos.rs        # MacOsSandbox — sandbox-exec + App Sandbox
     └── windows.rs      # WindowsSandbox — Job Objects + AppContainers
 ```
 
-## 모듈
+## Modules
 
 ### `controller.rs` — AutomationController
 
-정책 검증 + 명령 실행 + 감사 로깅 + 샌드박스 관리의 중심 제어기.
+Central controller for policy verification + command execution + audit logging + sandbox management.
 
-- `AutomationController::new(sandbox, sandbox_config)` — 생성자 (`Arc<dyn Sandbox>` + `SandboxConfig`)
-- `set_intent_executor(executor)` — IntentExecutor 주입
-- `execute_command(command)` — 정책 검증 → 감사 로그 → 액션 디스패치 → 결과 반환
-- `execute_intent(intent, config)` — 고수준 의도 실행 (IntentExecutor 위임)
-- `resolve_for_command(command)` — 정책 기반 동적 SandboxConfig 결정
-- `dispatch_action_with_config(action, config)` — 타임아웃 적용 액션 실행
-- 기본 비활성 (`enabled: false`), `set_enabled()` 로 활성화
-- `tokio::time::timeout` 기반 실행 타임아웃
+- `AutomationController::new(sandbox, sandbox_config)` — Constructor (`Arc<dyn Sandbox>` + `SandboxConfig`)
+- `set_intent_executor(executor)` — Inject IntentExecutor
+- `execute_command(command)` — Policy verification → audit log → action dispatch → return result
+- `execute_intent(intent, config)` — Execute high-level intent (delegates to IntentExecutor)
+- `resolve_for_command(command)` — Determine dynamic SandboxConfig based on policy
+- `dispatch_action_with_config(action, config)` — Execute action with timeout
+- Disabled by default (`enabled: false`), activate via `set_enabled()`
+- Execution timeout based on `tokio::time::timeout`
 
 ### `policy.rs` — PolicyClient
 
-서버 정책 동기화 + 명령 검증 + 프로세스 허가 관리.
+Server policy synchronization + command verification + process permission management.
 
-- `ExecutionPolicy` — 정책 ID, 프로세스 이름, 바이너리 해시, 인자 패턴, sudo 필요 여부, 감사 레벨
-  - `sandbox_profile: Option<SandboxProfile>` — 서버 오버라이드
-  - `allowed_paths: Vec<String>` — 정책별 허용 경로
-  - `allow_network: Option<bool>` — 네트워크 오버라이드
+- `ExecutionPolicy` — Policy ID, process name, binary hash, argument patterns, sudo required, audit level
+  - `sandbox_profile: Option<SandboxProfile>` — Server override
+  - `allowed_paths: Vec<String>` — Allowed paths per policy
+  - `allow_network: Option<bool>` — Network override
 - `AuditLevel` enum: None, Basic, Detailed, Full
-- `PolicyCache` — 정책 목록 + TTL 캐시 (기본 5분)
-- `validate_command()` — 캐시 유효성 + 토큰 비어있지 않음 검증
-- `validate_args()` — glob 패턴 기반 인자 검증 (`*` 와일드카드)
-- `is_process_allowed()` — HashSet 기반 빠른 프로세스 허가 조회
+- `PolicyCache` — Policy list + TTL cache (default 5 minutes)
+- `validate_command()` — Cache validity + non-empty token verification
+- `validate_args()` — Glob pattern-based argument validation (`*` wildcard)
+- `is_process_allowed()` — Fast process permission lookup via HashSet
 
 ### `audit.rs` — AuditLogger
 
-로컬 VecDeque 버퍼 + 배치 전송 감사 로그. 비파괴 조회 메서드 포함.
+Local VecDeque buffer + batched transmission audit log. Includes non-destructive query methods.
 
-#### 타입
+#### Types
 
 ```rust
 pub enum AuditStatus { Started, Completed, Failed, Denied, Timeout }
@@ -78,39 +80,39 @@ pub struct AuditEntry {
 }
 ```
 
-#### 메서드 (14개)
+#### Methods (14)
 
-| 분류 | 메서드 | 설명 |
-|------|--------|------|
-| 기본 로깅 | `log_start()` | 명령 시작 기록 |
-| | `log_complete()` | 명령 완료 기록 |
-| | `log_denied()` | 정책 거부 기록 |
-| | `log_failed()` | 실행 실패 기록 |
-| 조건부 로깅 | `log_start_if(level, ...)` | AuditLevel::None이면 스킵 |
-| | `log_complete_with_time(level, ..., ms)` | 실행 시간 포함 기록 |
-| | `log_timeout(...)` | 타임아웃 기록 |
-| 배치 관리 | `has_pending_batch()` | 전송 준비 여부 |
-| | `pending_count()` | 대기 중 항목 수 |
-| | `drain_batch()` | 배치 크기만큼 꺼내기 |
-| | `drain_all()` | 전체 꺼내기 (셧다운 시) |
-| 비파괴 조회 | `recent_entries(limit)` | 최근 N개 조회 (API용) |
-| | `entries_by_status(status, limit)` | 상태별 필터링 |
-| | `stats()` | 통계 집계 (total, success, failed, denied, timeout) |
+| Category | Method | Description |
+|----------|--------|-------------|
+| Basic Logging | `log_start()` | Record command start |
+| | `log_complete()` | Record command completion |
+| | `log_denied()` | Record policy denial |
+| | `log_failed()` | Record execution failure |
+| Conditional Logging | `log_start_if(level, ...)` | Skip if AuditLevel::None |
+| | `log_complete_with_time(level, ..., ms)` | Record with execution time |
+| | `log_timeout(...)` | Record timeout |
+| Batch Management | `has_pending_batch()` | Whether ready for transmission |
+| | `pending_count()` | Number of pending entries |
+| | `drain_batch()` | Extract batch-sized chunk |
+| | `drain_all()` | Extract all (for shutdown) |
+| Non-destructive Query | `recent_entries(limit)` | Query latest N entries (for API) |
+| | `entries_by_status(status, limit)` | Filter by status |
+| | `stats()` | Aggregate statistics (total, success, failed, denied, timeout) |
 
-- 버퍼 오버플로 시 가장 오래된 항목 자동 제거
-- 기본 설정: 최대 1000개 버퍼, 50개 배치 크기
+- Oldest entries are automatically removed on buffer overflow
+- Default settings: max 1000 buffer entries, batch size of 50
 
-### `resolver.rs` — 정책 → 샌드박스 리졸버
+### `resolver.rs` — Policy → Sandbox Resolver
 
-순수 함수 3개 (상태 없음, 테스트 용이):
+3 pure functions (stateless, easy to test):
 
-| 함수 | 설명 |
-|------|------|
-| `resolve_sandbox_profile(policy)` | AuditLevel → SandboxProfile 계단식 매핑 |
-| `resolve_sandbox_config(policy, base)` | 정책 기반 동적 SandboxConfig 생성 |
-| `default_strict_config(base)` | 정책 없는 명령용 Strict 설정 |
+| Function | Description |
+|----------|-------------|
+| `resolve_sandbox_profile(policy)` | AuditLevel → SandboxProfile cascading mapping |
+| `resolve_sandbox_config(policy, base)` | Generate dynamic SandboxConfig based on policy |
+| `default_strict_config(base)` | Strict settings for commands without policies |
 
-#### AuditLevel → SandboxProfile 매핑
+#### AuditLevel → SandboxProfile Mapping
 
 ```
 AuditLevel::None     → SandboxProfile::Permissive
@@ -119,102 +121,102 @@ AuditLevel::Detailed → SandboxProfile::Strict
 AuditLevel::Full     → SandboxProfile::Strict
 ```
 
-- `requires_sudo=true` 이면 Permissive → Standard 승격
-- 서버 `sandbox_profile` 오버라이드 우선 적용
+- `requires_sudo=true` promotes Permissive → Standard
+- Server `sandbox_profile` override takes priority
 
 ### `intent_resolver.rs` — IntentResolver + IntentExecutor
 
-고수준 의도(AutomationIntent)를 저수준 액션(AutomationAction) 시퀀스로 변환하고 실행.
+Converts high-level intents (AutomationIntent) into low-level action (AutomationAction) sequences and executes them.
 
-- `IntentResolver` — UI 요소 탐색 → 좌표 계산 → 액션 변환
-  - OCR 기반 요소 탐색 (`ElementFinder`)
-  - LLM 기반 의도 해석 (`LlmProvider`)
-  - 신뢰도 검증 + 재시도 로직 (`IntentConfig`)
-- `IntentExecutor` — 변환된 액션 순차 실행 + 결과 검증
+- `IntentResolver` — UI element discovery → coordinate calculation → action conversion
+  - OCR-based element discovery (`ElementFinder`)
+  - LLM-based intent interpretation (`LlmProvider`)
+  - Confidence verification + retry logic (`IntentConfig`)
+- `IntentExecutor` — Sequential execution of converted actions + result verification
   - `execute_intent(intent, config)` → `IntentResult`
-  - 실행 후 텍스트 확인 (`verify_after_action`)
-  - 재시도 (`max_retries`, `retry_interval_ms`)
+  - Post-execution text verification (`verify_after_action`)
+  - Retry (`max_retries`, `retry_interval_ms`)
 
-### `presets.rs` — 내장 워크플로우 프리셋
+### `presets.rs` — Builtin Workflow Presets
 
-`builtin_presets()` 함수가 10개 내장 프리셋을 반환. 플랫폼별 키 매핑 자동 적용.
+The `builtin_presets()` function returns 10 builtin presets. Platform-specific key mapping is applied automatically.
 
-#### 생산성 프리셋 (4개)
+#### Productivity Presets (4)
 
-| ID | 이름 | 단계 |
-|----|------|------|
-| `save-file` | 파일 저장 | `ExecuteHotkey(["Cmd/Ctrl", "S"])` |
-| `undo` | 실행 취소 | `ExecuteHotkey(["Cmd/Ctrl", "Z"])` |
-| `select-all-copy` | 전체 선택 후 복사 | `Cmd/Ctrl+A` → 200ms → `Cmd/Ctrl+C` |
-| `find-replace` | 찾기/바꾸기 | `ExecuteHotkey(["Cmd/Ctrl", "H"])` |
+| ID | Name | Steps |
+|----|------|-------|
+| `save-file` | Save File | `ExecuteHotkey(["Cmd/Ctrl", "S"])` |
+| `undo` | Undo | `ExecuteHotkey(["Cmd/Ctrl", "Z"])` |
+| `select-all-copy` | Select All and Copy | `Cmd/Ctrl+A` → 200ms → `Cmd/Ctrl+C` |
+| `find-replace` | Find/Replace | `ExecuteHotkey(["Cmd/Ctrl", "H"])` |
 
-#### 앱 관리 프리셋 (3개)
+#### App Management Presets (3)
 
-| ID | 이름 | 단계 |
-|----|------|------|
-| `switch-next-app` | 다음 앱 전환 | `Cmd/Alt+Tab` |
-| `close-window` | 현재 창 닫기 | `Cmd/Ctrl+W` |
-| `minimize-all` | 전체 최소화 | macOS: `Cmd+Option+H+M` / Win: `Win+D` |
+| ID | Name | Steps |
+|----|------|-------|
+| `switch-next-app` | Switch to Next App | `Cmd/Alt+Tab` |
+| `close-window` | Close Current Window | `Cmd/Ctrl+W` |
+| `minimize-all` | Minimize All | macOS: `Cmd+Option+H+M` / Win: `Win+D` |
 
-#### 워크플로우 프리셋 (3개)
+#### Workflow Presets (3)
 
-| ID | 이름 | 단계 |
-|----|------|------|
-| `morning-routine` | 업무 시작 | `ActivateApp(Mail)` → 2s → `Calendar` → 2s → `VSCode` |
-| `meeting-prep` | 회의 준비 | `ActivateApp(Zoom)` → 1s → `Notes` |
-| `end-of-day` | 업무 종료 | `Cmd/Ctrl+S` → 1s → `Cmd/Ctrl+Q` |
+| ID | Name | Steps |
+|----|------|-------|
+| `morning-routine` | Morning Routine | `ActivateApp(Mail)` → 2s → `Calendar` → 2s → `VSCode` |
+| `meeting-prep` | Meeting Preparation | `ActivateApp(Zoom)` → 1s → `Notes` |
+| `end-of-day` | End of Day | `Cmd/Ctrl+S` → 1s → `Cmd/Ctrl+Q` |
 
-**헬퍼 함수:**
-- `platform_modifier()` — macOS: `"Cmd"`, 기타: `"Ctrl"`
-- `platform_alt_modifier()` — macOS: `"Cmd"`, 기타: `"Alt"`
+**Helper Functions:**
+- `platform_modifier()` — macOS: `"Cmd"`, others: `"Ctrl"`
+- `platform_alt_modifier()` — macOS: `"Cmd"`, others: `"Alt"`
 
-### `sandbox/` — OS 네이티브 커널 샌드박스
+### `sandbox/` — OS Native Kernel Sandbox
 
-`create_platform_sandbox()` 팩토리 함수로 플랫폼별 샌드박스 생성.
+The `create_platform_sandbox()` factory function creates platform-specific sandboxes.
 
-| 플랫폼 | 구현 | 기술 |
-|--------|------|------|
-| `config.enabled=false` | `NoOpSandbox` | 패스스루 (제한 없음) |
+| Platform | Implementation | Technology |
+|----------|---------------|------------|
+| `config.enabled=false` | `NoOpSandbox` | Passthrough (no restrictions) |
 | Linux | `LinuxSandbox` | seccomp + namespaces |
 | macOS | `MacOsSandbox` | sandbox-exec + App Sandbox |
 | Windows | `WindowsSandbox` | Job Objects + AppContainers |
-| (미지원) | `NoOpSandbox` (폴백) | 경고 로그 + 패스스루 |
+| (unsupported) | `NoOpSandbox` (fallback) | Warning log + passthrough |
 
 ### `input_driver.rs` — NoOpInputDriver
 
-테스트/기본 입력 드라이버. `InputDriver` trait 구현체로 모든 액션을 로그만 남기고 무시.
+Test/default input driver. `InputDriver` trait implementation that logs all actions and ignores them.
 
 ### `local_llm.rs` — LocalLlmProvider
 
-로컬 LLM/규칙 기반 의도 해석. `LlmProvider` trait 구현체. 외부 API 없이 규칙 매칭으로 동작.
+Local LLM/rule-based intent interpretation. `LlmProvider` trait implementation. Operates via rule matching without external APIs.
 
-## 의존성
+## Dependencies
 
 ```
-oneshim-automation → oneshim-core (CoreError, 모델, 포트 trait)
+oneshim-automation → oneshim-core (CoreError, models, port traits)
 ```
 
-## 보안
+## Security
 
-- **정책 토큰 필수**: 모든 자동화 명령은 서버 발급 정책 토큰 필요
-- **바이너리 해시 검증**: `ExecutionPolicy.process_hash`로 변조 감지
-- **인자 패턴 제한**: glob 패턴으로 허용 인자 제한
-- **OS 네이티브 샌드박스**: 커널 수준 격리 (seccomp, sandbox-exec, Job Objects)
-- **정책 → 샌드박스 자동 바인딩**: AuditLevel에 따라 SandboxProfile 자동 결정
-- **실행 타임아웃**: `tokio::time::timeout` 기반 강제 종료
-- **감사 로그 기록**: 모든 실행/거부/실패/타임아웃이 감사 로그에 기록
-- **기본 비활성**: `AutomationController`는 기본 비활성 상태
-- **Privacy Gateway**: 외부 데이터 전송 시 PII 필터 + 민감 앱 차단 + 동의 검증
+- **Policy token required**: All automation commands require a server-issued policy token
+- **Binary hash verification**: Tamper detection via `ExecutionPolicy.process_hash`
+- **Argument pattern restriction**: Allowed arguments restricted via glob patterns
+- **OS native sandbox**: Kernel-level isolation (seccomp, sandbox-exec, Job Objects)
+- **Policy → Sandbox auto binding**: SandboxProfile automatically determined by AuditLevel
+- **Execution timeout**: Forced termination based on `tokio::time::timeout`
+- **Audit log recording**: All executions/denials/failures/timeouts recorded in audit log
+- **Disabled by default**: `AutomationController` is disabled by default
+- **Privacy Gateway**: PII filtering + sensitive app blocking + consent verification for external data transmission
 
-## 테스트
+## Tests
 
-| 모듈 | 테스트 수 | 설명 |
-|------|----------|------|
-| controller | 6 | action/result 직렬화, 의도 실행, 타임아웃 |
-| policy | 7 | 정책 직렬화, 인자 검증, 정책 업데이트, 샌드박스 필드 |
-| audit | 7 | 로그/드레인, 버퍼 오버플로, 배치 부분 추출, 직렬화, 비파괴 조회, 통계 |
-| resolver | 5 | 프로필 매핑, sudo 승격, 경로 병합, strict 기본값, 서버 오버라이드 |
-| presets | 3 | 프리셋 로드, 플랫폼 키 매핑, 단계 검증 |
-| sandbox | 3 | 팩토리 생성, NoOp 패스스루, 기능 보고 |
-| intent_resolver | 2 | 의도 해석, 액션 변환 |
+| Module | Test Count | Description |
+|--------|-----------|-------------|
+| controller | 6 | Action/result serialization, intent execution, timeout |
+| policy | 7 | Policy serialization, argument validation, policy update, sandbox fields |
+| audit | 7 | Log/drain, buffer overflow, partial batch extraction, serialization, non-destructive query, statistics |
+| resolver | 5 | Profile mapping, sudo promotion, path merging, strict default, server override |
+| presets | 3 | Preset loading, platform key mapping, step verification |
+| sandbox | 3 | Factory creation, NoOp passthrough, capability reporting |
+| intent_resolver | 2 | Intent resolution, action conversion |
 | **Total** | **33** | - |

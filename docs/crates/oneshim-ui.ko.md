@@ -2,38 +2,38 @@
 
 # oneshim-ui
 
-The desktop UI component crate. System tray, notifications, and main window.
+데스크톱 UI 컴포넌트 크레이트. 시스템 트레이, 알림, 메인 윈도우.
 
-## Role
+## 역할
 
-- **System Tray**: Background execution, quick menu
-- **Desktop Notifications**: Notification when suggestions arrive
-- **Main Window**: Suggestion list, settings, timeline
-- **Theme**: Dark/light mode
+- **시스템 트레이**: 백그라운드 실행, 빠른 메뉴
+- **데스크톱 알림**: 제안 도착 알림
+- **메인 윈도우**: 제안 목록, 설정, 타임라인
+- **테마**: 다크/라이트 모드
 
-## Directory Structure
+## 디렉토리 구조
 
 ```
 oneshim-ui/src/
-├── lib.rs         # Crate root
-├── tray.rs        # SystemTray - system tray
-├── notifier.rs    # DesktopNotifierImpl - notifications
-├── theme.rs       # Theme - dark/light theme
-└── views/         # UI view components
+├── lib.rs         # 크레이트 루트
+├── tray.rs        # SystemTray - 시스템 트레이
+├── notifier.rs    # DesktopNotifierImpl - 알림
+├── theme.rs       # Theme - 다크/라이트 테마
+└── views/         # UI 뷰 컴포넌트
     ├── mod.rs
-    ├── main_window.rs     # Main window
-    ├── suggestion_popup.rs # Suggestion popup
-    ├── context_panel.rs   # Context panel
-    ├── status_bar.rs      # Status bar
-    ├── timeline_view.rs   # Timeline
-    └── settings.rs        # Settings screen
+    ├── main_window.rs     # 메인 윈도우
+    ├── suggestion_popup.rs # 제안 팝업
+    ├── context_panel.rs   # 컨텍스트 패널
+    ├── status_bar.rs      # 상태바
+    ├── timeline_view.rs   # 타임라인
+    └── settings.rs        # 설정 화면
 ```
 
-## Key Components
+## 주요 컴포넌트
 
 ### SystemTray (tray.rs)
 
-System tray based on `tray-icon`:
+`tray-icon` 기반 시스템 트레이:
 
 ```rust
 pub struct SystemTray {
@@ -45,12 +45,12 @@ impl SystemTray {
     pub fn new() -> Result<Self, CoreError> {
         let menu = Menu::new();
 
-        menu.append(&MenuItem::with_id("show", "Open Window"))?;
+        menu.append(&MenuItem::with_id("show", "창 열기"))?;
         menu.append(&MenuSeparator)?;
-        menu.append(&MenuItem::with_id("status", "Status: Connected"))?;
+        menu.append(&MenuItem::with_id("status", "상태: 연결됨"))?;
         menu.append(&MenuSeparator)?;
-        menu.append(&MenuItem::with_id("settings", "Settings..."))?;
-        menu.append(&MenuItem::with_id("quit", "Quit"))?;
+        menu.append(&MenuItem::with_id("settings", "설정..."))?;
+        menu.append(&MenuItem::with_id("quit", "종료"))?;
 
         let icon = Self::load_icon()?;
         let tray_icon = TrayIcon::new(icon, Some("ONESHIM"), Some(&menu))?;
@@ -60,30 +60,30 @@ impl SystemTray {
 
     pub fn set_status(&mut self, status: ConnectionStatus) {
         let text = match status {
-            ConnectionStatus::Connected => "Status: Connected ✅",
-            ConnectionStatus::Disconnected => "Status: Disconnected ❌",
-            ConnectionStatus::Reconnecting => "Status: Reconnecting... 🔄",
+            ConnectionStatus::Connected => "상태: 연결됨 ✅",
+            ConnectionStatus::Disconnected => "상태: 연결 끊김 ❌",
+            ConnectionStatus::Reconnecting => "상태: 재연결 중... 🔄",
         };
-        // Update menu item
+        // 메뉴 아이템 업데이트
     }
 
     pub fn show_indicator(&mut self, has_suggestions: bool) {
-        // Show badge on icon when new suggestions are available
+        // 새 제안이 있을 때 아이콘에 배지 표시
     }
 }
 ```
 
-**Tray Menu**:
-| Item | Action |
-|------|--------|
-| Open Window | Show main window |
-| Status | Display connection status (read-only) |
-| Settings... | Open settings window |
-| Quit | Exit the application |
+**트레이 메뉴**:
+| 항목 | 동작 |
+|------|------|
+| 창 열기 | 메인 윈도우 표시 |
+| 상태 | 연결 상태 표시 (읽기 전용) |
+| 설정... | 설정 윈도우 열기 |
+| 종료 | 앱 종료 |
 
 ### DesktopNotifierImpl (notifier.rs)
 
-Desktop notifications based on `notify-rust` (`DesktopNotifier` port):
+`notify-rust` 기반 데스크톱 알림 (`DesktopNotifier` 포트):
 
 ```rust
 pub struct DesktopNotifierImpl;
@@ -92,10 +92,10 @@ pub struct DesktopNotifierImpl;
 impl DesktopNotifier for DesktopNotifierImpl {
     async fn notify(&self, suggestion: &Suggestion) -> Result<(), CoreError> {
         let title = match suggestion.priority {
-            Priority::Critical => "🔴 Urgent Suggestion",
-            Priority::High => "🟠 Important Suggestion",
-            Priority::Medium => "💡 Suggestion",
-            Priority::Low => "📝 Note",
+            Priority::Critical => "🔴 긴급 제안",
+            Priority::High => "🟠 중요 제안",
+            Priority::Medium => "💡 제안",
+            Priority::Low => "📝 참고",
         };
 
         let body = Self::truncate(&suggestion.content, 100);
@@ -115,7 +115,7 @@ impl DesktopNotifier for DesktopNotifierImpl {
 
 ### Theme (theme.rs)
 
-Dark/light theme definitions:
+다크/라이트 테마 정의:
 
 ```rust
 #[derive(Clone)]
@@ -161,7 +161,7 @@ impl Theme {
     }
 
     pub fn system() -> Self {
-        // Detect system setting
+        // 시스템 설정 감지
         if Self::is_dark_mode() {
             Self::dark()
         } else {
@@ -175,7 +175,7 @@ impl Theme {
 
 ### MainWindow (main_window.rs)
 
-Main window based on `iced`:
+`iced` 기반 메인 윈도우:
 
 ```rust
 pub struct MainWindow {
@@ -216,7 +216,7 @@ impl Application for MainWindow {
 
 ### SuggestionPopup (suggestion_popup.rs)
 
-Suggestion detail popup:
+제안 상세 팝업:
 
 ```rust
 pub struct SuggestionPopup {
@@ -228,25 +228,25 @@ impl SuggestionPopup {
     pub fn view(&self) -> Element<Message> {
         container(
             column![
-                // Header: priority badge + time
+                // 헤더: 우선순위 배지 + 시간
                 row![
                     text(&self.suggestion.priority_badge),
                     horizontal_space(Length::Fill),
                     text(&self.suggestion.created_ago).size(12),
                 ],
-                // Title
+                // 제목
                 text(&self.suggestion.title).size(18),
-                // Body
+                // 본문
                 scrollable(text(&self.suggestion.body)),
-                // Action buttons
+                // 액션 버튼
                 row![
-                    button("Accept").on_press(Message::AcceptSuggestion(
+                    button("수락").on_press(Message::AcceptSuggestion(
                         self.suggestion.suggestion_id.clone()
                     )),
-                    button("Reject").on_press(Message::RejectSuggestion(
+                    button("거절").on_press(Message::RejectSuggestion(
                         self.suggestion.suggestion_id.clone()
                     )),
-                    button("Close").on_press(Message::DismissSuggestion(
+                    button("닫기").on_press(Message::DismissSuggestion(
                         self.suggestion.suggestion_id.clone()
                     )),
                 ]
@@ -261,7 +261,7 @@ impl SuggestionPopup {
 
 ### StatusBar (status_bar.rs)
 
-Bottom status bar:
+하단 상태바:
 
 ```rust
 pub struct StatusBar {
@@ -273,17 +273,17 @@ pub struct StatusBar {
 impl StatusBar {
     pub fn view(&self) -> Element<Message> {
         let status_indicator = match self.connection_status {
-            ConnectionStatus::Connected => text("● Connected").color(Color::GREEN),
-            ConnectionStatus::Disconnected => text("● Disconnected").color(Color::RED),
-            ConnectionStatus::Reconnecting => text("● Reconnecting...").color(Color::YELLOW),
+            ConnectionStatus::Connected => text("● 연결됨").color(Color::GREEN),
+            ConnectionStatus::Disconnected => text("● 연결 끊김").color(Color::RED),
+            ConnectionStatus::Reconnecting => text("● 재연결 중...").color(Color::YELLOW),
         };
 
         let sync_text = self.last_sync
-            .map(|t| format!("Last sync: {}", t.format("%H:%M:%S")))
+            .map(|t| format!("마지막 동기화: {}", t.format("%H:%M:%S")))
             .unwrap_or_default();
 
         let pending_text = if self.pending_count > 0 {
-            format!("Pending: {}", self.pending_count)
+            format!("대기 중: {}", self.pending_count)
         } else {
             String::new()
         };
@@ -302,7 +302,7 @@ impl StatusBar {
 
 ### TimelineView (timeline_view.rs)
 
-Event timeline:
+이벤트 타임라인:
 
 ```rust
 pub struct TimelineView {
@@ -342,7 +342,7 @@ impl TimelineView {
 
 ### Settings (settings.rs)
 
-Settings screen:
+설정 화면:
 
 ```rust
 pub struct SettingsView {
@@ -360,27 +360,27 @@ pub enum ThemeMode {
 impl SettingsView {
     pub fn view(&self) -> Element<Message> {
         column![
-            text("Settings").size(24),
+            text("설정").size(24),
 
-            // Server settings
-            text("Server").size(18),
-            text_input("Server URL", &self.config.server.base_url),
+            // 서버 설정
+            text("서버").size(18),
+            text_input("서버 URL", &self.config.server.base_url),
 
-            // Monitoring settings
-            text("Monitoring").size(18),
+            // 모니터링 설정
+            text("모니터링").size(18),
             slider(500..=5000, self.config.monitor.poll_interval_ms, |v| {
                 Message::ConfigChanged("monitor.poll_interval_ms", v)
             }),
 
-            // Theme settings
-            text("Theme").size(18),
+            // 테마 설정
+            text("테마").size(18),
             pick_list(&[ThemeMode::System, ThemeMode::Light, ThemeMode::Dark],
                 Some(self.theme_mode.clone()),
                 Message::ThemeModeChanged),
 
-            // Auto update
-            text("Update").size(18),
-            checkbox("Enable auto update", self.config.update.enabled,
+            // 자동 업데이트
+            text("업데이트").size(18),
+            checkbox("자동 업데이트 사용", self.config.update.enabled,
                 Message::AutoUpdateToggled),
         ]
         .padding(16)
@@ -389,25 +389,25 @@ impl SettingsView {
 }
 ```
 
-## Dependencies
+## 의존성
 
-- `iced`: GUI framework (0.13)
-- `tray-icon`: System tray (0.19)
-- `notify-rust`: Desktop notifications (4)
-- `oneshim-suggestion`: Suggestion presenter
+- `iced`: GUI 프레임워크 (0.13)
+- `tray-icon`: 시스템 트레이 (0.19)
+- `notify-rust`: 데스크톱 알림 (4)
+- `oneshim-suggestion`: 제안 프레젠터
 
-## Platform Support
+## 플랫폼 지원
 
-| Feature | macOS | Windows | Linux |
-|---------|-------|---------|-------|
-| System Tray | ✅ | ✅ | ✅ |
-| Desktop Notifications | ✅ | ✅ | ✅ |
-| Dark Mode Detection | ✅ | ✅ | ⚠️ (DE dependent) |
-| Main Window | ✅ | ✅ | ✅ |
+| 기능 | macOS | Windows | Linux |
+|------|-------|---------|-------|
+| 시스템 트레이 | ✅ | ✅ | ✅ |
+| 데스크톱 알림 | ✅ | ✅ | ✅ |
+| 다크 모드 감지 | ✅ | ✅ | ⚠️ (DE 의존) |
+| 메인 윈도우 | ✅ | ✅ | ✅ |
 
-## Tests
+## 테스트
 
-UI tests are primarily performed as integration tests:
+UI 테스트는 주로 통합 테스트로 수행:
 
 ```rust
 #[test]
@@ -415,9 +415,9 @@ fn test_theme_colors() {
     let dark = Theme::dark();
     let light = Theme::light();
 
-    // Dark theme has bright text
+    // 다크 테마는 밝은 텍스트
     assert!(dark.text.r > 0.5);
-    // Light theme has dark text
+    // 라이트 테마는 어두운 텍스트
     assert!(light.text.r < 0.5);
 }
 
@@ -429,6 +429,6 @@ fn test_status_bar_display() {
         pending_count: 5,
     };
 
-    // View rendering tests use the iced test framework
+    // 뷰 렌더링 테스트는 iced 테스트 프레임워크 사용
 }
 ```

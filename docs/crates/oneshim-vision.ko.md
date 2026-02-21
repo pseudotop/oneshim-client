@@ -2,47 +2,47 @@
 
 # oneshim-vision
 
-The crate responsible for edge image processing. Performs screen capture, delta encoding, compression, and OCR on the client side.
+Edge 이미지 처리를 담당하는 크레이트. 스크린 캡처, 델타 인코딩, 압축, OCR을 클라이언트에서 수행.
 
-## Role
+## 역할
 
-- **Screen Capture**: Multi-monitor support, active window capture
-- **Delta Encoding**: Extracts only changed regions to minimize transfer volume
-- **Adaptive Processing**: Adjusts processing level based on importance
-- **Privacy Protection**: PII filtering
+- **스크린 캡처**: 멀티모니터 지원, 활성 창 캡처
+- **델타 인코딩**: 변경 영역만 추출하여 전송량 최소화
+- **적응형 처리**: 중요도에 따른 처리 수준 조절
+- **개인정보 보호**: PII 필터링
 
-## Directory Structure
+## 디렉토리 구조
 
 ```
 oneshim-vision/src/
-├── lib.rs         # Crate root
-├── capture.rs     # ScreenCapture - screen capture
-├── trigger.rs     # SmartCaptureTrigger - capture decision
-├── delta.rs       # DeltaEncoder - changed region extraction
-├── encoder.rs     # WebpEncoder - image compression
-├── thumbnail.rs   # ThumbnailGenerator - thumbnail generation
-├── processor.rs   # EdgeFrameProcessor - unified processing
-├── ocr.rs         # OcrExtractor - text extraction
-├── privacy.rs     # PrivacySanitizer - PII filtering
-└── timeline.rs    # FrameTimeline - frame history
+├── lib.rs         # 크레이트 루트
+├── capture.rs     # ScreenCapture - 화면 캡처
+├── trigger.rs     # SmartCaptureTrigger - 캡처 결정
+├── delta.rs       # DeltaEncoder - 변경 영역 추출
+├── encoder.rs     # WebpEncoder - 이미지 압축
+├── thumbnail.rs   # ThumbnailGenerator - 썸네일 생성
+├── processor.rs   # EdgeFrameProcessor - 통합 처리
+├── ocr.rs         # OcrExtractor - 텍스트 추출
+├── privacy.rs     # PrivacySanitizer - PII 필터링
+└── timeline.rs    # FrameTimeline - 프레임 이력
 ```
 
-## Core Concept: Importance-Based Processing
+## 핵심 개념: 중요도 기반 처리
 
-Adjusts processing level based on event importance for resource efficiency:
+이벤트 중요도에 따라 처리 수준을 조절하여 리소스 효율화:
 
-| Importance | Processing Method | Use Case |
-|------------|-------------------|----------|
-| ≥ 0.8 | Full + OCR | Window switch, important input |
-| ≥ 0.5 | Delta encoding | Normal activity |
-| ≥ 0.3 | Thumbnail | Idle state |
-| < 0.3 | Metadata only | Background |
+| 중요도 | 처리 방식 | 사용 상황 |
+|--------|----------|----------|
+| ≥ 0.8 | Full + OCR | 창 전환, 중요 입력 |
+| ≥ 0.5 | Delta 인코딩 | 일반 활동 |
+| ≥ 0.3 | Thumbnail | 유휴 상태 |
+| < 0.3 | Metadata only | 백그라운드 |
 
-## Key Components
+## 주요 컴포넌트
 
 ### ScreenCapture (capture.rs)
 
-Screen capture based on `xcap`:
+`xcap` 기반 화면 캡처:
 
 ```rust
 pub struct ScreenCapture {
@@ -50,20 +50,20 @@ pub struct ScreenCapture {
 }
 
 impl ScreenCapture {
-    /// Full screen capture
+    /// 전체 화면 캡처
     pub fn capture_screen(&self, monitor_index: usize) -> Result<CapturedFrame, CoreError>;
 
-    /// Specific window capture
+    /// 특정 창 캡처
     pub fn capture_window(&self, window_id: u64) -> Result<CapturedFrame, CoreError>;
 
-    /// Specific region capture
+    /// 특정 영역 캡처
     pub fn capture_region(&self, x: i32, y: i32, w: u32, h: u32) -> Result<CapturedFrame, CoreError>;
 }
 ```
 
 ### SmartCaptureTrigger (trigger.rs)
 
-Decides whether to capture and the processing level (`CaptureTrigger` port):
+캡처 여부 및 처리 수준 결정 (`CaptureTrigger` 포트):
 
 ```rust
 pub struct SmartCaptureTrigger {
@@ -73,14 +73,14 @@ pub struct SmartCaptureTrigger {
 
 impl CaptureTrigger for SmartCaptureTrigger {
     async fn should_capture(&self, event: &ContextEvent) -> Result<CaptureDecision, CoreError> {
-        // 1. Throttling check
-        // 2. Calculate importance by event type
-        // 3. Return CaptureDecision
+        // 1. 쓰로틀링 체크
+        // 2. 이벤트 타입별 중요도 계산
+        // 3. CaptureDecision 반환
     }
 }
 ```
 
-**Event Importance Mapping**:
+**이벤트 중요도 매핑**:
 ```rust
 fn calculate_importance(event: &ContextEvent) -> f64 {
     match event.event_type {
@@ -97,16 +97,16 @@ fn calculate_importance(event: &ContextEvent) -> f64 {
 
 ### DeltaEncoder (delta.rs)
 
-Changed region extraction based on 16x16 tiles:
+16x16 타일 기반 변경 영역 추출:
 
 ```rust
 pub struct DeltaEncoder {
-    tile_size: usize,  // Default 16
-    threshold: f64,    // Change detection threshold
+    tile_size: usize,  // 기본 16
+    threshold: f64,    // 변경 감지 임계값
 }
 
 impl DeltaEncoder {
-    /// Compare two frames, extract only changed tiles
+    /// 두 프레임 비교, 변경된 타일만 추출
     pub fn encode(&self, prev: &[u8], curr: &[u8], width: u32, height: u32)
         -> Result<DeltaFrame, CoreError>;
 }
@@ -118,23 +118,23 @@ pub struct DeltaFrame {
 }
 ```
 
-**Algorithm**:
-1. Divide image into 16x16 tiles
-2. Compare hash of each tile
-3. Collect only changed tiles
-4. Return with tile position information
+**알고리즘**:
+1. 이미지를 16x16 타일로 분할
+2. 각 타일의 해시 비교
+3. 변경된 타일만 수집
+4. 타일 위치 정보와 함께 반환
 
 ### WebpEncoder (encoder.rs)
 
-WebP format encoding:
+WebP 포맷 인코딩:
 
 ```rust
 pub struct WebpEncoder;
 
 pub enum QualityLevel {
-    Low,     // 50% - for thumbnails
-    Medium,  // 75% - standard
-    High,    // 90% - high quality
+    Low,     // 50% - 썸네일용
+    Medium,  // 75% - 일반
+    High,    // 90% - 고품질
 }
 
 impl WebpEncoder {
@@ -145,12 +145,12 @@ impl WebpEncoder {
 
 ### ThumbnailGenerator (thumbnail.rs)
 
-Fast resize based on `fast_image_resize`:
+`fast_image_resize` 기반 고속 리사이즈:
 
 ```rust
 pub struct ThumbnailGenerator {
-    width: u32,   // Default 480
-    height: u32,  // Default 270
+    width: u32,   // 기본 480
+    height: u32,  // 기본 270
 }
 
 impl ThumbnailGenerator {
@@ -160,7 +160,7 @@ impl ThumbnailGenerator {
 
 ### EdgeFrameProcessor (processor.rs)
 
-Unified processing pipeline (`FrameProcessor` port):
+통합 처리 파이프라인 (`FrameProcessor` 포트):
 
 ```rust
 pub struct EdgeFrameProcessor {
@@ -193,7 +193,7 @@ impl FrameProcessor for EdgeFrameProcessor {
 
 ### OcrExtractor (ocr.rs)
 
-Tesseract-based OCR (optional feature):
+Tesseract 기반 OCR (선택적 기능):
 
 ```rust
 #[cfg(feature = "ocr")]
@@ -208,7 +208,7 @@ impl OcrExtractor {
 
 ### PrivacySanitizer (privacy.rs)
 
-Automatic PII filtering:
+PII 자동 필터링:
 
 ```rust
 pub struct PrivacySanitizer {
@@ -220,13 +220,13 @@ impl PrivacySanitizer {
 }
 ```
 
-**Filtering Targets**:
-- Email addresses
-- Credit card numbers
-- National identification numbers (Korean)
-- Usernames in file paths
+**필터링 대상**:
+- 이메일 주소
+- 신용카드 번호
+- 주민등록번호 (한국)
+- 파일 경로 내 사용자명
 
-## Processing Pipeline
+## 처리 파이프라인
 
 ```
 ┌─────────────┐    ┌────────────────┐    ┌───────────────┐
@@ -240,7 +240,7 @@ impl PrivacySanitizer {
                                       ▼
                             ┌─────────────────┐
                             │ FrameProcessor  │
-                            │ (by importance) │
+                            │  (importance별)  │
                             └─────────────────┘
                                       │
                     ┌─────────────────┼─────────────────┐
@@ -259,36 +259,36 @@ impl PrivacySanitizer {
                               ProcessedFrame
 ```
 
-## Dependencies
+## 의존성
 
-- `xcap`: Cross-platform screen capture
-- `image`: Image processing
-- `fast_image_resize`: Fast resize
-- `webp`: WebP encoding
+- `xcap`: 크로스플랫폼 화면 캡처
+- `image`: 이미지 처리
+- `fast_image_resize`: 고속 리사이즈
+- `webp`: WebP 인코딩
 - `leptess`: Tesseract OCR (optional)
-- `regex`: PII pattern matching
+- `regex`: PII 패턴 매칭
 
-## Performance Optimizations
+## 성능 최적화
 
-1. **Tile-based delta**: Transmit only changed regions instead of full frames
-2. **Adaptive quality**: Adjust compression ratio based on importance
-3. **Throttling**: Limit CPU load with minimum capture intervals
-4. **Async processing**: Heavy tasks like OCR run in separate tasks
+1. **타일 기반 델타**: 전체 프레임 대신 변경 영역만 전송
+2. **적응형 품질**: 중요도에 따른 압축률 조절
+3. **쓰로틀링**: 최소 캡처 간격으로 CPU 부하 제한
+4. **비동기 처리**: OCR 등 무거운 작업은 별도 태스크
 
-## Tests
+## 테스트
 
 ```rust
 #[test]
 fn test_delta_encoding() {
     let encoder = DeltaEncoder::new(16, 0.01);
 
-    // Identical frames: no changes
+    // 동일 프레임: 변경 없음
     let frame1 = vec![0u8; 1024];
     let frame2 = frame1.clone();
     let delta = encoder.encode(&frame1, &frame2, 32, 32).unwrap();
     assert!(delta.changed_tiles.is_empty());
 
-    // Partial change: only the affected tile included
+    // 일부 변경: 해당 타일만 포함
     let mut frame3 = frame1.clone();
     frame3[0] = 255;
     let delta = encoder.encode(&frame1, &frame3, 32, 32).unwrap();
