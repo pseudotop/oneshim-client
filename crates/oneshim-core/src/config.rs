@@ -588,6 +588,10 @@ pub struct UpdateConfig {
     pub include_prerelease: bool,
     #[serde(default)]
     pub auto_install: bool,
+    #[serde(default = "default_update_require_signature")]
+    pub require_signature_verification: bool,
+    #[serde(default = "default_update_signature_public_key")]
+    pub signature_public_key: String,
 }
 
 impl Default for UpdateConfig {
@@ -599,8 +603,18 @@ impl Default for UpdateConfig {
             check_interval_hours: default_check_interval_hours(),
             include_prerelease: false,
             auto_install: false,
+            require_signature_verification: default_update_require_signature(),
+            signature_public_key: default_update_signature_public_key(),
         }
     }
+}
+
+fn default_update_require_signature() -> bool {
+    true
+}
+
+fn default_update_signature_public_key() -> String {
+    "GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=".to_string()
 }
 
 // ============================================================

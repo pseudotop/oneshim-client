@@ -91,6 +91,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 futures = "0.3"
 semver = { version = "1", features = ["serde"] }
 sha2 = "0.10"
+ed25519-dalek = "2.1"
 
 # 성능 최적화 (Phase 31-33)
 lru = "0.12"

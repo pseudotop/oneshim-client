@@ -5,6 +5,8 @@
 
 #![allow(dead_code)] // UI 연동 전까지 일부 메서드/필드 미사용
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use oneshim_core::config::UpdateConfig;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -343,6 +345,11 @@ impl Updater {
             )));
         }
 
+        if self.config.require_signature_verification {
+            let signature = self.fetch_signature(&validated_url).await?;
+            self.verify_signature(&bytes, &signature)?;
+        }
+
         let temp_dir = std::env::temp_dir();
         let file_name = validated_url
             .path_segments()
@@ -361,6 +368,76 @@ impl Updater {
 
         tracing::info!("업데이트 다운로드 완료: {:?}", temp_path);
         Ok(temp_path)
+    }
+
+    async fn fetch_signature(&self, download_url: &reqwest::Url) -> Result<Vec<u8>, UpdateError> {
+        let sig_url = reqwest::Url::parse(&format!("{}.sig", download_url))
+            .map_err(|e| UpdateError::Integrity(format!("서명 URL 파싱 실패: {}", e)))?;
+
+        self.validate_download_url(sig_url.as_str())?;
+
+        let response = self.http_client.get(sig_url.clone()).send().await?;
+        if !response.status().is_success() {
+            return Err(UpdateError::Integrity(format!(
+                "서명 파일 다운로드 실패: HTTP {} ({})",
+                response.status(),
+                sig_url
+            )));
+        }
+
+        let body = response.bytes().await?;
+        let body = String::from_utf8(body.to_vec())
+            .map_err(|e| UpdateError::Integrity(format!("서명 파일 인코딩 오류: {}", e)))?;
+
+        let sig_b64 = body
+            .split_whitespace()
+            .next()
+            .ok_or_else(|| UpdateError::Integrity("서명 파일 내용이 비어 있습니다".to_string()))?;
+
+        BASE64
+            .decode(sig_b64)
+            .map_err(|e| UpdateError::Integrity(format!("서명 base64 디코딩 실패: {}", e)))
+    }
+
+    fn verify_signature(&self, payload: &[u8], signature_bytes: &[u8]) -> Result<(), UpdateError> {
+        let key_b64 = self
+            .config
+            .signature_public_key
+            .split_whitespace()
+            .next()
+            .filter(|k| !k.trim().is_empty())
+            .ok_or_else(|| {
+                UpdateError::Integrity(
+                    "서명 검증용 공개키가 설정되지 않았습니다 (update.signature_public_key)"
+                        .to_string(),
+                )
+            })?;
+
+        let key_bytes = BASE64
+            .decode(key_b64)
+            .map_err(|e| UpdateError::Integrity(format!("공개키 base64 디코딩 실패: {}", e)))?;
+        let key_len = key_bytes.len();
+        let key_array: [u8; 32] = key_bytes.try_into().map_err(|_| {
+            UpdateError::Integrity(format!(
+                "공개키 길이가 올바르지 않습니다: {} bytes (expected 32)",
+                key_len
+            ))
+        })?;
+
+        let signature_array: [u8; 64] = signature_bytes.try_into().map_err(|_| {
+            UpdateError::Integrity(format!(
+                "서명 길이가 올바르지 않습니다: {} bytes (expected 64)",
+                signature_bytes.len()
+            ))
+        })?;
+
+        let public_key = VerifyingKey::from_bytes(&key_array)
+            .map_err(|e| UpdateError::Integrity(format!("공개키 파싱 실패: {}", e)))?;
+        let signature = Signature::from_bytes(&signature_array);
+
+        public_key
+            .verify(payload, &signature)
+            .map_err(|e| UpdateError::Integrity(format!("서명 검증 실패: {}", e)))
     }
 
     async fn fetch_expected_sha256(
@@ -735,6 +812,8 @@ mod tests {
             check_interval_hours: 24,
             include_prerelease: false,
             auto_install: false,
+            require_signature_verification: false,
+            signature_public_key: String::new(),
         }
     }
 
@@ -1081,5 +1160,43 @@ mod tests {
 
         let result = updater.extract_zip(&zip_path);
         assert!(matches!(result, Err(UpdateError::Install(_))));
+    }
+
+    #[test]
+    fn verify_signature_accepts_valid_ed25519_signature() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let signing_key = SigningKey::from_bytes(&[7u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+
+        let mut config = test_config();
+        config.require_signature_verification = true;
+        config.signature_public_key = BASE64.encode(verifying_key.as_bytes());
+        let updater = Updater::new(config);
+
+        let payload = b"oneshim-release-artifact";
+        let signature = signing_key.sign(payload);
+
+        let result = updater.verify_signature(payload, signature.to_bytes().as_slice());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn verify_signature_rejects_invalid_signature() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let signing_key = SigningKey::from_bytes(&[9u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+
+        let mut config = test_config();
+        config.require_signature_verification = true;
+        config.signature_public_key = BASE64.encode(verifying_key.as_bytes());
+        let updater = Updater::new(config);
+
+        let payload = b"artifact-A";
+        let signature = signing_key.sign(payload);
+
+        let result = updater.verify_signature(b"artifact-B", signature.to_bytes().as_slice());
+        assert!(matches!(result, Err(UpdateError::Integrity(_))));
     }
 }

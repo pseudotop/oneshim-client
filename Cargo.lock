@@ -4950,6 +4950,7 @@ dependencies = [
  "clap",
  "config",
  "directories",
+ "ed25519-dalek",
  "flate2",
  "futures",
  "iced",
