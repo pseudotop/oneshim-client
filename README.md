@@ -10,9 +10,9 @@
   <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a>
 </p>
 
-# ONESHIM Rust Client
+# ONESHIM Client
 
-The Rust-native desktop client for AI-assisted office productivity, with local context capture, real-time suggestions, and a built-in dashboard.
+A desktop client for AI-assisted office productivity — local context capture, real-time suggestions, and a built-in dashboard. Built with Rust for native performance across macOS, Windows, and Linux.
 
 ## Why ONESHIM
 
@@ -24,7 +24,7 @@ The Rust-native desktop client for AI-assisted office productivity, with local c
 
 - Individual contributors who want visibility into focus patterns and work context
 - Teams building AI-assisted workflow tooling on top of rich desktop signals
-- Developers who want a Rust-first, modular client with clear architecture boundaries
+- Developers who want a modular, high-performance client with clear architecture boundaries
 
 ## 2-Minute Quickstart
 
