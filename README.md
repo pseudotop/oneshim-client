@@ -1,3 +1,15 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/brand/logo-full-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/brand/logo-full-light.svg">
+    <img alt="ONESHIM Client" src="./assets/brand/logo-full-light.svg" width="400">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a>
+</p>
+
 # ONESHIM Rust Client
 
 The Rust-native desktop client for AI-assisted office productivity, with local context capture, real-time suggestions, and a built-in dashboard.
@@ -269,7 +281,7 @@ For a detailed development guide, see [CLAUDE.md](./CLAUDE.md).
 
 Current quality and release metrics are tracked in [docs/STATUS.md](./docs/STATUS.md).
 Documentation language and consistency rules are defined in [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
-Korean companion guide: [README.ko.md](./README.ko.md).
+Korean translation: [README.ko.md](./README.ko.md).
 Korean companion policy/status docs: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md), [docs/STATUS.ko.md](./docs/STATUS.ko.md).
 
 ## Development

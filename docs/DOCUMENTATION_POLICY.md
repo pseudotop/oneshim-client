@@ -1,3 +1,5 @@
+[English](./DOCUMENTATION_POLICY.md) | [한국어](./DOCUMENTATION_POLICY.ko.md)
+
 # Documentation Policy
 
 ## Language Policy

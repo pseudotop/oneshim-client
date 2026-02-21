@@ -1,6 +1,6 @@
-# 프로젝트 상태 (단일 소스 안내)
+[English](./STATUS.md) | [한국어](./STATUS.ko.md)
 
-이 문서는 [STATUS.md](./STATUS.md)의 한국어 companion입니다.
+# 프로젝트 상태 (단일 소스)
 
 최신/정확한 기준 문서는 영문 기본 문서인 [STATUS.md](./STATUS.md)입니다.
 

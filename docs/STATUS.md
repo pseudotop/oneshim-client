@@ -1,3 +1,5 @@
+[English](./STATUS.md) | [한국어](./STATUS.ko.md)
+
 # Project Status (Single Source of Truth)
 
 This document is the canonical source for mutable project quality metrics.

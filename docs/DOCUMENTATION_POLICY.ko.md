@@ -1,6 +1,6 @@
-# 문서 정책 (한국어 Companion)
+[English](./DOCUMENTATION_POLICY.md) | [한국어](./DOCUMENTATION_POLICY.ko.md)
 
-이 문서는 [DOCUMENTATION_POLICY.md](./DOCUMENTATION_POLICY.md)의 한국어 companion입니다.
+# 문서 정책
 
 기준 문서는 영문 기본 문서인 [DOCUMENTATION_POLICY.md](./DOCUMENTATION_POLICY.md)입니다.
 
