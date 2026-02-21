@@ -4,7 +4,7 @@ use oneshim_core::config::UpdateConfig;
 use oneshim_web::update_control::{PendingUpdateInfo, UpdateAction, UpdatePhase, UpdateStatus};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{error, info, warn};
 
 #[async_trait]
@@ -53,6 +53,7 @@ pub async fn run_update_coordinator(
     config: UpdateConfig,
     state: Arc<RwLock<UpdateStatus>>,
     action_rx: mpsc::UnboundedReceiver<UpdateAction>,
+    status_tx: Option<broadcast::Sender<UpdateStatus>>,
     auto_install: bool,
 ) {
     if !config.enabled {
@@ -60,34 +61,46 @@ pub async fn run_update_coordinator(
         guard.phase = UpdatePhase::Idle;
         guard.message = Some("업데이트 기능이 비활성화되어 있습니다".to_string());
         guard.pending = None;
+        if let Some(tx) = &status_tx {
+            let _ = tx.send(guard.clone());
+        }
         return;
     }
 
     let updater = Updater::new(config);
 
-    run_update_coordinator_with_executor(updater, state, action_rx, auto_install).await;
+    run_update_coordinator_with_executor(updater, state, action_rx, status_tx, auto_install).await;
 }
 
 pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
     updater: E,
     state: Arc<RwLock<UpdateStatus>>,
     mut action_rx: mpsc::UnboundedReceiver<UpdateAction>,
+    status_tx: Option<broadcast::Sender<UpdateStatus>>,
     auto_install: bool,
 ) {
+    if let Some(tx) = &status_tx {
+        let snapshot = state.read().await.clone();
+        let _ = tx.send(snapshot);
+    }
+
     if updater.should_check_for_updates() {
-        run_check(&updater, &state, auto_install).await;
+        run_check(&updater, &state, status_tx.as_ref(), auto_install).await;
     }
 
     while let Some(action) = action_rx.recv().await {
         match action {
             UpdateAction::CheckNow => {
-                run_check(&updater, &state, auto_install).await;
+                run_check(&updater, &state, status_tx.as_ref(), auto_install).await;
             }
             UpdateAction::Approve => {
-                if let Err(e) = apply_pending_update(&updater, &state).await {
+                if let Err(e) = apply_pending_update(&updater, &state, status_tx.as_ref()).await {
                     let mut guard = state.write().await;
                     guard.phase = UpdatePhase::Error;
                     guard.message = Some(format!("업데이트 적용 실패: {}", e));
+                    if let Some(tx) = &status_tx {
+                        let _ = tx.send(guard.clone());
+                    }
                 }
             }
             UpdateAction::Defer => {
@@ -95,6 +108,9 @@ pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
                 guard.phase = UpdatePhase::Deferred;
                 guard.message = Some("업데이트를 나중에 설치하도록 연기했습니다".to_string());
                 guard.pending = None;
+                if let Some(tx) = &status_tx {
+                    let _ = tx.send(guard.clone());
+                }
             }
         }
     }
@@ -103,6 +119,7 @@ pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
 async fn apply_pending_update<E: UpdateExecutor>(
     updater: &E,
     state: &Arc<RwLock<UpdateStatus>>,
+    status_tx: Option<&broadcast::Sender<UpdateStatus>>,
 ) -> Result<(), UpdateError> {
     let pending = {
         let guard = state.read().await;
@@ -113,6 +130,9 @@ async fn apply_pending_update<E: UpdateExecutor>(
         let mut guard = state.write().await;
         guard.phase = UpdatePhase::Idle;
         guard.message = Some("적용할 대기 중 업데이트가 없습니다".to_string());
+        if let Some(tx) = status_tx {
+            let _ = tx.send(guard.clone());
+        }
         return Ok(());
     };
 
@@ -120,6 +140,9 @@ async fn apply_pending_update<E: UpdateExecutor>(
         let mut guard = state.write().await;
         guard.phase = UpdatePhase::Installing;
         guard.message = Some(format!("{} 버전을 설치 중입니다", pending.latest_version));
+        if let Some(tx) = status_tx {
+            let _ = tx.send(guard.clone());
+        }
     }
 
     let path = updater.download_update(&pending.download_url).await?;
@@ -132,6 +155,9 @@ async fn apply_pending_update<E: UpdateExecutor>(
                 pending.latest_version
             ));
             guard.pending = None;
+            if let Some(tx) = status_tx {
+                let _ = tx.send(guard.clone());
+            }
             Ok(())
         }
         Err(e) => {
@@ -139,6 +165,9 @@ async fn apply_pending_update<E: UpdateExecutor>(
             let mut guard = state.write().await;
             guard.phase = UpdatePhase::Error;
             guard.message = Some(format!("업데이트 설치 실패: {}", e));
+            if let Some(tx) = status_tx {
+                let _ = tx.send(guard.clone());
+            }
             Err(e)
         }
     }
@@ -147,6 +176,7 @@ async fn apply_pending_update<E: UpdateExecutor>(
 async fn run_check<E: UpdateExecutor>(
     updater: &E,
     state: &Arc<RwLock<UpdateStatus>>,
+    status_tx: Option<&broadcast::Sender<UpdateStatus>>,
     auto_install: bool,
 ) {
     {
@@ -154,6 +184,9 @@ async fn run_check<E: UpdateExecutor>(
         guard.phase = UpdatePhase::Checking;
         guard.message = Some("새 버전을 확인하고 있습니다".to_string());
         guard.pending = None;
+        if let Some(tx) = status_tx {
+            let _ = tx.send(guard.clone());
+        }
     }
 
     let result = updater.check_for_updates().await;
@@ -163,6 +196,9 @@ async fn run_check<E: UpdateExecutor>(
             guard.phase = UpdatePhase::Idle;
             guard.message = Some(format!("최신 버전 사용 중: {}", current));
             guard.pending = None;
+            if let Some(tx) = status_tx {
+                let _ = tx.send(guard.clone());
+            }
         }
         Ok(UpdateCheckResult::Available {
             current,
@@ -185,14 +221,20 @@ async fn run_check<E: UpdateExecutor>(
                     published_at: release.published_at.clone(),
                     download_url,
                 });
+                if let Some(tx) = status_tx {
+                    let _ = tx.send(guard.clone());
+                }
             }
 
             if auto_install {
                 info!("자동 업데이트 모드: 즉시 설치를 진행합니다");
-                if let Err(e) = apply_pending_update(updater, state).await {
+                if let Err(e) = apply_pending_update(updater, state, status_tx).await {
                     let mut guard = state.write().await;
                     guard.phase = UpdatePhase::Error;
                     guard.message = Some(format!("자동 설치 실패: {}", e));
+                    if let Some(tx) = status_tx {
+                        let _ = tx.send(guard.clone());
+                    }
                 }
             }
         }
@@ -201,6 +243,9 @@ async fn run_check<E: UpdateExecutor>(
             guard.phase = UpdatePhase::Idle;
             guard.message = Some("업데이트 기능이 비활성화되어 있습니다".to_string());
             guard.pending = None;
+            if let Some(tx) = status_tx {
+                let _ = tx.send(guard.clone());
+            }
         }
         Err(e) => {
             warn!("업데이트 확인 실패: {}", e);
@@ -208,6 +253,9 @@ async fn run_check<E: UpdateExecutor>(
             guard.phase = UpdatePhase::Error;
             guard.message = Some(format!("업데이트 확인 실패: {}", e));
             guard.pending = None;
+            if let Some(tx) = status_tx {
+                let _ = tx.send(guard.clone());
+            }
         }
     }
 
@@ -326,6 +374,7 @@ mod tests {
             fake,
             state.clone(),
             rx,
+            None,
             false,
         ));
 
@@ -351,6 +400,7 @@ mod tests {
             fake,
             state.clone(),
             rx,
+            None,
             false,
         ));
 
@@ -374,6 +424,7 @@ mod tests {
             fake,
             state.clone(),
             rx,
+            None,
             false,
         ));
 

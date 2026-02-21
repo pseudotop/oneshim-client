@@ -292,11 +292,13 @@ async fn main() -> Result<()> {
     if !args.offline && config.update.enabled {
         let update_config = config.update.clone();
         let update_state = update_control.state.clone();
+        let update_status_tx = Some(update_control.event_tx.clone());
         tokio::spawn(async move {
             update_coordinator::run_update_coordinator(
                 update_config,
                 update_state,
                 update_action_rx,
+                update_status_tx,
                 runtime_auto_update,
             )
             .await;

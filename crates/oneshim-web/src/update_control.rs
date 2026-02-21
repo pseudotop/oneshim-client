@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, RwLock};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum UpdatePhase {
@@ -55,13 +55,20 @@ pub enum UpdateAction {
 pub struct UpdateControl {
     pub state: Arc<RwLock<UpdateStatus>>,
     pub action_tx: mpsc::UnboundedSender<UpdateAction>,
+    pub event_tx: broadcast::Sender<UpdateStatus>,
 }
 
 impl UpdateControl {
     pub fn new(action_tx: mpsc::UnboundedSender<UpdateAction>, initial: UpdateStatus) -> Self {
+        let (event_tx, _) = broadcast::channel(64);
         Self {
             state: Arc::new(RwLock::new(initial)),
             action_tx,
+            event_tx,
         }
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<UpdateStatus> {
+        self.event_tx.subscribe()
     }
 }

@@ -124,6 +124,7 @@ pub fn api_routes() -> Router<AppState> {
         )
         .route("/update/status", get(handlers::update::get_update_status))
         .route("/update/action", post(handlers::update::post_update_action))
+        .route("/update/stream", get(handlers::update::get_update_stream))
 }
 
 #[cfg(test)]
