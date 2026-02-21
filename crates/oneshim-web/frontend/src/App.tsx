@@ -18,6 +18,7 @@ const Privacy = lazy(() => import('./pages/Privacy'))
 const Search = lazy(() => import('./pages/Search'))
 const SessionReplay = lazy(() => import('./pages/SessionReplay'))
 const Automation = lazy(() => import('./pages/Automation'))
+const Updates = lazy(() => import('./pages/Updates'))
 
 function App() {
   const navigate = useNavigate()
@@ -129,6 +130,19 @@ function App() {
                   <span className="sm:hidden">A</span>
                 </NavLink>
                 <NavLink
+                  to="/updates"
+                  className={({ isActive }) =>
+                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+                    }`
+                  }
+                >
+                  <span className="hidden sm:inline">{t('nav.updates')}</span>
+                  <span className="sm:hidden">U</span>
+                </NavLink>
+                <NavLink
                   to="/settings"
                   className={({ isActive }) =>
                     `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -235,6 +249,7 @@ function App() {
               <Route path="/focus" element={<Focus />} />
               <Route path="/replay" element={<SessionReplay />} />
               <Route path="/automation" element={<Automation />} />
+              <Route path="/updates" element={<Updates />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/search" element={<Search />} />

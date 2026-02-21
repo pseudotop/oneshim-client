@@ -13,6 +13,7 @@ import AppUsageChart from '../components/AppUsageChart'
 import ProcessList from '../components/ProcessList'
 import StatCard from '../components/StatCard'
 import FocusWidget from '../components/FocusWidget'
+import UpdatePanel from '../components/UpdatePanel'
 import DateRangePicker from '../components/DateRangePicker'
 import { ActivityHeatmap } from '../components/ActivityHeatmap'
 import { useSSE, ConnectionStatus } from '../hooks/useSSE'
@@ -143,6 +144,8 @@ export default function Dashboard() {
 
       {/* 집중도 위젯 */}
       <FocusWidget />
+
+      <UpdatePanel compact />
 
       {/* 통계 카드 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
