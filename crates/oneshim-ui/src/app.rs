@@ -198,6 +198,31 @@ pub enum UpdateUserAction {
     Defer,
 }
 
+#[derive(Debug, Clone)]
+pub struct UpdateStatusSnapshot {
+    pub phase: String,
+    pub message: Option<String>,
+    pub pending_latest_version: Option<String>,
+    pub auto_install: bool,
+}
+
+impl Default for UpdateStatusSnapshot {
+    fn default() -> Self {
+        Self {
+            phase: "Idle".to_string(),
+            message: None,
+            pending_latest_version: None,
+            auto_install: false,
+        }
+    }
+}
+
+impl UpdateStatusSnapshot {
+    pub fn is_pending_approval(&self) -> bool {
+        self.phase == "PendingApproval"
+    }
+}
+
 /// 앱 화면 (현재 표시 중인 뷰)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -250,6 +275,8 @@ pub struct OneshimApp {
     /// SQLite 저장소 (Agent와 공유, 타임라인 조회용)
     storage: Option<Arc<SqliteStorage>>,
     update_action_tx: Option<std::sync::mpsc::Sender<UpdateUserAction>>,
+    update_status_rx: Option<std::sync::mpsc::Receiver<UpdateStatusSnapshot>>,
+    update_status: UpdateStatusSnapshot,
 }
 
 impl Default for OneshimApp {
@@ -296,6 +323,8 @@ impl OneshimApp {
             window_id: None,
             storage: None,
             update_action_tx: None,
+            update_status_rx: None,
+            update_status: UpdateStatusSnapshot::default(),
         }
     }
 
@@ -326,6 +355,14 @@ impl OneshimApp {
         tx: std::sync::mpsc::Sender<UpdateUserAction>,
     ) -> Self {
         self.update_action_tx = Some(tx);
+        self
+    }
+
+    pub fn with_update_status_receiver(
+        mut self,
+        rx: std::sync::mpsc::Receiver<UpdateStatusSnapshot>,
+    ) -> Self {
+        self.update_status_rx = Some(rx);
         self
     }
 
@@ -526,6 +563,12 @@ impl OneshimApp {
                 // 활성 창 업데이트
                 self.main_state.active_app = get_active_window_name();
 
+                if let Some(ref rx) = self.update_status_rx {
+                    while let Ok(status) = rx.try_recv() {
+                        self.update_status = status;
+                    }
+                }
+
                 // 트레이 이벤트 폴링 (논블로킹)
                 if let Some(ref rx) = self.tray_rx {
                     while let Ok(tray_event) = rx.try_recv() {
@@ -594,17 +637,25 @@ impl OneshimApp {
                                 // 자동화 토글은 웹 대시보드/설정에서 처리
                             }
                             TrayEvent::ApproveUpdate => {
-                                if let Some(ref tx) = self.update_action_tx {
-                                    if tx.send(UpdateUserAction::Approve).is_err() {
-                                        warn!("업데이트 승인 이벤트 전송 실패");
+                                if self.update_status.is_pending_approval() {
+                                    if let Some(ref tx) = self.update_action_tx {
+                                        if tx.send(UpdateUserAction::Approve).is_err() {
+                                            warn!("업데이트 승인 이벤트 전송 실패");
+                                        }
                                     }
+                                } else {
+                                    debug!("트레이 승인 요청 무시: 승인 대기 상태 아님");
                                 }
                             }
                             TrayEvent::DeferUpdate => {
-                                if let Some(ref tx) = self.update_action_tx {
-                                    if tx.send(UpdateUserAction::Defer).is_err() {
-                                        warn!("업데이트 연기 이벤트 전송 실패");
+                                if self.update_status.is_pending_approval() {
+                                    if let Some(ref tx) = self.update_action_tx {
+                                        if tx.send(UpdateUserAction::Defer).is_err() {
+                                            warn!("업데이트 연기 이벤트 전송 실패");
+                                        }
                                     }
+                                } else {
+                                    debug!("트레이 연기 요청 무시: 승인 대기 상태 아님");
                                 }
                             }
                             TrayEvent::Quit => {
@@ -701,17 +752,25 @@ impl OneshimApp {
                         // 자동화 토글은 웹 대시보드/설정에서 처리
                     }
                     TrayEvent::ApproveUpdate => {
-                        if let Some(ref tx) = self.update_action_tx {
-                            if tx.send(UpdateUserAction::Approve).is_err() {
-                                warn!("업데이트 승인 이벤트 전송 실패");
+                        if self.update_status.is_pending_approval() {
+                            if let Some(ref tx) = self.update_action_tx {
+                                if tx.send(UpdateUserAction::Approve).is_err() {
+                                    warn!("업데이트 승인 이벤트 전송 실패");
+                                }
                             }
+                        } else {
+                            debug!("트레이 승인 요청 무시: 승인 대기 상태 아님");
                         }
                     }
                     TrayEvent::DeferUpdate => {
-                        if let Some(ref tx) = self.update_action_tx {
-                            if tx.send(UpdateUserAction::Defer).is_err() {
-                                warn!("업데이트 연기 이벤트 전송 실패");
+                        if self.update_status.is_pending_approval() {
+                            if let Some(ref tx) = self.update_action_tx {
+                                if tx.send(UpdateUserAction::Defer).is_err() {
+                                    warn!("업데이트 연기 이벤트 전송 실패");
+                                }
                             }
+                        } else {
+                            debug!("트레이 연기 요청 무시: 승인 대기 상태 아님");
                         }
                     }
                     TrayEvent::Quit => {
@@ -760,6 +819,36 @@ impl OneshimApp {
         ]
         .spacing(8);
 
+        let update_phase_text = match self.update_status.phase.as_str() {
+            "PendingApproval" => s.update_pending,
+            "Installing" => s.update_installing,
+            "Updated" => s.update_updated,
+            "Deferred" => s.update_deferred,
+            "Error" => s.update_error,
+            _ => "-",
+        };
+
+        let update_status = row![
+            text(format!("{}:", s.update_status)).size(14),
+            text(update_phase_text).size(14),
+            text(
+                self.update_status
+                    .pending_latest_version
+                    .clone()
+                    .unwrap_or_default(),
+            )
+            .size(12),
+        ]
+        .spacing(8);
+
+        let update_message = text(
+            self.update_status
+                .message
+                .clone()
+                .unwrap_or_else(|| "-".to_string()),
+        )
+        .size(12);
+
         // 시스템 메트릭
         let metrics = self.view_metrics_panel();
 
@@ -776,6 +865,8 @@ impl OneshimApp {
             header,
             horizontal_rule(1),
             connection_status,
+            update_status,
+            update_message,
             text(active_app_text).size(14),
             horizontal_rule(1),
             metrics,

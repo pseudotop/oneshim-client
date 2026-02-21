@@ -23,7 +23,7 @@ use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_ui::notifier::DesktopNotifierImpl;
 use oneshim_ui::tray::TrayManager;
-use oneshim_ui::{OneshimApp, UpdateUserAction};
+use oneshim_ui::{OneshimApp, UpdateStatusSnapshot, UpdateUserAction};
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
@@ -143,11 +143,13 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     if !offline_mode && config.update.enabled {
         let update_config = config.update.clone();
         let update_state = update_control.state.clone();
+        let update_status_tx = Some(update_control.event_tx.clone());
         runtime.spawn(async move {
             update_coordinator::run_update_coordinator(
                 update_config,
                 update_state,
                 update_action_rx,
+                update_status_tx,
                 runtime_auto_update,
             )
             .await;
@@ -194,6 +196,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         let web_event_tx = event_tx;
         let web_config_manager = config_manager.clone();
         let web_audit_logger = Arc::new(tokio::sync::RwLock::new(AuditLogger::default()));
+        let web_update_control = update_control.clone();
 
         // 자동화 컨트롤러 (config.automation.enabled일 때만)
         let automation_controller = if config.automation.enabled {
@@ -226,7 +229,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                 .with_event_tx(web_event_tx)
                 .with_config_manager(web_config_manager)
                 .with_audit_logger(web_audit_logger)
-                .with_update_control(update_control.clone());
+                .with_update_control(web_update_control.clone());
             if let Some(ctrl) = automation_controller {
                 web_server = web_server.with_automation_controller(ctrl);
             }
@@ -252,10 +255,36 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         }
     });
 
+    let (ui_update_status_tx, ui_update_status_rx) =
+        std::sync::mpsc::channel::<UpdateStatusSnapshot>();
+    let initial_update_status =
+        runtime.block_on(async { update_control.state.read().await.clone() });
+    let _ = ui_update_status_tx.send(UpdateStatusSnapshot {
+        phase: format!("{:?}", initial_update_status.phase),
+        message: initial_update_status.message,
+        pending_latest_version: initial_update_status.pending.map(|p| p.latest_version),
+        auto_install: initial_update_status.auto_install,
+    });
+    let mut update_rx = update_control.subscribe();
+    runtime.spawn(async move {
+        while let Ok(status) = update_rx.recv().await {
+            let snapshot = UpdateStatusSnapshot {
+                phase: format!("{:?}", status.phase),
+                message: status.message,
+                pending_latest_version: status.pending.map(|p| p.latest_version),
+                auto_install: status.auto_install,
+            };
+            if ui_update_status_tx.send(snapshot).is_err() {
+                break;
+            }
+        }
+    });
+
     let mut app = OneshimApp::new()
         .with_offline_mode(offline_mode)
         .with_storage(sqlite_storage)
-        .with_update_action_sender(ui_update_tx);
+        .with_update_action_sender(ui_update_tx)
+        .with_update_status_receiver(ui_update_status_rx);
 
     if let Some(rx) = tray_rx {
         app = app.with_tray_receiver(rx);

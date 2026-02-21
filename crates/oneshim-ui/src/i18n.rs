@@ -73,6 +73,12 @@ pub struct Strings {
     pub detail_view: &'static str,
     pub recent_suggestions: &'static str,
     pub no_suggestions: &'static str,
+    pub update_status: &'static str,
+    pub update_pending: &'static str,
+    pub update_installing: &'static str,
+    pub update_updated: &'static str,
+    pub update_deferred: &'static str,
+    pub update_error: &'static str,
 
     // 설정 섹션
     pub general: &'static str,
@@ -117,6 +123,12 @@ impl Strings {
         detail_view: "[상세]",
         recent_suggestions: "# 최근 제안",
         no_suggestions: "제안 없음",
+        update_status: "업데이트",
+        update_pending: "승인 대기",
+        update_installing: "설치 중",
+        update_updated: "업데이트 완료",
+        update_deferred: "연기됨",
+        update_error: "오류",
 
         general: "일반",
         startup: "시작",
@@ -158,6 +170,12 @@ impl Strings {
         detail_view: "[Detail]",
         recent_suggestions: "# Recent Suggestions",
         no_suggestions: "No suggestions",
+        update_status: "Update",
+        update_pending: "Pending approval",
+        update_installing: "Installing",
+        update_updated: "Updated",
+        update_deferred: "Deferred",
+        update_error: "Error",
 
         general: "General",
         startup: "Startup",
