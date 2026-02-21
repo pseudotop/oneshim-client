@@ -11,6 +11,44 @@ use tracing::debug;
 use super::{FrameRecord, SqliteStorage};
 
 impl SqliteStorage {
+    pub fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM frames WHERE timestamp >= ?1 AND timestamp <= ?2",
+                rusqlite::params![from, to],
+                |row| row.get(0),
+            )
+            .map_err(|e| CoreError::Internal(format!("프레임 개수 조회 실패: {e}")))?;
+
+        Ok(count as u64)
+    }
+
+    pub fn get_frame_file_path(&self, frame_id: i64) -> Result<Option<String>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let result: Result<Option<String>, rusqlite::Error> = conn.query_row(
+            "SELECT file_path FROM frames WHERE id = ?1",
+            rusqlite::params![frame_id],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(path) => Ok(path),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(CoreError::Internal(format!(
+                "프레임 파일 경로 조회 실패: {e}"
+            ))),
+        }
+    }
+
     /// 프레임 메타데이터 저장
     ///
     /// # Arguments

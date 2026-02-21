@@ -3,11 +3,58 @@
 //! 프레임에 태그를 추가/제거하고 태그별 프레임 조회.
 
 use oneshim_core::error::CoreError;
+use std::collections::HashMap;
 use tracing::debug;
 
 use super::{FrameRecord, SqliteStorage, TagRecord};
 
 impl SqliteStorage {
+    pub fn get_tag_ids_for_frames(
+        &self,
+        frame_ids: &[i64],
+    ) -> Result<HashMap<i64, Vec<i64>>, CoreError> {
+        if frame_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let placeholders: Vec<String> = frame_ids.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT frame_id, tag_id FROM frame_tags WHERE frame_id IN ({})",
+            placeholders.join(",")
+        );
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+
+        let params: Vec<Box<dyn rusqlite::types::ToSql>> = frame_ids
+            .iter()
+            .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
+            .collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+
+        let mut map: HashMap<i64, Vec<i64>> = HashMap::new();
+        for row in rows {
+            let (frame_id, tag_id) =
+                row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?;
+            map.entry(frame_id).or_default().push(tag_id);
+        }
+
+        Ok(map)
+    }
+
     /// 태그 생성
     ///
     /// # Arguments

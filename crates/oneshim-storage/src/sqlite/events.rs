@@ -12,6 +12,23 @@ use tracing::{debug, info};
 use super::SqliteStorage;
 
 impl SqliteStorage {
+    pub fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE timestamp >= ?1 AND timestamp <= ?2",
+                rusqlite::params![from, to],
+                |row| row.get(0),
+            )
+            .map_err(|e| CoreError::Internal(format!("이벤트 개수 조회 실패: {e}")))?;
+
+        Ok(count as u64)
+    }
+
     /// 이벤트에서 ID 추출
     pub(super) fn extract_event_id(event: &Event) -> String {
         match event {

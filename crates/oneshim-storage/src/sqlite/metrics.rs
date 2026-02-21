@@ -12,7 +12,104 @@ use oneshim_core::models::system::{NetworkInfo, SystemMetrics};
 use oneshim_core::ports::storage::MetricsStorage;
 use tracing::{debug, info};
 
-use super::SqliteStorage;
+use super::{HourlyMetricsRecord, SqliteStorage};
+
+impl SqliteStorage {
+    pub fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT session_id, started_at, ended_at, total_events, total_frames, total_idle_secs
+                 FROM session_stats
+                 ORDER BY started_at DESC
+                 LIMIT ?1",
+            )
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![limit as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            })
+            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            let (session_id, started_str, ended_str, events, frames, idle) =
+                row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?;
+
+            let started_at = DateTime::parse_from_rfc3339(&started_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+
+            let ended_at = ended_str.and_then(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .ok()
+            });
+
+            sessions.push(SessionStats {
+                session_id,
+                started_at,
+                ended_at,
+                total_events: events as u64,
+                total_frames: frames as u64,
+                total_idle_secs: idle as u64,
+            });
+        }
+
+        Ok(sessions)
+    }
+
+    pub fn list_hourly_metrics_since(
+        &self,
+        from_hour: &str,
+    ) -> Result<Vec<HourlyMetricsRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT hour, cpu_avg, cpu_max, memory_avg, memory_max, sample_count
+                 FROM system_metrics_hourly
+                 WHERE hour >= ?1
+                 ORDER BY hour ASC",
+            )
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![from_hour], |row| {
+                Ok(HourlyMetricsRecord {
+                    hour: row.get(0)?,
+                    cpu_avg: row.get(1)?,
+                    cpu_max: row.get(2)?,
+                    memory_avg: row.get::<_, i64>(3)? as u64,
+                    memory_max: row.get::<_, i64>(4)? as u64,
+                    sample_count: row.get::<_, i64>(5)? as u64,
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+        }
+
+        Ok(result)
+    }
+}
 
 #[async_trait]
 impl MetricsStorage for SqliteStorage {
