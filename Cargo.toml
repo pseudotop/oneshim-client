@@ -42,7 +42,7 @@ reqwest-eventsource = "0.6"
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 
 # 시스템 모니터링
-sysinfo = "0.32"
+sysinfo = "0.38"
 
 # 로컬 DB
 rusqlite = { version = "0.32", features = ["bundled"] }
