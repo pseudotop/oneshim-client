@@ -9,6 +9,7 @@ use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+use crate::error::ApiError;
 use crate::handlers::TimeRangeQuery;
 use crate::AppState;
 
@@ -127,7 +128,7 @@ pub struct SuggestionFeedbackRequest {
 /// GET /api/focus/metrics - 집중도 메트릭 조회 (오늘 + 최근 7일)
 pub async fn get_focus_metrics(
     State(state): State<AppState>,
-) -> Result<Json<FocusMetricsResponse>, (StatusCode, String)> {
+) -> Result<Json<FocusMetricsResponse>, ApiError> {
     debug!("GET /api/focus/metrics");
 
     let storage = &state.storage;
@@ -136,12 +137,12 @@ pub async fn get_focus_metrics(
     // 오늘 메트릭 조회 (없으면 생성)
     let today_metrics = storage
         .get_or_create_focus_metrics(&today)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // 최근 7일 메트릭 조회
     let history_raw = storage
         .get_recent_focus_metrics(7)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // DTO로 변환
     let today_dto = FocusMetricsDto {
@@ -182,7 +183,7 @@ pub async fn get_focus_metrics(
 pub async fn get_work_sessions(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<TimeRangeQuery>,
-) -> Result<Json<Vec<WorkSessionDto>>, (StatusCode, String)> {
+) -> Result<Json<Vec<WorkSessionDto>>, ApiError> {
     debug!("GET /api/focus/sessions");
 
     let storage = &state.storage;
@@ -190,53 +191,21 @@ pub async fn get_work_sessions(
     let to = query.to_datetime();
     let limit = query.limit_or_default();
 
-    let conn = storage.conn_ref().lock().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("잠금 획득 실패: {e}"),
-        )
-    })?;
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, started_at, ended_at, primary_app, category, state, 
-                    interruption_count, deep_work_secs, duration_secs
-             FROM work_sessions 
-             WHERE started_at >= ?1 AND started_at <= ?2
-             ORDER BY started_at DESC
-             LIMIT ?3",
-        )
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("쿼리 준비 실패: {e}"),
-            )
-        })?;
-
-    let sessions = stmt
-        .query_map(
-            rusqlite::params![from.to_rfc3339(), to.to_rfc3339(), limit as i64],
-            |row| {
-                Ok(WorkSessionDto {
-                    id: row.get(0)?,
-                    started_at: row.get(1)?,
-                    ended_at: row.get(2)?,
-                    primary_app: row.get(3)?,
-                    category: row.get(4)?,
-                    state: row.get(5)?,
-                    interruption_count: row.get(6)?,
-                    deep_work_secs: row.get(7)?,
-                    duration_secs: row.get(8)?,
-                })
-            },
-        )
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("쿼리 실행 실패: {e}"),
-            )
-        })?
-        .filter_map(|r| r.ok())
+    let sessions = storage
+        .list_work_sessions(&from.to_rfc3339(), &to.to_rfc3339(), limit)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| WorkSessionDto {
+            id: row.id,
+            started_at: row.started_at,
+            ended_at: row.ended_at,
+            primary_app: row.primary_app,
+            category: row.category,
+            state: row.state,
+            interruption_count: row.interruption_count,
+            deep_work_secs: row.deep_work_secs,
+            duration_secs: row.duration_secs,
+        })
         .collect();
 
     Ok(Json(sessions))
@@ -246,7 +215,7 @@ pub async fn get_work_sessions(
 pub async fn get_interruptions(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<TimeRangeQuery>,
-) -> Result<Json<Vec<InterruptionDto>>, (StatusCode, String)> {
+) -> Result<Json<Vec<InterruptionDto>>, ApiError> {
     debug!("GET /api/focus/interruptions");
 
     let storage = &state.storage;
@@ -254,51 +223,21 @@ pub async fn get_interruptions(
     let to = query.to_datetime();
     let limit = query.limit_or_default();
 
-    let conn = storage.conn_ref().lock().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("잠금 획득 실패: {e}"),
-        )
-    })?;
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, interrupted_at, from_app, from_category, to_app, to_category,
-                    resumed_at, resumed_to_app,
-                    CASE WHEN resumed_at IS NOT NULL 
-                         THEN CAST((julianday(resumed_at) - julianday(interrupted_at)) * 86400 AS INTEGER)
-                         ELSE NULL END as duration_secs
-             FROM interruptions 
-             WHERE interrupted_at >= ?1 AND interrupted_at <= ?2
-             ORDER BY interrupted_at DESC
-             LIMIT ?3",
-        )
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("쿼리 준비 실패: {e}")))?;
-
-    let interruptions = stmt
-        .query_map(
-            rusqlite::params![from.to_rfc3339(), to.to_rfc3339(), limit as i64],
-            |row| {
-                Ok(InterruptionDto {
-                    id: row.get(0)?,
-                    interrupted_at: row.get(1)?,
-                    from_app: row.get(2)?,
-                    from_category: row.get(3)?,
-                    to_app: row.get(4)?,
-                    to_category: row.get(5)?,
-                    resumed_at: row.get(6)?,
-                    resumed_to_app: row.get(7)?,
-                    duration_secs: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
-                })
-            },
-        )
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("쿼리 실행 실패: {e}"),
-            )
-        })?
-        .filter_map(|r| r.ok())
+    let interruptions = storage
+        .list_interruptions(&from.to_rfc3339(), &to.to_rfc3339(), limit)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| InterruptionDto {
+            id: row.id,
+            interrupted_at: row.interrupted_at,
+            from_app: row.from_app,
+            from_category: row.from_category,
+            to_app: row.to_app,
+            to_category: row.to_category,
+            resumed_at: row.resumed_at,
+            resumed_to_app: row.resumed_to_app,
+            duration_secs: row.duration_secs,
+        })
         .collect();
 
     Ok(Json(interruptions))
@@ -307,7 +246,7 @@ pub async fn get_interruptions(
 /// GET /api/focus/suggestions - 로컬 제안 목록 조회
 pub async fn get_suggestions(
     State(state): State<AppState>,
-) -> Result<Json<Vec<LocalSuggestionDto>>, (StatusCode, String)> {
+) -> Result<Json<Vec<LocalSuggestionDto>>, ApiError> {
     debug!("GET /api/focus/suggestions");
 
     let storage = &state.storage;
@@ -315,50 +254,19 @@ pub async fn get_suggestions(
     // 최근 24시간 내 제안만 조회
     let cutoff = (Utc::now() - Duration::hours(24)).to_rfc3339();
 
-    let conn = storage.conn_ref().lock().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("잠금 획득 실패: {e}"),
-        )
-    })?;
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, suggestion_type, payload, created_at, shown_at, dismissed_at, acted_at
-             FROM local_suggestions 
-             WHERE created_at >= ?1
-             ORDER BY created_at DESC
-             LIMIT 50",
-        )
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("쿼리 준비 실패: {e}"),
-            )
-        })?;
-
-    let suggestions = stmt
-        .query_map(rusqlite::params![cutoff], |row| {
-            let payload_str: String = row.get(2)?;
-            let payload: serde_json::Value =
-                serde_json::from_str(&payload_str).unwrap_or(serde_json::json!({}));
-            Ok(LocalSuggestionDto {
-                id: row.get(0)?,
-                suggestion_type: row.get(1)?,
-                payload,
-                created_at: row.get(3)?,
-                shown_at: row.get(4)?,
-                dismissed_at: row.get(5)?,
-                acted_at: row.get(6)?,
-            })
+    let suggestions = storage
+        .list_recent_local_suggestions(&cutoff, 50)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| LocalSuggestionDto {
+            id: row.id,
+            suggestion_type: row.suggestion_type,
+            payload: row.payload,
+            created_at: row.created_at,
+            shown_at: row.shown_at,
+            dismissed_at: row.dismissed_at,
+            acted_at: row.acted_at,
         })
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("쿼리 실행 실패: {e}"),
-            )
-        })?
-        .filter_map(|r| r.ok())
         .collect();
 
     Ok(Json(suggestions))
@@ -369,7 +277,7 @@ pub async fn submit_suggestion_feedback(
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(request): Json<SuggestionFeedbackRequest>,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, ApiError> {
     debug!(
         "POST /api/focus/suggestions/{}/feedback action={}",
         id, request.action
@@ -380,18 +288,18 @@ pub async fn submit_suggestion_feedback(
     match request.action.as_str() {
         "shown" => storage
             .mark_suggestion_shown(id)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+            .map_err(|e| ApiError::Internal(e.to_string()))?,
         "dismissed" => storage
             .mark_suggestion_dismissed(id)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+            .map_err(|e| ApiError::Internal(e.to_string()))?,
         "acted" => storage
             .mark_suggestion_acted(id)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+            .map_err(|e| ApiError::Internal(e.to_string()))?,
         _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("유효하지 않은 액션: {}", request.action),
-            ))
+            return Err(ApiError::BadRequest(format!(
+                "유효하지 않은 액션: {}",
+                request.action
+            )))
         }
     }
 

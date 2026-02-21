@@ -120,6 +120,43 @@ pub struct TagRecord {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct FocusWorkSessionRecord {
+    pub id: i64,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub primary_app: String,
+    pub category: String,
+    pub state: String,
+    pub interruption_count: u32,
+    pub deep_work_secs: u64,
+    pub duration_secs: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct FocusInterruptionRecord {
+    pub id: i64,
+    pub interrupted_at: String,
+    pub from_app: String,
+    pub from_category: String,
+    pub to_app: String,
+    pub to_category: String,
+    pub resumed_at: Option<String>,
+    pub resumed_to_app: Option<String>,
+    pub duration_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalSuggestionRecord {
+    pub id: i64,
+    pub suggestion_type: String,
+    pub payload: serde_json::Value,
+    pub created_at: String,
+    pub shown_at: Option<String>,
+    pub dismissed_at: Option<String>,
+    pub acted_at: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

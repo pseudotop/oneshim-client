@@ -9,7 +9,9 @@ use oneshim_core::models::work_session::{
 };
 use tracing::debug;
 
-use super::SqliteStorage;
+use super::{
+    FocusInterruptionRecord, FocusWorkSessionRecord, LocalSuggestionRecord, SqliteStorage,
+};
 
 impl SqliteStorage {
     // --------------------------------------------------------
@@ -593,6 +595,144 @@ impl SqliteStorage {
         }
 
         Ok(results)
+    }
+
+    pub fn list_work_sessions(
+        &self,
+        from: &str,
+        to: &str,
+        limit: usize,
+    ) -> Result<Vec<FocusWorkSessionRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, started_at, ended_at, primary_app, category, state,
+                        interruption_count, deep_work_secs, duration_secs
+                 FROM work_sessions
+                 WHERE started_at >= ?1 AND started_at <= ?2
+                 ORDER BY started_at DESC
+                 LIMIT ?3",
+            )
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![from, to, limit as i64], |row| {
+                Ok(FocusWorkSessionRecord {
+                    id: row.get(0)?,
+                    started_at: row.get(1)?,
+                    ended_at: row.get(2)?,
+                    primary_app: row.get(3)?,
+                    category: row.get(4)?,
+                    state: row.get(5)?,
+                    interruption_count: row.get(6)?,
+                    deep_work_secs: row.get(7)?,
+                    duration_secs: row.get(8)?,
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+        }
+        Ok(records)
+    }
+
+    pub fn list_interruptions(
+        &self,
+        from: &str,
+        to: &str,
+        limit: usize,
+    ) -> Result<Vec<FocusInterruptionRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, interrupted_at, from_app, from_category, to_app, to_category,
+                        resumed_at, resumed_to_app,
+                        CASE WHEN resumed_at IS NOT NULL
+                             THEN CAST((julianday(resumed_at) - julianday(interrupted_at)) * 86400 AS INTEGER)
+                             ELSE NULL END as duration_secs
+                 FROM interruptions
+                 WHERE interrupted_at >= ?1 AND interrupted_at <= ?2
+                 ORDER BY interrupted_at DESC
+                 LIMIT ?3",
+            )
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![from, to, limit as i64], |row| {
+                Ok(FocusInterruptionRecord {
+                    id: row.get(0)?,
+                    interrupted_at: row.get(1)?,
+                    from_app: row.get(2)?,
+                    from_category: row.get(3)?,
+                    to_app: row.get(4)?,
+                    to_category: row.get(5)?,
+                    resumed_at: row.get(6)?,
+                    resumed_to_app: row.get(7)?,
+                    duration_secs: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+        }
+        Ok(records)
+    }
+
+    pub fn list_recent_local_suggestions(
+        &self,
+        cutoff: &str,
+        limit: usize,
+    ) -> Result<Vec<LocalSuggestionRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, suggestion_type, payload, created_at, shown_at, dismissed_at, acted_at
+                 FROM local_suggestions
+                 WHERE created_at >= ?1
+                 ORDER BY created_at DESC
+                 LIMIT ?2",
+            )
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![cutoff, limit as i64], |row| {
+                let payload_str: String = row.get(2)?;
+                let payload: serde_json::Value =
+                    serde_json::from_str(&payload_str).unwrap_or(serde_json::json!({}));
+
+                Ok(LocalSuggestionRecord {
+                    id: row.get(0)?,
+                    suggestion_type: row.get(1)?,
+                    payload,
+                    created_at: row.get(3)?,
+                    shown_at: row.get(4)?,
+                    dismissed_at: row.get(5)?,
+                    acted_at: row.get(6)?,
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+        }
+        Ok(records)
     }
 
     // --------------------------------------------------------
