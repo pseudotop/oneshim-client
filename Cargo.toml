@@ -90,6 +90,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 futures = "0.3"
 semver = { version = "1", features = ["serde"] }
+sha2 = "0.10"
 
 # 성능 최적화 (Phase 31-33)
 lru = "0.12"

@@ -35,6 +35,7 @@ serde = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 semver = { workspace = true }
+sha2 = { workspace = true }
 self_update = { workspace = true }
 reqwest = { workspace = true }
 thiserror = { workspace = true }

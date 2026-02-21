@@ -7,7 +7,11 @@
 
 use oneshim_core::config::UpdateConfig;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::PathBuf;
+use std::path::{Component, Path};
 use thiserror::Error;
 
 /// 현재 앱 버전 (Cargo.toml에서 가져옴)
@@ -55,6 +59,10 @@ pub enum UpdateError {
     /// 릴리즈에 적합한 에셋 없음
     #[error("현재 플랫폼에 맞는 에셋을 찾을 수 없습니다")]
     NoSuitableAsset,
+
+    /// 무결성 검증 실패
+    #[error("무결성 검증 실패: {0}")]
+    Integrity(String),
 }
 
 /// GitHub Release 정보
@@ -110,6 +118,13 @@ pub struct Updater {
 }
 
 impl Updater {
+    const ALLOWED_DOWNLOAD_HOSTS: [&'static str; 4] = [
+        "github.com",
+        "api.github.com",
+        "objects.githubusercontent.com",
+        "githubusercontent.com",
+    ];
+
     /// 새 Updater 인스턴스 생성
     pub fn new(config: UpdateConfig) -> Self {
         let http_client = reqwest::Client::builder()
@@ -305,9 +320,10 @@ impl Updater {
 
     /// 업데이트 다운로드
     pub async fn download_update(&self, download_url: &str) -> Result<PathBuf, UpdateError> {
-        tracing::info!("업데이트 다운로드 시작: {}", download_url);
+        let validated_url = self.validate_download_url(download_url)?;
+        tracing::info!("업데이트 다운로드 시작: {}", validated_url);
 
-        let response = self.http_client.get(download_url).send().await?;
+        let response = self.http_client.get(validated_url.clone()).send().await?;
 
         if !response.status().is_success() {
             return Err(UpdateError::Download(format!(
@@ -316,19 +332,134 @@ impl Updater {
             )));
         }
 
-        // 임시 파일에 저장
-        let temp_dir = std::env::temp_dir();
-        let file_name = download_url
-            .split('/')
-            .next_back()
-            .unwrap_or("oneshim-update");
-        let temp_path = temp_dir.join(file_name);
-
         let bytes = response.bytes().await?;
-        std::fs::write(&temp_path, &bytes)?;
+
+        let expected_hash = self.fetch_expected_sha256(&validated_url).await?;
+        let actual_hash = Self::sha256_hex(&bytes);
+        if actual_hash != expected_hash {
+            return Err(UpdateError::Integrity(format!(
+                "체크섬 불일치: expected={}, actual={}",
+                expected_hash, actual_hash
+            )));
+        }
+
+        let temp_dir = std::env::temp_dir();
+        let file_name = validated_url
+            .path_segments()
+            .and_then(|mut s| s.next_back())
+            .unwrap_or("oneshim-update")
+            .trim();
+        let unique = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        let temp_path = temp_dir.join(format!("oneshim-{unique}-{file_name}"));
+
+        let mut outfile = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)?;
+        outfile.write_all(&bytes)?;
+        outfile.sync_all()?;
 
         tracing::info!("업데이트 다운로드 완료: {:?}", temp_path);
         Ok(temp_path)
+    }
+
+    async fn fetch_expected_sha256(
+        &self,
+        download_url: &reqwest::Url,
+    ) -> Result<String, UpdateError> {
+        let checksum_url = reqwest::Url::parse(&format!("{}.sha256", download_url))
+            .map_err(|e| UpdateError::Integrity(format!("체크섬 URL 파싱 실패: {}", e)))?;
+
+        self.validate_download_url(checksum_url.as_str())?;
+
+        let response = self.http_client.get(checksum_url.clone()).send().await?;
+        if !response.status().is_success() {
+            return Err(UpdateError::Integrity(format!(
+                "체크섬 파일 다운로드 실패: HTTP {} ({})",
+                response.status(),
+                checksum_url
+            )));
+        }
+
+        let body = response.bytes().await?;
+        let body = String::from_utf8(body.to_vec())
+            .map_err(|e| UpdateError::Integrity(format!("체크섬 파일 인코딩 오류: {}", e)))?;
+
+        Self::parse_sha256_manifest(&body)
+    }
+
+    fn parse_sha256_manifest(content: &str) -> Result<String, UpdateError> {
+        let hash = content
+            .split_whitespace()
+            .next()
+            .ok_or_else(|| UpdateError::Integrity("체크섬 파일 내용이 비어 있습니다".to_string()))?
+            .to_ascii_lowercase();
+
+        let is_hex = hash.len() == 64 && hash.chars().all(|ch| ch.is_ascii_hexdigit());
+        if !is_hex {
+            return Err(UpdateError::Integrity(format!(
+                "유효하지 않은 SHA-256 형식: {}",
+                hash
+            )));
+        }
+
+        Ok(hash)
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn validate_download_url(&self, url: &str) -> Result<reqwest::Url, UpdateError> {
+        let parsed = reqwest::Url::parse(url)
+            .map_err(|e| UpdateError::Download(format!("다운로드 URL 파싱 실패: {}", e)))?;
+
+        if parsed.scheme() != "https" {
+            return Err(UpdateError::Download(format!(
+                "HTTPS가 아닌 URL은 허용되지 않습니다: {}",
+                parsed
+            )));
+        }
+
+        let Some(host) = parsed.host_str() else {
+            return Err(UpdateError::Download(
+                "다운로드 URL host가 없습니다".to_string(),
+            ));
+        };
+
+        let allowed = Self::ALLOWED_DOWNLOAD_HOSTS.iter().any(|allowed_host| {
+            host == *allowed_host || host.ends_with(&format!(".{}", allowed_host))
+        });
+
+        if !allowed {
+            return Err(UpdateError::Download(format!(
+                "허용되지 않은 다운로드 호스트: {}",
+                host
+            )));
+        }
+
+        Ok(parsed)
+    }
+
+    fn is_safe_archive_path(path: &Path) -> bool {
+        path.components()
+            .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
+    }
+
+    fn backup_path_for(current_exe: &Path) -> Result<PathBuf, UpdateError> {
+        let parent = current_exe.parent().ok_or_else(|| {
+            UpdateError::Install("현재 실행 파일의 상위 디렉토리를 찾을 수 없습니다".to_string())
+        })?;
+
+        let file_name = current_exe
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("oneshim")
+            .to_string();
+        let ts = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        Ok(parent.join(format!("{}.rollback.{}", file_name, ts)))
     }
 
     /// 업데이트 설치 및 재시작
@@ -339,6 +470,10 @@ impl Updater {
         use self_update::self_replace;
 
         tracing::info!("업데이트 설치 시작: {:?}", downloaded_path);
+
+        let current_exe = std::env::current_exe()?;
+        let backup_path = Self::backup_path_for(&current_exe)?;
+        std::fs::copy(&current_exe, &backup_path)?;
 
         // 아카이브 확장자 확인
         let file_name = downloaded_path
@@ -362,7 +497,27 @@ impl Updater {
         tracing::info!("업데이트 설치 완료, 재시작합니다...");
 
         // 재시작
-        self.restart_app()
+        match self.restart_app() {
+            Ok(()) => Ok(()),
+            Err(restart_err) => {
+                tracing::error!(
+                    "재시작 실패, 롤백 시도: backup={:?}, error={}",
+                    backup_path,
+                    restart_err
+                );
+
+                match self_replace::self_replace(&backup_path) {
+                    Ok(()) => Err(UpdateError::Install(format!(
+                        "재시작 실패로 롤백 완료: {}",
+                        restart_err
+                    ))),
+                    Err(rollback_err) => Err(UpdateError::Install(format!(
+                        "재시작 실패 및 롤백 실패: restart={}, rollback={}",
+                        restart_err, rollback_err
+                    ))),
+                }
+            }
+        }
     }
 
     /// tar.gz 아카이브에서 바이너리 추출
@@ -377,7 +532,38 @@ impl Updater {
         let extract_dir = archive_path
             .parent()
             .unwrap_or(std::path::Path::new("/tmp"));
-        archive.unpack(extract_dir)?;
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            let entry_path = entry.path()?;
+
+            if !Self::is_safe_archive_path(&entry_path) {
+                return Err(UpdateError::Install(format!(
+                    "안전하지 않은 tar 엔트리 경로: {}",
+                    entry_path.display()
+                )));
+            }
+
+            let outpath = extract_dir.join(entry_path.as_ref());
+
+            if let Some(parent) = outpath.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+
+            let entry_type = entry.header().entry_type();
+            if entry_type.is_dir() {
+                std::fs::create_dir_all(&outpath)?;
+                continue;
+            }
+
+            if !entry_type.is_file() {
+                return Err(UpdateError::Install(format!(
+                    "지원하지 않는 tar 엔트리 타입: {}",
+                    entry_path.display()
+                )));
+            }
+
+            entry.unpack(&outpath)?;
+        }
 
         // 바이너리 파일 찾기
         self.find_binary_in_dir(extract_dir)
@@ -400,7 +586,18 @@ impl Updater {
                 .by_index(i)
                 .map_err(|e| UpdateError::Install(format!("ZIP 엔트리 읽기 실패: {}", e)))?;
 
-            let outpath = extract_dir.join(file.name());
+            let relative_path = file.enclosed_name().ok_or_else(|| {
+                UpdateError::Install(format!("안전하지 않은 ZIP 엔트리 경로: {}", file.name()))
+            })?;
+
+            if !Self::is_safe_archive_path(&relative_path) {
+                return Err(UpdateError::Install(format!(
+                    "안전하지 않은 ZIP 엔트리 경로: {}",
+                    file.name()
+                )));
+            }
+
+            let outpath = extract_dir.join(relative_path);
 
             if file.name().ends_with('/') {
                 std::fs::create_dir_all(&outpath)?;
@@ -528,6 +725,7 @@ impl Updater {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     fn test_config() -> UpdateConfig {
         UpdateConfig {
@@ -536,6 +734,7 @@ mod tests {
             repo_name: "test-repo".to_string(),
             check_interval_hours: 24,
             include_prerelease: false,
+            auto_install: false,
         }
     }
 
@@ -834,5 +1033,53 @@ mod tests {
             let msg = format!("{}", error);
             assert!(!msg.is_empty());
         }
+    }
+
+    #[test]
+    fn parse_sha256_manifest_validates_format() {
+        let hash = Updater::parse_sha256_manifest(
+            "8f434346648f6b96df89dda901c5176b10a6d83961fca6f18e40f9f0f84f2304  oneshim.tar.gz",
+        )
+        .unwrap();
+        assert_eq!(
+            hash,
+            "8f434346648f6b96df89dda901c5176b10a6d83961fca6f18e40f9f0f84f2304"
+        );
+    }
+
+    #[test]
+    fn parse_sha256_manifest_rejects_invalid_hash() {
+        let err = Updater::parse_sha256_manifest("not-a-valid-hash  oneshim.tar.gz");
+        assert!(matches!(err, Err(UpdateError::Integrity(_))));
+    }
+
+    #[test]
+    fn validate_download_url_rejects_http_and_unknown_host() {
+        let updater = Updater::new(test_config());
+
+        let http_url = updater.validate_download_url("http://github.com/file.tar.gz");
+        assert!(http_url.is_err());
+
+        let unknown_host = updater.validate_download_url("https://evil.example.com/file.tar.gz");
+        assert!(unknown_host.is_err());
+    }
+
+    #[test]
+    fn extract_zip_rejects_path_traversal_entries() {
+        let updater = Updater::new(test_config());
+        let dir = tempdir().unwrap();
+        let zip_path = dir.path().join("malicious.zip");
+
+        {
+            let file = std::fs::File::create(&zip_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options: zip::write::SimpleFileOptions = zip::write::FileOptions::default();
+            writer.start_file("../../outside", options).unwrap();
+            writer.write_all(b"malicious").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let result = updater.extract_zip(&zip_path);
+        assert!(matches!(result, Err(UpdateError::Install(_))));
     }
 }
