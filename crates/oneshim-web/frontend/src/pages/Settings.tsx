@@ -10,6 +10,8 @@ import {
   fetchSettings,
   updateSettings,
   fetchStorageStats,
+  fetchUpdateStatus,
+  postUpdateAction,
   exportData,
   downloadBlob,
   type AppSettings,
@@ -23,7 +25,9 @@ import {
   type AiProviderSettings,
   type ExternalApiSettings,
   type ExportFormat,
-  type ExportDataType
+  type ExportDataType,
+  type UpdateStatus,
+  type UpdateAction
 } from '../api/client'
 import { Card, CardTitle, Input, Button, Spinner } from '../components/ui'
 import { formatBytes, formatNumber } from '../utils/formatters'
@@ -51,6 +55,13 @@ export default function Settings() {
     queryFn: fetchStorageStats,
   })
 
+  const { data: updateStatus } = useQuery<UpdateStatus>({
+    queryKey: ['update-status'],
+    queryFn: fetchUpdateStatus,
+    refetchInterval: 15000,
+    retry: 1,
+  })
+
   const [formData, setFormData] = useState<AppSettings | null>(null)
 
   // 설정이 로드되면 폼 데이터 초기화
@@ -64,6 +75,19 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
       setSaveMessage({ type: 'success', text: t('settings.savedFull') })
       setTimeout(() => setSaveMessage(null), 5000)
+    },
+    onError: (error: Error) => {
+      setSaveMessage({ type: 'error', text: error.message })
+      setTimeout(() => setSaveMessage(null), 5000)
+    },
+  })
+
+  const updateActionMutation = useMutation({
+    mutationFn: (action: UpdateAction) => postUpdateAction(action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['update-status'] })
+      setSaveMessage({ type: 'success', text: t('settings.updateActionSuccess') })
+      setTimeout(() => setSaveMessage(null), 3000)
     },
     onError: (error: Error) => {
       setSaveMessage({ type: 'error', text: error.message })
@@ -147,6 +171,15 @@ export default function Settings() {
       setFormData({
         ...formData,
         schedule: { ...formData.schedule, [field]: value }
+      })
+    }
+  }
+
+  const handleUpdateChange = (field: keyof AppSettings['update'], value: boolean | number) => {
+    if (formData) {
+      setFormData({
+        ...formData,
+        update: { ...formData.update, [field]: value }
       })
     }
   }
@@ -433,6 +466,104 @@ export default function Settings() {
                     <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.allowExternalDesc')}</p>
                   </div>
                 </label>
+              </div>
+            </div>
+          </Card>
+
+          <Card variant="default" padding="lg">
+            <CardTitle className="mb-4">{t('settings.updateTitle')}</CardTitle>
+            <div className="space-y-4">
+              <ToggleRow
+                label={t('settings.updateEnabled')}
+                description={t('settings.updateEnabledDesc')}
+                checked={formData.update.enabled}
+                onChange={(v) => handleUpdateChange('enabled', v)}
+              />
+
+              <ToggleRow
+                label={t('settings.updateAutoInstall')}
+                description={t('settings.updateAutoInstallDesc')}
+                checked={formData.update.auto_install}
+                onChange={(v) => handleUpdateChange('auto_install', v)}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    {t('settings.updateIntervalHours')}
+                  </label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={formData.update.check_interval_hours}
+                    onChange={(e) => handleUpdateChange('check_interval_hours', parseInt(e.target.value) || 24)}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.update.include_prerelease}
+                      onChange={(e) => handleUpdateChange('include_prerelease', e.target.checked)}
+                      className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500 mr-3"
+                    />
+                    <div>
+                      <span className="text-slate-700 dark:text-slate-300">{t('settings.updateIncludePrerelease')}</span>
+                      <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.updateIncludePrereleaseDesc')}</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="mt-2 p-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
+                <div className="text-sm font-medium text-slate-900 dark:text-white">{t('settings.updateRuntimeStatus')}</div>
+                <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                  {updateStatus?.message ?? t('settings.updateStatusUnavailable')}
+                </div>
+                {updateStatus?.pending && (
+                  <div className="mt-2 text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                    <div>{t('settings.updateCurrentVersion')}: {updateStatus.pending.current_version}</div>
+                    <div>{t('settings.updateLatestVersion')}: {updateStatus.pending.latest_version}</div>
+                    <a
+                      href={updateStatus.pending.release_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-teal-600 dark:text-teal-400 underline"
+                    >
+                      {t('settings.updateReleaseNote')}
+                    </a>
+                  </div>
+                )}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    isLoading={updateActionMutation.isPending}
+                    onClick={() => updateActionMutation.mutate('CheckNow')}
+                  >
+                    {t('settings.updateCheckNow')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    isLoading={updateActionMutation.isPending}
+                    onClick={() => updateActionMutation.mutate('Approve')}
+                  >
+                    {t('settings.updateApproveNow')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    isLoading={updateActionMutation.isPending}
+                    onClick={() => updateActionMutation.mutate('Defer')}
+                  >
+                    {t('settings.updateDefer')}
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>

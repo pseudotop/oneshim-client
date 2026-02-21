@@ -170,6 +170,13 @@ export interface ScheduleSettings {
   pause_on_battery_saver: boolean
 }
 
+export interface UpdateSettings {
+  enabled: boolean
+  check_interval_hours: number
+  include_prerelease: boolean
+  auto_install: boolean
+}
+
 export interface AppSettings {
   retention_days: number
   max_storage_mb: number
@@ -180,6 +187,7 @@ export interface AppSettings {
   metrics_interval_secs: number
   process_interval_secs: number
   notification: NotificationSettings
+  update: UpdateSettings
   telemetry: TelemetrySettings
   monitor: MonitorControlSettings
   privacy: PrivacySettings
@@ -188,6 +196,39 @@ export interface AppSettings {
   sandbox: SandboxSettings
   ai_provider: AiProviderSettings
 }
+
+export type UpdatePhase =
+  | 'Idle'
+  | 'Checking'
+  | 'PendingApproval'
+  | 'Installing'
+  | 'Updated'
+  | 'Deferred'
+  | 'Error'
+
+export interface PendingUpdateInfo {
+  current_version: string
+  latest_version: string
+  release_url: string
+  release_name: string | null
+  published_at: string | null
+  download_url: string
+}
+
+export interface UpdateStatus {
+  enabled: boolean
+  auto_install: boolean
+  phase: UpdatePhase
+  message: string | null
+  pending: PendingUpdateInfo | null
+}
+
+export interface UpdateActionResponse {
+  accepted: boolean
+  status: UpdateStatus
+}
+
+export type UpdateAction = 'Approve' | 'Defer' | 'CheckNow'
 
 // 페이지네이션 타입
 export interface PaginationMeta {
@@ -323,6 +364,25 @@ export async function updateSettings(settings: AppSettings): Promise<AppSettings
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: '설정 저장 실패' }))
     throw new Error(err.error || '설정 저장 실패')
+  }
+  return res.json()
+}
+
+export async function fetchUpdateStatus(): Promise<UpdateStatus> {
+  const res = await fetchWithRetry(`${BASE_URL}/update/status`)
+  if (!res.ok) throw new Error('업데이트 상태 조회 실패')
+  return res.json()
+}
+
+export async function postUpdateAction(action: UpdateAction): Promise<UpdateActionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/update/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: '업데이트 작업 실행 실패' }))
+    throw new Error(err.error || '업데이트 작업 실행 실패')
   }
   return res.json()
 }
