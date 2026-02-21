@@ -64,8 +64,8 @@ futures = { workspace = true }
 name = "ONESHIM"
 identifier = "com.oneshim.client"
 icon = ["assets/icon.icns"]
-version = "0.1.0"
-copyright = "Copyright © 2024 ONESHIM Team"
+version = "0.0.1"
+copyright = "Copyright 2026 ONESHIM Contributors"
 category = "Productivity"
 short_description = "AI-powered autonomous office work support agent"
 long_description = """
@@ -81,7 +81,7 @@ wix = "wix/main.wxs"
 # Debian 패키지 설정
 [package.metadata.deb]
 maintainer = "ONESHIM Team"
-copyright = "2024, ONESHIM Team"
+copyright = "2026, ONESHIM Contributors"
 license-file = ["../LICENSE", "4"]
 extended-description = """
 ONESHIM은 AI 기반 자율 사무 업무 지원 에이전트입니다.
