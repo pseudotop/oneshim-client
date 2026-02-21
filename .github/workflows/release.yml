@@ -98,7 +98,7 @@ jobs:
       - name: Build MSI installer
         if: runner.os == 'Windows'
         working-directory: crates/oneshim-app
-        run: cargo wix --nocapture --target ${{ matrix.target }}
+        run: cargo wix -p oneshim-app --nocapture --target ${{ matrix.target }}
 
       # ── 패키징 ──
       - name: Package (Unix)
