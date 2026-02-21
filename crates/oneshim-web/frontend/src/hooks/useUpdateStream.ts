@@ -6,6 +6,9 @@ export type UpdateStreamStatus = 'connecting' | 'connected' | 'disconnected' | '
 export function useUpdateStream() {
   const [status, setStatus] = useState<UpdateStreamStatus>('disconnected')
   const [latest, setLatest] = useState<UpdateStatus | null>(null)
+  const [lastEventAt, setLastEventAt] = useState<number | null>(null)
+  const [lastError, setLastError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const esRef = useRef<EventSource | null>(null)
   const retryRef = useRef<number | null>(null)
   const retries = useRef(0)
@@ -16,11 +19,13 @@ export function useUpdateStream() {
         esRef.current.close()
       }
       setStatus('connecting')
+      setLastError(null)
       const es = new EventSource('/api/update/stream')
       esRef.current = es
 
       es.onopen = () => {
         retries.current = 0
+        setRetryCount(0)
         setStatus('connected')
       }
 
@@ -28,16 +33,20 @@ export function useUpdateStream() {
         try {
           const parsed = JSON.parse((event as MessageEvent).data) as UpdateStatus
           setLatest(parsed)
+          setLastEventAt(Date.now())
+          setLastError(null)
         } catch {
-          // noop
+          setLastError('stream_parse_error')
         }
       })
 
       es.onerror = () => {
         setStatus('error')
+        setLastError('stream_connection_error')
         es.close()
         if (retries.current < 10) {
           retries.current += 1
+          setRetryCount(retries.current)
           retryRef.current = window.setTimeout(connect, 2000)
         } else {
           setStatus('disconnected')
@@ -54,8 +63,10 @@ export function useUpdateStream() {
         esRef.current.close()
       }
       setStatus('disconnected')
+      setLastError(null)
+      setRetryCount(0)
     }
   }, [])
 
-  return { status, latest }
+  return { status, latest, lastEventAt, lastError, retryCount }
 }

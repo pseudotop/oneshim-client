@@ -56,18 +56,8 @@ test.describe('Navigation', () => {
     await page.keyboard.press('Shift+Slash')
     await page.waitForTimeout(500)
 
-    // 단축키 도움말 모달 표시 확인 (또는 네비게이션 테스트)
-    // 모달이 없으면 네비게이션이 동작하는지만 확인
     const modal = page.getByRole('heading', { name: /키보드 단축키/i })
-    const isModalVisible = await modal.isVisible().catch(() => false)
-
-    if (!isModalVisible) {
-      // 모달이 없으면 기본 네비게이션 테스트로 대체
-      await page.keyboard.press('d')
-      await expect(page).toHaveURL('/')
-    } else {
-      await expect(modal).toBeVisible()
-    }
+    await expect(modal).toBeVisible()
   })
 
   test('should navigate with keyboard shortcuts', async ({ page }) => {

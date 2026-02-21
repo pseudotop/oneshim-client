@@ -221,6 +221,8 @@ export interface UpdateStatus {
   phase: UpdatePhase
   message: string | null
   pending: PendingUpdateInfo | null
+  revision: number
+  updated_at: string
 }
 
 export interface UpdateActionResponse {

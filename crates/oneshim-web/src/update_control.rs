@@ -1,3 +1,4 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, RwLock};
@@ -30,6 +31,8 @@ pub struct UpdateStatus {
     pub phase: UpdatePhase,
     pub message: Option<String>,
     pub pending: Option<PendingUpdateInfo>,
+    pub revision: u64,
+    pub updated_at: String,
 }
 
 impl Default for UpdateStatus {
@@ -40,7 +43,35 @@ impl Default for UpdateStatus {
             phase: UpdatePhase::Idle,
             message: None,
             pending: None,
+            revision: 0,
+            updated_at: Utc::now().to_rfc3339(),
         }
+    }
+}
+
+impl UpdateStatus {
+    pub fn touch(&mut self) {
+        self.revision = self.revision.saturating_add(1);
+        self.updated_at = Utc::now().to_rfc3339();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn touch_increments_revision() {
+        let mut status = UpdateStatus::default();
+        let initial_revision = status.revision;
+        status.touch();
+        assert_eq!(status.revision, initial_revision + 1);
+    }
+
+    #[test]
+    fn default_status_has_timestamp() {
+        let status = UpdateStatus::default();
+        assert!(!status.updated_at.is_empty());
     }
 }
 
