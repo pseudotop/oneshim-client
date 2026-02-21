@@ -100,6 +100,15 @@ jobs:
         working-directory: crates/oneshim-app
         run: cargo wix -p oneshim-app --nocapture --target ${{ matrix.target }}
 
+      # ── DEB 패키지 (Linux only) ──
+      - name: Install cargo-deb
+        if: runner.os == 'Linux'
+        run: cargo install cargo-deb
+
+      - name: Build DEB package
+        if: runner.os == 'Linux'
+        run: cargo deb -p oneshim-app --target ${{ matrix.target }} --no-build
+
       # ── 패키징 ──
       - name: Package (Unix)
         if: runner.os != 'Windows'
@@ -146,6 +155,13 @@ jobs:
             crates/oneshim-app/target/wix/*.msi
           if-no-files-found: error
 
+      - name: Upload DEB artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneshim-linux-x64-deb
+          path: target/${{ matrix.target }}/debian/*.deb
+
   build-macos-universal:
     name: Build macOS Universal Binary
     needs: build-release
@@ -189,6 +205,20 @@ jobs:
             dist/oneshim-macos-universal.tar.gz
             dist/oneshim-macos-universal.tar.gz.sha256
 
+      # ── DMG 인스톨러 (macOS) ──
+      - name: Create DMG installer
+        run: |
+          mkdir -p dmg-staging
+          cp binaries/oneshim dmg-staging/
+          chmod +x dmg-staging/oneshim
+          hdiutil create -volname "ONESHIM" -srcfolder dmg-staging -ov -format UDZO oneshim-macos-universal.dmg
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneshim-macos-universal-dmg
+          path: oneshim-macos-universal.dmg
+
   create-release:
     name: Create GitHub Release
     needs: [build-release, build-macos-universal]
@@ -205,8 +235,8 @@ jobs:
 
       - name: Flatten nested artifacts
         run: |
-          # Move MSI files from nested paths (e.g., dist/target/wix/) to dist/
-          find dist -mindepth 2 -type f -name '*.msi' -exec mv {} dist/ \;
+          # Move installer files from nested paths to dist/
+          find dist -mindepth 2 -type f \( -name '*.msi' -o -name '*.deb' -o -name '*.dmg' \) -exec mv {} dist/ \;
           # Clean up empty nested directories
           find dist -mindepth 1 -type d -empty -delete
 
@@ -234,31 +264,48 @@ jobs:
 
           ### Downloads
 
-          | Platform | Architecture | File |
-          |--------|----------|------|
-          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.tar.gz` |
-          | macOS | Apple Silicon (arm64) | `oneshim-macos-arm64.tar.gz` |
-          | macOS | Intel (x64) | `oneshim-macos-x64.tar.gz` |
-          | Windows | x64 (zip) | `oneshim-windows-x64.zip` |
-          | Windows | x64 (MSI installer) | `oneshim-*.msi` |
-          | Linux | x64 | `oneshim-linux-x64.tar.gz` |
+          | Platform | Architecture | File | Format |
+          |----------|-------------|------|--------|
+          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.dmg` | DMG Installer |
+          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.tar.gz` | Binary |
+          | macOS | Apple Silicon (arm64) | `oneshim-macos-arm64.tar.gz` | Binary |
+          | macOS | Intel (x64) | `oneshim-macos-x64.tar.gz` | Binary |
+          | Windows | x64 | `oneshim-*.msi` | MSI Installer |
+          | Windows | x64 | `oneshim-windows-x64.zip` | Binary |
+          | Linux | x64 | `oneshim-*.deb` | DEB Package |
+          | Linux | x64 | `oneshim-linux-x64.tar.gz` | Binary |
 
           ### Installation
 
-          **macOS/Linux:**
+          **macOS (DMG — 권장):**
+          DMG 파일을 열어 Applications 폴더로 드래그하세요.
+
+          **macOS (tar.gz):**
           ```bash
-          tar -xzf oneshim-*.tar.gz
+          tar -xzf oneshim-macos-universal.tar.gz
           chmod +x oneshim
           ./oneshim
           ```
 
-          **Windows (MSI):**
+          **Windows (MSI — Recommended):**
           Download and run the MSI installer.
 
           **Windows (zip):**
           ```powershell
           Expand-Archive oneshim-windows-x64.zip
           .\oneshim.exe
+          ```
+
+          **Linux (DEB — Recommended):**
+          ```bash
+          sudo dpkg -i oneshim-*.deb
+          ```
+
+          **Linux (tar.gz):**
+          ```bash
+          tar -xzf oneshim-linux-x64.tar.gz
+          chmod +x oneshim
+          ./oneshim
           ```
 
           ### Changes
