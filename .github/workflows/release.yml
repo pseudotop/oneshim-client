@@ -203,6 +203,13 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Flatten nested artifacts
+        run: |
+          # Move MSI files from nested paths (e.g., dist/target/wix/) to dist/
+          find dist -mindepth 2 -type f -name '*.msi' -exec mv {} dist/ \;
+          # Clean up empty nested directories
+          find dist -mindepth 1 -type d -empty -delete
+
       - name: Verify artifacts
         run: find dist -type f
 
