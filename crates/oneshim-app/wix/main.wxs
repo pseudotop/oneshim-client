@@ -38,7 +38,13 @@
                             Id='exe0'
                             Name='oneshim.exe'
                             DiskId='1'
-                            Source='$(var.CargoTargetBinDir)\oneshim.exe'
+                            Source='$(var.CargoTargetBinDir)\oneshim.exe'/>
+                        <RemoveFolder Id='CleanUpApplicationFolder' On='uninstall'/>
+                        <RegistryValue Root='HKCU'
+                            Key='Software\ONESHIM'
+                            Name='binary_installed'
+                            Type='integer'
+                            Value='1'
                             KeyPath='yes'/>
                     </Component>
                 </Directory>
