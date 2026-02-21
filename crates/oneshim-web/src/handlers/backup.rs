@@ -150,12 +150,6 @@ pub async fn create_backup(
     State(state): State<AppState>,
     Query(params): Query<BackupQuery>,
 ) -> Result<Response, ApiError> {
-    let conn = state
-        .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let mut archive = BackupArchive {
         metadata: BackupMetadata {
             version: "1.0".to_string(),
@@ -177,26 +171,78 @@ pub async fn create_backup(
 
     // 설정 백업
     if params.include_settings {
-        let settings = backup_settings(&conn)?;
+        let settings = backup_settings_from_state(&state);
         archive.settings = Some(settings);
     }
 
     // 태그 백업
     if params.include_tags {
-        let (tags, frame_tags) = backup_tags(&conn)?;
+        let tags = state
+            .storage
+            .list_backup_tags()
+            .map_err(|e| ApiError::Internal(e.to_string()))?
+            .into_iter()
+            .map(|tag| TagBackup {
+                id: tag.id,
+                name: tag.name,
+                color: tag.color,
+                created_at: tag.created_at,
+            })
+            .collect();
+
+        let frame_tags = state
+            .storage
+            .list_backup_frame_tags()
+            .map_err(|e| ApiError::Internal(e.to_string()))?
+            .into_iter()
+            .map(|ft| FrameTagBackup {
+                frame_id: ft.frame_id,
+                tag_id: ft.tag_id,
+                created_at: ft.created_at,
+            })
+            .collect();
+
         archive.tags = Some(tags);
         archive.frame_tags = Some(frame_tags);
     }
 
     // 이벤트 백업
     if params.include_events {
-        let events = backup_events(&conn)?;
+        let events = state
+            .storage
+            .list_event_exports("0000-01-01T00:00:00Z", "9999-12-31T23:59:59Z")
+            .map_err(|e| ApiError::Internal(e.to_string()))?
+            .into_iter()
+            .map(|event| EventBackup {
+                event_id: event.event_id,
+                event_type: event.event_type,
+                timestamp: event.timestamp,
+                app_name: event.app_name,
+                window_title: event.window_title,
+            })
+            .collect();
         archive.events = Some(events);
     }
 
     // 프레임 메타데이터 백업
     if params.include_frames {
-        let frames = backup_frames(&conn)?;
+        let frames = state
+            .storage
+            .list_frame_exports("0000-01-01T00:00:00Z", "9999-12-31T23:59:59Z")
+            .map_err(|e| ApiError::Internal(e.to_string()))?
+            .into_iter()
+            .map(|frame| FrameBackup {
+                id: frame.id,
+                timestamp: frame.timestamp,
+                trigger_type: frame.trigger_type,
+                app_name: frame.app_name,
+                window_title: frame.window_title,
+                importance: frame.importance,
+                width: frame.resolution_w as i32,
+                height: frame.resolution_h as i32,
+                ocr_text: frame.ocr_text,
+            })
+            .collect();
         archive.frames = Some(frames);
     }
 
@@ -224,12 +270,6 @@ pub async fn restore_backup(
     State(state): State<AppState>,
     Json(archive): Json<BackupArchive>,
 ) -> Result<Json<RestoreResult>, ApiError> {
-    let conn = state
-        .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let mut errors = Vec::new();
     let mut restored = RestoredCounts {
         settings: false,
@@ -241,7 +281,7 @@ pub async fn restore_backup(
 
     // 설정 복원
     if let Some(settings) = &archive.settings {
-        match restore_settings(&conn, settings) {
+        match restore_settings_to_state(&state, settings) {
             Ok(_) => restored.settings = true,
             Err(e) => errors.push(format!("설정 복원 실패: {e}")),
         }
@@ -250,7 +290,10 @@ pub async fn restore_backup(
     // 태그 복원 (기존 태그 유지, 새 태그만 추가)
     if let Some(tags) = &archive.tags {
         for tag in tags {
-            match restore_tag(&conn, tag) {
+            match state
+                .storage
+                .upsert_backup_tag(tag.id, &tag.name, &tag.color, &tag.created_at)
+            {
                 Ok(_) => restored.tags += 1,
                 Err(e) => errors.push(format!("태그 '{}' 복원 실패: {e}", tag.name)),
             }
@@ -260,7 +303,10 @@ pub async fn restore_backup(
     // 프레임-태그 연결 복원
     if let Some(frame_tags) = &archive.frame_tags {
         for ft in frame_tags {
-            match restore_frame_tag(&conn, ft) {
+            match state
+                .storage
+                .upsert_backup_frame_tag(ft.frame_id, ft.tag_id, &ft.created_at)
+            {
                 Ok(_) => restored.frame_tags += 1,
                 Err(e) => errors.push(format!("프레임-태그 연결 복원 실패: {e}")),
             }
@@ -270,7 +316,13 @@ pub async fn restore_backup(
     // 이벤트 복원
     if let Some(events) = &archive.events {
         for event in events {
-            match restore_event(&conn, event) {
+            match state.storage.upsert_backup_event(
+                &event.event_id,
+                &event.event_type,
+                &event.timestamp,
+                event.app_name.as_deref(),
+                event.window_title.as_deref(),
+            ) {
                 Ok(_) => restored.events += 1,
                 Err(e) => errors.push(format!("이벤트 복원 실패: {e}")),
             }
@@ -280,7 +332,17 @@ pub async fn restore_backup(
     // 프레임 메타데이터 복원
     if let Some(frames) = &archive.frames {
         for frame in frames {
-            match restore_frame(&conn, frame) {
+            match state.storage.upsert_backup_frame(
+                frame.id,
+                &frame.timestamp,
+                &frame.trigger_type,
+                &frame.app_name,
+                &frame.window_title,
+                frame.importance,
+                frame.width,
+                frame.height,
+                frame.ocr_text.as_deref(),
+            ) {
                 Ok(_) => restored.frames += 1,
                 Err(e) => errors.push(format!("프레임 복원 실패: {e}")),
             }
@@ -295,288 +357,56 @@ pub async fn restore_backup(
 }
 
 /// 설정 백업
-fn backup_settings(conn: &rusqlite::Connection) -> Result<SettingsBackup, ApiError> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT key, value FROM settings WHERE key IN (
-                'capture_enabled', 'capture_interval_secs', 'idle_threshold_secs',
-                'metrics_interval_secs', 'web_port', 'notification_enabled',
-                'idle_notification_mins', 'long_session_notification_mins', 'high_usage_threshold_percent'
-            )",
-        )
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
-
-    let mut settings = SettingsBackup {
-        capture_enabled: true,
-        capture_interval_secs: 60,
-        idle_threshold_secs: 300,
-        metrics_interval_secs: 5,
-        web_port: 9090,
-        notification_enabled: true,
-        idle_notification_mins: 30,
-        long_session_notification_mins: 60,
-        high_usage_threshold_percent: 90,
-    };
-
-    let rows = stmt
-        .query_map([], |row| {
-            let key: String = row.get(0)?;
-            let value: String = row.get(1)?;
-            Ok((key, value))
-        })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?;
-
-    for row in rows.flatten() {
-        let (key, value) = row;
-        match key.as_str() {
-            "capture_enabled" => settings.capture_enabled = value == "true",
-            "capture_interval_secs" => {
-                settings.capture_interval_secs = value.parse().unwrap_or(60);
-            }
-            "idle_threshold_secs" => {
-                settings.idle_threshold_secs = value.parse().unwrap_or(300);
-            }
-            "metrics_interval_secs" => {
-                settings.metrics_interval_secs = value.parse().unwrap_or(5);
-            }
-            "web_port" => {
-                settings.web_port = value.parse().unwrap_or(9090);
-            }
-            "notification_enabled" => settings.notification_enabled = value == "true",
-            "idle_notification_mins" => {
-                settings.idle_notification_mins = value.parse().unwrap_or(30);
-            }
-            "long_session_notification_mins" => {
-                settings.long_session_notification_mins = value.parse().unwrap_or(60);
-            }
-            "high_usage_threshold_percent" => {
-                settings.high_usage_threshold_percent = value.parse().unwrap_or(90);
-            }
-            _ => {}
+fn backup_settings_from_state(state: &AppState) -> SettingsBackup {
+    if let Some(ref config_manager) = state.config_manager {
+        let config = config_manager.get();
+        SettingsBackup {
+            capture_enabled: config.vision.capture_enabled,
+            capture_interval_secs: (config.vision.capture_throttle_ms / 1000).max(1),
+            idle_threshold_secs: config.monitor.idle_threshold_secs,
+            metrics_interval_secs: config.monitor.poll_interval_ms / 1000,
+            web_port: config.web.port,
+            notification_enabled: config.notification.enabled,
+            idle_notification_mins: config.notification.idle_notification_mins as u64,
+            long_session_notification_mins: config.notification.long_session_mins as u64,
+            high_usage_threshold_percent: config.notification.high_usage_threshold as u8,
+        }
+    } else {
+        SettingsBackup {
+            capture_enabled: true,
+            capture_interval_secs: 60,
+            idle_threshold_secs: 300,
+            metrics_interval_secs: 5,
+            web_port: 9090,
+            notification_enabled: true,
+            idle_notification_mins: 30,
+            long_session_notification_mins: 60,
+            high_usage_threshold_percent: 90,
         }
     }
-
-    Ok(settings)
 }
 
-/// 태그 및 프레임-태그 연결 백업
-fn backup_tags(
-    conn: &rusqlite::Connection,
-) -> Result<(Vec<TagBackup>, Vec<FrameTagBackup>), ApiError> {
-    // 태그 백업
-    let mut stmt = conn
-        .prepare("SELECT id, name, color, created_at FROM tags ORDER BY id")
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
+fn restore_settings_to_state(state: &AppState, settings: &SettingsBackup) -> Result<(), ApiError> {
+    let config_manager = state
+        .config_manager
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("설정 관리자가 없어 복원할 수 없습니다".to_string()))?;
 
-    let tags: Vec<TagBackup> = stmt
-        .query_map([], |row| {
-            Ok(TagBackup {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                color: row.get(2)?,
-                created_at: row.get(3)?,
-            })
+    config_manager
+        .update_with(|config| {
+            config.vision.capture_enabled = settings.capture_enabled;
+            config.vision.capture_throttle_ms = settings.capture_interval_secs.saturating_mul(1000);
+            config.monitor.idle_threshold_secs = settings.idle_threshold_secs;
+            config.monitor.poll_interval_ms = settings.metrics_interval_secs.saturating_mul(1000);
+            config.web.port = settings.web_port;
+            config.notification.enabled = settings.notification_enabled;
+            config.notification.idle_notification_mins = settings.idle_notification_mins as u32;
+            config.notification.long_session_mins =
+                settings.long_session_notification_mins as u32;
+            config.notification.high_usage_threshold =
+                settings.high_usage_threshold_percent as u32;
         })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    // 프레임-태그 연결 백업
-    let mut stmt = conn
-        .prepare("SELECT frame_id, tag_id, created_at FROM frame_tags ORDER BY frame_id, tag_id")
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
-
-    let frame_tags: Vec<FrameTagBackup> = stmt
-        .query_map([], |row| {
-            Ok(FrameTagBackup {
-                frame_id: row.get(0)?,
-                tag_id: row.get(1)?,
-                created_at: row.get(2)?,
-            })
-        })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok((tags, frame_tags))
-}
-
-/// 이벤트 백업
-fn backup_events(conn: &rusqlite::Connection) -> Result<Vec<EventBackup>, ApiError> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT event_id, event_type, timestamp, app_name, window_title
-             FROM events ORDER BY timestamp",
-        )
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
-
-    let events: Vec<EventBackup> = stmt
-        .query_map([], |row| {
-            Ok(EventBackup {
-                event_id: row.get(0)?,
-                event_type: row.get(1)?,
-                timestamp: row.get(2)?,
-                app_name: row.get(3)?,
-                window_title: row.get(4)?,
-            })
-        })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(events)
-}
-
-/// 프레임 메타데이터 백업 (이미지 제외)
-fn backup_frames(conn: &rusqlite::Connection) -> Result<Vec<FrameBackup>, ApiError> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, timestamp, trigger_type, app_name, window_title, importance, width, height, ocr_text
-             FROM frames ORDER BY timestamp",
-        )
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
-
-    let frames: Vec<FrameBackup> = stmt
-        .query_map([], |row| {
-            Ok(FrameBackup {
-                id: row.get(0)?,
-                timestamp: row.get(1)?,
-                trigger_type: row.get(2)?,
-                app_name: row.get(3)?,
-                window_title: row.get(4)?,
-                importance: row.get(5)?,
-                width: row.get(6)?,
-                height: row.get(7)?,
-                ocr_text: row.get(8)?,
-            })
-        })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(frames)
-}
-
-/// 설정 복원
-fn restore_settings(
-    conn: &rusqlite::Connection,
-    settings: &SettingsBackup,
-) -> Result<(), ApiError> {
-    let settings_map = [
-        ("capture_enabled", settings.capture_enabled.to_string()),
-        (
-            "capture_interval_secs",
-            settings.capture_interval_secs.to_string(),
-        ),
-        (
-            "idle_threshold_secs",
-            settings.idle_threshold_secs.to_string(),
-        ),
-        (
-            "metrics_interval_secs",
-            settings.metrics_interval_secs.to_string(),
-        ),
-        ("web_port", settings.web_port.to_string()),
-        (
-            "notification_enabled",
-            settings.notification_enabled.to_string(),
-        ),
-        (
-            "idle_notification_mins",
-            settings.idle_notification_mins.to_string(),
-        ),
-        (
-            "long_session_notification_mins",
-            settings.long_session_notification_mins.to_string(),
-        ),
-        (
-            "high_usage_threshold_percent",
-            settings.high_usage_threshold_percent.to_string(),
-        ),
-    ];
-
-    for (key, value) in settings_map {
-        conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
-            [key, &value],
-        )
         .map_err(|e| ApiError::Internal(format!("설정 저장 실패: {e}")))?;
-    }
-
-    Ok(())
-}
-
-/// 태그 복원 (중복 무시)
-fn restore_tag(conn: &rusqlite::Connection, tag: &TagBackup) -> Result<(), ApiError> {
-    conn.execute(
-        "INSERT OR IGNORE INTO tags (id, name, color, created_at) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![tag.id, tag.name, tag.color, tag.created_at],
-    )
-    .map_err(|e| ApiError::Internal(format!("태그 저장 실패: {e}")))?;
-
-    Ok(())
-}
-
-/// 프레임-태그 연결 복원 (중복 무시)
-fn restore_frame_tag(conn: &rusqlite::Connection, ft: &FrameTagBackup) -> Result<(), ApiError> {
-    conn.execute(
-        "INSERT OR IGNORE INTO frame_tags (frame_id, tag_id, created_at) VALUES (?1, ?2, ?3)",
-        rusqlite::params![ft.frame_id, ft.tag_id, ft.created_at],
-    )
-    .map_err(|e| ApiError::Internal(format!("프레임-태그 연결 저장 실패: {e}")))?;
-
-    Ok(())
-}
-
-/// 이벤트 복원 (중복 무시)
-fn restore_event(conn: &rusqlite::Connection, event: &EventBackup) -> Result<(), ApiError> {
-    conn.execute(
-        "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, app_name, window_title)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![
-            event.event_id,
-            event.event_type,
-            event.timestamp,
-            event.app_name,
-            event.window_title
-        ],
-    )
-    .map_err(|e| ApiError::Internal(format!("이벤트 저장 실패: {e}")))?;
-
-    Ok(())
-}
-
-/// 프레임 메타데이터 복원 (중복 무시, 이미지 없음)
-fn restore_frame(conn: &rusqlite::Connection, frame: &FrameBackup) -> Result<(), ApiError> {
-    // 프레임 존재 여부 확인
-    let exists: bool = conn
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM frames WHERE id = ?1)",
-            [frame.id],
-            |row| row.get(0),
-        )
-        .unwrap_or(false);
-
-    if !exists {
-        // 이미지 없이 메타데이터만 삽입 (이미지는 빈 바이트)
-        conn.execute(
-            "INSERT INTO frames (id, timestamp, trigger_type, app_name, window_title, importance, width, height, ocr_text, data)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            rusqlite::params![
-                frame.id,
-                frame.timestamp,
-                frame.trigger_type,
-                frame.app_name,
-                frame.window_title,
-                frame.importance,
-                frame.width,
-                frame.height,
-                frame.ocr_text,
-                Vec::<u8>::new() // 빈 이미지 데이터
-            ],
-        )
-        .map_err(|e| ApiError::Internal(format!("프레임 저장 실패: {e}")))?;
-    }
 
     Ok(())
 }
