@@ -97,12 +97,13 @@ function Automation() {
       setTimeout(() => {
         setRunFeedbacks((prev) => prev.filter((f) => f.presetId !== id))
       }, 8000)
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('automation.runError')
       setRunFeedbacks((prev) => [
         ...prev.filter((f) => f.presetId !== id),
         {
           presetId: id,
-          result: { preset_id: id, success: false, message: t('automation.runError') },
+          result: { preset_id: id, success: false, message },
           timestamp: Date.now(),
         },
       ])

@@ -381,36 +381,30 @@ pub async fn run_preset(
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
         if !config.automation.enabled {
-            return Ok(Json(PresetRunResult {
-                preset_id: id,
-                success: false,
-                message: "자동화가 비활성화 상태입니다".to_string(),
-                steps_executed: None,
-                total_steps: None,
-                total_elapsed_ms: None,
-            }));
+            return Err(ApiError::BadRequest(
+                "자동화가 비활성화 상태입니다".to_string(),
+            ));
         }
     }
 
     // 자동화 컨트롤러가 설정된 경우 실제 실행
     if let Some(ref controller) = state.automation_controller {
         match controller.run_workflow(&preset).await {
-            Ok(result) => Ok(Json(PresetRunResult {
-                preset_id: result.preset_id,
-                success: result.success,
-                message: result.message,
-                steps_executed: Some(result.steps_executed),
-                total_steps: Some(result.total_steps),
-                total_elapsed_ms: Some(result.total_elapsed_ms),
-            })),
-            Err(e) => Ok(Json(PresetRunResult {
-                preset_id: id,
-                success: false,
-                message: format!("실행 실패: {}", e),
-                steps_executed: None,
-                total_steps: None,
-                total_elapsed_ms: None,
-            })),
+            Ok(result) => {
+                if !result.success {
+                    return Err(ApiError::BadRequest(result.message));
+                }
+
+                Ok(Json(PresetRunResult {
+                    preset_id: result.preset_id,
+                    success: true,
+                    message: result.message,
+                    steps_executed: Some(result.steps_executed),
+                    total_steps: Some(result.total_steps),
+                    total_elapsed_ms: Some(result.total_elapsed_ms),
+                }))
+            }
+            Err(e) => Err(ApiError::Internal(format!("실행 실패: {}", e))),
         }
     } else {
         // 폴백: 컨트롤러 미설정 → 로깅 전용
