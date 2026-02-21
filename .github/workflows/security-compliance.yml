@@ -1,0 +1,74 @@
+name: Security & Compliance
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 2 * * 1'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  supply-chain:
+    name: Supply Chain Controls
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libnotify-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libclang-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
+
+      - name: Install tooling
+        run: |
+          cargo install cargo-audit --locked
+          cargo install cargo-deny --locked
+          cargo install cargo-vet --locked
+          cargo install cargo-about --locked
+          cargo install cargo-cyclonedx --locked
+
+      - name: RustSec audit
+        run: cargo audit
+
+      - name: License/advisory/source policy
+        run: cargo deny check licenses advisories sources bans
+
+      - name: Supply-chain policy (cargo-vet)
+        run: cargo vet check
+
+      - name: Generate third-party notice
+        run: cargo about generate about.hbs > THIRD_PARTY_NOTICES.html
+
+      - name: Generate SBOM (CycloneDX)
+        run: cargo cyclonedx --workspace --format json --output-file sbom.cdx.json
+
+      - name: Upload compliance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-artifacts
+          path: |
+            THIRD_PARTY_NOTICES.html
+            sbom.cdx.json
