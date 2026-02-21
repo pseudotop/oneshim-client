@@ -33,7 +33,7 @@
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='LocalAppDataFolder' Name='AppData'>
                 <Directory Id='APPLICATIONFOLDER' Name='ONESHIM'>
-                    <Component Id='binary0' Guid='*'>
+                    <Component Id='binary0' Guid='3602020D-F6CA-4B75-9E7B-0B767E2753E2'>
                         <File
                             Id='exe0'
                             Name='oneshim.exe'
