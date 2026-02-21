@@ -23,9 +23,10 @@ use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_ui::notifier::DesktopNotifierImpl;
 use oneshim_ui::tray::TrayManager;
-use oneshim_ui::OneshimApp;
+use oneshim_ui::{OneshimApp, UpdateUserAction};
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
+use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use oneshim_web::{RealtimeEvent, WebServer};
 use std::panic;
 use std::path::PathBuf;
@@ -36,6 +37,7 @@ use tracing::{error, info, warn};
 
 use crate::notification_manager::NotificationManager;
 use crate::scheduler::{Scheduler, SchedulerConfig};
+use crate::update_coordinator;
 
 /// 한글 지원 폰트 (Pretendard - 오픈소스 한글 폰트)
 const KOREAN_FONT: &[u8] = include_bytes!("../../oneshim-ui/assets/fonts/Pretendard-Regular.otf");
@@ -118,6 +120,14 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
 
     let config = config_manager.get();
 
+    let runtime_auto_update = config.update.auto_install;
+    let (update_action_tx, update_action_rx) =
+        tokio::sync::mpsc::unbounded_channel::<UpdateAction>();
+    let update_control = UpdateControl::new(
+        update_action_tx.clone(),
+        update_coordinator::initial_status(&config.update, runtime_auto_update),
+    );
+
     let sqlite_storage = Arc::new(SqliteStorage::open(
         &db_path,
         config.storage.retention_days,
@@ -129,6 +139,20 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         .worker_threads(2)
         .enable_all()
         .build()?;
+
+    if !offline_mode && config.update.enabled {
+        let update_config = config.update.clone();
+        let update_state = update_control.state.clone();
+        runtime.spawn(async move {
+            update_coordinator::run_update_coordinator(
+                update_config,
+                update_state,
+                update_action_rx,
+                runtime_auto_update,
+            )
+            .await;
+        });
+    }
 
     // 6. 실시간 이벤트 브로드캐스트 채널 생성 (웹 대시보드용)
     let (event_tx, _event_rx) = broadcast::channel::<RealtimeEvent>(256);
@@ -201,7 +225,8 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
             let mut web_server = WebServer::new(web_storage, web_config)
                 .with_event_tx(web_event_tx)
                 .with_config_manager(web_config_manager)
-                .with_audit_logger(web_audit_logger);
+                .with_audit_logger(web_audit_logger)
+                .with_update_control(update_control.clone());
             if let Some(ctrl) = automation_controller {
                 web_server = web_server.with_automation_controller(ctrl);
             }
@@ -213,9 +238,24 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     }
 
     // 7. OneshimApp 생성 (Storage 참조 전달)
+    let (ui_update_tx, ui_update_rx) = std::sync::mpsc::channel::<UpdateUserAction>();
+    let update_bridge_tx = update_action_tx.clone();
+    std::thread::spawn(move || {
+        while let Ok(action) = ui_update_rx.recv() {
+            let mapped = match action {
+                UpdateUserAction::Approve => UpdateAction::Approve,
+                UpdateUserAction::Defer => UpdateAction::Defer,
+            };
+            if update_bridge_tx.send(mapped).is_err() {
+                break;
+            }
+        }
+    });
+
     let mut app = OneshimApp::new()
         .with_offline_mode(offline_mode)
-        .with_storage(sqlite_storage);
+        .with_storage(sqlite_storage)
+        .with_update_action_sender(ui_update_tx);
 
     if let Some(rx) = tray_rx {
         app = app.with_tray_receiver(rx);

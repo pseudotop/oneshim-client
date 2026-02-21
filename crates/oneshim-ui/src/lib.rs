@@ -25,5 +25,5 @@ pub mod native_windows;
 // Linux: X11/Wayland 분열로 네이티브 API 대신 iced minimize 사용
 
 // 메인 앱 재내보내기
-pub use app::{Message, OneshimApp, Screen};
+pub use app::{Message, OneshimApp, Screen, UpdateUserAction};
 pub use i18n::{Locale, Strings};

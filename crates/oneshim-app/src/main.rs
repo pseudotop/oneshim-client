@@ -11,6 +11,7 @@ mod lifecycle;
 mod memory_profiler;
 mod notification_manager;
 mod scheduler;
+mod update_coordinator;
 mod updater;
 
 use anyhow::Result;
@@ -38,6 +39,7 @@ use oneshim_suggestion::receiver::SuggestionReceiver;
 use oneshim_ui::notifier::DesktopNotifierImpl;
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
+use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use oneshim_web::WebServer;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -94,6 +96,12 @@ struct Args {
     /// GUI 모드로 실행 (iced 윈도우)
     #[arg(long, short = 'g')]
     gui: bool,
+
+    #[arg(long)]
+    auto_update: bool,
+
+    #[arg(long)]
+    approve_update: bool,
 }
 
 /// 세션 ID 생성 -- 타임스탬프 기반
@@ -274,35 +282,29 @@ async fn main() -> Result<()> {
         info!("서버: {}", config.server.base_url);
     }
 
-    // ── 자동 업데이트 확인 (온라인 모드에서만) ──
+    let runtime_auto_update = config.update.auto_install || args.auto_update || args.approve_update;
+    let (update_action_tx, update_action_rx) = mpsc::unbounded_channel::<UpdateAction>();
+    let update_control = UpdateControl::new(
+        update_action_tx.clone(),
+        update_coordinator::initial_status(&config.update, runtime_auto_update),
+    );
+
     if !args.offline && config.update.enabled {
         let update_config = config.update.clone();
+        let update_state = update_control.state.clone();
         tokio::spawn(async move {
-            let updater = updater::Updater::new(update_config);
-            if updater.should_check_for_updates() {
-                info!("업데이트 확인 중...");
-                match updater.check_for_updates().await {
-                    Ok(updater::UpdateCheckResult::Available {
-                        current,
-                        latest,
-                        release,
-                        ..
-                    }) => {
-                        info!(
-                            "새 버전 사용 가능: {} → {} ({})",
-                            current, latest, release.html_url
-                        );
-                    }
-                    Ok(updater::UpdateCheckResult::UpToDate { current }) => {
-                        info!("최신 버전 사용 중: {}", current);
-                    }
-                    Err(e) => {
-                        tracing::debug!("업데이트 확인 실패: {}", e);
-                    }
-                }
-                let _ = updater.save_last_check_time();
-            }
+            update_coordinator::run_update_coordinator(
+                update_config,
+                update_state,
+                update_action_rx,
+                runtime_auto_update,
+            )
+            .await;
         });
+        if args.approve_update {
+            let _ = update_action_tx.send(UpdateAction::CheckNow);
+            let _ = update_action_tx.send(UpdateAction::Approve);
+        }
     }
 
     // ── 어댑터 생성 (DI 와이어링) ──
@@ -528,7 +530,8 @@ async fn main() -> Result<()> {
     if config.web.enabled {
         let mut web_server = WebServer::new(sqlite_storage.clone(), config.web.clone())
             .with_config_manager(config_manager)
-            .with_audit_logger(audit_logger.clone());
+            .with_audit_logger(audit_logger.clone())
+            .with_update_control(update_control.clone());
         if let Some(ref ctrl) = automation_controller {
             web_server = web_server.with_automation_controller(ctrl.clone());
         }

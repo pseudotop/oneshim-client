@@ -18,6 +18,7 @@ pub mod stats;
 pub mod stream;
 pub mod tags;
 pub mod timeline;
+pub mod update;
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};

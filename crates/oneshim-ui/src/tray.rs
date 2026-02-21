@@ -16,6 +16,8 @@ pub enum TrayEvent {
     OpenSettings,
     /// 자동화 활성화/비활성화 토글
     ToggleAutomation,
+    ApproveUpdate,
+    DeferUpdate,
     /// 앱 종료
     Quit,
 }
@@ -78,6 +80,8 @@ struct MenuIds {
     show_id: tray_icon::menu::MenuId,
     settings_id: tray_icon::menu::MenuId,
     automation_id: tray_icon::menu::MenuId,
+    approve_update_id: tray_icon::menu::MenuId,
+    defer_update_id: tray_icon::menu::MenuId,
     quit_id: tray_icon::menu::MenuId,
 }
 
@@ -119,6 +123,8 @@ impl TrayManager {
         let show_item = MenuItem::new("창 보기/숨기기", true, None);
         let settings_item = MenuItem::new("설정", true, None);
         let automation_item = MenuItem::new("자동화 켜기/끄기", true, None);
+        let approve_update_item = MenuItem::new("업데이트 적용", true, None);
+        let defer_update_item = MenuItem::new("업데이트 나중에", true, None);
         let quit_item = MenuItem::new("종료", true, None);
 
         menu.append(&show_item).map_err(|e| e.to_string())?;
@@ -126,6 +132,9 @@ impl TrayManager {
             .map_err(|e| e.to_string())?;
         menu.append(&settings_item).map_err(|e| e.to_string())?;
         menu.append(&automation_item).map_err(|e| e.to_string())?;
+        menu.append(&approve_update_item)
+            .map_err(|e| e.to_string())?;
+        menu.append(&defer_update_item).map_err(|e| e.to_string())?;
         menu.append(&PredefinedMenuItem::separator())
             .map_err(|e| e.to_string())?;
         menu.append(&quit_item).map_err(|e| e.to_string())?;
@@ -149,6 +158,8 @@ impl TrayManager {
             show_id: show_item.id().clone(),
             settings_id: settings_item.id().clone(),
             automation_id: automation_item.id().clone(),
+            approve_update_id: approve_update_item.id().clone(),
+            defer_update_id: defer_update_item.id().clone(),
             quit_id: quit_item.id().clone(),
         };
 
@@ -169,6 +180,10 @@ impl TrayManager {
                         Some(TrayEvent::OpenSettings)
                     } else if event.id == menu_ids.automation_id {
                         Some(TrayEvent::ToggleAutomation)
+                    } else if event.id == menu_ids.approve_update_id {
+                        Some(TrayEvent::ApproveUpdate)
+                    } else if event.id == menu_ids.defer_update_id {
+                        Some(TrayEvent::DeferUpdate)
                     } else if event.id == menu_ids.quit_id {
                         Some(TrayEvent::Quit)
                     } else {

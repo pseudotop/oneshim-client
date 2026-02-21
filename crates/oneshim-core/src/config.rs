@@ -586,6 +586,8 @@ pub struct UpdateConfig {
     /// 사전 릴리즈 포함 여부
     #[serde(default)]
     pub include_prerelease: bool,
+    #[serde(default)]
+    pub auto_install: bool,
 }
 
 impl Default for UpdateConfig {
@@ -596,6 +598,7 @@ impl Default for UpdateConfig {
             repo_name: default_repo_name(),
             check_interval_hours: default_check_interval_hours(),
             include_prerelease: false,
+            auto_install: false,
         }
     }
 }

@@ -122,6 +122,8 @@ pub fn api_routes() -> Router<AppState> {
             "/automation/presets/:id/run",
             post(handlers::automation::run_preset),
         )
+        .route("/update/status", get(handlers::update::get_update_status))
+        .route("/update/action", post(handlers::update::post_update_action))
 }
 
 #[cfg(test)]
@@ -143,6 +145,7 @@ mod tests {
             config_manager: None,
             audit_logger: None,
             automation_controller: None,
+            update_control: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
     }

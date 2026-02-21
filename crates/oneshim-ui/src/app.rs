@@ -192,6 +192,12 @@ pub enum Message {
     Tray(TrayEvent),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateUserAction {
+    Approve,
+    Defer,
+}
+
 /// 앱 화면 (현재 표시 중인 뷰)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -243,6 +249,7 @@ pub struct OneshimApp {
     window_id: Option<iced::window::Id>,
     /// SQLite 저장소 (Agent와 공유, 타임라인 조회용)
     storage: Option<Arc<SqliteStorage>>,
+    update_action_tx: Option<std::sync::mpsc::Sender<UpdateUserAction>>,
 }
 
 impl Default for OneshimApp {
@@ -288,6 +295,7 @@ impl OneshimApp {
             window_visible: true,
             window_id: None,
             storage: None,
+            update_action_tx: None,
         }
     }
 
@@ -310,6 +318,14 @@ impl OneshimApp {
     /// SQLite 저장소 설정 (Agent와 공유)
     pub fn with_storage(mut self, storage: Arc<SqliteStorage>) -> Self {
         self.storage = Some(storage);
+        self
+    }
+
+    pub fn with_update_action_sender(
+        mut self,
+        tx: std::sync::mpsc::Sender<UpdateUserAction>,
+    ) -> Self {
+        self.update_action_tx = Some(tx);
         self
     }
 
@@ -577,6 +593,20 @@ impl OneshimApp {
                                 info!("트레이: 자동화 토글 (폴링)");
                                 // 자동화 토글은 웹 대시보드/설정에서 처리
                             }
+                            TrayEvent::ApproveUpdate => {
+                                if let Some(ref tx) = self.update_action_tx {
+                                    if tx.send(UpdateUserAction::Approve).is_err() {
+                                        warn!("업데이트 승인 이벤트 전송 실패");
+                                    }
+                                }
+                            }
+                            TrayEvent::DeferUpdate => {
+                                if let Some(ref tx) = self.update_action_tx {
+                                    if tx.send(UpdateUserAction::Defer).is_err() {
+                                        warn!("업데이트 연기 이벤트 전송 실패");
+                                    }
+                                }
+                            }
                             TrayEvent::Quit => {
                                 info!("트레이에서 종료 요청");
                                 return iced::exit();
@@ -669,6 +699,20 @@ impl OneshimApp {
                     TrayEvent::ToggleAutomation => {
                         info!("Tray 메시지: 자동화 토글");
                         // 자동화 토글은 웹 대시보드/설정에서 처리
+                    }
+                    TrayEvent::ApproveUpdate => {
+                        if let Some(ref tx) = self.update_action_tx {
+                            if tx.send(UpdateUserAction::Approve).is_err() {
+                                warn!("업데이트 승인 이벤트 전송 실패");
+                            }
+                        }
+                    }
+                    TrayEvent::DeferUpdate => {
+                        if let Some(ref tx) = self.update_action_tx {
+                            if tx.send(UpdateUserAction::Defer).is_err() {
+                                warn!("업데이트 연기 이벤트 전송 실패");
+                            }
+                        }
                     }
                     TrayEvent::Quit => {
                         info!("트레이에서 종료 요청");

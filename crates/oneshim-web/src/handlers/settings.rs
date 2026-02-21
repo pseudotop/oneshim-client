@@ -48,6 +48,8 @@ pub struct AppSettings {
     /// 알림 설정
     #[serde(default)]
     pub notification: NotificationSettings,
+    #[serde(default)]
+    pub update: UpdateSettings,
     /// 텔레메트리 설정
     #[serde(default)]
     pub telemetry: TelemetrySettings,
@@ -88,6 +90,25 @@ pub struct NotificationSettings {
     pub high_usage_notification: bool,
     /// 고사용량 임계값 (%)
     pub high_usage_threshold: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateSettings {
+    pub enabled: bool,
+    pub check_interval_hours: u32,
+    pub include_prerelease: bool,
+    pub auto_install: bool,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_hours: 24,
+            include_prerelease: false,
+            auto_install: false,
+        }
+    }
 }
 
 /// 텔레메트리 설정
@@ -328,6 +349,7 @@ impl Default for AppSettings {
                 high_usage_notification: false,
                 high_usage_threshold: 90,
             },
+            update: UpdateSettings::default(),
             telemetry: TelemetrySettings::default(),
             monitor: MonitorControlSettings::default(),
             privacy: PrivacySettings {
@@ -446,6 +468,12 @@ pub async fn get_settings(State(state): State<AppState>) -> Result<Json<AppSetti
                 high_usage_notification: config.notification.high_usage_notification,
                 high_usage_threshold: config.notification.high_usage_threshold,
             },
+            update: UpdateSettings {
+                enabled: config.update.enabled,
+                check_interval_hours: config.update.check_interval_hours,
+                include_prerelease: config.update.include_prerelease,
+                auto_install: config.update.auto_install,
+            },
             telemetry: TelemetrySettings {
                 enabled: config.telemetry.enabled,
                 crash_reports: config.telemetry.crash_reports,
@@ -563,6 +591,10 @@ pub async fn update_settings(
                     settings.notification.high_usage_notification;
                 config.notification.high_usage_threshold =
                     settings.notification.high_usage_threshold;
+                config.update.enabled = settings.update.enabled;
+                config.update.check_interval_hours = settings.update.check_interval_hours;
+                config.update.include_prerelease = settings.update.include_prerelease;
+                config.update.auto_install = settings.update.auto_install;
                 // 텔레메트리 설정
                 config.telemetry.enabled = settings.telemetry.enabled;
                 config.telemetry.crash_reports = settings.telemetry.crash_reports;

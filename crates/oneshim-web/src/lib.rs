@@ -15,6 +15,7 @@ pub mod embedded;
 pub mod error;
 pub mod handlers;
 pub mod routes;
+pub mod update_control;
 
 use axum::Router;
 use oneshim_automation::audit::AuditLogger;
@@ -57,6 +58,7 @@ pub struct AppState {
     pub audit_logger: Option<Arc<RwLock<AuditLogger>>>,
     /// 자동화 제어기
     pub automation_controller: Option<Arc<AutomationController>>,
+    pub update_control: Option<update_control::UpdateControl>,
 }
 
 /// 로컬 웹 대시보드 서버
@@ -78,8 +80,14 @@ impl WebServer {
                 config_manager: None,
                 audit_logger: None,
                 automation_controller: None,
+                update_control: None,
             },
         }
+    }
+
+    pub fn with_update_control(mut self, control: update_control::UpdateControl) -> Self {
+        self.state.update_control = Some(control);
+        self
     }
 
     /// 설정 관리자 설정
