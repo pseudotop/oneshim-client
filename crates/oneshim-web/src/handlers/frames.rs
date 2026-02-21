@@ -51,19 +51,10 @@ pub async fn get_frames(
     let limit = params.limit_or_default();
     let offset = params.offset_or_default();
 
-    // 전체 개수 조회 (시간 범위 내)
-    let total: u64 = {
-        let conn = state.storage.conn_ref();
-        let conn = conn
-            .lock()
-            .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-        conn.query_row(
-            "SELECT COUNT(*) FROM frames WHERE timestamp >= ?1 AND timestamp <= ?2",
-            [from.to_rfc3339(), to.to_rfc3339()],
-            |row| row.get(0),
-        )
-        .unwrap_or(0)
-    };
+    let total = state
+        .storage
+        .count_frames_in_range(&from.to_rfc3339(), &to.to_rfc3339())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // offset이 있으면 더 많이 가져와서 스킵
     let fetch_limit = limit + offset;
@@ -99,38 +90,11 @@ pub async fn get_frames(
         if frame_ids.is_empty() {
             data
         } else {
-            // frame_tags 테이블에서 일괄 조회
-            let tag_map: std::collections::HashMap<i64, Vec<i64>> = {
-                let conn = state.storage.conn_ref();
-                let conn = conn
-                    .lock()
-                    .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-                let placeholders: Vec<String> = frame_ids.iter().map(|_| "?".to_string()).collect();
-                let sql = format!(
-                    "SELECT frame_id, tag_id FROM frame_tags WHERE frame_id IN ({})",
-                    placeholders.join(",")
-                );
-                let mut stmt = conn
-                    .prepare(&sql)
-                    .map_err(|e| ApiError::Internal(format!("SQL 오류: {e}")))?;
-                let params: Vec<Box<dyn rusqlite::types::ToSql>> = frame_ids
-                    .iter()
-                    .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
-                    .collect();
-                let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-                    params.iter().map(|p| p.as_ref()).collect();
-                let rows = stmt
-                    .query_map(param_refs.as_slice(), |row| {
-                        Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-                    })
-                    .map_err(|e| ApiError::Internal(format!("쿼리 오류: {e}")))?;
-                let mut map: std::collections::HashMap<i64, Vec<i64>> =
-                    std::collections::HashMap::new();
-                for (frame_id, tag_id) in rows.flatten() {
-                    map.entry(frame_id).or_default().push(tag_id);
-                }
-                map
-            };
+            let tag_map = state
+                .storage
+                .get_tag_ids_for_frames(&frame_ids)
+                .map_err(|e| ApiError::Internal(e.to_string()))?;
+
             data.into_iter()
                 .map(|mut f| {
                     if let Some(tags) = tag_map.get(&f.id) {
@@ -159,33 +123,12 @@ pub async fn get_frames(
 ///
 /// GET /api/frames/:id/image
 pub async fn get_frame_image(State(state): State<AppState>, Path(frame_id): Path<i64>) -> Response {
-    // 프레임 메타데이터 조회
-    let file_path_result: Result<Option<String>, ApiError> = {
-        let conn = state.storage.conn_ref();
-        let conn = match conn.lock() {
-            Ok(c) => c,
-            Err(e) => return ApiError::Internal(format!("DB 잠금 실패: {e}")).into_response(),
-        };
-
-        conn.query_row(
-            "SELECT file_path FROM frames WHERE id = ?1",
-            [frame_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => {
-                ApiError::NotFound(format!("프레임 ID: {frame_id}"))
-            }
-            _ => ApiError::Internal(format!("DB 오류: {e}")),
-        })
-    };
-
-    let file_path = match file_path_result {
-        Ok(Some(p)) => p,
+    let file_path = match state.storage.get_frame_file_path(frame_id) {
+        Ok(Some(path)) => path,
         Ok(None) => {
             return ApiError::NotFound(format!("프레임 {frame_id}에 이미지가 없음")).into_response()
         }
-        Err(e) => return e.into_response(),
+        Err(e) => return ApiError::Internal(e.to_string()).into_response(),
     };
 
     // 프레임 저장 디렉토리와 결합 + 경로 순회 방어

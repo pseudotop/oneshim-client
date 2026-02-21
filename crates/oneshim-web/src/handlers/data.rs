@@ -70,42 +70,20 @@ pub async fn delete_data_range(
         ));
     }
 
-    let conn = state
-        .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let mut result = DeleteResult::empty();
 
     // 데이터 유형이 지정되지 않으면 모두 삭제
     let delete_all = request.data_types.is_empty();
     let data_types = &request.data_types;
 
-    // 이벤트 삭제
-    if delete_all || data_types.iter().any(|t| t == "events") {
-        let deleted = conn
-            .execute(
-                "DELETE FROM events WHERE timestamp >= ? AND timestamp <= ?",
-                [&request.from, &request.to],
-            )
-            .map_err(|e| ApiError::Internal(format!("이벤트 삭제 실패: {e}")))?;
-        result.events_deleted = deleted as u64;
-    }
-
     // 프레임 삭제 (이미지 파일도 함께 삭제)
     if delete_all || data_types.iter().any(|t| t == "frames") {
         // 먼저 삭제할 프레임의 파일 경로 조회
         if let Some(ref frames_dir) = state.frames_dir {
-            let mut stmt = conn
-                .prepare("SELECT file_path FROM frames WHERE timestamp >= ? AND timestamp <= ?")
-                .map_err(|e| ApiError::Internal(format!("프레임 조회 실패: {e}")))?;
-
-            let paths: Vec<String> = stmt
-                .query_map([&request.from, &request.to], |row| row.get(0))
-                .map_err(|e| ApiError::Internal(format!("프레임 경로 조회 실패: {e}")))?
-                .filter_map(|r| r.ok())
-                .collect();
+            let paths = state
+                .storage
+                .list_frame_file_paths_in_range(&request.from, &request.to)
+                .map_err(|e| ApiError::Internal(e.to_string()))?;
 
             // 파일 삭제
             for path in paths {
@@ -113,54 +91,26 @@ pub async fn delete_data_range(
                 let _ = std::fs::remove_file(full_path);
             }
         }
-
-        let deleted = conn
-            .execute(
-                "DELETE FROM frames WHERE timestamp >= ? AND timestamp <= ?",
-                [&request.from, &request.to],
-            )
-            .map_err(|e| ApiError::Internal(format!("프레임 삭제 실패: {e}")))?;
-        result.frames_deleted = deleted as u64;
     }
 
-    // 메트릭 삭제
-    if delete_all || data_types.iter().any(|t| t == "metrics") {
-        let deleted = conn
-            .execute(
-                "DELETE FROM system_metrics WHERE timestamp >= ? AND timestamp <= ?",
-                [&request.from, &request.to],
-            )
-            .map_err(|e| ApiError::Internal(format!("메트릭 삭제 실패: {e}")))?;
-        result.metrics_deleted = deleted as u64;
+    let deleted = state
+        .storage
+        .delete_data_in_range(
+            &request.from,
+            &request.to,
+            delete_all || data_types.iter().any(|t| t == "events"),
+            delete_all || data_types.iter().any(|t| t == "frames"),
+            delete_all || data_types.iter().any(|t| t == "metrics"),
+            delete_all || data_types.iter().any(|t| t == "processes"),
+            delete_all || data_types.iter().any(|t| t == "idle"),
+        )
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-        // 시간별 메트릭도 삭제
-        let _ = conn.execute(
-            "DELETE FROM system_metrics_hourly WHERE hour >= ? AND hour <= ?",
-            [&request.from, &request.to],
-        );
-    }
-
-    // 프로세스 스냅샷 삭제
-    if delete_all || data_types.iter().any(|t| t == "processes") {
-        let deleted = conn
-            .execute(
-                "DELETE FROM process_snapshots WHERE timestamp >= ? AND timestamp <= ?",
-                [&request.from, &request.to],
-            )
-            .map_err(|e| ApiError::Internal(format!("프로세스 스냅샷 삭제 실패: {e}")))?;
-        result.process_snapshots_deleted = deleted as u64;
-    }
-
-    // 유휴 기록 삭제
-    if delete_all || data_types.iter().any(|t| t == "idle") {
-        let deleted = conn
-            .execute(
-                "DELETE FROM idle_periods WHERE start_time >= ? AND start_time <= ?",
-                [&request.from, &request.to],
-            )
-            .map_err(|e| ApiError::Internal(format!("유휴 기록 삭제 실패: {e}")))?;
-        result.idle_periods_deleted = deleted as u64;
-    }
+    result.events_deleted = deleted.events_deleted;
+    result.frames_deleted = deleted.frames_deleted;
+    result.metrics_deleted = deleted.metrics_deleted;
+    result.process_snapshots_deleted = deleted.process_snapshots_deleted;
+    result.idle_periods_deleted = deleted.idle_periods_deleted;
 
     result.message = format!("{}개의 레코드가 삭제되었습니다", result.total());
 
@@ -171,12 +121,6 @@ pub async fn delete_data_range(
 pub async fn delete_all_data(
     State(state): State<AppState>,
 ) -> Result<Json<DeleteResult>, ApiError> {
-    let conn = state
-        .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let mut result = DeleteResult::empty();
 
     // 프레임 이미지 파일 모두 삭제
@@ -193,33 +137,16 @@ pub async fn delete_all_data(
         }
     }
 
-    // 모든 테이블 데이터 삭제
-    result.events_deleted =
-        conn.execute("DELETE FROM events", [])
-            .map_err(|e| ApiError::Internal(format!("이벤트 삭제 실패: {e}")))? as u64;
+    let deleted = state
+        .storage
+        .delete_all_data()
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    result.frames_deleted =
-        conn.execute("DELETE FROM frames", [])
-            .map_err(|e| ApiError::Internal(format!("프레임 삭제 실패: {e}")))? as u64;
-
-    result.metrics_deleted =
-        conn.execute("DELETE FROM system_metrics", [])
-            .map_err(|e| ApiError::Internal(format!("메트릭 삭제 실패: {e}")))? as u64;
-
-    // 시간별 메트릭도 삭제
-    let _ = conn.execute("DELETE FROM system_metrics_hourly", []);
-
-    result.process_snapshots_deleted = conn
-        .execute("DELETE FROM process_snapshots", [])
-        .map_err(|e| ApiError::Internal(format!("프로세스 스냅샷 삭제 실패: {e}")))?
-        as u64;
-
-    result.idle_periods_deleted =
-        conn.execute("DELETE FROM idle_periods", [])
-            .map_err(|e| ApiError::Internal(format!("유휴 기록 삭제 실패: {e}")))? as u64;
-
-    // 세션 통계도 초기화
-    let _ = conn.execute("DELETE FROM session_stats", []);
+    result.events_deleted = deleted.events_deleted;
+    result.frames_deleted = deleted.frames_deleted;
+    result.metrics_deleted = deleted.metrics_deleted;
+    result.process_snapshots_deleted = deleted.process_snapshots_deleted;
+    result.idle_periods_deleted = deleted.idle_periods_deleted;
 
     result.message = format!("모든 데이터가 삭제되었습니다 ({}개 레코드)", result.total());
 

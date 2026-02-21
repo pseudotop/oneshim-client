@@ -369,62 +369,12 @@ impl Default for AppSettings {
 pub async fn get_storage_stats(
     State(state): State<AppState>,
 ) -> Result<Json<StorageStats>, ApiError> {
-    let conn = state
+    let stats = state
         .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
+        .get_storage_stats_summary()
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    // 각 테이블의 레코드 수 조회
-    let frame_count: u64 = conn
-        .query_row("SELECT COUNT(*) FROM frames", [], |row| row.get(0))
-        .unwrap_or(0);
-
-    let event_count: u64 = conn
-        .query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))
-        .unwrap_or(0);
-
-    let metric_count: u64 = conn
-        .query_row("SELECT COUNT(*) FROM system_metrics", [], |row| row.get(0))
-        .unwrap_or(0);
-
-    // 가장 오래된/최신 데이터 날짜
-    let oldest_date: Option<String> = conn
-        .query_row(
-            "SELECT MIN(timestamp) FROM (
-                SELECT timestamp FROM events
-                UNION ALL
-                SELECT timestamp FROM frames
-                UNION ALL
-                SELECT timestamp FROM system_metrics
-            )",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-
-    let newest_date: Option<String> = conn
-        .query_row(
-            "SELECT MAX(timestamp) FROM (
-                SELECT timestamp FROM events
-                UNION ALL
-                SELECT timestamp FROM frames
-                UNION ALL
-                SELECT timestamp FROM system_metrics
-            )",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-
-    // DB 파일 크기 (페이지 수 * 페이지 크기)
-    let page_count: u64 = conn
-        .query_row("PRAGMA page_count", [], |row| row.get(0))
-        .unwrap_or(0);
-    let page_size: u64 = conn
-        .query_row("PRAGMA page_size", [], |row| row.get(0))
-        .unwrap_or(4096);
-    let db_size_bytes = page_count * page_size;
+    let db_size_bytes = stats.page_count * stats.page_size;
 
     // 프레임 이미지 폴더 크기 계산
     let frames_size_bytes = if let Some(ref frames_dir) = state.frames_dir {
@@ -437,11 +387,11 @@ pub async fn get_storage_stats(
         db_size_bytes,
         frames_size_bytes,
         total_size_bytes: db_size_bytes + frames_size_bytes,
-        frame_count,
-        event_count,
-        metric_count,
-        oldest_data_date: oldest_date,
-        newest_data_date: newest_date,
+        frame_count: stats.frame_count,
+        event_count: stats.event_count,
+        metric_count: stats.metric_count,
+        oldest_data_date: stats.oldest_data_date,
+        newest_data_date: stats.newest_data_date,
     }))
 }
 

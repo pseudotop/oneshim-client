@@ -107,39 +107,23 @@ pub async fn get_hourly_metrics(
     let hours = params.hours.unwrap_or(24);
     let now = Utc::now();
 
-    // 시간별 집계 테이블에서 조회 (직접 쿼리)
-    // MetricsStorage trait에는 시간별 조회 메서드가 없으므로 raw SQL 사용
-    let conn = state.storage.conn_ref();
-    let conn = conn
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let from = (now - Duration::hours(hours as i64))
         .format("%Y-%m-%dT%H:00:00Z")
         .to_string();
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT hour, cpu_avg, cpu_max, memory_avg, memory_max, sample_count
-             FROM system_metrics_hourly
-             WHERE hour >= ?1
-             ORDER BY hour ASC",
-        )
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
-
-    let rows = stmt
-        .query_map([&from], |row| {
-            Ok(HourlyMetricsResponse {
-                hour: row.get(0)?,
-                cpu_avg: row.get(1)?,
-                cpu_max: row.get(2)?,
-                memory_avg: row.get::<_, i64>(3)? as u64,
-                memory_max: row.get::<_, i64>(4)? as u64,
-                sample_count: row.get::<_, i64>(5)? as u64,
-            })
+    let rows = state
+        .storage
+        .list_hourly_metrics_since(&from)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| HourlyMetricsResponse {
+            hour: row.hour,
+            cpu_avg: row.cpu_avg,
+            cpu_max: row.cpu_max,
+            memory_avg: row.memory_avg,
+            memory_max: row.memory_max,
+            sample_count: row.sample_count,
         })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?
-        .filter_map(|r| r.ok())
         .collect();
 
     Ok(Json(rows))

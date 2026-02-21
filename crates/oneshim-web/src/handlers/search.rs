@@ -75,33 +75,6 @@ pub struct SearchResponse {
     pub results: Vec<SearchResult>,
 }
 
-/// 프레임의 태그 목록 조회
-fn get_frame_tags(
-    conn: &std::sync::MutexGuard<rusqlite::Connection>,
-    frame_id: i64,
-) -> Vec<TagInfo> {
-    let mut stmt = match conn.prepare(
-        "SELECT t.id, t.name, t.color
-         FROM tags t
-         INNER JOIN frame_tags ft ON t.id = ft.tag_id
-         WHERE ft.frame_id = ?1
-         ORDER BY t.name",
-    ) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-
-    stmt.query_map([frame_id], |row| {
-        Ok(TagInfo {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            color: row.get(2)?,
-        })
-    })
-    .map(|iter| iter.flatten().collect())
-    .unwrap_or_default()
-}
-
 /// GET /api/search - 통합 검색 (태그 필터 지원)
 pub async fn search(
     State(state): State<AppState>,
@@ -133,12 +106,6 @@ pub async fn search(
     let has_text_query = !query.is_empty();
     let has_tag_filter = !tag_ids.is_empty();
 
-    let conn = state
-        .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let mut results = Vec::new();
     let mut total: u64 = 0;
 
@@ -151,83 +118,56 @@ pub async fn search(
         let (count_sql, select_sql) = build_frame_queries(has_text_query, has_tag_filter, &tag_ids);
 
         // 프레임 전체 개수
-        let frame_count: u64 = if has_text_query && has_tag_filter {
-            conn.query_row(&count_sql, [&pattern], |row| row.get(0))
-        } else if has_text_query {
-            conn.query_row(&count_sql, [&pattern], |row| row.get(0))
-        } else {
-            conn.query_row(&count_sql, [], |row| row.get(0))
-        }
-        .unwrap_or(0);
+        let frame_count = state
+            .storage
+            .count_search_frames(
+                &count_sql,
+                if has_text_query { Some(&pattern) } else { None },
+            )
+            .unwrap_or(0);
         total += frame_count;
 
-        // 프레임 결과 조회
-        let mut stmt = conn
-            .prepare(&select_sql)
-            .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
+        let frame_rows = state
+            .storage
+            .search_frames_with_sql(
+                &select_sql,
+                if has_text_query { Some(&pattern) } else { None },
+                limit,
+                offset,
+            )
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-        let frame_results: Vec<SearchResult> = if has_text_query {
-            stmt.query_map([&pattern, &limit.to_string(), &offset.to_string()], |row| {
-                let id: i64 = row.get(0)?;
-                let file_path: Option<String> = row.get(6)?;
-                let image_url = file_path
-                    .as_ref()
-                    .map(|_| format!("/api/frames/{}/image", id));
+        let mut frame_results = Vec::with_capacity(frame_rows.len());
+        for row in frame_rows {
+            let image_url = row
+                .file_path
+                .as_ref()
+                .map(|_| format!("/api/frames/{}/image", row.id));
 
-                Ok((
-                    id,
-                    SearchResult {
-                        result_type: "frame".to_string(),
-                        id: id.to_string(),
-                        timestamp: row.get(1)?,
-                        app_name: row.get(2)?,
-                        window_title: row.get(3)?,
-                        matched_text: row.get(4)?,
-                        image_url,
-                        importance: row.get(5)?,
-                        tags: None,
-                    },
-                ))
-            })
-            .map_err(|e| ApiError::Internal(format!("프레임 검색 실패: {e}")))?
-            .flatten()
-            .map(|(id, mut result)| {
-                result.tags = Some(get_frame_tags(&conn, id));
-                result
-            })
-            .collect()
-        } else {
-            // 태그만으로 검색 (텍스트 검색 없음)
-            stmt.query_map([&limit.to_string(), &offset.to_string()], |row| {
-                let id: i64 = row.get(0)?;
-                let file_path: Option<String> = row.get(6)?;
-                let image_url = file_path
-                    .as_ref()
-                    .map(|_| format!("/api/frames/{}/image", id));
+            let tags = state
+                .storage
+                .get_tags_for_frame(row.id)
+                .map_err(|e| ApiError::Internal(e.to_string()))?
+                .into_iter()
+                .map(|tag| TagInfo {
+                    id: tag.id,
+                    name: tag.name,
+                    color: tag.color,
+                })
+                .collect();
 
-                Ok((
-                    id,
-                    SearchResult {
-                        result_type: "frame".to_string(),
-                        id: id.to_string(),
-                        timestamp: row.get(1)?,
-                        app_name: row.get(2)?,
-                        window_title: row.get(3)?,
-                        matched_text: row.get(4)?,
-                        image_url,
-                        importance: row.get(5)?,
-                        tags: None,
-                    },
-                ))
-            })
-            .map_err(|e| ApiError::Internal(format!("프레임 검색 실패: {e}")))?
-            .flatten()
-            .map(|(id, mut result)| {
-                result.tags = Some(get_frame_tags(&conn, id));
-                result
-            })
-            .collect()
-        };
+            frame_results.push(SearchResult {
+                result_type: "frame".to_string(),
+                id: row.id.to_string(),
+                timestamp: row.timestamp,
+                app_name: row.app_name,
+                window_title: row.window_title,
+                matched_text: row.matched_text,
+                image_url,
+                importance: row.importance,
+                tags: Some(tags),
+            });
+        }
 
         results.extend(frame_results);
     }
@@ -235,16 +175,7 @@ pub async fn search(
     // 이벤트 검색 (태그 필터가 없을 때만)
     if (search_type == "all" || search_type == "events") && has_text_query && !has_tag_filter {
         // 이벤트 전체 개수
-        let event_count: u64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM events
-                 WHERE app_name LIKE ?1
-                    OR window_title LIKE ?1
-                    OR data LIKE ?1",
-                [&pattern],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let event_count = state.storage.count_search_events(&pattern).unwrap_or(0);
         total += event_count;
 
         // 프레임 결과가 limit 미만이면 이벤트도 조회
@@ -256,39 +187,23 @@ pub async fn search(
                 offset
             };
 
-            let mut stmt = conn
-                .prepare(
-                    "SELECT event_id, timestamp, event_type, app_name, window_title, data
-                     FROM events
-                     WHERE app_name LIKE ?1
-                        OR window_title LIKE ?1
-                        OR data LIKE ?1
-                     ORDER BY timestamp DESC
-                     LIMIT ?2 OFFSET ?3",
-                )
-                .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            let event_rows = state
+                .storage
+                .search_events(&pattern, remaining, event_offset)
+                .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-            let event_results = stmt
-                .query_map(
-                    [&pattern, &remaining.to_string(), &event_offset.to_string()],
-                    |row| {
-                        Ok(SearchResult {
-                            result_type: "event".to_string(),
-                            id: row.get(0)?,
-                            timestamp: row.get(1)?,
-                            app_name: row.get(3)?,
-                            window_title: row.get(4)?,
-                            matched_text: row.get(5)?,
-                            image_url: None,
-                            importance: None,
-                            tags: None,
-                        })
-                    },
-                )
-                .map_err(|e| ApiError::Internal(format!("이벤트 검색 실패: {e}")))?;
-
-            for result in event_results.flatten() {
-                results.push(result);
+            for row in event_rows {
+                results.push(SearchResult {
+                    result_type: "event".to_string(),
+                    id: row.event_id,
+                    timestamp: row.timestamp,
+                    app_name: row.app_name,
+                    window_title: row.window_title,
+                    matched_text: row.data,
+                    image_url: None,
+                    importance: None,
+                    tags: None,
+                });
             }
         }
     }

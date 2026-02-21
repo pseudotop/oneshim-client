@@ -141,19 +141,10 @@ pub async fn get_events(
     let limit = params.limit_or_default();
     let offset = params.offset_or_default();
 
-    // 전체 개수 조회 (시간 범위 내)
-    let total: u64 = {
-        let conn = state.storage.conn_ref();
-        let conn = conn
-            .lock()
-            .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-        conn.query_row(
-            "SELECT COUNT(*) FROM events WHERE timestamp >= ?1 AND timestamp <= ?2",
-            [from.to_rfc3339(), to.to_rfc3339()],
-            |row| row.get(0),
-        )
-        .unwrap_or(0)
-    };
+    let total = state
+        .storage
+        .count_events_in_range(&from.to_rfc3339(), &to.to_rfc3339())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // offset이 있으면 더 많이 가져와서 스킵
     let fetch_limit = limit + offset;

@@ -68,12 +68,6 @@ pub async fn export_metrics(
     State(state): State<AppState>,
     Query(params): Query<ExportQuery>,
 ) -> Result<Response, ApiError> {
-    let conn = state
-        .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let from = params
         .from
         .as_ref()
@@ -87,39 +81,29 @@ pub async fn export_metrics(
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(Utc::now);
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT timestamp, cpu_usage, memory_used, memory_total, disk_used, disk_total,
-                    network_upload, network_download
-             FROM system_metrics
-             WHERE timestamp >= ?1 AND timestamp <= ?2
-             ORDER BY timestamp ASC",
-        )
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
-
-    let records: Vec<MetricExportRecord> = stmt
-        .query_map([from.to_rfc3339(), to.to_rfc3339()], |row| {
-            let memory_used: u64 = row.get(2)?;
-            let memory_total: u64 = row.get(3)?;
-            let memory_percent = if memory_total > 0 {
-                (memory_used as f32 / memory_total as f32) * 100.0
+    let records: Vec<MetricExportRecord> = state
+        .storage
+        .list_metric_exports(&from.to_rfc3339(), &to.to_rfc3339())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| {
+            let memory_percent = if row.memory_total > 0 {
+                (row.memory_used as f32 / row.memory_total as f32) * 100.0
             } else {
                 0.0
             };
-            Ok(MetricExportRecord {
-                timestamp: row.get(0)?,
-                cpu_usage: row.get(1)?,
-                memory_used,
-                memory_total,
+            MetricExportRecord {
+                timestamp: row.timestamp,
+                cpu_usage: row.cpu_usage,
+                memory_used: row.memory_used,
+                memory_total: row.memory_total,
                 memory_percent,
-                disk_used: row.get(4)?,
-                disk_total: row.get(5)?,
-                network_upload: row.get(6)?,
-                network_download: row.get(7)?,
-            })
+                disk_used: row.disk_used,
+                disk_total: row.disk_total,
+                network_upload: row.network_upload,
+                network_download: row.network_download,
+            }
         })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?
-        .filter_map(|r| r.ok())
         .collect();
 
     export_response(&records, &params.format, "metrics")
@@ -130,12 +114,6 @@ pub async fn export_events(
     State(state): State<AppState>,
     Query(params): Query<ExportQuery>,
 ) -> Result<Response, ApiError> {
-    let conn = state
-        .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let from = params
         .from
         .as_ref()
@@ -149,27 +127,18 @@ pub async fn export_events(
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(Utc::now);
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT event_id, event_type, timestamp, app_name, window_title
-             FROM events
-             WHERE timestamp >= ?1 AND timestamp <= ?2
-             ORDER BY timestamp ASC",
-        )
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
-
-    let records: Vec<EventExportRecord> = stmt
-        .query_map([from.to_rfc3339(), to.to_rfc3339()], |row| {
-            Ok(EventExportRecord {
-                event_id: row.get(0)?,
-                event_type: row.get(1)?,
-                timestamp: row.get(2)?,
-                app_name: row.get(3)?,
-                window_title: row.get(4)?,
-            })
+    let records: Vec<EventExportRecord> = state
+        .storage
+        .list_event_exports(&from.to_rfc3339(), &to.to_rfc3339())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| EventExportRecord {
+            event_id: row.event_id,
+            event_type: row.event_type,
+            timestamp: row.timestamp,
+            app_name: row.app_name,
+            window_title: row.window_title,
         })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?
-        .filter_map(|r| r.ok())
         .collect();
 
     export_response(&records, &params.format, "events")
@@ -180,12 +149,6 @@ pub async fn export_frames(
     State(state): State<AppState>,
     Query(params): Query<ExportQuery>,
 ) -> Result<Response, ApiError> {
-    let conn = state
-        .storage
-        .conn_ref()
-        .lock()
-        .map_err(|e| ApiError::Internal(format!("DB 잠금 실패: {e}")))?;
-
     let from = params
         .from
         .as_ref()
@@ -199,33 +162,21 @@ pub async fn export_frames(
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(Utc::now);
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, timestamp, trigger_type, app_name, window_title, importance,
-                    width, height, ocr_text
-             FROM frames
-             WHERE timestamp >= ?1 AND timestamp <= ?2
-             ORDER BY timestamp ASC",
-        )
-        .map_err(|e| ApiError::Internal(format!("쿼리 준비 실패: {e}")))?;
-
-    let records: Vec<FrameExportRecord> = stmt
-        .query_map([from.to_rfc3339(), to.to_rfc3339()], |row| {
-            let width: i32 = row.get(6)?;
-            let height: i32 = row.get(7)?;
-            Ok(FrameExportRecord {
-                id: row.get(0)?,
-                timestamp: row.get(1)?,
-                trigger_type: row.get(2)?,
-                app_name: row.get(3)?,
-                window_title: row.get(4)?,
-                importance: row.get(5)?,
-                resolution: format!("{}x{}", width, height),
-                ocr_text: row.get(8)?,
-            })
+    let records: Vec<FrameExportRecord> = state
+        .storage
+        .list_frame_exports(&from.to_rfc3339(), &to.to_rfc3339())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| FrameExportRecord {
+            id: row.id,
+            timestamp: row.timestamp,
+            trigger_type: row.trigger_type,
+            app_name: row.app_name,
+            window_title: row.window_title,
+            importance: row.importance,
+            resolution: format!("{}x{}", row.resolution_w, row.resolution_h),
+            ocr_text: row.ocr_text,
         })
-        .map_err(|e| ApiError::Internal(format!("쿼리 실행 실패: {e}")))?
-        .filter_map(|r| r.ok())
         .collect();
 
     export_response(&records, &params.format, "frames")
