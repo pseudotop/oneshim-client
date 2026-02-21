@@ -224,6 +224,25 @@ export default function Settings() {
     }
   }
 
+  const updateSectionDirty = Boolean(
+    formData && settings && JSON.stringify(formData.update) !== JSON.stringify(settings.update)
+  )
+
+  const saveUpdateSection = () => {
+    if (!formData) {
+      return
+    }
+
+    const normalizedInterval = Math.max(1, Math.min(168, formData.update.check_interval_hours))
+    mutation.mutate({
+      ...formData,
+      update: {
+        ...formData.update,
+        check_interval_hours: normalizedInterval,
+      },
+    })
+  }
+
   if (settingsLoading || storageLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -562,6 +581,19 @@ export default function Settings() {
                     onClick={() => updateActionMutation.mutate('Defer')}
                   >
                     {t('settings.updateDefer')}
+                  </Button>
+                </div>
+
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    isLoading={mutation.isPending}
+                    disabled={!updateSectionDirty || mutation.isPending}
+                    onClick={saveUpdateSection}
+                  >
+                    {t('settings.saveSettings')}
                   </Button>
                 </div>
               </div>
