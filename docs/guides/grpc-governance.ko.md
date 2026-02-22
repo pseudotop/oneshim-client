@@ -1,0 +1,52 @@
+[English](./grpc-governance.md) | [한국어](./grpc-governance.ko.md)
+
+# gRPC 거버넌스 가이드
+
+이 문서는 ONESHIM gRPC 클라이언트 운영을 위한 최소 거버넌스 기준을 정의합니다.
+
+## 적용 범위
+
+- `crates/oneshim-network/src/grpc/*`
+- `crates/oneshim-network/src/proto/generated/*`
+- `api/proto/oneshim/v1/*`
+
+## 기본 규칙
+
+1. **계약 무결성**
+   - `api/proto` 하위 proto 파일을 단일 진실 원천(SSOT)으로 유지합니다.
+   - `crates/oneshim-network/src/proto/generated` 생성 코드는 항상 최신 상태로 커밋되어야 합니다.
+2. **Feature-gated 안정성**
+   - 모든 gRPC 변경은 `--features grpc` 빌드/테스트를 통과해야 합니다.
+   - `oneshim-app` 배선도 `--features grpc`로 컴파일 검증해야 합니다.
+3. **Fallback 보장**
+   - `GrpcConfig` fallback endpoint 규칙을 유지하고 테스트해야 합니다.
+   - `gRPC`/`REST` 선택 동작은 결정적으로 유지되어야 합니다.
+4. **운영 가시성**
+   - gRPC 게이트 실패는 gRPC 빌드 기준 릴리즈 차단 항목입니다.
+
+## CI 게이트
+
+- 워크플로: `.github/workflows/grpc-governance.yml`
+- 스크립트: `scripts/verify-grpc-readiness.sh`
+
+스크립트 강제 항목:
+
+```bash
+cargo check -p oneshim-network --features grpc
+cargo test -p oneshim-network --features grpc
+cargo check -p oneshim-app --features grpc
+git diff --quiet -- crates/oneshim-network/src/proto/generated
+```
+
+## 릴리즈 안전 체크리스트
+
+- Proto 변경의 호환성 영향 검토 완료
+- 생성 코드 재생성/커밋 완료
+- gRPC 거버넌스 워크플로 green
+- 무결성 워크플로(`integrity-gates`, `security-compliance`) green
+
+## 다음 강화 항목
+
+1. Proto 호환성 정책(Backward/Forward 매트릭스) 명시
+2. 서버-클라이언트 gRPC 에러 코드 매핑 스펙 추가
+3. mTLS 준비 옵션 및 키 관리 런북 확장

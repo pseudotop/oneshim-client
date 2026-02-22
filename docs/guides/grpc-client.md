@@ -5,6 +5,7 @@
 > **Written**: 2026-02-04
 > **Phase**: 36 (gRPC Client)
 > **Related docs**: [oneshim-network crate](../crates/oneshim-network.md)
+> **Governance**: [gRPC Governance Guide](./grpc-governance.md)
 
 ## Overview
 
