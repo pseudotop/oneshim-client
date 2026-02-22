@@ -483,6 +483,17 @@ pub struct GrpcConfig {
     /// TLS 사용 여부
     #[serde(default)]
     pub use_tls: bool,
+
+    #[serde(default)]
+    pub mtls_enabled: bool,
+    #[serde(default)]
+    pub tls_domain_name: Option<String>,
+    #[serde(default)]
+    pub tls_ca_cert_path: Option<String>,
+    #[serde(default)]
+    pub tls_client_cert_path: Option<String>,
+    #[serde(default)]
+    pub tls_client_key_path: Option<String>,
 }
 
 impl Default for GrpcConfig {
@@ -495,6 +506,11 @@ impl Default for GrpcConfig {
             connect_timeout_secs: default_grpc_connect_timeout(),
             request_timeout_secs: default_grpc_request_timeout(),
             use_tls: false,
+            mtls_enabled: false,
+            tls_domain_name: None,
+            tls_ca_cert_path: None,
+            tls_client_cert_path: None,
+            tls_client_key_path: None,
         }
     }
 }
@@ -943,6 +959,7 @@ fn default_capture_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn update_integrity_policy_rejects_disabled_signature_verification() {
@@ -986,5 +1003,36 @@ mod tests {
 
         let result = config.validate_integrity_policy();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn grpc_config_defaults_disable_mtls() {
+        let config = GrpcConfig::default();
+        assert!(!config.use_tls);
+        assert!(!config.mtls_enabled);
+        assert!(config.tls_domain_name.is_none());
+    }
+
+    #[test]
+    fn grpc_config_deserializes_mtls_fields() {
+        let payload = json!({
+            "use_grpc_auth": true,
+            "use_grpc_context": true,
+            "grpc_endpoint": "https://grpc.example.com:50051",
+            "grpc_fallback_ports": [50052, 50053],
+            "connect_timeout_secs": 5,
+            "request_timeout_secs": 20,
+            "use_tls": true,
+            "mtls_enabled": true,
+            "tls_domain_name": "grpc.example.com",
+            "tls_ca_cert_path": "/etc/oneshim/ca.pem",
+            "tls_client_cert_path": "/etc/oneshim/client.pem",
+            "tls_client_key_path": "/etc/oneshim/client.key"
+        });
+
+        let parsed: GrpcConfig = serde_json::from_value(payload).expect("grpc config must parse");
+        assert!(parsed.use_tls);
+        assert!(parsed.mtls_enabled);
+        assert_eq!(parsed.tls_domain_name.as_deref(), Some("grpc.example.com"));
     }
 }

@@ -22,9 +22,7 @@
 //! println!("인증 서비스 상태: {:?}", auth_status);
 //! ```
 
-use std::time::Duration;
-
-use tonic::transport::{Channel, Endpoint};
+use tonic::transport::Channel;
 use tonic_health::pb::health_client::HealthClient;
 use tonic_health::pb::HealthCheckRequest;
 use tracing::{debug, error, info};
@@ -104,18 +102,7 @@ impl GrpcHealthClient {
         for endpoint_url in &endpoints {
             debug!("gRPC Health 클라이언트 연결 시도: {}", endpoint_url);
 
-            let endpoint = match Endpoint::from_shared(endpoint_url.clone()) {
-                Ok(ep) => ep
-                    .connect_timeout(Duration::from_secs(config.connect_timeout_secs))
-                    .timeout(Duration::from_secs(config.request_timeout_secs)),
-                Err(e) => {
-                    debug!("잘못된 gRPC 엔드포인트: {} - {}", endpoint_url, e);
-                    last_error = Some(CoreError::Network(format!("Invalid endpoint: {}", e)));
-                    continue;
-                }
-            };
-
-            match endpoint.connect().await {
+            match config.connect_channel(endpoint_url).await {
                 Ok(channel) => {
                     info!("gRPC Health 클라이언트 연결: {}", endpoint_url);
                     let client = HealthClient::new(channel);
@@ -126,7 +113,7 @@ impl GrpcHealthClient {
                         "gRPC Health 연결 실패, 다음 포트 시도: {} - {}",
                         endpoint_url, e
                     );
-                    last_error = Some(CoreError::Network(format!("gRPC Health 연결 실패: {}", e)));
+                    last_error = Some(e);
                 }
             }
         }

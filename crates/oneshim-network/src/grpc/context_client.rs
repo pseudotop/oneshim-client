@@ -3,10 +3,8 @@
 //! 서버의 UserContextService와 통신합니다.
 //! 배치 업로드, 제안 스트림, 피드백 등을 처리합니다.
 
-use std::time::Duration;
-
 use oneshim_core::error::CoreError;
-use tonic::transport::{Channel, Endpoint};
+use tonic::transport::Channel;
 use tracing::{debug, error, info};
 
 use super::{map_grpc_status_error, GrpcConfig};
@@ -32,18 +30,7 @@ impl GrpcContextClient {
         for endpoint_url in &endpoints {
             info!(endpoint = %endpoint_url, "gRPC 컨텍스트 클라이언트 연결 시도");
 
-            let endpoint = match Endpoint::from_shared(endpoint_url.clone()) {
-                Ok(ep) => ep
-                    .connect_timeout(Duration::from_secs(config.connect_timeout_secs))
-                    .timeout(Duration::from_secs(config.request_timeout_secs)),
-                Err(e) => {
-                    debug!(endpoint = %endpoint_url, error = %e, "잘못된 gRPC 엔드포인트, 다음 시도");
-                    last_error = Some(CoreError::Network(format!("잘못된 gRPC 엔드포인트: {}", e)));
-                    continue;
-                }
-            };
-
-            match endpoint.connect().await {
+            match config.connect_channel(endpoint_url).await {
                 Ok(channel) => {
                     let client = UserContextServiceClient::new(channel);
                     info!(endpoint = %endpoint_url, "gRPC 컨텍스트 클라이언트 연결 완료");
@@ -51,7 +38,7 @@ impl GrpcContextClient {
                 }
                 Err(e) => {
                     debug!(endpoint = %endpoint_url, error = %e, "gRPC 연결 실패, 다음 포트 시도");
-                    last_error = Some(CoreError::Network(format!("gRPC 연결 실패: {}", e)));
+                    last_error = Some(e);
                 }
             }
         }
@@ -175,10 +162,14 @@ impl GrpcContextClient {
             active_only: true,
         });
 
-        let response = self.client.list_suggestions(request).await.map_err(|status| {
-            error!(error = %status, "gRPC 제안 목록 조회 실패");
-            map_grpc_status_error("grpc suggestion list failed", status)
-        })?;
+        let response = self
+            .client
+            .list_suggestions(request)
+            .await
+            .map_err(|status| {
+                error!(error = %status, "gRPC 제안 목록 조회 실패");
+                map_grpc_status_error("grpc suggestion list failed", status)
+            })?;
 
         Ok(response.into_inner())
     }

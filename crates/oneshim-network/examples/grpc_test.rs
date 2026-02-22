@@ -103,6 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         connect_timeout_secs: 10,
         request_timeout_secs: 30,
         use_tls: false,
+        mtls_enabled: false,
+        tls_domain_name: None,
+        tls_ca_cert_path: None,
+        tls_client_cert_path: None,
+        tls_client_key_path: None,
     };
 
     // TokenManager (REST fallback용)

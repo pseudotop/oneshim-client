@@ -2,11 +2,9 @@
 //!
 //! 서버의 SessionService와 통신합니다.
 
-use std::collections::HashMap;
-use std::time::Duration;
-
 use oneshim_core::error::CoreError;
-use tonic::transport::{Channel, Endpoint};
+use std::collections::HashMap;
+use tonic::transport::Channel;
 use tracing::{debug, error, info};
 
 use super::{map_grpc_status_error, GrpcConfig};
@@ -30,18 +28,7 @@ impl GrpcSessionClient {
         for endpoint_url in &endpoints {
             info!(endpoint = %endpoint_url, "gRPC 세션 클라이언트 연결 시도");
 
-            let endpoint = match Endpoint::from_shared(endpoint_url.clone()) {
-                Ok(ep) => ep
-                    .connect_timeout(Duration::from_secs(config.connect_timeout_secs))
-                    .timeout(Duration::from_secs(config.request_timeout_secs)),
-                Err(e) => {
-                    debug!(endpoint = %endpoint_url, error = %e, "잘못된 gRPC 엔드포인트, 다음 시도");
-                    last_error = Some(CoreError::Network(format!("잘못된 gRPC 엔드포인트: {}", e)));
-                    continue;
-                }
-            };
-
-            match endpoint.connect().await {
+            match config.connect_channel(endpoint_url).await {
                 Ok(channel) => {
                     let client = SessionServiceClient::new(channel);
                     info!(endpoint = %endpoint_url, "gRPC 세션 클라이언트 연결 완료");
@@ -49,7 +36,7 @@ impl GrpcSessionClient {
                 }
                 Err(e) => {
                     debug!(endpoint = %endpoint_url, error = %e, "gRPC 연결 실패, 다음 포트 시도");
-                    last_error = Some(CoreError::Network(format!("gRPC 연결 실패: {}", e)));
+                    last_error = Some(e);
                 }
             }
         }
@@ -74,10 +61,14 @@ impl GrpcSessionClient {
             user_agent: None,
         });
 
-        let response = self.client.create_session(request).await.map_err(|status| {
-            error!(error = %status, "gRPC 세션 생성 실패");
-            map_grpc_status_error("grpc session creation failed", status)
-        })?;
+        let response = self
+            .client
+            .create_session(request)
+            .await
+            .map_err(|status| {
+                error!(error = %status, "gRPC 세션 생성 실패");
+                map_grpc_status_error("grpc session creation failed", status)
+            })?;
 
         Ok(response.into_inner())
     }

@@ -3,8 +3,13 @@
 //! gRPC 연결 설정 및 Feature Flag 관리
 //! `oneshim-core`의 `GrpcConfig`를 확장하여 REST fallback 엔드포인트 추가
 
+use std::fs;
+use std::time::Duration;
+
 use oneshim_core::config::GrpcConfig as CoreGrpcConfig;
+use oneshim_core::error::CoreError;
 use serde::{Deserialize, Serialize};
+use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Identity};
 
 /// gRPC 클라이언트 설정
 ///
@@ -42,6 +47,21 @@ pub struct GrpcConfig {
     /// TLS 사용 여부
     #[serde(default = "default_use_tls")]
     pub use_tls: bool,
+
+    #[serde(default)]
+    pub mtls_enabled: bool,
+
+    #[serde(default)]
+    pub tls_domain_name: Option<String>,
+
+    #[serde(default)]
+    pub tls_ca_cert_path: Option<String>,
+
+    #[serde(default)]
+    pub tls_client_cert_path: Option<String>,
+
+    #[serde(default)]
+    pub tls_client_key_path: Option<String>,
 }
 
 impl Default for GrpcConfig {
@@ -55,6 +75,11 @@ impl Default for GrpcConfig {
             connect_timeout_secs: default_connect_timeout(),
             request_timeout_secs: default_request_timeout(),
             use_tls: default_use_tls(),
+            mtls_enabled: false,
+            tls_domain_name: None,
+            tls_ca_cert_path: None,
+            tls_client_cert_path: None,
+            tls_client_key_path: None,
         }
     }
 }
@@ -70,6 +95,11 @@ impl From<CoreGrpcConfig> for GrpcConfig {
             connect_timeout_secs: core.connect_timeout_secs,
             request_timeout_secs: core.request_timeout_secs,
             use_tls: core.use_tls,
+            mtls_enabled: core.mtls_enabled,
+            tls_domain_name: core.tls_domain_name,
+            tls_ca_cert_path: core.tls_ca_cert_path,
+            tls_client_cert_path: core.tls_client_cert_path,
+            tls_client_key_path: core.tls_client_key_path,
         }
     }
 }
@@ -86,7 +116,133 @@ impl GrpcConfig {
             connect_timeout_secs: core.connect_timeout_secs,
             request_timeout_secs: core.request_timeout_secs,
             use_tls: core.use_tls,
+            mtls_enabled: core.mtls_enabled,
+            tls_domain_name: core.tls_domain_name.clone(),
+            tls_ca_cert_path: core.tls_ca_cert_path.clone(),
+            tls_client_cert_path: core.tls_client_cert_path.clone(),
+            tls_client_key_path: core.tls_client_key_path.clone(),
         }
+    }
+
+    pub fn validate_transport_security(&self) -> Result<(), CoreError> {
+        if self.mtls_enabled && !self.use_tls {
+            return Err(CoreError::Config(
+                "grpc.mtls_enabled requires grpc.use_tls=true".to_string(),
+            ));
+        }
+
+        if !self.use_tls {
+            return Ok(());
+        }
+
+        let domain = self
+            .tls_domain_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                CoreError::Config(
+                    "grpc.tls_domain_name is required when grpc.use_tls=true".to_string(),
+                )
+            })?;
+
+        if domain.contains('/') {
+            return Err(CoreError::Config(
+                "grpc.tls_domain_name must be a hostname without path".to_string(),
+            ));
+        }
+
+        if self.mtls_enabled {
+            self.required_path("grpc.tls_ca_cert_path", self.tls_ca_cert_path.as_deref())?;
+            self.required_path(
+                "grpc.tls_client_cert_path",
+                self.tls_client_cert_path.as_deref(),
+            )?;
+            self.required_path(
+                "grpc.tls_client_key_path",
+                self.tls_client_key_path.as_deref(),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn build_endpoint(&self, endpoint_url: &str) -> Result<Endpoint, CoreError> {
+        self.validate_transport_security()?;
+
+        let mut endpoint = Endpoint::from_shared(endpoint_url.to_string())
+            .map_err(|e| CoreError::Network(format!("invalid gRPC endpoint: {e}")))?
+            .connect_timeout(Duration::from_secs(self.connect_timeout_secs))
+            .timeout(Duration::from_secs(self.request_timeout_secs));
+
+        if self.use_tls {
+            let domain_name = self
+                .tls_domain_name
+                .as_deref()
+                .map(str::trim)
+                .ok_or_else(|| {
+                    CoreError::Config(
+                        "grpc.tls_domain_name is required when grpc.use_tls=true".to_string(),
+                    )
+                })?;
+
+            let mut tls = ClientTlsConfig::new().domain_name(domain_name.to_string());
+
+            if let Some(path) = self.tls_ca_cert_path.as_deref().map(str::trim) {
+                if !path.is_empty() {
+                    let pem = fs::read(path).map_err(|e| {
+                        CoreError::Config(format!("failed to read grpc.tls_ca_cert_path: {e}"))
+                    })?;
+                    tls = tls.ca_certificate(Certificate::from_pem(pem));
+                }
+            }
+
+            if self.mtls_enabled {
+                let cert_path = self
+                    .tls_client_cert_path
+                    .as_deref()
+                    .ok_or_else(|| {
+                        CoreError::Config(
+                            "grpc.tls_client_cert_path is required when grpc.mtls_enabled=true"
+                                .to_string(),
+                        )
+                    })?
+                    .trim();
+                let key_path = self
+                    .tls_client_key_path
+                    .as_deref()
+                    .ok_or_else(|| {
+                        CoreError::Config(
+                            "grpc.tls_client_key_path is required when grpc.mtls_enabled=true"
+                                .to_string(),
+                        )
+                    })?
+                    .trim();
+
+                let cert_pem = fs::read(cert_path).map_err(|e| {
+                    CoreError::Config(format!("failed to read grpc.tls_client_cert_path: {e}"))
+                })?;
+                let key_pem = fs::read(key_path).map_err(|e| {
+                    CoreError::Config(format!("failed to read grpc.tls_client_key_path: {e}"))
+                })?;
+
+                tls = tls.identity(Identity::from_pem(cert_pem, key_pem));
+            }
+
+            endpoint = endpoint
+                .tls_config(tls)
+                .map_err(|e| CoreError::Config(format!("invalid grpc tls configuration: {e}")))?;
+        }
+
+        Ok(endpoint)
+    }
+
+    pub async fn connect_channel(&self, endpoint_url: &str) -> Result<Channel, CoreError> {
+        let endpoint = self.build_endpoint(endpoint_url)?;
+        endpoint
+            .connect()
+            .await
+            .map_err(|e| CoreError::Network(format!("gRPC connection failed: {e}")))
     }
 
     /// 시도할 모든 gRPC 엔드포인트 목록 반환 (기본 + fallback)
@@ -133,6 +289,21 @@ fn default_use_tls() -> bool {
 }
 
 impl GrpcConfig {
+    fn required_path(&self, field: &str, value: Option<&str>) -> Result<(), CoreError> {
+        let valid = value
+            .map(str::trim)
+            .map(|path| !path.is_empty())
+            .unwrap_or(false);
+
+        if !valid {
+            return Err(CoreError::Config(format!(
+                "{field} is required when grpc.mtls_enabled=true"
+            )));
+        }
+
+        Ok(())
+    }
+
     /// REST fallback 필요 여부 확인
     pub fn needs_rest_fallback(&self) -> bool {
         !self.use_grpc_auth || !self.use_grpc_context
@@ -158,6 +329,8 @@ mod tests {
         let config = GrpcConfig::default();
         assert!(!config.use_grpc_auth);
         assert!(!config.use_grpc_context);
+        assert!(!config.use_tls);
+        assert!(!config.mtls_enabled);
         assert_eq!(config.grpc_endpoint, "http://localhost:50051");
         assert!(config.needs_rest_fallback());
     }
@@ -204,5 +377,58 @@ mod tests {
         assert_eq!(endpoints[0], "http://example.com:9000");
         assert_eq!(endpoints[1], "http://example.com:9001");
         assert_eq!(endpoints[2], "http://example.com:9002");
+    }
+
+    #[test]
+    fn test_tls_requires_domain_name() {
+        let config = GrpcConfig {
+            use_tls: true,
+            tls_domain_name: None,
+            ..Default::default()
+        };
+
+        let result = config.validate_transport_security();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mtls_requires_tls_enabled() {
+        let config = GrpcConfig {
+            use_tls: false,
+            mtls_enabled: true,
+            ..Default::default()
+        };
+
+        let result = config.validate_transport_security();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mtls_requires_all_pem_paths() {
+        let config = GrpcConfig {
+            use_tls: true,
+            mtls_enabled: true,
+            tls_domain_name: Some("localhost".to_string()),
+            tls_ca_cert_path: Some("/tmp/ca.pem".to_string()),
+            tls_client_cert_path: None,
+            tls_client_key_path: Some("/tmp/client.key".to_string()),
+            ..Default::default()
+        };
+
+        let result = config.validate_transport_security();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tls_validation_accepts_domain_only() {
+        let config = GrpcConfig {
+            use_tls: true,
+            mtls_enabled: false,
+            tls_domain_name: Some("localhost".to_string()),
+            ..Default::default()
+        };
+
+        let result = config.validate_transport_security();
+        assert!(result.is_ok());
     }
 }

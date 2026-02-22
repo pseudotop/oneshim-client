@@ -11,7 +11,7 @@ authors.workspace = true
 
 [features]
 default = []
-grpc = ["tonic", "prost", "prost-types", "tonic-health"]
+grpc = ["tonic", "prost", "prost-types", "tonic-health", "tonic/tls-native-roots"]
 
 [dependencies]
 oneshim-core = { workspace = true }
