@@ -132,4 +132,47 @@ mod tests {
         let result = run_preflight(&config, false);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn preflight_rejects_tampered_policy_bundle() {
+        let dir = tempdir().expect("tempdir");
+        let policy_path = dir.path().join("policy.json");
+        let signature_path = dir.path().join("policy.json.sig");
+
+        let signed_payload = br#"{"policy":"strict"}"#;
+        let tampered_payload = br#"{"policy":"relaxed"}"#;
+        std::fs::write(&policy_path, tampered_payload).expect("write policy");
+
+        let signing_key = SigningKey::from_bytes(&[9u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let signature = signing_key.sign(signed_payload).to_bytes();
+        std::fs::write(&signature_path, format!("{}\n", BASE64.encode(signature)))
+            .expect("write sig");
+
+        let mut config = config_for_test();
+        config.integrity.require_signed_policy_bundle = true;
+        config.integrity.policy_file_path = Some(policy_path.to_string_lossy().to_string());
+        config.integrity.policy_signature_path = Some(signature_path.to_string_lossy().to_string());
+        config.integrity.policy_public_key = Some(BASE64.encode(verifying_key.as_bytes()));
+
+        let result = run_preflight(&config, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn preflight_rejects_invalid_signature_file_format() {
+        let dir = tempdir().expect("tempdir");
+        let policy_path = dir.path().join("policy.json");
+        let signature_path = dir.path().join("policy.json.sig");
+        std::fs::write(&policy_path, br#"{"policy":"strict"}"#).expect("write policy");
+        std::fs::write(&signature_path, "not-base64\n").expect("write sig");
+
+        let mut config = config_for_test();
+        config.integrity.require_signed_policy_bundle = true;
+        config.integrity.policy_file_path = Some(policy_path.to_string_lossy().to_string());
+        config.integrity.policy_signature_path = Some(signature_path.to_string_lossy().to_string());
+
+        let result = run_preflight(&config, false);
+        assert!(result.is_err());
+    }
 }

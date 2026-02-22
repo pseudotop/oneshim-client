@@ -38,6 +38,7 @@ fi
 cd "${ROOT_DIR}"
 
 cargo test -p oneshim-core update_integrity_policy
+cargo test -p oneshim-app integrity_guard
 cargo test -p oneshim-app verify_signature_
 cargo audit
 cargo deny check licenses advisories sources bans
