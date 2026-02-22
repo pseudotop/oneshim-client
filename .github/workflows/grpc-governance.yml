@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Linux dependencies
         run: |
@@ -44,6 +46,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: grpc-governance
+
+      - name: Run gRPC compatibility matrix gate
+        run: ./scripts/verify-grpc-compatibility.sh
 
       - name: Run gRPC readiness verification
         run: ./scripts/verify-grpc-readiness.sh
