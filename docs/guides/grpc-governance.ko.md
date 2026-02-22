@@ -39,6 +39,7 @@
 ./scripts/verify-grpc-mtls-config.sh
 cargo check -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc
+cargo test -p oneshim-network --features grpc reconnect_
 cargo check -p oneshim-app --features oneshim-network/grpc
 git diff --quiet -- crates/oneshim-network/src/proto/generated
 ```
@@ -55,4 +56,4 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 
 ## 다음 강화 항목
 
-1. 불안정 네트워크에서 stream reconnect/backpressure 정합성 테스트 추가
+1. 패킷 유실/ACK 지연 시뮬레이션 기반 gRPC stream chaos 테스트 추가
