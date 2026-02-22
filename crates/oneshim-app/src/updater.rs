@@ -23,47 +23,47 @@ pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Debug, Error)]
 pub enum UpdateError {
     /// GitHub API 요청 실패
-    #[error("GitHub API 요청 실패: {0}")]
+    #[error("GitHub API request failed: {0}")]
     ApiRequest(#[from] reqwest::Error),
 
     /// API 응답 파싱 실패
-    #[error("API 응답 파싱 실패: {0}")]
+    #[error("Failed to parse API response: {0}")]
     ParseResponse(String),
 
     /// 버전 파싱 실패
-    #[error("버전 파싱 실패: {0}")]
+    #[error("Failed to parse version: {0}")]
     VersionParse(#[from] semver::Error),
 
     /// 다운로드 실패
-    #[error("다운로드 실패: {0}")]
+    #[error("Download failed: {0}")]
     Download(String),
 
     /// 설치 실패
-    #[error("설치 실패: {0}")]
+    #[error("Installation failed: {0}")]
     Install(String),
 
     /// 플랫폼 지원 안됨
-    #[error("지원되지 않는 플랫폼: {0}")]
+    #[error("Unsupported platform: {0}")]
     UnsupportedPlatform(String),
 
     /// 파일 시스템 에러
-    #[error("파일 시스템 에러: {0}")]
+    #[error("Filesystem error: {0}")]
     Filesystem(#[from] std::io::Error),
 
     /// 업데이트 비활성화
-    #[error("자동 업데이트가 비활성화되어 있습니다")]
+    #[error("Auto-update is disabled")]
     Disabled,
 
     /// 최신 버전
-    #[error("이미 최신 버전입니다")]
+    #[error("Already on latest version")]
     AlreadyLatest,
 
     /// 릴리즈에 적합한 에셋 없음
-    #[error("현재 플랫폼에 맞는 에셋을 찾을 수 없습니다")]
+    #[error("No suitable release asset found for current platform")]
     NoSuitableAsset,
 
     /// 무결성 검증 실패
-    #[error("무결성 검증 실패: {0}")]
+    #[error("Integrity verification failed: {0}")]
     Integrity(String),
 }
 
@@ -132,7 +132,7 @@ impl Updater {
         let http_client = reqwest::Client::builder()
             .user_agent(format!("oneshim/{}", CURRENT_VERSION))
             .build()
-            .expect("HTTP 클라이언트 생성 실패");
+            .expect("failed to build HTTP client");
 
         Self {
             config,
@@ -171,7 +171,7 @@ impl Updater {
 
         if !response.status().is_success() {
             return Err(UpdateError::ParseResponse(format!(
-                "API 응답 코드: {}",
+                "API response status: {}",
                 response.status()
             )));
         }
@@ -220,7 +220,7 @@ impl Updater {
 
         if !response.status().is_success() {
             return Err(UpdateError::ParseResponse(format!(
-                "API 응답 코드: {}",
+                "API response status: {}",
                 response.status()
             )));
         }
@@ -323,13 +323,13 @@ impl Updater {
     /// 업데이트 다운로드
     pub async fn download_update(&self, download_url: &str) -> Result<PathBuf, UpdateError> {
         let validated_url = self.validate_download_url(download_url)?;
-        tracing::info!("업데이트 다운로드 시작: {}", validated_url);
+        tracing::info!("Starting update download: {}", validated_url);
 
         let response = self.http_client.get(validated_url.clone()).send().await?;
 
         if !response.status().is_success() {
             return Err(UpdateError::Download(format!(
-                "다운로드 실패: HTTP {}",
+                "Download failed: HTTP {}",
                 response.status()
             )));
         }
@@ -340,7 +340,7 @@ impl Updater {
         let actual_hash = Self::sha256_hex(&bytes);
         if actual_hash != expected_hash {
             return Err(UpdateError::Integrity(format!(
-                "체크섬 불일치: expected={}, actual={}",
+                "Checksum mismatch: expected={}, actual={}",
                 expected_hash, actual_hash
             )));
         }
@@ -366,20 +366,20 @@ impl Updater {
         outfile.write_all(&bytes)?;
         outfile.sync_all()?;
 
-        tracing::info!("업데이트 다운로드 완료: {:?}", temp_path);
+        tracing::info!("Update download completed: {:?}", temp_path);
         Ok(temp_path)
     }
 
     async fn fetch_signature(&self, download_url: &reqwest::Url) -> Result<Vec<u8>, UpdateError> {
         let sig_url = reqwest::Url::parse(&format!("{}.sig", download_url))
-            .map_err(|e| UpdateError::Integrity(format!("서명 URL 파싱 실패: {}", e)))?;
+            .map_err(|e| UpdateError::Integrity(format!("Failed to parse signature URL: {}", e)))?;
 
         self.validate_download_url(sig_url.as_str())?;
 
         let response = self.http_client.get(sig_url.clone()).send().await?;
         if !response.status().is_success() {
             return Err(UpdateError::Integrity(format!(
-                "서명 파일 다운로드 실패: HTTP {} ({})",
+                "Failed to download signature file: HTTP {} ({})",
                 response.status(),
                 sig_url
             )));
@@ -387,16 +387,16 @@ impl Updater {
 
         let body = response.bytes().await?;
         let body = String::from_utf8(body.to_vec())
-            .map_err(|e| UpdateError::Integrity(format!("서명 파일 인코딩 오류: {}", e)))?;
+            .map_err(|e| UpdateError::Integrity(format!("Invalid signature file encoding: {}", e)))?;
 
         let sig_b64 = body
             .split_whitespace()
             .next()
-            .ok_or_else(|| UpdateError::Integrity("서명 파일 내용이 비어 있습니다".to_string()))?;
+            .ok_or_else(|| UpdateError::Integrity("Signature file is empty".to_string()))?;
 
         BASE64
             .decode(sig_b64)
-            .map_err(|e| UpdateError::Integrity(format!("서명 base64 디코딩 실패: {}", e)))
+            .map_err(|e| UpdateError::Integrity(format!("Failed to decode signature base64: {}", e)))
     }
 
     fn verify_signature(&self, payload: &[u8], signature_bytes: &[u8]) -> Result<(), UpdateError> {
@@ -408,36 +408,36 @@ impl Updater {
             .filter(|k| !k.trim().is_empty())
             .ok_or_else(|| {
                 UpdateError::Integrity(
-                    "서명 검증용 공개키가 설정되지 않았습니다 (update.signature_public_key)"
+                    "Public key for signature verification is not configured (update.signature_public_key)"
                         .to_string(),
                 )
             })?;
 
         let key_bytes = BASE64
             .decode(key_b64)
-            .map_err(|e| UpdateError::Integrity(format!("공개키 base64 디코딩 실패: {}", e)))?;
+            .map_err(|e| UpdateError::Integrity(format!("Failed to decode public key base64: {}", e)))?;
         let key_len = key_bytes.len();
         let key_array: [u8; 32] = key_bytes.try_into().map_err(|_| {
             UpdateError::Integrity(format!(
-                "공개키 길이가 올바르지 않습니다: {} bytes (expected 32)",
+                "Invalid public key length: {} bytes (expected 32)",
                 key_len
             ))
         })?;
 
         let signature_array: [u8; 64] = signature_bytes.try_into().map_err(|_| {
             UpdateError::Integrity(format!(
-                "서명 길이가 올바르지 않습니다: {} bytes (expected 64)",
+                "Invalid signature length: {} bytes (expected 64)",
                 signature_bytes.len()
             ))
         })?;
 
         let public_key = VerifyingKey::from_bytes(&key_array)
-            .map_err(|e| UpdateError::Integrity(format!("공개키 파싱 실패: {}", e)))?;
+            .map_err(|e| UpdateError::Integrity(format!("Failed to parse public key: {}", e)))?;
         let signature = Signature::from_bytes(&signature_array);
 
         public_key
             .verify(payload, &signature)
-            .map_err(|e| UpdateError::Integrity(format!("서명 검증 실패: {}", e)))
+            .map_err(|e| UpdateError::Integrity(format!("Signature verification failed: {}", e)))
     }
 
     async fn fetch_expected_sha256(
@@ -445,14 +445,14 @@ impl Updater {
         download_url: &reqwest::Url,
     ) -> Result<String, UpdateError> {
         let checksum_url = reqwest::Url::parse(&format!("{}.sha256", download_url))
-            .map_err(|e| UpdateError::Integrity(format!("체크섬 URL 파싱 실패: {}", e)))?;
+            .map_err(|e| UpdateError::Integrity(format!("Failed to parse checksum URL: {}", e)))?;
 
         self.validate_download_url(checksum_url.as_str())?;
 
         let response = self.http_client.get(checksum_url.clone()).send().await?;
         if !response.status().is_success() {
             return Err(UpdateError::Integrity(format!(
-                "체크섬 파일 다운로드 실패: HTTP {} ({})",
+                "Failed to download checksum file: HTTP {} ({})",
                 response.status(),
                 checksum_url
             )));
@@ -460,7 +460,7 @@ impl Updater {
 
         let body = response.bytes().await?;
         let body = String::from_utf8(body.to_vec())
-            .map_err(|e| UpdateError::Integrity(format!("체크섬 파일 인코딩 오류: {}", e)))?;
+            .map_err(|e| UpdateError::Integrity(format!("Invalid checksum file encoding: {}", e)))?;
 
         Self::parse_sha256_manifest(&body)
     }
@@ -469,13 +469,13 @@ impl Updater {
         let hash = content
             .split_whitespace()
             .next()
-            .ok_or_else(|| UpdateError::Integrity("체크섬 파일 내용이 비어 있습니다".to_string()))?
+            .ok_or_else(|| UpdateError::Integrity("Checksum file is empty".to_string()))?
             .to_ascii_lowercase();
 
         let is_hex = hash.len() == 64 && hash.chars().all(|ch| ch.is_ascii_hexdigit());
         if !is_hex {
             return Err(UpdateError::Integrity(format!(
-                "유효하지 않은 SHA-256 형식: {}",
+                "Invalid SHA-256 format: {}",
                 hash
             )));
         }
@@ -491,18 +491,18 @@ impl Updater {
 
     fn validate_download_url(&self, url: &str) -> Result<reqwest::Url, UpdateError> {
         let parsed = reqwest::Url::parse(url)
-            .map_err(|e| UpdateError::Download(format!("다운로드 URL 파싱 실패: {}", e)))?;
+            .map_err(|e| UpdateError::Download(format!("Failed to parse download URL: {}", e)))?;
 
         if parsed.scheme() != "https" {
             return Err(UpdateError::Download(format!(
-                "HTTPS가 아닌 URL은 허용되지 않습니다: {}",
+                "Only HTTPS download URLs are allowed: {}",
                 parsed
             )));
         }
 
         let Some(host) = parsed.host_str() else {
             return Err(UpdateError::Download(
-                "다운로드 URL host가 없습니다".to_string(),
+                "Download URL host is missing".to_string(),
             ));
         };
 
@@ -512,7 +512,7 @@ impl Updater {
 
         if !allowed {
             return Err(UpdateError::Download(format!(
-                "허용되지 않은 다운로드 호스트: {}",
+                "Disallowed download host: {}",
                 host
             )));
         }
@@ -527,7 +527,7 @@ impl Updater {
 
     fn backup_path_for(current_exe: &Path) -> Result<PathBuf, UpdateError> {
         let parent = current_exe.parent().ok_or_else(|| {
-            UpdateError::Install("현재 실행 파일의 상위 디렉토리를 찾을 수 없습니다".to_string())
+            UpdateError::Install("Failed to locate parent directory of current executable".to_string())
         })?;
 
         let file_name = current_exe
@@ -546,7 +546,7 @@ impl Updater {
     pub fn install_and_restart(&self, downloaded_path: &PathBuf) -> Result<(), UpdateError> {
         use self_update::self_replace;
 
-        tracing::info!("업데이트 설치 시작: {:?}", downloaded_path);
+        tracing::info!("Starting update installation: {:?}", downloaded_path);
 
         let current_exe = std::env::current_exe()?;
         let backup_path = Self::backup_path_for(&current_exe)?;
@@ -569,27 +569,27 @@ impl Updater {
 
         // 바이너리 교체
         self_replace::self_replace(&binary_path)
-            .map_err(|e| UpdateError::Install(format!("바이너리 교체 실패: {}", e)))?;
+            .map_err(|e| UpdateError::Install(format!("Failed to replace binary: {}", e)))?;
 
-        tracing::info!("업데이트 설치 완료, 재시작합니다...");
+        tracing::info!("Update installation completed, restarting application...");
 
         // 재시작
         match self.restart_app() {
             Ok(()) => Ok(()),
             Err(restart_err) => {
                 tracing::error!(
-                    "재시작 실패, 롤백 시도: backup={:?}, error={}",
+                    "Restart failed, attempting rollback: backup={:?}, error={}",
                     backup_path,
                     restart_err
                 );
 
                 match self_replace::self_replace(&backup_path) {
                     Ok(()) => Err(UpdateError::Install(format!(
-                        "재시작 실패로 롤백 완료: {}",
+                        "Rollback completed after restart failure: {}",
                         restart_err
                     ))),
                     Err(rollback_err) => Err(UpdateError::Install(format!(
-                        "재시작 실패 및 롤백 실패: restart={}, rollback={}",
+                        "Restart failed and rollback failed: restart={}, rollback={}",
                         restart_err, rollback_err
                     ))),
                 }
@@ -615,7 +615,7 @@ impl Updater {
 
             if !Self::is_safe_archive_path(&entry_path) {
                 return Err(UpdateError::Install(format!(
-                    "안전하지 않은 tar 엔트리 경로: {}",
+                    "Unsafe tar entry path: {}",
                     entry_path.display()
                 )));
             }
@@ -634,7 +634,7 @@ impl Updater {
 
             if !entry_type.is_file() {
                 return Err(UpdateError::Install(format!(
-                    "지원하지 않는 tar 엔트리 타입: {}",
+                    "Unsupported tar entry type: {}",
                     entry_path.display()
                 )));
             }
@@ -652,7 +652,7 @@ impl Updater {
 
         let file = File::open(archive_path)?;
         let mut archive = zip::ZipArchive::new(file)
-            .map_err(|e| UpdateError::Install(format!("ZIP 아카이브 열기 실패: {}", e)))?;
+            .map_err(|e| UpdateError::Install(format!("Failed to open ZIP archive: {}", e)))?;
 
         let extract_dir = archive_path
             .parent()
@@ -661,15 +661,15 @@ impl Updater {
         for i in 0..archive.len() {
             let mut file = archive
                 .by_index(i)
-                .map_err(|e| UpdateError::Install(format!("ZIP 엔트리 읽기 실패: {}", e)))?;
+                .map_err(|e| UpdateError::Install(format!("Failed to read ZIP entry: {}", e)))?;
 
             let relative_path = file.enclosed_name().ok_or_else(|| {
-                UpdateError::Install(format!("안전하지 않은 ZIP 엔트리 경로: {}", file.name()))
+                UpdateError::Install(format!("Unsafe ZIP entry path: {}", file.name()))
             })?;
 
             if !Self::is_safe_archive_path(&relative_path) {
                 return Err(UpdateError::Install(format!(
-                    "안전하지 않은 ZIP 엔트리 경로: {}",
+                    "Unsafe ZIP entry path: {}",
                     file.name()
                 )));
             }
@@ -721,7 +721,7 @@ impl Updater {
         }
 
         Err(UpdateError::Install(format!(
-            "바이너리 '{}' 를 찾을 수 없습니다",
+            "Binary '{}' not found",
             binary_name
         )))
     }
@@ -735,7 +735,7 @@ impl Updater {
         {
             use std::os::unix::process::CommandExt;
             let err = std::process::Command::new(&current_exe).args(&args).exec();
-            Err(UpdateError::Install(format!("재시작 실패: {}", err)))
+            Err(UpdateError::Install(format!("Restart failed: {}", err)))
         }
 
         #[cfg(windows)]
@@ -743,14 +743,14 @@ impl Updater {
             std::process::Command::new(&current_exe)
                 .args(&args)
                 .spawn()
-                .map_err(|e| UpdateError::Install(format!("재시작 실패: {}", e)))?;
+                .map_err(|e| UpdateError::Install(format!("Restart failed: {}", e)))?;
             std::process::exit(0);
         }
 
         #[cfg(not(any(unix, windows)))]
         {
             Err(UpdateError::UnsupportedPlatform(
-                "재시작 미지원 플랫폼".to_string(),
+                "Restart is not supported on this platform".to_string(),
             ))
         }
     }
@@ -820,7 +820,7 @@ mod tests {
     #[test]
     fn current_version_is_valid_semver() {
         let version = semver::Version::parse(CURRENT_VERSION);
-        assert!(version.is_ok(), "CURRENT_VERSION이 유효한 semver여야 함");
+        assert!(version.is_ok(), "CURRENT_VERSION must be a valid semver");
     }
 
     #[test]
@@ -855,7 +855,7 @@ mod tests {
     #[test]
     fn platform_patterns_exist() {
         let patterns = Updater::get_platform_patterns();
-        assert!(patterns.is_ok(), "현재 플랫폼에 패턴이 정의되어야 함");
+        assert!(patterns.is_ok(), "Current platform must have at least one pattern");
         assert!(!patterns.unwrap().is_empty());
     }
 

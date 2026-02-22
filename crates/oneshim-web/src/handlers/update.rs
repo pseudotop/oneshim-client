@@ -26,9 +26,7 @@ pub async fn get_update_status(
     State(state): State<AppState>,
 ) -> Result<Json<UpdateStatus>, ApiError> {
     let Some(control) = state.update_control else {
-        return Err(ApiError::NotFound(
-            "업데이트 제어가 활성화되지 않았습니다".to_string(),
-        ));
+        return Err(ApiError::NotFound("Update control is not enabled".to_string()));
     };
 
     let snapshot = control.state.read().await.clone();
@@ -40,15 +38,13 @@ pub async fn post_update_action(
     Json(body): Json<UpdateActionRequest>,
 ) -> Result<Json<UpdateActionResponse>, ApiError> {
     let Some(control) = state.update_control else {
-        return Err(ApiError::NotFound(
-            "업데이트 제어가 활성화되지 않았습니다".to_string(),
-        ));
+        return Err(ApiError::NotFound("Update control is not enabled".to_string()));
     };
 
     control
         .action_tx
         .send(body.action)
-        .map_err(|e| ApiError::Internal(format!("업데이트 액션 전달 실패: {}", e)))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to send update action: {}", e)))?;
 
     let snapshot = control.state.read().await.clone();
     Ok(Json(UpdateActionResponse {
@@ -61,9 +57,7 @@ pub async fn get_update_stream(
     State(state): State<AppState>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
     let Some(control) = state.update_control else {
-        return Err(ApiError::NotFound(
-            "업데이트 제어가 활성화되지 않았습니다".to_string(),
-        ));
+        return Err(ApiError::NotFound("Update control is not enabled".to_string()));
     };
 
     let rx = control.subscribe();
