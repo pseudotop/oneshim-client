@@ -6,6 +6,7 @@
 > **Phase**: 36 (gRPC Client)
 > **Related docs**: [oneshim-network crate](../crates/oneshim-network.md)
 > **Governance**: [gRPC Governance Guide](./grpc-governance.md)
+> **Compatibility Matrix**: [gRPC Compatibility Matrix](./grpc-compatibility-matrix.md)
 
 ## Overview
 

@@ -27,11 +27,14 @@ This guide defines the minimum governance baseline for ONESHIM gRPC client opera
 ## CI Gate
 
 - Workflow: `.github/workflows/grpc-governance.yml`
+- Compatibility script: `scripts/verify-grpc-compatibility.sh`
 - Script: `scripts/verify-grpc-readiness.sh`
+- Policy matrix: `docs/guides/grpc-compatibility-matrix.md`
 
 The script enforces:
 
 ```bash
+./scripts/verify-grpc-compatibility.sh
 cargo check -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc
 cargo check -p oneshim-app --features oneshim-network/grpc
@@ -41,6 +44,7 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 ## Release Safety Checklist
 
 - Proto changes reviewed for backward compatibility impact.
+- Compatibility matrix reviewed and aligned (`docs/guides/grpc-compatibility-matrix.md`).
 - Generated files refreshed and committed.
 - gRPC governance workflow green.
 - gRPC error mapping guide reviewed (`docs/guides/grpc-error-mapping.md`).
@@ -48,5 +52,4 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 
 ## Next Hardening Steps
 
-1. Add explicit proto compatibility policy (backward/forward matrix).
-2. Add mTLS-ready transport options and key management runbook extension.
+1. Add mTLS-ready transport options and key management runbook extension.

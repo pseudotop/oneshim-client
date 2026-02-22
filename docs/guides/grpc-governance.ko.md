@@ -27,11 +27,14 @@
 ## CI 게이트
 
 - 워크플로: `.github/workflows/grpc-governance.yml`
+- 호환성 스크립트: `scripts/verify-grpc-compatibility.sh`
 - 스크립트: `scripts/verify-grpc-readiness.sh`
+- 정책 매트릭스: `docs/guides/grpc-compatibility-matrix.md`
 
 스크립트 강제 항목:
 
 ```bash
+./scripts/verify-grpc-compatibility.sh
 cargo check -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc
 cargo check -p oneshim-app --features oneshim-network/grpc
@@ -41,6 +44,7 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 ## 릴리즈 안전 체크리스트
 
 - Proto 변경의 호환성 영향 검토 완료
+- 호환성 매트릭스 검토/정합성 확인 완료 (`docs/guides/grpc-compatibility-matrix.md`)
 - 생성 코드 재생성/커밋 완료
 - gRPC 거버넌스 워크플로 green
 - gRPC 에러 매핑 가이드 검토 완료 (`docs/guides/grpc-error-mapping.md`)
@@ -48,5 +52,4 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 
 ## 다음 강화 항목
 
-1. Proto 호환성 정책(Backward/Forward 매트릭스) 명시
-2. mTLS 준비 옵션 및 키 관리 런북 확장
+1. mTLS 준비 옵션 및 키 관리 런북 확장

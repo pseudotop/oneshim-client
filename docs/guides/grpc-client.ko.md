@@ -6,6 +6,7 @@
 > **Phase**: 36 (gRPC 클라이언트)
 > **관련 문서**: [oneshim-network 크레이트](../crates/oneshim-network.md)
 > **거버넌스**: [gRPC 거버넌스 가이드](./grpc-governance.ko.md)
+> **호환성 매트릭스**: [gRPC 호환성 매트릭스](./grpc-compatibility-matrix.ko.md)
 
 ## 개요
 
