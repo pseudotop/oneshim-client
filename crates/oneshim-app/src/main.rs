@@ -7,6 +7,7 @@ mod autostart;
 mod event_bus;
 mod focus_analyzer;
 mod gui_runner;
+mod integrity_guard;
 mod lifecycle;
 mod memory_profiler;
 mod notification_manager;
@@ -14,7 +15,7 @@ mod scheduler;
 mod update_coordinator;
 mod updater;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Parser;
 use directories::ProjectDirs;
 use oneshim_automation::audit::AuditLogger;
@@ -282,12 +283,7 @@ async fn main() -> Result<()> {
         info!("서버: {}", config.server.base_url);
     }
 
-    if !args.offline {
-        config
-            .update
-            .validate_integrity_policy()
-            .map_err(|e| anyhow!("업데이트 무결성 정책 검증 실패: {}", e))?;
-    }
+    integrity_guard::run_preflight(&config, args.offline)?;
 
     let runtime_auto_update = config.update.auto_install || args.auto_update || args.approve_update;
     let (update_action_tx, update_action_rx) = mpsc::unbounded_channel::<UpdateAction>();

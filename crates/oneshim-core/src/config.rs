@@ -23,6 +23,8 @@ pub struct AppConfig {
     /// 자동 업데이트 설정
     #[serde(default)]
     pub update: UpdateConfig,
+    #[serde(default)]
+    pub integrity: IntegrityConfig,
     /// 웹 대시보드 설정
     #[serde(default)]
     pub web: WebConfig,
@@ -50,6 +52,32 @@ pub struct AppConfig {
     /// AI 제공자 설정 (OCR/LLM)
     #[serde(default)]
     pub ai_provider: AiProviderConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrityConfig {
+    #[serde(default = "default_integrity_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub require_signed_policy_bundle: bool,
+    #[serde(default)]
+    pub policy_file_path: Option<String>,
+    #[serde(default)]
+    pub policy_signature_path: Option<String>,
+    #[serde(default)]
+    pub policy_public_key: Option<String>,
+}
+
+impl Default for IntegrityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_integrity_enabled(),
+            require_signed_policy_bundle: false,
+            policy_file_path: None,
+            policy_signature_path: None,
+            policy_public_key: None,
+        }
+    }
 }
 
 // ============================================================
@@ -776,6 +804,7 @@ impl AppConfig {
                 privacy_mode: false,
             },
             update: UpdateConfig::default(),
+            integrity: IntegrityConfig::default(),
             web: WebConfig::default(),
             notification: NotificationConfig::default(),
             grpc: GrpcConfig::default(),
@@ -809,6 +838,10 @@ impl AppConfig {
 // ============================================================
 
 fn default_true() -> bool {
+    true
+}
+
+fn default_integrity_enabled() -> bool {
     true
 }
 

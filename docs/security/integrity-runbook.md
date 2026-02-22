@@ -51,6 +51,32 @@ Release artifacts are considered valid only when checksum + signature + provenan
   - Rotate private key in CI secret.
   - Document effective date and rollback plan.
 
+### Local Rehearsal
+
+```bash
+./scripts/rehearse-key-rotation.sh
+```
+
+Use generated artifacts in `artifacts/integrity/key-rotation/` to verify both old/new signatures before production cutover.
+
+## 4.1 Signed Policy Bundle Startup Gate
+
+When using signed runtime policy bundles, set in config:
+
+```json
+{
+  "integrity": {
+    "enabled": true,
+    "require_signed_policy_bundle": true,
+    "policy_file_path": "./policy/runtime-policy.json",
+    "policy_signature_path": "./policy/runtime-policy.json.sig",
+    "policy_public_key": "<base64-ed25519-public-key>"
+  }
+}
+```
+
+Startup will fail closed if bundle verification fails.
+
 ## 5. Incident Handling
 
 If any integrity gate fails in CI:

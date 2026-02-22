@@ -20,6 +20,14 @@ The goal is to keep the standalone trust model strict today, while making future
 - Update artifacts MUST pass both SHA-256 and Ed25519 verification before extraction/install.
 - Signature/checksum sidecars (`.sig`, `.sha256`) MUST be generated and published with every release artifact.
 
+### 1.1) Signed Policy Bundle (Startup Gate)
+
+- When `integrity.require_signed_policy_bundle=true`, startup MUST verify:
+  - `integrity.policy_file_path`
+  - `integrity.policy_signature_path`
+  - `integrity.policy_public_key` (or fallback to `update.signature_public_key`)
+- If signature validation fails, the app MUST fail closed at startup.
+
 ### 2) Supply-Chain Integrity
 
 - RustSec scan: `cargo audit`
@@ -46,6 +54,15 @@ The goal is to keep the standalone trust model strict today, while making future
 ```
 
 This command verifies integrity policy tests, signature verification tests, supply-chain checks, and SBOM generation.
+
+## Key Rotation Rehearsal
+
+```bash
+./scripts/rehearse-key-rotation.sh
+```
+
+This script generates local rehearsal artifacts (old/new key + signatures) under
+`artifacts/integrity/key-rotation/` so operators can validate dual-signature migration flow.
 
 ## Future Integration Readiness (Server / Third-Party)
 
