@@ -43,6 +43,22 @@ pub struct PaginationMeta {
     #[prost(bool, tag = "6")]
     pub has_prev: bool,
 }
+/// 커서 기반 페이지네이션 응답 메타데이터
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CursorPaginationMeta {
+    /// 전체 항목 수
+    #[prost(int32, tag = "1")]
+    pub total: i32,
+    /// 다음 페이지 커서
+    #[prost(string, tag = "2")]
+    pub cursor_next: ::prost::alloc::string::String,
+    /// 이전 페이지 커서
+    #[prost(string, tag = "3")]
+    pub cursor_prev: ::prost::alloc::string::String,
+    /// 추가 항목 존재 여부
+    #[prost(bool, tag = "4")]
+    pub has_more: bool,
+}
 /// 날짜 범위
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct DateRange {
