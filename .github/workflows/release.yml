@@ -465,7 +465,7 @@ jobs:
           echo "windows_x64=$(awk '{print $1}' oneshim-windows-x64.zip.sha256)" >> $GITHUB_OUTPUT
 
       - name: Update Homebrew tap
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: pseudotop/homebrew-tap
@@ -480,7 +480,7 @@ jobs:
             }
 
       - name: Update Scoop bucket
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: pseudotop/scoop-bucket
