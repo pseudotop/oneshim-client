@@ -111,6 +111,7 @@ impl ConnectivityManager {
         }
 
         let was_offline = !self.is_online.load(Ordering::Relaxed);
+        let was_reconnecting = *self.status_rx.borrow() == ConnectionStatus::Reconnecting;
         self.is_online.store(true, Ordering::Relaxed);
         self.failure_count.store(0, Ordering::Relaxed);
 
@@ -120,8 +121,12 @@ impl ConnectivityManager {
             .as_secs();
         self.last_success.store(now, Ordering::Relaxed);
 
-        if was_offline {
-            info!("서버 연결 복구됨 - 온라인 모드");
+        if was_offline || was_reconnecting {
+            if was_offline {
+                info!("서버 연결 복구됨 - 온라인 모드");
+            } else {
+                debug!("재연결 성공 - Connected 상태 복원");
+            }
             let _ = self.status_tx.send(ConnectionStatus::Connected);
         }
     }
@@ -297,5 +302,48 @@ mod tests {
         mgr.record_success();
         rx.changed().await.unwrap();
         assert_eq!(*rx.borrow(), ConnectionStatus::Connected);
+    }
+
+    #[tokio::test]
+    async fn reconnect_backpressure_coalesces_to_latest_state() {
+        let mgr = ConnectivityManager::new(500);
+        let mut rx = mgr.subscribe();
+
+        for _ in 0..300 {
+            mgr.record_failure();
+        }
+
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), ConnectionStatus::Reconnecting);
+        assert_eq!(mgr.failure_count(), 300);
+
+        mgr.record_success();
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), ConnectionStatus::Connected);
+        assert_eq!(mgr.failure_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn reconnect_conformance_transitions_to_disconnected_after_threshold() {
+        let mgr = ConnectivityManager::new(10);
+        let mut rx = mgr.subscribe();
+
+        for _ in 0..9 {
+            mgr.record_failure();
+        }
+
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), ConnectionStatus::Reconnecting);
+        assert!(mgr.is_online());
+
+        mgr.record_failure();
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), ConnectionStatus::Disconnected);
+        assert!(!mgr.is_online());
+
+        mgr.record_success();
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), ConnectionStatus::Connected);
+        assert!(mgr.is_online());
     }
 }
