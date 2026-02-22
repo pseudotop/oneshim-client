@@ -40,6 +40,7 @@ The script enforces:
 cargo check -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc reconnect_
+cargo test -p oneshim-network --features grpc chaos_
 cargo check -p oneshim-app --features oneshim-network/grpc
 git diff --quiet -- crates/oneshim-network/src/proto/generated
 ```
@@ -56,4 +57,4 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 
 ## Next Hardening Steps
 
-1. Add gRPC stream chaos tests with packet loss and delayed ACK simulation.
+1. Add transport-level fault-injection tests using a proxy harness (latency/jitter/reset).
