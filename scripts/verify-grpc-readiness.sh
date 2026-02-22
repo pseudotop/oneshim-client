@@ -22,6 +22,9 @@ cargo test -p oneshim-network --features grpc reconnect_
 echo "[grpc] Running stream chaos conformance tests"
 cargo test -p oneshim-network --features grpc chaos_
 
+echo "[grpc] Running proxy harness fault-injection conformance tests"
+cargo test -p oneshim-network --features grpc proxy_fault_
+
 echo "[grpc] Checking oneshim-app wiring"
 cargo check -p oneshim-app --features oneshim-network/grpc
 

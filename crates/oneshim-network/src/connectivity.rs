@@ -221,6 +221,42 @@ pub fn new_shared_connectivity_manager(offline_threshold: u64) -> SharedConnecti
 mod tests {
     use super::*;
 
+    struct ProxyFaultHarness {
+        latency_pattern_ms: Vec<u64>,
+        jitter_pattern_ms: Vec<u64>,
+    }
+
+    impl ProxyFaultHarness {
+        fn new(latency_pattern_ms: Vec<u64>, jitter_pattern_ms: Vec<u64>) -> Self {
+            Self {
+                latency_pattern_ms,
+                jitter_pattern_ms,
+            }
+        }
+
+        async fn apply_packet_loss_burst(&self, mgr: &ConnectivityManager, failures: usize) {
+            for i in 0..failures {
+                mgr.record_failure();
+                let sleep_ms = self.latency_pattern_ms[i % self.latency_pattern_ms.len()];
+                tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+            }
+        }
+
+        async fn apply_jitter_window(&self) {
+            for i in 0..self.jitter_pattern_ms.len() {
+                tokio::time::sleep(Duration::from_millis(self.jitter_pattern_ms[i])).await;
+            }
+        }
+
+        async fn apply_transport_reset(&self, mgr: &ConnectivityManager) {
+            mgr.record_failure();
+            tokio::time::sleep(Duration::from_millis(8)).await;
+            mgr.record_failure();
+            tokio::time::sleep(Duration::from_millis(8)).await;
+            mgr.record_success();
+        }
+    }
+
     #[test]
     fn initial_state_is_online() {
         let mgr = ConnectivityManager::default();
@@ -380,6 +416,62 @@ mod tests {
         rx.changed().await.unwrap();
 
         assert_eq!(*rx.borrow(), ConnectionStatus::Connected);
+        assert!(mgr.is_online());
+        assert_eq!(mgr.failure_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn proxy_fault_packet_loss_burst_trips_threshold() {
+        let mgr = ConnectivityManager::new(4);
+        let harness = ProxyFaultHarness::new(vec![2, 4, 3], vec![1, 2]);
+        let mut rx = mgr.subscribe();
+
+        harness.apply_packet_loss_burst(&mgr, 4).await;
+
+        let mut status = *rx.borrow();
+        for _ in 0..4 {
+            if status == ConnectionStatus::Disconnected {
+                break;
+            }
+            rx.changed().await.unwrap();
+            status = *rx.borrow();
+        }
+
+        assert_eq!(status, ConnectionStatus::Disconnected);
+        assert!(!mgr.is_online());
+    }
+
+    #[tokio::test]
+    async fn proxy_fault_jitter_only_keeps_connected_state() {
+        let mgr = ConnectivityManager::new(3);
+        let harness = ProxyFaultHarness::new(vec![1], vec![4, 2, 5, 3, 1]);
+
+        harness.apply_jitter_window().await;
+        mgr.record_success();
+
+        assert_eq!(mgr.status(), ConnectionStatus::Connected);
+        assert!(mgr.is_online());
+    }
+
+    #[tokio::test]
+    async fn proxy_fault_transport_reset_recovers_to_connected() {
+        let mgr = ConnectivityManager::new(3);
+        let harness = ProxyFaultHarness::new(vec![1], vec![1]);
+        let mut rx = mgr.subscribe();
+
+        harness.apply_transport_reset(&mgr).await;
+
+        let mut status = *rx.borrow();
+        for _ in 0..3 {
+            if status == ConnectionStatus::Connected {
+                break;
+            }
+            rx.changed().await.unwrap();
+            status = *rx.borrow();
+        }
+
+        assert_eq!(status, ConnectionStatus::Connected);
+
         assert!(mgr.is_online());
         assert_eq!(mgr.failure_count(), 0);
     }
