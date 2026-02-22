@@ -91,6 +91,12 @@ Security updates will be announced through the following channels.
 - Release notes (CHANGELOG.md)
 - GitHub Releases page
 
+## Integrity References
+
+- Standalone integrity baseline: `docs/security/standalone-integrity-baseline.md`
+- Integrity runbook: `docs/security/integrity-runbook.md`
+- Local integrity verification script: `scripts/verify-integrity.sh`
+
 ---
 
 We appreciate everyone who contributes to improving our security.

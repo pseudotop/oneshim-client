@@ -3,6 +3,8 @@
 //! 서버 URL, 모니터링 주기, 저장소 경로, 프라이버시/텔레메트리/스케줄 설정 등
 //! 런타임 설정을 정의한다. `config` crate를 통해 파일/환경변수에서 로드.
 
+use crate::error::CoreError;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -609,6 +611,48 @@ impl Default for UpdateConfig {
     }
 }
 
+impl UpdateConfig {
+    pub fn validate_integrity_policy(&self) -> Result<(), CoreError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        if !self.require_signature_verification {
+            return Err(CoreError::Config(
+                "update.require_signature_verification must be true when updates are enabled"
+                    .to_string(),
+            ));
+        }
+
+        let key_b64 = self
+            .signature_public_key
+            .split_whitespace()
+            .next()
+            .filter(|k| !k.trim().is_empty())
+            .ok_or_else(|| {
+                CoreError::Config(
+                    "update.signature_public_key is missing while updates are enabled".to_string(),
+                )
+            })?;
+
+        let key_bytes = BASE64.decode(key_b64).map_err(|e| {
+            CoreError::Config(format!(
+                "update.signature_public_key must be valid base64: {}",
+                e
+            ))
+        })?;
+
+        if key_bytes.len() != 32 {
+            return Err(CoreError::Config(format!(
+                "update.signature_public_key must decode to 32 bytes, got {}",
+                key_bytes.len()
+            )));
+        }
+
+        Ok(())
+    }
+}
+
 fn default_update_require_signature() -> bool {
     true
 }
@@ -845,4 +889,41 @@ fn default_process_interval_secs() -> u64 {
 }
 fn default_capture_enabled() -> bool {
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_integrity_policy_rejects_disabled_signature_verification() {
+        let mut config = UpdateConfig::default();
+        config.enabled = true;
+        config.require_signature_verification = false;
+
+        let result = config.validate_integrity_policy();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn update_integrity_policy_rejects_invalid_public_key_length() {
+        let mut config = UpdateConfig::default();
+        config.enabled = true;
+        config.require_signature_verification = true;
+        config.signature_public_key = BASE64.encode([1u8; 16]);
+
+        let result = config.validate_integrity_policy();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn update_integrity_policy_accepts_valid_key() {
+        let mut config = UpdateConfig::default();
+        config.enabled = true;
+        config.require_signature_verification = true;
+        config.signature_public_key = BASE64.encode([7u8; 32]);
+
+        let result = config.validate_integrity_policy();
+        assert!(result.is_ok());
+    }
 }

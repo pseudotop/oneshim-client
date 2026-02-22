@@ -14,7 +14,7 @@ mod scheduler;
 mod update_coordinator;
 mod updater;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Parser;
 use directories::ProjectDirs;
 use oneshim_automation::audit::AuditLogger;
@@ -280,6 +280,13 @@ async fn main() -> Result<()> {
         info!("오프라인 모드: 로컬 기능만 활성화");
     } else {
         info!("서버: {}", config.server.base_url);
+    }
+
+    if !args.offline {
+        config
+            .update
+            .validate_integrity_policy()
+            .map_err(|e| anyhow!("업데이트 무결성 정책 검증 실패: {}", e))?;
     }
 
     let runtime_auto_update = config.update.auto_install || args.auto_update || args.approve_update;
