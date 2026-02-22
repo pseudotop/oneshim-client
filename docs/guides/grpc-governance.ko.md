@@ -34,7 +34,7 @@
 ```bash
 cargo check -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc
-cargo check -p oneshim-app --features grpc
+cargo check -p oneshim-app --features oneshim-network/grpc
 git diff --quiet -- crates/oneshim-network/src/proto/generated
 ```
 
@@ -43,10 +43,10 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 - Proto 변경의 호환성 영향 검토 완료
 - 생성 코드 재생성/커밋 완료
 - gRPC 거버넌스 워크플로 green
+- gRPC 에러 매핑 가이드 검토 완료 (`docs/guides/grpc-error-mapping.md`)
 - 무결성 워크플로(`integrity-gates`, `security-compliance`) green
 
 ## 다음 강화 항목
 
 1. Proto 호환성 정책(Backward/Forward 매트릭스) 명시
-2. 서버-클라이언트 gRPC 에러 코드 매핑 스펙 추가
-3. mTLS 준비 옵션 및 키 관리 런북 확장
+2. mTLS 준비 옵션 및 키 관리 런북 확장

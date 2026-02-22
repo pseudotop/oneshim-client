@@ -34,7 +34,7 @@ The script enforces:
 ```bash
 cargo check -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc
-cargo check -p oneshim-app --features grpc
+cargo check -p oneshim-app --features oneshim-network/grpc
 git diff --quiet -- crates/oneshim-network/src/proto/generated
 ```
 
@@ -43,10 +43,10 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 - Proto changes reviewed for backward compatibility impact.
 - Generated files refreshed and committed.
 - gRPC governance workflow green.
+- gRPC error mapping guide reviewed (`docs/guides/grpc-error-mapping.md`).
 - Integrity workflows green (`integrity-gates`, `security-compliance`).
 
 ## Next Hardening Steps
 
 1. Add explicit proto compatibility policy (backward/forward matrix).
-2. Add gRPC error code mapping spec between server/client.
-3. Add mTLS-ready transport options and key management runbook extension.
+2. Add mTLS-ready transport options and key management runbook extension.
