@@ -19,6 +19,7 @@
 - `update.signature_public_key`는 유효한 Ed25519 공개키(디코딩 후 32바이트)여야 합니다.
 - 아티팩트는 설치 전에 SHA-256 + Ed25519 검증을 모두 통과해야 합니다.
 - 모든 릴리즈 아티팩트에 `.sig`, `.sha256`를 함께 생성/배포해야 합니다.
+- 롤백 공격 방지를 위해 `update.min_allowed_version`을 설정하는 것을 권장합니다.
 
 ### 1.1) 서명된 정책 번들 (시작 게이트)
 
@@ -27,6 +28,7 @@
   - `integrity.policy_signature_path`
   - `integrity.policy_public_key` (없으면 `update.signature_public_key` 사용)
 - 서명 검증 실패 시 앱은 시작 단계에서 fail-closed로 종료되어야 합니다.
+- 릴리즈 파이프라인은 `runtime-policy.json`, `.sha256`, `.sig`를 함께 배포해야 합니다.
 
 ### 2) 공급망 무결성
 

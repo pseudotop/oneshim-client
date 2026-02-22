@@ -19,6 +19,7 @@ The goal is to keep the standalone trust model strict today, while making future
 - `update.signature_public_key` MUST be a valid Ed25519 public key (32-byte decoded payload).
 - Update artifacts MUST pass both SHA-256 and Ed25519 verification before extraction/install.
 - Signature/checksum sidecars (`.sig`, `.sha256`) MUST be generated and published with every release artifact.
+- `update.min_allowed_version` SHOULD be set to enforce anti-rollback version floors.
 
 ### 1.1) Signed Policy Bundle (Startup Gate)
 
@@ -27,6 +28,7 @@ The goal is to keep the standalone trust model strict today, while making future
   - `integrity.policy_signature_path`
   - `integrity.policy_public_key` (or fallback to `update.signature_public_key`)
 - If signature validation fails, the app MUST fail closed at startup.
+- Release pipeline SHOULD publish `runtime-policy.json`, `.sha256`, and `.sig` together.
 
 ### 2) Supply-Chain Integrity
 

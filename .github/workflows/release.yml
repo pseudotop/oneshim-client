@@ -245,6 +245,28 @@ jobs:
       - name: Verify artifacts
         run: find dist -type f
 
+      - name: Include signed runtime policy bundle
+        run: |
+          if [ -f "policy/runtime-policy.json" ]; then
+            cp "policy/runtime-policy.json" "dist/runtime-policy.json"
+            echo "Included runtime policy bundle in release artifacts"
+          else
+            echo "No runtime policy bundle found; skipping"
+          fi
+
+      - name: Ensure checksums exist for all release files
+        run: |
+          shopt -s nullglob
+          for file in dist/*; do
+            [ -f "$file" ] || continue
+            case "$file" in
+              *.sha256|*.sig)
+                continue
+                ;;
+            esac
+            shasum -a 256 "$file" > "$file.sha256"
+          done
+
       - name: Install signing dependencies
         run: python3 -m pip install --upgrade pynacl
 

@@ -65,11 +65,14 @@ When using signed runtime policy bundles, set in config:
 
 ```json
 {
+  "update": {
+    "min_allowed_version": "0.0.1"
+  },
   "integrity": {
     "enabled": true,
     "require_signed_policy_bundle": true,
-    "policy_file_path": "./policy/runtime-policy.json",
-    "policy_signature_path": "./policy/runtime-policy.json.sig",
+    "policy_file_path": "./runtime-policy.json",
+    "policy_signature_path": "./runtime-policy.json.sig",
     "policy_public_key": "<base64-ed25519-public-key>"
   }
 }

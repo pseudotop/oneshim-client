@@ -53,9 +53,13 @@ jobs:
           cargo install cargo-deny --locked
           cargo install cargo-vet --locked
           cargo install cargo-cyclonedx --locked
+          python3 -m pip install --upgrade pynacl
 
       - name: Run integrity verification script
         run: ./scripts/verify-integrity.sh
+
+      - name: Run key rotation rehearsal script
+        run: ./scripts/rehearse-key-rotation.sh
 
       - name: Upload integrity artifacts
         uses: actions/upload-artifact@v4
