@@ -9,7 +9,7 @@ use oneshim_core::error::CoreError;
 use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, error, info};
 
-use super::GrpcConfig;
+use super::{map_grpc_status_error, GrpcConfig};
 use crate::proto::user_context::{
     user_context_service_client::UserContextServiceClient, ContextBatchUploadRequest,
     ContextBatchUploadResponse, FeedbackType, HeartbeatRequest, HeartbeatResponse,
@@ -74,9 +74,9 @@ impl GrpcContextClient {
             .client
             .upload_batch(tonic::Request::new(request))
             .await
-            .map_err(|e| {
-                error!(error = %e, "gRPC 배치 업로드 실패");
-                CoreError::Network(format!("gRPC 배치 업로드 실패: {}", e))
+            .map_err(|status| {
+                error!(error = %status, "gRPC 배치 업로드 실패");
+                map_grpc_status_error("grpc batch upload failed", status)
             })?;
 
         Ok(response.into_inner())
@@ -102,9 +102,9 @@ impl GrpcContextClient {
             .client
             .subscribe_suggestions(request)
             .await
-            .map_err(|e| {
-                error!(error = %e, "gRPC 제안 스트림 구독 실패");
-                CoreError::Network(format!("gRPC 제안 스트림 구독 실패: {}", e))
+            .map_err(|status| {
+                error!(error = %status, "gRPC 제안 스트림 구독 실패");
+                map_grpc_status_error("grpc suggestion stream subscription failed", status)
             })?;
 
         Ok(response.into_inner())
@@ -127,9 +127,9 @@ impl GrpcContextClient {
             reason: None,
         });
 
-        self.client.send_feedback(request).await.map_err(|e| {
-            error!(error = %e, "gRPC 피드백 전송 실패");
-            CoreError::Network(format!("gRPC 피드백 전송 실패: {}", e))
+        self.client.send_feedback(request).await.map_err(|status| {
+            error!(error = %status, "gRPC 피드백 전송 실패");
+            map_grpc_status_error("grpc feedback submission failed", status)
         })?;
 
         Ok(())
@@ -150,9 +150,9 @@ impl GrpcContextClient {
             client_state: std::collections::HashMap::new(),
         });
 
-        let response = self.client.heartbeat(request).await.map_err(|e| {
-            error!(error = %e, "gRPC 하트비트 실패");
-            CoreError::Network(format!("gRPC 하트비트 실패: {}", e))
+        let response = self.client.heartbeat(request).await.map_err(|status| {
+            error!(error = %status, "gRPC 하트비트 실패");
+            map_grpc_status_error("grpc heartbeat failed", status)
         })?;
 
         Ok(response.into_inner())
@@ -175,9 +175,9 @@ impl GrpcContextClient {
             active_only: true,
         });
 
-        let response = self.client.list_suggestions(request).await.map_err(|e| {
-            error!(error = %e, "gRPC 제안 목록 조회 실패");
-            CoreError::Network(format!("gRPC 제안 목록 조회 실패: {}", e))
+        let response = self.client.list_suggestions(request).await.map_err(|status| {
+            error!(error = %status, "gRPC 제안 목록 조회 실패");
+            map_grpc_status_error("grpc suggestion list failed", status)
         })?;
 
         Ok(response.into_inner())

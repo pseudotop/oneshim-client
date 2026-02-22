@@ -11,7 +11,7 @@ echo "[grpc] Running oneshim-network tests with grpc feature"
 cargo test -p oneshim-network --features grpc
 
 echo "[grpc] Checking oneshim-app wiring"
-cargo check -p oneshim-app
+cargo check -p oneshim-app --features oneshim-network/grpc
 
 echo "[grpc] Verifying committed generated proto files are up-to-date"
 if ! git diff --quiet -- crates/oneshim-network/src/proto/generated; then

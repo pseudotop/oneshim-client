@@ -26,6 +26,8 @@ mod config;
 #[cfg(feature = "grpc")]
 mod context_client;
 #[cfg(feature = "grpc")]
+mod error_mapping;
+#[cfg(feature = "grpc")]
 mod health_client;
 #[cfg(feature = "grpc")]
 mod session_client;
@@ -38,6 +40,8 @@ pub use auth_client::GrpcAuthClient;
 pub use config::GrpcConfig;
 #[cfg(feature = "grpc")]
 pub use context_client::GrpcContextClient;
+#[cfg(feature = "grpc")]
+pub use error_mapping::map_grpc_status_error;
 #[cfg(feature = "grpc")]
 pub use health_client::{GrpcHealthClient, ServiceHealth, ServingStatus};
 #[cfg(feature = "grpc")]

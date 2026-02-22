@@ -9,7 +9,7 @@ use oneshim_core::error::CoreError;
 use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, error, info};
 
-use super::GrpcConfig;
+use super::{map_grpc_status_error, GrpcConfig};
 use crate::proto::auth::{
     session_service_client::SessionServiceClient, CreateSessionRequest, CreateSessionResponse,
     SessionHeartbeatRequest, SessionHeartbeatResponse,
@@ -74,9 +74,9 @@ impl GrpcSessionClient {
             user_agent: None,
         });
 
-        let response = self.client.create_session(request).await.map_err(|e| {
-            error!(error = %e, "gRPC 세션 생성 실패");
-            CoreError::Network(format!("gRPC 세션 생성 실패: {}", e))
+        let response = self.client.create_session(request).await.map_err(|status| {
+            error!(error = %status, "gRPC 세션 생성 실패");
+            map_grpc_status_error("grpc session creation failed", status)
         })?;
 
         Ok(response.into_inner())
@@ -91,9 +91,9 @@ impl GrpcSessionClient {
             reason: None,
         });
 
-        self.client.end_session(request).await.map_err(|e| {
-            error!(error = %e, "gRPC 세션 종료 실패");
-            CoreError::Network(format!("gRPC 세션 종료 실패: {}", e))
+        self.client.end_session(request).await.map_err(|status| {
+            error!(error = %status, "gRPC 세션 종료 실패");
+            map_grpc_status_error("grpc session termination failed", status)
         })?;
 
         Ok(())
@@ -115,9 +115,9 @@ impl GrpcSessionClient {
             client_state,
         });
 
-        let response = self.client.heartbeat(request).await.map_err(|e| {
-            error!(error = %e, "gRPC 하트비트 실패");
-            CoreError::Network(format!("gRPC 하트비트 실패: {}", e))
+        let response = self.client.heartbeat(request).await.map_err(|status| {
+            error!(error = %status, "gRPC 하트비트 실패");
+            map_grpc_status_error("grpc session heartbeat failed", status)
         })?;
 
         Ok(response.into_inner())

@@ -9,7 +9,7 @@ use oneshim_core::error::CoreError;
 use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, error, info};
 
-use super::GrpcConfig;
+use super::{map_grpc_status_error, GrpcConfig};
 use crate::proto::auth::{
     authentication_service_client::AuthenticationServiceClient, LoginRequest, LoginResponse,
     RefreshTokenRequest, TokenRefreshResponse,
@@ -78,9 +78,9 @@ impl GrpcAuthClient {
             mfa_token: None,
         });
 
-        let response = self.client.login(request).await.map_err(|e| {
-            error!(error = %e, "gRPC 로그인 실패");
-            CoreError::Network(format!("gRPC 로그인 실패: {}", e))
+        let response = self.client.login(request).await.map_err(|status| {
+            error!(error = %status, "gRPC 로그인 실패");
+            map_grpc_status_error("grpc login failed", status)
         })?;
 
         Ok(response.into_inner())
@@ -101,9 +101,9 @@ impl GrpcAuthClient {
             session_id: session_id.map(String::from),
         });
 
-        let response = self.client.refresh_token(request).await.map_err(|e| {
-            error!(error = %e, "gRPC 토큰 갱신 실패");
-            CoreError::Network(format!("gRPC 토큰 갱신 실패: {}", e))
+        let response = self.client.refresh_token(request).await.map_err(|status| {
+            error!(error = %status, "gRPC 토큰 갱신 실패");
+            map_grpc_status_error("grpc token refresh failed", status)
         })?;
 
         Ok(response.into_inner())

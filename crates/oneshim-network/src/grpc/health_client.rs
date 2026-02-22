@@ -31,7 +31,7 @@ use tracing::{debug, error, info};
 
 use oneshim_core::error::CoreError;
 
-use super::GrpcConfig;
+use super::{map_grpc_status_error, GrpcConfig};
 
 /// gRPC 서비스 상태
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,9 +169,9 @@ impl GrpcHealthClient {
             service: service.to_string(),
         });
 
-        let response = self.client.check(request).await.map_err(|e| {
-            error!("Health check 실패: {} - {}", service, e);
-            CoreError::Network(format!("Health check 실패: {}", e))
+        let response = self.client.check(request).await.map_err(|status| {
+            error!("Health check 실패: {} - {}", service, status);
+            map_grpc_status_error("grpc health check failed", status)
         })?;
 
         let status = ServingStatus::from(response.into_inner().status);
