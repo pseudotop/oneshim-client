@@ -88,6 +88,20 @@ cargo build -p oneshim-app
 cargo build --release -p oneshim-app
 ```
 
+### 빌드 캐시 (로컬 개발 권장)
+
+```bash
+# 선택: sccache 설치
+brew install sccache
+
+# 캐시를 사용하는 Rust 빌드 래퍼
+./scripts/cargo-cache.sh check --workspace
+./scripts/cargo-cache.sh test -p oneshim-web
+./scripts/cargo-cache.sh build -p oneshim-app
+```
+
+`sccache`가 없으면 래퍼는 일반 `cargo`로 자동 폴백합니다.
+
 ### 실행
 
 ```bash

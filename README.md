@@ -45,6 +45,8 @@ Online features are currently in progress and will be announced when production-
 - PII filtering levels (Off/Basic/Standard/Strict) are applied in the vision pipeline
 - Local data is stored in SQLite and managed with retention controls
 - Security reporting and response policy: [SECURITY.md](./SECURITY.md)
+- Standalone integrity baseline: [docs/security/standalone-integrity-baseline.md](./docs/security/standalone-integrity-baseline.md)
+- Integrity operation runbook: [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
 - Current quality and release metrics: [docs/STATUS.md](./docs/STATUS.md)
 
 ## Features
@@ -87,6 +89,20 @@ cargo build -p oneshim-app
 # Release build
 cargo build --release -p oneshim-app
 ```
+
+### Build Cache (Recommended for Local Development)
+
+```bash
+# Optional: install sccache
+brew install sccache
+
+# Use cached Rust builds via helper wrapper
+./scripts/cargo-cache.sh check --workspace
+./scripts/cargo-cache.sh test -p oneshim-web
+./scripts/cargo-cache.sh build -p oneshim-app
+```
+
+If `sccache` is not installed, the wrapper falls back to normal `cargo`.
 
 ### Run
 
