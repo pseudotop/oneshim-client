@@ -123,7 +123,7 @@ rust-embed = { version = "8", features = ["include-exclude"] }
 mime_guess = "2"
 
 # macOS 네이티브 API
-core-graphics = "0.24"
+core-graphics = "0.25"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSRunningApplication"] }
 objc2-foundation = "0.3"
