@@ -346,4 +346,41 @@ mod tests {
         assert_eq!(*rx.borrow(), ConnectionStatus::Connected);
         assert!(mgr.is_online());
     }
+
+    #[tokio::test]
+    async fn chaos_packet_loss_bursts_stay_online_when_under_threshold() {
+        let mgr = ConnectivityManager::new(5);
+
+        for _ in 0..3 {
+            for _ in 0..4 {
+                mgr.record_failure();
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            mgr.record_success();
+            assert!(mgr.is_online());
+            assert_eq!(mgr.status(), ConnectionStatus::Connected);
+            assert_eq!(mgr.failure_count(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn chaos_delayed_ack_recovers_after_disconnection() {
+        let mgr = ConnectivityManager::new(3);
+        let mut rx = mgr.subscribe();
+
+        for _ in 0..3 {
+            mgr.record_failure();
+        }
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), ConnectionStatus::Disconnected);
+        assert!(!mgr.is_online());
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        mgr.record_success();
+        rx.changed().await.unwrap();
+
+        assert_eq!(*rx.borrow(), ConnectionStatus::Connected);
+        assert!(mgr.is_online());
+        assert_eq!(mgr.failure_count(), 0);
+    }
 }

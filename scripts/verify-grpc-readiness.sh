@@ -19,6 +19,9 @@ cargo test -p oneshim-network --features grpc
 echo "[grpc] Running stream reconnect/backpressure conformance tests"
 cargo test -p oneshim-network --features grpc reconnect_
 
+echo "[grpc] Running stream chaos conformance tests"
+cargo test -p oneshim-network --features grpc chaos_
+
 echo "[grpc] Checking oneshim-app wiring"
 cargo check -p oneshim-app --features oneshim-network/grpc
 
