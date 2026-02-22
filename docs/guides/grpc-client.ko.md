@@ -88,6 +88,21 @@ pub struct GrpcConfig {
 
     /// TLS 사용 여부
     pub use_tls: bool,
+
+    /// mTLS 사용 여부 (클라이언트 인증서)
+    pub mtls_enabled: bool,
+
+    /// 인증서 검증에 사용할 TLS 도메인 이름 (SNI)
+    pub tls_domain_name: Option<String>,
+
+    /// 선택적 CA 인증서 PEM 경로
+    pub tls_ca_cert_path: Option<String>,
+
+    /// 클라이언트 인증서 PEM 경로 (mtls_enabled=true일 때 필수)
+    pub tls_client_cert_path: Option<String>,
+
+    /// 클라이언트 키 PEM 경로 (mtls_enabled=true일 때 필수)
+    pub tls_client_key_path: Option<String>,
 }
 
 impl Default for GrpcConfig {
@@ -100,8 +115,34 @@ impl Default for GrpcConfig {
             connect_timeout_secs: 10,
             request_timeout_secs: 30,
             use_tls: false,
+            mtls_enabled: false,
+            tls_domain_name: None,
+            tls_ca_cert_path: None,
+            tls_client_cert_path: None,
+            tls_client_key_path: None,
         }
     }
+}
+```
+
+### mTLS 설정 예시
+
+```json
+{
+  "grpc": {
+    "use_grpc_auth": true,
+    "use_grpc_context": true,
+    "grpc_endpoint": "https://grpc.example.com:50051",
+    "grpc_fallback_ports": [50052, 50053],
+    "connect_timeout_secs": 10,
+    "request_timeout_secs": 30,
+    "use_tls": true,
+    "mtls_enabled": true,
+    "tls_domain_name": "grpc.example.com",
+    "tls_ca_cert_path": "/etc/oneshim/ca.pem",
+    "tls_client_cert_path": "/etc/oneshim/client.pem",
+    "tls_client_key_path": "/etc/oneshim/client.key"
+  }
 }
 ```
 

@@ -99,3 +99,33 @@ Even in standalone mode, keep these ready for future server/third-party integrat
 - Replay-safe semantics
 - Capability-scoped third-party access model
 - Fail-closed default for any trust decision
+
+## 7. gRPC mTLS Certificate Operations
+
+For mTLS-enabled environments, manage transport keys separately from update-signing keys.
+
+### 7.1 Required Config Fields
+
+Set these in `config.json` when `grpc.use_tls=true`:
+
+- `grpc.tls_domain_name`
+- `grpc.tls_ca_cert_path`
+- `grpc.tls_client_cert_path` (required if `grpc.mtls_enabled=true`)
+- `grpc.tls_client_key_path` (required if `grpc.mtls_enabled=true`)
+
+### 7.2 Operational Policy
+
+- Keep client private keys out of the repository and out of release artifacts.
+- Rotate client certificates on a fixed schedule (for example, every 90 days).
+- Validate mTLS policy in CI with:
+
+```bash
+./scripts/verify-grpc-mtls-config.sh
+```
+
+### 7.3 Rotation Drill (Staging)
+
+1. Issue a new client certificate/key pair from the staging CA.
+2. Update `tls_client_cert_path` and `tls_client_key_path` in staging config.
+3. Run `./scripts/verify-grpc-readiness.sh` and confirm all checks are green.
+4. Perform a controlled rollout in production with rollback path documented.

@@ -88,6 +88,21 @@ pub struct GrpcConfig {
 
     /// Whether to use TLS
     pub use_tls: bool,
+
+    /// Whether to use mTLS (client cert authentication)
+    pub mtls_enabled: bool,
+
+    /// TLS domain name used for certificate validation (SNI)
+    pub tls_domain_name: Option<String>,
+
+    /// Optional CA cert PEM path
+    pub tls_ca_cert_path: Option<String>,
+
+    /// Client cert PEM path (required when mtls_enabled=true)
+    pub tls_client_cert_path: Option<String>,
+
+    /// Client key PEM path (required when mtls_enabled=true)
+    pub tls_client_key_path: Option<String>,
 }
 
 impl Default for GrpcConfig {
@@ -100,8 +115,34 @@ impl Default for GrpcConfig {
             connect_timeout_secs: 10,
             request_timeout_secs: 30,
             use_tls: false,
+            mtls_enabled: false,
+            tls_domain_name: None,
+            tls_ca_cert_path: None,
+            tls_client_cert_path: None,
+            tls_client_key_path: None,
         }
     }
+}
+```
+
+### mTLS Configuration Example
+
+```json
+{
+  "grpc": {
+    "use_grpc_auth": true,
+    "use_grpc_context": true,
+    "grpc_endpoint": "https://grpc.example.com:50051",
+    "grpc_fallback_ports": [50052, 50053],
+    "connect_timeout_secs": 10,
+    "request_timeout_secs": 30,
+    "use_tls": true,
+    "mtls_enabled": true,
+    "tls_domain_name": "grpc.example.com",
+    "tls_ca_cert_path": "/etc/oneshim/ca.pem",
+    "tls_client_cert_path": "/etc/oneshim/client.pem",
+    "tls_client_key_path": "/etc/oneshim/client.key"
+  }
 }
 ```
 
