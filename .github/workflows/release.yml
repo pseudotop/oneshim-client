@@ -38,7 +38,7 @@ jobs:
             asset_ext: tar.gz
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -170,7 +170,7 @@ jobs:
     needs: build-release
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download arm64 artifact
         uses: actions/download-artifact@v4
@@ -248,7 +248,7 @@ jobs:
     needs: [build-release, build-macos-universal]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
