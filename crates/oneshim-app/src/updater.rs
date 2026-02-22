@@ -186,6 +186,7 @@ impl Updater {
         // 버전 비교
         let latest_tag = release.tag_name.trim_start_matches('v');
         let latest = semver::Version::parse(latest_tag)?;
+        self.enforce_version_floor(&latest)?;
 
         if latest > current {
             // 플랫폼에 맞는 에셋 찾기
@@ -235,6 +236,7 @@ impl Updater {
         // 버전 비교
         let latest_tag = release.tag_name.trim_start_matches('v');
         let latest = semver::Version::parse(latest_tag)?;
+        self.enforce_version_floor(&latest)?;
 
         if latest > current {
             // 플랫폼에 맞는 에셋 찾기
@@ -481,6 +483,29 @@ impl Updater {
         }
 
         Ok(hash)
+    }
+
+    fn enforce_version_floor(&self, latest: &semver::Version) -> Result<(), UpdateError> {
+        let Some(min_allowed) = self
+            .config
+            .min_allowed_version
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return Ok(());
+        };
+
+        let min_allowed = semver::Version::parse(min_allowed)
+            .map_err(|e| UpdateError::Integrity(format!("Invalid min_allowed_version: {}", e)))?;
+
+        if latest < &min_allowed {
+            return Err(UpdateError::Integrity(format!(
+                "Release version {} is below configured minimum {}",
+                latest, min_allowed
+            )));
+        }
+
+        Ok(())
     }
 
     fn sha256_hex(bytes: &[u8]) -> String {
@@ -814,6 +839,7 @@ mod tests {
             auto_install: false,
             require_signature_verification: false,
             signature_public_key: String::new(),
+            min_allowed_version: None,
         }
     }
 
@@ -1094,6 +1120,60 @@ mod tests {
 
         // 사전 릴리즈는 필터링되어 UpToDate 반환
         assert!(matches!(result, Ok(UpdateCheckResult::UpToDate { .. })));
+    }
+
+    #[tokio::test]
+    async fn check_for_updates_rejects_release_below_min_allowed_version() {
+        let mut server = mockito::Server::new_async().await;
+
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let asset_name = "oneshim-macos-arm64.tar.gz";
+        #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+        let asset_name = "oneshim-macos-x64.tar.gz";
+        #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+        let asset_name = "oneshim-windows-x64.zip";
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        let asset_name = "oneshim-linux-x64.tar.gz";
+        #[cfg(not(any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(target_os = "macos", target_arch = "x86_64"),
+            all(target_os = "windows", target_arch = "x86_64"),
+            all(target_os = "linux", target_arch = "x86_64"),
+        )))]
+        let asset_name = "oneshim-unknown.tar.gz";
+
+        let mock = server
+            .mock("GET", "/repos/test-owner/test-repo/releases/latest")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(format!(
+                r#"{{
+                "tag_name": "v99.0.0",
+                "name": "New Release",
+                "body": "New features",
+                "prerelease": false,
+                "assets": [{{
+                    "name": "{}",
+                    "browser_download_url": "https://example.com/download/{}",
+                    "size": 10000,
+                    "content_type": "application/octet-stream"
+                }}],
+                "html_url": "https://github.com/test/releases/v99.0.0",
+                "published_at": "2024-01-01T00:00:00Z"
+            }}"#,
+                asset_name, asset_name
+            ))
+            .create_async()
+            .await;
+
+        let mut config = test_config();
+        config.min_allowed_version = Some("100.0.0".to_string());
+        let updater = Updater::new(config);
+
+        let result = updater.check_for_updates_with_base_url(&server.url()).await;
+
+        mock.assert_async().await;
+        assert!(matches!(result, Err(UpdateError::Integrity(_))));
     }
 
     #[test]

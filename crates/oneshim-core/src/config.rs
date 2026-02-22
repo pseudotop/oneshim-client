@@ -622,6 +622,8 @@ pub struct UpdateConfig {
     pub require_signature_verification: bool,
     #[serde(default = "default_update_signature_public_key")]
     pub signature_public_key: String,
+    #[serde(default)]
+    pub min_allowed_version: Option<String>,
 }
 
 impl Default for UpdateConfig {
@@ -635,6 +637,7 @@ impl Default for UpdateConfig {
             auto_install: false,
             require_signature_verification: default_update_require_signature(),
             signature_public_key: default_update_signature_public_key(),
+            min_allowed_version: None,
         }
     }
 }
@@ -675,6 +678,19 @@ impl UpdateConfig {
                 "update.signature_public_key must decode to 32 bytes, got {}",
                 key_bytes.len()
             )));
+        }
+
+        if let Some(version_floor) = self
+            .min_allowed_version
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            semver::Version::parse(version_floor).map_err(|e| {
+                CoreError::Config(format!(
+                    "update.min_allowed_version must be valid semver: {}",
+                    e
+                ))
+            })?;
         }
 
         Ok(())
@@ -958,5 +974,17 @@ mod tests {
 
         let result = config.validate_integrity_policy();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn update_integrity_policy_rejects_invalid_version_floor() {
+        let mut config = UpdateConfig::default();
+        config.enabled = true;
+        config.require_signature_verification = true;
+        config.signature_public_key = BASE64.encode([7u8; 32]);
+        config.min_allowed_version = Some("not-semver".to_string());
+
+        let result = config.validate_integrity_policy();
+        assert!(result.is_err());
     }
 }
