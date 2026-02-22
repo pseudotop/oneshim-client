@@ -149,14 +149,26 @@ scoop install oneshim
 
 | 플랫폼 | 파일 |
 |--------|------|
+| macOS Universal (DMG 설치 파일) | `oneshim-macos-universal.dmg` |
+| macOS Universal (PKG 설치 파일) | `oneshim-macos-universal.pkg` |
 | macOS Universal | `oneshim-macos-universal.tar.gz` |
 | macOS Apple Silicon | `oneshim-macos-arm64.tar.gz` |
 | macOS Intel | `oneshim-macos-x64.tar.gz` |
 | Windows x64 (zip) | `oneshim-windows-x64.zip` |
 | Windows x64 (MSI) | `oneshim-app-*.msi` |
+| Linux x64 (DEB 패키지) | `oneshim-*.deb` |
 | Linux x64 | `oneshim-linux-x64.tar.gz` |
 
 ### macOS
+
+설치 파일 옵션:
+```bash
+# DMG 설치 파일
+open oneshim-macos-universal.dmg
+
+# PKG 설치 파일
+sudo installer -pkg oneshim-macos-universal.pkg -target /
+```
 
 ```bash
 # 압축 해제
@@ -180,6 +192,8 @@ chmod +x oneshim
 
 ### Windows
 
+설치 파일 옵션: `oneshim-app-*.msi` 실행 (권장).
+
 ```powershell
 # 압축 해제
 Expand-Archive oneshim-windows-x64.zip
@@ -198,6 +212,11 @@ Expand-Archive oneshim-windows-x64.zip
 ```
 
 ### Linux
+
+설치 파일 옵션:
+```bash
+sudo dpkg -i oneshim-*.deb
+```
 
 ```bash
 # 압축 해제

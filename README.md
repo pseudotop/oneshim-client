@@ -151,14 +151,26 @@ Download the binary for your platform from the [Releases](https://github.com/pse
 
 | Platform | File |
 |--------|------|
+| macOS Universal (DMG installer) | `oneshim-macos-universal.dmg` |
+| macOS Universal (PKG installer) | `oneshim-macos-universal.pkg` |
 | macOS Universal | `oneshim-macos-universal.tar.gz` |
 | macOS Apple Silicon | `oneshim-macos-arm64.tar.gz` |
 | macOS Intel | `oneshim-macos-x64.tar.gz` |
 | Windows x64 (zip) | `oneshim-windows-x64.zip` |
 | Windows x64 (MSI) | `oneshim-app-*.msi` |
+| Linux x64 (DEB package) | `oneshim-*.deb` |
 | Linux x64 | `oneshim-linux-x64.tar.gz` |
 
 ### macOS
+
+Installer options:
+```bash
+# DMG installer
+open oneshim-macos-universal.dmg
+
+# PKG installer
+sudo installer -pkg oneshim-macos-universal.pkg -target /
+```
 
 ```bash
 # Extract archive
@@ -182,6 +194,8 @@ Configure auto-start:
 
 ### Windows
 
+Installer option: run `oneshim-app-*.msi` (recommended).
+
 ```powershell
 # Extract archive
 Expand-Archive oneshim-windows-x64.zip
@@ -200,6 +214,11 @@ Configure auto-start:
 ```
 
 ### Linux
+
+Installer option:
+```bash
+sudo dpkg -i oneshim-*.deb
+```
 
 ```bash
 # Extract archive
