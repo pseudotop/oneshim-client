@@ -50,5 +50,8 @@ jobs:
       - name: Run gRPC compatibility matrix gate
         run: ./scripts/verify-grpc-compatibility.sh
 
+      - name: Run gRPC mTLS config validation
+        run: ./scripts/verify-grpc-mtls-config.sh
+
       - name: Run gRPC readiness verification
         run: ./scripts/verify-grpc-readiness.sh

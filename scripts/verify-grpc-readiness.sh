@@ -7,6 +7,9 @@ cd "${ROOT_DIR}"
 echo "[grpc] Verifying protobuf compatibility policy"
 ./scripts/verify-grpc-compatibility.sh
 
+echo "[grpc] Verifying TLS/mTLS configuration policy"
+./scripts/verify-grpc-mtls-config.sh
+
 echo "[grpc] Checking oneshim-network with grpc feature"
 cargo check -p oneshim-network --features grpc
 
