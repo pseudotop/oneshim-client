@@ -163,6 +163,7 @@ jobs:
         with:
           name: oneshim-linux-x64-deb
           path: target/${{ matrix.target }}/debian/*.deb
+          if-no-files-found: error
 
   build-macos-universal:
     name: Build macOS Universal Binary
@@ -220,6 +221,27 @@ jobs:
         with:
           name: oneshim-macos-universal-dmg
           path: oneshim-macos-universal.dmg
+          if-no-files-found: error
+
+      - name: Create PKG installer
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          mkdir -p pkg-root/usr/local/bin
+          cp binaries/oneshim pkg-root/usr/local/bin/oneshim
+          chmod +x pkg-root/usr/local/bin/oneshim
+          pkgbuild \
+            --root pkg-root \
+            --identifier com.oneshim.client \
+            --version "$VERSION" \
+            --install-location / \
+            oneshim-macos-universal.pkg
+
+      - name: Upload PKG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneshim-macos-universal-pkg
+          path: oneshim-macos-universal.pkg
+          if-no-files-found: error
 
   create-release:
     name: Create GitHub Release
@@ -238,9 +260,18 @@ jobs:
       - name: Flatten nested artifacts
         run: |
           # Move installer files from nested paths to dist/
-          find dist -mindepth 2 -type f \( -name '*.msi' -o -name '*.deb' -o -name '*.dmg' \) -exec mv {} dist/ \;
+          find dist -mindepth 2 -type f \( -name '*.msi' -o -name '*.deb' -o -name '*.dmg' -o -name '*.pkg' \) -exec mv {} dist/ \;
           # Clean up empty nested directories
           find dist -mindepth 1 -type d -empty -delete
+
+      - name: Verify installer coverage
+        run: |
+          for pattern in "*.msi" "*.deb" "*.dmg" "*.pkg"; do
+            if ! compgen -G "dist/${pattern}" > /dev/null; then
+              echo "Missing expected installer artifact: ${pattern}" >&2
+              exit 1
+            fi
+          done
 
       - name: Verify artifacts
         run: find dist -type f
@@ -335,6 +366,7 @@ jobs:
           | Platform | Architecture | File | Format |
           |----------|-------------|------|--------|
           | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.dmg` | DMG Installer |
+          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.pkg` | PKG Installer |
           | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.tar.gz` | Binary |
           | macOS | Apple Silicon (arm64) | `oneshim-macos-arm64.tar.gz` | Binary |
           | macOS | Intel (x64) | `oneshim-macos-x64.tar.gz` | Binary |
@@ -362,6 +394,11 @@ jobs:
           tar -xzf oneshim-macos-universal.tar.gz
           chmod +x oneshim
           ./oneshim
+          ```
+
+          **macOS (PKG):**
+          ```bash
+          sudo installer -pkg oneshim-macos-universal.pkg -target /
           ```
 
           **Windows (MSI — Recommended):**
