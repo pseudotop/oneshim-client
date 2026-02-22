@@ -41,6 +41,7 @@ cargo check -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc reconnect_
 cargo test -p oneshim-network --features grpc chaos_
+cargo test -p oneshim-network --features grpc proxy_fault_
 cargo check -p oneshim-app --features oneshim-network/grpc
 git diff --quiet -- crates/oneshim-network/src/proto/generated
 ```
@@ -57,4 +58,4 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 
 ## Next Hardening Steps
 
-1. Add transport-level fault-injection tests using a proxy harness (latency/jitter/reset).
+1. Add end-to-end gRPC chaos tests with an external fault proxy container in CI.

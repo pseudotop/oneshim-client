@@ -41,6 +41,7 @@ cargo check -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc
 cargo test -p oneshim-network --features grpc reconnect_
 cargo test -p oneshim-network --features grpc chaos_
+cargo test -p oneshim-network --features grpc proxy_fault_
 cargo check -p oneshim-app --features oneshim-network/grpc
 git diff --quiet -- crates/oneshim-network/src/proto/generated
 ```
@@ -57,4 +58,4 @@ git diff --quiet -- crates/oneshim-network/src/proto/generated
 
 ## 다음 강화 항목
 
-1. proxy harness 기반 전송 계층 fault-injection 테스트(지연/지터/reset) 추가
+1. CI에서 external fault proxy 컨테이너를 이용한 end-to-end gRPC chaos 테스트 추가
