@@ -6,7 +6,6 @@ const replayTitle = i18nRegex('replay.title')
 const hideOverlayLabel = i18nRegex('replay.hideOverlay')
 const showOverlayLabel = i18nRegex('replay.showOverlay')
 const runSuggestedActionLabel = i18nRegex('replay.runSuggestedAction')
-const actionSuccessLabel = i18nRegex('replay.actionSuccess')
 
 function makeReplayTimeline() {
   const now = new Date()
@@ -89,7 +88,7 @@ test.describe('Replay Scene Overlay', () => {
     ).toBeVisible()
 
     await page.getByRole('button', { name: runSuggestedActionLabel }).click()
-    await expect(page.getByText(actionSuccessLabel)).toBeVisible()
+    await expect(page.getByText(/policy:|정책:/i)).toBeVisible()
   })
 
   test('shows failure feedback when scene action endpoint rejects', async ({ page }) => {

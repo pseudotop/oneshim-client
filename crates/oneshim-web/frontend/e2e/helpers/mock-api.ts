@@ -285,6 +285,7 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
       frame_id: payload?.frame_id ?? 0,
       scene_id: payload?.scene_id ?? 'scene-e2e',
       element_id: payload?.element_id ?? 'el-e2e',
+      applied_privacy_policy: 'AllowFiltered',
       executed_intents:
         payload?.action_type === 'type_text'
           ? [

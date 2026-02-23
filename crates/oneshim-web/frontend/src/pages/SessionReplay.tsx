@@ -41,6 +41,7 @@ export default function SessionReplay() {
   const [showSceneOverlay, setShowSceneOverlay] = useState(true)
   const [selectedSceneElementId, setSelectedSceneElementId] = useState<string | null>(null)
   const [sceneTypeText, setSceneTypeText] = useState('')
+  const [allowSensitiveInput, setAllowSensitiveInput] = useState(false)
   const [sceneActionFeedback, setSceneActionFeedback] = useState<{
     success: boolean
     message: string
@@ -126,6 +127,7 @@ export default function SessionReplay() {
   useEffect(() => {
     setSelectedSceneElementId(null)
     setSceneTypeText('')
+    setAllowSensitiveInput(false)
     setSceneActionFeedback(null)
   }, [currentFrame?.id, currentScene?.scene_id])
 
@@ -220,7 +222,10 @@ export default function SessionReplay() {
       setSceneActionFeedback({
         success: ok,
         message: ok
-          ? t('replay.actionSuccess', 'Suggested action executed.')
+          ? t('replay.actionSuccessWithPolicy', {
+              defaultValue: 'Suggested action executed (policy: {{policy}}).',
+              policy: response.applied_privacy_policy,
+            })
           : response.result.error || t('replay.actionFailed', 'Suggested action failed.'),
       })
     },
@@ -553,7 +558,7 @@ export default function SessionReplay() {
                       </div>
 
                       {selectedActionType === 'type_text' && (
-                        <div className="space-y-1">
+                        <div className="space-y-2">
                           <label className="text-xs text-slate-600 dark:text-slate-300">
                             {t('replay.typeTextLabel', 'Input Text')}
                           </label>
@@ -563,6 +568,17 @@ export default function SessionReplay() {
                             placeholder={t('replay.typeTextPlaceholder', 'Enter text to type')}
                             className="w-full px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100"
                           />
+                          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                            <input
+                              type="checkbox"
+                              checked={allowSensitiveInput}
+                              onChange={(e) => setAllowSensitiveInput(e.target.checked)}
+                            />
+                            {t(
+                              'replay.allowSensitiveInput',
+                              'Allow sensitive text input under current privacy policy'
+                            )}
+                          </label>
                         </div>
                       )}
 
@@ -583,6 +599,10 @@ export default function SessionReplay() {
                               role: selectedSceneElement.role,
                               label: selectedSceneElement.label,
                               text: selectedActionType === 'type_text' ? sceneTypeText : undefined,
+                              allow_sensitive_input:
+                                selectedActionType === 'type_text'
+                                  ? allowSensitiveInput
+                                  : undefined,
                             })
                           }}
                           disabled={selectedActionType === 'type_text' && sceneTypeText.trim().length === 0}

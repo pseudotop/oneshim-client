@@ -788,6 +788,7 @@ export async function handleStandaloneRequest(
       frame_id: payload?.frame_id,
       scene_id: payload?.scene_id,
       element_id: payload?.element_id ?? 'unknown-element',
+      applied_privacy_policy: 'AllowFiltered',
       executed_intents: payload?.action_type === 'type_text'
         ? [
             { Raw: { MouseClick: { button: 'left', x: 0, y: 0 } } },

@@ -1214,6 +1214,7 @@ export interface ExecuteSceneActionRequest {
   role?: string | null
   label?: string | null
   text?: string | null
+  allow_sensitive_input?: boolean
 }
 
 export interface ExecuteSceneActionResponse {
@@ -1222,6 +1223,7 @@ export interface ExecuteSceneActionResponse {
   frame_id?: number
   scene_id?: string
   element_id: string
+  applied_privacy_policy: string
   executed_intents: IntentDefinition[]
   result: {
     success: boolean

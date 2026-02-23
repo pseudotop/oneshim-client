@@ -7,7 +7,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use oneshim_automation::audit::AuditStatus;
+use oneshim_automation::policy::AuditLevel;
 use oneshim_automation::presets::builtin_presets;
+use oneshim_core::config::{ExternalDataPolicy, PiiFilterLevel};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
@@ -16,6 +18,7 @@ use oneshim_core::models::intent::{
 };
 use oneshim_core::models::ui_scene::UiScene;
 use std::path::{Path as FsPath, PathBuf};
+use std::time::Instant;
 
 use crate::{error::ApiError, AppState};
 
@@ -181,6 +184,7 @@ pub struct ExecuteSceneActionRequest {
     pub role: Option<String>,
     pub label: Option<String>,
     pub text: Option<String>,
+    pub allow_sensitive_input: Option<bool>,
 }
 
 /// Scene 좌표 기반 실행 응답
@@ -191,6 +195,7 @@ pub struct ExecuteSceneActionResponse {
     pub frame_id: Option<i64>,
     pub scene_id: Option<String>,
     pub element_id: String,
+    pub applied_privacy_policy: String,
     pub executed_intents: Vec<AutomationIntent>,
     pub result: IntentResult,
 }
@@ -203,7 +208,9 @@ pub struct SceneQuery {
     pub frame_id: Option<i64>,
 }
 
-fn build_scene_action_intents(req: &ExecuteSceneActionRequest) -> Result<Vec<AutomationIntent>, ApiError> {
+fn build_scene_action_intents(
+    req: &ExecuteSceneActionRequest,
+) -> Result<Vec<AutomationIntent>, ApiError> {
     if req.session_id.trim().is_empty() {
         return Err(ApiError::BadRequest("session_id는 필수입니다".to_string()));
     }
@@ -230,7 +237,9 @@ fn build_scene_action_intents(req: &ExecuteSceneActionRequest) -> Result<Vec<Aut
                 .as_ref()
                 .map(|v| v.trim().to_string())
                 .filter(|v| !v.is_empty())
-                .ok_or_else(|| ApiError::BadRequest("type_text 액션은 text가 필요합니다".to_string()))?;
+                .ok_or_else(|| {
+                    ApiError::BadRequest("type_text 액션은 text가 필요합니다".to_string())
+                })?;
 
             Ok(vec![
                 AutomationIntent::Raw(AutomationAction::MouseClick {
@@ -242,6 +251,51 @@ fn build_scene_action_intents(req: &ExecuteSceneActionRequest) -> Result<Vec<Aut
             ])
         }
     }
+}
+
+fn read_scene_action_policy(state: &AppState) -> (ExternalDataPolicy, PiiFilterLevel) {
+    if let Some(config_manager) = state.config_manager.as_ref() {
+        let config = config_manager.get();
+        (
+            config.ai_provider.external_data_policy,
+            config.privacy.pii_filter_level,
+        )
+    } else {
+        (
+            ExternalDataPolicy::PiiFilterStrict,
+            PiiFilterLevel::Standard,
+        )
+    }
+}
+
+fn enforce_scene_action_privacy(
+    state: &AppState,
+    req: &ExecuteSceneActionRequest,
+) -> Result<(ExternalDataPolicy, PiiFilterLevel), ApiError> {
+    let (policy, filter_level) = read_scene_action_policy(state);
+    let allow_sensitive = req.allow_sensitive_input.unwrap_or(false);
+
+    match (policy, req.action_type) {
+        (ExternalDataPolicy::PiiFilterStrict, SceneActionType::TypeText) => {
+            if !allow_sensitive {
+                return Err(ApiError::BadRequest(
+                    "PiiFilterStrict 정책에서는 type_text 액션이 차단됩니다. 설정에서 완화하거나 명시적으로 허용 플래그를 전달하세요."
+                        .to_string(),
+                ));
+            }
+        }
+        (ExternalDataPolicy::PiiFilterStandard, SceneActionType::TypeText) => {
+            if !allow_sensitive {
+                return Err(ApiError::BadRequest(
+                    "PiiFilterStandard 정책에서는 민감 입력 보호를 위해 type_text 액션에 allow_sensitive_input=true가 필요합니다."
+                        .to_string(),
+                ));
+            }
+        }
+        _ => {}
+    }
+
+    Ok((policy, filter_level))
 }
 
 fn infer_image_format(path: &FsPath) -> String {
@@ -669,12 +723,32 @@ pub async fn execute_scene_action(
     };
 
     let intents = build_scene_action_intents(&req)?;
+    let (privacy_policy, pii_filter_level) = enforce_scene_action_privacy(&state, &req)?;
     let command_id = req
         .command_id
         .as_ref()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| format!("scene-action-{}", chrono::Utc::now().timestamp_millis().abs()));
+        .unwrap_or_else(|| {
+            format!(
+                "scene-action-{}",
+                chrono::Utc::now().timestamp_millis().abs()
+            )
+        });
+    let started_at = Instant::now();
+
+    if let Some(logger) = state.audit_logger.as_ref() {
+        let mut guard = logger.write().await;
+        guard.log_start_if(
+            AuditLevel::Detailed,
+            &command_id,
+            &req.session_id,
+            &format!(
+                "scene_action frame_id={:?} scene_id={:?} element_id={} action_type={:?} policy={:?} pii_level={:?}",
+                req.frame_id, req.scene_id, req.element_id, req.action_type, privacy_policy, pii_filter_level
+            ),
+        );
+    }
 
     let mut last_result: Option<IntentResult> = None;
     for (index, intent) in intents.iter().enumerate() {
@@ -723,6 +797,21 @@ pub async fn execute_scene_action(
         elapsed_ms: 0,
         error: Some("실행 가능한 액션이 없습니다".to_string()),
     });
+    let elapsed_ms = started_at.elapsed().as_millis() as u64;
+
+    if let Some(logger) = state.audit_logger.as_ref() {
+        let mut guard = logger.write().await;
+        guard.log_complete_with_time(
+            AuditLevel::Detailed,
+            &command_id,
+            &req.session_id,
+            &format!(
+                "scene_action_result success={} frame_id={:?} scene_id={:?} element_id={} policy={:?} error={:?}",
+                result.success, req.frame_id, req.scene_id, req.element_id, privacy_policy, result.error
+            ),
+            elapsed_ms,
+        );
+    }
 
     Ok(Json(ExecuteSceneActionResponse {
         command_id,
@@ -730,6 +819,7 @@ pub async fn execute_scene_action(
         frame_id: req.frame_id,
         scene_id: req.scene_id,
         element_id: req.element_id,
+        applied_privacy_policy: format!("{privacy_policy:?}"),
         executed_intents: intents,
         result,
     }))
@@ -964,6 +1054,7 @@ mod tests {
             role: Some("button".to_string()),
             label: Some("Save".to_string()),
             text: None,
+            allow_sensitive_input: None,
         };
 
         let intents = build_scene_action_intents(&req).unwrap();
@@ -989,6 +1080,7 @@ mod tests {
             role: Some("input".to_string()),
             label: Some("Search".to_string()),
             text: None,
+            allow_sensitive_input: None,
         };
 
         let err = build_scene_action_intents(&req).unwrap_err();
