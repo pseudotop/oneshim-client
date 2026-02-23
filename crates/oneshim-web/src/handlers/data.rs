@@ -3,7 +3,7 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::{error::ApiError, AppState};
+use crate::{error::ApiError, services::data_service, AppState};
 
 /// 날짜 범위 삭제 요청
 #[derive(Debug, Deserialize)]
@@ -37,7 +37,7 @@ pub struct DeleteResult {
 }
 
 impl DeleteResult {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             success: true,
             events_deleted: 0,
@@ -49,7 +49,7 @@ impl DeleteResult {
         }
     }
 
-    fn total(&self) -> u64 {
+    pub(crate) fn total(&self) -> u64 {
         self.events_deleted
             + self.frames_deleted
             + self.metrics_deleted
@@ -63,94 +63,14 @@ pub async fn delete_data_range(
     State(state): State<AppState>,
     Json(request): Json<DeleteRangeRequest>,
 ) -> Result<Json<DeleteResult>, ApiError> {
-    // 날짜 유효성 검사
-    if request.from.is_empty() || request.to.is_empty() {
-        return Err(ApiError::BadRequest(
-            "시작 날짜와 종료 날짜가 필요합니다".to_string(),
-        ));
-    }
-
-    let mut result = DeleteResult::empty();
-
-    // 데이터 유형이 지정되지 않으면 모두 삭제
-    let delete_all = request.data_types.is_empty();
-    let data_types = &request.data_types;
-
-    // 프레임 삭제 (이미지 파일도 함께 삭제)
-    if delete_all || data_types.iter().any(|t| t == "frames") {
-        // 먼저 삭제할 프레임의 파일 경로 조회
-        if let Some(ref frames_dir) = state.frames_dir {
-            let paths = state
-                .storage
-                .list_frame_file_paths_in_range(&request.from, &request.to)
-                .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-            // 파일 삭제
-            for path in paths {
-                let full_path = frames_dir.join(&path);
-                let _ = std::fs::remove_file(full_path);
-            }
-        }
-    }
-
-    let deleted = state
-        .storage
-        .delete_data_in_range(
-            &request.from,
-            &request.to,
-            delete_all || data_types.iter().any(|t| t == "events"),
-            delete_all || data_types.iter().any(|t| t == "frames"),
-            delete_all || data_types.iter().any(|t| t == "metrics"),
-            delete_all || data_types.iter().any(|t| t == "processes"),
-            delete_all || data_types.iter().any(|t| t == "idle"),
-        )
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    result.events_deleted = deleted.events_deleted;
-    result.frames_deleted = deleted.frames_deleted;
-    result.metrics_deleted = deleted.metrics_deleted;
-    result.process_snapshots_deleted = deleted.process_snapshots_deleted;
-    result.idle_periods_deleted = deleted.idle_periods_deleted;
-
-    result.message = format!("{}개의 레코드가 삭제되었습니다", result.total());
-
-    Ok(Json(result))
+    Ok(Json(data_service::delete_data_range(&state, &request)?))
 }
 
 /// DELETE /api/data/all - 모든 데이터 삭제
 pub async fn delete_all_data(
     State(state): State<AppState>,
 ) -> Result<Json<DeleteResult>, ApiError> {
-    let mut result = DeleteResult::empty();
-
-    // 프레임 이미지 파일 모두 삭제
-    if let Some(ref frames_dir) = state.frames_dir {
-        if frames_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(frames_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file() {
-                        let _ = std::fs::remove_file(&path);
-                    }
-                }
-            }
-        }
-    }
-
-    let deleted = state
-        .storage
-        .delete_all_data()
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    result.events_deleted = deleted.events_deleted;
-    result.frames_deleted = deleted.frames_deleted;
-    result.metrics_deleted = deleted.metrics_deleted;
-    result.process_snapshots_deleted = deleted.process_snapshots_deleted;
-    result.idle_periods_deleted = deleted.idle_periods_deleted;
-
-    result.message = format!("모든 데이터가 삭제되었습니다 ({}개 레코드)", result.total());
-
-    Ok(Json(result))
+    Ok(Json(data_service::delete_all_data(&state)?))
 }
 
 #[cfg(test)]

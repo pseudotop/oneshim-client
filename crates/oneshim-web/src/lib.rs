@@ -15,6 +15,7 @@ pub mod embedded;
 pub mod error;
 pub mod handlers;
 pub mod routes;
+pub mod services;
 pub mod storage_port;
 pub mod update_control;
 
