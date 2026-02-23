@@ -517,143 +517,141 @@ pub async fn update_settings(
 
     // 설정 관리자에 저장
     if let Some(ref config_manager) = state.config_manager {
+        let mut next_config = config_manager.get();
+        apply_settings_to_config(&mut next_config, &settings);
+
+        next_config
+            .ai_provider
+            .validate_selected_remote_endpoints()
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
         config_manager
-            .update_with(|config| {
-                config.storage.retention_days = settings.retention_days;
-                config.storage.max_storage_mb = settings.max_storage_mb as u64;
-                config.web.port = settings.web_port;
-                config.web.allow_external = settings.allow_external;
-                // 비전 설정
-                config.vision.capture_enabled = settings.capture_enabled;
-                // 모니터 설정
-                config.monitor.poll_interval_ms = (settings.metrics_interval_secs as u64) * 1000;
-                config.monitor.idle_threshold_secs = settings.idle_threshold_secs as u64;
-                config.monitor.process_interval_secs = settings.process_interval_secs as u64;
-                // 알림 설정
-                config.notification.enabled = settings.notification.enabled;
-                config.notification.idle_notification = settings.notification.idle_notification;
-                config.notification.idle_notification_mins =
-                    settings.notification.idle_notification_mins;
-                config.notification.long_session_notification =
-                    settings.notification.long_session_notification;
-                config.notification.long_session_mins = settings.notification.long_session_mins;
-                config.notification.high_usage_notification =
-                    settings.notification.high_usage_notification;
-                config.notification.high_usage_threshold =
-                    settings.notification.high_usage_threshold;
-                config.update.enabled = settings.update.enabled;
-                config.update.check_interval_hours = settings.update.check_interval_hours;
-                config.update.include_prerelease = settings.update.include_prerelease;
-                config.update.auto_install = settings.update.auto_install;
-                // 텔레메트리 설정
-                config.telemetry.enabled = settings.telemetry.enabled;
-                config.telemetry.crash_reports = settings.telemetry.crash_reports;
-                config.telemetry.usage_analytics = settings.telemetry.usage_analytics;
-                config.telemetry.performance_metrics = settings.telemetry.performance_metrics;
-                // 모니터링 제어
-                config.monitor.process_monitoring = settings.monitor.process_monitoring;
-                config.monitor.input_activity = settings.monitor.input_activity;
-                config.vision.privacy_mode = settings.monitor.privacy_mode;
-                // 프라이버시 설정
-                config.privacy.excluded_apps = settings.privacy.excluded_apps.clone();
-                config.privacy.excluded_app_patterns =
-                    settings.privacy.excluded_app_patterns.clone();
-                config.privacy.excluded_title_patterns =
-                    settings.privacy.excluded_title_patterns.clone();
-                config.privacy.auto_exclude_sensitive = settings.privacy.auto_exclude_sensitive;
-                // PII 필터 레벨 파싱 (문자열 → enum)
-                config.privacy.pii_filter_level = match settings.privacy.pii_filter_level.as_str() {
-                    "Off" => oneshim_core::config::PiiFilterLevel::Off,
-                    "Basic" => oneshim_core::config::PiiFilterLevel::Basic,
-                    "Strict" => oneshim_core::config::PiiFilterLevel::Strict,
-                    _ => oneshim_core::config::PiiFilterLevel::Standard,
-                };
-                // 스케줄 설정
-                config.schedule.active_hours_enabled = settings.schedule.active_hours_enabled;
-                config.schedule.active_start_hour = settings.schedule.active_start_hour;
-                config.schedule.active_end_hour = settings.schedule.active_end_hour;
-                config.schedule.active_days = settings
-                    .schedule
-                    .active_days
-                    .iter()
-                    .filter_map(|d| match d.as_str() {
-                        "Mon" => Some(oneshim_core::config::Weekday::Mon),
-                        "Tue" => Some(oneshim_core::config::Weekday::Tue),
-                        "Wed" => Some(oneshim_core::config::Weekday::Wed),
-                        "Thu" => Some(oneshim_core::config::Weekday::Thu),
-                        "Fri" => Some(oneshim_core::config::Weekday::Fri),
-                        "Sat" => Some(oneshim_core::config::Weekday::Sat),
-                        "Sun" => Some(oneshim_core::config::Weekday::Sun),
-                        _ => None,
-                    })
-                    .collect();
-                config.schedule.pause_on_screen_lock = settings.schedule.pause_on_screen_lock;
-                config.schedule.pause_on_battery_saver = settings.schedule.pause_on_battery_saver;
-                // 자동화 설정
-                config.automation.enabled = settings.automation.enabled;
-                // 샌드박스 설정
-                config.automation.sandbox.enabled = settings.sandbox.enabled;
-                config.automation.sandbox.profile = match settings.sandbox.profile.as_str() {
-                    "Permissive" => oneshim_core::config::SandboxProfile::Permissive,
-                    "Strict" => oneshim_core::config::SandboxProfile::Strict,
-                    _ => oneshim_core::config::SandboxProfile::Standard,
-                };
-                config.automation.sandbox.allowed_read_paths =
-                    settings.sandbox.allowed_read_paths.clone();
-                config.automation.sandbox.allowed_write_paths =
-                    settings.sandbox.allowed_write_paths.clone();
-                config.automation.sandbox.allow_network = settings.sandbox.allow_network;
-                config.automation.sandbox.max_memory_bytes = settings.sandbox.max_memory_bytes;
-                config.automation.sandbox.max_cpu_time_ms = settings.sandbox.max_cpu_time_ms;
-                // AI 제공자 설정
-                config.ai_provider.ocr_provider = match settings.ai_provider.ocr_provider.as_str() {
-                    "Remote" => oneshim_core::config::OcrProviderType::Remote,
-                    _ => oneshim_core::config::OcrProviderType::Local,
-                };
-                config.ai_provider.llm_provider = match settings.ai_provider.llm_provider.as_str() {
-                    "Remote" => oneshim_core::config::LlmProviderType::Remote,
-                    _ => oneshim_core::config::LlmProviderType::Local,
-                };
-                config.ai_provider.external_data_policy =
-                    match settings.ai_provider.external_data_policy.as_str() {
-                        "PiiFilterStandard" => {
-                            oneshim_core::config::ExternalDataPolicy::PiiFilterStandard
-                        }
-                        "AllowFiltered" => oneshim_core::config::ExternalDataPolicy::AllowFiltered,
-                        _ => oneshim_core::config::ExternalDataPolicy::PiiFilterStrict,
-                    };
-                config.ai_provider.fallback_to_local = settings.ai_provider.fallback_to_local;
-                // OCR API — 키 마스킹 감지
-                if let Some(ref ocr_settings) = settings.ai_provider.ocr_api {
-                    let existing_key = config
-                        .ai_provider
-                        .ocr_api
-                        .as_ref()
-                        .map(|e| e.api_key.as_str())
-                        .unwrap_or("");
-                    config.ai_provider.ocr_api =
-                        Some(api_settings_to_endpoint(ocr_settings, existing_key));
-                } else {
-                    config.ai_provider.ocr_api = None;
-                }
-                // LLM API — 키 마스킹 감지
-                if let Some(ref llm_settings) = settings.ai_provider.llm_api {
-                    let existing_key = config
-                        .ai_provider
-                        .llm_api
-                        .as_ref()
-                        .map(|e| e.api_key.as_str())
-                        .unwrap_or("");
-                    config.ai_provider.llm_api =
-                        Some(api_settings_to_endpoint(llm_settings, existing_key));
-                } else {
-                    config.ai_provider.llm_api = None;
-                }
-            })
+            .update(next_config)
             .map_err(|e| ApiError::Internal(format!("설정 저장 실패: {e}")))?;
     }
 
     Ok(Json(settings))
+}
+
+fn apply_settings_to_config(config: &mut oneshim_core::config::AppConfig, settings: &AppSettings) {
+    config.storage.retention_days = settings.retention_days;
+    config.storage.max_storage_mb = settings.max_storage_mb as u64;
+    config.web.port = settings.web_port;
+    config.web.allow_external = settings.allow_external;
+    // 비전 설정
+    config.vision.capture_enabled = settings.capture_enabled;
+    // 모니터 설정
+    config.monitor.poll_interval_ms = (settings.metrics_interval_secs as u64) * 1000;
+    config.monitor.idle_threshold_secs = settings.idle_threshold_secs as u64;
+    config.monitor.process_interval_secs = settings.process_interval_secs as u64;
+    // 알림 설정
+    config.notification.enabled = settings.notification.enabled;
+    config.notification.idle_notification = settings.notification.idle_notification;
+    config.notification.idle_notification_mins = settings.notification.idle_notification_mins;
+    config.notification.long_session_notification = settings.notification.long_session_notification;
+    config.notification.long_session_mins = settings.notification.long_session_mins;
+    config.notification.high_usage_notification = settings.notification.high_usage_notification;
+    config.notification.high_usage_threshold = settings.notification.high_usage_threshold;
+    config.update.enabled = settings.update.enabled;
+    config.update.check_interval_hours = settings.update.check_interval_hours;
+    config.update.include_prerelease = settings.update.include_prerelease;
+    config.update.auto_install = settings.update.auto_install;
+    // 텔레메트리 설정
+    config.telemetry.enabled = settings.telemetry.enabled;
+    config.telemetry.crash_reports = settings.telemetry.crash_reports;
+    config.telemetry.usage_analytics = settings.telemetry.usage_analytics;
+    config.telemetry.performance_metrics = settings.telemetry.performance_metrics;
+    // 모니터링 제어
+    config.monitor.process_monitoring = settings.monitor.process_monitoring;
+    config.monitor.input_activity = settings.monitor.input_activity;
+    config.vision.privacy_mode = settings.monitor.privacy_mode;
+    // 프라이버시 설정
+    config.privacy.excluded_apps = settings.privacy.excluded_apps.clone();
+    config.privacy.excluded_app_patterns = settings.privacy.excluded_app_patterns.clone();
+    config.privacy.excluded_title_patterns = settings.privacy.excluded_title_patterns.clone();
+    config.privacy.auto_exclude_sensitive = settings.privacy.auto_exclude_sensitive;
+    // PII 필터 레벨 파싱 (문자열 → enum)
+    config.privacy.pii_filter_level = match settings.privacy.pii_filter_level.as_str() {
+        "Off" => oneshim_core::config::PiiFilterLevel::Off,
+        "Basic" => oneshim_core::config::PiiFilterLevel::Basic,
+        "Strict" => oneshim_core::config::PiiFilterLevel::Strict,
+        _ => oneshim_core::config::PiiFilterLevel::Standard,
+    };
+    // 스케줄 설정
+    config.schedule.active_hours_enabled = settings.schedule.active_hours_enabled;
+    config.schedule.active_start_hour = settings.schedule.active_start_hour;
+    config.schedule.active_end_hour = settings.schedule.active_end_hour;
+    config.schedule.active_days = settings
+        .schedule
+        .active_days
+        .iter()
+        .filter_map(|d| match d.as_str() {
+            "Mon" => Some(oneshim_core::config::Weekday::Mon),
+            "Tue" => Some(oneshim_core::config::Weekday::Tue),
+            "Wed" => Some(oneshim_core::config::Weekday::Wed),
+            "Thu" => Some(oneshim_core::config::Weekday::Thu),
+            "Fri" => Some(oneshim_core::config::Weekday::Fri),
+            "Sat" => Some(oneshim_core::config::Weekday::Sat),
+            "Sun" => Some(oneshim_core::config::Weekday::Sun),
+            _ => None,
+        })
+        .collect();
+    config.schedule.pause_on_screen_lock = settings.schedule.pause_on_screen_lock;
+    config.schedule.pause_on_battery_saver = settings.schedule.pause_on_battery_saver;
+    // 자동화 설정
+    config.automation.enabled = settings.automation.enabled;
+    // 샌드박스 설정
+    config.automation.sandbox.enabled = settings.sandbox.enabled;
+    config.automation.sandbox.profile = match settings.sandbox.profile.as_str() {
+        "Permissive" => oneshim_core::config::SandboxProfile::Permissive,
+        "Strict" => oneshim_core::config::SandboxProfile::Strict,
+        _ => oneshim_core::config::SandboxProfile::Standard,
+    };
+    config.automation.sandbox.allowed_read_paths = settings.sandbox.allowed_read_paths.clone();
+    config.automation.sandbox.allowed_write_paths = settings.sandbox.allowed_write_paths.clone();
+    config.automation.sandbox.allow_network = settings.sandbox.allow_network;
+    config.automation.sandbox.max_memory_bytes = settings.sandbox.max_memory_bytes;
+    config.automation.sandbox.max_cpu_time_ms = settings.sandbox.max_cpu_time_ms;
+    // AI 제공자 설정
+    config.ai_provider.ocr_provider = match settings.ai_provider.ocr_provider.as_str() {
+        "Remote" => oneshim_core::config::OcrProviderType::Remote,
+        _ => oneshim_core::config::OcrProviderType::Local,
+    };
+    config.ai_provider.llm_provider = match settings.ai_provider.llm_provider.as_str() {
+        "Remote" => oneshim_core::config::LlmProviderType::Remote,
+        _ => oneshim_core::config::LlmProviderType::Local,
+    };
+    config.ai_provider.external_data_policy =
+        match settings.ai_provider.external_data_policy.as_str() {
+            "PiiFilterStandard" => oneshim_core::config::ExternalDataPolicy::PiiFilterStandard,
+            "AllowFiltered" => oneshim_core::config::ExternalDataPolicy::AllowFiltered,
+            _ => oneshim_core::config::ExternalDataPolicy::PiiFilterStrict,
+        };
+    config.ai_provider.fallback_to_local = settings.ai_provider.fallback_to_local;
+    // OCR API — 키 마스킹 감지
+    if let Some(ref ocr_settings) = settings.ai_provider.ocr_api {
+        let existing_key = config
+            .ai_provider
+            .ocr_api
+            .as_ref()
+            .map(|e| e.api_key.as_str())
+            .unwrap_or("");
+        config.ai_provider.ocr_api = Some(api_settings_to_endpoint(ocr_settings, existing_key));
+    } else {
+        config.ai_provider.ocr_api = None;
+    }
+    // LLM API — 키 마스킹 감지
+    if let Some(ref llm_settings) = settings.ai_provider.llm_api {
+        let existing_key = config
+            .ai_provider
+            .llm_api
+            .as_ref()
+            .map(|e| e.api_key.as_str())
+            .unwrap_or("");
+        config.ai_provider.llm_api = Some(api_settings_to_endpoint(llm_settings, existing_key));
+    } else {
+        config.ai_provider.llm_api = None;
+    }
 }
 
 /// 디렉토리 크기 계산 (재귀)
@@ -679,6 +677,7 @@ fn calculate_dir_size(path: &std::path::Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::config::AppConfig;
 
     #[test]
     fn default_settings_valid() {
@@ -746,5 +745,23 @@ mod tests {
         let json = serde_json::to_string(&stats).unwrap();
         assert!(json.contains("db_size_bytes"));
         assert!(json.contains("frame_count"));
+    }
+
+    #[test]
+    fn apply_settings_to_config_validates_remote_ai_requirements() {
+        let mut app_config = AppConfig::default_config();
+        let mut settings = AppSettings::default();
+
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: "https://api.example.com/ocr".to_string(),
+            api_key_masked: "".to_string(),
+            model: None,
+            timeout_secs: 30,
+        });
+
+        apply_settings_to_config(&mut app_config, &settings);
+        let result = app_config.ai_provider.validate_selected_remote_endpoints();
+        assert!(result.is_err());
     }
 }

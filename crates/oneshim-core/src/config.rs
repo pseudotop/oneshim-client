@@ -365,6 +365,58 @@ impl Default for AiProviderConfig {
     }
 }
 
+impl AiProviderConfig {
+    /// 선택된 원격 제공자 설정 유효성 검증.
+    ///
+    /// Remote 제공자가 선택된 경우 `endpoint`와 `api_key`가 모두 필요하다.
+    pub fn validate_selected_remote_endpoints(&self) -> Result<(), CoreError> {
+        if self.ocr_provider == OcrProviderType::Remote {
+            validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;
+        }
+        if self.llm_provider == LlmProviderType::Remote {
+            validate_remote_endpoint(self.llm_api.as_ref(), "llm_api")?;
+        }
+        Ok(())
+    }
+}
+
+fn validate_remote_endpoint(
+    endpoint: Option<&ExternalApiEndpoint>,
+    field_name: &str,
+) -> Result<(), CoreError> {
+    let endpoint = endpoint.ok_or_else(|| {
+        CoreError::Config(format!(
+            "원격 제공자를 사용하려면 `{field_name}` 설정이 필요합니다."
+        ))
+    })?;
+
+    let endpoint_url = endpoint.endpoint.trim();
+    if endpoint_url.is_empty() {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.endpoint` 값이 비어 있습니다."
+        )));
+    }
+    if !(endpoint_url.starts_with("http://") || endpoint_url.starts_with("https://")) {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.endpoint`는 http:// 또는 https:// URL이어야 합니다."
+        )));
+    }
+
+    if endpoint.api_key.trim().is_empty() {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.api_key` 값이 비어 있습니다."
+        )));
+    }
+
+    if endpoint.timeout_secs == 0 {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.timeout_secs`는 1 이상이어야 합니다."
+        )));
+    }
+
+    Ok(())
+}
+
 /// OCR 제공자 타입
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum OcrProviderType {
@@ -1042,5 +1094,51 @@ mod tests {
         assert!(parsed.use_tls);
         assert!(parsed.mtls_enabled);
         assert_eq!(parsed.tls_domain_name.as_deref(), Some("grpc.example.com"));
+    }
+
+    #[test]
+    fn ai_provider_validation_rejects_missing_remote_api_key() {
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Local,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.example.com/ocr".to_string(),
+                api_key: "".to_string(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::Generic,
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("api_key"));
+    }
+
+    #[test]
+    fn ai_provider_validation_accepts_valid_remote_settings() {
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Remote,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.example.com/ocr".to_string(),
+                api_key: "ocr-key".to_string(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::Generic,
+            }),
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.example.com/llm".to_string(),
+                api_key: "llm-key".to_string(),
+                model: Some("model-a".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::Generic,
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_ok());
     }
 }

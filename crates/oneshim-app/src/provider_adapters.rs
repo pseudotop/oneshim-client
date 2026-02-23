@@ -110,6 +110,16 @@ fn require_endpoint_config<'a>(
             "`{field_name}.endpoint` 값이 비어 있습니다."
         )));
     }
+    if !(endpoint.endpoint.starts_with("http://") || endpoint.endpoint.starts_with("https://")) {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.endpoint`는 http:// 또는 https:// URL이어야 합니다."
+        )));
+    }
+    if endpoint.timeout_secs == 0 {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.timeout_secs`는 1 이상이어야 합니다."
+        )));
+    }
 
     Ok(endpoint)
 }
