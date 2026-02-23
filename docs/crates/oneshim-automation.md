@@ -13,7 +13,8 @@ Uses a 2-layer action model: **AutomationIntent** (server→client high-level in
 
 ```
 oneshim-automation/src/
-├── lib.rs              # Crate root (9 modules)
+├── lib.rs              # Crate root (10 modules)
+├── action_dispatcher.rs # AutomationActionDispatcher — action execution port
 ├── audit.rs            # AuditLogger — audit logging (14 methods)
 ├── controller.rs       # AutomationController — policy verification + command execution
 ├── input_driver.rs     # NoOpInputDriver — test/default input driver
@@ -38,10 +39,10 @@ Central controller for policy verification + command execution + audit logging +
 
 - `AutomationController::new(sandbox, sandbox_config)` — Constructor (`Arc<dyn Sandbox>` + `SandboxConfig`)
 - `set_intent_executor(executor)` — Inject IntentExecutor
+- `set_action_dispatcher(dispatcher)` — Swap action execution adapter
 - `execute_command(command)` — Policy verification → audit log → action dispatch → return result
 - `execute_intent(intent, config)` — Execute high-level intent (delegates to IntentExecutor)
 - `resolve_for_command(command)` — Determine dynamic SandboxConfig based on policy
-- `dispatch_action_with_config(action, config)` — Execute action with timeout
 - Disabled by default (`enabled: false`), activate via `set_enabled()`
 - Execution timeout based on `tokio::time::timeout`
 
@@ -53,11 +54,14 @@ Server policy synchronization + command verification + process permission manage
   - `sandbox_profile: Option<SandboxProfile>` — Server override
   - `allowed_paths: Vec<String>` — Allowed paths per policy
   - `allow_network: Option<bool>` — Network override
+  - `require_signed_token: bool` — Whether token signature is mandatory
 - `AuditLevel` enum: None, Basic, Detailed, Full
 - `PolicyCache` — Policy list + TTL cache (default 5 minutes)
-- `validate_command()` — Cache validity + non-empty token verification
+- `issue_command_token(policy_id)` — Issue token using policy contract
+- `validate_command()` — token format + nonce + cache TTL + policy match + replay guard + optional signature
 - `validate_args()` — Glob pattern-based argument validation (`*` wildcard)
 - `is_process_allowed()` — Fast process permission lookup via HashSet
+- Token contract: see `docs/contracts/policy-token-contract.md`
 
 ### `audit.rs` — AuditLogger
 
@@ -199,6 +203,8 @@ oneshim-automation → oneshim-core (CoreError, models, port traits)
 ## Security
 
 - **Policy token required**: All automation commands require a server-issued policy token
+- **Signed token support**: Signed policies require SHA-256 token signature (`ONESHIM_POLICY_TOKEN_SIGNING_SECRET`)
+- **Replay protection**: One-time token use enforced within policy cache TTL
 - **Binary hash verification**: Tamper detection via `ExecutionPolicy.process_hash`
 - **Argument pattern restriction**: Allowed arguments restricted via glob patterns
 - **OS native sandbox**: Kernel-level isolation (seccomp, sandbox-exec, Job Objects)

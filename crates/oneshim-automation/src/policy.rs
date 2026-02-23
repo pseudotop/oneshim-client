@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 use crate::controller::AutomationCommand;
 use oneshim_core::config::SandboxProfile;
@@ -228,6 +229,26 @@ impl PolicyClient {
         Ok(true)
     }
 
+    /// 정책 ID로 실행용 정책 토큰 발급.
+    ///
+    /// 토큰 형식:
+    /// - unsigned: `{policy_id}:{nonce}`
+    /// - signed: `{policy_id}:{nonce}:{sha256(policy_id:nonce:secret)}`
+    pub async fn issue_command_token(&self, policy_id: &str) -> Result<String, CoreError> {
+        let policy = {
+            let cache = self.policy_cache.read().await;
+            cache
+                .policies
+                .iter()
+                .find(|p| p.policy_id == policy_id)
+                .cloned()
+        }
+        .ok_or_else(|| CoreError::PolicyDenied(format!("알 수 없는 정책 ID: {policy_id}")))?;
+
+        let nonce = issue_policy_nonce();
+        issue_command_token_for_policy(&policy, &nonce)
+    }
+
     /// 특정 프로세스의 정책 조회
     pub async fn get_policy_for_process(&self, process_name: &str) -> Option<ExecutionPolicy> {
         let cache = self.policy_cache.read().await;
@@ -330,6 +351,31 @@ fn is_valid_signature(signature: &str) -> bool {
     signature.len() == 64 && signature.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+fn issue_policy_nonce() -> String {
+    Uuid::new_v4().simple().to_string()
+}
+
+fn issue_command_token_for_policy(policy: &ExecutionPolicy, nonce: &str) -> Result<String, CoreError> {
+    if !is_valid_nonce(nonce) {
+        return Err(CoreError::InvalidArguments(
+            "정책 토큰 nonce 형식이 유효하지 않습니다".to_string(),
+        ));
+    }
+
+    if policy.require_signed_token {
+        let secret = load_signing_secret().ok_or_else(|| {
+            CoreError::Config(format!(
+                "서명 정책이 활성화되어 있지만 {} 환경 변수가 비어 있습니다.",
+                POLICY_TOKEN_SIGNING_SECRET_ENV
+            ))
+        })?;
+        let signature = compute_policy_token_signature(&policy.policy_id, nonce, &secret);
+        Ok(format!("{}:{nonce}:{signature}", policy.policy_id))
+    } else {
+        Ok(format!("{}:{nonce}", policy.policy_id))
+    }
+}
+
 fn verify_policy_token_signature(policy_id: &str, nonce: &str, signature: &str) -> bool {
     let Some(secret) = load_signing_secret() else {
         tracing::warn!(
@@ -358,6 +404,12 @@ fn compute_policy_token_signature(policy_id: &str, nonce: &str, secret: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
     fn execution_policy_serde() {
@@ -573,5 +625,74 @@ mod tests {
 
         let cmd = make_command("pol-1:nonce_1234");
         assert!(!client.validate_command(&cmd).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn issue_command_token_rejects_unknown_policy() {
+        let client = PolicyClient::new();
+        let result = client.issue_command_token("unknown").await;
+        assert!(matches!(result, Err(CoreError::PolicyDenied(_))));
+    }
+
+    #[tokio::test]
+    async fn issue_command_token_for_unsigned_policy() {
+        let client = PolicyClient::new();
+        client.update_policies(vec![make_policy("pol-1")]).await;
+
+        let token = client
+            .issue_command_token("pol-1")
+            .await
+            .expect("토큰 발급 실패");
+        let parsed = parse_policy_token(&token).expect("발급 토큰 파싱 실패");
+        assert_eq!(parsed.policy_id, "pol-1");
+        assert!(parsed.signature.is_none());
+        assert!(is_valid_nonce(parsed.nonce));
+    }
+
+    #[tokio::test]
+    async fn issue_command_token_for_signed_policy_requires_secret() {
+        let env_guard = env_lock().lock().unwrap();
+        std::env::remove_var(POLICY_TOKEN_SIGNING_SECRET_ENV);
+
+        let client = PolicyClient::new();
+        let mut policy = make_policy("pol-1");
+        policy.require_signed_token = true;
+        client.update_policies(vec![policy]).await;
+
+        let result = client.issue_command_token("pol-1").await;
+        assert!(matches!(result, Err(CoreError::Config(_))));
+
+        drop(env_guard);
+    }
+
+    #[tokio::test]
+    async fn issue_command_token_for_signed_policy_generates_verifiable_token() {
+        let env_guard = env_lock().lock().unwrap();
+        std::env::set_var(POLICY_TOKEN_SIGNING_SECRET_ENV, "signing-secret");
+
+        let client = PolicyClient::new();
+        let mut policy = make_policy("pol-1");
+        policy.require_signed_token = true;
+        client.update_policies(vec![policy]).await;
+
+        let token = client
+            .issue_command_token("pol-1")
+            .await
+            .expect("토큰 발급 실패");
+
+        let parsed = parse_policy_token(&token).expect("발급 토큰 파싱 실패");
+        let signature = parsed.signature.expect("서명 누락");
+        assert!(is_valid_signature(signature));
+        assert!(verify_policy_token_signature(
+            parsed.policy_id,
+            parsed.nonce,
+            signature
+        ));
+
+        let cmd = make_command(&token);
+        assert!(client.validate_command(&cmd).await.unwrap());
+
+        std::env::remove_var(POLICY_TOKEN_SIGNING_SECRET_ENV);
+        drop(env_guard);
     }
 }
