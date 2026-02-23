@@ -3,7 +3,7 @@
  *
  * 설정 폼, 저장, 내보내기 검증
  */
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { i18nRegex } from './helpers/i18n'
 
 const settingsTitleName = i18nRegex('settings.title')
@@ -15,15 +15,149 @@ const exportFormatLabelName = i18nRegex('settings.exportFormatLabel')
 const languageSelectorName = i18nRegex('settings.language')
 const saveSettingsName = i18nRegex('settings.saveSettings')
 
+const mockedSettings = {
+  retention_days: 30,
+  max_storage_mb: 2048,
+  web_port: 9090,
+  allow_external: false,
+  capture_enabled: true,
+  idle_threshold_secs: 300,
+  metrics_interval_secs: 10,
+  process_interval_secs: 30,
+  notification: {
+    enabled: true,
+    idle_notification: true,
+    idle_notification_mins: 10,
+    long_session_notification: true,
+    long_session_mins: 60,
+    high_usage_notification: true,
+    high_usage_threshold: 80,
+  },
+  update: {
+    enabled: true,
+    check_interval_hours: 24,
+    include_prerelease: false,
+    auto_install: false,
+  },
+  telemetry: {
+    enabled: false,
+    crash_reports: false,
+    usage_analytics: false,
+    performance_metrics: false,
+  },
+  monitor: {
+    process_monitoring: true,
+    input_activity: true,
+    privacy_mode: false,
+  },
+  privacy: {
+    excluded_apps: [],
+    excluded_app_patterns: [],
+    excluded_title_patterns: [],
+    auto_exclude_sensitive: true,
+    pii_filter_level: 'standard',
+  },
+  schedule: {
+    active_hours_enabled: false,
+    active_start_hour: 9,
+    active_end_hour: 18,
+    active_days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+    pause_on_screen_lock: true,
+    pause_on_battery_saver: true,
+  },
+  automation: {
+    enabled: true,
+  },
+  sandbox: {
+    enabled: true,
+    profile: 'balanced',
+    allowed_read_paths: [],
+    allowed_write_paths: [],
+    allow_network: false,
+    max_memory_bytes: 536870912,
+    max_cpu_time_ms: 30000,
+  },
+  ai_provider: {
+    ocr_provider: 'local',
+    llm_provider: 'local',
+    external_data_policy: 'disabled',
+    fallback_to_local: true,
+    ocr_api: null,
+    llm_api: null,
+  },
+}
+
+const mockedStorageStats = {
+  db_size_bytes: 10485760,
+  frames_size_bytes: 7340032,
+  total_size_bytes: 17825792,
+  frame_count: 128,
+  event_count: 342,
+  metric_count: 88,
+  oldest_data_date: '2026-02-01T00:00:00Z',
+  newest_data_date: '2026-02-23T00:00:00Z',
+}
+
+const mockedUpdateStatus = {
+  enabled: true,
+  auto_install: false,
+  phase: 'Idle',
+  message: null,
+  pending: null,
+  revision: 1,
+  updated_at: '2026-02-23T10:00:00Z',
+}
+
+async function mockSettingsApis(page: Page) {
+  await page.route('**/api/settings', async (route) => {
+    if (route.request().method() === 'POST') {
+      const payload = route.request().postDataJSON() ?? mockedSettings
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      })
+      return
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(mockedSettings),
+    })
+  })
+
+  await page.route('**/api/storage/stats**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(mockedStorageStats),
+    })
+  })
+
+  await page.route('**/api/update/status**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(mockedUpdateStatus),
+    })
+  })
+}
+
+function settingsHeading(page: Page) {
+  return page.locator('h1').filter({ hasText: settingsTitleName })
+}
+
 test.describe('Settings', () => {
   test.beforeEach(async ({ page }) => {
+    await mockSettingsApis(page)
     await page.goto('/settings')
-    await page.waitForLoadState('networkidle')
+    await expect(settingsHeading(page)).toBeVisible({ timeout: 10000 })
   })
 
   test('should display settings title', async ({ page }) => {
     // 페이지 제목 (h1)
-    await expect(page.getByRole('heading', { name: settingsTitleName })).toBeVisible()
+    await expect(settingsHeading(page)).toBeVisible()
   })
 
   test('should display data collection section', async ({ page }) => {
@@ -60,7 +194,7 @@ test.describe('Settings', () => {
 
   test('should display export format selector', async ({ page }) => {
     // 내보내기 형식 선택 - "형식:" 라벨 확인
-    await expect(page.getByText(exportFormatLabelName)).toBeVisible()
+    await expect(page.locator('span').filter({ hasText: exportFormatLabelName }).first()).toBeVisible()
   })
 
   test('should display export buttons', async ({ page }) => {
@@ -82,22 +216,23 @@ test.describe('Settings', () => {
 
   test('should have save button', async ({ page }) => {
     // 저장 버튼
-    const saveButton = page.getByRole('button', { name: saveSettingsName })
+    const saveButton = page.locator('button[type="submit"]').filter({ hasText: saveSettingsName })
     await expect(saveButton).toBeVisible()
   })
 
   test('should save settings', async ({ page }) => {
-    // 저장 버튼 클릭
-    const saveButton = page.getByRole('button', { name: saveSettingsName })
-    await saveButton.click()
+    const captureCheckbox = page.locator('input[type="checkbox"]').first()
+    await captureCheckbox.uncheck()
 
-    // 저장 성공 메시지 또는 상태 변경 확인
-    await page.waitForTimeout(1000)
+    // 저장 버튼 클릭
+    const saveButton = page.locator('button[type="submit"]').filter({ hasText: saveSettingsName })
+    await saveButton.click()
+    await expect(saveButton).toBeVisible()
   })
 
   test('should validate port number', async ({ page }) => {
     // 저장 버튼만 테스트
-    const saveButton = page.getByRole('button', { name: saveSettingsName })
+    const saveButton = page.locator('button[type="submit"]').filter({ hasText: saveSettingsName })
     await expect(saveButton).toBeVisible()
   })
 })
