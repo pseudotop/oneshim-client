@@ -4,23 +4,27 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use oneshim_automation::audit::AuditStatus;
 use oneshim_automation::policy::AuditLevel;
 use oneshim_automation::presets::builtin_presets;
-use oneshim_core::config::{ExternalDataPolicy, PiiFilterLevel};
+use oneshim_core::config::{ExternalDataPolicy, PiiFilterLevel, SceneActionOverrideConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
 use oneshim_core::models::intent::{
     AutomationIntent, ElementBounds, IntentCommand, IntentResult, WorkflowPreset,
 };
-use oneshim_core::models::ui_scene::UiScene;
+use oneshim_core::models::ui_scene::{UiScene, UI_SCENE_SCHEMA_VERSION};
 use std::path::{Path as FsPath, PathBuf};
 use std::time::Instant;
 
 use crate::{error::ApiError, AppState};
+
+const AUTOMATION_AUDIT_SCHEMA_VERSION: &str = "automation.audit.v1";
+const AUTOMATION_SCENE_ACTION_SCHEMA_VERSION: &str = "automation.scene_action.v1";
 
 // ============================================================
 // DTO
@@ -41,6 +45,7 @@ pub struct AutomationStatusDto {
 /// 감사 로그 항목
 #[derive(Debug, Serialize)]
 pub struct AuditEntryDto {
+    pub schema_version: String,
     pub entry_id: String,
     pub timestamp: String,
     pub session_id: String,
@@ -89,6 +94,12 @@ fn default_policies() -> PoliciesDto {
         sandbox_enabled: false,
         allow_network: false,
         external_data_policy: "PiiFilterStrict".to_string(),
+        scene_action_override_enabled: false,
+        scene_action_override_active: false,
+        scene_action_override_reason: None,
+        scene_action_override_approved_by: None,
+        scene_action_override_expires_at: None,
+        scene_action_override_issue: None,
     }
 }
 
@@ -115,6 +126,10 @@ pub struct AutomationStatsDto {
     pub denied: usize,
     pub timeout: usize,
     pub avg_elapsed_ms: f64,
+    pub success_rate: f64,
+    pub blocked_rate: f64,
+    pub p95_elapsed_ms: f64,
+    pub timing_samples: usize,
 }
 
 /// 정책 정보
@@ -125,6 +140,12 @@ pub struct PoliciesDto {
     pub sandbox_enabled: bool,
     pub allow_network: bool,
     pub external_data_policy: String,
+    pub scene_action_override_enabled: bool,
+    pub scene_action_override_active: bool,
+    pub scene_action_override_reason: Option<String>,
+    pub scene_action_override_approved_by: Option<String>,
+    pub scene_action_override_expires_at: Option<String>,
+    pub scene_action_override_issue: Option<String>,
 }
 
 /// 프리셋 목록 응답
@@ -190,14 +211,37 @@ pub struct ExecuteSceneActionRequest {
 /// Scene 좌표 기반 실행 응답
 #[derive(Debug, Serialize)]
 pub struct ExecuteSceneActionResponse {
+    pub schema_version: String,
     pub command_id: String,
     pub session_id: String,
     pub frame_id: Option<i64>,
     pub scene_id: Option<String>,
     pub element_id: String,
     pub applied_privacy_policy: String,
+    pub scene_action_override_active: bool,
+    pub scene_action_override_expires_at: Option<String>,
     pub executed_intents: Vec<AutomationIntent>,
     pub result: IntentResult,
+}
+
+/// 자동화 계약 버전 정보
+#[derive(Debug, Serialize)]
+pub struct AutomationContractsDto {
+    pub audit_schema_version: String,
+    pub scene_schema_version: String,
+    pub scene_action_schema_version: String,
+}
+
+#[derive(Debug, Clone)]
+struct SceneActionPolicyContext {
+    policy: ExternalDataPolicy,
+    pii_filter_level: PiiFilterLevel,
+    override_enabled: bool,
+    override_active: bool,
+    override_reason: Option<String>,
+    override_approved_by: Option<String>,
+    override_expires_at: Option<DateTime<Utc>>,
+    override_issue: Option<String>,
 }
 
 /// Scene 분석 쿼리
@@ -253,49 +297,111 @@ fn build_scene_action_intents(
     }
 }
 
-fn read_scene_action_policy(state: &AppState) -> (ExternalDataPolicy, PiiFilterLevel) {
+fn evaluate_scene_action_override(
+    cfg: &SceneActionOverrideConfig,
+    now: DateTime<Utc>,
+) -> (bool, Option<String>) {
+    if !cfg.enabled {
+        return (false, None);
+    }
+
+    let reason = cfg.reason.as_deref().map(str::trim).unwrap_or_default();
+    if reason.is_empty() {
+        return (
+            false,
+            Some("사유(reason)가 비어 있어 오버라이드가 무효입니다.".to_string()),
+        );
+    }
+
+    let approved_by = cfg
+        .approved_by
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default();
+    if approved_by.is_empty() {
+        return (
+            false,
+            Some("승인자(approved_by)가 비어 있어 오버라이드가 무효입니다.".to_string()),
+        );
+    }
+
+    let Some(expires_at) = cfg.expires_at else {
+        return (
+            false,
+            Some("만료 시각(expires_at)이 없어 오버라이드가 무효입니다.".to_string()),
+        );
+    };
+
+    if expires_at <= now {
+        return (false, Some("오버라이드 TTL이 만료되었습니다.".to_string()));
+    }
+
+    (true, None)
+}
+
+fn read_scene_action_policy(state: &AppState) -> SceneActionPolicyContext {
     if let Some(config_manager) = state.config_manager.as_ref() {
         let config = config_manager.get();
-        (
-            config.ai_provider.external_data_policy,
-            config.privacy.pii_filter_level,
-        )
+        let override_cfg = &config.ai_provider.scene_action_override;
+        let (override_active, override_issue) =
+            evaluate_scene_action_override(override_cfg, Utc::now());
+
+        SceneActionPolicyContext {
+            policy: config.ai_provider.external_data_policy,
+            pii_filter_level: config.privacy.pii_filter_level,
+            override_enabled: override_cfg.enabled,
+            override_active,
+            override_reason: override_cfg.reason.clone(),
+            override_approved_by: override_cfg.approved_by.clone(),
+            override_expires_at: override_cfg.expires_at,
+            override_issue,
+        }
     } else {
-        (
-            ExternalDataPolicy::PiiFilterStrict,
-            PiiFilterLevel::Standard,
-        )
+        SceneActionPolicyContext {
+            policy: ExternalDataPolicy::PiiFilterStrict,
+            pii_filter_level: PiiFilterLevel::Standard,
+            override_enabled: false,
+            override_active: false,
+            override_reason: None,
+            override_approved_by: None,
+            override_expires_at: None,
+            override_issue: None,
+        }
     }
 }
 
 fn enforce_scene_action_privacy(
     state: &AppState,
     req: &ExecuteSceneActionRequest,
-) -> Result<(ExternalDataPolicy, PiiFilterLevel), ApiError> {
-    let (policy, filter_level) = read_scene_action_policy(state);
+) -> Result<SceneActionPolicyContext, ApiError> {
+    let context = read_scene_action_policy(state);
     let allow_sensitive = req.allow_sensitive_input.unwrap_or(false);
+    let override_active = context.override_active;
+    let override_hint = context
+        .override_issue
+        .as_ref()
+        .map(|issue| format!(" 현재 오버라이드 상태: {issue}"))
+        .unwrap_or_default();
 
-    match (policy, req.action_type) {
+    match (context.policy, req.action_type) {
         (ExternalDataPolicy::PiiFilterStrict, SceneActionType::TypeText) => {
-            if !allow_sensitive {
-                return Err(ApiError::BadRequest(
-                    "PiiFilterStrict 정책에서는 type_text 액션이 차단됩니다. 설정에서 완화하거나 명시적으로 허용 플래그를 전달하세요."
-                        .to_string(),
-                ));
+            if !allow_sensitive && !override_active {
+                return Err(ApiError::BadRequest(format!(
+                    "PiiFilterStrict 정책에서는 type_text 액션이 차단됩니다. allow_sensitive_input=true를 전달하거나 유효한 오버라이드를 설정하세요.{override_hint}"
+                )));
             }
         }
         (ExternalDataPolicy::PiiFilterStandard, SceneActionType::TypeText) => {
-            if !allow_sensitive {
-                return Err(ApiError::BadRequest(
-                    "PiiFilterStandard 정책에서는 민감 입력 보호를 위해 type_text 액션에 allow_sensitive_input=true가 필요합니다."
-                        .to_string(),
-                ));
+            if !allow_sensitive && !override_active {
+                return Err(ApiError::BadRequest(format!(
+                    "PiiFilterStandard 정책에서는 type_text 액션에 allow_sensitive_input=true 또는 유효한 오버라이드가 필요합니다.{override_hint}"
+                )));
             }
         }
         _ => {}
     }
 
-    Ok((policy, filter_level))
+    Ok(context)
 }
 
 fn infer_image_format(path: &FsPath) -> String {
@@ -360,6 +466,15 @@ fn resolve_frame_image_path(state: &AppState, stored_path: &str) -> Result<PathB
 // 핸들러
 // ============================================================
 
+/// GET /api/automation/contracts — 자동화 계약 버전 조회
+pub async fn get_contract_versions() -> Result<Json<AutomationContractsDto>, ApiError> {
+    Ok(Json(AutomationContractsDto {
+        audit_schema_version: AUTOMATION_AUDIT_SCHEMA_VERSION.to_string(),
+        scene_schema_version: UI_SCENE_SCHEMA_VERSION.to_string(),
+        scene_action_schema_version: AUTOMATION_SCENE_ACTION_SCHEMA_VERSION.to_string(),
+    }))
+}
+
 /// GET /api/automation/status — 자동화 시스템 상태
 pub async fn get_automation_status(
     State(state): State<AppState>,
@@ -408,6 +523,7 @@ pub async fn get_audit_logs(
     let dtos = entries
         .into_iter()
         .map(|e| AuditEntryDto {
+            schema_version: AUTOMATION_AUDIT_SCHEMA_VERSION.to_string(),
             entry_id: e.entry_id,
             timestamp: e.timestamp.to_rfc3339(),
             session_id: e.session_id,
@@ -426,12 +542,28 @@ pub async fn get_audit_logs(
 pub async fn get_policies(State(state): State<AppState>) -> Result<Json<PoliciesDto>, ApiError> {
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
+        let (override_active, override_issue) =
+            evaluate_scene_action_override(&config.ai_provider.scene_action_override, Utc::now());
         Ok(Json(PoliciesDto {
             automation_enabled: config.automation.enabled,
             sandbox_profile: format!("{:?}", config.automation.sandbox.profile),
             sandbox_enabled: config.automation.sandbox.enabled,
             allow_network: config.automation.sandbox.allow_network,
             external_data_policy: format!("{:?}", config.ai_provider.external_data_policy),
+            scene_action_override_enabled: config.ai_provider.scene_action_override.enabled,
+            scene_action_override_active: override_active,
+            scene_action_override_reason: config.ai_provider.scene_action_override.reason.clone(),
+            scene_action_override_approved_by: config
+                .ai_provider
+                .scene_action_override
+                .approved_by
+                .clone(),
+            scene_action_override_expires_at: config
+                .ai_provider
+                .scene_action_override
+                .expires_at
+                .map(|v| v.to_rfc3339()),
+            scene_action_override_issue: override_issue,
         }))
     } else {
         Ok(Json(default_policies()))
@@ -450,6 +582,10 @@ pub async fn get_automation_stats(
             denied: 0,
             timeout: 0,
             avg_elapsed_ms: 0.0,
+            success_rate: 0.0,
+            blocked_rate: 0.0,
+            p95_elapsed_ms: 0.0,
+            timing_samples: 0,
         }));
     };
 
@@ -467,6 +603,25 @@ pub async fn get_automation_stats(
     } else {
         elapsed_values.iter().sum::<u64>() as f64 / elapsed_values.len() as f64
     };
+    let p95_elapsed_ms = if elapsed_values.is_empty() {
+        0.0
+    } else {
+        let mut sorted = elapsed_values.clone();
+        sorted.sort_unstable();
+        let idx = ((sorted.len() as f64) * 0.95).ceil() as usize;
+        sorted[idx.saturating_sub(1).min(sorted.len() - 1)] as f64
+    };
+    let total_f64 = total as f64;
+    let success_rate = if total > 0 {
+        success as f64 / total_f64
+    } else {
+        0.0
+    };
+    let blocked_rate = if total > 0 {
+        denied as f64 / total_f64
+    } else {
+        0.0
+    };
 
     Ok(Json(AutomationStatsDto {
         total_executions: total,
@@ -475,6 +630,10 @@ pub async fn get_automation_stats(
         denied,
         timeout,
         avg_elapsed_ms: avg_elapsed,
+        success_rate,
+        blocked_rate,
+        p95_elapsed_ms,
+        timing_samples: elapsed_values.len(),
     }))
 }
 
@@ -723,7 +882,7 @@ pub async fn execute_scene_action(
     };
 
     let intents = build_scene_action_intents(&req)?;
-    let (privacy_policy, pii_filter_level) = enforce_scene_action_privacy(&state, &req)?;
+    let policy_context = enforce_scene_action_privacy(&state, &req)?;
     let command_id = req
         .command_id
         .as_ref()
@@ -744,8 +903,22 @@ pub async fn execute_scene_action(
             &command_id,
             &req.session_id,
             &format!(
-                "scene_action frame_id={:?} scene_id={:?} element_id={} action_type={:?} policy={:?} pii_level={:?}",
-                req.frame_id, req.scene_id, req.element_id, req.action_type, privacy_policy, pii_filter_level
+                "scene_action frame_id={:?} scene_id={:?} element_id={} action_type={:?} policy={:?} pii_level={:?} override_enabled={} override_active={} override_reason={:?} override_approved_by={:?} override_expires_at={:?} override_issue={:?}",
+                req.frame_id,
+                req.scene_id,
+                req.element_id,
+                req.action_type,
+                policy_context.policy,
+                policy_context.pii_filter_level,
+                policy_context.override_enabled,
+                policy_context.override_active,
+                policy_context.override_reason.as_deref(),
+                policy_context.override_approved_by.as_deref(),
+                policy_context
+                    .override_expires_at
+                    .as_ref()
+                    .map(|value| value.to_rfc3339()),
+                policy_context.override_issue.as_deref()
             ),
         );
     }
@@ -806,20 +979,31 @@ pub async fn execute_scene_action(
             &command_id,
             &req.session_id,
             &format!(
-                "scene_action_result success={} frame_id={:?} scene_id={:?} element_id={} policy={:?} error={:?}",
-                result.success, req.frame_id, req.scene_id, req.element_id, privacy_policy, result.error
+                "scene_action_result success={} frame_id={:?} scene_id={:?} element_id={} policy={:?} override_active={} error={:?}",
+                result.success,
+                req.frame_id,
+                req.scene_id,
+                req.element_id,
+                policy_context.policy,
+                policy_context.override_active,
+                result.error
             ),
             elapsed_ms,
         );
     }
 
     Ok(Json(ExecuteSceneActionResponse {
+        schema_version: AUTOMATION_SCENE_ACTION_SCHEMA_VERSION.to_string(),
         command_id,
         session_id: req.session_id,
         frame_id: req.frame_id,
         scene_id: req.scene_id,
         element_id: req.element_id,
-        applied_privacy_policy: format!("{privacy_policy:?}"),
+        applied_privacy_policy: format!("{:?}", policy_context.policy),
+        scene_action_override_active: policy_context.override_active,
+        scene_action_override_expires_at: policy_context
+            .override_expires_at
+            .map(|value| value.to_rfc3339()),
         executed_intents: intents,
         result,
     }))
@@ -906,6 +1090,7 @@ mod tests {
     #[test]
     fn audit_entry_dto_serializes() {
         let dto = AuditEntryDto {
+            schema_version: AUTOMATION_AUDIT_SCHEMA_VERSION.to_string(),
             entry_id: "e-001".to_string(),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             session_id: "sess-001".to_string(),
@@ -929,10 +1114,16 @@ mod tests {
             denied: 5,
             timeout: 5,
             avg_elapsed_ms: 250.5,
+            success_rate: 0.8,
+            blocked_rate: 0.05,
+            p95_elapsed_ms: 420.0,
+            timing_samples: 92,
         };
         let json = serde_json::to_string(&dto).unwrap();
         assert!(json.contains("total_executions"));
         assert!(json.contains("avg_elapsed_ms"));
+        assert!(json.contains("success_rate"));
+        assert!(json.contains("p95_elapsed_ms"));
     }
 
     #[test]
@@ -943,9 +1134,16 @@ mod tests {
             sandbox_enabled: true,
             allow_network: false,
             external_data_policy: "PiiFilterStrict".to_string(),
+            scene_action_override_enabled: true,
+            scene_action_override_active: true,
+            scene_action_override_reason: Some("calibration".to_string()),
+            scene_action_override_approved_by: Some("security-reviewer".to_string()),
+            scene_action_override_expires_at: Some("2026-02-24T03:00:00Z".to_string()),
+            scene_action_override_issue: None,
         };
         let json = serde_json::to_string(&dto).unwrap();
         assert!(json.contains("Strict"));
+        assert!(json.contains("scene_action_override_active"));
     }
 
     #[test]
@@ -1085,5 +1283,44 @@ mod tests {
 
         let err = build_scene_action_intents(&req).unwrap_err();
         assert!(matches!(err, ApiError::BadRequest(_)));
+    }
+
+    #[test]
+    fn evaluate_scene_action_override_reports_missing_reason() {
+        let cfg = SceneActionOverrideConfig {
+            enabled: true,
+            reason: None,
+            approved_by: Some("reviewer".to_string()),
+            expires_at: Some(Utc::now() + chrono::Duration::minutes(10)),
+        };
+        let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
+        assert!(!active);
+        assert!(issue.unwrap_or_default().contains("사유"));
+    }
+
+    #[test]
+    fn evaluate_scene_action_override_reports_expired_ttl() {
+        let cfg = SceneActionOverrideConfig {
+            enabled: true,
+            reason: Some("incident".to_string()),
+            approved_by: Some("reviewer".to_string()),
+            expires_at: Some(Utc::now() - chrono::Duration::minutes(1)),
+        };
+        let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
+        assert!(!active);
+        assert!(issue.unwrap_or_default().contains("만료"));
+    }
+
+    #[test]
+    fn evaluate_scene_action_override_active_when_valid() {
+        let cfg = SceneActionOverrideConfig {
+            enabled: true,
+            reason: Some("high-fidelity validation".to_string()),
+            approved_by: Some("reviewer".to_string()),
+            expires_at: Some(Utc::now() + chrono::Duration::minutes(20)),
+        };
+        let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
+        assert!(active);
+        assert!(issue.is_none());
     }
 }

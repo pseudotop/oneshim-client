@@ -12,7 +12,9 @@ use uuid::Uuid;
 
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{ElementBounds, FinderSource, UiElement};
-use oneshim_core::models::ui_scene::{NormalizedBounds, UiScene, UiSceneElement};
+use oneshim_core::models::ui_scene::{
+    NormalizedBounds, UiScene, UiSceneElement, UI_SCENE_SCHEMA_VERSION,
+};
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
@@ -151,6 +153,7 @@ impl OcrElementFinder {
         );
 
         Ok(UiScene {
+            schema_version: UI_SCENE_SCHEMA_VERSION.to_string(),
             scene_id: format!("scene_{}", Uuid::new_v4().simple()),
             app_name: app_name.map(str::to_string),
             screen_id: screen_id.map(str::to_string),

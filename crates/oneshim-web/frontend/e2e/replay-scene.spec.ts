@@ -51,6 +51,7 @@ test.describe('Replay Scene Overlay', () => {
     await mockStaticJson(page, '**/api/timeline**', makeReplayTimeline())
     await mockStaticJson(page, '**/api/frames/101/tags**', [])
     await mockStaticJson(page, '**/api/automation/scene**', {
+      schema_version: 'ui_scene.v1',
       scene_id: 'scene-replay-e2e',
       app_name: 'Oneshim',
       screen_id: 'main',
@@ -95,6 +96,7 @@ test.describe('Replay Scene Overlay', () => {
     await mockStaticJson(page, '**/api/timeline**', makeReplayTimeline())
     await mockStaticJson(page, '**/api/frames/101/tags**', [])
     await mockStaticJson(page, '**/api/automation/scene**', {
+      schema_version: 'ui_scene.v1',
       scene_id: 'scene-replay-e2e',
       app_name: 'Oneshim',
       screen_id: 'main',

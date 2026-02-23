@@ -13,6 +13,7 @@ import {
   fetchAutomationStats,
   fetchAuditLogs,
   fetchPolicies,
+  fetchAutomationContracts,
   fetchPresets,
   runPreset,
   deletePreset,
@@ -61,6 +62,11 @@ function Automation() {
   const { data: policies } = useQuery({
     queryKey: ['policies'],
     queryFn: fetchPolicies,
+  })
+
+  const { data: contracts } = useQuery({
+    queryKey: ['automationContracts'],
+    queryFn: fetchAutomationContracts,
   })
 
   const { data: presetsData } = useQuery({
@@ -346,7 +352,7 @@ function Automation() {
           <CardTitle>{t('automation.statsTitle')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats?.total_executions ?? 0}</div>
               <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.totalExecutions')}</div>
@@ -368,8 +374,32 @@ function Automation() {
               <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.timeout')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">{(stats?.avg_elapsed_ms ?? 0).toFixed(0)}ms</div>
+              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                {((stats?.success_rate ?? 0) * 100).toFixed(1)}%
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.successRate')}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-500 dark:text-orange-400">
+                {((stats?.blocked_rate ?? 0) * 100).toFixed(1)}%
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.blockedRate')}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                {(stats?.avg_elapsed_ms ?? 0).toFixed(0)}ms
+              </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.avgElapsed')}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                {(stats?.p95_elapsed_ms ?? 0).toFixed(0)}ms
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.p95Elapsed')}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats?.timing_samples ?? 0}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.timingSamples')}</div>
             </div>
           </div>
         </CardContent>
@@ -437,7 +467,7 @@ function Automation() {
           <CardTitle>{t('automation.policies')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
             <div>
               <div className="text-slate-500 dark:text-slate-400">{t('automation.automationEnabled')}</div>
               <div className="mt-1 font-medium text-slate-900 dark:text-white">
@@ -463,6 +493,48 @@ function Automation() {
             <div>
               <div className="text-slate-500 dark:text-slate-400">{t('automation.dataPolicy')}</div>
               <div className="mt-1 font-medium text-slate-900 dark:text-white">{policies?.external_data_policy ?? '-'}</div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneOverride')}</div>
+              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+                {policies?.scene_action_override_active
+                  ? t('automation.active')
+                  : policies?.scene_action_override_enabled
+                    ? t('automation.pending')
+                    : t('automation.disabled')}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneOverrideExpires')}</div>
+              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+                {policies?.scene_action_override_expires_at
+                  ? new Date(policies.scene_action_override_expires_at).toLocaleString()
+                  : '-'}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneOverrideIssue')}</div>
+              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+                {policies?.scene_action_override_issue || '-'}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneSchemaVersion')}</div>
+              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+                {contracts?.scene_schema_version ?? '-'}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">{t('automation.auditSchemaVersion')}</div>
+              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+                {contracts?.audit_schema_version ?? '-'}
+              </div>
+            </div>
+            <div>
+              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneActionSchemaVersion')}</div>
+              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+                {contracts?.scene_action_schema_version ?? '-'}
+              </div>
             </div>
           </div>
         </CardContent>

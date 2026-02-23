@@ -1088,9 +1088,17 @@ export interface AiProviderSettings {
   external_data_policy: string
   allow_unredacted_external_ocr: boolean
   ocr_validation: OcrValidationSettings
+  scene_action_override: SceneActionOverrideSettings
   fallback_to_local: boolean
   ocr_api: ExternalApiSettings | null
   llm_api: ExternalApiSettings | null
+}
+
+export interface SceneActionOverrideSettings {
+  enabled: boolean
+  reason: string
+  approved_by: string
+  expires_at: string | null
 }
 
 export interface OcrValidationSettings {
@@ -1119,6 +1127,7 @@ export interface AutomationStatus {
 
 /** 감사 로그 항목 */
 export interface AuditEntry {
+  schema_version: string
   entry_id: string
   timestamp: string
   session_id: string
@@ -1137,6 +1146,10 @@ export interface AutomationStats {
   denied: number
   timeout: number
   avg_elapsed_ms: number
+  success_rate: number
+  blocked_rate: number
+  p95_elapsed_ms: number
+  timing_samples: number
 }
 
 /** 정책 정보 */
@@ -1146,6 +1159,18 @@ export interface PoliciesInfo {
   sandbox_enabled: boolean
   allow_network: boolean
   external_data_policy: string
+  scene_action_override_enabled: boolean
+  scene_action_override_active: boolean
+  scene_action_override_reason: string | null
+  scene_action_override_approved_by: string | null
+  scene_action_override_expires_at: string | null
+  scene_action_override_issue: string | null
+}
+
+export interface AutomationContracts {
+  audit_schema_version: string
+  scene_schema_version: string
+  scene_action_schema_version: string
 }
 
 /** 자동화 인텐트 정의 (서버 AutomationIntent JSON — variant별로 구조가 다름) */
@@ -1218,12 +1243,15 @@ export interface ExecuteSceneActionRequest {
 }
 
 export interface ExecuteSceneActionResponse {
+  schema_version: string
   command_id: string
   session_id: string
   frame_id?: number
   scene_id?: string
   element_id: string
   applied_privacy_policy: string
+  scene_action_override_active: boolean
+  scene_action_override_expires_at?: string | null
   executed_intents: IntentDefinition[]
   result: {
     success: boolean
@@ -1256,6 +1284,7 @@ export interface UiSceneElement {
 }
 
 export interface UiScene {
+  schema_version: string
   scene_id: string
   app_name: string | null
   screen_id: string | null
@@ -1286,6 +1315,13 @@ export async function fetchAuditLogs(limit = 50, status?: string): Promise<Audit
 export async function fetchPolicies(): Promise<PoliciesInfo> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/policies`)
   if (!res.ok) throw new Error('정책 조회 실패')
+  return res.json()
+}
+
+/** 자동화 계약 버전 조회 */
+export async function fetchAutomationContracts(): Promise<AutomationContracts> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/contracts`)
+  if (!res.ok) throw new Error('자동화 계약 버전 조회 실패')
   return res.json()
 }
 

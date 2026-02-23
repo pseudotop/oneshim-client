@@ -24,6 +24,7 @@ import {
   type SandboxSettings,
   type AiProviderSettings,
   type OcrValidationSettings as OcrValidationSettingsType,
+  type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
   type ExternalApiSettings,
   type ExportFormat,
   type ExportDataType,
@@ -45,6 +46,21 @@ export default function Settings() {
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
   const [exportLoading, setExportLoading] = useState<ExportDataType | null>(null)
+
+  const toDateTimeLocalValue = (value: string | null | undefined): string => {
+    if (!value) return ''
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return ''
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const toRfc3339OrNull = (value: string): string | null => {
+    if (!value.trim()) return null
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return null
+    return d.toISOString()
+  }
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['settings'],
@@ -226,6 +242,24 @@ export default function Settings() {
           ...formData.ai_provider,
           ocr_validation: {
             ...formData.ai_provider.ocr_validation,
+            [field]: value,
+          },
+        },
+      })
+    }
+  }
+
+  const handleSceneActionOverrideChange = (
+    field: keyof SceneActionOverrideSettingsType,
+    value: boolean | string | null
+  ) => {
+    if (formData) {
+      setFormData({
+        ...formData,
+        ai_provider: {
+          ...formData.ai_provider,
+          scene_action_override: {
+            ...formData.ai_provider.scene_action_override,
             [field]: value,
           },
         },
@@ -804,6 +838,57 @@ export default function Settings() {
                 checked={formData.ai_provider.allow_unredacted_external_ocr}
                 onChange={(v) => handleAiProviderChange('allow_unredacted_external_ocr', v)}
               />
+
+              <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {t('settingsAutomation.sceneActionOverrideTitle')}
+                </h4>
+                <ToggleRow
+                  label={t('settingsAutomation.sceneActionOverrideEnabled')}
+                  description={t('settingsAutomation.sceneActionOverrideEnabledDescription')}
+                  checked={formData.ai_provider.scene_action_override.enabled}
+                  onChange={(v) => handleSceneActionOverrideChange('enabled', v)}
+                />
+                <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${!formData.ai_provider.scene_action_override.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      {t('settingsAutomation.sceneActionOverrideReason')}
+                    </label>
+                    <Input
+                      type="text"
+                      value={formData.ai_provider.scene_action_override.reason}
+                      onChange={(e) => handleSceneActionOverrideChange('reason', e.target.value)}
+                      placeholder={t('settingsAutomation.sceneActionOverrideReasonPlaceholder')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      {t('settingsAutomation.sceneActionOverrideApprovedBy')}
+                    </label>
+                    <Input
+                      type="text"
+                      value={formData.ai_provider.scene_action_override.approved_by}
+                      onChange={(e) => handleSceneActionOverrideChange('approved_by', e.target.value)}
+                      placeholder={t('settingsAutomation.sceneActionOverrideApprovedByPlaceholder')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      {t('settingsAutomation.sceneActionOverrideExpiresAt')}
+                    </label>
+                    <Input
+                      type="datetime-local"
+                      value={toDateTimeLocalValue(formData.ai_provider.scene_action_override.expires_at)}
+                      onChange={(e) =>
+                        handleSceneActionOverrideChange(
+                          'expires_at',
+                          toRfc3339OrNull(e.target.value)
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
 
               <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
                 <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">

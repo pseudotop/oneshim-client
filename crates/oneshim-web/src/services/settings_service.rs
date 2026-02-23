@@ -1,15 +1,18 @@
 //! 설정 관련 서비스 로직.
 
+use chrono::{DateTime, Utc};
 use oneshim_core::config::{
     AiAccessMode, AiProviderType, AppConfig, ExternalApiEndpoint, ExternalDataPolicy,
-    LlmProviderType, OcrProviderType, OcrValidationConfig, PiiFilterLevel, SandboxProfile, Weekday,
+    LlmProviderType, OcrProviderType, OcrValidationConfig, PiiFilterLevel, SandboxProfile,
+    SceneActionOverrideConfig, Weekday,
 };
 
 use crate::error::ApiError;
 use crate::handlers::settings::{
     AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
     MonitorControlSettings, NotificationSettings, OcrValidationSettings, PrivacySettings,
-    SandboxSettings, ScheduleSettings, StorageStats, TelemetrySettings, UpdateSettings,
+    SandboxSettings, SceneActionOverrideSettings, ScheduleSettings, StorageStats,
+    TelemetrySettings, UpdateSettings,
 };
 use crate::AppState;
 
@@ -189,6 +192,26 @@ fn config_to_settings(config: &AppConfig) -> AppSettings {
                 enabled: config.ai_provider.ocr_validation.enabled,
                 min_confidence: config.ai_provider.ocr_validation.min_confidence,
                 max_invalid_ratio: config.ai_provider.ocr_validation.max_invalid_ratio,
+            },
+            scene_action_override: SceneActionOverrideSettings {
+                enabled: config.ai_provider.scene_action_override.enabled,
+                reason: config
+                    .ai_provider
+                    .scene_action_override
+                    .reason
+                    .clone()
+                    .unwrap_or_default(),
+                approved_by: config
+                    .ai_provider
+                    .scene_action_override
+                    .approved_by
+                    .clone()
+                    .unwrap_or_default(),
+                expires_at: config
+                    .ai_provider
+                    .scene_action_override
+                    .expires_at
+                    .map(|v| v.to_rfc3339()),
             },
             fallback_to_local: config.ai_provider.fallback_to_local,
             ocr_api: config
@@ -372,6 +395,19 @@ pub(crate) fn apply_settings_to_config(
         min_confidence: settings.ai_provider.ocr_validation.min_confidence,
         max_invalid_ratio: settings.ai_provider.ocr_validation.max_invalid_ratio,
     };
+    config.ai_provider.scene_action_override = SceneActionOverrideConfig {
+        enabled: settings.ai_provider.scene_action_override.enabled,
+        reason: trim_to_option(&settings.ai_provider.scene_action_override.reason),
+        approved_by: trim_to_option(&settings.ai_provider.scene_action_override.approved_by),
+        expires_at: parse_optional_rfc3339_utc(
+            settings
+                .ai_provider
+                .scene_action_override
+                .expires_at
+                .as_deref(),
+            "ai_provider.scene_action_override.expires_at",
+        )?,
+    };
     config.ai_provider.fallback_to_local = settings.ai_provider.fallback_to_local;
 
     if let Some(ref ocr_settings) = settings.ai_provider.ocr_api {
@@ -441,6 +477,36 @@ fn api_settings_to_endpoint(
         timeout_secs: settings.timeout_secs,
         provider_type: parse_ai_provider_type(&settings.provider_type)?,
     })
+}
+
+fn trim_to_option(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn parse_optional_rfc3339_utc(
+    value: Option<&str>,
+    field_name: &str,
+) -> Result<Option<DateTime<Utc>>, ApiError> {
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let parsed = DateTime::parse_from_rfc3339(trimmed).map_err(|_| {
+        ApiError::BadRequest(format!(
+            "{field_name}는 RFC3339 형식이어야 합니다. 예: 2026-02-24T03:00:00Z"
+        ))
+    })?;
+
+    Ok(Some(parsed.with_timezone(&Utc)))
 }
 
 fn calculate_dir_size(path: &std::path::Path) -> u64 {

@@ -5,6 +5,7 @@
 
 use crate::error::CoreError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -358,6 +359,9 @@ pub struct AiProviderConfig {
     /// OCR calibration/validation 설정
     #[serde(default)]
     pub ocr_validation: OcrValidationConfig,
+    /// Scene action 민감 입력 오버라이드 설정 (사유/승인/TTL 기반)
+    #[serde(default)]
+    pub scene_action_override: SceneActionOverrideConfig,
     /// 외부 API 실패 시 로컬 폴백
     #[serde(default = "default_true")]
     pub fallback_to_local: bool,
@@ -374,6 +378,7 @@ impl Default for AiProviderConfig {
             external_data_policy: ExternalDataPolicy::default(),
             allow_unredacted_external_ocr: false,
             ocr_validation: OcrValidationConfig::default(),
+            scene_action_override: SceneActionOverrideConfig::default(),
             fallback_to_local: true,
         }
     }
@@ -385,6 +390,7 @@ impl AiProviderConfig {
     /// Remote 제공자가 선택된 경우 `endpoint`와 `api_key`가 모두 필요하다.
     pub fn validate_selected_remote_endpoints(&self) -> Result<(), CoreError> {
         self.ocr_validation.validate()?;
+        self.scene_action_override.validate()?;
 
         match self.access_mode {
             AiAccessMode::ProviderApiKey | AiAccessMode::PlatformConnected => {
@@ -407,6 +413,97 @@ impl AiProviderConfig {
                 }
             }
         }
+        Ok(())
+    }
+}
+
+/// Scene action 민감 입력 오버라이드 설정.
+///
+/// `enabled=true`일 때는 사유, 승인자, 만료 시각이 모두 필요하다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SceneActionOverrideConfig {
+    /// 오버라이드 활성화 여부
+    #[serde(default)]
+    pub enabled: bool,
+    /// 오버라이드 사유 (감사용)
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// 승인자 식별자 (감사용)
+    #[serde(default)]
+    pub approved_by: Option<String>,
+    /// 오버라이드 만료 시각 (UTC)
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+impl Default for SceneActionOverrideConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            reason: None,
+            approved_by: None,
+            expires_at: None,
+        }
+    }
+}
+
+impl SceneActionOverrideConfig {
+    /// 현재 시점에서 오버라이드가 유효한지 평가한다.
+    pub fn is_active_at(&self, now: DateTime<Utc>) -> bool {
+        if !self.enabled {
+            return false;
+        }
+
+        let reason = self.reason.as_deref().map(str::trim).unwrap_or_default();
+        let approved_by = self
+            .approved_by
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default();
+        let Some(expires_at) = self.expires_at else {
+            return false;
+        };
+
+        !reason.is_empty() && !approved_by.is_empty() && expires_at > now
+    }
+
+    /// 설정 저장 시점 유효성 검증.
+    pub fn validate(&self) -> Result<(), CoreError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        let reason = self.reason.as_deref().map(str::trim).unwrap_or_default();
+        if reason.is_empty() {
+            return Err(CoreError::Config(
+                "`ai_provider.scene_action_override.reason` 값이 필요합니다.".to_string(),
+            ));
+        }
+
+        let approved_by = self
+            .approved_by
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default();
+        if approved_by.is_empty() {
+            return Err(CoreError::Config(
+                "`ai_provider.scene_action_override.approved_by` 값이 필요합니다.".to_string(),
+            ));
+        }
+
+        let expires_at = self.expires_at.ok_or_else(|| {
+            CoreError::Config(
+                "`ai_provider.scene_action_override.expires_at` 값이 필요합니다.".to_string(),
+            )
+        })?;
+
+        if expires_at <= Utc::now() {
+            return Err(CoreError::Config(
+                "`ai_provider.scene_action_override.expires_at` 값은 미래 시각이어야 합니다."
+                    .to_string(),
+            ));
+        }
+
         Ok(())
     }
 }
@@ -1304,5 +1401,75 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("max_invalid_ratio"));
+    }
+
+    #[test]
+    fn scene_action_override_validation_rejects_missing_reason() {
+        let config = AiProviderConfig {
+            scene_action_override: SceneActionOverrideConfig {
+                enabled: true,
+                reason: None,
+                approved_by: Some("sec-review".to_string()),
+                expires_at: Some(Utc::now() + chrono::Duration::minutes(30)),
+            },
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("reason"));
+    }
+
+    #[test]
+    fn scene_action_override_validation_rejects_missing_approver() {
+        let config = AiProviderConfig {
+            scene_action_override: SceneActionOverrideConfig {
+                enabled: true,
+                reason: Some("OCR confidence fallback".to_string()),
+                approved_by: None,
+                expires_at: Some(Utc::now() + chrono::Duration::minutes(30)),
+            },
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("approved_by"));
+    }
+
+    #[test]
+    fn scene_action_override_validation_rejects_expired_ttl() {
+        let config = AiProviderConfig {
+            scene_action_override: SceneActionOverrideConfig {
+                enabled: true,
+                reason: Some("incident investigation".to_string()),
+                approved_by: Some("oncall-lead".to_string()),
+                expires_at: Some(Utc::now() - chrono::Duration::minutes(1)),
+            },
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("미래 시각"));
+    }
+
+    #[test]
+    fn scene_action_override_validation_accepts_valid_config() {
+        let config = AiProviderConfig {
+            scene_action_override: SceneActionOverrideConfig {
+                enabled: true,
+                reason: Some("high-fidelity replay calibration".to_string()),
+                approved_by: Some("security-reviewer".to_string()),
+                expires_at: Some(Utc::now() + chrono::Duration::minutes(45)),
+            },
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_ok());
+        assert!(config
+            .scene_action_override
+            .is_active_at(Utc::now() + chrono::Duration::minutes(1)));
     }
 }

@@ -225,7 +225,10 @@ export default function SessionReplay() {
           ? t('replay.actionSuccessWithPolicy', {
               defaultValue: 'Suggested action executed (policy: {{policy}}).',
               policy: response.applied_privacy_policy,
-            })
+            }) +
+            (response.scene_action_override_active
+              ? ` ${t('replay.overrideActiveSuffix', '(override active)')}`
+              : '')
           : response.result.error || t('replay.actionFailed', 'Suggested action failed.'),
       })
     },

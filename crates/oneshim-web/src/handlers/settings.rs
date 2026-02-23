@@ -253,6 +253,9 @@ pub struct AiProviderSettings {
     /// OCR calibration/validation 설정
     #[serde(default)]
     pub ocr_validation: OcrValidationSettings,
+    /// Scene action 민감 입력 오버라이드 설정
+    #[serde(default)]
+    pub scene_action_override: SceneActionOverrideSettings,
     /// 로컬 폴백 활성화
     pub fallback_to_local: bool,
     /// OCR API 설정 (Remote 선택 시)
@@ -266,6 +269,25 @@ pub struct OcrValidationSettings {
     pub enabled: bool,
     pub min_confidence: f64,
     pub max_invalid_ratio: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SceneActionOverrideSettings {
+    pub enabled: bool,
+    pub reason: String,
+    pub approved_by: String,
+    pub expires_at: Option<String>,
+}
+
+impl Default for SceneActionOverrideSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            reason: String::new(),
+            approved_by: String::new(),
+            expires_at: None,
+        }
+    }
 }
 
 impl Default for OcrValidationSettings {
@@ -287,6 +309,7 @@ impl Default for AiProviderSettings {
             external_data_policy: "PiiFilterStrict".to_string(),
             allow_unredacted_external_ocr: false,
             ocr_validation: OcrValidationSettings::default(),
+            scene_action_override: SceneActionOverrideSettings::default(),
             fallback_to_local: true,
             ocr_api: None,
             llm_api: None,

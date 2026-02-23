@@ -130,6 +130,12 @@ const fallbackSettings = {
       min_confidence: 0.25,
       max_invalid_ratio: 0.6,
     },
+    scene_action_override: {
+      enabled: false,
+      reason: '',
+      approved_by: '',
+      expires_at: null,
+    },
     fallback_to_local: true,
     ocr_api: null,
     llm_api: null,
@@ -232,7 +238,38 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
   await mockStaticJson(page, '**/api/focus/sessions**', [])
   await mockStaticJson(page, '**/api/focus/interruptions**', [])
   await mockStaticJson(page, '**/api/focus/suggestions**', [])
+  await mockStaticJson(page, '**/api/automation/stats**', {
+    total_executions: 0,
+    successful: 0,
+    failed: 0,
+    denied: 0,
+    timeout: 0,
+    avg_elapsed_ms: 0,
+    success_rate: 0,
+    blocked_rate: 0,
+    p95_elapsed_ms: 0,
+    timing_samples: 0,
+  })
+  await mockStaticJson(page, '**/api/automation/policies**', {
+    automation_enabled: true,
+    sandbox_profile: 'Standard',
+    sandbox_enabled: true,
+    allow_network: false,
+    external_data_policy: 'PiiFilterStandard',
+    scene_action_override_enabled: false,
+    scene_action_override_active: false,
+    scene_action_override_reason: null,
+    scene_action_override_approved_by: null,
+    scene_action_override_expires_at: null,
+    scene_action_override_issue: null,
+  })
+  await mockStaticJson(page, '**/api/automation/contracts**', {
+    audit_schema_version: 'automation.audit.v1',
+    scene_schema_version: 'ui_scene.v1',
+    scene_action_schema_version: 'automation.scene_action.v1',
+  })
   await mockStaticJson(page, '**/api/automation/scene**', {
+    schema_version: 'ui_scene.v1',
     scene_id: 'scene-e2e',
     app_name: 'oneshim-e2e',
     screen_id: 'screen-main',
@@ -280,12 +317,15 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
       | undefined
 
     return {
+      schema_version: 'automation.scene_action.v1',
       command_id: payload?.command_id ?? 'scene-action-e2e',
       session_id: payload?.session_id ?? 'sess-e2e',
       frame_id: payload?.frame_id ?? 0,
       scene_id: payload?.scene_id ?? 'scene-e2e',
       element_id: payload?.element_id ?? 'el-e2e',
       applied_privacy_policy: 'AllowFiltered',
+      scene_action_override_active: false,
+      scene_action_override_expires_at: null,
       executed_intents:
         payload?.action_type === 'type_text'
           ? [

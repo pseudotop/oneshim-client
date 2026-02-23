@@ -7,6 +7,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::intent::ElementBounds;
 
+/// UI Scene 계약 버전.
+pub const UI_SCENE_SCHEMA_VERSION: &str = "ui_scene.v1";
+
+fn default_ui_scene_schema_version() -> String {
+    UI_SCENE_SCHEMA_VERSION.to_string()
+}
+
 /// 정규화된 경계 박스 (0.0 ~ 1.0)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct NormalizedBounds {
@@ -55,6 +62,9 @@ pub struct UiSceneElement {
 /// 단일 화면 분석 스냅샷.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiScene {
+    /// 계약 버전 (플랫폼/클라이언트 호환성 추적)
+    #[serde(default = "default_ui_scene_schema_version")]
+    pub schema_version: String,
     /// 장면 ID
     pub scene_id: String,
     /// 앱 이름
@@ -87,6 +97,7 @@ mod tests {
     #[test]
     fn ui_scene_serde_roundtrip() {
         let scene = UiScene {
+            schema_version: UI_SCENE_SCHEMA_VERSION.to_string(),
             scene_id: "scene-1".to_string(),
             app_name: Some("VSCode".to_string()),
             screen_id: Some("screen-main".to_string()),

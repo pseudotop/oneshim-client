@@ -90,6 +90,10 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::automation::get_automation_status),
         )
         .route(
+            "/automation/contracts",
+            get(handlers::automation::get_contract_versions),
+        )
+        .route(
             "/automation/audit",
             get(handlers::automation::get_audit_logs),
         )

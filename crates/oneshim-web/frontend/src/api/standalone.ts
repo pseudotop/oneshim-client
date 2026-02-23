@@ -171,6 +171,12 @@ function makeDefaultSettings(): AppSettings {
         min_confidence: 0.25,
         max_invalid_ratio: 0.6,
       },
+      scene_action_override: {
+        enabled: false,
+        reason: '',
+        approved_by: '',
+        expires_at: null,
+      },
       fallback_to_local: true,
       ocr_api: null,
       llm_api: null,
@@ -294,6 +300,12 @@ function makeDefaultPolicies(): PoliciesInfo {
     sandbox_enabled: true,
     allow_network: false,
     external_data_policy: 'disabled',
+    scene_action_override_enabled: false,
+    scene_action_override_active: false,
+    scene_action_override_reason: null,
+    scene_action_override_approved_by: null,
+    scene_action_override_expires_at: null,
+    scene_action_override_issue: null,
   }
 }
 
@@ -305,6 +317,10 @@ function makeDefaultAutomationStats(): AutomationStats {
     denied: 0,
     timeout: 0,
     avg_elapsed_ms: 0,
+    success_rate: 0,
+    blocked_rate: 0,
+    p95_elapsed_ms: 0,
+    timing_samples: 0,
   }
 }
 
@@ -314,6 +330,7 @@ function makeDefaultAutomationScene(
   frameId?: number
 ): UiScene {
   return {
+    schema_version: 'ui_scene.v1',
     scene_id: `scene-standalone-${frameId ?? Date.now()}`,
     app_name: appName ?? null,
     screen_id: screenId ?? null,
@@ -700,6 +717,13 @@ export async function handleStandaloneRequest(
   if (path === '/api/automation/policies' && method === 'GET') {
     return jsonResponse(makeDefaultPolicies())
   }
+  if (path === '/api/automation/contracts' && method === 'GET') {
+    return jsonResponse({
+      audit_schema_version: 'automation.audit.v1',
+      scene_schema_version: 'ui_scene.v1',
+      scene_action_schema_version: 'automation.scene_action.v1',
+    })
+  }
   if (path === '/api/automation/stats' && method === 'GET') {
     return jsonResponse(makeDefaultAutomationStats())
   }
@@ -783,12 +807,15 @@ export async function handleStandaloneRequest(
     const commandId = payload?.command_id?.trim() || `scene-action-${now}`
     const sessionId = payload?.session_id?.trim() || 'standalone-session'
     return jsonResponse({
+      schema_version: 'automation.scene_action.v1',
       command_id: commandId,
       session_id: sessionId,
       frame_id: payload?.frame_id,
       scene_id: payload?.scene_id,
       element_id: payload?.element_id ?? 'unknown-element',
       applied_privacy_policy: 'AllowFiltered',
+      scene_action_override_active: false,
+      scene_action_override_expires_at: null,
       executed_intents: payload?.action_type === 'type_text'
         ? [
             { Raw: { MouseClick: { button: 'left', x: 0, y: 0 } } },

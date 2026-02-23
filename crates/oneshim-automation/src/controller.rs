@@ -588,7 +588,9 @@ mod tests {
     use oneshim_core::models::intent::{
         AutomationIntent, IntentConfig, PresetCategory, WorkflowPreset, WorkflowStep,
     };
-    use oneshim_core::models::ui_scene::{NormalizedBounds, UiScene, UiSceneElement};
+    use oneshim_core::models::ui_scene::{
+        NormalizedBounds, UiScene, UiSceneElement, UI_SCENE_SCHEMA_VERSION,
+    };
 
     fn make_controller() -> AutomationController {
         let policy_client = Arc::new(PolicyClient::new());
@@ -667,6 +669,7 @@ mod tests {
             screen_id: Option<&str>,
         ) -> Result<UiScene, CoreError> {
             Ok(UiScene {
+                schema_version: UI_SCENE_SCHEMA_VERSION.to_string(),
                 scene_id: "scene-stub".to_string(),
                 app_name: app_name.map(str::to_string),
                 screen_id: screen_id.map(str::to_string),
