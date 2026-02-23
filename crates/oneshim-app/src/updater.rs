@@ -388,17 +388,18 @@ impl Updater {
         }
 
         let body = response.bytes().await?;
-        let body = String::from_utf8(body.to_vec())
-            .map_err(|e| UpdateError::Integrity(format!("Invalid signature file encoding: {}", e)))?;
+        let body = String::from_utf8(body.to_vec()).map_err(|e| {
+            UpdateError::Integrity(format!("Invalid signature file encoding: {}", e))
+        })?;
 
         let sig_b64 = body
             .split_whitespace()
             .next()
             .ok_or_else(|| UpdateError::Integrity("Signature file is empty".to_string()))?;
 
-        BASE64
-            .decode(sig_b64)
-            .map_err(|e| UpdateError::Integrity(format!("Failed to decode signature base64: {}", e)))
+        BASE64.decode(sig_b64).map_err(|e| {
+            UpdateError::Integrity(format!("Failed to decode signature base64: {}", e))
+        })
     }
 
     fn verify_signature(&self, payload: &[u8], signature_bytes: &[u8]) -> Result<(), UpdateError> {
@@ -415,9 +416,9 @@ impl Updater {
                 )
             })?;
 
-        let key_bytes = BASE64
-            .decode(key_b64)
-            .map_err(|e| UpdateError::Integrity(format!("Failed to decode public key base64: {}", e)))?;
+        let key_bytes = BASE64.decode(key_b64).map_err(|e| {
+            UpdateError::Integrity(format!("Failed to decode public key base64: {}", e))
+        })?;
         let key_len = key_bytes.len();
         let key_array: [u8; 32] = key_bytes.try_into().map_err(|_| {
             UpdateError::Integrity(format!(
@@ -461,8 +462,9 @@ impl Updater {
         }
 
         let body = response.bytes().await?;
-        let body = String::from_utf8(body.to_vec())
-            .map_err(|e| UpdateError::Integrity(format!("Invalid checksum file encoding: {}", e)))?;
+        let body = String::from_utf8(body.to_vec()).map_err(|e| {
+            UpdateError::Integrity(format!("Invalid checksum file encoding: {}", e))
+        })?;
 
         Self::parse_sha256_manifest(&body)
     }
@@ -552,7 +554,9 @@ impl Updater {
 
     fn backup_path_for(current_exe: &Path) -> Result<PathBuf, UpdateError> {
         let parent = current_exe.parent().ok_or_else(|| {
-            UpdateError::Install("Failed to locate parent directory of current executable".to_string())
+            UpdateError::Install(
+                "Failed to locate parent directory of current executable".to_string(),
+            )
         })?;
 
         let file_name = current_exe
@@ -881,7 +885,10 @@ mod tests {
     #[test]
     fn platform_patterns_exist() {
         let patterns = Updater::get_platform_patterns();
-        assert!(patterns.is_ok(), "Current platform must have at least one pattern");
+        assert!(
+            patterns.is_ok(),
+            "Current platform must have at least one pattern"
+        );
         assert!(!patterns.unwrap().is_empty());
     }
 

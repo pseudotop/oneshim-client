@@ -396,13 +396,11 @@ mod tests {
         let final_state = state.read().await.clone();
         assert_eq!(final_state.phase, UpdatePhase::Updated);
         assert!(final_state.pending.is_none());
-        assert!(
-            final_state
-                .message
-                .expect("message")
-                .to_lowercase()
-                .contains("update")
-        );
+        assert!(final_state
+            .message
+            .expect("message")
+            .to_lowercase()
+            .contains("update"));
     }
 
     #[tokio::test]
@@ -427,13 +425,11 @@ mod tests {
 
         let final_state = state.read().await.clone();
         assert_eq!(final_state.phase, UpdatePhase::Error);
-        assert!(
-            final_state
-                .message
-                .expect("message")
-                .to_lowercase()
-                .contains("failed")
-        );
+        assert!(final_state
+            .message
+            .expect("message")
+            .to_lowercase()
+            .contains("failed"));
     }
 
     #[tokio::test]
