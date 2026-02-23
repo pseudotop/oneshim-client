@@ -606,4 +606,38 @@ mod tests {
         assert_eq!(query.limit, 50);
         assert!(query.status.is_none());
     }
+
+    #[test]
+    fn execute_intent_hint_request_deserializes_optional_command_id() {
+        let payload = r#"{
+            "session_id": "sess-1",
+            "intent_hint": "저장 버튼 클릭"
+        }"#;
+        let request: ExecuteIntentHintRequest = serde_json::from_str(payload).unwrap();
+        assert!(request.command_id.is_none());
+        assert_eq!(request.session_id, "sess-1");
+        assert_eq!(request.intent_hint, "저장 버튼 클릭");
+    }
+
+    #[test]
+    fn execute_intent_hint_response_serializes() {
+        let response = ExecuteIntentHintResponse {
+            command_id: "hint-1".to_string(),
+            session_id: "sess-1".to_string(),
+            planned_intent: oneshim_core::models::intent::AutomationIntent::ExecuteHotkey {
+                keys: vec!["Ctrl".to_string(), "S".to_string()],
+            },
+            result: oneshim_core::models::intent::IntentResult {
+                success: true,
+                element: None,
+                verification: None,
+                retry_count: 0,
+                elapsed_ms: 10,
+                error: None,
+            },
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("planned_intent"));
+        assert!(json.contains("command_id"));
+    }
 }

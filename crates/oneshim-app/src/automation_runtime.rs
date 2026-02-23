@@ -131,6 +131,9 @@ impl ElementFinder for LatestFrameOcrElementFinder {
 mod tests {
     use super::*;
     use chrono::Utc;
+    use oneshim_core::config::{
+        AiProviderConfig, AiProviderType, ExternalApiEndpoint, LlmProviderType, OcrProviderType,
+    };
     use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -209,5 +212,62 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, CoreError::ElementNotFound(_)));
+    }
+
+    #[test]
+    fn build_runtime_falls_back_when_remote_config_is_missing() {
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Remote,
+            ocr_api: None,
+            llm_api: None,
+            fallback_to_local: true,
+            ..AiProviderConfig::default()
+        };
+
+        let runtime = build_automation_runtime(&config, None).unwrap();
+        assert_eq!(runtime.ocr_source, ProviderSource::LocalFallback);
+        assert_eq!(runtime.llm_source, ProviderSource::LocalFallback);
+    }
+
+    #[test]
+    fn build_runtime_errors_when_remote_config_missing_and_fallback_disabled() {
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Local,
+            ocr_api: None,
+            llm_api: None,
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        match build_automation_runtime(&config, None) {
+            Ok(_) => panic!("오류가 발생해야 함"),
+            Err(err) => assert!(matches!(err, CoreError::Config(_))),
+        }
+    }
+
+    #[test]
+    fn build_runtime_uses_remote_sources_when_endpoints_are_valid() {
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.example.com/v1".to_string(),
+            api_key: "test-key".to_string(),
+            model: Some("model-test".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Generic,
+        };
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Remote,
+            ocr_api: Some(endpoint.clone()),
+            llm_api: Some(endpoint),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let runtime = build_automation_runtime(&config, None).unwrap();
+        assert_eq!(runtime.ocr_source, ProviderSource::Remote);
+        assert_eq!(runtime.llm_source, ProviderSource::Remote);
+        assert_eq!(runtime.ocr_provider_name, "remote-ocr");
     }
 }
