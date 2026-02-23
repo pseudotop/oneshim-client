@@ -1324,14 +1324,14 @@ export async function executeIntentHint(
 
 /** 현재 화면 UI scene 조회 */
 export async function fetchAutomationScene(
-  appName?: string,
-  screenId?: string
+  params: { appName?: string; screenId?: string; frameId?: number } = {}
 ): Promise<UiScene> {
-  const params = new URLSearchParams()
-  if (appName) params.set('app_name', appName)
-  if (screenId) params.set('screen_id', screenId)
+  const query = new URLSearchParams()
+  if (params.appName) query.set('app_name', params.appName)
+  if (params.screenId) query.set('screen_id', params.screenId)
+  if (typeof params.frameId === 'number') query.set('frame_id', String(params.frameId))
 
-  const suffix = params.toString()
+  const suffix = query.toString()
   const res = await fetchWithRetry(
     `${BASE_URL}/automation/scene${suffix.length > 0 ? `?${suffix}` : ''}`
   )

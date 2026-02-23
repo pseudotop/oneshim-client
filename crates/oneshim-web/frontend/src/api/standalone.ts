@@ -307,9 +307,13 @@ function makeDefaultAutomationStats(): AutomationStats {
   }
 }
 
-function makeDefaultAutomationScene(appName?: string, screenId?: string): UiScene {
+function makeDefaultAutomationScene(
+  appName?: string,
+  screenId?: string,
+  frameId?: number
+): UiScene {
   return {
-    scene_id: `scene-standalone-${Date.now()}`,
+    scene_id: `scene-standalone-${frameId ?? Date.now()}`,
     app_name: appName ?? null,
     screen_id: screenId ?? null,
     captured_at: new Date().toISOString(),
@@ -699,10 +703,13 @@ export async function handleStandaloneRequest(
     return jsonResponse(makeDefaultAutomationStats())
   }
   if (path === '/api/automation/scene' && method === 'GET') {
+    const frameIdRaw = requestUrl.searchParams.get('frame_id')
+    const frameId = frameIdRaw == null ? undefined : Number(frameIdRaw)
     return jsonResponse(
       makeDefaultAutomationScene(
         requestUrl.searchParams.get('app_name') ?? undefined,
-        requestUrl.searchParams.get('screen_id') ?? undefined
+        requestUrl.searchParams.get('screen_id') ?? undefined,
+        Number.isFinite(frameId) ? frameId : undefined
       )
     )
   }

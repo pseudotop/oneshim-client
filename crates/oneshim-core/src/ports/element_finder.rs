@@ -41,6 +41,22 @@ pub trait ElementFinder: Send + Sync {
         )))
     }
 
+    /// 주어진 이미지로 구조화된 UI Scene 분석.
+    ///
+    /// 기본 구현은 미지원 에러를 반환한다.
+    async fn analyze_scene_from_image(
+        &self,
+        _image_data: Vec<u8>,
+        _image_format: String,
+        _app_name: Option<&str>,
+        _screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        Err(CoreError::Internal(format!(
+            "ElementFinder '{}'는 이미지 직접 scene 분석을 지원하지 않습니다",
+            self.name()
+        )))
+    }
+
     /// 탐색기 이름 (예: "ocr", "accessibility", "template")
     fn name(&self) -> &str;
 }

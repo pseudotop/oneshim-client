@@ -141,6 +141,18 @@ impl ElementFinder for LatestFrameOcrElementFinder {
         self.inner.analyze_scene(app_name, screen_id).await
     }
 
+    async fn analyze_scene_from_image(
+        &self,
+        image_data: Vec<u8>,
+        image_format: String,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        self.inner
+            .analyze_scene_from_image(image_data, image_format, app_name, screen_id)
+            .await
+    }
+
     fn name(&self) -> &str {
         "latest-frame-ocr"
     }

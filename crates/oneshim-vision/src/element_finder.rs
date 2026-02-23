@@ -117,13 +117,29 @@ impl OcrElementFinder {
             .as_ref()
             .ok_or_else(|| CoreError::Internal("OCR 탐색기: 캡처 이미지가 없습니다".to_string()))?;
 
-        let (screen_width, screen_height) = image::load_from_memory(image_data)
+        self.analyze_scene_from_image_data(
+            image_data.clone(),
+            image_format.to_string(),
+            app_name,
+            screen_id,
+        )
+        .await
+    }
+
+    async fn analyze_scene_from_image_data(
+        &self,
+        image_data: Vec<u8>,
+        image_format: String,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        let (screen_width, screen_height) = image::load_from_memory(&image_data)
             .map(|img| (img.width().max(1), img.height().max(1)))
             .map_err(|e| CoreError::OcrError(format!("이미지 크기 파싱 실패: {e}")))?;
 
         let ocr_results = self
             .ocr_provider
-            .extract_elements(image_data, image_format)
+            .extract_elements(&image_data, &image_format)
             .await?;
 
         let elements = Self::ocr_to_scene_elements(
@@ -246,6 +262,17 @@ impl ElementFinder for OcrElementFinder {
         OcrElementFinder::analyze_scene(self, app_name, screen_id).await
     }
 
+    async fn analyze_scene_from_image(
+        &self,
+        image_data: Vec<u8>,
+        image_format: String,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        self.analyze_scene_from_image_data(image_data, image_format, app_name, screen_id)
+            .await
+    }
+
     fn name(&self) -> &str {
         "ocr"
     }
@@ -327,6 +354,45 @@ impl ElementFinder for ChainedElementFinder {
 
         Err(last_err.unwrap_or_else(|| {
             CoreError::ElementNotFound("scene 분석을 지원하는 탐색기를 찾지 못함".to_string())
+        }))
+    }
+
+    async fn analyze_scene_from_image(
+        &self,
+        image_data: Vec<u8>,
+        image_format: String,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        let mut last_err: Option<CoreError> = None;
+
+        for finder in &self.finders {
+            debug!(finder = finder.name(), "체인 이미지 scene 분석기 시도");
+            match finder
+                .analyze_scene_from_image(
+                    image_data.clone(),
+                    image_format.clone(),
+                    app_name,
+                    screen_id,
+                )
+                .await
+            {
+                Ok(scene) => return Ok(scene),
+                Err(err) => {
+                    debug!(
+                        finder = finder.name(),
+                        error = %err,
+                        "이미지 scene 분석 실패, 다음 탐색기 시도"
+                    );
+                    last_err = Some(err);
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            CoreError::ElementNotFound(
+                "이미지 scene 분석을 지원하는 탐색기를 찾지 못함".to_string(),
+            )
         }))
     }
 

@@ -113,7 +113,11 @@ export default function SessionReplay() {
     error: sceneError,
   } = useQuery({
     queryKey: ['automationScene', currentFrame?.id, currentFrame?.app_name],
-    queryFn: () => fetchAutomationScene(currentFrame?.app_name),
+    queryFn: () =>
+      fetchAutomationScene({
+        appName: currentFrame?.app_name,
+        frameId: currentFrame?.id,
+      }),
     enabled: !!currentFrame,
     retry: false,
   })

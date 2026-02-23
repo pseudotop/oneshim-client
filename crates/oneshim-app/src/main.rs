@@ -627,6 +627,7 @@ async fn main() -> Result<()> {
     // ── 웹 대시보드 서버 (config.web.enabled일 때만) ──
     if config.web.enabled {
         let mut web_server = WebServer::new(sqlite_storage.clone(), config.web.clone())
+            .with_frames_dir(data_dir.clone())
             .with_config_manager(config_manager)
             .with_audit_logger(audit_logger.clone())
             .with_update_control(update_control.clone());

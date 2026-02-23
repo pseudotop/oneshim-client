@@ -12,6 +12,7 @@ use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{AutomationIntent, IntentResult, WorkflowPreset};
 use oneshim_core::models::ui_scene::UiScene;
+use std::path::{Path as FsPath, PathBuf};
 
 use crate::{error::ApiError, AppState};
 
@@ -162,6 +163,65 @@ pub struct ExecuteIntentHintResponse {
 pub struct SceneQuery {
     pub app_name: Option<String>,
     pub screen_id: Option<String>,
+    pub frame_id: Option<i64>,
+}
+
+fn infer_image_format(path: &FsPath) -> String {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .filter(|ext| !ext.is_empty())
+        .unwrap_or_else(|| "webp".to_string())
+}
+
+fn candidate_frame_paths(base: &FsPath, raw_relative: &FsPath) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    let base_name = base
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    let starts_with_frames = raw_relative
+        .components()
+        .next()
+        .map(|c| c.as_os_str() == "frames")
+        .unwrap_or(false);
+
+    candidates.push(base.join(raw_relative));
+
+    if base_name == "frames" && starts_with_frames {
+        if let Some(parent) = base.parent() {
+            candidates.push(parent.join(raw_relative));
+        }
+    } else if base_name != "frames" && !starts_with_frames {
+        candidates.push(base.join("frames").join(raw_relative));
+    }
+
+    candidates
+}
+
+fn resolve_frame_image_path(state: &AppState, stored_path: &str) -> Result<PathBuf, ApiError> {
+    let path = PathBuf::from(stored_path);
+    if path.is_absolute() {
+        return Ok(path);
+    }
+
+    let Some(base) = state.frames_dir.as_ref() else {
+        return Err(ApiError::Internal(
+            "프레임 경로 루트가 설정되지 않아 frame_id 조회를 처리할 수 없습니다".to_string(),
+        ));
+    };
+
+    let candidates = candidate_frame_paths(base, &path);
+    for candidate in &candidates {
+        if candidate.exists() {
+            return Ok(candidate.clone());
+        }
+    }
+
+    Ok(candidates
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| base.join(path)))
 }
 
 // ============================================================
@@ -530,10 +590,32 @@ pub async fn get_automation_scene(
         ));
     };
 
-    match controller
-        .analyze_scene(query.app_name.as_deref(), query.screen_id.as_deref())
-        .await
-    {
+    let analyze_result = if let Some(frame_id) = query.frame_id {
+        let stored_path = state
+            .storage
+            .get_frame_file_path(frame_id)
+            .map_err(|e| ApiError::Internal(format!("프레임 경로 조회 실패: {e}")))?
+            .ok_or_else(|| ApiError::NotFound(format!("프레임 {frame_id}에 이미지가 없습니다")))?;
+
+        let image_path = resolve_frame_image_path(&state, &stored_path)?;
+        let image_data = std::fs::read(&image_path)
+            .map_err(|e| ApiError::Internal(format!("프레임 이미지 읽기 실패: {e}")))?;
+
+        controller
+            .analyze_scene_from_image(
+                image_data,
+                infer_image_format(&image_path),
+                query.app_name.as_deref(),
+                query.screen_id.as_deref(),
+            )
+            .await
+    } else {
+        controller
+            .analyze_scene(query.app_name.as_deref(), query.screen_id.as_deref())
+            .await
+    };
+
+    match analyze_result {
         Ok(scene) => Ok(Json(scene)),
         Err(
             CoreError::PolicyDenied(msg)
@@ -541,7 +623,9 @@ pub async fn get_automation_scene(
             | CoreError::ElementNotFound(msg),
         ) => Err(ApiError::BadRequest(msg)),
         Err(CoreError::Internal(msg))
-            if msg.contains("Scene 분석기") || msg.contains("scene 분석을 지원하지") =>
+            if msg.contains("Scene 분석기")
+                || msg.contains("scene 분석을 지원하지")
+                || msg.contains("이미지 직접 scene 분석") =>
         {
             Err(ApiError::BadRequest(msg))
         }
@@ -689,5 +773,20 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("planned_intent"));
         assert!(json.contains("command_id"));
+    }
+
+    #[test]
+    fn scene_query_deserializes_frame_id() {
+        let json = r#"{"app_name":"Code","screen_id":"main","frame_id":42}"#;
+        let query: SceneQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.app_name.as_deref(), Some("Code"));
+        assert_eq!(query.screen_id.as_deref(), Some("main"));
+        assert_eq!(query.frame_id, Some(42));
+    }
+
+    #[test]
+    fn infer_image_format_falls_back_to_webp() {
+        let path = std::path::Path::new("frames/2026-02-24/capture");
+        assert_eq!(infer_image_format(path), "webp");
     }
 }

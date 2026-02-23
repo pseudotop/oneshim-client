@@ -304,6 +304,21 @@ impl AutomationController {
         finder.analyze_scene(app_name, screen_id).await
     }
 
+    /// 전달된 이미지 바이트 기준으로 구조화된 UI Scene 분석.
+    pub async fn analyze_scene_from_image(
+        &self,
+        image_data: Vec<u8>,
+        image_format: String,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        self.ensure_enabled()?;
+        let finder = self.require_scene_finder()?;
+        finder
+            .analyze_scene_from_image(image_data, image_format, app_name, screen_id)
+            .await
+    }
+
     /// 워크플로우 프리셋 실행
     ///
     /// 각 단계를 순차 실행하며, 감사 로그를 기록한다.

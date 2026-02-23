@@ -326,6 +326,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         runtime.spawn(async move {
             let mut web_server = WebServer::new(web_storage, web_config)
                 .with_event_tx(web_event_tx)
+                .with_frames_dir(data_dir_path.clone())
                 .with_config_manager(web_config_manager)
                 .with_audit_logger(web_audit_logger)
                 .with_update_control(web_update_control.clone());
