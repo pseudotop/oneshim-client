@@ -1171,6 +1171,28 @@ export interface PresetRunResult {
   total_elapsed_ms?: number
 }
 
+/** 자연어 의도 실행 요청 */
+export interface ExecuteIntentHintRequest {
+  command_id?: string
+  session_id: string
+  intent_hint: string
+}
+
+/** 자연어 의도 실행 응답 */
+export interface ExecuteIntentHintResponse {
+  command_id: string
+  session_id: string
+  planned_intent: IntentDefinition
+  result: {
+    success: boolean
+    element: unknown | null
+    verification: unknown | null
+    retry_count: number
+    elapsed_ms: number
+    error: string | null
+  }
+}
+
 /** 자동화 상태 조회 */
 export async function fetchAutomationStatus(): Promise<AutomationStatus> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/status`)
@@ -1242,6 +1264,22 @@ export async function runPreset(id: string): Promise<PresetRunResult> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: '프리셋 실행 실패' }))
     throw new Error(err.error || '프리셋 실행 실패')
+  }
+  return res.json()
+}
+
+/** 자연어 의도 실행 */
+export async function executeIntentHint(
+  payload: ExecuteIntentHintRequest
+): Promise<ExecuteIntentHintResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/execute-hint`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: '자연어 의도 실행 실패' }))
+    throw new Error(err.error || '자연어 의도 실행 실패')
   }
   return res.json()
 }

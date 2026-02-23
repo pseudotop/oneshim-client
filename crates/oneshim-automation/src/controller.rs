@@ -10,12 +10,13 @@ use std::time::Instant;
 use tokio::sync::RwLock;
 
 use crate::audit::AuditLogger;
+use crate::intent_planner::IntentPlanner;
 use crate::intent_resolver::IntentExecutor;
 use crate::policy::{AuditLevel, PolicyClient};
 use crate::resolver;
 use oneshim_core::config::SandboxConfig;
 use oneshim_core::error::CoreError;
-use oneshim_core::models::intent::{IntentCommand, IntentResult, WorkflowPreset};
+use oneshim_core::models::intent::{AutomationIntent, IntentCommand, IntentResult, WorkflowPreset};
 use oneshim_core::ports::sandbox::Sandbox;
 
 // oneshim-core에 정의된 AutomationAction 재사용 + re-export
@@ -83,6 +84,15 @@ pub struct WorkflowResult {
     pub message: String,
 }
 
+/// 자연어 의도 실행 결과
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlannedIntentResult {
+    /// 플래너가 생성한 실행 Intent
+    pub planned_intent: AutomationIntent,
+    /// 실행 결과
+    pub result: IntentResult,
+}
+
 // ============================================================
 // AutomationController
 // ============================================================
@@ -101,6 +111,8 @@ pub struct AutomationController {
     enabled: bool,
     /// 의도 실행기 (UI 자동화 시스템)
     intent_executor: Option<Arc<IntentExecutor>>,
+    /// 자연어 플래너 (LLM 기반)
+    intent_planner: Option<Arc<dyn IntentPlanner>>,
 }
 
 impl AutomationController {
@@ -123,6 +135,7 @@ impl AutomationController {
             base_sandbox_config: sandbox_config,
             enabled: false, // 기본 비활성
             intent_executor: None,
+            intent_planner: None,
         }
     }
 
@@ -134,6 +147,11 @@ impl AutomationController {
     /// 의도 실행기 설정 (UI 자동화 시스템)
     pub fn set_intent_executor(&mut self, executor: Arc<IntentExecutor>) {
         self.intent_executor = Some(executor);
+    }
+
+    /// 자연어 플래너 설정
+    pub fn set_intent_planner(&mut self, planner: Arc<dyn IntentPlanner>) {
+        self.intent_planner = Some(planner);
     }
 
     /// 의도 명령 실행 (UI 자동화)
@@ -183,6 +201,70 @@ impl AutomationController {
         }
 
         Ok(result)
+    }
+
+    /// 자연어 힌트 실행
+    ///
+    /// 1. IntentPlanner로 자연어 → AutomationIntent 변환
+    /// 2. IntentExecutor로 실행
+    /// 3. 감사 로깅
+    pub async fn execute_intent_hint(
+        &self,
+        command_id: &str,
+        session_id: &str,
+        intent_hint: &str,
+    ) -> Result<PlannedIntentResult, CoreError> {
+        // 1. 활성화 확인
+        if !self.enabled {
+            return Err(CoreError::PolicyDenied(
+                "자동화가 비활성화 상태입니다".to_string(),
+            ));
+        }
+
+        // 2. 실행기/플래너 확인
+        let executor = self.intent_executor.as_ref().ok_or_else(|| {
+            CoreError::Internal("IntentExecutor가 설정되지 않았습니다".to_string())
+        })?;
+        let planner = self.intent_planner.as_ref().ok_or_else(|| {
+            CoreError::Internal("IntentPlanner가 설정되지 않았습니다".to_string())
+        })?;
+
+        // 3. 감사 로그 시작
+        {
+            let mut logger = self.audit_logger.write().await;
+            logger.log_start_if(
+                AuditLevel::Basic,
+                command_id,
+                session_id,
+                &format!("intent_hint={intent_hint}"),
+            );
+        }
+
+        // 4. 의도 계획 + 실행
+        let start = Instant::now();
+        let planned_intent = planner.plan(intent_hint).await?;
+        let result = executor.execute(&planned_intent).await?;
+        let elapsed_ms = start.elapsed().as_millis() as u64;
+
+        // 5. 감사 로그 완료
+        {
+            let mut logger = self.audit_logger.write().await;
+            logger.log_complete_with_time(
+                AuditLevel::Basic,
+                command_id,
+                session_id,
+                &format!(
+                    "planned_intent={:?}, success={}, elapsed={}ms",
+                    planned_intent, result.success, elapsed_ms
+                ),
+                elapsed_ms,
+            );
+        }
+
+        Ok(PlannedIntentResult {
+            planned_intent,
+            result,
+        })
     }
 
     /// 워크플로우 프리셋 실행
@@ -507,6 +589,7 @@ impl AutomationController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intent_planner::IntentPlanner;
     use crate::policy::{AuditLevel, ExecutionPolicy};
     use crate::sandbox::NoOpSandbox;
     use oneshim_core::models::intent::{
@@ -556,6 +639,17 @@ mod tests {
             sandbox_profile: None,
             allowed_paths: vec![],
             allow_network: None,
+        }
+    }
+
+    struct StubPlanner {
+        planned: AutomationIntent,
+    }
+
+    #[async_trait::async_trait]
+    impl IntentPlanner for StubPlanner {
+        async fn plan(&self, _intent_hint: &str) -> Result<AutomationIntent, CoreError> {
+            Ok(self.planned.clone())
         }
     }
 
@@ -900,6 +994,69 @@ mod tests {
         // 감사 로그 확인: Started + Completed = 2 entries
         let logger = audit_logger.read().await;
         assert_eq!(logger.pending_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn execute_intent_hint_requires_planner() {
+        use crate::input_driver::{NoOpElementFinder, NoOpInputDriver};
+        use crate::intent_resolver::{IntentExecutor, IntentResolver};
+
+        let mut controller = make_controller();
+        controller.set_enabled(true);
+
+        let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
+            Arc::new(NoOpInputDriver);
+        let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
+            Arc::new(NoOpElementFinder);
+        let resolver = IntentResolver::new(element_finder, input_driver, IntentConfig::default());
+        controller.set_intent_executor(Arc::new(IntentExecutor::new(
+            resolver,
+            IntentConfig::default(),
+        )));
+
+        let result = controller
+            .execute_intent_hint("hint-1", "sess-1", "저장 버튼 클릭")
+            .await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            CoreError::Internal(msg) if msg.contains("IntentPlanner")
+        ));
+    }
+
+    #[tokio::test]
+    async fn execute_intent_hint_success() {
+        use crate::input_driver::{NoOpElementFinder, NoOpInputDriver};
+        use crate::intent_resolver::{IntentExecutor, IntentResolver};
+
+        let mut controller = make_controller();
+        controller.set_enabled(true);
+        controller.set_intent_planner(Arc::new(StubPlanner {
+            planned: AutomationIntent::ExecuteHotkey {
+                keys: vec!["Ctrl".to_string(), "S".to_string()],
+            },
+        }));
+
+        let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
+            Arc::new(NoOpInputDriver);
+        let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
+            Arc::new(NoOpElementFinder);
+        let resolver = IntentResolver::new(element_finder, input_driver, IntentConfig::default());
+        controller.set_intent_executor(Arc::new(IntentExecutor::new(
+            resolver,
+            IntentConfig::default(),
+        )));
+
+        let result = controller
+            .execute_intent_hint("hint-2", "sess-1", "Ctrl+S 실행")
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            result.planned_intent,
+            AutomationIntent::ExecuteHotkey { .. }
+        ));
+        assert!(result.result.success);
     }
 
     // --- 추가 테스트: run_workflow 엣지 케이스 ---

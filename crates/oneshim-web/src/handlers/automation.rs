@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use oneshim_automation::audit::AuditStatus;
 use oneshim_automation::presets::builtin_presets;
-use oneshim_core::models::intent::WorkflowPreset;
+use oneshim_core::error::CoreError;
+use oneshim_core::models::intent::{AutomationIntent, IntentResult, WorkflowPreset};
 
 use crate::{error::ApiError, AppState};
 
@@ -92,6 +93,23 @@ pub struct PresetRunResult {
     pub total_steps: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_elapsed_ms: Option<u64>,
+}
+
+/// 자연어 의도 실행 요청
+#[derive(Debug, Deserialize)]
+pub struct ExecuteIntentHintRequest {
+    pub command_id: Option<String>,
+    pub session_id: String,
+    pub intent_hint: String,
+}
+
+/// 자연어 의도 실행 응답
+#[derive(Debug, Serialize)]
+pub struct ExecuteIntentHintResponse {
+    pub command_id: String,
+    pub session_id: String,
+    pub planned_intent: AutomationIntent,
+    pub result: IntentResult,
 }
 
 // ============================================================
@@ -426,6 +444,58 @@ pub async fn run_preset(
             total_steps: Some(preset.steps.len()),
             total_elapsed_ms: None,
         }))
+    }
+}
+
+/// POST /api/automation/execute-hint — 자연어 의도 실행
+pub async fn execute_intent_hint(
+    State(state): State<AppState>,
+    Json(req): Json<ExecuteIntentHintRequest>,
+) -> Result<Json<ExecuteIntentHintResponse>, ApiError> {
+    if req.session_id.trim().is_empty() {
+        return Err(ApiError::BadRequest("session_id는 필수입니다".to_string()));
+    }
+    if req.intent_hint.trim().is_empty() {
+        return Err(ApiError::BadRequest("intent_hint는 필수입니다".to_string()));
+    }
+
+    let Some(ref controller) = state.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "자동화 컨트롤러가 활성화되지 않았습니다".to_string(),
+        ));
+    };
+
+    let command_id = req
+        .command_id
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or_else(|| {
+            format!(
+                "intent-hint-{}",
+                chrono::Utc::now().timestamp_millis().abs()
+            )
+        });
+
+    match controller
+        .execute_intent_hint(&command_id, &req.session_id, &req.intent_hint)
+        .await
+    {
+        Ok(planned) => Ok(Json(ExecuteIntentHintResponse {
+            command_id,
+            session_id: req.session_id,
+            planned_intent: planned.planned_intent,
+            result: planned.result,
+        })),
+        Err(
+            CoreError::PolicyDenied(msg)
+            | CoreError::InvalidArguments(msg)
+            | CoreError::ElementNotFound(msg),
+        ) => Err(ApiError::BadRequest(msg)),
+        Err(CoreError::Internal(msg))
+            if msg.contains("IntentPlanner") || msg.contains("IntentExecutor") =>
+        {
+            Err(ApiError::BadRequest(msg))
+        }
+        Err(e) => Err(ApiError::Internal(format!("자연어 의도 실행 실패: {e}"))),
     }
 }
 

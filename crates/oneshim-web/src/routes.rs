@@ -122,6 +122,10 @@ pub fn api_routes() -> Router<AppState> {
             "/automation/presets/:id/run",
             post(handlers::automation::run_preset),
         )
+        .route(
+            "/automation/execute-hint",
+            post(handlers::automation::execute_intent_hint),
+        )
         .route("/update/status", get(handlers::update::get_update_status))
         .route("/update/action", post(handlers::update::post_update_action))
         .route("/update/stream", get(handlers::update::get_update_stream))

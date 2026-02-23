@@ -7,6 +7,7 @@
 pub mod audit;
 pub mod controller;
 pub mod input_driver;
+pub mod intent_planner;
 pub mod intent_resolver;
 pub mod local_llm;
 pub mod policy;

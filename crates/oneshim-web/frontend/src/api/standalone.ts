@@ -698,6 +698,37 @@ export async function handleStandaloneRequest(
     })
   }
 
+  if (path === '/api/automation/execute-hint' && method === 'POST') {
+    const payload = body as
+      | { command_id?: string; session_id?: string; intent_hint?: string }
+      | null
+    const now = Date.now()
+    const commandId = payload?.command_id?.trim() || `intent-hint-${now}`
+    const sessionId = payload?.session_id?.trim() || 'standalone-session'
+    const hint = payload?.intent_hint?.trim() || ''
+
+    return jsonResponse({
+      command_id: commandId,
+      session_id: sessionId,
+      planned_intent: {
+        ClickElement: {
+          text: hint || null,
+          role: null,
+          app_name: null,
+          button: 'left',
+        },
+      },
+      result: {
+        success: true,
+        element: null,
+        verification: null,
+        retry_count: 0,
+        elapsed_ms: 0,
+        error: null,
+      },
+    })
+  }
+
   // Unknown /api route fallback: avoid hard failures in standalone mode.
   return jsonResponse({ ok: true })
 }

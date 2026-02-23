@@ -246,6 +246,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
             controller.set_enabled(true);
             if let Ok(runtime) = runtime {
                 controller.set_intent_executor(runtime.intent_executor);
+                controller.set_intent_planner(runtime.intent_planner);
             } else {
                 controller.set_intent_executor(build_noop_intent_executor());
             }

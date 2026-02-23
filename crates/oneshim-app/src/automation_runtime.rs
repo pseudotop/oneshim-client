@@ -4,13 +4,13 @@
 
 use async_trait::async_trait;
 use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
+use oneshim_automation::intent_planner::{IntentPlanner, LlmIntentPlanner};
 use oneshim_automation::intent_resolver::{IntentExecutor, IntentResolver};
 use oneshim_core::config::AiProviderConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
-use oneshim_core::ports::llm_provider::LlmProvider;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::element_finder::OcrElementFinder;
 use std::sync::Arc;
@@ -21,10 +21,7 @@ use crate::provider_adapters::{resolve_ai_provider_adapters, ProviderSource};
 /// 자동화 실행기에 필요한 런타임 구성요소.
 pub struct AutomationRuntime {
     pub intent_executor: Arc<IntentExecutor>,
-    #[allow(dead_code)]
-    pub element_finder: Arc<dyn ElementFinder>,
-    #[allow(dead_code)]
-    pub llm_provider: Arc<dyn LlmProvider>,
+    pub intent_planner: Arc<dyn IntentPlanner>,
     pub ocr_provider_name: String,
     pub llm_provider_name: String,
     pub ocr_source: ProviderSource,
@@ -58,11 +55,14 @@ pub fn build_automation_runtime(
         IntentConfig::default(),
     );
     let intent_executor = Arc::new(IntentExecutor::new(resolver, IntentConfig::default()));
+    let intent_planner: Arc<dyn IntentPlanner> = Arc::new(LlmIntentPlanner::new(
+        adapters.llm.clone(),
+        element_finder.clone(),
+    ));
 
     Ok(AutomationRuntime {
         intent_executor,
-        element_finder,
-        llm_provider: adapters.llm,
+        intent_planner,
         ocr_provider_name,
         llm_provider_name,
         ocr_source: adapters.ocr_source,
