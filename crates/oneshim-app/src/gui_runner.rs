@@ -10,7 +10,7 @@ use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
 use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
-use oneshim_core::config::AppConfig;
+use oneshim_core::config::{AiAccessMode, AppConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::storage::StorageService;
 use oneshim_monitor::{activity::ActivityTracker, process::ProcessTracker, system::SysInfoMonitor};
@@ -34,6 +34,10 @@ use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
 use crate::automation_runtime::{build_automation_runtime, build_noop_intent_executor};
+use crate::cli_subscription_bridge::{
+    default_context_export_path, should_autoinstall_bridge_files, should_include_user_scope,
+    sync_bridge_files,
+};
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
@@ -63,6 +67,40 @@ fn generate_session_id() -> String {
     std::time::SystemTime::now().hash(&mut hasher);
     let rand_part = hasher.finish() as u32;
     format!("sess_{ts}_{rand_part:08x}")
+}
+
+fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::Path) {
+    if config.ai_provider.access_mode != AiAccessMode::ProviderSubscriptionCli {
+        return;
+    }
+
+    if !should_autoinstall_bridge_files() {
+        info!(
+            "ProviderSubscriptionCli 모드 감지: CLI 브리지 자동 설치 비활성화 (ONESHIM_CLI_BRIDGE_AUTOINSTALL=1로 활성화)"
+        );
+        return;
+    }
+
+    let project_root = std::env::current_dir().unwrap_or_else(|_| data_dir.to_path_buf());
+    let include_user_scope = should_include_user_scope();
+    let context_export_path = default_context_export_path(data_dir);
+    let report = sync_bridge_files(&project_root, &context_export_path, include_user_scope);
+
+    info!(
+        project_root = %project_root.display(),
+        context_export = %context_export_path.display(),
+        include_user_scope,
+        written_files = report.written_files.len(),
+        unchanged_files = report.unchanged_files.len(),
+        errors = report.errors.len(),
+        "CLI 구독 브리지 파일 동기화 완료"
+    );
+
+    if !report.is_successful() {
+        for err in report.errors {
+            warn!(error = %err, "CLI 구독 브리지 파일 동기화 실패");
+        }
+    }
 }
 
 /// GUI + Agent 실행
@@ -119,6 +157,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     info!("설정 파일: {:?}", config_manager.config_path());
 
     let config = config_manager.get();
+    maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
 
     let runtime_auto_update = config.update.auto_install;
     let (update_action_tx, update_action_rx) =

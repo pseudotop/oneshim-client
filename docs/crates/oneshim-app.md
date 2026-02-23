@@ -17,12 +17,26 @@ The binary entry point. DI wiring, scheduler, and lifecycle management.
 ```
 oneshim-app/src/
 ├── main.rs       # Entry point, DI wiring
+├── gui_runner.rs # GUI + Agent integrated runtime
+├── automation_runtime.rs # AI provider runtime wiring
+├── provider_adapters.rs  # AI provider adapter resolution
+├── cli_subscription_bridge.rs # CLI subscription bridge artifact sync
 ├── scheduler.rs  # Scheduler - periodic tasks
 ├── lifecycle.rs  # Lifecycle - signal handling
 ├── event_bus.rs  # Internal event routing
 ├── autostart.rs  # Auto-start configuration
 └── updater.rs    # Auto update
 ```
+
+## CLI Subscription Bridge
+
+When `ai_provider.access_mode` is `ProviderSubscriptionCli`, ONESHIM can sync bridge command files for external AI CLIs.
+
+- Enable auto-install: `ONESHIM_CLI_BRIDGE_AUTOINSTALL=1`
+- Include user-scope directories (`~/.codex`, `~/.claude`, `~/.gemini`): `ONESHIM_CLI_BRIDGE_INCLUDE_USER_SCOPE=1`
+- Default context export reference path in generated bridge files: `<data_dir>/exports/oneshim-context.json`
+
+Reference: `docs/architecture/cli-subscription-bridge-research.md`
 
 ## Key Components
 

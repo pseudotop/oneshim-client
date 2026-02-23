@@ -5,6 +5,7 @@
 
 mod automation_runtime;
 mod autostart;
+mod cli_subscription_bridge;
 mod event_bus;
 mod focus_analyzer;
 mod gui_runner;
@@ -24,7 +25,7 @@ use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
 use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
-use oneshim_core::config::AppConfig;
+use oneshim_core::config::{AiAccessMode, AppConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_monitor::activity::ActivityTracker;
 use oneshim_monitor::process::ProcessTracker;
@@ -49,6 +50,10 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::automation_runtime::{build_automation_runtime, build_noop_intent_executor};
+use crate::cli_subscription_bridge::{
+    default_context_export_path, should_autoinstall_bridge_files, should_include_user_scope,
+    sync_bridge_files,
+};
 use crate::event_bus::EventBus;
 use crate::focus_analyzer::FocusAnalyzer;
 use crate::lifecycle::LifecycleManager;
@@ -129,6 +134,40 @@ fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
             ProjectDirs::from("com", "oneshim", "agent").map(|p| p.data_dir().join("oneshim.db"))
         })
         .unwrap_or_else(|| PathBuf::from("./oneshim.db"))
+}
+
+fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::Path) {
+    if config.ai_provider.access_mode != AiAccessMode::ProviderSubscriptionCli {
+        return;
+    }
+
+    if !should_autoinstall_bridge_files() {
+        info!(
+            "ProviderSubscriptionCli 모드 감지: CLI 브리지 자동 설치 비활성화 (ONESHIM_CLI_BRIDGE_AUTOINSTALL=1로 활성화)"
+        );
+        return;
+    }
+
+    let project_root = std::env::current_dir().unwrap_or_else(|_| data_dir.to_path_buf());
+    let include_user_scope = should_include_user_scope();
+    let context_export_path = default_context_export_path(data_dir);
+    let report = sync_bridge_files(&project_root, &context_export_path, include_user_scope);
+
+    info!(
+        project_root = %project_root.display(),
+        context_export = %context_export_path.display(),
+        include_user_scope,
+        written_files = report.written_files.len(),
+        unchanged_files = report.unchanged_files.len(),
+        errors = report.errors.len(),
+        "CLI 구독 브리지 파일 동기화 완료"
+    );
+
+    if !report.is_successful() {
+        for err in report.errors {
+            warn!(error = %err, "CLI 구독 브리지 파일 동기화 실패");
+        }
+    }
 }
 
 /// 배너 출력
@@ -400,6 +439,7 @@ async fn main() -> Result<()> {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
     std::fs::create_dir_all(&data_dir)?;
+    maybe_sync_cli_subscription_bridge(&config, &data_dir);
 
     let sqlite_storage = Arc::new(oneshim_storage::sqlite::SqliteStorage::open(
         &db_path,
