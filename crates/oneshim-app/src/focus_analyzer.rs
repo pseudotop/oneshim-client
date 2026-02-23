@@ -17,6 +17,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
+use crate::workflow_intelligence::{PlaybookSignal, WorkflowIntelligence};
+
 /// 집중도 분석 저장소 포트.
 ///
 /// FocusAnalyzer는 구체 저장소 구현 대신 이 포트에 의존한다.
@@ -141,6 +143,12 @@ pub struct FocusAnalyzerConfig {
     /// 집중 점수 계산 가중치
     pub focus_score_deep_work_weight: f32,
     pub focus_score_interruption_penalty: f32,
+    /// workflow 세그먼트 분리 유휴 시간 (초)
+    pub workflow_split_idle_secs: u64,
+    /// 플레이북 추출 최소 relevance
+    pub playbook_min_relevance: f32,
+    /// 오래 열린 세그먼트 자동 flush 임계값 (초)
+    pub playbook_stale_flush_secs: u64,
 }
 
 impl Default for FocusAnalyzerConfig {
@@ -152,6 +160,9 @@ impl Default for FocusAnalyzerConfig {
             suggestion_cooldown_secs: 1800,         // 30분
             focus_score_deep_work_weight: 0.7,
             focus_score_interruption_penalty: 0.1,
+            workflow_split_idle_secs: 300, // 5분
+            playbook_min_relevance: 0.35,
+            playbook_stale_flush_secs: 900, // 15분
         }
     }
 }
@@ -163,6 +174,7 @@ struct SuggestionCooldowns {
     last_focus_time: Option<DateTime<Utc>>,
     last_restore_context: Option<DateTime<Utc>>,
     last_excessive_comm: Option<DateTime<Utc>>,
+    last_pattern_detected: Option<DateTime<Utc>>,
 }
 
 /// 세션 추적 상태
@@ -191,6 +203,8 @@ pub struct FocusAnalyzer {
     tracker: RwLock<SessionTracker>,
     /// 쿨다운 상태
     cooldowns: RwLock<SuggestionCooldowns>,
+    /// 앱 usage/relevance + workflow/playbook 인텔리전스
+    workflow_intelligence: RwLock<WorkflowIntelligence>,
 }
 
 impl FocusAnalyzer {
@@ -206,6 +220,7 @@ impl FocusAnalyzer {
             notifier,
             tracker: RwLock::new(SessionTracker::default()),
             cooldowns: RwLock::new(SuggestionCooldowns::default()),
+            workflow_intelligence: RwLock::new(WorkflowIntelligence::default()),
         }
     }
 
@@ -217,134 +232,185 @@ impl FocusAnalyzer {
         Self::new(FocusAnalyzerConfig::default(), storage, notifier)
     }
 
-    /// 앱 전환 이벤트 처리
+    /// 앱 전환 이벤트 처리.
     ///
-    /// 새 앱으로 전환될 때 호출됨. 작업 세션과 인터럽션을 추적.
+    /// 기존 호출부 호환용 API. (window/ocr 힌트 없이 호출)
+    #[allow(dead_code)]
     pub async fn on_app_switch(&self, new_app: &str) {
+        self.on_app_switch_with_context(new_app, "", None).await;
+    }
+
+    /// 앱 전환 이벤트 처리 (window title + OCR 힌트 포함).
+    ///
+    /// 새 앱으로 전환될 때 호출됨. 작업 세션/인터럽션 추적과 함께
+    /// relevance scoring, workflow segmentation, playbook extraction을 수행한다.
+    pub async fn on_app_switch_with_context(
+        &self,
+        new_app: &str,
+        window_title: &str,
+        ocr_hint: Option<&str>,
+    ) {
         let new_category = AppCategory::from_app_name(new_app);
         let now = Utc::now();
         let today = now.format("%Y-%m-%d").to_string();
 
-        let mut tracker = self.tracker.write().await;
+        let mut previous_usage: Option<(String, AppCategory, u64)> = None;
+        let mut should_suggest_restore = false;
 
-        // 이전 앱 정보
-        let prev_app = tracker.current_app.clone();
-        let prev_category = tracker.current_category;
-        let prev_start = tracker.current_app_start;
+        {
+            let mut tracker = self.tracker.write().await;
 
-        // 동일 앱이면 무시
-        if prev_app.as_deref() == Some(new_app) {
-            return;
-        }
+            // 이전 앱 정보
+            let prev_app = tracker.current_app.clone();
+            let prev_category = tracker.current_category;
+            let prev_start = tracker.current_app_start;
 
-        debug!(
-            "앱 전환: {:?} ({:?}) → {} ({:?})",
-            prev_app, prev_category, new_app, new_category
-        );
-
-        // 1. 이전 앱 시간 누적
-        if let (Some(prev_cat), Some(start)) = (prev_category, prev_start) {
-            let duration_secs = (now - start).num_seconds().max(0) as u64;
-
-            // 집중도 메트릭 증분 업데이트
-            let (deep_work, comm) = if prev_cat.is_deep_work() {
-                (duration_secs, 0)
-            } else if prev_cat.is_communication() {
-                (0, duration_secs)
-            } else {
-                (0, 0)
-            };
-
-            if let Err(e) = self.storage.increment_focus_metrics(
-                &today,
-                duration_secs, // total_active
-                deep_work,
-                comm,
-                1, // context_switch
-                0, // interruption
-            ) {
-                warn!("집중도 메트릭 증분 실패: {e}");
+            // 동일 앱이면 무시
+            if prev_app.as_deref() == Some(new_app) {
+                return;
             }
 
-            // 깊은 작업 시간 누적
-            if prev_cat.is_deep_work() {
-                tracker.continuous_deep_work_secs += duration_secs;
+            debug!(
+                "앱 전환: {:?} ({:?}) → {} ({:?})",
+                prev_app, prev_category, new_app, new_category
+            );
 
-                // 활성 세션에 deep_work_secs 추가
-                if let Some(session_id) = tracker.active_session_id {
-                    if let Err(e) = self.storage.add_deep_work_secs(session_id, duration_secs) {
-                        warn!("세션 deep_work_secs 추가 실패: {e}");
-                    }
+            // 1. 이전 앱 시간 누적
+            if let (Some(prev_app_name), Some(prev_cat), Some(start)) =
+                (prev_app, prev_category, prev_start)
+            {
+                let duration_secs = (now - start).num_seconds().max(0) as u64;
+                previous_usage = Some((prev_app_name.clone(), prev_cat, duration_secs));
+
+                // 집중도 메트릭 증분 업데이트
+                let (deep_work, comm) = if prev_cat.is_deep_work() {
+                    (duration_secs, 0)
+                } else if prev_cat.is_communication() {
+                    (0, duration_secs)
+                } else {
+                    (0, 0)
+                };
+
+                if let Err(e) = self.storage.increment_focus_metrics(
+                    &today,
+                    duration_secs, // total_active
+                    deep_work,
+                    comm,
+                    1, // context_switch
+                    0, // interruption
+                ) {
+                    warn!("집중도 메트릭 증분 실패: {e}");
                 }
-            }
-        }
 
-        // 2. 인터럽션 감지 (깊은 작업 → 소통)
-        if let Some(prev_cat) = prev_category {
-            if prev_cat.is_deep_work() && new_category.is_communication() {
-                // 인터럽션 기록
-                let interruption = Interruption::new(
-                    0, // ID는 저장 시 생성
-                    prev_app.clone().unwrap_or_default(),
-                    new_app.to_string(),
-                    None, // snapshot_frame_id (향후 연결)
-                );
+                // 깊은 작업 시간 누적
+                if prev_cat.is_deep_work() {
+                    tracker.continuous_deep_work_secs += duration_secs;
 
-                match self.storage.record_interruption(&interruption) {
-                    Ok(id) => {
-                        debug!("인터럽션 기록: id={}", id);
-                        tracker.pending_interruption_id = Some(id);
-
-                        // 세션 인터럽션 카운트 증가
-                        if let Some(session_id) = tracker.active_session_id {
-                            let _ = self.storage.increment_work_session_interruption(session_id);
+                    // 활성 세션에 deep_work_secs 추가
+                    if let Some(session_id) = tracker.active_session_id {
+                        if let Err(e) = self.storage.add_deep_work_secs(session_id, duration_secs) {
+                            warn!("세션 deep_work_secs 추가 실패: {e}");
                         }
-
-                        // 집중도 메트릭 인터럽션 카운트 증가
-                        let _ = self.storage.increment_focus_metrics(&today, 0, 0, 0, 0, 1);
                     }
-                    Err(e) => warn!("인터럽션 기록 실패: {e}"),
+                }
+
+                // 2. 인터럽션 감지 (깊은 작업 → 소통)
+                if prev_cat.is_deep_work() && new_category.is_communication() {
+                    let interruption = Interruption::new(
+                        0, // ID는 저장 시 생성
+                        prev_app_name,
+                        new_app.to_string(),
+                        None, // snapshot_frame_id (향후 연결)
+                    );
+
+                    match self.storage.record_interruption(&interruption) {
+                        Ok(id) => {
+                            debug!("인터럽션 기록: id={}", id);
+                            tracker.pending_interruption_id = Some(id);
+
+                            // 세션 인터럽션 카운트 증가
+                            if let Some(session_id) = tracker.active_session_id {
+                                let _ =
+                                    self.storage.increment_work_session_interruption(session_id);
+                            }
+
+                            // 집중도 메트릭 인터럽션 카운트 증가
+                            let _ = self.storage.increment_focus_metrics(&today, 0, 0, 0, 0, 1);
+                        }
+                        Err(e) => warn!("인터럽션 기록 실패: {e}"),
+                    }
+                }
+
+                // 3. 인터럽션 복귀 감지 (소통 → 깊은 작업)
+                if prev_cat.is_communication() && new_category.is_deep_work() {
+                    if let Some(int_id) = tracker.pending_interruption_id.take() {
+                        let _ = self.storage.record_interruption_resume(int_id, new_app);
+                        debug!("인터럽션 복귀: id={}", int_id);
+                        should_suggest_restore = true;
+                    }
                 }
             }
-        }
 
-        // 3. 인터럽션 복귀 감지 (소통 → 깊은 작업)
-        if let Some(prev_cat) = prev_category {
-            if prev_cat.is_communication() && new_category.is_deep_work() {
-                if let Some(int_id) = tracker.pending_interruption_id.take() {
-                    let _ = self.storage.record_interruption_resume(int_id, new_app);
-                    debug!("인터럽션 복귀: id={}", int_id);
-
-                    // 컨텍스트 복원 제안 생성
-                    self.maybe_suggest_restore_context(new_app, now).await;
+            // 4. 작업 세션 관리
+            // 소통 앱으로 전환 시 기존 세션 종료
+            if new_category.is_communication() {
+                if let Some(session_id) = tracker.active_session_id.take() {
+                    let _ = self.storage.end_work_session(session_id);
+                    tracker.continuous_deep_work_secs = 0;
+                    debug!("작업 세션 종료 (소통 전환): id={}", session_id);
                 }
             }
-        }
-
-        // 4. 작업 세션 관리
-        // 소통 앱으로 전환 시 기존 세션 종료
-        if new_category.is_communication() {
-            if let Some(session_id) = tracker.active_session_id.take() {
-                let _ = self.storage.end_work_session(session_id);
-                tracker.continuous_deep_work_secs = 0;
-                debug!("작업 세션 종료 (소통 전환): id={}", session_id);
-            }
-        }
-        // 깊은 작업 앱으로 전환 시 새 세션 시작 (없으면)
-        else if new_category.is_deep_work() && tracker.active_session_id.is_none() {
-            match self.storage.start_work_session(new_app, new_category) {
-                Ok(session) => {
-                    debug!("작업 세션 시작: id={}, app={}", session.id, new_app);
-                    tracker.active_session_id = Some(session.id);
+            // 깊은 작업 앱으로 전환 시 새 세션 시작 (없으면)
+            else if new_category.is_deep_work() && tracker.active_session_id.is_none() {
+                match self.storage.start_work_session(new_app, new_category) {
+                    Ok(session) => {
+                        debug!("작업 세션 시작: id={}, app={}", session.id, new_app);
+                        tracker.active_session_id = Some(session.id);
+                    }
+                    Err(e) => warn!("작업 세션 시작 실패: {e}"),
                 }
-                Err(e) => warn!("작업 세션 시작 실패: {e}"),
             }
+
+            // 5. 현재 앱 업데이트
+            tracker.current_app = Some(new_app.to_string());
+            tracker.current_category = Some(new_category);
+            tracker.current_app_start = Some(now);
         }
 
-        // 5. 현재 앱 업데이트
-        tracker.current_app = Some(new_app.to_string());
-        tracker.current_category = Some(new_category);
-        tracker.current_app_start = Some(now);
+        // 6. 앱 relevance + 워크플로우/플레이북 인텔리전스
+        let playbook_signal = {
+            let mut intelligence = self.workflow_intelligence.write().await;
+
+            if let Some((prev_app, prev_cat, duration_secs)) = previous_usage {
+                let score = intelligence.update_usage(&prev_app, prev_cat, duration_secs, now);
+                debug!(
+                    app = %prev_app,
+                    category = ?prev_cat,
+                    duration_secs,
+                    relevance = score,
+                    "앱 relevance 업데이트"
+                );
+            }
+
+            let _ = intelligence.touch_app(new_app, new_category, now);
+            intelligence.advance_workflow(
+                new_app,
+                new_category,
+                window_title,
+                ocr_hint,
+                now,
+                self.config.playbook_min_relevance,
+                self.config.workflow_split_idle_secs,
+            )
+        };
+
+        if let Some(signal) = playbook_signal {
+            self.maybe_suggest_pattern_detected(signal).await;
+        }
+
+        if should_suggest_restore {
+            self.maybe_suggest_restore_context(new_app, now).await;
+        }
     }
 
     /// 주기적 분석 (1분마다 호출)
@@ -378,6 +444,19 @@ impl FocusAnalyzer {
 
         // 3. 소통 과다 확인
         self.maybe_suggest_focus_time(&metrics).await;
+
+        // 4. 오래 열린 workflow 세그먼트를 flush하여 플레이북 추출
+        let playbook_signal = {
+            let mut intelligence = self.workflow_intelligence.write().await;
+            intelligence.flush_stale_segment(
+                now,
+                self.config.playbook_min_relevance,
+                self.config.playbook_stale_flush_secs,
+            )
+        };
+        if let Some(signal) = playbook_signal {
+            self.maybe_suggest_pattern_detected(signal).await;
+        }
 
         debug!(
             "집중도 분석: score={:.2}, deep_work={}초, comm={}초, interruptions={}",
@@ -548,6 +627,43 @@ impl FocusAnalyzer {
         self.update_cooldown("restore_context").await;
     }
 
+    /// 반복 플레이북 감지 제안
+    async fn maybe_suggest_pattern_detected(&self, signal: PlaybookSignal) {
+        if !self.check_cooldown("pattern_detected").await {
+            return;
+        }
+
+        let suggestion = LocalSuggestion::PatternDetected {
+            pattern_description: signal.description.clone(),
+            confidence: signal.confidence,
+        };
+
+        let suggestion_id = match self.storage.save_local_suggestion(&suggestion) {
+            Ok(id) => id,
+            Err(e) => {
+                warn!("패턴 제안 저장 실패: {e}");
+                return;
+            }
+        };
+
+        let title = "🧭 반복 플레이북";
+        let confidence_percent = (signal.confidence * 100.0).round() as i32;
+        let body = format!("{} (신뢰도 {}%)", signal.description, confidence_percent);
+
+        if let Err(e) = self.notifier.show_notification(title, &body).await {
+            warn!("패턴 제안 알림 실패: {e}");
+            return;
+        }
+
+        let _ = self.storage.mark_suggestion_shown(suggestion_id);
+        info!(
+            confidence = signal.confidence,
+            description = %signal.description,
+            "플레이북 패턴 제안 발송"
+        );
+        self.update_cooldown("pattern_detected").await;
+    }
+
     /// 쿨다운 확인
     async fn check_cooldown(&self, suggestion_type: &str) -> bool {
         let cooldowns = self.cooldowns.read().await;
@@ -559,6 +675,7 @@ impl FocusAnalyzer {
             "focus_time" => cooldowns.last_focus_time,
             "restore_context" => cooldowns.last_restore_context,
             "excessive_comm" => cooldowns.last_excessive_comm,
+            "pattern_detected" => cooldowns.last_pattern_detected,
             _ => None,
         };
 
@@ -578,6 +695,7 @@ impl FocusAnalyzer {
             "focus_time" => cooldowns.last_focus_time = Some(now),
             "restore_context" => cooldowns.last_restore_context = Some(now),
             "excessive_comm" => cooldowns.last_excessive_comm = Some(now),
+            "pattern_detected" => cooldowns.last_pattern_detected = Some(now),
             _ => {}
         }
     }
@@ -585,6 +703,12 @@ impl FocusAnalyzer {
     /// 유휴 복귀 시 세션 리셋
     #[allow(dead_code)]
     pub async fn on_idle_resume(&self) {
+        let now = Utc::now();
+        let playbook_signal = {
+            let mut intelligence = self.workflow_intelligence.write().await;
+            intelligence.flush_stale_segment(now, self.config.playbook_min_relevance, 0)
+        };
+
         let mut tracker = self.tracker.write().await;
 
         // 기존 세션 종료
@@ -600,6 +724,10 @@ impl FocusAnalyzer {
         tracker.current_app_start = None;
 
         debug!("세션 리셋 (유휴 복귀)");
+
+        if let Some(signal) = playbook_signal {
+            self.maybe_suggest_pattern_detected(signal).await;
+        }
     }
 }
 

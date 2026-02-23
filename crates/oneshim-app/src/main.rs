@@ -17,6 +17,7 @@ mod provider_adapters;
 mod scheduler;
 mod update_coordinator;
 mod updater;
+mod workflow_intelligence;
 
 use anyhow::Result;
 use clap::Parser;

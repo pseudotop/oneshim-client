@@ -388,8 +388,10 @@ impl Scheduler {
                                 let window_title = ctx.active_window.as_ref()
                                     .map(|w| w.title.clone())
                                     .unwrap_or_default();
+                                let focus_window_title = window_title.clone();
                                 let window_bounds = ctx.active_window.as_ref()
                                     .and_then(|w| w.bounds);
+                                let mut focus_ocr_hint: Option<String> = None;
 
                                 // 입력 활동 수집기에 현재 앱 설정
                                 input_collector.set_current_app(&app_name);
@@ -454,6 +456,7 @@ impl Scheduler {
                                                 } else {
                                                     (None, None)
                                                 };
+                                                focus_ocr_hint = ocr_text.clone();
 
                                                 // 프레임 메타데이터 저장 (창 위치 포함)
                                                 if let Err(e) = sqlite1.save_frame_metadata_with_bounds(
@@ -493,7 +496,13 @@ impl Scheduler {
                                 let app_changed = prev_app.as_ref() != Some(&app_name);
                                 if app_changed {
                                     if let Some(ref focus) = focus1 {
-                                        focus.on_app_switch(&app_name).await;
+                                        focus
+                                            .on_app_switch_with_context(
+                                                &app_name,
+                                                &focus_window_title,
+                                                focus_ocr_hint.as_deref(),
+                                            )
+                                            .await;
                                     }
                                 }
 
