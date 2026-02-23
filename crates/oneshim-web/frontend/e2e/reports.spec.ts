@@ -1,5 +1,6 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
+import { mockStaticJson } from './helpers/mock-api'
 
 const reportsTitleName = i18nRegex('reports.title')
 const weekPeriodName = i18nRegex('reports.week')
@@ -76,13 +77,7 @@ const mockedReport = {
 }
 
 async function mockReportsApis(page: Page) {
-  await page.route('**/api/reports**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedReport),
-    })
-  })
+  await mockStaticJson(page, '**/api/reports**', mockedReport)
 }
 
 test.describe('Reports', () => {

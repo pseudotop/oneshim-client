@@ -3,8 +3,9 @@
  *
  * 설정 폼, 저장, 내보내기 검증
  */
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
+import { mockDynamicJson, mockStaticJson } from './helpers/mock-api'
 
 const settingsTitleName = i18nRegex('settings.title')
 const collectionSectionName = i18nRegex('settings.collectionTitle')
@@ -109,39 +110,15 @@ const mockedUpdateStatus = {
 }
 
 async function mockSettingsApis(page: Page) {
-  await page.route('**/api/settings', async (route) => {
-    if (route.request().method() === 'POST') {
-      const payload = route.request().postDataJSON() ?? mockedSettings
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(payload),
-      })
-      return
+  await mockDynamicJson(page, '**/api/settings', (request) => {
+    if (request.method() === 'POST') {
+      return request.postDataJSON() ?? mockedSettings
     }
-
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedSettings),
-    })
+    return mockedSettings
   })
 
-  await page.route('**/api/storage/stats**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedStorageStats),
-    })
-  })
-
-  await page.route('**/api/update/status**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedUpdateStatus),
-    })
-  })
+  await mockStaticJson(page, '**/api/storage/stats**', mockedStorageStats)
+  await mockStaticJson(page, '**/api/update/status**', mockedUpdateStatus)
 }
 
 function settingsHeading(page: Page) {

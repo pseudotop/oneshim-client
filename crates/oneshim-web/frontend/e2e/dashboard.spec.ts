@@ -1,5 +1,6 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
+import { mockStaticJson } from './helpers/mock-api'
 
 const dashboardHeadingName = i18nRegex('dashboard.title', [
   'Dashboard preparing',
@@ -103,61 +104,13 @@ function dashboardHeading(page: Page) {
 }
 
 async function mockDashboardApis(page: Page) {
-  await page.route('**/api/stats/summary**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedSummary),
-    })
-  })
-
-  await page.route('**/api/metrics/hourly**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedHourlyMetrics),
-    })
-  })
-
-  await page.route('**/api/processes**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedProcesses),
-    })
-  })
-
-  await page.route('**/api/stats/heatmap**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedHeatmap),
-    })
-  })
-
-  await page.route('**/api/focus/metrics**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedFocusMetrics),
-    })
-  })
-
-  await page.route('**/api/focus/suggestions**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify([]),
-    })
-  })
-
-  await page.route('**/api/update/status**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedUpdateStatus),
-    })
-  })
+  await mockStaticJson(page, '**/api/stats/summary**', mockedSummary)
+  await mockStaticJson(page, '**/api/metrics/hourly**', mockedHourlyMetrics)
+  await mockStaticJson(page, '**/api/processes**', mockedProcesses)
+  await mockStaticJson(page, '**/api/stats/heatmap**', mockedHeatmap)
+  await mockStaticJson(page, '**/api/focus/metrics**', mockedFocusMetrics)
+  await mockStaticJson(page, '**/api/focus/suggestions**', [])
+  await mockStaticJson(page, '**/api/update/status**', mockedUpdateStatus)
 }
 
 test.describe('Dashboard', () => {

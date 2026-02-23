@@ -1,5 +1,6 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
+import { mockDynamicJson, mockStaticJson } from './helpers/mock-api'
 
 const searchTitleName = i18nRegex('search.title')
 const searchPlaceholderName = i18nRegex('search.placeholder')
@@ -48,16 +49,10 @@ function buildSearchResult(index: number): {
 }
 
 async function mockSearchApis(page: Page) {
-  await page.route('**/api/tags**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedTags),
-    })
-  })
+  await mockStaticJson(page, '**/api/tags**', mockedTags)
 
-  await page.route('**/api/search**', async (route) => {
-    const url = new URL(route.request().url())
+  await mockDynamicJson(page, '**/api/search**', async (request) => {
+    const url = new URL(request.url())
     const query = url.searchParams.get('q') ?? ''
     const searchType = url.searchParams.get('search_type') ?? 'all'
     const limit = Number(url.searchParams.get('limit') ?? '20')
@@ -85,17 +80,13 @@ async function mockSearchApis(page: Page) {
 
     const paginated = rows.slice(offset, offset + limit)
 
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        query,
-        total: rows.length,
-        offset,
-        limit,
-        results: paginated,
-      }),
-    })
+    return {
+      query,
+      total: rows.length,
+      offset,
+      limit,
+      results: paginated,
+    }
   })
 }
 

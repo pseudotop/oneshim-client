@@ -1,5 +1,6 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
+import { mockStaticJson } from './helpers/mock-api'
 
 const timelineHeadingName = i18nRegex('timeline.title')
 const timelineAppName = i18nRegex('timeline.app')
@@ -41,21 +42,8 @@ function timelineHeading(page: Page) {
 }
 
 async function mockTimelineApis(page: Page) {
-  await page.route('**/api/frames**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedFrames),
-    })
-  })
-
-  await page.route('**/api/tags**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify([]),
-    })
-  })
+  await mockStaticJson(page, '**/api/frames**', mockedFrames)
+  await mockStaticJson(page, '**/api/tags**', [])
 }
 
 test.describe('Timeline', () => {

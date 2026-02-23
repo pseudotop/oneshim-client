@@ -1,5 +1,6 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
+import { mockStaticJson } from './helpers/mock-api'
 
 const privacyTitleName = i18nRegex('privacy.title')
 const currentDataName = i18nRegex('privacy.currentData')
@@ -41,55 +42,21 @@ const mockedDeleteResult = {
 }
 
 async function mockPrivacyApis(page: Page) {
-  await page.route('**/api/storage/stats**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedStorageStats),
-    })
+  await mockStaticJson(page, '**/api/storage/stats**', mockedStorageStats)
+  await mockStaticJson(page, '**/api/data/range', mockedDeleteResult)
+  await mockStaticJson(page, '**/api/data/all', mockedDeleteResult)
+  await mockStaticJson(page, '**/api/backup/restore', {
+    success: true,
+    restored: {
+      settings: true,
+      tags: 0,
+      frame_tags: 0,
+      events: 0,
+      frames: 0,
+    },
+    errors: [],
   })
-
-  await page.route('**/api/data/range', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedDeleteResult),
-    })
-  })
-
-  await page.route('**/api/data/all', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockedDeleteResult),
-    })
-  })
-
-  await page.route('**/api/backup/restore', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        restored: {
-          settings: true,
-          tags: 0,
-          frame_tags: 0,
-          events: 0,
-          frames: 0,
-        },
-        errors: [],
-      }),
-    })
-  })
-
-  await page.route('**/api/backup**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ ok: true }),
-    })
-  })
+  await mockStaticJson(page, '**/api/backup**', { ok: true })
 }
 
 test.describe('Privacy', () => {

@@ -49,6 +49,17 @@ jobs:
         working-directory: crates/oneshim-web/frontend
         run: pnpm test:e2e
 
+      - name: Upload Playwright report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-playwright-artifacts
+          path: |
+            crates/oneshim-web/frontend/playwright-report
+            crates/oneshim-web/frontend/test-results
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Package frontend dist artifact
         run: tar -czf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend dist
 

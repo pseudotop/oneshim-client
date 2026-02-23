@@ -28,7 +28,10 @@ export default defineConfig({
   timeout: 30000,
 
   // 리포터
-  reporter: [['html', { open: 'never' }], ['list']],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
+
+  // 테스트 아티팩트 출력 디렉토리
+  outputDir: 'test-results',
 
   // 공통 설정
   use: {
