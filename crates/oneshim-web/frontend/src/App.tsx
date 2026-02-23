@@ -131,7 +131,7 @@ function App() {
                     aria-haspopup="menu"
                     aria-expanded={showMoreMenu}
                   >
-                    {t('common.more', '더보기')}
+                    {t('common.more', 'More')}
                   </button>
 
                   {showMoreMenu && (

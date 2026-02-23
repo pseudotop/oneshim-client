@@ -36,8 +36,8 @@ export default function LanguageSelector() {
         className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
         title={t('settings.language')}
       >
-        <span className="text-base">{currentLanguage?.flag}</span>
         <span className="hidden sm:inline">{currentLanguage?.code.toUpperCase()}</span>
+        <span className="sm:hidden">{currentLanguage?.code.toUpperCase()}</span>
         <svg
           className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           fill="none"
@@ -60,7 +60,6 @@ export default function LanguageSelector() {
                   : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
             >
-              <span className="text-base">{lang.flag}</span>
               <span>{lang.name}</span>
               {currentLang === lang.code && (
                 <svg className="w-4 h-4 ml-auto" fill="currentColor" viewBox="0 0 20 20">

@@ -50,6 +50,6 @@ export const getCurrentLanguage = (): 'ko' | 'en' => {
 
 // 지원 언어 목록
 export const supportedLanguages = [
-  { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'ko', name: '한국어', flag: '🇰🇷' },
+  { code: 'en', name: 'English' },
+  { code: 'ko', name: '한국어' },
 ] as const
