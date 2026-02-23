@@ -14,7 +14,9 @@
     "noData": "데이터 없음",
     "running": "실행 중",
     "close": "닫기",
-    "more": "더 보기"
+    "more": "더 보기",
+    "darkMode": "다크 모드",
+    "lightMode": "라이트 모드"
   },
   "nav": {
     "dashboard": "대시보드",

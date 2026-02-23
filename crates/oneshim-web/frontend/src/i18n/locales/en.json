@@ -14,7 +14,9 @@
     "noData": "No data",
     "running": "Running",
     "close": "Close",
-    "more": "More"
+    "more": "More",
+    "darkMode": "Dark mode",
+    "lightMode": "Light mode"
   },
   "nav": {
     "dashboard": "Dashboard",

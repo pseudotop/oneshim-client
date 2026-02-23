@@ -188,7 +188,11 @@ function App() {
               <button
                 onClick={toggleTheme}
                 className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                title={
+                  theme === 'dark'
+                    ? t('common.lightMode')
+                    : t('common.darkMode')
+                }
               >
                 {theme === 'dark' ? (
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
