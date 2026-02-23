@@ -1,89 +1,170 @@
-/**
- * 검색 페이지 E2E 테스트
- *
- * 검색 폼, 결과 표시, 태그 필터 검증
- */
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+import { i18nRegex } from './helpers/i18n'
+
+const searchTitleName = i18nRegex('search.title')
+const searchPlaceholderName = i18nRegex('search.placeholder')
+const searchButtonName = i18nRegex('common.search')
+const allFilterName = i18nRegex('common.all')
+const framesFilterName = i18nRegex('search.frames')
+const eventsFilterName = i18nRegex('search.events')
+const filterByTagsName = i18nRegex('search.filterByTags')
+const resultsLabelName = i18nRegex('search.results')
+const searchHintName = i18nRegex('search.searchHint')
+const selectedTagsName = i18nRegex('search.selectedTags')
+const screenshotBadgeName = i18nRegex('search.screenshot')
+const prevPageName = i18nRegex('common.prev')
+const nextPageName = i18nRegex('common.next')
+
+const mockedTags = [
+  { id: 1, name: 'Focus', color: '#14b8a6', created_at: '2026-02-23T00:00:00Z' },
+  { id: 2, name: 'Work', color: '#3b82f6', created_at: '2026-02-23T00:00:00Z' },
+]
+
+function buildSearchResult(index: number): {
+  result_type: 'frame' | 'event'
+  id: string
+  timestamp: string
+  app_name: string
+  window_title: string
+  matched_text: string
+  image_url: null
+  importance: number
+  tags: Array<{ id: number; name: string; color: string }>
+} {
+  const isFrame = index % 2 === 0
+  const tag = mockedTags[index % mockedTags.length]
+
+  return {
+    result_type: isFrame ? 'frame' : 'event',
+    id: String(index + 1),
+    timestamp: '2026-02-23T10:00:00Z',
+    app_name: isFrame ? 'Code' : 'Chrome',
+    window_title: isFrame ? `Editor ${index + 1}` : `Browser ${index + 1}`,
+    matched_text: 'test query match',
+    image_url: null,
+    importance: 0.8,
+    tags: [{ id: tag.id, name: tag.name, color: tag.color }],
+  }
+}
+
+async function mockSearchApis(page: Page) {
+  await page.route('**/api/tags**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(mockedTags),
+    })
+  })
+
+  await page.route('**/api/search**', async (route) => {
+    const url = new URL(route.request().url())
+    const query = url.searchParams.get('q') ?? ''
+    const searchType = url.searchParams.get('search_type') ?? 'all'
+    const limit = Number(url.searchParams.get('limit') ?? '20')
+    const offset = Number(url.searchParams.get('offset') ?? '0')
+    const tagIds = (url.searchParams.get('tag_ids') ?? '')
+      .split(',')
+      .filter(Boolean)
+      .map((tagId) => Number(tagId))
+
+    let rows = Array.from({ length: 25 }, (_, index) => buildSearchResult(index))
+
+    if (searchType === 'frames') {
+      rows = rows.filter((row) => row.result_type === 'frame')
+    } else if (searchType === 'events') {
+      rows = rows.filter((row) => row.result_type === 'event')
+    }
+
+    if (tagIds.length > 0) {
+      rows = rows.filter((row) => row.tags.some((tag) => tagIds.includes(tag.id)))
+    }
+
+    if (query.toLowerCase() === 'none') {
+      rows = []
+    }
+
+    const paginated = rows.slice(offset, offset + limit)
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        query,
+        total: rows.length,
+        offset,
+        limit,
+        results: paginated,
+      }),
+    })
+  })
+}
 
 test.describe('Search', () => {
   test.beforeEach(async ({ page }) => {
+    await mockSearchApis(page)
     await page.goto('/search')
+    await expect(page.getByRole('heading', { name: searchTitleName })).toBeVisible({ timeout: 10000 })
   })
 
   test('should display search title', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: /검색|search/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: searchTitleName })).toBeVisible()
   })
 
   test('should display search input', async ({ page }) => {
-    // 검색 입력 필드
-    const searchInput = page.locator('input[type="text"]').first()
-    await expect(searchInput).toBeVisible()
+    await expect(page.getByPlaceholder(searchPlaceholderName)).toBeVisible()
   })
 
   test('should display search type selector', async ({ page }) => {
-    // 검색 타입 선택 (전체/프레임/이벤트)
-    const typeButtons = page.getByRole('button', { name: /all|frames|events|전체|프레임|이벤트/i })
-    await expect(typeButtons.first()).toBeVisible()
+    await expect(page.getByRole('button', { name: allFilterName })).toBeVisible()
+    await expect(page.getByRole('button', { name: framesFilterName })).toBeVisible()
+    await expect(page.getByRole('button', { name: eventsFilterName })).toBeVisible()
   })
 
   test('should display tag filter section', async ({ page }) => {
-    // 태그 필터 섹션 (한/영 모두 지원)
-    await expect(page.getByText(/태그 필터:|Filter by tags:/i)).toBeVisible()
+    await expect(page.getByText(filterByTagsName)).toBeVisible()
   })
 
   test('should perform search', async ({ page }) => {
-    // 검색 수행
-    const searchInput = page.locator('input[type="text"]').first()
+    const searchInput = page.getByPlaceholder(searchPlaceholderName)
     await searchInput.fill('test')
-    await searchInput.press('Enter')
+    await page.getByRole('button', { name: searchButtonName }).click()
 
-    // 검색 결과 또는 결과 없음 메시지 대기
-    await page.waitForTimeout(1000)
+    await expect(page.getByText(resultsLabelName)).toBeVisible()
   })
 
   test('should filter by search type', async ({ page }) => {
-    // 프레임 타입으로 필터
-    const framesButton = page.getByRole('button', { name: /frames|프레임/i })
-    if (await framesButton.isVisible()) {
-      await framesButton.click()
-      await page.waitForTimeout(300)
-    }
+    const searchInput = page.getByPlaceholder(searchPlaceholderName)
+    await searchInput.fill('test')
+    await page.getByRole('button', { name: framesFilterName }).click()
+    await page.getByRole('button', { name: searchButtonName }).click()
+
+    await expect(page.getByText(screenshotBadgeName).first()).toBeVisible()
   })
 
   test('should clear search', async ({ page }) => {
-    // 검색어 입력
-    const searchInput = page.locator('input[type="text"]').first()
+    const searchInput = page.getByPlaceholder(searchPlaceholderName)
     await searchInput.fill('test')
-
-    // 검색어 지우기
     await searchInput.clear()
-    expect(await searchInput.inputValue()).toBe('')
+    await expect(searchInput).toHaveValue('')
   })
 
   test('should show search hint', async ({ page }) => {
-    // 검색 힌트 표시
-    await expect(page.getByText(/앱 이름|창 제목|ocr|app name|window title/i)).toBeVisible()
+    await expect(page.getByText(searchHintName)).toBeVisible()
   })
 
   test('should display pagination when results exist', async ({ page }) => {
-    // 검색 수행
-    const searchInput = page.locator('input[type="text"]').first()
-    await searchInput.fill('a')
-    await searchInput.press('Enter')
+    const searchInput = page.getByPlaceholder(searchPlaceholderName)
+    await searchInput.fill('test')
+    await page.getByRole('button', { name: searchButtonName }).click()
 
-    await page.waitForTimeout(2000)
-
-    // 검색 후 어떤 UI 변화가 있는지 확인 (로딩 상태, 결과, 또는 "결과 없음" 메시지)
-    // 데이터 의존성을 줄이기 위해 페이지 타이틀만 확인
-    await expect(page.getByRole('heading', { name: /검색|search/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: prevPageName })).toBeVisible()
+    await expect(page.getByRole('button', { name: nextPageName })).toBeVisible()
   })
 
   test('should toggle tag filter', async ({ page }) => {
-    // 태그 필터 토글 (태그가 있을 경우)
-    const tagBadge = page.locator('.rounded-full').first()
-    if (await tagBadge.isVisible()) {
-      await tagBadge.click()
-      await page.waitForTimeout(300)
-    }
+    const workTag = page.locator('span.rounded-full').filter({ hasText: 'Work' }).first()
+    await expect(workTag).toBeVisible()
+    await workTag.click()
+    await expect(page.getByText(selectedTagsName)).toBeVisible()
   })
 })
