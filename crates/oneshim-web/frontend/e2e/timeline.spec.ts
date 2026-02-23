@@ -1,6 +1,17 @@
 import { test, expect, type Page } from '@playwright/test'
+import { i18nRegex } from './helpers/i18n'
 
-const timelineHeadingName = /timeline|타임라인/i
+const timelineHeadingName = i18nRegex('timeline.title')
+const timelineAppName = i18nRegex('timeline.app')
+const timelineImportanceName = i18nRegex('timeline.importance')
+const dateRangeButtonName = i18nRegex([
+  'dateRange.today',
+  'dateRange.week',
+  'dateRange.month',
+])
+const timelineGridViewTitle = i18nRegex('timeline.gridView')
+const timelineListViewTitle = i18nRegex('timeline.listView')
+const capturesTextName = i18nRegex('timeline.captures')
 const mockedFrames = {
   data: [
     {
@@ -59,8 +70,8 @@ test.describe('Timeline', () => {
   })
 
   test('should display filter controls', async ({ page }) => {
-    await expect(page.getByText(/app|앱/i).first()).toBeVisible()
-    await expect(page.getByText(/importance|중요도/i).first()).toBeVisible()
+    await expect(page.getByText(timelineAppName).first()).toBeVisible()
+    await expect(page.getByText(timelineImportanceName).first()).toBeVisible()
   })
 
   test('should display view mode toggle buttons', async ({ page }) => {
@@ -70,13 +81,13 @@ test.describe('Timeline', () => {
   })
 
   test('should display date range picker', async ({ page }) => {
-    const dateButtons = page.getByRole('button', { name: /today|7|30|오늘|일/i })
+    const dateButtons = page.getByRole('button', { name: dateRangeButtonName })
     await expect(dateButtons.first()).toBeVisible()
   })
 
   test('should toggle view mode', async ({ page }) => {
-    const gridButton = page.locator('button[title*="그리드"], button[title*="Grid"]').first()
-    const listButton = page.locator('button[title*="리스트"], button[title*="List"]').first()
+    const gridButton = page.getByTitle(timelineGridViewTitle).first()
+    const listButton = page.getByTitle(timelineListViewTitle).first()
 
     if (await gridButton.isVisible()) {
       await gridButton.click()
@@ -88,7 +99,7 @@ test.describe('Timeline', () => {
   })
 
   test('should show frame count', async ({ page }) => {
-    const captureCount = page.getByText(/\d+\s*(captures|개 캡처)/i)
+    const captureCount = page.getByText(capturesTextName)
     await expect(captureCount.first()).toBeVisible({ timeout: 10000 })
   })
 

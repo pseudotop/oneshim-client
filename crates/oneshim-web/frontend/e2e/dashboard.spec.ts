@@ -1,6 +1,24 @@
 import { test, expect, type Page } from '@playwright/test'
+import { i18nRegex } from './helpers/i18n'
 
-const dashboardHeadingName = /activity summary|활동 요약|dashboard preparing|대시보드 준비 중/i
+const dashboardHeadingName = i18nRegex('dashboard.title', [
+  'Dashboard preparing',
+  '대시보드 준비 중',
+])
+const activeTimeName = i18nRegex('dashboard.activeTime')
+const idleTimeName = i18nRegex('dashboard.idleTime')
+const capturesName = i18nRegex('dashboard.captures')
+const eventsName = i18nRegex('dashboard.events')
+const connectionStatusName = i18nRegex([
+  'dashboard.connecting',
+  'dashboard.connected',
+  'dashboard.disconnected',
+  'dashboard.error',
+])
+const cpuMemorySectionName = i18nRegex('dashboard.cpuMemory24h')
+const appUsageSectionName = i18nRegex('dashboard.appUsageTime')
+const activityHeatmapName = i18nRegex('dashboard.activityHeatmap')
+const systemStatusName = i18nRegex('dashboard.systemStatus')
 
 const mockedSummary = {
   date: '2026-02-23',
@@ -154,38 +172,34 @@ test.describe('Dashboard', () => {
   })
 
   test('should display stat cards', async ({ page }) => {
-    await expect(page.getByText(/active time|활동 시간/i)).toBeVisible()
-    await expect(page.getByText(/idle time|유휴 시간/i)).toBeVisible()
-    await expect(page.getByText(/captures|캡처 수/i).first()).toBeVisible()
-    await expect(page.getByText(/events|이벤트/i).first()).toBeVisible()
+    await expect(page.getByText(activeTimeName)).toBeVisible()
+    await expect(page.getByText(idleTimeName)).toBeVisible()
+    await expect(page.getByText(capturesName).first()).toBeVisible()
+    await expect(page.getByText(eventsName).first()).toBeVisible()
   })
 
   test('should display realtime monitoring section', async ({ page }) => {
-    await expect(
-      page.getByText(/connecting|연결 중|connected|연결됨|disconnected|연결 끊김|error|오류/i).first()
-    ).toBeVisible()
+    await expect(page.getByText(connectionStatusName).first()).toBeVisible()
   })
 
   test('should display CPU/Memory chart section', async ({ page }) => {
-    await expect(page.getByText(/CPU \/ Memory Usage \(24h\)|CPU \/ Memory 사용량 \(24시간\)/i)).toBeVisible()
+    await expect(page.getByText(cpuMemorySectionName)).toBeVisible()
   })
 
   test('should display app usage section', async ({ page }) => {
-    await expect(page.getByText(/app usage time|앱 사용 시간/i)).toBeVisible()
+    await expect(page.getByText(appUsageSectionName)).toBeVisible()
   })
 
   test('should display activity heatmap', async ({ page }) => {
-    await expect(page.getByText(/activity heatmap|활동 히트맵/i)).toBeVisible()
+    await expect(page.getByText(activityHeatmapName)).toBeVisible()
   })
 
   test('should display system status section', async ({ page }) => {
-    await expect(page.getByText(/system status|시스템 상태/i)).toBeVisible()
+    await expect(page.getByText(systemStatusName)).toBeVisible()
   })
 
   test('should show connection status indicator', async ({ page }) => {
-    const connectionStatus = page.getByText(
-      /connecting|연결 중|connected|연결됨|disconnected|연결 끊김|error|오류/i
-    )
+    const connectionStatus = page.getByText(connectionStatusName)
     await expect(connectionStatus.first()).toBeVisible({ timeout: 10000 })
   })
 })
