@@ -27,7 +27,11 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
     fn get_frame_file_path(&self, frame_id: i64) -> Result<Option<String>, CoreError>;
 
     fn get_storage_stats_summary(&self) -> Result<StorageStatsSummaryRecord, CoreError>;
-    fn list_frame_file_paths_in_range(&self, from: &str, to: &str) -> Result<Vec<String>, CoreError>;
+    fn list_frame_file_paths_in_range(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<String>, CoreError>;
     fn delete_data_in_range(
         &self,
         from: &str,
@@ -40,7 +44,8 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
     ) -> Result<DeletedRangeCounts, CoreError>;
     fn delete_all_data(&self) -> Result<DeletedRangeCounts, CoreError>;
 
-    fn count_search_frames(&self, count_sql: &str, pattern: Option<&str>) -> Result<u64, CoreError>;
+    fn count_search_frames(&self, count_sql: &str, pattern: Option<&str>)
+        -> Result<u64, CoreError>;
     fn search_frames_with_sql(
         &self,
         select_sql: &str,
@@ -69,12 +74,19 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
     fn add_tag_to_frame(&self, frame_id: i64, tag_id: i64) -> Result<(), CoreError>;
     fn remove_tag_from_frame(&self, frame_id: i64, tag_id: i64) -> Result<bool, CoreError>;
 
-    fn get_app_durations_by_date(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, CoreError>;
+    fn get_app_durations_by_date(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<(String, i64)>, CoreError>;
     fn get_daily_active_secs(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, CoreError>;
     fn list_session_stats(&self, limit: usize) -> Result<Vec<SessionStats>, CoreError>;
 
     fn get_or_create_focus_metrics(&self, date: &str) -> Result<FocusMetrics, CoreError>;
-    fn get_recent_focus_metrics(&self, days: usize) -> Result<Vec<(String, FocusMetrics)>, CoreError>;
+    fn get_recent_focus_metrics(
+        &self,
+        days: usize,
+    ) -> Result<Vec<(String, FocusMetrics)>, CoreError>;
     fn list_work_sessions(
         &self,
         from: &str,
@@ -98,9 +110,15 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
 
     fn list_backup_tags(&self) -> Result<Vec<TagRecord>, CoreError>;
     fn list_backup_frame_tags(&self) -> Result<Vec<FrameTagLinkRecord>, CoreError>;
-    fn list_event_exports(&self, from: &str, to: &str) -> Result<Vec<EventExportRecord>, CoreError>;
-    fn list_metric_exports(&self, from: &str, to: &str) -> Result<Vec<MetricExportRecord>, CoreError>;
-    fn list_frame_exports(&self, from: &str, to: &str) -> Result<Vec<FrameExportRecord>, CoreError>;
+    fn list_event_exports(&self, from: &str, to: &str)
+        -> Result<Vec<EventExportRecord>, CoreError>;
+    fn list_metric_exports(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<MetricExportRecord>, CoreError>;
+    fn list_frame_exports(&self, from: &str, to: &str)
+        -> Result<Vec<FrameExportRecord>, CoreError>;
     fn list_hourly_metrics_since(&self, from: &str) -> Result<Vec<HourlyMetricsRecord>, CoreError>;
     fn upsert_backup_tag(
         &self,
@@ -164,7 +182,11 @@ impl WebStorage for SqliteStorage {
         SqliteStorage::get_storage_stats_summary(self)
     }
 
-    fn list_frame_file_paths_in_range(&self, from: &str, to: &str) -> Result<Vec<String>, CoreError> {
+    fn list_frame_file_paths_in_range(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<String>, CoreError> {
         SqliteStorage::list_frame_file_paths_in_range(self, from, to)
     }
 
@@ -194,7 +216,11 @@ impl WebStorage for SqliteStorage {
         SqliteStorage::delete_all_data(self)
     }
 
-    fn count_search_frames(&self, count_sql: &str, pattern: Option<&str>) -> Result<u64, CoreError> {
+    fn count_search_frames(
+        &self,
+        count_sql: &str,
+        pattern: Option<&str>,
+    ) -> Result<u64, CoreError> {
         SqliteStorage::count_search_frames(self, count_sql, pattern)
     }
 
@@ -260,7 +286,11 @@ impl WebStorage for SqliteStorage {
         SqliteStorage::remove_tag_from_frame(self, frame_id, tag_id)
     }
 
-    fn get_app_durations_by_date(&self, from: &str, to: &str) -> Result<Vec<(String, i64)>, CoreError> {
+    fn get_app_durations_by_date(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<(String, i64)>, CoreError> {
         SqliteStorage::get_app_durations_by_date(self, from, to)
     }
 
@@ -276,7 +306,10 @@ impl WebStorage for SqliteStorage {
         SqliteStorage::get_or_create_focus_metrics(self, date)
     }
 
-    fn get_recent_focus_metrics(&self, days: usize) -> Result<Vec<(String, FocusMetrics)>, CoreError> {
+    fn get_recent_focus_metrics(
+        &self,
+        days: usize,
+    ) -> Result<Vec<(String, FocusMetrics)>, CoreError> {
         SqliteStorage::get_recent_focus_metrics(self, days)
     }
 
@@ -326,15 +359,27 @@ impl WebStorage for SqliteStorage {
         SqliteStorage::list_backup_frame_tags(self)
     }
 
-    fn list_event_exports(&self, from: &str, to: &str) -> Result<Vec<EventExportRecord>, CoreError> {
+    fn list_event_exports(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<EventExportRecord>, CoreError> {
         SqliteStorage::list_event_exports(self, from, to)
     }
 
-    fn list_metric_exports(&self, from: &str, to: &str) -> Result<Vec<MetricExportRecord>, CoreError> {
+    fn list_metric_exports(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<MetricExportRecord>, CoreError> {
         SqliteStorage::list_metric_exports(self, from, to)
     }
 
-    fn list_frame_exports(&self, from: &str, to: &str) -> Result<Vec<FrameExportRecord>, CoreError> {
+    fn list_frame_exports(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<Vec<FrameExportRecord>, CoreError> {
         SqliteStorage::list_frame_exports(self, from, to)
     }
 

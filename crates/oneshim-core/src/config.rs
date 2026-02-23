@@ -332,6 +332,9 @@ impl Default for SandboxConfig {
 /// AI 제공자 설정 — OCR/LLM 제공자 타입 및 외부 API 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderConfig {
+    /// AI 접근 모드 (로컬/Provider API/CLI 구독/플랫폼 연동)
+    #[serde(default)]
+    pub access_mode: AiAccessMode,
     /// OCR 제공자 타입
     #[serde(default)]
     pub ocr_provider: OcrProviderType,
@@ -355,6 +358,7 @@ pub struct AiProviderConfig {
 impl Default for AiProviderConfig {
     fn default() -> Self {
         Self {
+            access_mode: AiAccessMode::default(),
             ocr_provider: OcrProviderType::default(),
             llm_provider: LlmProviderType::default(),
             ocr_api: None,
@@ -370,11 +374,26 @@ impl AiProviderConfig {
     ///
     /// Remote 제공자가 선택된 경우 `endpoint`와 `api_key`가 모두 필요하다.
     pub fn validate_selected_remote_endpoints(&self) -> Result<(), CoreError> {
-        if self.ocr_provider == OcrProviderType::Remote {
-            validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;
-        }
-        if self.llm_provider == LlmProviderType::Remote {
-            validate_remote_endpoint(self.llm_api.as_ref(), "llm_api")?;
+        match self.access_mode {
+            AiAccessMode::ProviderApiKey | AiAccessMode::PlatformConnected => {
+                if self.ocr_provider == OcrProviderType::Remote {
+                    validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;
+                }
+                if self.llm_provider == LlmProviderType::Remote {
+                    validate_remote_endpoint(self.llm_api.as_ref(), "llm_api")?;
+                }
+            }
+            AiAccessMode::LocalModel => {}
+            AiAccessMode::ProviderSubscriptionCli => {
+                if self.ocr_provider == OcrProviderType::Remote
+                    || self.llm_provider == LlmProviderType::Remote
+                {
+                    return Err(CoreError::Config(
+                        "Provider 구독 계정(CLI) 모드에서는 Remote OCR/LLM 대신 Local 제공자를 선택하세요."
+                            .to_string(),
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -437,6 +456,23 @@ pub enum LlmProviderType {
     Remote,
 }
 
+/// AI 접근 모드.
+///
+/// 수집된 데이터를 어떤 채널로 활용할지 명시한다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AiAccessMode {
+    /// API Key를 사용하는 Provider API 연동 (기본값)
+    #[default]
+    ProviderApiKey,
+    /// 로컬 모델/룰 기반 모드 (예: Ollama, 로컬 추론)
+    LocalModel,
+    /// Provider 구독 계정 기반 CLI 확장 연동
+    ProviderSubscriptionCli,
+    /// 플랫폼 서버 연동 모드 (가공/암묵지 기반 인사이트)
+    PlatformConnected,
+}
+
 // ============================================================
 // AI API 제공자 타입
 // ============================================================
@@ -452,6 +488,8 @@ pub enum AiProviderType {
     Anthropic,
     /// OpenAI 호환 API — `Authorization: Bearer` 헤더 + `/v1/chat/completions` 형식
     OpenAi,
+    /// Google API (Gemini/Vision 등)
+    Google,
     /// 기타 제공자 — 커스텀 헤더 없음, 범용 응답 파싱 사용
     #[default]
     Generic,
@@ -1140,5 +1178,26 @@ mod tests {
 
         let result = config.validate_selected_remote_endpoints();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ai_provider_validation_rejects_remote_in_cli_subscription_mode() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Local,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.example.com/ocr".to_string(),
+                api_key: "ocr-key".to_string(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::Generic,
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("CLI"));
     }
 }

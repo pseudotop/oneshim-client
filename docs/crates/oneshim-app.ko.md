@@ -17,12 +17,26 @@
 ```
 oneshim-app/src/
 ├── main.rs       # 진입점, DI 와이어링
+├── gui_runner.rs # GUI + Agent 통합 런타임
+├── automation_runtime.rs # AI 제공자 런타임 와이어링
+├── provider_adapters.rs  # AI 제공자 어댑터 해석
+├── cli_subscription_bridge.rs # CLI 구독 브리지 아티팩트 동기화
 ├── scheduler.rs  # 스케줄러 - 주기적 태스크
 ├── lifecycle.rs  # 라이프사이클 - 시그널 처리
 ├── event_bus.rs  # 내부 이벤트 라우팅
 ├── autostart.rs  # 자동 시작 설정
 └── updater.rs    # 자동 업데이트
 ```
+
+## CLI 구독 브리지
+
+`ai_provider.access_mode`가 `ProviderSubscriptionCli`일 때, ONESHIM은 외부 AI CLI용 브리지 커맨드 파일을 동기화할 수 있다.
+
+- 자동 설치 활성화: `ONESHIM_CLI_BRIDGE_AUTOINSTALL=1`
+- 사용자 스코프 디렉토리(`~/.codex`, `~/.claude`, `~/.gemini`) 포함: `ONESHIM_CLI_BRIDGE_INCLUDE_USER_SCOPE=1`
+- 생성되는 브리지 파일의 기본 컨텍스트 경로: `<data_dir>/exports/oneshim-context.json`
+
+참고: `docs/architecture/cli-subscription-bridge-research.ko.md`
 
 ## 주요 컴포넌트
 

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
 use oneshim_automation::intent_planner::{IntentPlanner, LlmIntentPlanner};
 use oneshim_automation::intent_resolver::{IntentExecutor, IntentResolver};
-use oneshim_core::config::AiProviderConfig;
+use oneshim_core::config::{AiAccessMode, AiProviderConfig};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
 use oneshim_core::ports::element_finder::ElementFinder;
@@ -22,6 +22,7 @@ use crate::provider_adapters::{resolve_ai_provider_adapters, ProviderSource};
 pub struct AutomationRuntime {
     pub intent_executor: Arc<IntentExecutor>,
     pub intent_planner: Arc<dyn IntentPlanner>,
+    pub access_mode: AiAccessMode,
     pub ocr_provider_name: String,
     pub llm_provider_name: String,
     pub ocr_source: ProviderSource,
@@ -63,6 +64,7 @@ pub fn build_automation_runtime(
     Ok(AutomationRuntime {
         intent_executor,
         intent_planner,
+        access_mode: ai_config.access_mode,
         ocr_provider_name,
         llm_provider_name,
         ocr_source: adapters.ocr_source,
@@ -132,7 +134,8 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use oneshim_core::config::{
-        AiProviderConfig, AiProviderType, ExternalApiEndpoint, LlmProviderType, OcrProviderType,
+        AiAccessMode, AiProviderConfig, AiProviderType, ExternalApiEndpoint, LlmProviderType,
+        OcrProviderType,
     };
     use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
     use std::path::PathBuf;
@@ -226,6 +229,7 @@ mod tests {
         };
 
         let runtime = build_automation_runtime(&config, None).unwrap();
+        assert_eq!(runtime.access_mode, AiAccessMode::ProviderApiKey);
         assert_eq!(runtime.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(runtime.llm_source, ProviderSource::LocalFallback);
     }

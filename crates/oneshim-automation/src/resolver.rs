@@ -106,6 +106,7 @@ mod tests {
             sandbox_profile: None,
             allowed_paths: vec![],
             allow_network: None,
+            require_signed_token: false,
         }
     }
 

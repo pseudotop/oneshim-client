@@ -130,7 +130,8 @@ impl UnifiedClient {
     where
         F: for<'a> FnOnce(
             &'a mut GrpcContextClient,
-        ) -> Pin<Box<dyn Future<Output = Result<R, CoreError>> + Send + 'a>>,
+        )
+            -> Pin<Box<dyn Future<Output = Result<R, CoreError>> + Send + 'a>>,
     {
         self.ensure_grpc_context().await?;
         let mut guard = self.grpc_context.write().await;

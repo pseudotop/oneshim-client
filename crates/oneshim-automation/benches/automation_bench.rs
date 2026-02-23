@@ -33,6 +33,7 @@ fn create_policies(n: usize) -> Vec<ExecutionPolicy> {
             sandbox_profile: None,
             allowed_paths: vec![],
             allow_network: None,
+            require_signed_token: false,
         })
         .collect()
 }
@@ -177,6 +178,7 @@ fn bench_policy_validate_args(c: &mut Criterion) {
         sandbox_profile: None,
         allowed_paths: vec![],
         allow_network: None,
+        require_signed_token: false,
     };
 
     // 매칭 성공 케이스

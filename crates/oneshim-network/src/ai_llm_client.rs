@@ -187,6 +187,39 @@ impl RemoteLlmProvider {
         serde_json::from_str(json_str)
             .map_err(|e| CoreError::Internal(format!("OpenAI 응답 파싱 실패: {}", e)))
     }
+
+    /// Google Gemini API 응답 파싱
+    fn parse_google_response(body: &str) -> Result<InterpretedAction, CoreError> {
+        let response: serde_json::Value = serde_json::from_str(body)
+            .map_err(|e| CoreError::Internal(format!("LLM 응답 JSON 파싱 실패: {}", e)))?;
+
+        let text = response
+            .get("candidates")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|candidate| candidate.get("content"))
+            .and_then(|content| content.get("parts"))
+            .and_then(|parts| parts.as_array())
+            .and_then(|parts| parts.first())
+            .and_then(|part| part.get("text"))
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| {
+                CoreError::Internal("Google 응답에서 텍스트를 찾을 수 없음".to_string())
+            })?;
+
+        let json_str = if let Some(start) = text.find('{') {
+            if let Some(end) = text.rfind('}') {
+                &text[start..=end]
+            } else {
+                text
+            }
+        } else {
+            text
+        };
+
+        serde_json::from_str(json_str)
+            .map_err(|e| CoreError::Internal(format!("Google 응답 파싱 실패: {}", e)))
+    }
 }
 
 #[async_trait]
@@ -206,10 +239,8 @@ impl LlmProvider for RemoteLlmProvider {
         );
 
         // 제공자 타입에 따라 요청 형식 결정
-        let is_anthropic = self.provider_type == AiProviderType::Anthropic;
-
-        let request_body = if is_anthropic {
-            serde_json::json!({
+        let request_body = match self.provider_type {
+            AiProviderType::Anthropic => serde_json::json!({
                 "model": self.model,
                 "max_tokens": 512,
                 "system": Self::system_prompt(),
@@ -217,23 +248,36 @@ impl LlmProvider for RemoteLlmProvider {
                     "role": "user",
                     "content": user_prompt
                 }]
-            })
-        } else {
-            // OpenAI 호환 형식
-            serde_json::json!({
-                "model": self.model,
-                "max_tokens": 512,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": Self::system_prompt()
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt
-                    }
-                ]
-            })
+            }),
+            AiProviderType::Google => serde_json::json!({
+                "contents": [{
+                    "role": "user",
+                    "parts": [{"text": user_prompt}]
+                }],
+                "system_instruction": {
+                    "parts": [{"text": Self::system_prompt()}]
+                },
+                "generationConfig": {
+                    "maxOutputTokens": 512
+                }
+            }),
+            AiProviderType::OpenAi | AiProviderType::Generic => {
+                // OpenAI 호환 형식
+                serde_json::json!({
+                    "model": self.model,
+                    "max_tokens": 512,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": Self::system_prompt()
+                        },
+                        {
+                            "role": "user",
+                            "content": user_prompt
+                        }
+                    ]
+                })
+            }
         };
 
         // API 호출
@@ -243,12 +287,18 @@ impl LlmProvider for RemoteLlmProvider {
             .header("Content-Type", "application/json")
             .json(&request_body);
 
-        if is_anthropic {
-            builder = builder
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", "2023-06-01");
-        } else {
-            builder = builder.header("Authorization", format!("Bearer {}", self.api_key));
+        match self.provider_type {
+            AiProviderType::Anthropic => {
+                builder = builder
+                    .header("x-api-key", &self.api_key)
+                    .header("anthropic-version", "2023-06-01");
+            }
+            AiProviderType::Google => {
+                builder = builder.header("x-goog-api-key", &self.api_key);
+            }
+            AiProviderType::OpenAi | AiProviderType::Generic => {
+                builder = builder.header("Authorization", format!("Bearer {}", self.api_key));
+            }
         }
 
         let response = builder
@@ -272,10 +322,10 @@ impl LlmProvider for RemoteLlmProvider {
         }
 
         // 응답 파싱
-        let action = if is_anthropic {
-            Self::parse_claude_response(&body)?
-        } else {
-            Self::parse_openai_response(&body)?
+        let action = match self.provider_type {
+            AiProviderType::Anthropic => Self::parse_claude_response(&body)?,
+            AiProviderType::Google => Self::parse_google_response(&body)?,
+            AiProviderType::OpenAi | AiProviderType::Generic => Self::parse_openai_response(&body)?,
         };
 
         debug!(

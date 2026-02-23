@@ -13,7 +13,8 @@
 
 ```
 oneshim-automation/src/
-├── lib.rs              # 크레이트 루트 (9개 모듈)
+├── lib.rs              # 크레이트 루트 (10개 모듈)
+├── action_dispatcher.rs # AutomationActionDispatcher — 액션 실행 포트
 ├── audit.rs            # AuditLogger — 감사 로깅 (14개 메서드)
 ├── controller.rs       # AutomationController — 정책 검증 + 명령 실행
 ├── input_driver.rs     # NoOpInputDriver — 테스트/기본 입력 드라이버
@@ -38,10 +39,10 @@ oneshim-automation/src/
 
 - `AutomationController::new(sandbox, sandbox_config)` — 생성자 (`Arc<dyn Sandbox>` + `SandboxConfig`)
 - `set_intent_executor(executor)` — IntentExecutor 주입
+- `set_action_dispatcher(dispatcher)` — 액션 실행 어댑터 교체
 - `execute_command(command)` — 정책 검증 → 감사 로그 → 액션 디스패치 → 결과 반환
 - `execute_intent(intent, config)` — 고수준 의도 실행 (IntentExecutor 위임)
 - `resolve_for_command(command)` — 정책 기반 동적 SandboxConfig 결정
-- `dispatch_action_with_config(action, config)` — 타임아웃 적용 액션 실행
 - 기본 비활성 (`enabled: false`), `set_enabled()` 로 활성화
 - `tokio::time::timeout` 기반 실행 타임아웃
 
@@ -53,11 +54,14 @@ oneshim-automation/src/
   - `sandbox_profile: Option<SandboxProfile>` — 서버 오버라이드
   - `allowed_paths: Vec<String>` — 정책별 허용 경로
   - `allow_network: Option<bool>` — 네트워크 오버라이드
+  - `require_signed_token: bool` — 토큰 서명 필수 여부
 - `AuditLevel` enum: None, Basic, Detailed, Full
 - `PolicyCache` — 정책 목록 + TTL 캐시 (기본 5분)
-- `validate_command()` — 캐시 유효성 + 토큰 비어있지 않음 검증
+- `issue_command_token(policy_id)` — 정책 계약에 맞는 토큰 발급
+- `validate_command()` — 토큰 형식 + nonce + 캐시 TTL + 정책 매칭 + 재사용 방지 + 선택적 서명 검증
 - `validate_args()` — glob 패턴 기반 인자 검증 (`*` 와일드카드)
 - `is_process_allowed()` — HashSet 기반 빠른 프로세스 허가 조회
+- 토큰 계약: `docs/contracts/policy-token-contract.md`
 
 ### `audit.rs` — AuditLogger
 
@@ -199,6 +203,8 @@ oneshim-automation → oneshim-core (CoreError, 모델, 포트 trait)
 ## 보안
 
 - **정책 토큰 필수**: 모든 자동화 명령은 서버 발급 정책 토큰 필요
+- **서명 토큰 지원**: 서명 정책은 SHA-256 서명(`ONESHIM_POLICY_TOKEN_SIGNING_SECRET`) 필수
+- **재사용 방지**: 정책 캐시 TTL 내 토큰 1회성 보장
 - **바이너리 해시 검증**: `ExecutionPolicy.process_hash`로 변조 감지
 - **인자 패턴 제한**: glob 패턴으로 허용 인자 제한
 - **OS 네이티브 샌드박스**: 커널 수준 격리 (seccomp, sandbox-exec, Job Objects)

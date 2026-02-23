@@ -202,7 +202,7 @@ impl Scheduler {
     }
 
     /// 모든 루프 시작
-    pub async fn run(&self, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) {
+    pub async fn run(&self, shutdown_rx: tokio::sync::watch::Receiver<bool>) {
         info!(
             "스케줄러 시작: 모니터링={}ms, 메트릭={}ms, 프로세스={}ms, 동기화={}ms, 하트비트={}ms, 집계={}ms",
             self.config.poll_interval.as_millis(),
@@ -212,28 +212,18 @@ impl Scheduler {
             self.config.heartbeat_interval.as_millis(),
             self.config.aggregation_interval.as_millis(),
         );
+        self.run_scheduler_loops(shutdown_rx).await;
+    }
 
-        let poll = self.config.poll_interval;
-        let metrics_interval = self.config.metrics_interval;
-        let process_interval = self.config.process_interval;
-        let detailed_process_interval = self.config.detailed_process_interval;
-        let input_activity_interval = self.config.input_activity_interval;
-        let sync = self.config.sync_interval;
-        let heartbeat = self.config.heartbeat_interval;
-        let aggregation = self.config.aggregation_interval;
-        let session_id = self.config.session_id.clone();
-        let offline_mode = self.config.offline_mode;
-        let idle_threshold = self.config.idle_threshold_secs;
-
-        // 세션 초기화
-        self.initialize_session(&session_id).await;
-
-        // 공유 입력 활동 수집기 (루프 1, 9에서 사용)
-        let shared_input_collector = Arc::new(InputActivityCollector::new());
-
-        // ============================================================
-        // 1. 모니터링 루프 (1초)
-        // ============================================================
+    fn spawn_monitor_loop(
+        &self,
+        poll: Duration,
+        idle_threshold: u64,
+        session_id: String,
+        offline_mode: bool,
+        input_collector: Arc<InputActivityCollector>,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let act_mon = self.activity_monitor.clone();
         let trigger = self.capture_trigger.clone();
         let processor = self.frame_processor.clone();
@@ -241,14 +231,13 @@ impl Scheduler {
         let sqlite1 = self.sqlite_storage.clone();
         let frame_storage1 = self.frame_storage.clone();
         let uploader1 = self.batch_uploader.clone();
-        let mut shutdown1 = shutdown_rx.clone();
         let offline1 = offline_mode;
-        let session1 = session_id.clone();
+        let session1 = session_id;
         let notif1 = self.notification_manager.clone();
         let focus1 = self.focus_analyzer.clone();
-        let input_collector1 = shared_input_collector.clone();
+        let input_collector1 = input_collector;
 
-        let monitor_task = tokio::spawn(async move {
+        tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
             let mut prev_idle_secs: u64 = 0;
             let mut interval = tokio::time::interval(poll);
@@ -423,24 +412,26 @@ impl Scheduler {
                             }
                         }
                     }
-                    _ = shutdown1.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("모니터링 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
 
-        // ============================================================
-        // 2. 메트릭 루프 (5초)
-        // ============================================================
+    fn spawn_metrics_loop(
+        &self,
+        metrics_interval: Duration,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let sys_mon = self.system_monitor.clone();
         let sqlite2 = self.sqlite_storage.clone();
         let event_tx2 = self.event_tx.clone();
-        let mut shutdown2 = shutdown_rx.clone();
         let notif2 = self.notification_manager.clone();
 
-        let metrics_task = tokio::spawn(async move {
+        tokio::spawn(async move {
             let mut interval = tokio::time::interval(metrics_interval);
 
             loop {
@@ -482,22 +473,24 @@ impl Scheduler {
                             }
                         }
                     }
-                    _ = shutdown2.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("메트릭 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
 
-        // ============================================================
-        // 3. 프로세스 스냅샷 루프 (10초)
-        // ============================================================
+    fn spawn_process_loop(
+        &self,
+        process_interval: Duration,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let proc_mon = self.process_monitor.clone();
         let sqlite3 = self.sqlite_storage.clone();
-        let mut shutdown3 = shutdown_rx.clone();
 
-        let process_task = tokio::spawn(async move {
+        tokio::spawn(async move {
             let mut interval = tokio::time::interval(process_interval);
 
             loop {
@@ -523,25 +516,28 @@ impl Scheduler {
                             }
                         }
                     }
-                    _ = shutdown3.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("프로세스 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
 
-        // ============================================================
-        // 4. 동기화 루프 (10초)
-        // ============================================================
+    fn spawn_sync_loop(
+        &self,
+        sync_interval: Duration,
+        offline_mode: bool,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let uploader4 = self.batch_uploader.clone();
         let storage4 = self.storage.clone();
         let frame_storage4 = self.frame_storage.clone();
-        let mut shutdown4 = shutdown_rx.clone();
         let offline4 = offline_mode;
 
-        let sync_task = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(sync);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(sync_interval);
 
             loop {
                 tokio::select! {
@@ -575,28 +571,32 @@ impl Scheduler {
                             }
                         }
                     }
-                    _ = shutdown4.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("동기화 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
 
-        // ============================================================
-        // 5. 하트비트 루프 (30초, 온라인 모드에서만)
-        // ============================================================
+    fn spawn_heartbeat_loop(
+        &self,
+        heartbeat_interval: Duration,
+        session_id: String,
+        offline_mode: bool,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let api = self.api_client.clone();
-        let sid = session_id.clone();
-        let mut shutdown5 = shutdown_rx.clone();
+        let sid = session_id;
 
-        let heartbeat_task = tokio::spawn(async move {
+        tokio::spawn(async move {
             if offline_mode {
-                let _ = shutdown5.changed().await;
+                let _ = shutdown_rx.changed().await;
                 return;
             }
 
-            let mut interval = tokio::time::interval(heartbeat);
+            let mut interval = tokio::time::interval(heartbeat_interval);
 
             loop {
                 tokio::select! {
@@ -605,22 +605,24 @@ impl Scheduler {
                             warn!("하트비트 실패: {e}");
                         }
                     }
-                    _ = shutdown5.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("하트비트 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
 
-        // ============================================================
-        // 6. 집계 루프 (1시간)
-        // ============================================================
+    fn spawn_aggregation_loop(
+        &self,
+        aggregation_interval: Duration,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let sqlite6 = self.sqlite_storage.clone();
-        let mut shutdown6 = shutdown_rx.clone();
 
-        let aggregation_task = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(aggregation);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(aggregation_interval);
 
             loop {
                 tokio::select! {
@@ -653,26 +655,27 @@ impl Scheduler {
 
                         debug!("집계 및 정리 완료");
                     }
-                    _ = shutdown6.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("집계 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
 
-        // ============================================================
-        // 7. 알림 루프 (1분) - 장시간 작업 체크
-        // ============================================================
+    fn spawn_notification_loop(
+        &self,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let notif7 = self.notification_manager.clone();
-        let mut shutdown7 = shutdown_rx.clone();
 
-        let notification_task = tokio::spawn(async move {
+        tokio::spawn(async move {
             // 알림 관리자가 없으면 바로 종료
             let notif = match notif7 {
                 Some(n) => n,
                 None => {
-                    let _ = shutdown7.changed().await;
+                    let _ = shutdown_rx.changed().await;
                     return;
                 }
             };
@@ -685,26 +688,27 @@ impl Scheduler {
                         // 장시간 작업 알림 체크
                         notif.check_long_session().await;
                     }
-                    _ = shutdown7.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("알림 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
 
-        // ============================================================
-        // 8. 집중도 분석 루프 (1분) - Edge Intelligence
-        // ============================================================
+    fn spawn_focus_loop(
+        &self,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let focus8 = self.focus_analyzer.clone();
-        let mut shutdown8 = shutdown_rx.clone();
 
-        let focus_task = tokio::spawn(async move {
+        tokio::spawn(async move {
             // 집중도 분석기가 없으면 바로 종료
             let focus = match focus8 {
                 Some(f) => f,
                 None => {
-                    let _ = shutdown8.changed().await;
+                    let _ = shutdown_rx.changed().await;
                     return;
                 }
             };
@@ -717,25 +721,30 @@ impl Scheduler {
                         // 주기적 집중도 분석 (제안 생성 포함)
                         focus.analyze_periodic().await;
                     }
-                    _ = shutdown8.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("집중도 분석 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
 
-        // ============================================================
-        // 9. 서버 이벤트 수집 루프 (30초) - ProcessSnapshot + InputActivity
-        // ============================================================
+    fn spawn_event_snapshot_loop(
+        &self,
+        detailed_process_interval: Duration,
+        input_activity_interval: Duration,
+        offline_mode: bool,
+        input_collector: Arc<InputActivityCollector>,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         let proc_mon9 = self.process_monitor.clone();
         let storage9 = self.storage.clone();
         let uploader9 = self.batch_uploader.clone();
-        let input_collector9 = shared_input_collector.clone();
-        let mut shutdown9 = shutdown_rx.clone();
+        let input_collector9 = input_collector;
         let offline9 = offline_mode;
 
-        let event_snapshot_task = tokio::spawn(async move {
+        tokio::spawn(async move {
             // 상세 프로세스 및 입력 활동 수집 간격
             let mut process_interval = tokio::time::interval(detailed_process_interval);
             let mut input_interval = tokio::time::interval(input_activity_interval);
@@ -795,13 +804,96 @@ impl Scheduler {
                             }
                         }
                     }
-                    _ = shutdown9.changed() => {
+                    _ = shutdown_rx.changed() => {
                         info!("서버 이벤트 수집 루프 종료");
                         break;
                     }
                 }
             }
-        });
+        })
+    }
+
+    async fn run_scheduler_loops(&self, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) {
+        let poll = self.config.poll_interval;
+        let metrics_interval = self.config.metrics_interval;
+        let process_interval = self.config.process_interval;
+        let detailed_process_interval = self.config.detailed_process_interval;
+        let input_activity_interval = self.config.input_activity_interval;
+        let sync = self.config.sync_interval;
+        let heartbeat = self.config.heartbeat_interval;
+        let aggregation = self.config.aggregation_interval;
+        let session_id = self.config.session_id.clone();
+        let offline_mode = self.config.offline_mode;
+        let idle_threshold = self.config.idle_threshold_secs;
+
+        // 세션 초기화
+        self.initialize_session(&session_id).await;
+
+        // 공유 입력 활동 수집기 (루프 1, 9에서 사용)
+        let shared_input_collector = Arc::new(InputActivityCollector::new());
+
+        // ============================================================
+        // 1. 모니터링 루프 (1초)
+        // ============================================================
+        let monitor_task = self.spawn_monitor_loop(
+            poll,
+            idle_threshold,
+            session_id.clone(),
+            offline_mode,
+            shared_input_collector.clone(),
+            shutdown_rx.clone(),
+        );
+
+        // ============================================================
+        // 2. 메트릭 루프 (5초)
+        // ============================================================
+        let metrics_task = self.spawn_metrics_loop(metrics_interval, shutdown_rx.clone());
+
+        // ============================================================
+        // 3. 프로세스 스냅샷 루프 (10초)
+        // ============================================================
+        let process_task = self.spawn_process_loop(process_interval, shutdown_rx.clone());
+
+        // ============================================================
+        // 4. 동기화 루프 (10초)
+        // ============================================================
+        let sync_task = self.spawn_sync_loop(sync, offline_mode, shutdown_rx.clone());
+
+        // ============================================================
+        // 5. 하트비트 루프 (30초, 온라인 모드에서만)
+        // ============================================================
+        let heartbeat_task = self.spawn_heartbeat_loop(
+            heartbeat,
+            session_id.clone(),
+            offline_mode,
+            shutdown_rx.clone(),
+        );
+
+        // ============================================================
+        // 6. 집계 루프 (1시간)
+        // ============================================================
+        let aggregation_task = self.spawn_aggregation_loop(aggregation, shutdown_rx.clone());
+
+        // ============================================================
+        // 7. 알림 루프 (1분) - 장시간 작업 체크
+        // ============================================================
+        let notification_task = self.spawn_notification_loop(shutdown_rx.clone());
+
+        // ============================================================
+        // 8. 집중도 분석 루프 (1분) - Edge Intelligence
+        // ============================================================
+        let focus_task = self.spawn_focus_loop(shutdown_rx.clone());
+
+        // ============================================================
+        // 9. 서버 이벤트 수집 루프 (30초) - ProcessSnapshot + InputActivity
+        // ============================================================
+        let event_snapshot_task = self.spawn_event_snapshot_loop(
+            detailed_process_interval,
+            input_activity_interval,
+            offline_mode,
+            shared_input_collector.clone(),
+            shutdown_rx.clone(),
+        );
 
         // ============================================================
         // 종료 대기

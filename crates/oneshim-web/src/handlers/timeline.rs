@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
+use crate::services::timeline_service;
 use crate::AppState;
 
 /// 세션 정보
@@ -121,74 +122,6 @@ impl TimelineQuery {
     }
 }
 
-/// 앱 이름 → 색상 매핑 (해시 기반)
-const APP_COLORS: &[&str] = &[
-    "#3B82F6", // blue
-    "#10B981", // green
-    "#F59E0B", // amber
-    "#EF4444", // red
-    "#8B5CF6", // purple
-    "#EC4899", // pink
-    "#06B6D4", // cyan
-    "#84CC16", // lime
-];
-
-/// 앱 이름을 해시하여 색상 반환
-fn app_to_color(app_name: &str) -> String {
-    let hash = app_name
-        .bytes()
-        .fold(0usize, |acc, b| acc.wrapping_add(b as usize));
-    APP_COLORS[hash % APP_COLORS.len()].to_string()
-}
-
-/// TimelineItem에서 타임스탬프 추출 (정렬용)
-fn get_timestamp(item: &TimelineItem) -> &str {
-    match item {
-        TimelineItem::Event { timestamp, .. } => timestamp,
-        TimelineItem::Frame { timestamp, .. } => timestamp,
-        TimelineItem::IdlePeriod { start, .. } => start,
-    }
-}
-
-/// 앱 세그먼트 계산 (연속적인 앱 사용 기간)
-fn calculate_app_segments(items: &[TimelineItem]) -> Vec<AppSegment> {
-    let mut segments: Vec<AppSegment> = Vec::new();
-
-    for item in items {
-        let (app_name, timestamp) = match item {
-            TimelineItem::Event {
-                app_name: Some(name),
-                timestamp,
-                ..
-            } => (name.clone(), timestamp.clone()),
-            TimelineItem::Frame {
-                app_name,
-                timestamp,
-                ..
-            } => (app_name.clone(), timestamp.clone()),
-            _ => continue,
-        };
-
-        // 마지막 세그먼트와 같은 앱이면 연장
-        if let Some(last) = segments.last_mut() {
-            if last.app_name == app_name {
-                last.end = timestamp;
-                continue;
-            }
-        }
-
-        // 새 세그먼트 시작
-        segments.push(AppSegment {
-            color: app_to_color(&app_name),
-            app_name,
-            start: timestamp.clone(),
-            end: timestamp,
-        });
-    }
-
-    segments
-}
-
 /// 통합 타임라인 조회
 ///
 /// GET /api/timeline?from=&to=&max_events=&max_frames=
@@ -201,121 +134,9 @@ pub async fn get_timeline(
     let max_events = params.max_events();
     let max_frames = params.max_frames();
 
-    // 1. 이벤트, 프레임, 유휴 기간 조회
-    let events = state.storage.get_events(from, to, max_events).await?;
-    let frames = state.storage.get_frames(from, to, max_frames)?;
-    let idle_periods = state.storage.get_idle_periods(from, to).await?;
-
-    // 2. TimelineItem으로 변환
-    let mut items: Vec<TimelineItem> = Vec::new();
-
-    // 이벤트 변환
-    for event in &events {
-        let (event_id, event_type, timestamp, app_name, window_title) = match event {
-            oneshim_core::models::event::Event::User(e) => (
-                e.event_id.to_string(),
-                format!("{:?}", e.event_type),
-                e.timestamp.to_rfc3339(),
-                Some(e.app_name.clone()),
-                Some(e.window_title.clone()),
-            ),
-            oneshim_core::models::event::Event::System(e) => (
-                e.event_id.to_string(),
-                format!("{:?}", e.event_type),
-                e.timestamp.to_rfc3339(),
-                None,
-                None,
-            ),
-            oneshim_core::models::event::Event::Context(e) => (
-                format!("ctx_{}", uuid::Uuid::new_v4()),
-                "ContextChange".to_string(),
-                e.timestamp.to_rfc3339(),
-                Some(e.app_name.clone()),
-                Some(e.window_title.clone()),
-            ),
-            oneshim_core::models::event::Event::Input(e) => (
-                format!("input_{}", uuid::Uuid::new_v4()),
-                "InputActivity".to_string(),
-                e.timestamp.to_rfc3339(),
-                Some(e.app_name.clone()),
-                None,
-            ),
-            oneshim_core::models::event::Event::Process(e) => (
-                format!("proc_{}", uuid::Uuid::new_v4()),
-                "ProcessSnapshot".to_string(),
-                e.timestamp.to_rfc3339(),
-                None,
-                None,
-            ),
-            oneshim_core::models::event::Event::Window(e) => (
-                format!("win_{}", uuid::Uuid::new_v4()),
-                format!("{:?}", e.event_type),
-                e.timestamp.to_rfc3339(),
-                Some(e.window.app_name.clone()),
-                Some(e.window.window_title.clone()),
-            ),
-        };
-
-        items.push(TimelineItem::Event {
-            id: event_id,
-            timestamp,
-            event_type,
-            app_name,
-            window_title,
-        });
-    }
-
-    // 프레임 변환
-    for frame in &frames {
-        items.push(TimelineItem::Frame {
-            id: frame.id,
-            timestamp: frame.timestamp.clone(),
-            app_name: frame.app_name.clone(),
-            window_title: frame.window_title.clone(),
-            importance: frame.importance,
-            image_url: format!("/api/frames/{}/image", frame.id),
-        });
-    }
-
-    // 유휴 기간 변환
-    for idle in &idle_periods {
-        if let Some(end_time) = idle.end_time {
-            if let Some(duration) = idle.duration_secs {
-                items.push(TimelineItem::IdlePeriod {
-                    start: idle.start_time.to_rfc3339(),
-                    end: end_time.to_rfc3339(),
-                    duration_secs: duration as i64,
-                });
-            }
-        }
-    }
-
-    // 3. 시간순 정렬
-    items.sort_by(|a, b| get_timestamp(a).cmp(get_timestamp(b)));
-
-    // 4. 앱 세그먼트 계산
-    let segments = calculate_app_segments(&items);
-
-    // 5. 세션 정보 계산
-    let total_idle_secs: i64 = idle_periods
-        .iter()
-        .filter_map(|i| i.duration_secs.map(|d| d as i64))
-        .sum();
-
-    let session = SessionInfo {
-        start: from.to_rfc3339(),
-        end: to.to_rfc3339(),
-        duration_secs: (to - from).num_seconds(),
-        total_events: events.len() as i64,
-        total_frames: frames.len() as i64,
-        total_idle_secs,
-    };
-
-    Ok(Json(TimelineResponse {
-        session,
-        items,
-        segments,
-    }))
+    Ok(Json(
+        timeline_service::build_timeline_response(&state, from, to, max_events, max_frames).await?,
+    ))
 }
 
 #[cfg(test)]
@@ -325,15 +146,21 @@ mod tests {
     #[test]
     fn app_to_color_is_consistent() {
         // 같은 앱 이름은 항상 같은 색상
-        assert_eq!(app_to_color("Chrome"), app_to_color("Chrome"));
-        assert_eq!(app_to_color("Code"), app_to_color("Code"));
+        assert_eq!(
+            timeline_service::app_to_color("Chrome"),
+            timeline_service::app_to_color("Chrome")
+        );
+        assert_eq!(
+            timeline_service::app_to_color("Code"),
+            timeline_service::app_to_color("Code")
+        );
     }
 
     #[test]
     fn app_to_color_varies() {
         // 다른 앱은 보통 다른 색상 (충돌 가능하지만 확률 낮음)
-        let chrome_color = app_to_color("Chrome");
-        let code_color = app_to_color("Code");
+        let chrome_color = timeline_service::app_to_color("Chrome");
+        let code_color = timeline_service::app_to_color("Code");
         // 색상이 유효한 hex인지 확인
         assert!(chrome_color.starts_with('#'));
         assert!(code_color.starts_with('#'));
@@ -447,7 +274,7 @@ mod tests {
             },
         ];
 
-        let segments = calculate_app_segments(&items);
+        let segments = timeline_service::calculate_app_segments(&items);
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[0].app_name, "Chrome");
         assert_eq!(segments[0].start, "2024-01-01T10:00:00Z");

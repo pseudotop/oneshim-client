@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use oneshim_automation::local_llm::LocalLlmProvider;
 use oneshim_core::config::{
-    AiProviderConfig, ExternalApiEndpoint, LlmProviderType, OcrProviderType,
+    AiAccessMode, AiProviderConfig, ExternalApiEndpoint, LlmProviderType, OcrProviderType,
 };
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::LlmProvider;
@@ -26,6 +26,10 @@ pub enum ProviderSource {
     Remote,
     /// 설정은 Remote였지만 오류로 Local 폴백
     LocalFallback,
+    /// Provider 구독 계정(CLI) 기반 모드
+    CliSubscription,
+    /// 자체 플랫폼 연동 모드
+    Platform,
 }
 
 impl ProviderSource {
@@ -34,6 +38,8 @@ impl ProviderSource {
             Self::Local => "local",
             Self::Remote => "remote",
             Self::LocalFallback => "local-fallback",
+            Self::CliSubscription => "cli-subscription",
+            Self::Platform => "platform",
         }
     }
 }
@@ -50,15 +56,49 @@ pub struct AiProviderAdapters {
 pub fn resolve_ai_provider_adapters(
     config: &AiProviderConfig,
 ) -> Result<AiProviderAdapters, CoreError> {
-    let (ocr, ocr_source) = resolve_ocr_provider(config)?;
-    let (llm, llm_source) = resolve_llm_provider(config)?;
+    match config.access_mode {
+        AiAccessMode::LocalModel => Ok(AiProviderAdapters {
+            ocr: Arc::new(LocalOcrProvider::new()),
+            llm: Arc::new(LocalLlmProvider::new()),
+            ocr_source: ProviderSource::Local,
+            llm_source: ProviderSource::Local,
+        }),
+        AiAccessMode::ProviderSubscriptionCli => Ok(AiProviderAdapters {
+            // CLI 확장 모듈 연동은 후속 구현 예정.
+            // 현 단계에서는 로컬 어댑터를 사용하고 출처를 명시한다.
+            ocr: Arc::new(LocalOcrProvider::new()),
+            llm: Arc::new(LocalLlmProvider::new()),
+            ocr_source: ProviderSource::CliSubscription,
+            llm_source: ProviderSource::CliSubscription,
+        }),
+        AiAccessMode::ProviderApiKey => {
+            let (ocr, ocr_source) = resolve_ocr_provider(config)?;
+            let (llm, llm_source) = resolve_llm_provider(config)?;
+            Ok(AiProviderAdapters {
+                ocr,
+                llm,
+                ocr_source,
+                llm_source,
+            })
+        }
+        AiAccessMode::PlatformConnected => {
+            let (ocr, ocr_source) = resolve_ocr_provider(config)?;
+            let (llm, llm_source) = resolve_llm_provider(config)?;
+            Ok(AiProviderAdapters {
+                ocr,
+                llm,
+                ocr_source: to_platform_source(ocr_source),
+                llm_source: to_platform_source(llm_source),
+            })
+        }
+    }
+}
 
-    Ok(AiProviderAdapters {
-        ocr,
-        llm,
-        ocr_source,
-        llm_source,
-    })
+fn to_platform_source(source: ProviderSource) -> ProviderSource {
+    match source {
+        ProviderSource::Remote => ProviderSource::Platform,
+        other => other,
+    }
 }
 
 fn resolve_ocr_provider(
@@ -147,7 +187,7 @@ fn resolve_remote_with_optional_fallback<T: ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
+    use oneshim_core::config::{AiAccessMode, AiProviderType, ExternalApiEndpoint};
 
     fn remote_endpoint() -> ExternalApiEndpoint {
         ExternalApiEndpoint {
@@ -227,5 +267,57 @@ mod tests {
             Err(CoreError::Config(msg)) => assert!(msg.contains("ocr_api")),
             Err(other) => panic!("예상치 못한 에러 타입: {other}"),
         }
+    }
+
+    #[test]
+    fn local_mode_forces_local_adapters_even_if_remote_is_requested() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::LocalModel,
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Remote,
+            ocr_api: Some(remote_endpoint()),
+            llm_api: Some(remote_endpoint()),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let adapters = resolve_ai_provider_adapters(&config).expect("로컬 모드 해석 실패");
+        assert_eq!(adapters.ocr_source, ProviderSource::Local);
+        assert_eq!(adapters.llm_source, ProviderSource::Local);
+        assert!(!adapters.ocr.is_external());
+        assert!(!adapters.llm.is_external());
+    }
+
+    #[test]
+    fn cli_subscription_mode_marks_cli_source() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            ..AiProviderConfig::default()
+        };
+
+        let adapters = resolve_ai_provider_adapters(&config).expect("CLI 모드 해석 실패");
+        assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
+        assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
+        assert!(!adapters.ocr.is_external());
+        assert!(!adapters.llm.is_external());
+    }
+
+    #[test]
+    fn platform_mode_marks_remote_as_platform_source() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::PlatformConnected,
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Remote,
+            ocr_api: Some(remote_endpoint()),
+            llm_api: Some(remote_endpoint()),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let adapters = resolve_ai_provider_adapters(&config).expect("플랫폼 모드 해석 실패");
+        assert_eq!(adapters.ocr_source, ProviderSource::Platform);
+        assert_eq!(adapters.llm_source, ProviderSource::Platform);
+        assert!(adapters.ocr.is_external());
+        assert!(adapters.llm.is_external());
     }
 }
