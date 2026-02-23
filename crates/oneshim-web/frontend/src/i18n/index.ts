@@ -16,15 +16,12 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'ko',
+    fallbackLng: 'en',
     supportedLngs: ['ko', 'en'],
 
     detection: {
-      // 언어 감지 순서: localStorage -> navigator
-      order: ['localStorage', 'navigator'],
-      // localStorage 키
+      order: ['localStorage'],
       lookupLocalStorage: 'oneshim-language',
-      // 감지된 언어 캐시
       caches: ['localStorage'],
     },
 
@@ -48,11 +45,11 @@ export const changeLanguage = (lng: 'ko' | 'en') => {
 // 현재 언어 가져오기
 export const getCurrentLanguage = (): 'ko' | 'en' => {
   const lng = i18n.language
-  return lng === 'en' ? 'en' : 'ko'
+  return lng === 'ko' ? 'ko' : 'en'
 }
 
 // 지원 언어 목록
 export const supportedLanguages = [
-  { code: 'ko', name: '한국어', flag: '🇰🇷' },
   { code: 'en', name: 'English', flag: '🇺🇸' },
+  { code: 'ko', name: '한국어', flag: '🇰🇷' },
 ] as const
