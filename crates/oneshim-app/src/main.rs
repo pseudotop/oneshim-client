@@ -561,7 +561,11 @@ async fn main() -> Result<()> {
 
     // ── 자동화 컨트롤러 (config.automation.enabled일 때만) ──
     let automation_controller = if config.automation.enabled {
-        let runtime = build_automation_runtime(&config.ai_provider, Some(frame_storage.clone()));
+        let runtime = build_automation_runtime(
+            &config.ai_provider,
+            config.privacy.pii_filter_level,
+            Some(frame_storage.clone()),
+        );
         match runtime {
             Ok(runtime) => {
                 info!(

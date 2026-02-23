@@ -350,6 +350,14 @@ pub struct AiProviderConfig {
     /// 외부 API 전송 전 데이터 정책
     #[serde(default)]
     pub external_data_policy: ExternalDataPolicy,
+    /// 외부 OCR 요청에서 원본 이미지를 그대로 전송할지 여부 (opt-out)
+    ///
+    /// 기본값은 false이며, true로 설정하면 전송 전 PII 블러를 생략한다.
+    #[serde(default)]
+    pub allow_unredacted_external_ocr: bool,
+    /// OCR calibration/validation 설정
+    #[serde(default)]
+    pub ocr_validation: OcrValidationConfig,
     /// 외부 API 실패 시 로컬 폴백
     #[serde(default = "default_true")]
     pub fallback_to_local: bool,
@@ -364,6 +372,8 @@ impl Default for AiProviderConfig {
             ocr_api: None,
             llm_api: None,
             external_data_policy: ExternalDataPolicy::default(),
+            allow_unredacted_external_ocr: false,
+            ocr_validation: OcrValidationConfig::default(),
             fallback_to_local: true,
         }
     }
@@ -374,6 +384,8 @@ impl AiProviderConfig {
     ///
     /// Remote 제공자가 선택된 경우 `endpoint`와 `api_key`가 모두 필요하다.
     pub fn validate_selected_remote_endpoints(&self) -> Result<(), CoreError> {
+        self.ocr_validation.validate()?;
+
         match self.access_mode {
             AiAccessMode::ProviderApiKey | AiAccessMode::PlatformConnected => {
                 if self.ocr_provider == OcrProviderType::Remote {
@@ -528,8 +540,66 @@ pub enum ExternalDataPolicy {
     AllowFiltered,
 }
 
+/// 외부 OCR 결과 calibration/validation 설정.
+///
+/// 원격 OCR 결과를 후처리해 빈 텍스트/비정상 confidence/기하 오류를 걸러낸다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OcrValidationConfig {
+    /// calibration/validation 단계 활성화
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// 허용 최소 confidence (0.0 ~ 1.0)
+    #[serde(default = "default_ocr_min_confidence")]
+    pub min_confidence: f64,
+    /// 전체 결과 중 유효하지 않은 항목 비율 상한 (0.0 ~ 1.0)
+    #[serde(default = "default_ocr_max_invalid_ratio")]
+    pub max_invalid_ratio: f64,
+}
+
+impl Default for OcrValidationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_confidence: default_ocr_min_confidence(),
+            max_invalid_ratio: default_ocr_max_invalid_ratio(),
+        }
+    }
+}
+
+impl OcrValidationConfig {
+    pub fn validate(&self) -> Result<(), CoreError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
+            return Err(CoreError::Config(
+                "`ai_provider.ocr_validation.min_confidence`는 0.0~1.0 범위여야 합니다."
+                    .to_string(),
+            ));
+        }
+
+        if !self.max_invalid_ratio.is_finite() || !(0.0..=1.0).contains(&self.max_invalid_ratio) {
+            return Err(CoreError::Config(
+                "`ai_provider.ocr_validation.max_invalid_ratio`는 0.0~1.0 범위여야 합니다."
+                    .to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
 fn default_api_timeout_secs() -> u64 {
     30
+}
+
+fn default_ocr_min_confidence() -> f64 {
+    0.25
+}
+
+fn default_ocr_max_invalid_ratio() -> f64 {
+    0.6
 }
 
 fn default_excluded_extensions() -> Vec<String> {
@@ -1199,5 +1269,40 @@ mod tests {
         let result = config.validate_selected_remote_endpoints();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("CLI"));
+    }
+
+    #[test]
+    fn ai_provider_validation_rejects_invalid_ocr_min_confidence() {
+        let config = AiProviderConfig {
+            ocr_validation: OcrValidationConfig {
+                enabled: true,
+                min_confidence: 1.5,
+                max_invalid_ratio: 0.5,
+            },
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("min_confidence"));
+    }
+
+    #[test]
+    fn ai_provider_validation_rejects_invalid_ocr_invalid_ratio() {
+        let config = AiProviderConfig {
+            ocr_validation: OcrValidationConfig {
+                enabled: true,
+                min_confidence: 0.3,
+                max_invalid_ratio: -0.1,
+            },
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("max_invalid_ratio"));
     }
 }

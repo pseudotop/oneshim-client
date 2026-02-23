@@ -260,7 +260,11 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
 
         // 자동화 컨트롤러 (config.automation.enabled일 때만)
         let automation_controller = if config.automation.enabled {
-            let runtime = build_automation_runtime(&config.ai_provider, automation_frame_storage);
+            let runtime = build_automation_runtime(
+                &config.ai_provider,
+                config.privacy.pii_filter_level,
+                automation_frame_storage,
+            );
             match runtime {
                 Ok(runtime) => {
                     info!(

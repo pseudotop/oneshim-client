@@ -247,12 +247,35 @@ pub struct AiProviderSettings {
     pub llm_provider: String,
     /// 외부 데이터 정책 ("PiiFilterStrict" | "PiiFilterStandard" | "AllowFiltered")
     pub external_data_policy: String,
+    /// 원격 OCR 전송 시 원본 이미지 전송 허용 (opt-out)
+    #[serde(default)]
+    pub allow_unredacted_external_ocr: bool,
+    /// OCR calibration/validation 설정
+    #[serde(default)]
+    pub ocr_validation: OcrValidationSettings,
     /// 로컬 폴백 활성화
     pub fallback_to_local: bool,
     /// OCR API 설정 (Remote 선택 시)
     pub ocr_api: Option<ExternalApiSettings>,
     /// LLM API 설정 (Remote 선택 시)
     pub llm_api: Option<ExternalApiSettings>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OcrValidationSettings {
+    pub enabled: bool,
+    pub min_confidence: f64,
+    pub max_invalid_ratio: f64,
+}
+
+impl Default for OcrValidationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_confidence: 0.25,
+            max_invalid_ratio: 0.6,
+        }
+    }
 }
 
 impl Default for AiProviderSettings {
@@ -262,6 +285,8 @@ impl Default for AiProviderSettings {
             ocr_provider: "Local".to_string(),
             llm_provider: "Local".to_string(),
             external_data_policy: "PiiFilterStrict".to_string(),
+            allow_unredacted_external_ocr: false,
+            ocr_validation: OcrValidationSettings::default(),
             fallback_to_local: true,
             ocr_api: None,
             llm_api: None,

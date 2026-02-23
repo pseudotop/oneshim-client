@@ -2,14 +2,14 @@
 
 use oneshim_core::config::{
     AiAccessMode, AiProviderType, AppConfig, ExternalApiEndpoint, ExternalDataPolicy,
-    LlmProviderType, OcrProviderType, PiiFilterLevel, SandboxProfile, Weekday,
+    LlmProviderType, OcrProviderType, OcrValidationConfig, PiiFilterLevel, SandboxProfile, Weekday,
 };
 
 use crate::error::ApiError;
 use crate::handlers::settings::{
     AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
-    MonitorControlSettings, NotificationSettings, PrivacySettings, SandboxSettings,
-    ScheduleSettings, StorageStats, TelemetrySettings, UpdateSettings,
+    MonitorControlSettings, NotificationSettings, OcrValidationSettings, PrivacySettings,
+    SandboxSettings, ScheduleSettings, StorageStats, TelemetrySettings, UpdateSettings,
 };
 use crate::AppState;
 
@@ -84,6 +84,28 @@ fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
     if settings.web_port < 1024 {
         return Err(ApiError::BadRequest(
             "포트는 1024 이상이어야 합니다".to_string(),
+        ));
+    }
+    if !settings
+        .ai_provider
+        .ocr_validation
+        .min_confidence
+        .is_finite()
+        || !(0.0..=1.0).contains(&settings.ai_provider.ocr_validation.min_confidence)
+    {
+        return Err(ApiError::BadRequest(
+            "ai_provider.ocr_validation.min_confidence는 0.0~1.0 범위여야 합니다".to_string(),
+        ));
+    }
+    if !settings
+        .ai_provider
+        .ocr_validation
+        .max_invalid_ratio
+        .is_finite()
+        || !(0.0..=1.0).contains(&settings.ai_provider.ocr_validation.max_invalid_ratio)
+    {
+        return Err(ApiError::BadRequest(
+            "ai_provider.ocr_validation.max_invalid_ratio는 0.0~1.0 범위여야 합니다".to_string(),
         ));
     }
     Ok(())
@@ -162,6 +184,12 @@ fn config_to_settings(config: &AppConfig) -> AppSettings {
             ocr_provider: format!("{:?}", config.ai_provider.ocr_provider),
             llm_provider: format!("{:?}", config.ai_provider.llm_provider),
             external_data_policy: format!("{:?}", config.ai_provider.external_data_policy),
+            allow_unredacted_external_ocr: config.ai_provider.allow_unredacted_external_ocr,
+            ocr_validation: OcrValidationSettings {
+                enabled: config.ai_provider.ocr_validation.enabled,
+                min_confidence: config.ai_provider.ocr_validation.min_confidence,
+                max_invalid_ratio: config.ai_provider.ocr_validation.max_invalid_ratio,
+            },
             fallback_to_local: config.ai_provider.fallback_to_local,
             ocr_api: config
                 .ai_provider
@@ -337,6 +365,13 @@ pub(crate) fn apply_settings_to_config(
     config.ai_provider.llm_provider = parse_llm_provider(&settings.ai_provider.llm_provider)?;
     config.ai_provider.external_data_policy =
         parse_external_data_policy(&settings.ai_provider.external_data_policy)?;
+    config.ai_provider.allow_unredacted_external_ocr =
+        settings.ai_provider.allow_unredacted_external_ocr;
+    config.ai_provider.ocr_validation = OcrValidationConfig {
+        enabled: settings.ai_provider.ocr_validation.enabled,
+        min_confidence: settings.ai_provider.ocr_validation.min_confidence,
+        max_invalid_ratio: settings.ai_provider.ocr_validation.max_invalid_ratio,
+    };
     config.ai_provider.fallback_to_local = settings.ai_provider.fallback_to_local;
 
     if let Some(ref ocr_settings) = settings.ai_provider.ocr_api {

@@ -23,6 +23,7 @@ import {
   type AutomationSettings,
   type SandboxSettings,
   type AiProviderSettings,
+  type OcrValidationSettings as OcrValidationSettingsType,
   type ExternalApiSettings,
   type ExportFormat,
   type ExportDataType,
@@ -202,11 +203,32 @@ export default function Settings() {
     }
   }
 
-  const handleAiProviderChange = (field: keyof AiProviderSettings, value: string | boolean | ExternalApiSettings | null) => {
+  const handleAiProviderChange = (
+    field: keyof AiProviderSettings,
+    value: string | boolean | ExternalApiSettings | OcrValidationSettingsType | null
+  ) => {
     if (formData) {
       setFormData({
         ...formData,
         ai_provider: { ...formData.ai_provider, [field]: value }
+      })
+    }
+  }
+
+  const handleOcrValidationChange = (
+    field: keyof OcrValidationSettingsType,
+    value: boolean | number
+  ) => {
+    if (formData) {
+      setFormData({
+        ...formData,
+        ai_provider: {
+          ...formData.ai_provider,
+          ocr_validation: {
+            ...formData.ai_provider.ocr_validation,
+            [field]: value,
+          },
+        },
       })
     }
   }
@@ -774,6 +796,53 @@ export default function Settings() {
                   <option value="PiiFilterStandard">PII Filter Standard</option>
                   <option value="AllowFiltered">Allow Filtered</option>
                 </select>
+              </div>
+
+              <ToggleRow
+                label={t('settingsAutomation.allowUnredactedExternalOcr')}
+                description={t('settingsAutomation.allowUnredactedExternalOcrDescription')}
+                checked={formData.ai_provider.allow_unredacted_external_ocr}
+                onChange={(v) => handleAiProviderChange('allow_unredacted_external_ocr', v)}
+              />
+
+              <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {t('settingsAutomation.ocrValidationTitle')}
+                </h4>
+                <ToggleRow
+                  label={t('settingsAutomation.ocrValidationEnabled')}
+                  description={t('settingsAutomation.ocrValidationEnabledDescription')}
+                  checked={formData.ai_provider.ocr_validation.enabled}
+                  onChange={(v) => handleOcrValidationChange('enabled', v)}
+                />
+                <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${!formData.ai_provider.ocr_validation.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <div>
+                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      {t('settingsAutomation.ocrMinConfidence')}
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={formData.ai_provider.ocr_validation.min_confidence}
+                      onChange={(e) => handleOcrValidationChange('min_confidence', Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      {t('settingsAutomation.ocrMaxInvalidRatio')}
+                    </label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={formData.ai_provider.ocr_validation.max_invalid_ratio}
+                      onChange={(e) => handleOcrValidationChange('max_invalid_ratio', Number(e.target.value))}
+                    />
+                  </div>
+                </div>
               </div>
 
               <ToggleRow

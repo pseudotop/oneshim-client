@@ -6,6 +6,20 @@
 
 use oneshim_core::config::PiiFilterLevel;
 
+/// PII 감지 마커.
+///
+/// OCR 세그먼트 감지 단계에서 "어떤 유형의 민감정보인지"를 식별하는 데 사용된다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PiiMarker {
+    Email,
+    Phone,
+    Card,
+    KoreanId,
+    ApiKey,
+    Ip,
+    UserPath,
+}
+
 // ============================================================
 // 레벨 기반 PII 필터
 // ============================================================
@@ -39,6 +53,48 @@ pub fn sanitize_title_with_level(title: &str, level: PiiFilterLevel) -> String {
 /// 기존 API 호환: Standard 레벨로 새니타이징
 pub fn sanitize_title(title: &str) -> String {
     sanitize_title_with_level(title, PiiFilterLevel::Standard)
+}
+
+/// 텍스트에서 PII 마커를 감지한다.
+///
+/// 내부적으로 sanitize 결과에 포함된 마커 토큰을 사용한다.
+/// (`[EMAIL]`, `[PHONE]` 등)
+pub fn detect_pii_markers_with_level(text: &str, level: PiiFilterLevel) -> Vec<PiiMarker> {
+    let masked = sanitize_title_with_level(text, level);
+    let mut markers = Vec::new();
+
+    if marker_inserted(text, &masked, "[EMAIL]") {
+        markers.push(PiiMarker::Email);
+    }
+    if marker_inserted(text, &masked, "[PHONE]") {
+        markers.push(PiiMarker::Phone);
+    }
+    if marker_inserted(text, &masked, "[CARD]") {
+        markers.push(PiiMarker::Card);
+    }
+    if marker_inserted(text, &masked, "[KR_ID]") {
+        markers.push(PiiMarker::KoreanId);
+    }
+    if marker_inserted(text, &masked, "[API_KEY]") {
+        markers.push(PiiMarker::ApiKey);
+    }
+    if marker_inserted(text, &masked, "[IP]") {
+        markers.push(PiiMarker::Ip);
+    }
+    if marker_inserted(text, &masked, "[USER]") {
+        markers.push(PiiMarker::UserPath);
+    }
+
+    markers
+}
+
+/// 텍스트 세그먼트가 민감정보를 포함하는지 확인한다.
+pub fn is_sensitive_segment_with_level(text: &str, level: PiiFilterLevel) -> bool {
+    !detect_pii_markers_with_level(text, level).is_empty()
+}
+
+fn marker_inserted(original: &str, masked: &str, marker: &str) -> bool {
+    masked.contains(marker) && (!original.contains(marker) || masked != original)
 }
 
 // ============================================================
@@ -610,5 +666,27 @@ mod tests {
         let result = mask_user_paths("/home/devuser/projects/secret.txt");
         assert!(result.contains("[USER]"));
         assert!(!result.contains("devuser"));
+    }
+
+    #[test]
+    fn detect_pii_markers_in_email() {
+        let markers =
+            detect_pii_markers_with_level("contact: user@example.com", PiiFilterLevel::Standard);
+        assert!(markers.contains(&PiiMarker::Email));
+        assert!(is_sensitive_segment_with_level(
+            "contact: user@example.com",
+            PiiFilterLevel::Standard
+        ));
+    }
+
+    #[test]
+    fn no_markers_when_filter_off() {
+        let markers =
+            detect_pii_markers_with_level("contact: user@example.com", PiiFilterLevel::Off);
+        assert!(markers.is_empty());
+        assert!(!is_sensitive_segment_with_level(
+            "contact: user@example.com",
+            PiiFilterLevel::Off
+        ));
     }
 }

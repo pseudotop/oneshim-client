@@ -1086,9 +1086,17 @@ export interface AiProviderSettings {
   ocr_provider: string
   llm_provider: string
   external_data_policy: string
+  allow_unredacted_external_ocr: boolean
+  ocr_validation: OcrValidationSettings
   fallback_to_local: boolean
   ocr_api: ExternalApiSettings | null
   llm_api: ExternalApiSettings | null
+}
+
+export interface OcrValidationSettings {
+  enabled: boolean
+  min_confidence: number
+  max_invalid_ratio: number
 }
 
 export interface ExternalApiSettings {

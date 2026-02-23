@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
 use oneshim_automation::intent_planner::{IntentPlanner, LlmIntentPlanner};
 use oneshim_automation::intent_resolver::{IntentExecutor, IntentResolver};
-use oneshim_core::config::{AiAccessMode, AiProviderConfig};
+use oneshim_core::config::{AiAccessMode, AiProviderConfig, PiiFilterLevel};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
 use oneshim_core::ports::element_finder::ElementFinder;
@@ -32,9 +32,10 @@ pub struct AutomationRuntime {
 /// AI 제공자 + 최신 프레임 기반 자동화 런타임 생성.
 pub fn build_automation_runtime(
     ai_config: &AiProviderConfig,
+    pii_filter_level: PiiFilterLevel,
     frame_storage: Option<Arc<FrameFileStorage>>,
 ) -> Result<AutomationRuntime, CoreError> {
-    let adapters = resolve_ai_provider_adapters(ai_config)?;
+    let adapters = resolve_ai_provider_adapters(ai_config, pii_filter_level)?;
 
     let ocr_provider_name = adapters.ocr.provider_name().to_string();
     let llm_provider_name = adapters.llm.provider_name().to_string();
@@ -228,7 +229,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let runtime = build_automation_runtime(&config, None).unwrap();
+        let runtime = build_automation_runtime(&config, PiiFilterLevel::Standard, None).unwrap();
         assert_eq!(runtime.access_mode, AiAccessMode::ProviderApiKey);
         assert_eq!(runtime.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(runtime.llm_source, ProviderSource::LocalFallback);
@@ -245,7 +246,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        match build_automation_runtime(&config, None) {
+        match build_automation_runtime(&config, PiiFilterLevel::Standard, None) {
             Ok(_) => panic!("오류가 발생해야 함"),
             Err(err) => assert!(matches!(err, CoreError::Config(_))),
         }
@@ -269,7 +270,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let runtime = build_automation_runtime(&config, None).unwrap();
+        let runtime = build_automation_runtime(&config, PiiFilterLevel::Standard, None).unwrap();
         assert_eq!(runtime.ocr_source, ProviderSource::Remote);
         assert_eq!(runtime.llm_source, ProviderSource::Remote);
         assert_eq!(runtime.ocr_provider_name, "remote-ocr");

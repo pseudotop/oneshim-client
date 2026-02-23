@@ -124,6 +124,12 @@ const fallbackSettings = {
     ocr_provider: 'local',
     llm_provider: 'local',
     external_data_policy: 'disabled',
+    allow_unredacted_external_ocr: false,
+    ocr_validation: {
+      enabled: true,
+      min_confidence: 0.25,
+      max_invalid_ratio: 0.6,
+    },
     fallback_to_local: true,
     ocr_api: null,
     llm_api: null,

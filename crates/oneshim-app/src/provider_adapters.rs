@@ -5,17 +5,20 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use oneshim_automation::local_llm::LocalLlmProvider;
 use oneshim_core::config::{
-    AiAccessMode, AiProviderConfig, ExternalApiEndpoint, LlmProviderType, OcrProviderType,
+    AiAccessMode, AiProviderConfig, ExternalApiEndpoint, ExternalDataPolicy, LlmProviderType,
+    OcrProviderType, OcrValidationConfig, PiiFilterLevel,
 };
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::LlmProvider;
-use oneshim_core::ports::ocr_provider::OcrProvider;
+use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
 use oneshim_network::ai_ocr_client::RemoteOcrProvider;
 use oneshim_vision::local_ocr_provider::LocalOcrProvider;
-use tracing::warn;
+use oneshim_vision::privacy_gateway::PrivacyGateway;
+use tracing::{debug, warn};
 
 /// 제공자 선택 출처.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,9 +55,122 @@ pub struct AiProviderAdapters {
     pub llm_source: ProviderSource,
 }
 
+/// 외부 OCR용 전처리 + calibration validation 데코레이터.
+///
+/// 위치:
+/// - 전송 직전(pre-flight): 이미지 세정 (opt-out 가능)
+/// - 응답 직후(post-parse): 결과 validation/calibration
+struct GuardedOcrProvider {
+    inner: Arc<dyn OcrProvider>,
+    pii_filter_level: PiiFilterLevel,
+    external_data_policy: ExternalDataPolicy,
+    allow_unredacted_external_ocr: bool,
+    ocr_validation: OcrValidationConfig,
+}
+
+impl GuardedOcrProvider {
+    fn new(
+        inner: Arc<dyn OcrProvider>,
+        pii_filter_level: PiiFilterLevel,
+        external_data_policy: ExternalDataPolicy,
+        allow_unredacted_external_ocr: bool,
+        ocr_validation: OcrValidationConfig,
+    ) -> Self {
+        Self {
+            inner,
+            pii_filter_level,
+            external_data_policy,
+            allow_unredacted_external_ocr,
+            ocr_validation,
+        }
+    }
+
+    fn validate_ocr_results(&self, results: Vec<OcrResult>) -> Result<Vec<OcrResult>, CoreError> {
+        if !self.ocr_validation.enabled || results.is_empty() {
+            return Ok(results);
+        }
+
+        let total = results.len();
+        let mut invalid = 0usize;
+        let mut filtered = Vec::with_capacity(total);
+
+        for mut result in results {
+            let text = result.text.trim();
+            let is_valid_geometry =
+                result.x >= 0 && result.y >= 0 && result.width > 0 && result.height > 0;
+            let is_valid_confidence =
+                result.confidence.is_finite() && (0.0..=1.0).contains(&result.confidence);
+
+            if text.is_empty()
+                || !is_valid_geometry
+                || !is_valid_confidence
+                || result.confidence < self.ocr_validation.min_confidence
+            {
+                invalid += 1;
+                continue;
+            }
+
+            result.text = text.to_string();
+            filtered.push(result);
+        }
+
+        let invalid_ratio = invalid as f64 / total as f64;
+        if invalid_ratio > self.ocr_validation.max_invalid_ratio {
+            return Err(CoreError::OcrError(format!(
+                "OCR calibration validation 실패: invalid_ratio={invalid_ratio:.2}, max_invalid_ratio={:.2}",
+                self.ocr_validation.max_invalid_ratio
+            )));
+        }
+
+        Ok(filtered)
+    }
+}
+
+#[async_trait]
+impl OcrProvider for GuardedOcrProvider {
+    async fn extract_elements(
+        &self,
+        image: &[u8],
+        image_format: &str,
+    ) -> Result<Vec<OcrResult>, CoreError> {
+        if !self.inner.is_external() {
+            return self.inner.extract_elements(image, image_format).await;
+        }
+
+        let sanitized = PrivacyGateway::sanitize_image_for_external_policy(
+            image,
+            self.pii_filter_level,
+            self.external_data_policy,
+            self.allow_unredacted_external_ocr,
+        )
+        .await;
+
+        debug!(
+            redacted_regions = sanitized.redacted_regions,
+            allow_unredacted_external_ocr = self.allow_unredacted_external_ocr,
+            "외부 OCR 전송 전 이미지 세정 완료"
+        );
+
+        let results = self
+            .inner
+            .extract_elements(&sanitized.image_data, image_format)
+            .await?;
+        self.validate_ocr_results(results)
+    }
+
+    fn provider_name(&self) -> &str {
+        self.inner.provider_name()
+    }
+
+    fn is_external(&self) -> bool {
+        self.inner.is_external()
+    }
+}
+
 /// 앱 설정 기준으로 OCR/LLM 제공자 어댑터를 해석한다.
 pub fn resolve_ai_provider_adapters(
     config: &AiProviderConfig,
+    pii_filter_level: PiiFilterLevel,
 ) -> Result<AiProviderAdapters, CoreError> {
     match config.access_mode {
         AiAccessMode::LocalModel => Ok(AiProviderAdapters {
@@ -72,7 +188,7 @@ pub fn resolve_ai_provider_adapters(
             llm_source: ProviderSource::CliSubscription,
         }),
         AiAccessMode::ProviderApiKey => {
-            let (ocr, ocr_source) = resolve_ocr_provider(config)?;
+            let (ocr, ocr_source) = resolve_ocr_provider(config, pii_filter_level)?;
             let (llm, llm_source) = resolve_llm_provider(config)?;
             Ok(AiProviderAdapters {
                 ocr,
@@ -82,7 +198,7 @@ pub fn resolve_ai_provider_adapters(
             })
         }
         AiAccessMode::PlatformConnected => {
-            let (ocr, ocr_source) = resolve_ocr_provider(config)?;
+            let (ocr, ocr_source) = resolve_ocr_provider(config, pii_filter_level)?;
             let (llm, llm_source) = resolve_llm_provider(config)?;
             Ok(AiProviderAdapters {
                 ocr,
@@ -103,6 +219,7 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
 
 fn resolve_ocr_provider(
     config: &AiProviderConfig,
+    pii_filter_level: PiiFilterLevel,
 ) -> Result<(Arc<dyn OcrProvider>, ProviderSource), CoreError> {
     match config.ocr_provider {
         OcrProviderType::Local => Ok((Arc::new(LocalOcrProvider::new()), ProviderSource::Local)),
@@ -111,7 +228,14 @@ fn resolve_ocr_provider(
             config.fallback_to_local,
             || {
                 let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
-                Ok(Arc::new(RemoteOcrProvider::new(endpoint)?) as Arc<dyn OcrProvider>)
+                let remote = Arc::new(RemoteOcrProvider::new(endpoint)?) as Arc<dyn OcrProvider>;
+                Ok(Arc::new(GuardedOcrProvider::new(
+                    remote,
+                    pii_filter_level,
+                    config.external_data_policy,
+                    config.allow_unredacted_external_ocr,
+                    config.ocr_validation.clone(),
+                )) as Arc<dyn OcrProvider>)
             },
             || Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
         ),
@@ -187,7 +311,10 @@ fn resolve_remote_with_optional_fallback<T: ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oneshim_core::config::{AiAccessMode, AiProviderType, ExternalApiEndpoint};
+    use oneshim_core::config::{
+        AiAccessMode, AiProviderType, ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig,
+    };
+    use oneshim_core::ports::ocr_provider::OcrResult;
 
     fn remote_endpoint() -> ExternalApiEndpoint {
         ExternalApiEndpoint {
@@ -202,7 +329,8 @@ mod tests {
     #[test]
     fn resolves_local_providers_by_default() {
         let config = AiProviderConfig::default();
-        let adapters = resolve_ai_provider_adapters(&config).expect("기본 설정 해석 실패");
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+            .expect("기본 설정 해석 실패");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
@@ -223,7 +351,8 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config).expect("원격 설정 해석 실패");
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+            .expect("원격 설정 해석 실패");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Remote);
         assert_eq!(adapters.llm_source, ProviderSource::Remote);
@@ -242,8 +371,8 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters =
-            resolve_ai_provider_adapters(&config).expect("폴백 설정에서 해석 실패하면 안됨");
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+            .expect("폴백 설정에서 해석 실패하면 안됨");
 
         assert_eq!(adapters.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(adapters.llm_source, ProviderSource::LocalFallback);
@@ -262,7 +391,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        match resolve_ai_provider_adapters(&config) {
+        match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard) {
             Ok(_) => panic!("오류가 발생해야 함"),
             Err(CoreError::Config(msg)) => assert!(msg.contains("ocr_api")),
             Err(other) => panic!("예상치 못한 에러 타입: {other}"),
@@ -281,7 +410,8 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config).expect("로컬 모드 해석 실패");
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+            .expect("로컬 모드 해석 실패");
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
         assert!(!adapters.ocr.is_external());
@@ -295,7 +425,8 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config).expect("CLI 모드 해석 실패");
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+            .expect("CLI 모드 해석 실패");
         assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
         assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
         assert!(!adapters.ocr.is_external());
@@ -314,10 +445,119 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config).expect("플랫폼 모드 해석 실패");
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+            .expect("플랫폼 모드 해석 실패");
         assert_eq!(adapters.ocr_source, ProviderSource::Platform);
         assert_eq!(adapters.llm_source, ProviderSource::Platform);
         assert!(adapters.ocr.is_external());
         assert!(adapters.llm.is_external());
+    }
+
+    struct FakeExternalOcrProvider {
+        responses: Vec<OcrResult>,
+    }
+
+    #[async_trait]
+    impl OcrProvider for FakeExternalOcrProvider {
+        async fn extract_elements(
+            &self,
+            _image: &[u8],
+            _image_format: &str,
+        ) -> Result<Vec<OcrResult>, CoreError> {
+            Ok(self.responses.clone())
+        }
+
+        fn provider_name(&self) -> &str {
+            "fake-external"
+        }
+
+        fn is_external(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn guarded_ocr_provider_filters_invalid_results_when_ratio_is_within_limit() {
+        let inner = Arc::new(FakeExternalOcrProvider {
+            responses: vec![
+                OcrResult {
+                    text: "save".to_string(),
+                    x: 10,
+                    y: 10,
+                    width: 40,
+                    height: 20,
+                    confidence: 0.9,
+                },
+                OcrResult {
+                    text: "   ".to_string(),
+                    x: 12,
+                    y: 10,
+                    width: 10,
+                    height: 20,
+                    confidence: 0.9,
+                },
+                OcrResult {
+                    text: "bad-confidence".to_string(),
+                    x: 30,
+                    y: 22,
+                    width: 20,
+                    height: 10,
+                    confidence: 1.5,
+                },
+            ],
+        }) as Arc<dyn OcrProvider>;
+        let guarded = GuardedOcrProvider::new(
+            inner,
+            PiiFilterLevel::Standard,
+            ExternalDataPolicy::PiiFilterStandard,
+            true,
+            OcrValidationConfig {
+                enabled: true,
+                min_confidence: 0.5,
+                max_invalid_ratio: 0.8,
+            },
+        );
+
+        let results = guarded.extract_elements(b"dummy", "png").await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].text, "save");
+    }
+
+    #[tokio::test]
+    async fn guarded_ocr_provider_rejects_when_invalid_ratio_exceeds_limit() {
+        let inner = Arc::new(FakeExternalOcrProvider {
+            responses: vec![
+                OcrResult {
+                    text: "ok".to_string(),
+                    x: 1,
+                    y: 1,
+                    width: 10,
+                    height: 10,
+                    confidence: 0.9,
+                },
+                OcrResult {
+                    text: "".to_string(),
+                    x: 1,
+                    y: 1,
+                    width: 0,
+                    height: 0,
+                    confidence: 0.9,
+                },
+            ],
+        }) as Arc<dyn OcrProvider>;
+        let guarded = GuardedOcrProvider::new(
+            inner,
+            PiiFilterLevel::Standard,
+            ExternalDataPolicy::PiiFilterStrict,
+            true,
+            OcrValidationConfig {
+                enabled: true,
+                min_confidence: 0.5,
+                max_invalid_ratio: 0.2,
+            },
+        );
+
+        let err = guarded.extract_elements(b"dummy", "png").await.unwrap_err();
+        assert!(err.to_string().contains("invalid_ratio"));
     }
 }
