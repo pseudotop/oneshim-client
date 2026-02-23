@@ -18,7 +18,7 @@ test.describe('Settings', () => {
 
   test('should display data collection section', async ({ page }) => {
     // 데이터 수집 섹션
-    await expect(page.getByText('데이터 수집')).toBeVisible()
+    await expect(page.getByText(/데이터 수집|data collection/i)).toBeVisible()
   })
 
   test('should display capture enable checkbox', async ({ page }) => {
@@ -35,27 +35,27 @@ test.describe('Settings', () => {
 
   test('should display notification settings', async ({ page }) => {
     // 알림 설정 섹션
-    await expect(page.getByText('알림 설정')).toBeVisible()
+    await expect(page.getByText(/알림 설정|notification settings/i)).toBeVisible()
   })
 
   test('should display web dashboard port setting', async ({ page }) => {
     // 웹 대시보드 섹션
-    await expect(page.getByText('웹 대시보드')).toBeVisible()
+    await expect(page.getByText(/웹 대시보드|web dashboard/i)).toBeVisible()
   })
 
   test('should display data export section', async ({ page }) => {
     // 데이터 내보내기 섹션
-    await expect(page.getByText('데이터 내보내기')).toBeVisible()
+    await expect(page.getByText(/데이터 내보내기|data export/i)).toBeVisible()
   })
 
   test('should display export format selector', async ({ page }) => {
     // 내보내기 형식 선택 - "형식:" 라벨 확인
-    await expect(page.getByText('형식:')).toBeVisible()
+    await expect(page.getByText(/형식:|format:/i)).toBeVisible()
   })
 
   test('should display export buttons', async ({ page }) => {
     // 내보내기 버튼들 (메트릭, 이벤트, 프레임 내보내기)
-    const exportSection = page.getByText('데이터 내보내기')
+    const exportSection = page.getByText(/데이터 내보내기|data export/i)
     await exportSection.scrollIntoViewIfNeeded()
 
     // 내보내기 관련 버튼 찾기
@@ -66,8 +66,8 @@ test.describe('Settings', () => {
 
   test('should display language selector', async ({ page }) => {
     // 언어 선택 드롭다운 (LanguageSelector 컴포넌트)
-    // 네비게이션 바에 있는 국기 아이콘 버튼 확인
-    const languageButton = page.locator('button').filter({ hasText: /🇰🇷|🇺🇸|한국어|English/i }).first()
+    // 네비게이션 바의 EN/KO 버튼 또는 언어명 확인
+    const languageButton = page.locator('button').filter({ hasText: /EN|KO|한국어|English/i }).first()
     await expect(languageButton).toBeVisible()
   })
 

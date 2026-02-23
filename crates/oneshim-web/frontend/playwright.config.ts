@@ -5,7 +5,11 @@
  */
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:9090'
+const previewHost = process.env.PLAYWRIGHT_PREVIEW_HOST || '127.0.0.1'
+const previewPort = process.env.PLAYWRIGHT_PREVIEW_PORT || '9090'
+const managedBaseURL = `http://${previewHost}:${previewPort}`
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || managedBaseURL
+const shouldManageWebServer = !process.env.PLAYWRIGHT_BASE_URL
 
 export default defineConfig({
   // 테스트 디렉토리
@@ -58,11 +62,13 @@ export default defineConfig({
     // },
   ],
 
-  // 웹 서버 설정 (테스트 전 자동 시작)
-  // 참고: 실제 테스트 시 Rust 서버가 실행 중이어야 함
-  // webServer: {
-  //   command: 'pnpm preview',
-  //   url: 'http://localhost:9090',
-  //   reuseExistingServer: !process.env.CI,
-  // },
+  ...(shouldManageWebServer
+    ? {
+        webServer: {
+          command: `pnpm preview --host ${previewHost} --port ${previewPort}`,
+          url: managedBaseURL,
+          reuseExistingServer: !process.env.CI,
+        },
+      }
+    : {}),
 })

@@ -14,8 +14,49 @@ permissions:
   attestations: write
 
 jobs:
+  build-frontend-assets:
+    name: Build Frontend Assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: crates/oneshim-web/frontend/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Install frontend dependencies
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend bundle
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm build
+
+      - name: Verify frontend build output
+        run: test -f crates/oneshim-web/frontend/dist/index.html
+
+      - name: Package frontend dist artifact
+        run: tar -czf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend dist
+
+      - name: Upload frontend dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-bundle
+          path: crates/oneshim-web/frontend/frontend-dist.tar.gz
+          if-no-files-found: error
+
   build-release:
     name: Build Release (${{ matrix.target }})
+    needs: build-frontend-assets
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +80,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download frontend dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist-bundle
+          path: crates/oneshim-web/frontend
+
+      - name: Extract frontend dist artifact
+        shell: bash
+        run: |
+          tar -xzf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend
+          test -f crates/oneshim-web/frontend/dist/index.html
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -146,6 +199,7 @@ jobs:
           path: |
             dist/${{ matrix.artifact_name }}.${{ matrix.asset_ext }}
             dist/${{ matrix.artifact_name }}.${{ matrix.asset_ext }}.sha256
+          if-no-files-found: error
 
       - name: Upload MSI artifact
         if: runner.os == 'Windows'
@@ -183,6 +237,12 @@ jobs:
         with:
           name: oneshim-macos-x64-archive
           path: artifacts/x64
+
+      - name: Verify architecture archives
+        shell: bash
+        run: |
+          test -f artifacts/arm64/oneshim-macos-arm64.tar.gz
+          test -f artifacts/x64/oneshim-macos-x64.tar.gz
 
       - name: Extract binaries
         run: |

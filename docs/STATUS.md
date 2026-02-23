@@ -35,9 +35,10 @@ cargo fmt --check
 - Lint status: Enforced in CI (`cargo clippy --workspace`)
 - Format status: Enforced in CI (`cargo fmt --check`)
 - Build status: Enforced in CI (`cargo build --workspace`)
-- UI/UX QA run records: `docs/qa/runs/` (latest reviewed run)
+- UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc1.md` (latest tracked run evidence)
 
 ## Notes
 
 - Historical numbers may remain in CHANGELOG entries because they describe past releases.
 - For current status communication, always link this file.
+- `docs/qa/runs/TEMPLATE-uiux-qa-run.md` is a template and is excluded from latest-run references.

@@ -38,7 +38,8 @@ cargo run -p oneshim-app -- --offline
 
 Standalone mode is available now.
 
-Online features are currently in progress and will be announced when production-ready.
+Connected mode is available only as an opt-in preview path.
+Standalone mode remains the production-ready default path for release use.
 
 ## Safety and Privacy at a Glance
 
@@ -54,7 +55,7 @@ Online features are currently in progress and will be announced when production-
 ### Core Features
 - **Real-time Context Monitoring**: Tracks active windows, system resources, and user activity
 - **Edge Image Processing**: Screenshot capture, delta encoding, thumbnails, and OCR
-- **Connected Server Features (In Progress)**: Real-time suggestions and feedback sync are currently being prepared
+- **Connected Server Features (Preview / Opt-in)**: Real-time suggestions and feedback sync are available for staged validation and are not the default production path
 - **System Tray**: Runs in the background with quick access
 - **Auto-Update**: Automatic updates based on GitHub Releases
 - **Cross-Platform**: Supports macOS, Windows, and Linux
@@ -83,6 +84,9 @@ Online features are currently in progress and will be announced when production-
 ### Build
 
 ```bash
+# Build embedded web dashboard assets (required before packaging/release builds)
+./scripts/build-frontend.sh
+
 # Development build
 cargo build -p oneshim-app
 
@@ -111,7 +115,8 @@ If `sccache` is not installed, the wrapper falls back to normal `cargo`.
 cargo run -p oneshim-app -- --offline
 ```
 
-Connected mode is in progress and not yet the recommended default path.
+Connected mode is preview-only and intentionally gated behind explicit server/auth configuration.
+Use standalone mode as the default production path unless your environment has validated connected mode.
 
 ### Test
 

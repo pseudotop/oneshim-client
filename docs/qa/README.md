@@ -35,6 +35,8 @@ Examples:
 - `2026-02-23-uiux-qa-rc1.md`
 - `2026-02-23-replay-qa-rc1.md`
 
+`TEMPLATE-uiux-qa-run.md` is only for authoring and must not be referenced as a completed/latest run.
+
 ## Minimum fields per QA run
 
 - Build/commit under test

@@ -11,6 +11,54 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
+  frontend:
+    name: Frontend (build + e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: crates/oneshim-web/frontend/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Install frontend dependencies
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend bundle
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm build
+
+      - name: Verify frontend build output
+        run: test -f crates/oneshim-web/frontend/dist/index.html
+
+      - name: Install Playwright browser
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run web dashboard E2E tests
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm test:e2e
+
+      - name: Package frontend dist artifact
+        run: tar -czf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend dist
+
+      - name: Upload frontend dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-bundle
+          path: crates/oneshim-web/frontend/frontend-dist.tar.gz
+          if-no-files-found: error
+
   check:
     name: Check (fmt + clippy)
     runs-on: ubuntu-latest
@@ -56,7 +104,7 @@ jobs:
 
   test:
     name: Test
-    needs: check
+    needs: [check, frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +143,7 @@ jobs:
 
   build:
     name: Build (${{ matrix.target }})
-    needs: test
+    needs: [test, frontend]
     strategy:
       fail-fast: false
       matrix:
@@ -115,6 +163,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download frontend dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist-bundle
+          path: crates/oneshim-web/frontend
+
+      - name: Extract frontend dist artifact
+        shell: bash
+        run: |
+          tar -xzf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend
+          test -f crates/oneshim-web/frontend/dist/index.html
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
