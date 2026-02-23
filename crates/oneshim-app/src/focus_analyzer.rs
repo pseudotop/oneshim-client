@@ -34,8 +34,11 @@ pub trait FocusStorage: Send + Sync {
     fn add_deep_work_secs(&self, session_id: i64, secs: u64) -> Result<(), CoreError>;
     fn record_interruption(&self, interruption: &Interruption) -> Result<i64, CoreError>;
     fn increment_work_session_interruption(&self, session_id: i64) -> Result<(), CoreError>;
-    fn record_interruption_resume(&self, interruption_id: i64, resumed_to_app: &str)
-        -> Result<(), CoreError>;
+    fn record_interruption_resume(
+        &self,
+        interruption_id: i64,
+        resumed_to_app: &str,
+    ) -> Result<(), CoreError>;
     fn end_work_session(&self, session_id: i64) -> Result<(), CoreError>;
     fn start_work_session(
         &self,
@@ -207,7 +210,10 @@ impl FocusAnalyzer {
     }
 
     /// 기본 설정으로 생성
-    pub fn with_defaults(storage: Arc<dyn FocusStorage>, notifier: Arc<dyn DesktopNotifier>) -> Self {
+    pub fn with_defaults(
+        storage: Arc<dyn FocusStorage>,
+        notifier: Arc<dyn DesktopNotifier>,
+    ) -> Self {
         Self::new(FocusAnalyzerConfig::default(), storage, notifier)
     }
 

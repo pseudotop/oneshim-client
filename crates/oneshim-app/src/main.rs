@@ -511,6 +511,7 @@ async fn main() -> Result<()> {
         match runtime {
             Ok(runtime) => {
                 info!(
+                    access_mode = ?runtime.access_mode,
                     ocr_provider = runtime.ocr_provider_name,
                     ocr_source = runtime.ocr_source.as_str(),
                     llm_provider = runtime.llm_provider_name,

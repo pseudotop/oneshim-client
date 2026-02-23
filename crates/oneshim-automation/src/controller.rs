@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
 
+use crate::action_dispatcher::{AutomationActionDispatcher, SandboxActionDispatcher};
 use crate::audit::AuditLogger;
 use crate::intent_planner::IntentPlanner;
 use crate::intent_resolver::IntentExecutor;
@@ -103,8 +104,8 @@ pub struct AutomationController {
     policy_client: Arc<PolicyClient>,
     /// 감사 로거
     audit_logger: Arc<RwLock<AuditLogger>>,
-    /// OS 네이티브 샌드박스
-    sandbox: Arc<dyn Sandbox>,
+    /// 자동화 액션 실행기 (샌드박스/드라이버 구현체)
+    action_dispatcher: Arc<dyn AutomationActionDispatcher>,
     /// 기본 샌드박스 설정 (정책 리졸버의 base로 사용)
     base_sandbox_config: SandboxConfig,
     /// 자동화 활성화 여부
@@ -131,7 +132,7 @@ impl AutomationController {
         Self {
             policy_client,
             audit_logger,
-            sandbox,
+            action_dispatcher: Arc::new(SandboxActionDispatcher::new(sandbox)),
             base_sandbox_config: sandbox_config,
             enabled: false, // 기본 비활성
             intent_executor: None,
@@ -152,6 +153,11 @@ impl AutomationController {
     /// 자연어 플래너 설정
     pub fn set_intent_planner(&mut self, planner: Arc<dyn IntentPlanner>) {
         self.intent_planner = Some(planner);
+    }
+
+    /// 액션 실행기 교체 (테스트/확장 지점)
+    pub fn set_action_dispatcher(&mut self, dispatcher: Arc<dyn AutomationActionDispatcher>) {
+        self.action_dispatcher = dispatcher;
     }
 
     fn ensure_enabled(&self) -> Result<(), CoreError> {
@@ -493,7 +499,8 @@ impl AutomationController {
             let duration = std::time::Duration::from_millis(timeout);
             match tokio::time::timeout(
                 duration,
-                self.dispatch_action_with_config(&cmd.action, &resolved_config),
+                self.action_dispatcher
+                    .dispatch(&cmd.action, &resolved_config),
             )
             .await
             {
@@ -506,7 +513,8 @@ impl AutomationController {
                 }
             }
         } else {
-            self.dispatch_action_with_config(&cmd.action, &resolved_config)
+            self.action_dispatcher
+                .dispatch(&cmd.action, &resolved_config)
                 .await
         };
 
@@ -526,55 +534,6 @@ impl AutomationController {
         }
 
         Ok(result)
-    }
-
-    /// 액션 디스패치 (리졸브된 샌드박스 설정으로 실행)
-    async fn dispatch_action_with_config(
-        &self,
-        action: &AutomationAction,
-        config: &SandboxConfig,
-    ) -> CommandResult {
-        tracing::info!(
-            action = ?action,
-            sandbox = self.sandbox.platform(),
-            profile = ?config.profile,
-            "자동화 명령 실행 (정책 기반 샌드박스 경유)"
-        );
-
-        // 샌드박스를 통해 실행 (리졸브된 설정 사용)
-        if let Err(e) = self.sandbox.execute_sandboxed(action, config).await {
-            tracing::error!(error = %e, "샌드박스 실행 실패");
-            return CommandResult::Failed(format!("샌드박스 실행 실패: {}", e));
-        }
-
-        // 실제 입력 시뮬레이션은 enigo 통합 시 구현
-        // 현재는 로깅만 수행
-        match action {
-            AutomationAction::MouseMove { x, y } => {
-                tracing::debug!(x, y, "마우스 이동");
-                CommandResult::Success
-            }
-            AutomationAction::MouseClick { button, x, y } => {
-                tracing::debug!(button, x, y, "마우스 클릭");
-                CommandResult::Success
-            }
-            AutomationAction::KeyType { text } => {
-                tracing::debug!(text_len = text.len(), "텍스트 입력");
-                CommandResult::Success
-            }
-            AutomationAction::KeyPress { key } => {
-                tracing::debug!(key, "키 누름");
-                CommandResult::Success
-            }
-            AutomationAction::KeyRelease { key } => {
-                tracing::debug!(key, "키 놓음");
-                CommandResult::Success
-            }
-            AutomationAction::Hotkey { keys } => {
-                tracing::debug!(?keys, "단축키 실행");
-                CommandResult::Success
-            }
-        }
     }
 }
 
@@ -631,6 +590,7 @@ mod tests {
             sandbox_profile: None,
             allowed_paths: vec![],
             allow_network: None,
+            require_signed_token: false,
         }
     }
 
@@ -710,7 +670,7 @@ mod tests {
             session_id: "sess-1".to_string(),
             action: AutomationAction::MouseMove { x: 0, y: 0 },
             timeout_ms: None,
-            policy_token: "test-pol:nonce1".to_string(),
+            policy_token: "test-pol:nonce_0001".to_string(),
         };
 
         let (resolved, audit_level) = controller.resolve_for_command(&cmd).await;
@@ -756,7 +716,7 @@ mod tests {
             // 매우 짧은 타임아웃은 NoOp에서는 발생하지 않으므로,
             // 정상 실행이 완료되면 Success 반환 확인
             timeout_ms: Some(5000),
-            policy_token: "test-pol:nonce2".to_string(),
+            policy_token: "test-pol:nonce_0002".to_string(),
         };
 
         let result = controller.execute_command(&cmd).await.unwrap();
@@ -779,7 +739,7 @@ mod tests {
                 key: "a".to_string(),
             },
             timeout_ms: None,
-            policy_token: "test-pol:nonce3".to_string(),
+            policy_token: "test-pol:nonce_0003".to_string(),
         };
 
         let result = controller.execute_command(&cmd).await.unwrap();
@@ -1166,7 +1126,7 @@ mod tests {
                 text: "hello".to_string(),
             },
             timeout_ms: None,
-            policy_token: "test-pol:nonce99".to_string(),
+            policy_token: "test-pol:nonce_0099".to_string(),
         };
 
         let result = controller.execute_command(&cmd).await.unwrap();

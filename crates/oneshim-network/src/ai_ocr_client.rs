@@ -124,6 +124,50 @@ impl RemoteOcrProvider {
 
         Ok(response.results)
     }
+
+    /// API 응답에서 OCR 결과 파싱 (Google Vision 형식)
+    fn parse_google_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
+        let response: serde_json::Value = serde_json::from_str(body)
+            .map_err(|e| CoreError::OcrError(format!("Google Vision 응답 파싱 실패: {}", e)))?;
+
+        let mut results = Vec::new();
+        let annotations = response
+            .get("responses")
+            .and_then(|r| r.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|entry| entry.get("textAnnotations"))
+            .and_then(|a| a.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        for annotation in annotations {
+            let text = annotation
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if text.is_empty() {
+                continue;
+            }
+
+            let vertices = annotation
+                .get("boundingPoly")
+                .and_then(|poly| poly.get("vertices"))
+                .and_then(|v| v.as_array());
+            let (x, y, width, height) = parse_bounding_vertices(vertices);
+
+            results.push(OcrResult {
+                text: text.to_string(),
+                x,
+                y,
+                width,
+                height,
+                confidence: 0.8,
+            });
+        }
+
+        Ok(results)
+    }
 }
 
 #[async_trait]
@@ -144,33 +188,46 @@ impl OcrProvider for RemoteOcrProvider {
             _ => "image/png",
         };
 
-        // 2. Claude Vision API 요청 구성
+        // 2. 제공자별 요청 바디 구성
         let model = self
             .model
             .as_deref()
             .unwrap_or("claude-sonnet-4-5-20250929");
 
-        let request_body = serde_json::json!({
-            "model": model,
-            "max_tokens": 4096,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": encoded
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": "이미지에서 보이는 모든 텍스트를 줄별로 나열해주세요. 각 줄에 하나의 텍스트만 출력하세요."
-                    }
-                ]
-            }]
-        });
+        let request_body = match self.provider_type {
+            AiProviderType::Google => serde_json::json!({
+                "requests": [{
+                    "image": { "content": encoded },
+                    "features": [{
+                        "type": "TEXT_DETECTION",
+                        "maxResults": 64
+                    }]
+                }]
+            }),
+            AiProviderType::Anthropic | AiProviderType::OpenAi | AiProviderType::Generic => {
+                serde_json::json!({
+                    "model": model,
+                    "max_tokens": 4096,
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": encoded
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": "이미지에서 보이는 모든 텍스트를 줄별로 나열해주세요. 각 줄에 하나의 텍스트만 출력하세요."
+                            }
+                        ]
+                    }]
+                })
+            }
+        };
 
         debug!(
             endpoint = %self.endpoint,
@@ -186,12 +243,18 @@ impl OcrProvider for RemoteOcrProvider {
             .header("Content-Type", "application/json")
             .json(&request_body);
 
-        if self.provider_type == AiProviderType::Anthropic {
-            builder = builder
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", "2023-06-01");
-        } else {
-            builder = builder.header("Authorization", format!("Bearer {}", self.api_key));
+        match self.provider_type {
+            AiProviderType::Anthropic => {
+                builder = builder
+                    .header("x-api-key", &self.api_key)
+                    .header("anthropic-version", "2023-06-01");
+            }
+            AiProviderType::Google => {
+                builder = builder.header("x-goog-api-key", &self.api_key);
+            }
+            AiProviderType::OpenAi | AiProviderType::Generic => {
+                builder = builder.header("Authorization", format!("Bearer {}", self.api_key));
+            }
         }
 
         let response = builder
@@ -215,10 +278,12 @@ impl OcrProvider for RemoteOcrProvider {
         }
 
         // 4. 응답 파싱 — 제공자 타입에 따라 파싱 방식 결정
-        let results = if self.provider_type == AiProviderType::Anthropic {
-            Self::parse_claude_vision_response(&body)?
-        } else {
-            Self::parse_generic_response(&body)?
+        let results = match self.provider_type {
+            AiProviderType::Anthropic => Self::parse_claude_vision_response(&body)?,
+            AiProviderType::Google => Self::parse_google_vision_response(&body)?,
+            AiProviderType::OpenAi | AiProviderType::Generic => {
+                Self::parse_generic_response(&body)?
+            }
         };
 
         debug!(count = results.len(), "OCR 결과 수신");
@@ -232,6 +297,37 @@ impl OcrProvider for RemoteOcrProvider {
     fn is_external(&self) -> bool {
         true
     }
+}
+
+fn parse_bounding_vertices(vertices: Option<&Vec<serde_json::Value>>) -> (i32, i32, u32, u32) {
+    let Some(vertices) = vertices else {
+        return (0, 0, 0, 0);
+    };
+
+    let points: Vec<(i32, i32)> = vertices
+        .iter()
+        .map(|vertex| {
+            let x = vertex.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let y = vertex.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            (x, y)
+        })
+        .collect();
+
+    if points.is_empty() {
+        return (0, 0, 0, 0);
+    }
+
+    let min_x = points.iter().map(|(x, _)| *x).min().unwrap_or(0);
+    let max_x = points.iter().map(|(x, _)| *x).max().unwrap_or(0);
+    let min_y = points.iter().map(|(_, y)| *y).min().unwrap_or(0);
+    let max_y = points.iter().map(|(_, y)| *y).max().unwrap_or(0);
+
+    (
+        min_x,
+        min_y,
+        (max_x - min_x).max(0) as u32,
+        (max_y - min_y).max(0) as u32,
+    )
 }
 
 // ============================================================

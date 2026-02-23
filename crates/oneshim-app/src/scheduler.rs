@@ -202,7 +202,7 @@ impl Scheduler {
     }
 
     /// 모든 루프 시작
-    pub async fn run(&self, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) {
+    pub async fn run(&self, shutdown_rx: tokio::sync::watch::Receiver<bool>) {
         info!(
             "스케줄러 시작: 모니터링={}ms, 메트릭={}ms, 프로세스={}ms, 동기화={}ms, 하트비트={}ms, 집계={}ms",
             self.config.poll_interval.as_millis(),
@@ -212,7 +212,10 @@ impl Scheduler {
             self.config.heartbeat_interval.as_millis(),
             self.config.aggregation_interval.as_millis(),
         );
+        self.run_scheduler_loops(shutdown_rx).await;
+    }
 
+    async fn run_scheduler_loops(&self, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) {
         let poll = self.config.poll_interval;
         let metrics_interval = self.config.metrics_interval;
         let process_interval = self.config.process_interval;

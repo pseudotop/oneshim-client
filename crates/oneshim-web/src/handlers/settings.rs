@@ -1,11 +1,11 @@
 //! 설정 API 핸들러.
 
 use axum::{extract::State, Json};
-use serde::{Deserialize, Serialize};
 use oneshim_core::config::{
-    AppConfig, ExternalDataPolicy, LlmProviderType, OcrProviderType, PiiFilterLevel, SandboxProfile,
-    Weekday,
+    AiAccessMode, AiProviderType, AppConfig, ExternalDataPolicy, LlmProviderType, OcrProviderType,
+    PiiFilterLevel, SandboxProfile, Weekday,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{error::ApiError, AppState};
 
@@ -243,6 +243,8 @@ impl Default for SandboxSettings {
 /// AI 제공자 설정
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AiProviderSettings {
+    /// AI 접근 모드
+    pub access_mode: String,
     /// OCR 제공자 ("Local" | "Remote")
     pub ocr_provider: String,
     /// LLM 제공자 ("Local" | "Remote")
@@ -260,6 +262,7 @@ pub struct AiProviderSettings {
 impl Default for AiProviderSettings {
     fn default() -> Self {
         Self {
+            access_mode: "ProviderApiKey".to_string(),
             ocr_provider: "Local".to_string(),
             llm_provider: "Local".to_string(),
             external_data_policy: "PiiFilterStrict".to_string(),
@@ -279,6 +282,9 @@ pub struct ExternalApiSettings {
     pub api_key_masked: String,
     /// 모델 이름
     pub model: Option<String>,
+    /// Provider 타입 ("Anthropic" | "OpenAi" | "Google" | "Generic")
+    #[serde(default = "default_provider_type")]
+    pub provider_type: String,
     /// 타임아웃 (초)
     #[serde(default = "default_external_timeout")]
     pub timeout_secs: u64,
@@ -286,6 +292,10 @@ pub struct ExternalApiSettings {
 
 fn default_external_timeout() -> u64 {
     30
+}
+
+fn default_provider_type() -> String {
+    "Generic".to_string()
 }
 
 /// API 키 마스킹 — 앞 2자 + "..." + 뒤 4자
@@ -309,6 +319,7 @@ fn endpoint_to_api_settings(
         endpoint: endpoint.endpoint.clone(),
         api_key_masked: mask_api_key(&endpoint.api_key),
         model: endpoint.model.clone(),
+        provider_type: format!("{:?}", endpoint.provider_type),
         timeout_secs: endpoint.timeout_secs,
     }
 }
@@ -318,19 +329,19 @@ fn endpoint_to_api_settings(
 fn api_settings_to_endpoint(
     settings: &ExternalApiSettings,
     existing_key: &str,
-) -> oneshim_core::config::ExternalApiEndpoint {
+) -> Result<oneshim_core::config::ExternalApiEndpoint, ApiError> {
     let api_key = if is_masked_key(&settings.api_key_masked) || settings.api_key_masked.is_empty() {
         existing_key.to_string()
     } else {
         settings.api_key_masked.clone()
     };
-    oneshim_core::config::ExternalApiEndpoint {
+    Ok(oneshim_core::config::ExternalApiEndpoint {
         endpoint: settings.endpoint.clone(),
         api_key,
         model: settings.model.clone(),
         timeout_secs: settings.timeout_secs,
-        provider_type: Default::default(),
-    }
+        provider_type: parse_ai_provider_type(&settings.provider_type)?,
+    })
 }
 
 impl Default for AppSettings {
@@ -524,12 +535,21 @@ fn config_to_settings(config: &AppConfig) -> AppSettings {
             max_cpu_time_ms: config.automation.sandbox.max_cpu_time_ms,
         },
         ai_provider: AiProviderSettings {
+            access_mode: format!("{:?}", config.ai_provider.access_mode),
             ocr_provider: format!("{:?}", config.ai_provider.ocr_provider),
             llm_provider: format!("{:?}", config.ai_provider.llm_provider),
             external_data_policy: format!("{:?}", config.ai_provider.external_data_policy),
             fallback_to_local: config.ai_provider.fallback_to_local,
-            ocr_api: config.ai_provider.ocr_api.as_ref().map(endpoint_to_api_settings),
-            llm_api: config.ai_provider.llm_api.as_ref().map(endpoint_to_api_settings),
+            ocr_api: config
+                .ai_provider
+                .ocr_api
+                .as_ref()
+                .map(endpoint_to_api_settings),
+            llm_api: config
+                .ai_provider
+                .llm_api
+                .as_ref()
+                .map(endpoint_to_api_settings),
         },
     }
 }
@@ -582,6 +602,36 @@ fn parse_ocr_provider(value: &str) -> Result<OcrProviderType, ApiError> {
     }
 }
 
+fn parse_ai_access_mode(value: &str) -> Result<AiAccessMode, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "providerapikey" | "provider_api_key" | "api" | "apikey" => {
+            Ok(AiAccessMode::ProviderApiKey)
+        }
+        "localmodel" | "local_model" | "local" => Ok(AiAccessMode::LocalModel),
+        "providersubscriptioncli" | "provider_subscription_cli" | "cli" | "subscription" => {
+            Ok(AiAccessMode::ProviderSubscriptionCli)
+        }
+        "platformconnected" | "platform_connected" | "platform" => {
+            Ok(AiAccessMode::PlatformConnected)
+        }
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 ai_provider.access_mode 값: {value}"
+        ))),
+    }
+}
+
+fn parse_ai_provider_type(value: &str) -> Result<AiProviderType, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "anthropic" => Ok(AiProviderType::Anthropic),
+        "openai" | "open_ai" | "openai-compatible" => Ok(AiProviderType::OpenAi),
+        "google" => Ok(AiProviderType::Google),
+        "generic" => Ok(AiProviderType::Generic),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 ai_provider.api.provider_type 값: {value}"
+        ))),
+    }
+}
+
 fn parse_llm_provider(value: &str) -> Result<LlmProviderType, ApiError> {
     match value.trim().to_ascii_lowercase().as_str() {
         "local" => Ok(LlmProviderType::Local),
@@ -604,7 +654,10 @@ fn parse_external_data_policy(value: &str) -> Result<ExternalDataPolicy, ApiErro
     }
 }
 
-fn apply_settings_to_config(config: &mut AppConfig, settings: &AppSettings) -> Result<(), ApiError> {
+fn apply_settings_to_config(
+    config: &mut AppConfig,
+    settings: &AppSettings,
+) -> Result<(), ApiError> {
     config.storage.retention_days = settings.retention_days;
     config.storage.max_storage_mb = settings.max_storage_mb as u64;
     config.web.port = settings.web_port;
@@ -666,6 +719,7 @@ fn apply_settings_to_config(config: &mut AppConfig, settings: &AppSettings) -> R
     config.automation.sandbox.max_memory_bytes = settings.sandbox.max_memory_bytes;
     config.automation.sandbox.max_cpu_time_ms = settings.sandbox.max_cpu_time_ms;
     // AI 제공자 설정
+    config.ai_provider.access_mode = parse_ai_access_mode(&settings.ai_provider.access_mode)?;
     config.ai_provider.ocr_provider = parse_ocr_provider(&settings.ai_provider.ocr_provider)?;
     config.ai_provider.llm_provider = parse_llm_provider(&settings.ai_provider.llm_provider)?;
     config.ai_provider.external_data_policy =
@@ -679,7 +733,7 @@ fn apply_settings_to_config(config: &mut AppConfig, settings: &AppSettings) -> R
             .as_ref()
             .map(|e| e.api_key.as_str())
             .unwrap_or("");
-        config.ai_provider.ocr_api = Some(api_settings_to_endpoint(ocr_settings, existing_key));
+        config.ai_provider.ocr_api = Some(api_settings_to_endpoint(ocr_settings, existing_key)?);
     } else {
         config.ai_provider.ocr_api = None;
     }
@@ -691,7 +745,7 @@ fn apply_settings_to_config(config: &mut AppConfig, settings: &AppSettings) -> R
             .as_ref()
             .map(|e| e.api_key.as_str())
             .unwrap_or("");
-        config.ai_provider.llm_api = Some(api_settings_to_endpoint(llm_settings, existing_key));
+        config.ai_provider.llm_api = Some(api_settings_to_endpoint(llm_settings, existing_key)?);
     } else {
         config.ai_provider.llm_api = None;
     }
@@ -739,6 +793,7 @@ mod tests {
         assert!(!settings.automation.enabled);
         assert!(!settings.sandbox.enabled);
         assert_eq!(settings.sandbox.profile, "Standard");
+        assert_eq!(settings.ai_provider.access_mode, "ProviderApiKey");
         assert_eq!(settings.ai_provider.ocr_provider, "Local");
         assert_eq!(settings.ai_provider.llm_provider, "Local");
         assert!(settings.ai_provider.fallback_to_local);
@@ -801,6 +856,7 @@ mod tests {
             endpoint: "https://api.example.com/ocr".to_string(),
             api_key_masked: "".to_string(),
             model: None,
+            provider_type: "Generic".to_string(),
             timeout_secs: 30,
         });
 

@@ -18,6 +18,7 @@ pub mod routes;
 pub mod storage_port;
 pub mod update_control;
 
+use crate::storage_port::WebStorage;
 use axum::Router;
 use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
@@ -30,7 +31,6 @@ use tokio::sync::{broadcast, watch, RwLock};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
-use crate::storage_port::WebStorage;
 
 // 실시간 이벤트 타입 re-export
 pub use handlers::stream::{FrameUpdate, IdleUpdate, MetricsUpdate, RealtimeEvent};
