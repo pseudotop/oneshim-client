@@ -15,6 +15,7 @@ use oneshim_core::config::SandboxProfile;
 use oneshim_core::error::CoreError;
 
 const POLICY_TOKEN_SIGNING_SECRET_ENV: &str = "ONESHIM_POLICY_TOKEN_SIGNING_SECRET";
+const COMMAND_HASH_SEGMENT_PREFIX: char = 'h';
 
 // ============================================================
 // 정책 모델
@@ -205,11 +206,26 @@ impl PolicyClient {
                 return Ok(false);
             }
 
-            if !verify_policy_token_signature(parsed_token.policy_id, parsed_token.nonce, signature)
-            {
+            if !verify_policy_token_signature(
+                parsed_token.policy_id,
+                parsed_token.nonce,
+                parsed_token.command_hash,
+                signature,
+            ) {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
                     "정책 토큰 서명 검증 실패"
+                );
+                return Ok(false);
+            }
+        }
+
+        if let Some(token_command_hash) = parsed_token.command_hash {
+            let expected_hash = compute_command_scope_hash(cmd)?;
+            if !token_command_hash.eq_ignore_ascii_case(&expected_hash) {
+                tracing::warn!(
+                    policy_id = parsed_token.policy_id,
+                    "정책 토큰 command hash 불일치"
                 );
                 return Ok(false);
             }
@@ -246,7 +262,30 @@ impl PolicyClient {
         .ok_or_else(|| CoreError::PolicyDenied(format!("알 수 없는 정책 ID: {policy_id}")))?;
 
         let nonce = issue_policy_nonce();
-        issue_command_token_for_policy(&policy, &nonce)
+        issue_command_token_for_policy(&policy, &nonce, None)
+    }
+
+    /// 정책 ID + 명령 컨텍스트 기반 실행용 정책 토큰 발급.
+    ///
+    /// 토큰에 command hash를 포함해 다른 명령으로의 재사용을 방지한다.
+    pub async fn issue_command_token_for_command(
+        &self,
+        policy_id: &str,
+        cmd: &AutomationCommand,
+    ) -> Result<String, CoreError> {
+        let policy = {
+            let cache = self.policy_cache.read().await;
+            cache
+                .policies
+                .iter()
+                .find(|p| p.policy_id == policy_id)
+                .cloned()
+        }
+        .ok_or_else(|| CoreError::PolicyDenied(format!("알 수 없는 정책 ID: {policy_id}")))?;
+
+        let nonce = issue_policy_nonce();
+        let command_hash = compute_command_scope_hash(cmd)?;
+        issue_command_token_for_policy(&policy, &nonce, Some(command_hash.as_str()))
     }
 
     /// 특정 프로세스의 정책 조회
@@ -313,20 +352,32 @@ impl Default for PolicyClient {
 struct ParsedPolicyToken<'a> {
     policy_id: &'a str,
     nonce: &'a str,
+    command_hash: Option<&'a str>,
     signature: Option<&'a str>,
 }
 
 fn parse_policy_token(token: &str) -> Option<ParsedPolicyToken<'_>> {
-    let mut parts = token.split(':');
-    let policy_id = parts.next()?.trim();
-    let nonce = parts.next()?.trim();
-    let signature = parts.next().map(str::trim);
-
-    if parts.next().is_some() {
-        return None;
-    }
+    let parts: Vec<&str> = token.split(':').map(str::trim).collect();
+    let (policy_id, nonce, command_hash, signature) = match parts.as_slice() {
+        [policy_id, nonce] => (*policy_id, *nonce, None, None),
+        [policy_id, nonce, third] => {
+            if let Some(command_hash) = parse_command_hash_segment(third) {
+                (*policy_id, *nonce, Some(command_hash), None)
+            } else {
+                (*policy_id, *nonce, None, Some(*third))
+            }
+        }
+        [policy_id, nonce, third, fourth] => {
+            let command_hash = parse_command_hash_segment(third)?;
+            (*policy_id, *nonce, Some(command_hash), Some(*fourth))
+        }
+        _ => return None,
+    };
 
     if policy_id.is_empty() || nonce.is_empty() {
+        return None;
+    }
+    if command_hash.is_some_and(|hash| !is_valid_hash(hash)) {
         return None;
     }
     if signature.is_some_and(|sig| sig.is_empty()) {
@@ -336,6 +387,7 @@ fn parse_policy_token(token: &str) -> Option<ParsedPolicyToken<'_>> {
     Some(ParsedPolicyToken {
         policy_id,
         nonce,
+        command_hash,
         signature,
     })
 }
@@ -348,18 +400,34 @@ fn is_valid_nonce(nonce: &str) -> bool {
 }
 
 fn is_valid_signature(signature: &str) -> bool {
-    signature.len() == 64 && signature.chars().all(|c| c.is_ascii_hexdigit())
+    is_valid_hash(signature)
 }
 
 fn issue_policy_nonce() -> String {
     Uuid::new_v4().simple().to_string()
 }
 
-fn issue_command_token_for_policy(policy: &ExecutionPolicy, nonce: &str) -> Result<String, CoreError> {
+fn issue_command_token_for_policy(
+    policy: &ExecutionPolicy,
+    nonce: &str,
+    command_hash: Option<&str>,
+) -> Result<String, CoreError> {
     if !is_valid_nonce(nonce) {
         return Err(CoreError::InvalidArguments(
             "정책 토큰 nonce 형식이 유효하지 않습니다".to_string(),
         ));
+    }
+    if command_hash.is_some_and(|hash| !is_valid_hash(hash)) {
+        return Err(CoreError::InvalidArguments(
+            "정책 토큰 command hash 형식이 유효하지 않습니다".to_string(),
+        ));
+    }
+
+    let mut token = format!("{}:{nonce}", policy.policy_id);
+    if let Some(command_hash) = command_hash {
+        token.push(':');
+        token.push(COMMAND_HASH_SEGMENT_PREFIX);
+        token.push_str(command_hash);
     }
 
     if policy.require_signed_token {
@@ -369,14 +437,59 @@ fn issue_command_token_for_policy(policy: &ExecutionPolicy, nonce: &str) -> Resu
                 POLICY_TOKEN_SIGNING_SECRET_ENV
             ))
         })?;
-        let signature = compute_policy_token_signature(&policy.policy_id, nonce, &secret);
-        Ok(format!("{}:{nonce}:{signature}", policy.policy_id))
+        let signature =
+            compute_policy_token_signature(&policy.policy_id, nonce, command_hash, &secret);
+        token.push(':');
+        token.push_str(&signature);
     } else {
-        Ok(format!("{}:{nonce}", policy.policy_id))
     }
+
+    Ok(token)
 }
 
-fn verify_policy_token_signature(policy_id: &str, nonce: &str, signature: &str) -> bool {
+fn parse_command_hash_segment(segment: &str) -> Option<&str> {
+    let mut chars = segment.chars();
+    if chars.next()? != COMMAND_HASH_SEGMENT_PREFIX {
+        return None;
+    }
+    let hash = chars.as_str();
+    if !is_valid_hash(hash) {
+        return None;
+    }
+    Some(hash)
+}
+
+fn is_valid_hash(hash: &str) -> bool {
+    hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn compute_command_scope_hash(cmd: &AutomationCommand) -> Result<String, CoreError> {
+    #[derive(Serialize)]
+    struct PolicyCommandScope<'a> {
+        command_id: &'a str,
+        session_id: &'a str,
+        action: &'a crate::controller::AutomationAction,
+        timeout_ms: Option<u64>,
+    }
+
+    let scope = PolicyCommandScope {
+        command_id: cmd.command_id.as_str(),
+        session_id: cmd.session_id.as_str(),
+        action: &cmd.action,
+        timeout_ms: cmd.timeout_ms,
+    };
+    let serialized = serde_json::to_vec(&scope)
+        .map_err(|e| CoreError::Internal(format!("정책 토큰 command scope 직렬화 실패: {e}")))?;
+    let digest = Sha256::digest(serialized);
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn verify_policy_token_signature(
+    policy_id: &str,
+    nonce: &str,
+    command_hash: Option<&str>,
+    signature: &str,
+) -> bool {
     let Some(secret) = load_signing_secret() else {
         tracing::warn!(
             env = POLICY_TOKEN_SIGNING_SECRET_ENV,
@@ -385,7 +498,8 @@ fn verify_policy_token_signature(policy_id: &str, nonce: &str, signature: &str) 
         return false;
     };
 
-    compute_policy_token_signature(policy_id, nonce, &secret).eq_ignore_ascii_case(signature)
+    compute_policy_token_signature(policy_id, nonce, command_hash, &secret)
+        .eq_ignore_ascii_case(signature)
 }
 
 fn load_signing_secret() -> Option<String> {
@@ -395,8 +509,17 @@ fn load_signing_secret() -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-fn compute_policy_token_signature(policy_id: &str, nonce: &str, secret: &str) -> String {
-    let payload = format!("{policy_id}:{nonce}:{secret}");
+fn compute_policy_token_signature(
+    policy_id: &str,
+    nonce: &str,
+    command_hash: Option<&str>,
+    secret: &str,
+) -> String {
+    let payload = if let Some(command_hash) = command_hash {
+        format!("{policy_id}:{nonce}:{command_hash}:{secret}")
+    } else {
+        format!("{policy_id}:{nonce}:{secret}")
+    };
     let digest = Sha256::digest(payload.as_bytes());
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -591,7 +714,20 @@ mod tests {
         let without_signature = parse_policy_token("pol-1:nonce_1234").unwrap();
         assert_eq!(without_signature.policy_id, "pol-1");
         assert_eq!(without_signature.nonce, "nonce_1234");
+        assert!(without_signature.command_hash.is_none());
         assert!(without_signature.signature.is_none());
+
+        let with_command_hash = parse_policy_token(
+            "pol-1:nonce_1234:h14bf0b43befc58f56d4e4bcc9c8942d44f8d3af1321a96bea6f89fa44f4f5329",
+        )
+        .unwrap();
+        assert_eq!(with_command_hash.policy_id, "pol-1");
+        assert_eq!(with_command_hash.nonce, "nonce_1234");
+        assert_eq!(
+            with_command_hash.command_hash,
+            Some("14bf0b43befc58f56d4e4bcc9c8942d44f8d3af1321a96bea6f89fa44f4f5329")
+        );
+        assert!(with_command_hash.signature.is_none());
 
         let with_signature = parse_policy_token(
             "pol-1:nonce_1234:14bf0b43befc58f56d4e4bcc9c8942d44f8d3af1321a96bea6f89fa44f4f5329",
@@ -599,17 +735,18 @@ mod tests {
         .unwrap();
         assert_eq!(with_signature.policy_id, "pol-1");
         assert_eq!(with_signature.nonce, "nonce_1234");
+        assert!(with_signature.command_hash.is_none());
         assert!(with_signature.signature.is_some());
     }
 
     #[test]
     fn parse_policy_token_rejects_too_many_segments() {
-        assert!(parse_policy_token("pol-1:nonce:signature:extra").is_none());
+        assert!(parse_policy_token("pol-1:nonce:hdeadbeef:signature:extra").is_none());
     }
 
     #[test]
     fn compute_policy_signature_is_stable() {
-        let signature = compute_policy_token_signature("pol-1", "nonce_1234", "secret");
+        let signature = compute_policy_token_signature("pol-1", "nonce_1234", None, "secret");
         assert_eq!(
             signature,
             "14bf0b43befc58f56d4e4bcc9c8942d44f8d3af1321a96bea6f89fa44f4f5329"
@@ -645,6 +782,7 @@ mod tests {
             .expect("토큰 발급 실패");
         let parsed = parse_policy_token(&token).expect("발급 토큰 파싱 실패");
         assert_eq!(parsed.policy_id, "pol-1");
+        assert!(parsed.command_hash.is_none());
         assert!(parsed.signature.is_none());
         assert!(is_valid_nonce(parsed.nonce));
     }
@@ -681,11 +819,13 @@ mod tests {
             .expect("토큰 발급 실패");
 
         let parsed = parse_policy_token(&token).expect("발급 토큰 파싱 실패");
+        assert!(parsed.command_hash.is_none());
         let signature = parsed.signature.expect("서명 누락");
         assert!(is_valid_signature(signature));
         assert!(verify_policy_token_signature(
             parsed.policy_id,
             parsed.nonce,
+            parsed.command_hash,
             signature
         ));
 
@@ -694,5 +834,39 @@ mod tests {
 
         std::env::remove_var(POLICY_TOKEN_SIGNING_SECRET_ENV);
         drop(env_guard);
+    }
+
+    #[tokio::test]
+    async fn issue_command_token_for_command_binds_command_scope() {
+        let client = PolicyClient::new();
+        client.update_policies(vec![make_policy("pol-1")]).await;
+
+        let mut cmd = make_command("unused");
+        cmd.command_id = "cmd-bound".to_string();
+        cmd.session_id = "sess-bound".to_string();
+        let token = client
+            .issue_command_token_for_command("pol-1", &cmd)
+            .await
+            .expect("토큰 발급 실패");
+        cmd.policy_token = token;
+        assert!(client.validate_command(&cmd).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn validate_command_rejects_when_bound_command_scope_mismatches() {
+        let client = PolicyClient::new();
+        client.update_policies(vec![make_policy("pol-1")]).await;
+
+        let mut source_cmd = make_command("unused");
+        source_cmd.command_id = "cmd-source".to_string();
+        source_cmd.session_id = "sess-source".to_string();
+        let token = client
+            .issue_command_token_for_command("pol-1", &source_cmd)
+            .await
+            .expect("토큰 발급 실패");
+
+        let mut different_cmd = make_command(&token);
+        different_cmd.command_id = "cmd-other".to_string();
+        assert!(!client.validate_command(&different_cmd).await.unwrap());
     }
 }
