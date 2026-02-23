@@ -415,6 +415,8 @@
     "clearSelection": "Clear Selection",
     "actionSuccess": "Suggested action executed.",
     "actionFailed": "Suggested action failed.",
+    "typeTextLabel": "Input Text",
+    "typeTextPlaceholder": "Enter text to type",
     "suggestClickHint": "Click \"{{label}}\" in {{app}}",
     "suggestTypeHint": "Type into \"{{label}}\" in {{app}}",
     "unknown": "Unknown",

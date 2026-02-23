@@ -10,7 +10,10 @@ use oneshim_automation::audit::AuditStatus;
 use oneshim_automation::presets::builtin_presets;
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
-use oneshim_core::models::intent::{AutomationIntent, IntentResult, WorkflowPreset};
+use oneshim_core::models::automation::AutomationAction;
+use oneshim_core::models::intent::{
+    AutomationIntent, ElementBounds, IntentCommand, IntentResult, WorkflowPreset,
+};
 use oneshim_core::models::ui_scene::UiScene;
 use std::path::{Path as FsPath, PathBuf};
 
@@ -158,12 +161,87 @@ pub struct ExecuteIntentHintResponse {
     pub result: IntentResult,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SceneActionType {
+    Click,
+    TypeText,
+}
+
+/// Scene 좌표 기반 실행 요청 (결정적 실행 경로)
+#[derive(Debug, Deserialize)]
+pub struct ExecuteSceneActionRequest {
+    pub command_id: Option<String>,
+    pub session_id: String,
+    pub frame_id: Option<i64>,
+    pub scene_id: Option<String>,
+    pub element_id: String,
+    pub action_type: SceneActionType,
+    pub bbox_abs: ElementBounds,
+    pub role: Option<String>,
+    pub label: Option<String>,
+    pub text: Option<String>,
+}
+
+/// Scene 좌표 기반 실행 응답
+#[derive(Debug, Serialize)]
+pub struct ExecuteSceneActionResponse {
+    pub command_id: String,
+    pub session_id: String,
+    pub frame_id: Option<i64>,
+    pub scene_id: Option<String>,
+    pub element_id: String,
+    pub executed_intents: Vec<AutomationIntent>,
+    pub result: IntentResult,
+}
+
 /// Scene 분석 쿼리
 #[derive(Debug, Deserialize)]
 pub struct SceneQuery {
     pub app_name: Option<String>,
     pub screen_id: Option<String>,
     pub frame_id: Option<i64>,
+}
+
+fn build_scene_action_intents(req: &ExecuteSceneActionRequest) -> Result<Vec<AutomationIntent>, ApiError> {
+    if req.session_id.trim().is_empty() {
+        return Err(ApiError::BadRequest("session_id는 필수입니다".to_string()));
+    }
+    if req.element_id.trim().is_empty() {
+        return Err(ApiError::BadRequest("element_id는 필수입니다".to_string()));
+    }
+    if req.bbox_abs.width == 0 || req.bbox_abs.height == 0 {
+        return Err(ApiError::BadRequest(
+            "bbox_abs.width/height는 0보다 커야 합니다".to_string(),
+        ));
+    }
+
+    let (center_x, center_y) = req.bbox_abs.center();
+
+    match req.action_type {
+        SceneActionType::Click => Ok(vec![AutomationIntent::Raw(AutomationAction::MouseClick {
+            button: "left".to_string(),
+            x: center_x,
+            y: center_y,
+        })]),
+        SceneActionType::TypeText => {
+            let text = req
+                .text
+                .as_ref()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| ApiError::BadRequest("type_text 액션은 text가 필요합니다".to_string()))?;
+
+            Ok(vec![
+                AutomationIntent::Raw(AutomationAction::MouseClick {
+                    button: "left".to_string(),
+                    x: center_x,
+                    y: center_y,
+                }),
+                AutomationIntent::Raw(AutomationAction::KeyType { text }),
+            ])
+        }
+    }
 }
 
 fn infer_image_format(path: &FsPath) -> String {
@@ -579,6 +657,84 @@ pub async fn execute_intent_hint(
     }
 }
 
+/// POST /api/automation/execute-scene-action — Scene 좌표 기반 결정적 액션 실행
+pub async fn execute_scene_action(
+    State(state): State<AppState>,
+    Json(req): Json<ExecuteSceneActionRequest>,
+) -> Result<Json<ExecuteSceneActionResponse>, ApiError> {
+    let Some(ref controller) = state.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "자동화 컨트롤러가 활성화되지 않았습니다".to_string(),
+        ));
+    };
+
+    let intents = build_scene_action_intents(&req)?;
+    let command_id = req
+        .command_id
+        .as_ref()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| format!("scene-action-{}", chrono::Utc::now().timestamp_millis().abs()));
+
+    let mut last_result: Option<IntentResult> = None;
+    for (index, intent) in intents.iter().enumerate() {
+        let staged_command_id = if index == 0 {
+            command_id.clone()
+        } else {
+            format!("{command_id}:stage-{index}")
+        };
+
+        let intent_command = IntentCommand {
+            command_id: staged_command_id,
+            session_id: req.session_id.clone(),
+            intent: intent.clone(),
+            config: None,
+            timeout_ms: None,
+            policy_token: "scene-action".to_string(),
+        };
+
+        match controller.execute_intent(&intent_command).await {
+            Ok(result) => {
+                let failed = !result.success;
+                last_result = Some(result);
+                if failed {
+                    break;
+                }
+            }
+            Err(
+                CoreError::PolicyDenied(msg)
+                | CoreError::InvalidArguments(msg)
+                | CoreError::ElementNotFound(msg),
+            ) => return Err(ApiError::BadRequest(msg)),
+            Err(CoreError::Internal(msg))
+                if msg.contains("IntentExecutor") || msg.contains("IntentPlanner") =>
+            {
+                return Err(ApiError::BadRequest(msg));
+            }
+            Err(e) => return Err(ApiError::Internal(format!("scene 액션 실행 실패: {e}"))),
+        }
+    }
+
+    let result = last_result.unwrap_or(IntentResult {
+        success: false,
+        element: None,
+        verification: None,
+        retry_count: 0,
+        elapsed_ms: 0,
+        error: Some("실행 가능한 액션이 없습니다".to_string()),
+    });
+
+    Ok(Json(ExecuteSceneActionResponse {
+        command_id,
+        session_id: req.session_id,
+        frame_id: req.frame_id,
+        scene_id: req.scene_id,
+        element_id: req.element_id,
+        executed_intents: intents,
+        result,
+    }))
+}
+
 /// GET /api/automation/scene — 현재 화면의 구조화된 UI Scene 조회
 pub async fn get_automation_scene(
     State(state): State<AppState>,
@@ -788,5 +944,54 @@ mod tests {
     fn infer_image_format_falls_back_to_webp() {
         let path = std::path::Path::new("frames/2026-02-24/capture");
         assert_eq!(infer_image_format(path), "webp");
+    }
+
+    #[test]
+    fn build_scene_action_intents_click_returns_raw_click() {
+        let req = ExecuteSceneActionRequest {
+            command_id: None,
+            session_id: "sess-1".to_string(),
+            frame_id: Some(1),
+            scene_id: Some("scene-1".to_string()),
+            element_id: "el-1".to_string(),
+            action_type: SceneActionType::Click,
+            bbox_abs: ElementBounds {
+                x: 10,
+                y: 20,
+                width: 100,
+                height: 40,
+            },
+            role: Some("button".to_string()),
+            label: Some("Save".to_string()),
+            text: None,
+        };
+
+        let intents = build_scene_action_intents(&req).unwrap();
+        assert_eq!(intents.len(), 1);
+        assert!(matches!(intents[0], AutomationIntent::Raw(_)));
+    }
+
+    #[test]
+    fn build_scene_action_intents_type_text_requires_text() {
+        let req = ExecuteSceneActionRequest {
+            command_id: None,
+            session_id: "sess-1".to_string(),
+            frame_id: Some(1),
+            scene_id: Some("scene-1".to_string()),
+            element_id: "el-2".to_string(),
+            action_type: SceneActionType::TypeText,
+            bbox_abs: ElementBounds {
+                x: 10,
+                y: 20,
+                width: 100,
+                height: 40,
+            },
+            role: Some("input".to_string()),
+            label: Some("Search".to_string()),
+            text: None,
+        };
+
+        let err = build_scene_action_intents(&req).unwrap_err();
+        assert!(matches!(err, ApiError::BadRequest(_)));
     }
 }

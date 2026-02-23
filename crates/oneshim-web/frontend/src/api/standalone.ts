@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   AutomationSettings,
+  ExecuteSceneActionRequest,
   AutomationStats,
   AutomationStatus,
   BackupArchive,
@@ -765,6 +766,34 @@ export async function handleStandaloneRequest(
           button: 'left',
         },
       },
+      result: {
+        success: true,
+        element: null,
+        verification: null,
+        retry_count: 0,
+        elapsed_ms: 0,
+        error: null,
+      },
+    })
+  }
+
+  if (path === '/api/automation/execute-scene-action' && method === 'POST') {
+    const payload = body as ExecuteSceneActionRequest | null
+    const now = Date.now()
+    const commandId = payload?.command_id?.trim() || `scene-action-${now}`
+    const sessionId = payload?.session_id?.trim() || 'standalone-session'
+    return jsonResponse({
+      command_id: commandId,
+      session_id: sessionId,
+      frame_id: payload?.frame_id,
+      scene_id: payload?.scene_id,
+      element_id: payload?.element_id ?? 'unknown-element',
+      executed_intents: payload?.action_type === 'type_text'
+        ? [
+            { Raw: { MouseClick: { button: 'left', x: 0, y: 0 } } },
+            { Raw: { KeyType: { text: payload?.text ?? '' } } },
+          ]
+        : [{ Raw: { MouseClick: { button: 'left', x: 0, y: 0 } } }],
       result: {
         success: true,
         element: null,

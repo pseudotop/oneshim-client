@@ -415,6 +415,8 @@
     "clearSelection": "선택 해제",
     "actionSuccess": "추천 액션을 실행했습니다.",
     "actionFailed": "추천 액션 실행에 실패했습니다.",
+    "typeTextLabel": "입력 텍스트",
+    "typeTextPlaceholder": "입력할 텍스트를 작성하세요",
     "suggestClickHint": "{{app}}에서 \"{{label}}\" 요소를 클릭",
     "suggestTypeHint": "{{app}}에서 \"{{label}}\" 입력 필드에 텍스트 입력",
     "unknown": "알 수 없음",

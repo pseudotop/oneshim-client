@@ -266,4 +266,40 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
       },
     }
   })
+  await mockDynamicJson(page, '**/api/automation/execute-scene-action', (request) => {
+    const payload = request.postDataJSON() as
+      | {
+          command_id?: string
+          session_id?: string
+          frame_id?: number
+          scene_id?: string
+          element_id?: string
+          action_type?: 'click' | 'type_text'
+          text?: string
+        }
+      | undefined
+
+    return {
+      command_id: payload?.command_id ?? 'scene-action-e2e',
+      session_id: payload?.session_id ?? 'sess-e2e',
+      frame_id: payload?.frame_id ?? 0,
+      scene_id: payload?.scene_id ?? 'scene-e2e',
+      element_id: payload?.element_id ?? 'el-e2e',
+      executed_intents:
+        payload?.action_type === 'type_text'
+          ? [
+              { Raw: { MouseClick: { button: 'left', x: 100, y: 100 } } },
+              { Raw: { KeyType: { text: payload?.text ?? '' } } },
+            ]
+          : [{ Raw: { MouseClick: { button: 'left', x: 100, y: 100 } } }],
+      result: {
+        success: true,
+        element: null,
+        verification: null,
+        retry_count: 0,
+        elapsed_ms: 0,
+        error: null,
+      },
+    }
+  })
 }

@@ -1201,6 +1201,38 @@ export interface ExecuteIntentHintResponse {
   }
 }
 
+export type SceneActionType = 'click' | 'type_text'
+
+export interface ExecuteSceneActionRequest {
+  command_id?: string
+  session_id: string
+  frame_id?: number
+  scene_id?: string
+  element_id: string
+  action_type: SceneActionType
+  bbox_abs: UiSceneBounds
+  role?: string | null
+  label?: string | null
+  text?: string | null
+}
+
+export interface ExecuteSceneActionResponse {
+  command_id: string
+  session_id: string
+  frame_id?: number
+  scene_id?: string
+  element_id: string
+  executed_intents: IntentDefinition[]
+  result: {
+    success: boolean
+    element: unknown | null
+    verification: unknown | null
+    retry_count: number
+    elapsed_ms: number
+    error: string | null
+  }
+}
+
 export interface UiSceneBounds {
   x: number
   y: number
@@ -1318,6 +1350,22 @@ export async function executeIntentHint(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: '자연어 의도 실행 실패' }))
     throw new Error(err.error || '자연어 의도 실행 실패')
+  }
+  return res.json()
+}
+
+/** 좌표 기반 scene 액션 실행 */
+export async function executeSceneAction(
+  payload: ExecuteSceneActionRequest
+): Promise<ExecuteSceneActionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/execute-scene-action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Scene 액션 실행 실패' }))
+    throw new Error(err.error || 'Scene 액션 실행 실패')
   }
   return res.json()
 }

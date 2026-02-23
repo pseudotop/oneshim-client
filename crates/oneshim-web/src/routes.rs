@@ -127,6 +127,10 @@ pub fn api_routes() -> Router<AppState> {
             post(handlers::automation::execute_intent_hint),
         )
         .route(
+            "/automation/execute-scene-action",
+            post(handlers::automation::execute_scene_action),
+        )
+        .route(
             "/automation/scene",
             get(handlers::automation::get_automation_scene),
         )

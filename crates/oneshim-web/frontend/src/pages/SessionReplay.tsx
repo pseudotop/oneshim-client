@@ -12,7 +12,7 @@ import { Badge } from '../components/ui/Badge'
 import { Spinner } from '../components/ui/Spinner'
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui'
-import { executeIntentHint, fetchTimeline, fetchFrameTags, fetchAutomationScene } from '../api/client'
+import { executeSceneAction, fetchTimeline, fetchFrameTags, fetchAutomationScene } from '../api/client'
 import type { TimelineItem } from '../api/client'
 
 export default function SessionReplay() {
@@ -40,6 +40,7 @@ export default function SessionReplay() {
   const [imageLoadFailed, setImageLoadFailed] = useState(false)
   const [showSceneOverlay, setShowSceneOverlay] = useState(true)
   const [selectedSceneElementId, setSelectedSceneElementId] = useState<string | null>(null)
+  const [sceneTypeText, setSceneTypeText] = useState('')
   const [sceneActionFeedback, setSceneActionFeedback] = useState<{
     success: boolean
     message: string
@@ -124,6 +125,7 @@ export default function SessionReplay() {
 
   useEffect(() => {
     setSelectedSceneElementId(null)
+    setSceneTypeText('')
     setSceneActionFeedback(null)
   }, [currentFrame?.id, currentScene?.scene_id])
 
@@ -192,25 +194,27 @@ export default function SessionReplay() {
     [projectedSceneElements, selectedSceneElementId]
   )
 
-  const suggestedIntentHint = useMemo(() => {
+  const selectedActionType = useMemo<'click' | 'type_text'>(() => {
+    if (!selectedSceneElement) return 'click'
+    const role = selectedSceneElement.role?.toLowerCase() ?? ''
+    if (role.includes('input') || role.includes('textbox') || role.includes('field')) {
+      return 'type_text'
+    }
+    return 'click'
+  }, [selectedSceneElement])
+
+  const suggestedActionText = useMemo(() => {
     if (!selectedSceneElement) return ''
     const label = selectedSceneElement.label?.trim() || t('replay.unnamedElement', 'Unnamed element')
     const appName = currentFrame?.app_name || t('replay.currentApp', 'current app')
-    const role = selectedSceneElement.role?.toLowerCase() ?? ''
-
-    if (role.includes('input') || role.includes('textbox') || role.includes('field')) {
+    if (selectedActionType === 'type_text') {
       return t('replay.suggestTypeHint', { label, app: appName, defaultValue: `Type into "${label}" in ${appName}` })
     }
     return t('replay.suggestClickHint', { label, app: appName, defaultValue: `Click "${label}" in ${appName}` })
-  }, [selectedSceneElement, currentFrame?.app_name, t])
+  }, [selectedSceneElement, currentFrame?.app_name, selectedActionType, t])
 
   const executeSceneActionMutation = useMutation({
-    mutationFn: (intentHint: string) =>
-      executeIntentHint({
-        command_id: `replay-scene-${currentFrame?.id ?? 'frame'}-${Date.now()}`,
-        session_id: `replay-${currentFrame?.id ?? 'frame'}`,
-        intent_hint: intentHint,
-      }),
+    mutationFn: executeSceneAction,
     onSuccess: (response) => {
       const ok = response.result.success
       setSceneActionFeedback({
@@ -545,14 +549,43 @@ export default function SessionReplay() {
 
                       <div className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 break-words">
                         <span className="font-medium">{t('replay.suggestedAction', 'Suggested action')}: </span>
-                        {suggestedIntentHint}
+                        {suggestedActionText}
                       </div>
+
+                      {selectedActionType === 'type_text' && (
+                        <div className="space-y-1">
+                          <label className="text-xs text-slate-600 dark:text-slate-300">
+                            {t('replay.typeTextLabel', 'Input Text')}
+                          </label>
+                          <input
+                            value={sceneTypeText}
+                            onChange={(e) => setSceneTypeText(e.target.value)}
+                            placeholder={t('replay.typeTextPlaceholder', 'Enter text to type')}
+                            className="w-full px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100"
+                          />
+                        </div>
+                      )}
 
                       <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
                           isLoading={executeSceneActionMutation.isPending}
-                          onClick={() => executeSceneActionMutation.mutate(suggestedIntentHint)}
+                          onClick={() => {
+                            if (!selectedSceneElement) return
+                            executeSceneActionMutation.mutate({
+                              command_id: `replay-scene-${currentFrame?.id ?? 'frame'}-${Date.now()}`,
+                              session_id: `replay-${currentFrame?.id ?? 'frame'}`,
+                              frame_id: currentFrame?.id,
+                              scene_id: currentScene?.scene_id,
+                              element_id: selectedSceneElement.element_id,
+                              action_type: selectedActionType,
+                              bbox_abs: selectedSceneElement.bbox_abs,
+                              role: selectedSceneElement.role,
+                              label: selectedSceneElement.label,
+                              text: selectedActionType === 'type_text' ? sceneTypeText : undefined,
+                            })
+                          }}
+                          disabled={selectedActionType === 'type_text' && sceneTypeText.trim().length === 0}
                         >
                           {t('replay.runSuggestedAction', 'Run Suggested Action')}
                         </Button>
