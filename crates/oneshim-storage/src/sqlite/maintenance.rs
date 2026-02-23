@@ -133,6 +133,7 @@ impl SqliteStorage {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn upsert_backup_frame(
         &self,
         id: i64,
@@ -276,6 +277,7 @@ impl SqliteStorage {
         Ok(paths)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn delete_data_in_range(
         &self,
         from: &str,

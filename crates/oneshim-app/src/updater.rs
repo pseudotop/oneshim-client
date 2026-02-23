@@ -572,7 +572,7 @@ impl Updater {
     ///
     /// # Safety
     /// 이 함수는 현재 실행 중인 바이너리를 교체하고 프로세스를 재시작한다.
-    pub fn install_and_restart(&self, downloaded_path: &PathBuf) -> Result<(), UpdateError> {
+    pub fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
         use self_update::self_replace;
 
         tracing::info!("Starting update installation: {:?}", downloaded_path);
@@ -593,7 +593,7 @@ impl Updater {
             self.extract_zip(downloaded_path)?
         } else {
             // 압축되지 않은 바이너리로 가정
-            downloaded_path.clone()
+            downloaded_path.to_path_buf()
         };
 
         // 바이너리 교체
@@ -627,7 +627,7 @@ impl Updater {
     }
 
     /// tar.gz 아카이브에서 바이너리 추출
-    fn extract_tar_gz(&self, archive_path: &PathBuf) -> Result<PathBuf, UpdateError> {
+    fn extract_tar_gz(&self, archive_path: &Path) -> Result<PathBuf, UpdateError> {
         use flate2::read::GzDecoder;
         use std::fs::File;
 
@@ -676,7 +676,7 @@ impl Updater {
     }
 
     /// zip 아카이브에서 바이너리 추출
-    fn extract_zip(&self, archive_path: &PathBuf) -> Result<PathBuf, UpdateError> {
+    fn extract_zip(&self, archive_path: &Path) -> Result<PathBuf, UpdateError> {
         use std::fs::File;
 
         let file = File::open(archive_path)?;

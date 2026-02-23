@@ -963,9 +963,11 @@ mod tests {
 
     #[test]
     fn update_integrity_policy_rejects_disabled_signature_verification() {
-        let mut config = UpdateConfig::default();
-        config.enabled = true;
-        config.require_signature_verification = false;
+        let config = UpdateConfig {
+            enabled: true,
+            require_signature_verification: false,
+            ..UpdateConfig::default()
+        };
 
         let result = config.validate_integrity_policy();
         assert!(result.is_err());
@@ -973,10 +975,12 @@ mod tests {
 
     #[test]
     fn update_integrity_policy_rejects_invalid_public_key_length() {
-        let mut config = UpdateConfig::default();
-        config.enabled = true;
-        config.require_signature_verification = true;
-        config.signature_public_key = BASE64.encode([1u8; 16]);
+        let config = UpdateConfig {
+            enabled: true,
+            require_signature_verification: true,
+            signature_public_key: BASE64.encode([1u8; 16]),
+            ..UpdateConfig::default()
+        };
 
         let result = config.validate_integrity_policy();
         assert!(result.is_err());
@@ -984,10 +988,12 @@ mod tests {
 
     #[test]
     fn update_integrity_policy_accepts_valid_key() {
-        let mut config = UpdateConfig::default();
-        config.enabled = true;
-        config.require_signature_verification = true;
-        config.signature_public_key = BASE64.encode([7u8; 32]);
+        let config = UpdateConfig {
+            enabled: true,
+            require_signature_verification: true,
+            signature_public_key: BASE64.encode([7u8; 32]),
+            ..UpdateConfig::default()
+        };
 
         let result = config.validate_integrity_policy();
         assert!(result.is_ok());
@@ -995,11 +1001,13 @@ mod tests {
 
     #[test]
     fn update_integrity_policy_rejects_invalid_version_floor() {
-        let mut config = UpdateConfig::default();
-        config.enabled = true;
-        config.require_signature_verification = true;
-        config.signature_public_key = BASE64.encode([7u8; 32]);
-        config.min_allowed_version = Some("not-semver".to_string());
+        let config = UpdateConfig {
+            enabled: true,
+            require_signature_verification: true,
+            signature_public_key: BASE64.encode([7u8; 32]),
+            min_allowed_version: Some("not-semver".to_string()),
+            ..UpdateConfig::default()
+        };
 
         let result = config.validate_integrity_policy();
         assert!(result.is_err());

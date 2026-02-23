@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use oneshim_core::config::UpdateConfig;
 use oneshim_web::update_control::{PendingUpdateInfo, UpdateAction, UpdatePhase, UpdateStatus};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{error, info, warn};
@@ -14,7 +14,7 @@ pub trait UpdateExecutor: Send + Sync {
     async fn check_for_updates(&self) -> Result<UpdateCheckResult, UpdateError>;
     fn save_last_check_time(&self) -> Result<(), UpdateError>;
     async fn download_update(&self, download_url: &str) -> Result<PathBuf, UpdateError>;
-    fn install_and_restart(&self, downloaded_path: &PathBuf) -> Result<(), UpdateError>;
+    fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError>;
 }
 
 #[async_trait]
@@ -35,7 +35,7 @@ impl UpdateExecutor for Updater {
         self.download_update(download_url).await
     }
 
-    fn install_and_restart(&self, downloaded_path: &PathBuf) -> Result<(), UpdateError> {
+    fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
         self.install_and_restart(downloaded_path)
     }
 }
@@ -332,7 +332,7 @@ mod tests {
             Ok(PathBuf::from("/tmp/oneshim-test-update.tar.gz"))
         }
 
-        fn install_and_restart(&self, _downloaded_path: &PathBuf) -> Result<(), UpdateError> {
+        fn install_and_restart(&self, _downloaded_path: &Path) -> Result<(), UpdateError> {
             if let Some(err) = self
                 .install_error
                 .lock()
