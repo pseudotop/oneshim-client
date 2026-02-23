@@ -1,5 +1,7 @@
 // API 클라이언트
 
+import { handleStandaloneRequest, isStandaloneModeEnabled } from './standalone'
+
 const BASE_URL = '/api'
 
 // API 요청 타임아웃 + 재시도 래퍼
@@ -11,6 +13,13 @@ async function fetchWithRetry(
   options?: RequestInit,
   retries = MAX_RETRIES
 ): Promise<Response> {
+  if (isStandaloneModeEnabled()) {
+    const standaloneResponse = await handleStandaloneRequest(url, options)
+    if (standaloneResponse) {
+      return standaloneResponse
+    }
+  }
+
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
 
@@ -20,9 +29,15 @@ async function fetchWithRetry(
       signal: controller.signal,
     })
     // 5xx 서버 에러 시 재시도
-    if (response.status >= 500 && retries > 0) {
-      await new Promise((r) => setTimeout(r, 1000 * (MAX_RETRIES - retries + 1)))
-      return fetchWithRetry(url, options, retries - 1)
+    if (response.status >= 500) {
+      if (retries > 0) {
+        await new Promise((r) => setTimeout(r, 1000 * (MAX_RETRIES - retries + 1)))
+        return fetchWithRetry(url, options, retries - 1)
+      }
+      const standaloneResponse = await handleStandaloneRequest(url, options, true)
+      if (standaloneResponse) {
+        return standaloneResponse
+      }
     }
     return response
   } catch (error) {
@@ -30,6 +45,10 @@ async function fetchWithRetry(
     if (retries > 0) {
       await new Promise((r) => setTimeout(r, 1000 * (MAX_RETRIES - retries + 1)))
       return fetchWithRetry(url, options, retries - 1)
+    }
+    const standaloneResponse = await handleStandaloneRequest(url, options, true)
+    if (standaloneResponse) {
+      return standaloneResponse
     }
     throw error
   } finally {

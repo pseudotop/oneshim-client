@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { UpdateStatus } from '../api/client'
+import { isStandaloneModeEnabled } from '../api/standalone'
 
 export type UpdateStreamStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
@@ -14,6 +15,13 @@ export function useUpdateStream() {
   const retries = useRef(0)
 
   useEffect(() => {
+    if (isStandaloneModeEnabled()) {
+      setStatus('disconnected')
+      setLastError(null)
+      setRetryCount(0)
+      return () => {}
+    }
+
     const connect = () => {
       if (esRef.current) {
         esRef.current.close()

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { isStandaloneModeEnabled } from '../api/standalone'
 
 // 실시간 이벤트 타입 (백엔드와 동일)
 export interface MetricsUpdate {
@@ -182,6 +183,10 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
 
   // 컴포넌트 마운트 시 연결
   useEffect(() => {
+    if (isStandaloneModeEnabled()) {
+      setStatus('disconnected')
+      return () => {}
+    }
     connect()
     return () => {
       disconnect()
