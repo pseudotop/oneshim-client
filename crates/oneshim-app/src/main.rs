@@ -11,6 +11,7 @@ mod integrity_guard;
 mod lifecycle;
 mod memory_profiler;
 mod notification_manager;
+mod provider_adapters;
 mod scheduler;
 mod update_coordinator;
 mod updater;
@@ -53,6 +54,7 @@ use crate::event_bus::EventBus;
 use crate::focus_analyzer::FocusAnalyzer;
 use crate::lifecycle::LifecycleManager;
 use crate::notification_manager::NotificationManager;
+use crate::provider_adapters::resolve_ai_provider_adapters;
 use crate::scheduler::{Scheduler, SchedulerConfig};
 
 /// ONESHIM 데스크톱 클라이언트
@@ -507,6 +509,25 @@ async fn main() -> Result<()> {
 
     // ── 자동화 컨트롤러 (config.automation.enabled일 때만) ──
     let automation_controller = if config.automation.enabled {
+        match resolve_ai_provider_adapters(&config.ai_provider) {
+            Ok(adapters) => {
+                info!(
+                    ocr_provider = adapters.ocr.provider_name(),
+                    ocr_source = adapters.ocr_source.as_str(),
+                    llm_provider = adapters.llm.provider_name(),
+                    llm_source = adapters.llm_source.as_str(),
+                    "AI 제공자 어댑터 해석 완료"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    fallback_enabled = config.ai_provider.fallback_to_local,
+                    "AI 제공자 어댑터 해석 실패; 기존 NoOp 자동화 실행기로 계속 진행"
+                );
+            }
+        }
+
         let policy_client = Arc::new(PolicyClient::new());
         let sandbox = create_platform_sandbox(&config.automation.sandbox);
         let mut controller = AutomationController::new(
