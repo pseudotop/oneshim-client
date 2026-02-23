@@ -3,7 +3,6 @@
 use axum::extract::{Query, State};
 use axum::Json;
 use oneshim_core::models::event::Event;
-use oneshim_core::ports::storage::StorageService;
 use serde::Serialize;
 
 use crate::error::ApiError;

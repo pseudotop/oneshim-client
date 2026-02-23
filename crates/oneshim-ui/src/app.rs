@@ -8,7 +8,7 @@
 use directories::ProjectDirs;
 use iced::widget::{button, column, container, horizontal_rule, row, text, toggler, Column};
 use iced::{event, Alignment, Element, Event, Length, Subscription, Task, Theme};
-use oneshim_storage::sqlite::SqliteStorage;
+use oneshim_core::ports::storage::StorageService;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -272,8 +272,8 @@ pub struct OneshimApp {
     window_visible: bool,
     /// 메인 윈도우 ID (최소화/복원용)
     window_id: Option<iced::window::Id>,
-    /// SQLite 저장소 (Agent와 공유, 타임라인 조회용)
-    storage: Option<Arc<SqliteStorage>>,
+    /// 저장소 포트 (Agent와 공유, 타임라인 조회용)
+    storage: Option<Arc<dyn StorageService>>,
     update_action_tx: Option<std::sync::mpsc::Sender<UpdateUserAction>>,
     update_status_rx: Option<std::sync::mpsc::Receiver<UpdateStatusSnapshot>>,
     update_status: UpdateStatusSnapshot,
@@ -344,8 +344,8 @@ impl OneshimApp {
         self
     }
 
-    /// SQLite 저장소 설정 (Agent와 공유)
-    pub fn with_storage(mut self, storage: Arc<SqliteStorage>) -> Self {
+    /// 저장소 설정 (Agent와 공유)
+    pub fn with_storage(mut self, storage: Arc<dyn StorageService>) -> Self {
         self.storage = Some(storage);
         self
     }

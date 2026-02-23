@@ -154,23 +154,37 @@ impl AutomationController {
         self.intent_planner = Some(planner);
     }
 
+    fn ensure_enabled(&self) -> Result<(), CoreError> {
+        if self.enabled {
+            Ok(())
+        } else {
+            Err(CoreError::PolicyDenied(
+                "자동화가 비활성화 상태입니다".to_string(),
+            ))
+        }
+    }
+
+    fn require_intent_executor(&self) -> Result<&Arc<IntentExecutor>, CoreError> {
+        self.intent_executor
+            .as_ref()
+            .ok_or_else(|| CoreError::Internal("IntentExecutor가 설정되지 않았습니다".to_string()))
+    }
+
+    fn require_intent_planner(&self) -> Result<&Arc<dyn IntentPlanner>, CoreError> {
+        self.intent_planner
+            .as_ref()
+            .ok_or_else(|| CoreError::Internal("IntentPlanner가 설정되지 않았습니다".to_string()))
+    }
+
     /// 의도 명령 실행 (UI 자동화)
     ///
     /// 1. 정책 검증
     /// 2. IntentExecutor를 통한 의도 실행
     /// 3. 감사 로깅
     pub async fn execute_intent(&self, cmd: &IntentCommand) -> Result<IntentResult, CoreError> {
-        // 1. 활성화 확인
-        if !self.enabled {
-            return Err(CoreError::PolicyDenied(
-                "자동화가 비활성화 상태입니다".to_string(),
-            ));
-        }
-
-        // 2. IntentExecutor 존재 확인
-        let executor = self.intent_executor.as_ref().ok_or_else(|| {
-            CoreError::Internal("IntentExecutor가 설정되지 않았습니다".to_string())
-        })?;
+        // 1. 활성화/실행기 확인
+        self.ensure_enabled()?;
+        let executor = self.require_intent_executor()?;
 
         // 3. 감사 로그 (시작)
         {
@@ -214,20 +228,10 @@ impl AutomationController {
         session_id: &str,
         intent_hint: &str,
     ) -> Result<PlannedIntentResult, CoreError> {
-        // 1. 활성화 확인
-        if !self.enabled {
-            return Err(CoreError::PolicyDenied(
-                "자동화가 비활성화 상태입니다".to_string(),
-            ));
-        }
-
-        // 2. 실행기/플래너 확인
-        let executor = self.intent_executor.as_ref().ok_or_else(|| {
-            CoreError::Internal("IntentExecutor가 설정되지 않았습니다".to_string())
-        })?;
-        let planner = self.intent_planner.as_ref().ok_or_else(|| {
-            CoreError::Internal("IntentPlanner가 설정되지 않았습니다".to_string())
-        })?;
+        // 1. 활성화/실행기/플래너 확인
+        self.ensure_enabled()?;
+        let executor = self.require_intent_executor()?;
+        let planner = self.require_intent_planner()?;
 
         // 3. 감사 로그 시작
         {
@@ -272,17 +276,9 @@ impl AutomationController {
     /// 각 단계를 순차 실행하며, 감사 로그를 기록한다.
     /// `stop_on_failure` 설정 시 실패 단계에서 중단한다.
     pub async fn run_workflow(&self, preset: &WorkflowPreset) -> Result<WorkflowResult, CoreError> {
-        // 1. 활성화 확인
-        if !self.enabled {
-            return Err(CoreError::PolicyDenied(
-                "자동화가 비활성화 상태입니다".to_string(),
-            ));
-        }
-
-        // 2. IntentExecutor 존재 확인
-        let executor = self.intent_executor.as_ref().ok_or_else(|| {
-            CoreError::Internal("IntentExecutor가 설정되지 않았습니다".to_string())
-        })?;
+        // 1. 활성화/실행기 확인
+        self.ensure_enabled()?;
+        let executor = self.require_intent_executor()?;
 
         let total_steps = preset.steps.len();
         let mut step_results = Vec::with_capacity(total_steps);
@@ -455,11 +451,7 @@ impl AutomationController {
         cmd: &AutomationCommand,
     ) -> Result<CommandResult, CoreError> {
         // 1. 활성화 확인
-        if !self.enabled {
-            return Err(CoreError::PolicyDenied(
-                "자동화가 비활성화 상태입니다".to_string(),
-            ));
-        }
+        self.ensure_enabled()?;
 
         // 2. 정책 검증
         if !self.policy_client.validate_command(cmd).await? {

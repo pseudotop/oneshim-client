@@ -60,14 +60,6 @@ impl SqliteStorage {
         })
     }
 
-    /// 내부 연결 참조 반환 (웹 API용)
-    ///
-    /// 커스텀 쿼리가 필요한 경우 사용합니다.
-    /// 주의: 직접 쿼리 시 스키마 호환성을 보장해야 합니다.
-    pub fn conn_ref(&self) -> &Mutex<Connection> {
-        &self.conn
-    }
-
     /// 인메모리 SQLite 저장소 생성 (테스트용)
     pub fn open_in_memory(retention_days: u32) -> Result<Self, CoreError> {
         let conn = Connection::open_in_memory()

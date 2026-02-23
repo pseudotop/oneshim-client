@@ -3,7 +3,6 @@
 use axum::extract::{Query, State};
 use axum::Json;
 use chrono::{Duration, Utc};
-use oneshim_core::ports::storage::MetricsStorage;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;

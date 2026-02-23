@@ -5,6 +5,8 @@
 //! 자동으로 적절한 프로토콜을 선택합니다.
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -121,6 +123,21 @@ impl UnifiedClient {
         let client = GrpcContextClient::connect(self.config.clone()).await?;
         *self.grpc_context.write().await = Some(client);
         Ok(())
+    }
+
+    /// gRPC 컨텍스트 클라이언트 공통 실행 헬퍼.
+    async fn with_grpc_context_client<R, F>(&self, op: &str, f: F) -> Result<R, CoreError>
+    where
+        F: for<'a> FnOnce(
+            &'a mut GrpcContextClient,
+        ) -> Pin<Box<dyn Future<Output = Result<R, CoreError>> + Send + 'a>>,
+    {
+        self.ensure_grpc_context().await?;
+        let mut guard = self.grpc_context.write().await;
+        let client = guard.as_mut().ok_or_else(|| {
+            CoreError::Network(format!("gRPC 컨텍스트 클라이언트 초기화 실패 ({op})"))
+        })?;
+        f(client).await
     }
 
     /// 로그인
@@ -379,14 +396,11 @@ impl UnifiedClient {
                 request.events.len(),
                 request.frames.len()
             );
-            self.ensure_grpc_context().await?;
-
-            let mut guard = self.grpc_context.write().await;
-            let client = guard.as_mut().ok_or_else(|| {
-                CoreError::Network("gRPC 컨텍스트 클라이언트 초기화 실패".to_string())
-            })?;
-
-            let response = client.upload_batch(request).await?;
+            let response = self
+                .with_grpc_context_client("upload_batch", |client| {
+                    Box::pin(async move { client.upload_batch(request).await })
+                })
+                .await?;
             info!(
                 "gRPC 배치 업로드 완료: processed_events={}, processed_frames={}, status={}",
                 response.processed_events, response.processed_frames, response.status
@@ -459,16 +473,18 @@ impl UnifiedClient {
                 "gRPC 피드백 전송: suggestion_id={}, feedback_type={:?}",
                 suggestion_id, feedback_type
             );
-            self.ensure_grpc_context().await?;
-
-            let mut guard = self.grpc_context.write().await;
-            let client = guard.as_mut().ok_or_else(|| {
-                CoreError::Network("gRPC 컨텍스트 클라이언트 초기화 실패".to_string())
-            })?;
-
-            client
-                .send_feedback(suggestion_id, feedback_type, comment)
-                .await?;
+            let suggestion_id_owned = suggestion_id.to_string();
+            let comment_owned = comment.map(String::from);
+            self.with_grpc_context_client("send_feedback", |client| {
+                let suggestion_id = suggestion_id_owned;
+                let comment = comment_owned;
+                Box::pin(async move {
+                    client
+                        .send_feedback(&suggestion_id, feedback_type, comment.as_deref())
+                        .await
+                })
+            })
+            .await?;
             info!("gRPC 피드백 전송 완료: suggestion_id={}", suggestion_id);
 
             Ok(())
@@ -533,14 +549,11 @@ impl UnifiedClient {
     ) -> Result<ListSuggestionsResponse, CoreError> {
         if self.config.should_use_grpc_for_context() {
             debug!("gRPC 제안 목록 조회: types={:?}, limit={}", types, limit);
-            self.ensure_grpc_context().await?;
-
-            let mut guard = self.grpc_context.write().await;
-            let client = guard.as_mut().ok_or_else(|| {
-                CoreError::Network("gRPC 컨텍스트 클라이언트 초기화 실패".to_string())
-            })?;
-
-            let response = client.list_suggestions(types, limit).await?;
+            let response = self
+                .with_grpc_context_client("list_suggestions", |client| {
+                    Box::pin(async move { client.list_suggestions(types, limit).await })
+                })
+                .await?;
             info!(
                 "gRPC 제안 목록 조회 완료: count={}",
                 response.suggestions.len()

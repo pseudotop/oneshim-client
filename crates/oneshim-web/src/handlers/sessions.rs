@@ -2,7 +2,6 @@
 
 use axum::extract::{Path, State};
 use axum::Json;
-use oneshim_core::ports::storage::MetricsStorage;
 use serde::Serialize;
 
 use crate::error::ApiError;

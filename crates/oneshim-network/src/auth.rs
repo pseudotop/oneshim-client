@@ -165,9 +165,10 @@ impl TokenManager {
         };
 
         if needs_refresh {
-            if let Err(e) = self.refresh().await {
+            self.refresh().await.map_err(|e| {
                 warn!("자동 토큰 갱신 실패: {e}");
-            }
+                CoreError::Auth(format!("자동 토큰 갱신 실패: {e}"))
+            })?;
         }
 
         let state = self.state.read().await;
@@ -324,6 +325,36 @@ mod tests {
 
         let result = tm.refresh().await;
         assert!(result.is_ok());
+        refresh_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn get_token_propagates_refresh_failure() {
+        let mut server = mockito::Server::new_async().await;
+
+        let login_mock = server
+            .mock("POST", "/api/v1/auth/tokens")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"access_token":"old_jwt","refresh_token":"ref_tok","expires_in":1}"#)
+            .create_async()
+            .await;
+
+        let refresh_mock = server
+            .mock("POST", "/api/v1/auth/tokens/refresh")
+            .with_status(401)
+            .with_body("Unauthorized")
+            .create_async()
+            .await;
+
+        let tm = TokenManager::new(&server.url());
+        tm.login("user@test.com", "pass").await.unwrap();
+        login_mock.assert_async().await;
+
+        // expires_in=1로 설정했으므로 get_token() 호출 시 refresh가 수행되고 실패를 전파해야 한다.
+        let result = tm.get_token().await;
+        assert!(result.is_err());
+        assert!(format!("{}", result.unwrap_err()).contains("자동 토큰 갱신 실패"));
         refresh_mock.assert_async().await;
     }
 }

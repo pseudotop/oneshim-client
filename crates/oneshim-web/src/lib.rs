@@ -15,6 +15,7 @@ pub mod embedded;
 pub mod error;
 pub mod handlers;
 pub mod routes;
+pub mod storage_port;
 pub mod update_control;
 
 use axum::Router;
@@ -22,7 +23,6 @@ use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
 use oneshim_core::config::WebConfig;
 use oneshim_core::config_manager::ConfigManager;
-use oneshim_storage::sqlite::SqliteStorage;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -30,6 +30,7 @@ use tokio::sync::{broadcast, watch, RwLock};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
+use crate::storage_port::WebStorage;
 
 // 실시간 이벤트 타입 re-export
 pub use handlers::stream::{FrameUpdate, IdleUpdate, MetricsUpdate, RealtimeEvent};
@@ -46,8 +47,8 @@ const MAX_PORT_ATTEMPTS: u16 = 10;
 /// 웹 서버 애플리케이션 상태
 #[derive(Clone)]
 pub struct AppState {
-    /// SQLite 저장소
-    pub storage: Arc<SqliteStorage>,
+    /// 웹 저장소 포트
+    pub storage: Arc<dyn WebStorage>,
     /// 프레임 저장 디렉토리
     pub frames_dir: Option<std::path::PathBuf>,
     /// 실시간 이벤트 송신 채널
@@ -69,7 +70,7 @@ pub struct WebServer {
 
 impl WebServer {
     /// 새 웹 서버 생성
-    pub fn new(storage: Arc<SqliteStorage>, config: WebConfig) -> Self {
+    pub fn new(storage: Arc<dyn WebStorage>, config: WebConfig) -> Self {
         let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         Self {
             config,
@@ -241,6 +242,7 @@ impl WebServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_storage::sqlite::SqliteStorage;
 
     #[test]
     fn default_config() {

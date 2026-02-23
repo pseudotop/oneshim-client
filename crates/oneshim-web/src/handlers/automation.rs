@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use oneshim_automation::audit::AuditStatus;
 use oneshim_automation::presets::builtin_presets;
+use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{AutomationIntent, IntentResult, WorkflowPreset};
 
@@ -52,6 +53,49 @@ pub struct AuditQuery {
 
 fn default_audit_limit() -> usize {
     50
+}
+
+fn require_config_manager(state: &AppState) -> Result<&ConfigManager, ApiError> {
+    state
+        .config_manager
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("설정 관리자 미설정".into()))
+}
+
+fn default_automation_status(pending: usize) -> AutomationStatusDto {
+    AutomationStatusDto {
+        enabled: false,
+        sandbox_enabled: false,
+        sandbox_profile: "Standard".to_string(),
+        ocr_provider: "Local".to_string(),
+        llm_provider: "Local".to_string(),
+        external_data_policy: "PiiFilterStrict".to_string(),
+        pending_audit_entries: pending,
+    }
+}
+
+fn default_policies() -> PoliciesDto {
+    PoliciesDto {
+        automation_enabled: false,
+        sandbox_profile: "Standard".to_string(),
+        sandbox_enabled: false,
+        allow_network: false,
+        external_data_policy: "PiiFilterStrict".to_string(),
+    }
+}
+
+fn parse_audit_status(status_filter: &str) -> Result<AuditStatus, ApiError> {
+    match status_filter {
+        "Started" => Ok(AuditStatus::Started),
+        "Completed" => Ok(AuditStatus::Completed),
+        "Failed" => Ok(AuditStatus::Failed),
+        "Denied" => Ok(AuditStatus::Denied),
+        "Timeout" => Ok(AuditStatus::Timeout),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 상태 필터: {}",
+            status_filter
+        ))),
+    }
 }
 
 /// 실행 통계
@@ -139,15 +183,7 @@ pub async fn get_automation_status(
             pending_audit_entries: pending,
         }))
     } else {
-        Ok(Json(AutomationStatusDto {
-            enabled: false,
-            sandbox_enabled: false,
-            sandbox_profile: "Standard".to_string(),
-            ocr_provider: "Local".to_string(),
-            llm_provider: "Local".to_string(),
-            external_data_policy: "PiiFilterStrict".to_string(),
-            pending_audit_entries: pending,
-        }))
+        Ok(Json(default_automation_status(pending)))
     }
 }
 
@@ -163,19 +199,7 @@ pub async fn get_audit_logs(
     let guard = logger.read().await;
 
     let entries = if let Some(ref status_filter) = query.status {
-        let status = match status_filter.as_str() {
-            "Started" => AuditStatus::Started,
-            "Completed" => AuditStatus::Completed,
-            "Failed" => AuditStatus::Failed,
-            "Denied" => AuditStatus::Denied,
-            "Timeout" => AuditStatus::Timeout,
-            _ => {
-                return Err(ApiError::BadRequest(format!(
-                    "유효하지 않은 상태 필터: {}",
-                    status_filter
-                )))
-            }
-        };
+        let status = parse_audit_status(status_filter)?;
         guard.entries_by_status(&status, query.limit)
     } else {
         guard.recent_entries(query.limit)
@@ -210,13 +234,7 @@ pub async fn get_policies(State(state): State<AppState>) -> Result<Json<Policies
             external_data_policy: format!("{:?}", config.ai_provider.external_data_policy),
         }))
     } else {
-        Ok(Json(PoliciesDto {
-            automation_enabled: false,
-            sandbox_profile: "Standard".to_string(),
-            sandbox_enabled: false,
-            allow_network: false,
-            external_data_policy: "PiiFilterStrict".to_string(),
-        }))
+        Ok(Json(default_policies()))
     }
 }
 
@@ -285,9 +303,7 @@ pub async fn create_preset(
         return Err(ApiError::BadRequest("최소 1개 단계가 필요합니다".into()));
     }
 
-    let Some(ref config_manager) = state.config_manager else {
-        return Err(ApiError::Internal("설정 관리자 미설정".into()));
-    };
+    let config_manager = require_config_manager(&state)?;
 
     config_manager
         .update_with(|config| {
@@ -315,9 +331,7 @@ pub async fn update_preset(
     Path(id): Path<String>,
     Json(preset): Json<WorkflowPreset>,
 ) -> Result<Json<WorkflowPreset>, ApiError> {
-    let Some(ref config_manager) = state.config_manager else {
-        return Err(ApiError::Internal("설정 관리자 미설정".into()));
-    };
+    let config_manager = require_config_manager(&state)?;
 
     let mut found = false;
     config_manager
@@ -350,9 +364,7 @@ pub async fn delete_preset(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let Some(ref config_manager) = state.config_manager else {
-        return Err(ApiError::Internal("설정 관리자 미설정".into()));
-    };
+    let config_manager = require_config_manager(&state)?;
 
     let mut found = false;
     config_manager

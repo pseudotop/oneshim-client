@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
 use crate::controller::AutomationCommand;
@@ -101,6 +101,8 @@ pub struct PolicyClient {
     policy_cache: RwLock<PolicyCache>,
     /// 허가된 프로세스 이름 목록 (빠른 조회)
     allowed_processes: RwLock<HashSet<String>>,
+    /// 재사용 방지용 검증 완료 토큰 캐시 (policy_token -> validated_at)
+    validated_tokens: RwLock<HashMap<String, DateTime<Utc>>>,
 }
 
 impl PolicyClient {
@@ -109,6 +111,7 @@ impl PolicyClient {
         Self {
             policy_cache: RwLock::new(PolicyCache::default()),
             allowed_processes: RwLock::new(HashSet::new()),
+            validated_tokens: RwLock::new(HashMap::new()),
         }
     }
 
@@ -116,6 +119,7 @@ impl PolicyClient {
     pub async fn update_policies(&self, policies: Vec<ExecutionPolicy>) {
         let mut cache = self.policy_cache.write().await;
         let mut allowed = self.allowed_processes.write().await;
+        let mut validated = self.validated_tokens.write().await;
 
         allowed.clear();
         for policy in &policies {
@@ -124,6 +128,7 @@ impl PolicyClient {
 
         cache.policies = policies;
         cache.last_updated = Utc::now();
+        validated.clear();
     }
 
     /// 캐시 만료 확인
@@ -137,16 +142,52 @@ impl PolicyClient {
 
     /// 자동화 명령의 정책 토큰 검증
     pub async fn validate_command(&self, cmd: &AutomationCommand) -> Result<bool, CoreError> {
-        // 캐시 만료 확인
-        if !self.is_cache_valid().await {
+        let now = Utc::now();
+        let token = cmd.policy_token.trim();
+        if token.is_empty() {
+            return Ok(false);
+        }
+
+        let Some((policy_id, nonce)) = parse_policy_token(token) else {
+            tracing::warn!(policy_token = token, "정책 토큰 형식 오류");
+            return Ok(false);
+        };
+        if !is_valid_nonce(nonce) {
+            tracing::warn!(policy_token = token, "정책 토큰 nonce 형식 오류");
+            return Ok(false);
+        }
+
+        let ttl_seconds = {
+            let cache = self.policy_cache.read().await;
+            let elapsed = now.signed_duration_since(cache.last_updated).num_seconds() as u64;
+            if elapsed >= cache.ttl_seconds {
+                0
+            } else {
+                cache.ttl_seconds
+            }
+        };
+
+        if ttl_seconds == 0 {
             tracing::warn!("정책 캐시 만료 — 서버 동기화 필요");
             return Ok(false);
         }
 
-        // 정책 토큰 검증 (간단한 비어있지 않음 체크 — 실제로는 서버 검증)
-        if cmd.policy_token.is_empty() {
+        // 토큰의 policy_id가 현재 캐시에 존재해야 유효
+        if self.get_policy_for_token(token).await.is_none() {
+            tracing::warn!(policy_id, "정책 토큰에 매칭되는 정책이 없음");
             return Ok(false);
         }
+
+        // nonce 재사용 방지 (캐시 TTL 범위 내에서 토큰 1회성 보장)
+        let mut validated = self.validated_tokens.write().await;
+        validated.retain(|_, validated_at| {
+            now.signed_duration_since(*validated_at).num_seconds() < ttl_seconds as i64
+        });
+        if validated.contains_key(token) {
+            tracing::warn!(policy_token = token, "정책 토큰 재사용 감지");
+            return Ok(false);
+        }
+        validated.insert(token.to_string(), now);
 
         Ok(true)
     }
@@ -208,6 +249,24 @@ impl Default for PolicyClient {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn parse_policy_token(token: &str) -> Option<(&str, &str)> {
+    let (policy_id, nonce) = token.split_once(':')?;
+    if policy_id.trim().is_empty() || nonce.trim().is_empty() {
+        return None;
+    }
+    if nonce.contains(':') {
+        return None;
+    }
+    Some((policy_id.trim(), nonce.trim()))
+}
+
+fn is_valid_nonce(nonce: &str) -> bool {
+    nonce.len() >= 8
+        && nonce
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 #[cfg(test)]
@@ -327,5 +386,58 @@ mod tests {
         let client = PolicyClient::new();
         let found = client.get_policy_for_token("nonexistent:xyz").await;
         assert!(found.is_none());
+    }
+
+    fn make_policy(policy_id: &str) -> ExecutionPolicy {
+        ExecutionPolicy {
+            policy_id: policy_id.to_string(),
+            process_name: "git".to_string(),
+            process_hash: None,
+            allowed_args: vec![],
+            requires_sudo: false,
+            max_execution_time_ms: 10000,
+            audit_level: AuditLevel::Basic,
+            sandbox_profile: None,
+            allowed_paths: vec![],
+            allow_network: None,
+        }
+    }
+
+    fn make_command(policy_token: &str) -> AutomationCommand {
+        AutomationCommand {
+            command_id: "cmd-1".to_string(),
+            session_id: "sess-1".to_string(),
+            action: crate::controller::AutomationAction::MouseMove { x: 0, y: 0 },
+            timeout_ms: None,
+            policy_token: policy_token.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_command_requires_existing_policy_and_valid_nonce() {
+        let client = PolicyClient::new();
+        client.update_policies(vec![make_policy("pol-1")]).await;
+
+        let invalid_format = make_command("pol-1");
+        assert!(!client.validate_command(&invalid_format).await.unwrap());
+
+        let invalid_nonce = make_command("pol-1:short");
+        assert!(!client.validate_command(&invalid_nonce).await.unwrap());
+
+        let unknown_policy = make_command("pol-x:nonce_1234");
+        assert!(!client.validate_command(&unknown_policy).await.unwrap());
+
+        let valid = make_command("pol-1:nonce_1234");
+        assert!(client.validate_command(&valid).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn validate_command_rejects_replayed_policy_token() {
+        let client = PolicyClient::new();
+        client.update_policies(vec![make_policy("pol-1")]).await;
+
+        let cmd = make_command("pol-1:nonce_1234");
+        assert!(client.validate_command(&cmd).await.unwrap());
+        assert!(!client.validate_command(&cmd).await.unwrap());
     }
 }

@@ -5,11 +5,13 @@
 use base64::Engine;
 use chrono::{Datelike, Duration as ChronoDuration, Timelike, Utc};
 use oneshim_core::config::{AppConfig, Weekday};
+use oneshim_core::error::CoreError;
 use oneshim_core::models::activity::{
     IdleState, ProcessSnapshot, ProcessSnapshotEntry, SessionStats,
 };
+use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::event::{ContextEvent, Event, ProcessSnapshotEvent};
-use oneshim_core::models::frame::ImagePayload;
+use oneshim_core::models::frame::{FrameMetadata, ImagePayload};
 use oneshim_core::ports::api_client::ApiClient;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
 use oneshim_core::ports::storage::{MetricsStorage, StorageService};
@@ -28,6 +30,31 @@ use tracing::{debug, info, warn};
 
 use crate::focus_analyzer::FocusAnalyzer;
 use crate::notification_manager::NotificationManager;
+
+/// 스케줄러가 필요로 하는 저장소 포트.
+///
+/// 기존 MetricsStorage 포트에 프레임 메타데이터 저장 동작을 추가한 앱 계층 포트다.
+pub trait SchedulerStorage: MetricsStorage + Send + Sync {
+    fn save_frame_metadata_with_bounds(
+        &self,
+        metadata: &FrameMetadata,
+        file_path: Option<&str>,
+        ocr_text: Option<&str>,
+        bounds: Option<&WindowBounds>,
+    ) -> Result<i64, CoreError>;
+}
+
+impl SchedulerStorage for SqliteStorage {
+    fn save_frame_metadata_with_bounds(
+        &self,
+        metadata: &FrameMetadata,
+        file_path: Option<&str>,
+        ocr_text: Option<&str>,
+        bounds: Option<&WindowBounds>,
+    ) -> Result<i64, CoreError> {
+        SqliteStorage::save_frame_metadata_with_bounds(self, metadata, file_path, ocr_text, bounds)
+    }
+}
 
 /// Base64 문자열을 바이트로 디코딩
 fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
@@ -92,8 +119,8 @@ pub struct Scheduler {
     capture_trigger: Arc<Mutex<Box<dyn CaptureTrigger>>>,
     frame_processor: Arc<Mutex<Box<dyn FrameProcessor>>>,
     storage: Arc<dyn StorageService>,
-    /// SQLite 저장소 (프레임 메타데이터 + 메트릭 저장용)
-    sqlite_storage: Arc<SqliteStorage>,
+    /// 스케줄러 저장소 포트 (프레임 메타데이터 + 메트릭 저장용)
+    sqlite_storage: Arc<dyn SchedulerStorage>,
     /// 프레임 파일 저장소 (옵션)
     frame_storage: Option<Arc<FrameFileStorage>>,
     batch_uploader: Arc<BatchUploader>,
@@ -118,7 +145,7 @@ impl Scheduler {
         capture_trigger: Box<dyn CaptureTrigger>,
         frame_processor: Box<dyn FrameProcessor>,
         storage: Arc<dyn StorageService>,
-        sqlite_storage: Arc<SqliteStorage>,
+        sqlite_storage: Arc<dyn SchedulerStorage>,
         frame_storage: Option<Arc<FrameFileStorage>>,
         batch_uploader: Arc<BatchUploader>,
         api_client: Arc<dyn ApiClient>,
@@ -166,6 +193,14 @@ impl Scheduler {
         self.app_config.clone()
     }
 
+    async fn initialize_session(&self, session_id: &str) {
+        let sqlite_init = self.sqlite_storage.clone();
+        let session_stats = SessionStats::new(session_id.to_string());
+        if let Err(e) = sqlite_init.upsert_session(&session_stats).await {
+            warn!("세션 초기화 실패: {e}");
+        }
+    }
+
     /// 모든 루프 시작
     pub async fn run(&self, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) {
         info!(
@@ -191,12 +226,7 @@ impl Scheduler {
         let idle_threshold = self.config.idle_threshold_secs;
 
         // 세션 초기화
-        let sqlite_init = self.sqlite_storage.clone();
-        let session_init = session_id.clone();
-        let session_stats = SessionStats::new(session_init.clone());
-        if let Err(e) = sqlite_init.upsert_session(&session_stats).await {
-            warn!("세션 초기화 실패: {e}");
-        }
+        self.initialize_session(&session_id).await;
 
         // 공유 입력 활동 수집기 (루프 1, 9에서 사용)
         let shared_input_collector = Arc::new(InputActivityCollector::new());

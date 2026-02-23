@@ -2,6 +2,10 @@
 
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
+use oneshim_core::config::{
+    AppConfig, ExternalDataPolicy, LlmProviderType, OcrProviderType, PiiFilterLevel, SandboxProfile,
+    Weekday,
+};
 
 use crate::{error::ApiError, AppState};
 
@@ -400,91 +404,7 @@ pub async fn get_settings(State(state): State<AppState>) -> Result<Json<AppSetti
     // 설정 관리자에서 로드
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
-        Ok(Json(AppSettings {
-            retention_days: config.storage.retention_days,
-            max_storage_mb: config.storage.max_storage_mb as u32,
-            web_port: config.web.port,
-            allow_external: config.web.allow_external,
-            capture_enabled: config.vision.capture_enabled,
-            idle_threshold_secs: config.monitor.idle_threshold_secs as u32,
-            metrics_interval_secs: (config.monitor.poll_interval_ms / 1000) as u32,
-            process_interval_secs: config.monitor.process_interval_secs as u32,
-            notification: NotificationSettings {
-                enabled: config.notification.enabled,
-                idle_notification: config.notification.idle_notification,
-                idle_notification_mins: config.notification.idle_notification_mins,
-                long_session_notification: config.notification.long_session_notification,
-                long_session_mins: config.notification.long_session_mins,
-                high_usage_notification: config.notification.high_usage_notification,
-                high_usage_threshold: config.notification.high_usage_threshold,
-            },
-            update: UpdateSettings {
-                enabled: config.update.enabled,
-                check_interval_hours: config.update.check_interval_hours,
-                include_prerelease: config.update.include_prerelease,
-                auto_install: config.update.auto_install,
-            },
-            telemetry: TelemetrySettings {
-                enabled: config.telemetry.enabled,
-                crash_reports: config.telemetry.crash_reports,
-                usage_analytics: config.telemetry.usage_analytics,
-                performance_metrics: config.telemetry.performance_metrics,
-            },
-            monitor: MonitorControlSettings {
-                process_monitoring: config.monitor.process_monitoring,
-                input_activity: config.monitor.input_activity,
-                privacy_mode: config.vision.privacy_mode,
-            },
-            privacy: PrivacySettings {
-                excluded_apps: config.privacy.excluded_apps.clone(),
-                excluded_app_patterns: config.privacy.excluded_app_patterns.clone(),
-                excluded_title_patterns: config.privacy.excluded_title_patterns.clone(),
-                auto_exclude_sensitive: config.privacy.auto_exclude_sensitive,
-                pii_filter_level: format!("{:?}", config.privacy.pii_filter_level),
-            },
-            schedule: ScheduleSettings {
-                active_hours_enabled: config.schedule.active_hours_enabled,
-                active_start_hour: config.schedule.active_start_hour,
-                active_end_hour: config.schedule.active_end_hour,
-                active_days: config
-                    .schedule
-                    .active_days
-                    .iter()
-                    .map(|d| format!("{:?}", d))
-                    .collect(),
-                pause_on_screen_lock: config.schedule.pause_on_screen_lock,
-                pause_on_battery_saver: config.schedule.pause_on_battery_saver,
-            },
-            // 자동화 설정
-            automation: AutomationSettings {
-                enabled: config.automation.enabled,
-            },
-            sandbox: SandboxSettings {
-                enabled: config.automation.sandbox.enabled,
-                profile: format!("{:?}", config.automation.sandbox.profile),
-                allowed_read_paths: config.automation.sandbox.allowed_read_paths.clone(),
-                allowed_write_paths: config.automation.sandbox.allowed_write_paths.clone(),
-                allow_network: config.automation.sandbox.allow_network,
-                max_memory_bytes: config.automation.sandbox.max_memory_bytes,
-                max_cpu_time_ms: config.automation.sandbox.max_cpu_time_ms,
-            },
-            ai_provider: AiProviderSettings {
-                ocr_provider: format!("{:?}", config.ai_provider.ocr_provider),
-                llm_provider: format!("{:?}", config.ai_provider.llm_provider),
-                external_data_policy: format!("{:?}", config.ai_provider.external_data_policy),
-                fallback_to_local: config.ai_provider.fallback_to_local,
-                ocr_api: config
-                    .ai_provider
-                    .ocr_api
-                    .as_ref()
-                    .map(endpoint_to_api_settings),
-                llm_api: config
-                    .ai_provider
-                    .llm_api
-                    .as_ref()
-                    .map(endpoint_to_api_settings),
-            },
-        }))
+        Ok(Json(config_to_settings(&config)))
     } else {
         // 설정 관리자가 없으면 기본값 반환
         Ok(Json(AppSettings::default()))
@@ -496,29 +416,12 @@ pub async fn update_settings(
     State(state): State<AppState>,
     Json(settings): Json<AppSettings>,
 ) -> Result<Json<AppSettings>, ApiError> {
-    // 유효성 검사
-    if settings.retention_days == 0 || settings.retention_days > 365 {
-        return Err(ApiError::BadRequest(
-            "보존 기간은 1-365일 사이여야 합니다".to_string(),
-        ));
-    }
-
-    if settings.max_storage_mb < 100 || settings.max_storage_mb > 10000 {
-        return Err(ApiError::BadRequest(
-            "최대 저장소 용량은 100MB-10GB 사이여야 합니다".to_string(),
-        ));
-    }
-
-    if settings.web_port < 1024 {
-        return Err(ApiError::BadRequest(
-            "포트는 1024 이상이어야 합니다".to_string(),
-        ));
-    }
+    validate_settings_input(&settings)?;
 
     // 설정 관리자에 저장
     if let Some(ref config_manager) = state.config_manager {
         let mut next_config = config_manager.get();
-        apply_settings_to_config(&mut next_config, &settings);
+        apply_settings_to_config(&mut next_config, &settings)?;
 
         next_config
             .ai_provider
@@ -533,7 +436,175 @@ pub async fn update_settings(
     Ok(Json(settings))
 }
 
-fn apply_settings_to_config(config: &mut oneshim_core::config::AppConfig, settings: &AppSettings) {
+fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
+    if settings.retention_days == 0 || settings.retention_days > 365 {
+        return Err(ApiError::BadRequest(
+            "보존 기간은 1-365일 사이여야 합니다".to_string(),
+        ));
+    }
+    if settings.max_storage_mb < 100 || settings.max_storage_mb > 10000 {
+        return Err(ApiError::BadRequest(
+            "최대 저장소 용량은 100MB-10GB 사이여야 합니다".to_string(),
+        ));
+    }
+    if settings.web_port < 1024 {
+        return Err(ApiError::BadRequest(
+            "포트는 1024 이상이어야 합니다".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn config_to_settings(config: &AppConfig) -> AppSettings {
+    AppSettings {
+        retention_days: config.storage.retention_days,
+        max_storage_mb: config.storage.max_storage_mb as u32,
+        web_port: config.web.port,
+        allow_external: config.web.allow_external,
+        capture_enabled: config.vision.capture_enabled,
+        idle_threshold_secs: config.monitor.idle_threshold_secs as u32,
+        metrics_interval_secs: (config.monitor.poll_interval_ms / 1000) as u32,
+        process_interval_secs: config.monitor.process_interval_secs as u32,
+        notification: NotificationSettings {
+            enabled: config.notification.enabled,
+            idle_notification: config.notification.idle_notification,
+            idle_notification_mins: config.notification.idle_notification_mins,
+            long_session_notification: config.notification.long_session_notification,
+            long_session_mins: config.notification.long_session_mins,
+            high_usage_notification: config.notification.high_usage_notification,
+            high_usage_threshold: config.notification.high_usage_threshold,
+        },
+        update: UpdateSettings {
+            enabled: config.update.enabled,
+            check_interval_hours: config.update.check_interval_hours,
+            include_prerelease: config.update.include_prerelease,
+            auto_install: config.update.auto_install,
+        },
+        telemetry: TelemetrySettings {
+            enabled: config.telemetry.enabled,
+            crash_reports: config.telemetry.crash_reports,
+            usage_analytics: config.telemetry.usage_analytics,
+            performance_metrics: config.telemetry.performance_metrics,
+        },
+        monitor: MonitorControlSettings {
+            process_monitoring: config.monitor.process_monitoring,
+            input_activity: config.monitor.input_activity,
+            privacy_mode: config.vision.privacy_mode,
+        },
+        privacy: PrivacySettings {
+            excluded_apps: config.privacy.excluded_apps.clone(),
+            excluded_app_patterns: config.privacy.excluded_app_patterns.clone(),
+            excluded_title_patterns: config.privacy.excluded_title_patterns.clone(),
+            auto_exclude_sensitive: config.privacy.auto_exclude_sensitive,
+            pii_filter_level: format!("{:?}", config.privacy.pii_filter_level),
+        },
+        schedule: ScheduleSettings {
+            active_hours_enabled: config.schedule.active_hours_enabled,
+            active_start_hour: config.schedule.active_start_hour,
+            active_end_hour: config.schedule.active_end_hour,
+            active_days: config
+                .schedule
+                .active_days
+                .iter()
+                .map(|d| format!("{:?}", d))
+                .collect(),
+            pause_on_screen_lock: config.schedule.pause_on_screen_lock,
+            pause_on_battery_saver: config.schedule.pause_on_battery_saver,
+        },
+        automation: AutomationSettings {
+            enabled: config.automation.enabled,
+        },
+        sandbox: SandboxSettings {
+            enabled: config.automation.sandbox.enabled,
+            profile: format!("{:?}", config.automation.sandbox.profile),
+            allowed_read_paths: config.automation.sandbox.allowed_read_paths.clone(),
+            allowed_write_paths: config.automation.sandbox.allowed_write_paths.clone(),
+            allow_network: config.automation.sandbox.allow_network,
+            max_memory_bytes: config.automation.sandbox.max_memory_bytes,
+            max_cpu_time_ms: config.automation.sandbox.max_cpu_time_ms,
+        },
+        ai_provider: AiProviderSettings {
+            ocr_provider: format!("{:?}", config.ai_provider.ocr_provider),
+            llm_provider: format!("{:?}", config.ai_provider.llm_provider),
+            external_data_policy: format!("{:?}", config.ai_provider.external_data_policy),
+            fallback_to_local: config.ai_provider.fallback_to_local,
+            ocr_api: config.ai_provider.ocr_api.as_ref().map(endpoint_to_api_settings),
+            llm_api: config.ai_provider.llm_api.as_ref().map(endpoint_to_api_settings),
+        },
+    }
+}
+
+fn parse_pii_filter_level(value: &str) -> Result<PiiFilterLevel, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "off" => Ok(PiiFilterLevel::Off),
+        "basic" => Ok(PiiFilterLevel::Basic),
+        "standard" => Ok(PiiFilterLevel::Standard),
+        "strict" => Ok(PiiFilterLevel::Strict),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 privacy.pii_filter_level 값: {value}"
+        ))),
+    }
+}
+
+fn parse_weekday(value: &str) -> Result<Weekday, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "mon" => Ok(Weekday::Mon),
+        "tue" => Ok(Weekday::Tue),
+        "wed" => Ok(Weekday::Wed),
+        "thu" => Ok(Weekday::Thu),
+        "fri" => Ok(Weekday::Fri),
+        "sat" => Ok(Weekday::Sat),
+        "sun" => Ok(Weekday::Sun),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 schedule.active_days 값: {value}"
+        ))),
+    }
+}
+
+fn parse_sandbox_profile(value: &str) -> Result<SandboxProfile, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "permissive" => Ok(SandboxProfile::Permissive),
+        "standard" | "balanced" => Ok(SandboxProfile::Standard),
+        "strict" => Ok(SandboxProfile::Strict),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 sandbox.profile 값: {value}"
+        ))),
+    }
+}
+
+fn parse_ocr_provider(value: &str) -> Result<OcrProviderType, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "local" => Ok(OcrProviderType::Local),
+        "remote" => Ok(OcrProviderType::Remote),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 ai_provider.ocr_provider 값: {value}"
+        ))),
+    }
+}
+
+fn parse_llm_provider(value: &str) -> Result<LlmProviderType, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "local" => Ok(LlmProviderType::Local),
+        "remote" => Ok(LlmProviderType::Remote),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 ai_provider.llm_provider 값: {value}"
+        ))),
+    }
+}
+
+fn parse_external_data_policy(value: &str) -> Result<ExternalDataPolicy, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "piifilterstrict" => Ok(ExternalDataPolicy::PiiFilterStrict),
+        "piifilterstandard" => Ok(ExternalDataPolicy::PiiFilterStandard),
+        "allowfiltered" => Ok(ExternalDataPolicy::AllowFiltered),
+        "disabled" => Ok(ExternalDataPolicy::PiiFilterStrict),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 ai_provider.external_data_policy 값: {value}"
+        ))),
+    }
+}
+
+fn apply_settings_to_config(config: &mut AppConfig, settings: &AppSettings) -> Result<(), ApiError> {
     config.storage.retention_days = settings.retention_days;
     config.storage.max_storage_mb = settings.max_storage_mb as u64;
     config.web.port = settings.web_port;
@@ -571,12 +642,7 @@ fn apply_settings_to_config(config: &mut oneshim_core::config::AppConfig, settin
     config.privacy.excluded_title_patterns = settings.privacy.excluded_title_patterns.clone();
     config.privacy.auto_exclude_sensitive = settings.privacy.auto_exclude_sensitive;
     // PII 필터 레벨 파싱 (문자열 → enum)
-    config.privacy.pii_filter_level = match settings.privacy.pii_filter_level.as_str() {
-        "Off" => oneshim_core::config::PiiFilterLevel::Off,
-        "Basic" => oneshim_core::config::PiiFilterLevel::Basic,
-        "Strict" => oneshim_core::config::PiiFilterLevel::Strict,
-        _ => oneshim_core::config::PiiFilterLevel::Standard,
-    };
+    config.privacy.pii_filter_level = parse_pii_filter_level(&settings.privacy.pii_filter_level)?;
     // 스케줄 설정
     config.schedule.active_hours_enabled = settings.schedule.active_hours_enabled;
     config.schedule.active_start_hour = settings.schedule.active_start_hour;
@@ -585,48 +651,25 @@ fn apply_settings_to_config(config: &mut oneshim_core::config::AppConfig, settin
         .schedule
         .active_days
         .iter()
-        .filter_map(|d| match d.as_str() {
-            "Mon" => Some(oneshim_core::config::Weekday::Mon),
-            "Tue" => Some(oneshim_core::config::Weekday::Tue),
-            "Wed" => Some(oneshim_core::config::Weekday::Wed),
-            "Thu" => Some(oneshim_core::config::Weekday::Thu),
-            "Fri" => Some(oneshim_core::config::Weekday::Fri),
-            "Sat" => Some(oneshim_core::config::Weekday::Sat),
-            "Sun" => Some(oneshim_core::config::Weekday::Sun),
-            _ => None,
-        })
-        .collect();
+        .map(|d| parse_weekday(d))
+        .collect::<Result<Vec<_>, _>>()?;
     config.schedule.pause_on_screen_lock = settings.schedule.pause_on_screen_lock;
     config.schedule.pause_on_battery_saver = settings.schedule.pause_on_battery_saver;
     // 자동화 설정
     config.automation.enabled = settings.automation.enabled;
     // 샌드박스 설정
     config.automation.sandbox.enabled = settings.sandbox.enabled;
-    config.automation.sandbox.profile = match settings.sandbox.profile.as_str() {
-        "Permissive" => oneshim_core::config::SandboxProfile::Permissive,
-        "Strict" => oneshim_core::config::SandboxProfile::Strict,
-        _ => oneshim_core::config::SandboxProfile::Standard,
-    };
+    config.automation.sandbox.profile = parse_sandbox_profile(&settings.sandbox.profile)?;
     config.automation.sandbox.allowed_read_paths = settings.sandbox.allowed_read_paths.clone();
     config.automation.sandbox.allowed_write_paths = settings.sandbox.allowed_write_paths.clone();
     config.automation.sandbox.allow_network = settings.sandbox.allow_network;
     config.automation.sandbox.max_memory_bytes = settings.sandbox.max_memory_bytes;
     config.automation.sandbox.max_cpu_time_ms = settings.sandbox.max_cpu_time_ms;
     // AI 제공자 설정
-    config.ai_provider.ocr_provider = match settings.ai_provider.ocr_provider.as_str() {
-        "Remote" => oneshim_core::config::OcrProviderType::Remote,
-        _ => oneshim_core::config::OcrProviderType::Local,
-    };
-    config.ai_provider.llm_provider = match settings.ai_provider.llm_provider.as_str() {
-        "Remote" => oneshim_core::config::LlmProviderType::Remote,
-        _ => oneshim_core::config::LlmProviderType::Local,
-    };
+    config.ai_provider.ocr_provider = parse_ocr_provider(&settings.ai_provider.ocr_provider)?;
+    config.ai_provider.llm_provider = parse_llm_provider(&settings.ai_provider.llm_provider)?;
     config.ai_provider.external_data_policy =
-        match settings.ai_provider.external_data_policy.as_str() {
-            "PiiFilterStandard" => oneshim_core::config::ExternalDataPolicy::PiiFilterStandard,
-            "AllowFiltered" => oneshim_core::config::ExternalDataPolicy::AllowFiltered,
-            _ => oneshim_core::config::ExternalDataPolicy::PiiFilterStrict,
-        };
+        parse_external_data_policy(&settings.ai_provider.external_data_policy)?;
     config.ai_provider.fallback_to_local = settings.ai_provider.fallback_to_local;
     // OCR API — 키 마스킹 감지
     if let Some(ref ocr_settings) = settings.ai_provider.ocr_api {
@@ -652,6 +695,7 @@ fn apply_settings_to_config(config: &mut oneshim_core::config::AppConfig, settin
     } else {
         config.ai_provider.llm_api = None;
     }
+    Ok(())
 }
 
 /// 디렉토리 크기 계산 (재귀)
@@ -760,8 +804,28 @@ mod tests {
             timeout_secs: 30,
         });
 
-        apply_settings_to_config(&mut app_config, &settings);
+        apply_settings_to_config(&mut app_config, &settings).unwrap();
         let result = app_config.ai_provider.validate_selected_remote_endpoints();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_unknown_sandbox_profile() {
+        let mut app_config = AppConfig::default_config();
+        let mut settings = AppSettings::default();
+        settings.sandbox.profile = "Unknown".to_string();
+
+        let result = apply_settings_to_config(&mut app_config, &settings);
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_unknown_weekday() {
+        let mut app_config = AppConfig::default_config();
+        let mut settings = AppSettings::default();
+        settings.schedule.active_days = vec!["Mon".to_string(), "Funday".to_string()];
+
+        let result = apply_settings_to_config(&mut app_config, &settings);
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
     }
 }
