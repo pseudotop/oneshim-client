@@ -35,6 +35,7 @@ cargo fmt --check
 - Lint status: Enforced in CI (`cargo clippy --workspace`)
 - Format status: Enforced in CI (`cargo fmt --check`)
 - Build status: Enforced in CI (`cargo build --workspace`)
+- UI/UX QA run records: `docs/qa/runs/` (latest reviewed run)
 
 ## Notes
 
