@@ -6,10 +6,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use tracing::debug;
+use uuid::Uuid;
 
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{ElementBounds, FinderSource, UiElement};
+use oneshim_core::models::ui_scene::{NormalizedBounds, UiScene, UiSceneElement};
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
@@ -95,6 +98,101 @@ impl OcrElementFinder {
                     role: None,
                     confidence: combined_confidence,
                     source: FinderSource::Ocr,
+                }
+            })
+            .collect()
+    }
+
+    /// 현재 이미지 기준 구조화된 UI Scene 생성.
+    ///
+    /// 좌표 중심 데이터(`bbox_abs`, `bbox_norm`)와 라벨을 포함해
+    /// 향후 오버레이/GUI 구조 추론 파이프라인에서 재사용한다.
+    pub async fn analyze_scene(
+        &self,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        let image_guard = self.last_image.read().await;
+        let (image_data, image_format) = image_guard
+            .as_ref()
+            .ok_or_else(|| CoreError::Internal("OCR 탐색기: 캡처 이미지가 없습니다".to_string()))?;
+
+        let (screen_width, screen_height) = image::load_from_memory(image_data)
+            .map(|img| (img.width().max(1), img.height().max(1)))
+            .map_err(|e| CoreError::OcrError(format!("이미지 크기 파싱 실패: {e}")))?;
+
+        let ocr_results = self
+            .ocr_provider
+            .extract_elements(image_data, image_format)
+            .await?;
+
+        let elements = Self::ocr_to_scene_elements(
+            &ocr_results,
+            screen_width,
+            screen_height,
+            app_name,
+            screen_id,
+        );
+
+        Ok(UiScene {
+            scene_id: format!("scene_{}", Uuid::new_v4().simple()),
+            app_name: app_name.map(str::to_string),
+            screen_id: screen_id.map(str::to_string),
+            captured_at: Utc::now(),
+            screen_width,
+            screen_height,
+            elements,
+        })
+    }
+
+    fn ocr_to_scene_elements(
+        results: &[OcrResult],
+        screen_width: u32,
+        screen_height: u32,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Vec<UiSceneElement> {
+        let width = screen_width.max(1) as f32;
+        let height = screen_height.max(1) as f32;
+        let app_label = app_name.unwrap_or("unknown");
+        let screen_label = screen_id.unwrap_or("main");
+
+        results
+            .iter()
+            .enumerate()
+            .map(|(index, r)| {
+                let text_trimmed = r.text.trim();
+                let label = if text_trimmed.is_empty() {
+                    "text".to_string()
+                } else {
+                    text_trimmed.to_string()
+                };
+                let text_masked = crate::privacy::sanitize_title(&label);
+
+                let bbox_abs = ElementBounds {
+                    x: r.x.max(0),
+                    y: r.y.max(0),
+                    width: r.width.max(1),
+                    height: r.height.max(1),
+                };
+                let bbox_norm = NormalizedBounds::new(
+                    bbox_abs.x as f32 / width,
+                    bbox_abs.y as f32 / height,
+                    bbox_abs.width as f32 / width,
+                    bbox_abs.height as f32 / height,
+                );
+
+                UiSceneElement {
+                    element_id: format!("el_{app_label}_{screen_label}_{index}"),
+                    bbox_abs,
+                    bbox_norm,
+                    label,
+                    role: None,
+                    intent: None,
+                    state: None,
+                    confidence: r.confidence,
+                    text_masked: Some(text_masked),
+                    parent_id: None,
                 }
             })
             .collect()
@@ -250,6 +348,32 @@ mod tests {
     #[test]
     fn text_similarity_case_insensitive() {
         assert!((text_similarity("Save", "save") - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ocr_to_scene_elements_builds_normalized_coordinates() {
+        let results = vec![OcrResult {
+            text: "Save".to_string(),
+            x: 192,
+            y: 108,
+            width: 96,
+            height: 54,
+            confidence: 0.88,
+        }];
+
+        let scene_elements = OcrElementFinder::ocr_to_scene_elements(
+            &results,
+            1920,
+            1080,
+            Some("VSCode"),
+            Some("m1"),
+        );
+        assert_eq!(scene_elements.len(), 1);
+        let first = &scene_elements[0];
+        assert_eq!(first.label, "Save");
+        assert!((first.bbox_norm.x - 0.1).abs() < 1e-6);
+        assert!((first.bbox_norm.y - 0.1).abs() < 1e-6);
+        assert!(first.text_masked.is_some());
     }
 
     #[test]

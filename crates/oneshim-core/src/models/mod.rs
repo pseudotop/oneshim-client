@@ -13,4 +13,5 @@ pub mod session;
 pub mod suggestion;
 pub mod system;
 pub mod telemetry;
+pub mod ui_scene;
 pub mod work_session;
