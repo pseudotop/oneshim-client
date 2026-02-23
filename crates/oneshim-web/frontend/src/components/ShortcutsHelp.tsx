@@ -13,7 +13,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' || event.key === '?') {
+      if (event.key === 'Escape') {
         onClose()
       }
     }
@@ -24,6 +24,9 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('shortcuts.title')}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={onClose}
     >

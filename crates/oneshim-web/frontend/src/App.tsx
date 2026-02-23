@@ -1,5 +1,5 @@
-import { useState, lazy, Suspense } from 'react'
-import { Routes, Route, NavLink, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from './contexts/ThemeContext'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -20,12 +20,63 @@ const SessionReplay = lazy(() => import('./pages/SessionReplay'))
 const Automation = lazy(() => import('./pages/Automation'))
 const Updates = lazy(() => import('./pages/Updates'))
 
+type NavItem = {
+  to: string
+  labelKey: string
+  mobileLabel: string
+}
+
+const primaryNavItems: NavItem[] = [
+  { to: '/', labelKey: 'nav.dashboard', mobileLabel: 'D' },
+  { to: '/timeline', labelKey: 'nav.timeline', mobileLabel: 'T' },
+  { to: '/reports', labelKey: 'nav.reports', mobileLabel: 'R' },
+  { to: '/focus', labelKey: 'nav.focus', mobileLabel: 'F' },
+]
+
+const secondaryNavItems: NavItem[] = [
+  { to: '/replay', labelKey: 'nav.replay', mobileLabel: 'V' },
+  { to: '/automation', labelKey: 'nav.automation', mobileLabel: 'A' },
+  { to: '/updates', labelKey: 'nav.updates', mobileLabel: 'U' },
+  { to: '/settings', labelKey: 'nav.settings', mobileLabel: 'S' },
+  { to: '/privacy', labelKey: 'nav.privacy', mobileLabel: 'P' },
+  { to: '/search', labelKey: 'nav.search', mobileLabel: '🔍' },
+]
+
 function App() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { t } = useTranslation()
   const { theme, toggleTheme } = useTheme()
   const [searchInput, setSearchInput] = useState('')
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const moreMenuRef = useRef<HTMLDivElement | null>(null)
+
+  const isSecondaryActive = secondaryNavItems.some((item) => item.to === location.pathname)
+
+  useEffect(() => {
+    const onOutsideClick = (event: MouseEvent) => {
+      if (!moreMenuRef.current) {
+        return
+      }
+      if (!moreMenuRef.current.contains(event.target as Node)) {
+        setShowMoreMenu(false)
+      }
+    }
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowMoreMenu(false)
+      }
+    }
+
+    window.addEventListener('click', onOutsideClick)
+    window.addEventListener('keydown', onEscape)
+    return () => {
+      window.removeEventListener('click', onOutsideClick)
+      window.removeEventListener('keydown', onEscape)
+    }
+  }, [])
 
   // 전역 키보드 단축키
   useKeyboardShortcuts({
@@ -50,137 +101,64 @@ function App() {
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center space-x-8">
               <span className="text-xl font-bold text-teal-600 dark:text-teal-400">ONESHIM</span>
-              <div className="flex space-x-4">
-                <NavLink
-                  to="/"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
+              <div className="flex items-center space-x-2">
+                {primaryNavItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+                      }`
+                    }
+                  >
+                    <span className="hidden sm:inline">{t(item.labelKey)}</span>
+                    <span className="sm:hidden">{item.mobileLabel}</span>
+                  </NavLink>
+                ))}
+
+                <div className="relative" ref={moreMenuRef}>
+                  <button
+                    type="button"
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isSecondaryActive || showMoreMenu
                         ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.dashboard')}</span>
-                  <span className="sm:hidden">D</span>
-                </NavLink>
-                <NavLink
-                  to="/timeline"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.timeline')}</span>
-                  <span className="sm:hidden">T</span>
-                </NavLink>
-                <NavLink
-                  to="/reports"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.reports')}</span>
-                  <span className="sm:hidden">R</span>
-                </NavLink>
-                <NavLink
-                  to="/focus"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.focus')}</span>
-                  <span className="sm:hidden">F</span>
-                </NavLink>
-                <NavLink
-                  to="/replay"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.replay')}</span>
-                  <span className="sm:hidden">V</span>
-                </NavLink>
-                <NavLink
-                  to="/automation"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.automation')}</span>
-                  <span className="sm:hidden">A</span>
-                </NavLink>
-                <NavLink
-                  to="/updates"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.updates')}</span>
-                  <span className="sm:hidden">U</span>
-                </NavLink>
-                <NavLink
-                  to="/settings"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.settings')}</span>
-                  <span className="sm:hidden">S</span>
-                </NavLink>
-                <NavLink
-                  to="/privacy"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.privacy')}</span>
-                  <span className="sm:hidden">P</span>
-                </NavLink>
-                <NavLink
-                  to="/search"
-                  className={({ isActive }) =>
-                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
-                    }`
-                  }
-                >
-                  <span className="hidden sm:inline">{t('nav.search')}</span>
-                  <span className="sm:hidden">🔍</span>
-                </NavLink>
+                    }`}
+                    onClick={() => setShowMoreMenu((prev) => !prev)}
+                    aria-haspopup="menu"
+                    aria-expanded={showMoreMenu}
+                  >
+                    {t('common.more', '더보기')}
+                  </button>
+
+                  {showMoreMenu && (
+                    <div
+                      role="menu"
+                      className="absolute top-11 left-0 min-w-44 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg p-1 z-40"
+                    >
+                      {secondaryNavItems.map((item) => (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          role="menuitem"
+                          onClick={() => setShowMoreMenu(false)}
+                          className={({ isActive }) =>
+                            `block px-3 py-2 rounded-md text-sm transition-colors ${
+                              isActive
+                                ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
+                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+                            }`
+                          }
+                        >
+                          {t(item.labelKey)}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             {/* 글로벌 검색 */}

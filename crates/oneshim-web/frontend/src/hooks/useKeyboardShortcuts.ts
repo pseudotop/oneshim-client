@@ -61,6 +61,12 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
           event.preventDefault()
           handlers.onHelp?.()
           break
+        case '/':
+          if (event.shiftKey) {
+            event.preventDefault()
+            handlers.onHelp?.()
+          }
+          break
       }
 
       // 컴포넌트별 단축키

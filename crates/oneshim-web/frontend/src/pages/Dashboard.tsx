@@ -18,7 +18,20 @@ import DateRangePicker from '../components/DateRangePicker'
 import { ActivityHeatmap } from '../components/ActivityHeatmap'
 import { useSSE, ConnectionStatus } from '../hooks/useSSE'
 import { Card, CardTitle, Badge, Spinner, EmptyState } from '../components/ui'
-import { formatDuration, formatDate } from '../utils/formatters'
+import { formatDuration } from '../utils/formatters'
+
+function toApiDate(dateInput?: string): string {
+  if (!dateInput) {
+    return new Date().toISOString().split('T')[0]
+  }
+
+  const parsed = new Date(dateInput)
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date().toISOString().split('T')[0]
+  }
+
+  return parsed.toISOString().split('T')[0]
+}
 
 // 연결 상태 표시 컴포넌트
 function ConnectionIndicator({ status, t }: { status: ConnectionStatus; t: (key: string) => string }) {
@@ -49,7 +62,7 @@ export default function Dashboard() {
     setDateRange({ from, to })
   }, [])
 
-  const selectedDate = formatDate(dateRange.from)
+  const selectedDate = toApiDate(dateRange.from)
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ['summary', selectedDate],

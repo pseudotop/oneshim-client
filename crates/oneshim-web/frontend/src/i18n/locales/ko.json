@@ -397,6 +397,7 @@
     "idle": "유휴",
     "capture": "캡처",
     "noFrames": "해당 시간의 프레임이 없습니다",
+    "imageUnavailable": "스크린샷 이미지를 불러오지 못했습니다. 파일 보존 정책 또는 경로 상태를 확인하세요.",
     "duration": "세션 시간",
     "totalEvents": "총 이벤트",
     "totalFrames": "총 프레임",

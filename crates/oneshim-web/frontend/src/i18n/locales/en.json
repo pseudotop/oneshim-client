@@ -397,6 +397,7 @@
     "idle": "Idle",
     "capture": "Capture",
     "noFrames": "No frames at this time",
+    "imageUnavailable": "Unable to load screenshot image. Check retention policy or frame file path health.",
     "duration": "Session Duration",
     "totalEvents": "Total Events",
     "totalFrames": "Total Frames",

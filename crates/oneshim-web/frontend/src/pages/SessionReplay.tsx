@@ -36,6 +36,7 @@ export default function SessionReplay() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
+  const [imageLoadFailed, setImageLoadFailed] = useState(false)
 
   // 재생 타이머
   const playIntervalRef = useRef<number | null>(null)
@@ -85,6 +86,10 @@ export default function SessionReplay() {
 
     return closest
   }, [timeline, currentTime])
+
+  useEffect(() => {
+    setImageLoadFailed(false)
+  }, [currentFrame?.id])
 
   // 현재 프레임 태그 로드 (React Query)
   const { data: currentFrameTags = [] } = useQuery({
@@ -236,14 +241,18 @@ export default function SessionReplay() {
                     <div className="space-y-4">
                       {/* 이미지 */}
                       <div className="relative aspect-video bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
-                        <img
-                          src={currentFrame.image_url}
-                          alt={`Screenshot at ${currentFrame.timestamp}`}
-                          className="w-full h-full object-contain"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none'
-                          }}
-                        />
+                        {!imageLoadFailed ? (
+                          <img
+                            src={currentFrame.image_url}
+                            alt={`Screenshot at ${currentFrame.timestamp}`}
+                            className="w-full h-full object-contain"
+                            onError={() => setImageLoadFailed(true)}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-sm text-slate-600 dark:text-slate-300 px-4 text-center">
+                            {t('replay.imageUnavailable', '스크린샷 이미지를 불러오지 못했습니다. 파일 보존 정책 또는 경로 상태를 확인하세요.')}
+                          </div>
+                        )}
                       </div>
 
                       {/* 프레임 메타데이터 */}
