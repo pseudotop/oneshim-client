@@ -45,6 +45,8 @@ Standalone 모드는 현재 사용 가능합니다.
 - PII 필터링 수준(Off/Basic/Standard/Strict)이 비전 파이프라인에 적용됩니다
 - 로컬 데이터는 SQLite에 저장되며, 보존 정책으로 관리됩니다
 - 보안 보고 및 대응 정책: [SECURITY.md](./SECURITY.md)
+- Standalone 무결성 베이스라인: [docs/security/standalone-integrity-baseline.ko.md](./docs/security/standalone-integrity-baseline.ko.md)
+- 무결성 운영 런북(영문): [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
 - 현재 품질 및 릴리스 지표: [docs/STATUS.md](./docs/STATUS.md)
 
 ## 기능

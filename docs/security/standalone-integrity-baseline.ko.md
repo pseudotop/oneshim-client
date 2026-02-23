@@ -1,3 +1,5 @@
+[English](./standalone-integrity-baseline.md) | [한국어](./standalone-integrity-baseline.ko.md)
+
 # Standalone 무결성 베이스라인
 
 이 문서는 ONESHIM Client의 standalone 모드에서 반드시 지켜야 하는 무결성 기준을 정의합니다.
