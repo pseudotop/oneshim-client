@@ -1,7 +1,7 @@
 // 세션 리플레이 페이지 - Datadog RUM Replay / Microsoft Clarity 스타일
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, Image, Clock, Tag as TagIcon, AppWindow, Monitor, Play, Eye, EyeOff } from 'lucide-react'
 import DateRangePicker from '../components/DateRangePicker'
@@ -12,7 +12,7 @@ import { Badge } from '../components/ui/Badge'
 import { Spinner } from '../components/ui/Spinner'
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui'
-import { fetchTimeline, fetchFrameTags, fetchAutomationScene } from '../api/client'
+import { executeIntentHint, fetchTimeline, fetchFrameTags, fetchAutomationScene } from '../api/client'
 import type { TimelineItem } from '../api/client'
 
 export default function SessionReplay() {
@@ -39,6 +39,11 @@ export default function SessionReplay() {
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
   const [imageLoadFailed, setImageLoadFailed] = useState(false)
   const [showSceneOverlay, setShowSceneOverlay] = useState(true)
+  const [selectedSceneElementId, setSelectedSceneElementId] = useState<string | null>(null)
+  const [sceneActionFeedback, setSceneActionFeedback] = useState<{
+    success: boolean
+    message: string
+  } | null>(null)
   const sceneViewportRef = useRef<HTMLDivElement | null>(null)
   const [sceneViewportSize, setSceneViewportSize] = useState({ width: 0, height: 0 })
 
@@ -114,6 +119,11 @@ export default function SessionReplay() {
   })
 
   useEffect(() => {
+    setSelectedSceneElementId(null)
+    setSceneActionFeedback(null)
+  }, [currentFrame?.id, currentScene?.scene_id])
+
+  useEffect(() => {
     const target = sceneViewportRef.current
     if (!target) return
 
@@ -169,6 +179,54 @@ export default function SessionReplay() {
           element.height > 1
       )
   }, [showSceneOverlay, currentScene, sceneViewportSize])
+
+  const selectedSceneElement = useMemo(
+    () =>
+      selectedSceneElementId
+        ? projectedSceneElements.find((element) => element.element_id === selectedSceneElementId) ?? null
+        : null,
+    [projectedSceneElements, selectedSceneElementId]
+  )
+
+  const suggestedIntentHint = useMemo(() => {
+    if (!selectedSceneElement) return ''
+    const label = selectedSceneElement.label?.trim() || t('replay.unnamedElement', 'Unnamed element')
+    const appName = currentFrame?.app_name || t('replay.currentApp', 'current app')
+    const role = selectedSceneElement.role?.toLowerCase() ?? ''
+
+    if (role.includes('input') || role.includes('textbox') || role.includes('field')) {
+      return t('replay.suggestTypeHint', { label, app: appName, defaultValue: `Type into "${label}" in ${appName}` })
+    }
+    return t('replay.suggestClickHint', { label, app: appName, defaultValue: `Click "${label}" in ${appName}` })
+  }, [selectedSceneElement, currentFrame?.app_name, t])
+
+  const executeSceneActionMutation = useMutation({
+    mutationFn: (intentHint: string) =>
+      executeIntentHint({
+        command_id: `replay-scene-${currentFrame?.id ?? 'frame'}-${Date.now()}`,
+        session_id: `replay-${currentFrame?.id ?? 'frame'}`,
+        intent_hint: intentHint,
+      }),
+    onSuccess: (response) => {
+      const ok = response.result.success
+      setSceneActionFeedback({
+        success: ok,
+        message: ok
+          ? t('replay.actionSuccess', 'Suggested action executed.')
+          : response.result.error || t('replay.actionFailed', 'Suggested action failed.'),
+      })
+    },
+    onError: (mutationError) => {
+      const message =
+        mutationError instanceof Error
+          ? mutationError.message
+          : t('replay.actionFailed', 'Suggested action failed.')
+      setSceneActionFeedback({
+        success: false,
+        message,
+      })
+    },
+  })
 
   // 재생 로직
   useEffect(() => {
@@ -331,20 +389,30 @@ export default function SessionReplay() {
                         {!imageLoadFailed &&
                           showSceneOverlay &&
                           projectedSceneElements.map((element) => (
-                            <div
+                            <button
+                              type="button"
                               key={element.element_id}
-                              className="absolute border border-teal-500/90 bg-teal-500/10 pointer-events-none"
+                              className={`absolute transition-colors ${
+                                selectedSceneElementId === element.element_id
+                                  ? 'border-2 border-amber-400 bg-amber-400/20'
+                                  : 'border border-teal-500/90 bg-teal-500/10 hover:bg-teal-500/20'
+                              }`}
                               style={{
                                 left: `${element.left}px`,
                                 top: `${element.top}px`,
                                 width: `${element.width}px`,
                                 height: `${element.height}px`,
                               }}
+                              title={element.title}
+                              onClick={() => {
+                                setSelectedSceneElementId(element.element_id)
+                                setSceneActionFeedback(null)
+                              }}
                             >
-                              <div className="absolute -top-5 left-0 max-w-[12rem] truncate rounded bg-teal-600 px-1.5 py-0.5 text-[10px] text-white shadow">
+                              <span className="pointer-events-none absolute -top-5 left-0 max-w-[12rem] truncate rounded bg-teal-600 px-1.5 py-0.5 text-[10px] text-white shadow">
                                 {element.title}
-                              </div>
-                            </div>
+                              </span>
+                            </button>
                           ))}
                       </div>
 
@@ -439,12 +507,90 @@ export default function SessionReplay() {
             </div>
 
             {/* 이벤트 로그 (1/3) */}
-            <div className="lg:col-span-1 h-[500px]">
-              <EventLog
-                items={timeline.items}
-                currentTime={currentTime}
-                onItemClick={handleTimeChange}
-              />
+            <div className="lg:col-span-1 space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('replay.assistantTitle', 'Action Assistant')}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {t(
+                      'replay.assistantDescription',
+                      'Click a highlighted element to prepare an automation action.'
+                    )}
+                  </p>
+                  {selectedSceneElement ? (
+                    <>
+                      <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                          {selectedSceneElement.label}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
+                          <div>
+                            {t('replay.role', 'Role')}: {selectedSceneElement.role ?? t('replay.unknown', 'Unknown')}
+                          </div>
+                          <div>
+                            {t('replay.intent', 'Intent')}: {selectedSceneElement.intent ?? t('replay.unknown', 'Unknown')}
+                          </div>
+                          <div className="col-span-2">
+                            {t('replay.confidence', 'Confidence')}:{' '}
+                            {Math.round(selectedSceneElement.confidence * 100)}%
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 break-words">
+                        <span className="font-medium">{t('replay.suggestedAction', 'Suggested action')}: </span>
+                        {suggestedIntentHint}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          isLoading={executeSceneActionMutation.isPending}
+                          onClick={() => executeSceneActionMutation.mutate(suggestedIntentHint)}
+                        >
+                          {t('replay.runSuggestedAction', 'Run Suggested Action')}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedSceneElementId(null)
+                            setSceneActionFeedback(null)
+                          }}
+                        >
+                          {t('replay.clearSelection', 'Clear Selection')}
+                        </Button>
+                      </div>
+
+                      {sceneActionFeedback && (
+                        <div
+                          className={`rounded-lg px-3 py-2 text-xs ${
+                            sceneActionFeedback.success
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                          }`}
+                        >
+                          {sceneActionFeedback.message}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
+                      {t('replay.noElementSelected', 'No element selected.')}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="h-[500px]">
+                <EventLog
+                  items={timeline.items}
+                  currentTime={currentTime}
+                  onItemClick={handleTimeChange}
+                />
+              </div>
             </div>
           </div>
 
