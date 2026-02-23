@@ -12,6 +12,7 @@ use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
 use oneshim_core::config::AppConfig;
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::ports::storage::StorageService;
 use oneshim_monitor::{activity::ActivityTracker, process::ProcessTracker, system::SysInfoMonitor};
 use oneshim_network::auth::TokenManager;
 use oneshim_network::batch_uploader::BatchUploader;
@@ -33,8 +34,9 @@ use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
 use crate::automation_runtime::{build_automation_runtime, build_noop_intent_executor};
+use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
-use crate::scheduler::{Scheduler, SchedulerConfig};
+use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
 use crate::update_coordinator;
 
 /// 한글 지원 폰트 (Pretendard - 오픈소스 한글 폰트)
@@ -159,7 +161,9 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
 
     // 7. Agent 백그라운드 태스크 시작
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let agent_storage = sqlite_storage.clone();
+    let agent_storage: Arc<dyn StorageService> = sqlite_storage.clone();
+    let agent_scheduler_storage: Arc<dyn SchedulerStorage> = sqlite_storage.clone();
+    let agent_focus_storage: Arc<dyn FocusStorage> = sqlite_storage.clone();
     let agent_data_dir = data_dir_path.clone();
     let agent_config = config.clone();
     let agent_event_tx = if config.web.enabled {
@@ -171,6 +175,8 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     let _agent_handle = runtime.spawn(async move {
         if let Err(e) = run_agent(
             agent_storage,
+            agent_scheduler_storage,
+            agent_focus_storage,
             agent_data_dir,
             agent_config,
             offline_mode,
@@ -372,7 +378,9 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
 
 /// Agent 백그라운드 실행
 async fn run_agent(
-    sqlite_storage: Arc<SqliteStorage>,
+    storage: Arc<dyn StorageService>,
+    scheduler_storage: Arc<dyn SchedulerStorage>,
+    focus_storage: Arc<dyn FocusStorage>,
     data_dir: PathBuf,
     config: AppConfig,
     offline_mode: bool,
@@ -420,16 +428,14 @@ async fn run_agent(
         3,   // max_retries
     ));
 
-    // Storage trait object
-    let storage: Arc<dyn oneshim_core::ports::storage::StorageService> = sqlite_storage.clone();
-
     // 알림 관리자
     let notifier: Arc<dyn oneshim_core::ports::notifier::DesktopNotifier> =
         Arc::new(DesktopNotifierImpl::new());
     let notification_manager = Arc::new(NotificationManager::new(
         config.notification.clone(),
-        notifier,
+        notifier.clone(),
     ));
+    let focus_analyzer = Arc::new(FocusAnalyzer::with_defaults(focus_storage, notifier));
 
     // Scheduler
     let scheduler_config = SchedulerConfig {
@@ -456,12 +462,13 @@ async fn run_agent(
         capture_trigger,
         frame_processor,
         storage,
-        sqlite_storage,
+        scheduler_storage,
         Some(frame_storage.clone()),
         batch_uploader,
         api_client,
     )
-    .with_notification_manager(notification_manager);
+    .with_notification_manager(notification_manager)
+    .with_focus_analyzer(focus_analyzer);
 
     // 실시간 이벤트 브로드캐스트 채널 연결
     if let Some(tx) = event_tx {
