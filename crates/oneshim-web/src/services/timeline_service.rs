@@ -187,3 +187,43 @@ fn get_timestamp(item: &TimelineItem) -> &str {
         TimelineItem::IdlePeriod { start, .. } => start,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppState;
+    use oneshim_storage::sqlite::SqliteStorage;
+    use std::sync::Arc;
+    use tokio::sync::broadcast;
+
+    fn test_state() -> AppState {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory sqlite"));
+        let (event_tx, _) = broadcast::channel(8);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: None,
+            audit_logger: None,
+            automation_controller: None,
+            update_control: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn build_timeline_response_returns_empty_payload_for_empty_store() {
+        let state = test_state();
+        let from = Utc::now() - chrono::Duration::minutes(30);
+        let to = Utc::now();
+
+        let response = build_timeline_response(&state, from, to, 100, 50)
+            .await
+            .expect("timeline response");
+
+        assert_eq!(response.session.total_events, 0);
+        assert_eq!(response.session.total_frames, 0);
+        assert_eq!(response.session.total_idle_secs, 0);
+        assert!(response.items.is_empty());
+        assert!(response.segments.is_empty());
+    }
+}

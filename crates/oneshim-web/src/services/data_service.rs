@@ -87,3 +87,39 @@ pub fn delete_all_data(state: &AppState) -> Result<DeleteResult, ApiError> {
 
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppState;
+    use oneshim_storage::sqlite::SqliteStorage;
+    use std::sync::Arc;
+    use tokio::sync::broadcast;
+
+    fn test_state() -> AppState {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory sqlite"));
+        let (event_tx, _) = broadcast::channel(8);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: None,
+            audit_logger: None,
+            automation_controller: None,
+            update_control: None,
+        }
+    }
+
+    #[test]
+    fn delete_data_range_requires_from_and_to() {
+        let state = test_state();
+        let request = DeleteRangeRequest {
+            from: String::new(),
+            to: String::new(),
+            data_types: vec![],
+        };
+
+        let result = delete_data_range(&state, &request);
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
+    }
+}

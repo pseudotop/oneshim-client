@@ -426,3 +426,45 @@ fn calculate_dir_size(path: &std::path::Path) -> u64 {
 
     total
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppState;
+    use oneshim_storage::sqlite::SqliteStorage;
+    use std::sync::Arc;
+    use tokio::sync::broadcast;
+
+    fn test_state_without_config_manager() -> AppState {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory sqlite"));
+        let (event_tx, _) = broadcast::channel(8);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: None,
+            audit_logger: None,
+            automation_controller: None,
+            update_control: None,
+        }
+    }
+
+    #[test]
+    fn update_settings_validates_input_without_config_manager() {
+        let state = test_state_without_config_manager();
+        let mut settings = AppSettings::default();
+        settings.web_port = 80;
+
+        let result = update_settings(&state, &settings);
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
+    }
+
+    #[test]
+    fn update_settings_accepts_valid_defaults_without_config_manager() {
+        let state = test_state_without_config_manager();
+        let settings = AppSettings::default();
+
+        let result = update_settings(&state, &settings);
+        assert!(result.is_ok());
+    }
+}
