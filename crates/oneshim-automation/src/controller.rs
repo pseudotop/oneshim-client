@@ -18,6 +18,8 @@ use crate::resolver;
 use oneshim_core::config::SandboxConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{AutomationIntent, IntentCommand, IntentResult, WorkflowPreset};
+use oneshim_core::models::ui_scene::UiScene;
+use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::sandbox::Sandbox;
 
 // oneshim-core에 정의된 AutomationAction 재사용 + re-export
@@ -114,6 +116,8 @@ pub struct AutomationController {
     intent_executor: Option<Arc<IntentExecutor>>,
     /// 자연어 플래너 (LLM 기반)
     intent_planner: Option<Arc<dyn IntentPlanner>>,
+    /// Scene 분석기 (좌표 + 라벨 추출)
+    scene_finder: Option<Arc<dyn ElementFinder>>,
 }
 
 impl AutomationController {
@@ -137,6 +141,7 @@ impl AutomationController {
             enabled: false, // 기본 비활성
             intent_executor: None,
             intent_planner: None,
+            scene_finder: None,
         }
     }
 
@@ -153,6 +158,11 @@ impl AutomationController {
     /// 자연어 플래너 설정
     pub fn set_intent_planner(&mut self, planner: Arc<dyn IntentPlanner>) {
         self.intent_planner = Some(planner);
+    }
+
+    /// Scene 분석기 설정
+    pub fn set_scene_finder(&mut self, finder: Arc<dyn ElementFinder>) {
+        self.scene_finder = Some(finder);
     }
 
     /// 액션 실행기 교체 (테스트/확장 지점)
@@ -180,6 +190,12 @@ impl AutomationController {
         self.intent_planner
             .as_ref()
             .ok_or_else(|| CoreError::Internal("IntentPlanner가 설정되지 않았습니다".to_string()))
+    }
+
+    fn require_scene_finder(&self) -> Result<&Arc<dyn ElementFinder>, CoreError> {
+        self.scene_finder
+            .as_ref()
+            .ok_or_else(|| CoreError::Internal("Scene 분석기가 설정되지 않았습니다".to_string()))
     }
 
     /// 의도 명령 실행 (UI 자동화)
@@ -275,6 +291,17 @@ impl AutomationController {
             planned_intent,
             result,
         })
+    }
+
+    /// 현재 화면의 구조화된 UI Scene 분석.
+    pub async fn analyze_scene(
+        &self,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        self.ensure_enabled()?;
+        let finder = self.require_scene_finder()?;
+        finder.analyze_scene(app_name, screen_id).await
     }
 
     /// 워크플로우 프리셋 실행
@@ -546,6 +573,7 @@ mod tests {
     use oneshim_core::models::intent::{
         AutomationIntent, IntentConfig, PresetCategory, WorkflowPreset, WorkflowStep,
     };
+    use oneshim_core::models::ui_scene::{NormalizedBounds, UiScene, UiSceneElement};
 
     fn make_controller() -> AutomationController {
         let policy_client = Arc::new(PolicyClient::new());
@@ -602,6 +630,56 @@ mod tests {
     impl IntentPlanner for StubPlanner {
         async fn plan(&self, _intent_hint: &str) -> Result<AutomationIntent, CoreError> {
             Ok(self.planned.clone())
+        }
+    }
+
+    struct StubSceneFinder;
+
+    #[async_trait::async_trait]
+    impl ElementFinder for StubSceneFinder {
+        async fn find_element(
+            &self,
+            _text: Option<&str>,
+            _role: Option<&str>,
+            _region: Option<&oneshim_core::models::intent::ElementBounds>,
+        ) -> Result<Vec<oneshim_core::models::intent::UiElement>, CoreError> {
+            Ok(vec![])
+        }
+
+        async fn analyze_scene(
+            &self,
+            app_name: Option<&str>,
+            screen_id: Option<&str>,
+        ) -> Result<UiScene, CoreError> {
+            Ok(UiScene {
+                scene_id: "scene-stub".to_string(),
+                app_name: app_name.map(str::to_string),
+                screen_id: screen_id.map(str::to_string),
+                captured_at: chrono::Utc::now(),
+                screen_width: 1920,
+                screen_height: 1080,
+                elements: vec![UiSceneElement {
+                    element_id: "el-1".to_string(),
+                    bbox_abs: oneshim_core::models::intent::ElementBounds {
+                        x: 100,
+                        y: 80,
+                        width: 240,
+                        height: 48,
+                    },
+                    bbox_norm: NormalizedBounds::new(0.05, 0.07, 0.12, 0.04),
+                    label: "Save".to_string(),
+                    role: Some("button".to_string()),
+                    intent: Some("execute".to_string()),
+                    state: Some("enabled".to_string()),
+                    confidence: 0.95,
+                    text_masked: Some("Save".to_string()),
+                    parent_id: None,
+                }],
+            })
+        }
+
+        fn name(&self) -> &str {
+            "stub-scene"
         }
     }
 
@@ -1009,6 +1087,31 @@ mod tests {
             AutomationIntent::ExecuteHotkey { .. }
         ));
         assert!(result.result.success);
+    }
+
+    #[tokio::test]
+    async fn analyze_scene_requires_scene_finder() {
+        let mut controller = make_controller();
+        controller.set_enabled(true);
+
+        let err = controller.analyze_scene(None, None).await.unwrap_err();
+        assert!(matches!(err, CoreError::Internal(_)));
+    }
+
+    #[tokio::test]
+    async fn analyze_scene_success_with_scene_finder() {
+        let mut controller = make_controller();
+        controller.set_enabled(true);
+        controller.set_scene_finder(Arc::new(StubSceneFinder));
+
+        let scene = controller
+            .analyze_scene(Some("VSCode"), Some("screen-1"))
+            .await
+            .unwrap();
+        assert_eq!(scene.scene_id, "scene-stub");
+        assert_eq!(scene.app_name.as_deref(), Some("VSCode"));
+        assert_eq!(scene.screen_id.as_deref(), Some("screen-1"));
+        assert_eq!(scene.elements.len(), 1);
     }
 
     // --- 추가 테스트: run_workflow 엣지 케이스 ---

@@ -586,6 +586,7 @@ async fn main() -> Result<()> {
                     config.automation.sandbox.clone(),
                 );
                 controller.set_enabled(true);
+                controller.set_scene_finder(runtime.element_finder.clone());
                 controller.set_intent_executor(runtime.intent_executor);
                 controller.set_intent_planner(runtime.intent_planner);
                 Some(Arc::new(controller))

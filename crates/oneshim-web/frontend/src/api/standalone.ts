@@ -15,6 +15,7 @@ import type {
   StorageStats,
   Tag,
   TimelineResponse,
+  UiScene,
   UpdateStatus,
   WorkflowPreset,
 } from './client'
@@ -303,6 +304,31 @@ function makeDefaultAutomationStats(): AutomationStats {
     denied: 0,
     timeout: 0,
     avg_elapsed_ms: 0,
+  }
+}
+
+function makeDefaultAutomationScene(appName?: string, screenId?: string): UiScene {
+  return {
+    scene_id: `scene-standalone-${Date.now()}`,
+    app_name: appName ?? null,
+    screen_id: screenId ?? null,
+    captured_at: new Date().toISOString(),
+    screen_width: 1920,
+    screen_height: 1080,
+    elements: [
+      {
+        element_id: 'el-standalone-save',
+        bbox_abs: { x: 128, y: 96, width: 220, height: 48 },
+        bbox_norm: { x: 0.0667, y: 0.0889, width: 0.1146, height: 0.0444 },
+        label: 'Save',
+        role: 'button',
+        intent: 'execute',
+        state: 'enabled',
+        confidence: 0.92,
+        text_masked: 'Save',
+        parent_id: null,
+      },
+    ],
   }
 }
 
@@ -671,6 +697,14 @@ export async function handleStandaloneRequest(
   }
   if (path === '/api/automation/stats' && method === 'GET') {
     return jsonResponse(makeDefaultAutomationStats())
+  }
+  if (path === '/api/automation/scene' && method === 'GET') {
+    return jsonResponse(
+      makeDefaultAutomationScene(
+        requestUrl.searchParams.get('app_name') ?? undefined,
+        requestUrl.searchParams.get('screen_id') ?? undefined
+      )
+    )
   }
   if (path === '/api/automation/presets' && method === 'GET') {
     return jsonResponse({ presets: state.presets })

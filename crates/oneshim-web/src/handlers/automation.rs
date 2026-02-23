@@ -11,6 +11,7 @@ use oneshim_automation::presets::builtin_presets;
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{AutomationIntent, IntentResult, WorkflowPreset};
+use oneshim_core::models::ui_scene::UiScene;
 
 use crate::{error::ApiError, AppState};
 
@@ -154,6 +155,13 @@ pub struct ExecuteIntentHintResponse {
     pub session_id: String,
     pub planned_intent: AutomationIntent,
     pub result: IntentResult,
+}
+
+/// Scene 분석 쿼리
+#[derive(Debug, Deserialize)]
+pub struct SceneQuery {
+    pub app_name: Option<String>,
+    pub screen_id: Option<String>,
 }
 
 // ============================================================
@@ -508,6 +516,36 @@ pub async fn execute_intent_hint(
             Err(ApiError::BadRequest(msg))
         }
         Err(e) => Err(ApiError::Internal(format!("자연어 의도 실행 실패: {e}"))),
+    }
+}
+
+/// GET /api/automation/scene — 현재 화면의 구조화된 UI Scene 조회
+pub async fn get_automation_scene(
+    State(state): State<AppState>,
+    Query(query): Query<SceneQuery>,
+) -> Result<Json<UiScene>, ApiError> {
+    let Some(ref controller) = state.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "자동화 컨트롤러가 활성화되지 않았습니다".to_string(),
+        ));
+    };
+
+    match controller
+        .analyze_scene(query.app_name.as_deref(), query.screen_id.as_deref())
+        .await
+    {
+        Ok(scene) => Ok(Json(scene)),
+        Err(
+            CoreError::PolicyDenied(msg)
+            | CoreError::InvalidArguments(msg)
+            | CoreError::ElementNotFound(msg),
+        ) => Err(ApiError::BadRequest(msg)),
+        Err(CoreError::Internal(msg))
+            if msg.contains("Scene 분석기") || msg.contains("scene 분석을 지원하지") =>
+        {
+            Err(ApiError::BadRequest(msg))
+        }
+        Err(e) => Err(ApiError::Internal(format!("scene 분석 실패: {e}"))),
     }
 }
 

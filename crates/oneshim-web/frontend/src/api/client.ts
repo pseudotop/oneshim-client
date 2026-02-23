@@ -1201,6 +1201,36 @@ export interface ExecuteIntentHintResponse {
   }
 }
 
+export interface UiSceneBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface UiSceneElement {
+  element_id: string
+  bbox_abs: UiSceneBounds
+  bbox_norm: UiSceneBounds
+  label: string
+  role: string | null
+  intent: string | null
+  state: string | null
+  confidence: number
+  text_masked: string | null
+  parent_id: string | null
+}
+
+export interface UiScene {
+  scene_id: string
+  app_name: string | null
+  screen_id: string | null
+  captured_at: string
+  screen_width: number
+  screen_height: number
+  elements: UiSceneElement[]
+}
+
 /** 자동화 상태 조회 */
 export async function fetchAutomationStatus(): Promise<AutomationStatus> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/status`)
@@ -1288,6 +1318,26 @@ export async function executeIntentHint(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: '자연어 의도 실행 실패' }))
     throw new Error(err.error || '자연어 의도 실행 실패')
+  }
+  return res.json()
+}
+
+/** 현재 화면 UI scene 조회 */
+export async function fetchAutomationScene(
+  appName?: string,
+  screenId?: string
+): Promise<UiScene> {
+  const params = new URLSearchParams()
+  if (appName) params.set('app_name', appName)
+  if (screenId) params.set('screen_id', screenId)
+
+  const suffix = params.toString()
+  const res = await fetchWithRetry(
+    `${BASE_URL}/automation/scene${suffix.length > 0 ? `?${suffix}` : ''}`
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Scene 조회 실패' }))
+    throw new Error(err.error || 'Scene 조회 실패')
   }
   return res.json()
 }

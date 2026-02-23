@@ -232,6 +232,15 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
   await mockStaticJson(page, '**/api/focus/sessions**', [])
   await mockStaticJson(page, '**/api/focus/interruptions**', [])
   await mockStaticJson(page, '**/api/focus/suggestions**', [])
+  await mockStaticJson(page, '**/api/automation/scene**', {
+    scene_id: 'scene-e2e',
+    app_name: 'oneshim-e2e',
+    screen_id: 'screen-main',
+    captured_at: '2026-02-23T10:00:00Z',
+    screen_width: 1280,
+    screen_height: 720,
+    elements: [],
+  })
   await mockDynamicJson(page, '**/api/automation/execute-hint', (request) => {
     const payload = request.postDataJSON() as
       | { command_id?: string; session_id?: string; intent_hint?: string }

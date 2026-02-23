@@ -9,6 +9,7 @@ use oneshim_automation::intent_resolver::{IntentExecutor, IntentResolver};
 use oneshim_core::config::{AiAccessMode, AiProviderConfig, PiiFilterLevel};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
+use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
 use oneshim_storage::frame_storage::FrameFileStorage;
@@ -20,6 +21,7 @@ use crate::provider_adapters::{resolve_ai_provider_adapters, ProviderSource};
 
 /// 자동화 실행기에 필요한 런타임 구성요소.
 pub struct AutomationRuntime {
+    pub element_finder: Arc<dyn ElementFinder>,
     pub intent_executor: Arc<IntentExecutor>,
     pub intent_planner: Arc<dyn IntentPlanner>,
     pub access_mode: AiAccessMode,
@@ -63,6 +65,7 @@ pub fn build_automation_runtime(
     ));
 
     Ok(AutomationRuntime {
+        element_finder,
         intent_executor,
         intent_planner,
         access_mode: ai_config.access_mode,
@@ -123,6 +126,19 @@ impl ElementFinder for LatestFrameOcrElementFinder {
             ));
         }
         self.inner.find_element(text, role, region).await
+    }
+
+    async fn analyze_scene(
+        &self,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        if !self.refresh_latest_frame().await? {
+            return Err(CoreError::ElementNotFound(
+                "자동화용 최신 프레임이 없습니다".to_string(),
+            ));
+        }
+        self.inner.analyze_scene(app_name, screen_id).await
     }
 
     fn name(&self) -> &str {

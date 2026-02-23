@@ -238,6 +238,14 @@ impl ElementFinder for OcrElementFinder {
         Ok(elements)
     }
 
+    async fn analyze_scene(
+        &self,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        OcrElementFinder::analyze_scene(self, app_name, screen_id).await
+    }
+
     fn name(&self) -> &str {
         "ocr"
     }
@@ -293,6 +301,33 @@ impl ElementFinder for ChainedElementFinder {
             "모든 탐색기에서 요소를 찾지 못함 (text={:?}, role={:?})",
             text, role
         )))
+    }
+
+    async fn analyze_scene(
+        &self,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        let mut last_err: Option<CoreError> = None;
+
+        for finder in &self.finders {
+            debug!(finder = finder.name(), "체인 scene 분석기 시도");
+            match finder.analyze_scene(app_name, screen_id).await {
+                Ok(scene) => return Ok(scene),
+                Err(err) => {
+                    debug!(
+                        finder = finder.name(),
+                        error = %err,
+                        "scene 분석 실패, 다음 탐색기 시도"
+                    );
+                    last_err = Some(err);
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            CoreError::ElementNotFound("scene 분석을 지원하는 탐색기를 찾지 못함".to_string())
+        }))
     }
 
     fn name(&self) -> &str {
