@@ -35,7 +35,9 @@ cargo fmt --check
 - Lint status: Enforced in CI (`cargo clippy --workspace`)
 - Format status: Enforced in CI (`cargo fmt --check`)
 - Build status: Enforced in CI (`cargo build --workspace`)
-- UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc2.md` (latest tracked run evidence)
+- Latest CI workflow run: failure (`Check formatting`) — [Run 22311163798](https://github.com/pseudotop/oneshim-client/actions/runs/22311163798) (2026-02-23)
+- Latest Release workflow run: failure (`Build DEB package`) — [Run 22283214751](https://github.com/pseudotop/oneshim-client/actions/runs/22283214751) (2026-02-22)
+- UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc3.md` (latest tracked run evidence)
 
 ## Notes
 
