@@ -1,0 +1,6 @@
+# Paths excluded from public export snapshot.
+# One path per line, relative to repository root.
+# Lines starting with # are ignored.
+
+# Internal assistant workflow notes
+CLAUDE.md

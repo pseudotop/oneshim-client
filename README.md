@@ -12,6 +12,9 @@
 
 # ONESHIM Client
 
+> **From raw desktop activity to daily focus wins.**  
+> ONESHIM turns local work signals into a real-time focus timeline and actionable suggestions.
+
 A desktop client for AI-assisted office productivity — local context capture, real-time suggestions, and a built-in dashboard. Built with Rust for native performance across macOS, Windows, and Linux.
 
 ## Why ONESHIM
@@ -49,6 +52,7 @@ Standalone mode remains the production-ready default path for release use.
 - Standalone integrity baseline: [docs/security/standalone-integrity-baseline.md](./docs/security/standalone-integrity-baseline.md)
 - Integrity operation runbook: [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
 - Current quality and release metrics: [docs/STATUS.md](./docs/STATUS.md)
+- Public launch playbook: [docs/architecture/public-repo-launch-playbook.md](./docs/architecture/public-repo-launch-playbook.md)
 
 ## Features
 

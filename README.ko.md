@@ -12,6 +12,9 @@
 
 # ONESHIM Client
 
+> **흩어진 업무 흔적을, 매일 성과로 이어지는 집중 인사이트로.**  
+> ONESHIM은 로컬 업무 신호를 실시간 집중 타임라인과 실행 가능한 제안으로 전환합니다.
+
 AI 기반 업무 생산성 향상을 위한 데스크톱 클라이언트입니다. 로컬 컨텍스트 수집, 실시간 제안, 내장 대시보드를 제공합니다. Rust로 구축되어 macOS, Windows, Linux에서 네이티브 성능을 발휘합니다.
 
 ## ONESHIM을 선택하는 이유
@@ -49,6 +52,7 @@ Connected 모드는 opt-in 프리뷰 경로로만 제공됩니다.
 - Standalone 무결성 베이스라인: [docs/security/standalone-integrity-baseline.ko.md](./docs/security/standalone-integrity-baseline.ko.md)
 - 무결성 운영 런북(영문): [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
 - 현재 품질 및 릴리스 지표: [docs/STATUS.md](./docs/STATUS.md)
+- 퍼블릭 런치 플레이북: [docs/architecture/public-repo-launch-playbook.ko.md](./docs/architecture/public-repo-launch-playbook.ko.md)
 
 ## 기능
 
