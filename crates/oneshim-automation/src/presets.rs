@@ -189,7 +189,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         });
     }
 
-    // ── 워크플로우 프리셋 (3개) ──
+    // ── 워크플로우 프리셋 (8개) ──
 
     presets.push(WorkflowPreset {
         id: "morning-routine".to_string(),
@@ -280,6 +280,182 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         platform: None,
     });
 
+    presets.push(WorkflowPreset {
+        id: "daily-priority-sync".to_string(),
+        name: "우선순위 점검".to_string(),
+        description: "캘린더, 이슈 보드, 메신저를 순서대로 열어 당일 우선순위를 정리합니다"
+            .to_string(),
+        category: PresetCategory::Workflow,
+        steps: vec![
+            WorkflowStep {
+                name: "Calendar 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Calendar".to_string(),
+                },
+                delay_ms: 0,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "Jira 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Jira".to_string(),
+                },
+                delay_ms: 1200,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "Slack 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Slack".to_string(),
+                },
+                delay_ms: 1200,
+                stop_on_failure: false,
+            },
+        ],
+        builtin: true,
+        platform: None,
+    });
+
+    presets.push(WorkflowPreset {
+        id: "bug-triage-loop".to_string(),
+        name: "버그 트리아지".to_string(),
+        description: "이슈 트래커, 로그/모니터링, IDE를 순환하며 버그를 정리합니다".to_string(),
+        category: PresetCategory::Workflow,
+        steps: vec![
+            WorkflowStep {
+                name: "Issue Tracker 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Issue Tracker".to_string(),
+                },
+                delay_ms: 0,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "Monitoring 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Monitoring".to_string(),
+                },
+                delay_ms: 1200,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "VSCode 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Visual Studio Code".to_string(),
+                },
+                delay_ms: 1200,
+                stop_on_failure: false,
+            },
+        ],
+        builtin: true,
+        platform: None,
+    });
+
+    presets.push(WorkflowPreset {
+        id: "customer-followup".to_string(),
+        name: "고객 팔로업".to_string(),
+        description: "고객 피드백 확인 후 문서와 메일을 열어 후속 조치를 준비합니다".to_string(),
+        category: PresetCategory::Workflow,
+        steps: vec![
+            WorkflowStep {
+                name: "CRM 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "CRM".to_string(),
+                },
+                delay_ms: 0,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "Notion 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Notion".to_string(),
+                },
+                delay_ms: 1000,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "Mail 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Mail".to_string(),
+                },
+                delay_ms: 1000,
+                stop_on_failure: false,
+            },
+        ],
+        builtin: true,
+        platform: None,
+    });
+
+    presets.push(WorkflowPreset {
+        id: "release-readiness".to_string(),
+        name: "릴리스 준비".to_string(),
+        description: "코드 저장 후 터미널과 브라우저를 열어 릴리스 체크를 시작합니다".to_string(),
+        category: PresetCategory::Workflow,
+        steps: vec![
+            WorkflowStep {
+                name: "파일 저장".to_string(),
+                intent: AutomationIntent::ExecuteHotkey {
+                    keys: vec![m.to_string(), "S".to_string()],
+                },
+                delay_ms: 0,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "Terminal 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Terminal".to_string(),
+                },
+                delay_ms: 500,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "Browser 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Google Chrome".to_string(),
+                },
+                delay_ms: 1000,
+                stop_on_failure: false,
+            },
+        ],
+        builtin: true,
+        platform: None,
+    });
+
+    presets.push(WorkflowPreset {
+        id: "deep-work-start".to_string(),
+        name: "집중 세션 시작".to_string(),
+        description: "IDE를 열고 메신저를 뒤로 보내 집중 세션을 시작합니다".to_string(),
+        category: PresetCategory::Workflow,
+        steps: vec![
+            WorkflowStep {
+                name: "VSCode 열기".to_string(),
+                intent: AutomationIntent::ActivateApp {
+                    app_name: "Visual Studio Code".to_string(),
+                },
+                delay_ms: 0,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "다음 앱 전환".to_string(),
+                intent: AutomationIntent::ExecuteHotkey {
+                    keys: vec![alt.to_string(), "Tab".to_string()],
+                },
+                delay_ms: 800,
+                stop_on_failure: false,
+            },
+            WorkflowStep {
+                name: "현재 창 닫기".to_string(),
+                intent: AutomationIntent::ExecuteHotkey {
+                    keys: vec![m.to_string(), "W".to_string()],
+                },
+                delay_ms: 500,
+                stop_on_failure: false,
+            },
+        ],
+        builtin: true,
+        platform: None,
+    });
+
     presets
 }
 
@@ -290,7 +466,7 @@ mod tests {
     #[test]
     fn builtin_presets_load() {
         let presets = builtin_presets();
-        assert_eq!(presets.len(), 10);
+        assert_eq!(presets.len(), 15);
         assert!(presets.iter().all(|p| p.builtin));
     }
 

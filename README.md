@@ -53,6 +53,9 @@ Standalone mode remains the production-ready default path for release use.
 - Integrity operation runbook: [docs/security/integrity-runbook.md](./docs/security/integrity-runbook.md)
 - Current quality and release metrics: [docs/STATUS.md](./docs/STATUS.md)
 - Public launch playbook: [docs/architecture/public-repo-launch-playbook.md](./docs/architecture/public-repo-launch-playbook.md)
+- Automation playbook templates: [docs/guides/automation-playbook-templates.md](./docs/guides/automation-playbook-templates.md)
+- Standalone adoption runbook: [docs/guides/standalone-adoption-runbook.md](./docs/guides/standalone-adoption-runbook.md)
+- Automation event contract: [docs/contracts/automation-event-contract.md](./docs/contracts/automation-event-contract.md)
 
 ## Features
 
