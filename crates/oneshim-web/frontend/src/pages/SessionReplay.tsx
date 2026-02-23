@@ -3,15 +3,16 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, Image, Clock, Tag as TagIcon, AppWindow, Monitor, Play } from 'lucide-react'
+import { AlertCircle, Image, Clock, Tag as TagIcon, AppWindow, Monitor, Play, Eye, EyeOff } from 'lucide-react'
 import DateRangePicker from '../components/DateRangePicker'
 import TimelineScrubber from '../components/TimelineScrubber'
 import EventLog from '../components/EventLog'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Spinner } from '../components/ui/Spinner'
+import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui'
-import { fetchTimeline, fetchFrameTags } from '../api/client'
+import { fetchTimeline, fetchFrameTags, fetchAutomationScene } from '../api/client'
 import type { TimelineItem } from '../api/client'
 
 export default function SessionReplay() {
@@ -37,6 +38,9 @@ export default function SessionReplay() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
   const [imageLoadFailed, setImageLoadFailed] = useState(false)
+  const [showSceneOverlay, setShowSceneOverlay] = useState(true)
+  const sceneViewportRef = useRef<HTMLDivElement | null>(null)
+  const [sceneViewportSize, setSceneViewportSize] = useState({ width: 0, height: 0 })
 
   // 재생 타이머
   const playIntervalRef = useRef<number | null>(null)
@@ -97,6 +101,74 @@ export default function SessionReplay() {
     queryFn: () => fetchFrameTags(currentFrame!.id),
     enabled: !!currentFrame,
   })
+
+  const {
+    data: currentScene,
+    isFetching: sceneFetching,
+    error: sceneError,
+  } = useQuery({
+    queryKey: ['automationScene', currentFrame?.id, currentFrame?.app_name],
+    queryFn: () => fetchAutomationScene(currentFrame?.app_name),
+    enabled: !!currentFrame,
+    retry: false,
+  })
+
+  useEffect(() => {
+    const target = sceneViewportRef.current
+    if (!target) return
+
+    const updateSize = () => {
+      const rect = target.getBoundingClientRect()
+      setSceneViewportSize({ width: rect.width, height: rect.height })
+    }
+
+    updateSize()
+    const observer = new ResizeObserver(updateSize)
+    observer.observe(target)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [currentFrame?.id])
+
+  const projectedSceneElements = useMemo(() => {
+    if (!showSceneOverlay || !currentScene) return []
+    const viewportWidth = sceneViewportSize.width
+    const viewportHeight = sceneViewportSize.height
+    if (viewportWidth <= 0 || viewportHeight <= 0) return []
+
+    const sceneWidth = Math.max(currentScene.screen_width, 1)
+    const sceneHeight = Math.max(currentScene.screen_height, 1)
+    const scale = Math.min(viewportWidth / sceneWidth, viewportHeight / sceneHeight)
+    const renderWidth = sceneWidth * scale
+    const renderHeight = sceneHeight * scale
+    const offsetX = (viewportWidth - renderWidth) / 2
+    const offsetY = (viewportHeight - renderHeight) / 2
+
+    return currentScene.elements
+      .map((element) => {
+        const left = offsetX + element.bbox_abs.x * scale
+        const top = offsetY + element.bbox_abs.y * scale
+        const width = Math.max(element.bbox_abs.width * scale, 1)
+        const height = Math.max(element.bbox_abs.height * scale, 1)
+
+        return {
+          ...element,
+          left,
+          top,
+          width,
+          height,
+          title: element.role ?? element.label,
+        }
+      })
+      .filter(
+        (element) =>
+          Number.isFinite(element.left) &&
+          Number.isFinite(element.top) &&
+          element.width > 1 &&
+          element.height > 1
+      )
+  }, [showSceneOverlay, currentScene, sceneViewportSize])
 
   // 재생 로직
   useEffect(() => {
@@ -240,7 +312,10 @@ export default function SessionReplay() {
                   {currentFrame ? (
                     <div className="space-y-4">
                       {/* 이미지 */}
-                      <div className="relative aspect-video bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
+                      <div
+                        ref={sceneViewportRef}
+                        className="relative aspect-video bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden"
+                      >
                         {!imageLoadFailed ? (
                           <img
                             src={currentFrame.image_url}
@@ -253,6 +328,24 @@ export default function SessionReplay() {
                             {t('replay.imageUnavailable', '스크린샷 이미지를 불러오지 못했습니다. 파일 보존 정책 또는 경로 상태를 확인하세요.')}
                           </div>
                         )}
+                        {!imageLoadFailed &&
+                          showSceneOverlay &&
+                          projectedSceneElements.map((element) => (
+                            <div
+                              key={element.element_id}
+                              className="absolute border border-teal-500/90 bg-teal-500/10 pointer-events-none"
+                              style={{
+                                left: `${element.left}px`,
+                                top: `${element.top}px`,
+                                width: `${element.width}px`,
+                                height: `${element.height}px`,
+                              }}
+                            >
+                              <div className="absolute -top-5 left-0 max-w-[12rem] truncate rounded bg-teal-600 px-1.5 py-0.5 text-[10px] text-white shadow">
+                                {element.title}
+                              </div>
+                            </div>
+                          ))}
                       </div>
 
                       {/* 프레임 메타데이터 */}
@@ -300,6 +393,40 @@ export default function SessionReplay() {
                           ))}
                         </div>
                       )}
+
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
+                          {t('replay.sceneElements', { count: currentScene?.elements.length ?? 0 })}
+                          {sceneFetching && (
+                            <span className="ml-2 text-slate-400 dark:text-slate-500">
+                              {t('common.loading')}
+                            </span>
+                          )}
+                          {sceneError && (
+                            <span className="ml-2 text-amber-600 dark:text-amber-400">
+                              {t('replay.sceneUnavailable')}
+                            </span>
+                          )}
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setShowSceneOverlay((prev) => !prev)}
+                          disabled={!currentScene || imageLoadFailed}
+                        >
+                          {showSceneOverlay ? (
+                            <>
+                              <EyeOff className="w-4 h-4 mr-1" />
+                              {t('replay.hideOverlay')}
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="w-4 h-4 mr-1" />
+                              {t('replay.showOverlay')}
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-slate-500 dark:text-slate-400">
