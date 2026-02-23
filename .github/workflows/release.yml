@@ -115,6 +115,10 @@ jobs:
             libxcb-shape0-dev \
             libxcb-xfixes0-dev
 
+      - name: Verify DEB metadata assets
+        if: runner.os == 'Linux'
+        run: ./scripts/verify-deb-metadata.sh
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
