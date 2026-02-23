@@ -8,13 +8,10 @@ use directories::ProjectDirs;
 use iced::{window, Font, Size, Task};
 use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
-use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
-use oneshim_automation::intent_resolver::{IntentExecutor, IntentResolver};
 use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
 use oneshim_core::config::AppConfig;
 use oneshim_core::config_manager::ConfigManager;
-use oneshim_core::models::intent::IntentConfig;
 use oneshim_monitor::{activity::ActivityTracker, process::ProcessTracker, system::SysInfoMonitor};
 use oneshim_network::auth::TokenManager;
 use oneshim_network::batch_uploader::BatchUploader;
@@ -35,8 +32,8 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
+use crate::automation_runtime::{build_automation_runtime, build_noop_intent_executor};
 use crate::notification_manager::NotificationManager;
-use crate::provider_adapters::resolve_ai_provider_adapters;
 use crate::scheduler::{Scheduler, SchedulerConfig};
 use crate::update_coordinator;
 
@@ -198,16 +195,34 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         let web_config_manager = config_manager.clone();
         let web_audit_logger = Arc::new(tokio::sync::RwLock::new(AuditLogger::default()));
         let web_update_control = update_control.clone();
+        let automation_frame_storage = match runtime.block_on(async {
+            FrameFileStorage::new(
+                data_dir_path.clone(),
+                config.storage.max_storage_mb,
+                config.storage.retention_days,
+            )
+            .await
+        }) {
+            Ok(storage) => Some(Arc::new(storage)),
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "자동화 전용 프레임 저장소 초기화 실패: NoOp 요소 탐색기로 폴백"
+                );
+                None
+            }
+        };
 
         // 자동화 컨트롤러 (config.automation.enabled일 때만)
         let automation_controller = if config.automation.enabled {
-            match resolve_ai_provider_adapters(&config.ai_provider) {
-                Ok(adapters) => {
+            let runtime = build_automation_runtime(&config.ai_provider, automation_frame_storage);
+            match &runtime {
+                Ok(runtime) => {
                     info!(
-                        ocr_provider = adapters.ocr.provider_name(),
-                        ocr_source = adapters.ocr_source.as_str(),
-                        llm_provider = adapters.llm.provider_name(),
-                        llm_source = adapters.llm_source.as_str(),
+                        ocr_provider = runtime.ocr_provider_name,
+                        ocr_source = runtime.ocr_source.as_str(),
+                        llm_provider = runtime.llm_provider_name,
+                        llm_source = runtime.llm_source.as_str(),
                         "AI 제공자 어댑터 해석 완료"
                     );
                 }
@@ -215,7 +230,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                     warn!(
                         error = %err,
                         fallback_enabled = config.ai_provider.fallback_to_local,
-                        "AI 제공자 어댑터 해석 실패; 기존 NoOp 자동화 실행기로 계속 진행"
+                        "AI 제공자 어댑터 해석 실패; NoOp 자동화 실행기로 폴백"
                     );
                 }
             }
@@ -229,16 +244,11 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                 config.automation.sandbox.clone(),
             );
             controller.set_enabled(true);
-            let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
-                Arc::new(NoOpInputDriver);
-            let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
-                Arc::new(NoOpElementFinder);
-            let resolver =
-                IntentResolver::new(element_finder, input_driver, IntentConfig::default());
-            controller.set_intent_executor(Arc::new(IntentExecutor::new(
-                resolver,
-                IntentConfig::default(),
-            )));
+            if let Ok(runtime) = runtime {
+                controller.set_intent_executor(runtime.intent_executor);
+            } else {
+                controller.set_intent_executor(build_noop_intent_executor());
+            }
             Some(Arc::new(controller))
         } else {
             None
@@ -429,7 +439,7 @@ async fn run_agent(
         frame_processor,
         storage,
         sqlite_storage,
-        Some(frame_storage),
+        Some(frame_storage.clone()),
         batch_uploader,
         api_client,
     )

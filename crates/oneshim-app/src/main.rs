@@ -3,6 +3,7 @@
 //! ONESHIM 클라이언트 바이너리 진입점.
 //! DI 컨테이너 역할, 라이프사이클 관리, 스케줄러 오케스트레이션.
 
+mod automation_runtime;
 mod autostart;
 mod event_bus;
 mod focus_analyzer;
@@ -21,13 +22,10 @@ use clap::Parser;
 use directories::ProjectDirs;
 use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
-use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
-use oneshim_automation::intent_resolver::{IntentExecutor, IntentResolver};
 use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
 use oneshim_core::config::AppConfig;
 use oneshim_core::config_manager::ConfigManager;
-use oneshim_core::models::intent::IntentConfig;
 use oneshim_monitor::activity::ActivityTracker;
 use oneshim_monitor::process::ProcessTracker;
 use oneshim_monitor::system::SysInfoMonitor;
@@ -50,11 +48,11 @@ use tokio::sync::{mpsc, Mutex, RwLock};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
+use crate::automation_runtime::{build_automation_runtime, build_noop_intent_executor};
 use crate::event_bus::EventBus;
 use crate::focus_analyzer::FocusAnalyzer;
 use crate::lifecycle::LifecycleManager;
 use crate::notification_manager::NotificationManager;
-use crate::provider_adapters::resolve_ai_provider_adapters;
 use crate::scheduler::{Scheduler, SchedulerConfig};
 
 /// ONESHIM 데스크톱 클라이언트
@@ -485,7 +483,7 @@ async fn main() -> Result<()> {
         frame_processor,
         storage.clone(),
         sqlite_storage.clone(),
-        Some(frame_storage),
+        Some(frame_storage.clone()),
         batch_uploader.clone(),
         api_client.clone(),
     )
@@ -509,13 +507,14 @@ async fn main() -> Result<()> {
 
     // ── 자동화 컨트롤러 (config.automation.enabled일 때만) ──
     let automation_controller = if config.automation.enabled {
-        match resolve_ai_provider_adapters(&config.ai_provider) {
-            Ok(adapters) => {
+        let runtime = build_automation_runtime(&config.ai_provider, Some(frame_storage.clone()));
+        match &runtime {
+            Ok(runtime) => {
                 info!(
-                    ocr_provider = adapters.ocr.provider_name(),
-                    ocr_source = adapters.ocr_source.as_str(),
-                    llm_provider = adapters.llm.provider_name(),
-                    llm_source = adapters.llm_source.as_str(),
+                    ocr_provider = runtime.ocr_provider_name,
+                    ocr_source = runtime.ocr_source.as_str(),
+                    llm_provider = runtime.llm_provider_name,
+                    llm_source = runtime.llm_source.as_str(),
                     "AI 제공자 어댑터 해석 완료"
                 );
             }
@@ -523,7 +522,7 @@ async fn main() -> Result<()> {
                 warn!(
                     error = %err,
                     fallback_enabled = config.ai_provider.fallback_to_local,
-                    "AI 제공자 어댑터 해석 실패; 기존 NoOp 자동화 실행기로 계속 진행"
+                    "AI 제공자 어댑터 해석 실패; NoOp 자동화 실행기로 폴백"
                 );
             }
         }
@@ -537,16 +536,11 @@ async fn main() -> Result<()> {
             config.automation.sandbox.clone(),
         );
         controller.set_enabled(true);
-        // IntentExecutor: NoOp input + NoOp element finder
-        let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
-            Arc::new(NoOpInputDriver);
-        let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
-            Arc::new(NoOpElementFinder);
-        let resolver = IntentResolver::new(element_finder, input_driver, IntentConfig::default());
-        controller.set_intent_executor(Arc::new(IntentExecutor::new(
-            resolver,
-            IntentConfig::default(),
-        )));
+        if let Ok(runtime) = runtime {
+            controller.set_intent_executor(runtime.intent_executor);
+        } else {
+            controller.set_intent_executor(build_noop_intent_executor());
+        }
         Some(Arc::new(controller))
     } else {
         None

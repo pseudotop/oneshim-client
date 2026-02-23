@@ -243,6 +243,69 @@ impl FrameFileStorage {
         Ok(result)
     }
 
+    /// 최신 프레임 로드
+    ///
+    /// 반환값: `(이미지 바이트, 포맷)` 또는 저장된 프레임이 없으면 `None`.
+    pub async fn load_latest_frame(&self) -> Result<Option<(Vec<u8>, String)>, CoreError> {
+        let frames_dir = self.base_dir.join("frames");
+        if !frames_dir.exists() {
+            return Ok(None);
+        }
+
+        // 최신 날짜 폴더 우선 탐색 (YYYY-MM-DD 문자열 역순)
+        let mut day_dirs = list_date_dirs(&frames_dir).await?;
+        day_dirs.sort_by(|a, b| b.cmp(a));
+
+        for day in day_dirs {
+            let day_path = frames_dir.join(&day);
+            if !day_path.exists() {
+                continue;
+            }
+
+            let mut files = Vec::new();
+            let mut entries = fs::read_dir(&day_path)
+                .await
+                .map_err(|e| CoreError::Internal(format!("프레임 폴더 읽기 실패: {e}")))?;
+
+            while let Some(entry) = entries
+                .next_entry()
+                .await
+                .map_err(|e| CoreError::Internal(format!("프레임 항목 읽기 실패: {e}")))?
+            {
+                let path = entry.path();
+                if path.is_file() {
+                    files.push(path);
+                }
+            }
+
+            if files.is_empty() {
+                continue;
+            }
+
+            // HH-MM-SS-NNN.webp 파일명 역순 = 최신 프레임
+            files.sort_by(|a, b| {
+                let a_name = a.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                let b_name = b.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                b_name.cmp(a_name)
+            });
+
+            let latest = &files[0];
+            let Some(filename) = latest.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let relative_path = PathBuf::from("frames").join(&day).join(filename);
+            let bytes = self.load_frame(&relative_path).await?;
+            let format = latest
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|s| s.to_lowercase())
+                .unwrap_or_else(|| "webp".to_string());
+            return Ok(Some((bytes, format)));
+        }
+
+        Ok(None)
+    }
+
     /// 여러 프레임 동시 로드 (병렬 I/O)
     ///
     /// Phase 33 최적화: tokio::spawn으로 병렬 로드
@@ -543,6 +606,21 @@ mod tests {
         // 로드
         let loaded = storage.load_frame(&path).await.unwrap();
         assert_eq!(loaded, test_data);
+    }
+
+    #[tokio::test]
+    async fn load_latest_frame_returns_most_recent_file() {
+        let (storage, _temp) = create_test_storage().await;
+
+        let t1 = Utc::now() - chrono::Duration::seconds(1);
+        let t2 = Utc::now();
+
+        storage.save_frame(t1, b"older-frame").await.unwrap();
+        storage.save_frame(t2, b"newer-frame").await.unwrap();
+
+        let latest = storage.load_latest_frame().await.unwrap().unwrap();
+        assert_eq!(latest.0, b"newer-frame");
+        assert_eq!(latest.1, "webp");
     }
 
     #[tokio::test]
