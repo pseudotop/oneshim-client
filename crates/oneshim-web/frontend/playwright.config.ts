@@ -5,6 +5,8 @@
  */
 import { defineConfig, devices } from '@playwright/test'
 
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:9090'
+
 export default defineConfig({
   // 테스트 디렉토리
   testDir: './e2e',
@@ -27,7 +29,7 @@ export default defineConfig({
   // 공통 설정
   use: {
     // 기본 URL (로컬 서버)
-    baseURL: 'http://localhost:9090',
+    baseURL,
 
     // 추적 수집 (실패 시)
     trace: 'on-first-retry',
