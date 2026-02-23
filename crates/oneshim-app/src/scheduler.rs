@@ -4,7 +4,7 @@
 
 use base64::Engine;
 use chrono::{Datelike, Duration as ChronoDuration, Timelike, Utc};
-use oneshim_core::config::{AppConfig, Weekday};
+use oneshim_core::config::{AiAccessMode, AppConfig, ExternalDataPolicy, PrivacyConfig, Weekday};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::activity::{
     IdleState, ProcessSnapshot, ProcessSnapshotEntry, SessionStats,
@@ -22,6 +22,7 @@ use oneshim_monitor::window_layout::WindowLayoutTracker;
 use oneshim_network::batch_uploader::BatchUploader;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
+use oneshim_vision::privacy::{sanitize_title_with_level, should_exclude};
 use oneshim_web::{MetricsUpdate, RealtimeEvent};
 use std::sync::Arc;
 use std::time::Duration;
@@ -63,6 +64,88 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())
 }
 
+const REDACTED_WINDOW_TITLE: &str = "[REDACTED_WINDOW_TITLE]";
+
+#[derive(Clone)]
+struct PlatformEgressPolicy {
+    enabled: bool,
+    external_data_policy: ExternalDataPolicy,
+    privacy_config: PrivacyConfig,
+}
+
+impl PlatformEgressPolicy {
+    fn new(config: &SchedulerConfig) -> Self {
+        Self {
+            enabled: !config.offline_mode
+                && config.ai_access_mode == AiAccessMode::PlatformConnected,
+            external_data_policy: config.external_data_policy,
+            privacy_config: config.privacy_config.clone(),
+        }
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn prepare_event_for_upload(&self, mut event: Event) -> Option<Event> {
+        if !self.enabled {
+            return None;
+        }
+
+        match &mut event {
+            Event::Context(ctx) => {
+                let app_name = ctx.app_name.clone();
+                let title = ctx.window_title.clone();
+                if self.should_skip(&app_name, &title) {
+                    return None;
+                }
+                ctx.window_title = self.sanitize_title(&title);
+            }
+            Event::Window(layout) => {
+                let app_name = layout.window.app_name.clone();
+                let title = layout.window.window_title.clone();
+                if self.should_skip(&app_name, &title) {
+                    return None;
+                }
+                layout.window.window_title = self.sanitize_title(&title);
+            }
+            Event::User(user) => {
+                let app_name = user.app_name.clone();
+                let title = user.window_title.clone();
+                if self.should_skip(&app_name, &title) {
+                    return None;
+                }
+                user.window_title = self.sanitize_title(&title);
+            }
+            Event::System(_) | Event::Input(_) | Event::Process(_) => {}
+        }
+
+        Some(event)
+    }
+
+    fn sanitize_title(&self, title: &str) -> String {
+        match self.external_data_policy {
+            ExternalDataPolicy::AllowFiltered => {
+                sanitize_title_with_level(title, self.privacy_config.pii_filter_level)
+            }
+            ExternalDataPolicy::PiiFilterStrict | ExternalDataPolicy::PiiFilterStandard => {
+                REDACTED_WINDOW_TITLE.to_string()
+            }
+        }
+    }
+
+    fn should_skip(&self, app_name: &str, window_title: &str) -> bool {
+        should_exclude(
+            app_name,
+            window_title,
+            &self.privacy_config.excluded_apps,
+            &self.privacy_config.excluded_app_patterns,
+            &self.privacy_config.excluded_title_patterns,
+            self.privacy_config.auto_exclude_sensitive,
+        )
+    }
+}
+
 /// 스케줄러 설정
 pub struct SchedulerConfig {
     /// 모니터링 폴링 간격
@@ -85,6 +168,12 @@ pub struct SchedulerConfig {
     pub session_id: String,
     /// 오프라인 모드 (서버 연결 없이 로컬 기능만 사용)
     pub offline_mode: bool,
+    /// AI 접근 모드 (플랫폼 연동 여부 판단)
+    pub ai_access_mode: AiAccessMode,
+    /// 외부 전송 데이터 정책
+    pub external_data_policy: ExternalDataPolicy,
+    /// 프라이버시 필터/제외 규칙 설정
+    pub privacy_config: PrivacyConfig,
     /// 유휴 감지 임계값 (초)
     pub idle_threshold_secs: u64,
 }
@@ -102,6 +191,9 @@ impl Default for SchedulerConfig {
             aggregation_interval: Duration::from_secs(3600), // 1시간
             session_id: String::new(),                       // 호출자가 설정
             offline_mode: false,
+            ai_access_mode: AiAccessMode::default(),
+            external_data_policy: ExternalDataPolicy::default(),
+            privacy_config: PrivacyConfig::default(),
             idle_threshold_secs: 300, // 5분
         }
     }
@@ -220,7 +312,7 @@ impl Scheduler {
         poll: Duration,
         idle_threshold: u64,
         session_id: String,
-        offline_mode: bool,
+        egress_policy: Arc<PlatformEgressPolicy>,
         input_collector: Arc<InputActivityCollector>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
@@ -231,7 +323,7 @@ impl Scheduler {
         let sqlite1 = self.sqlite_storage.clone();
         let frame_storage1 = self.frame_storage.clone();
         let uploader1 = self.batch_uploader.clone();
-        let offline1 = offline_mode;
+        let egress1 = egress_policy;
         let session1 = session_id;
         let notif1 = self.notification_manager.clone();
         let focus1 = self.focus_analyzer.clone();
@@ -308,8 +400,8 @@ impl Scheduler {
                                     if let Err(e) = storage1.save_event(&win_event).await {
                                         warn!("창 레이아웃 이벤트 저장 실패: {e}");
                                     }
-                                    if !offline1 {
-                                        uploader1.enqueue(win_event);
+                                    if let Some(upload_event) = egress1.prepare_event_for_upload(win_event) {
+                                        uploader1.enqueue(upload_event);
                                     }
                                 }
 
@@ -392,9 +484,9 @@ impl Scheduler {
                                 // 세션 이벤트 카운터 증가
                                 let _ = sqlite1.increment_session_counters(&session1, 1, 0, 0).await;
 
-                                // 배치 업로더에 추가 (온라인 모드에서만)
-                                if !offline1 {
-                                    uploader1.enqueue(ctx_event);
+                                // 배치 업로더에 추가 (플랫폼 연동 모드에서만)
+                                if let Some(upload_event) = egress1.prepare_event_for_upload(ctx_event) {
+                                    uploader1.enqueue(upload_event);
                                 }
 
                                 // 앱 전환 시 집중도 분석기에 알림
@@ -528,13 +620,13 @@ impl Scheduler {
     fn spawn_sync_loop(
         &self,
         sync_interval: Duration,
-        offline_mode: bool,
+        egress_policy: Arc<PlatformEgressPolicy>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let uploader4 = self.batch_uploader.clone();
         let storage4 = self.storage.clone();
         let frame_storage4 = self.frame_storage.clone();
-        let offline4 = offline_mode;
+        let egress4 = egress_policy;
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(sync_interval);
@@ -542,8 +634,8 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        // 서버 동기화 (온라인 모드에서만)
-                        if !offline4 {
+                        // 서버 동기화 (플랫폼 연동 모드에서만)
+                        if egress4.is_enabled() {
                             match uploader4.flush().await {
                                 Ok(count) => {
                                     if count > 0 {
@@ -584,14 +676,14 @@ impl Scheduler {
         &self,
         heartbeat_interval: Duration,
         session_id: String,
-        offline_mode: bool,
+        egress_policy: Arc<PlatformEgressPolicy>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let api = self.api_client.clone();
         let sid = session_id;
 
         tokio::spawn(async move {
-            if offline_mode {
+            if !egress_policy.is_enabled() {
                 let _ = shutdown_rx.changed().await;
                 return;
             }
@@ -734,7 +826,7 @@ impl Scheduler {
         &self,
         detailed_process_interval: Duration,
         input_activity_interval: Duration,
-        offline_mode: bool,
+        egress_policy: Arc<PlatformEgressPolicy>,
         input_collector: Arc<InputActivityCollector>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
@@ -742,7 +834,7 @@ impl Scheduler {
         let storage9 = self.storage.clone();
         let uploader9 = self.batch_uploader.clone();
         let input_collector9 = input_collector;
-        let offline9 = offline_mode;
+        let egress9 = egress_policy;
 
         tokio::spawn(async move {
             // 상세 프로세스 및 입력 활동 수집 간격
@@ -774,8 +866,8 @@ impl Scheduler {
                                     warn!("프로세스 스냅샷 이벤트 저장 실패: {e}");
                                 }
 
-                                if !offline9 {
-                                    uploader9.enqueue(event);
+                                if let Some(upload_event) = egress9.prepare_event_for_upload(event) {
+                                    uploader9.enqueue(upload_event);
                                 }
 
                                 debug!("상세 프로세스 스냅샷: {}개", total);
@@ -799,8 +891,8 @@ impl Scheduler {
                                 warn!("입력 활동 이벤트 저장 실패: {e}");
                             }
 
-                            if !offline9 {
-                                uploader9.enqueue(event);
+                            if let Some(upload_event) = egress9.prepare_event_for_upload(event) {
+                                uploader9.enqueue(upload_event);
                             }
                         }
                     }
@@ -823,8 +915,14 @@ impl Scheduler {
         let heartbeat = self.config.heartbeat_interval;
         let aggregation = self.config.aggregation_interval;
         let session_id = self.config.session_id.clone();
-        let offline_mode = self.config.offline_mode;
         let idle_threshold = self.config.idle_threshold_secs;
+        let egress_policy = Arc::new(PlatformEgressPolicy::new(&self.config));
+
+        info!(
+            access_mode = ?self.config.ai_access_mode,
+            platform_sync_enabled = egress_policy.is_enabled(),
+            "플랫폼 egress 정책 적용"
+        );
 
         // 세션 초기화
         self.initialize_session(&session_id).await;
@@ -839,7 +937,7 @@ impl Scheduler {
             poll,
             idle_threshold,
             session_id.clone(),
-            offline_mode,
+            egress_policy.clone(),
             shared_input_collector.clone(),
             shutdown_rx.clone(),
         );
@@ -857,7 +955,7 @@ impl Scheduler {
         // ============================================================
         // 4. 동기화 루프 (10초)
         // ============================================================
-        let sync_task = self.spawn_sync_loop(sync, offline_mode, shutdown_rx.clone());
+        let sync_task = self.spawn_sync_loop(sync, egress_policy.clone(), shutdown_rx.clone());
 
         // ============================================================
         // 5. 하트비트 루프 (30초, 온라인 모드에서만)
@@ -865,7 +963,7 @@ impl Scheduler {
         let heartbeat_task = self.spawn_heartbeat_loop(
             heartbeat,
             session_id.clone(),
-            offline_mode,
+            egress_policy.clone(),
             shutdown_rx.clone(),
         );
 
@@ -890,7 +988,7 @@ impl Scheduler {
         let event_snapshot_task = self.spawn_event_snapshot_loop(
             detailed_process_interval,
             input_activity_interval,
-            offline_mode,
+            egress_policy.clone(),
             shared_input_collector.clone(),
             shutdown_rx.clone(),
         );
@@ -958,6 +1056,7 @@ pub fn should_run_now(config: &AppConfig) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::config::PiiFilterLevel;
 
     #[test]
     fn should_run_when_disabled() {
@@ -971,6 +1070,91 @@ mod tests {
         let config = SchedulerConfig::default();
         assert_eq!(config.poll_interval, Duration::from_secs(1));
         assert_eq!(config.metrics_interval, Duration::from_secs(5));
+        assert_eq!(config.ai_access_mode, AiAccessMode::ProviderApiKey);
         assert_eq!(config.idle_threshold_secs, 300);
+    }
+
+    #[test]
+    fn platform_sync_enabled_only_for_platform_connected_mode() {
+        let mut config = SchedulerConfig {
+            offline_mode: false,
+            ai_access_mode: AiAccessMode::ProviderApiKey,
+            ..SchedulerConfig::default()
+        };
+
+        let policy = PlatformEgressPolicy::new(&config);
+        assert!(!policy.is_enabled());
+
+        config.ai_access_mode = AiAccessMode::PlatformConnected;
+        let policy = PlatformEgressPolicy::new(&config);
+        assert!(policy.is_enabled());
+    }
+
+    #[test]
+    fn strict_policy_redacts_window_title() {
+        let config = SchedulerConfig {
+            offline_mode: false,
+            ai_access_mode: AiAccessMode::PlatformConnected,
+            external_data_policy: ExternalDataPolicy::PiiFilterStrict,
+            ..SchedulerConfig::default()
+        };
+        let policy = PlatformEgressPolicy::new(&config);
+        let event = Event::Context(ContextEvent {
+            app_name: "Chrome".to_string(),
+            window_title: "Inbox user@example.com".to_string(),
+            prev_app_name: None,
+            timestamp: Utc::now(),
+        });
+
+        let uploaded = policy.prepare_event_for_upload(event);
+        let Some(Event::Context(ctx)) = uploaded else {
+            panic!("context event should be uploadable");
+        };
+        assert_eq!(ctx.window_title, REDACTED_WINDOW_TITLE);
+    }
+
+    #[test]
+    fn allow_filtered_policy_uses_pii_filter() {
+        let mut privacy = PrivacyConfig::default();
+        privacy.pii_filter_level = PiiFilterLevel::Basic;
+        let config = SchedulerConfig {
+            offline_mode: false,
+            ai_access_mode: AiAccessMode::PlatformConnected,
+            external_data_policy: ExternalDataPolicy::AllowFiltered,
+            privacy_config: privacy,
+            ..SchedulerConfig::default()
+        };
+        let policy = PlatformEgressPolicy::new(&config);
+        let event = Event::Context(ContextEvent {
+            app_name: "Chrome".to_string(),
+            window_title: "Inbox user@example.com".to_string(),
+            prev_app_name: None,
+            timestamp: Utc::now(),
+        });
+
+        let uploaded = policy.prepare_event_for_upload(event);
+        let Some(Event::Context(ctx)) = uploaded else {
+            panic!("context event should be uploadable");
+        };
+        assert!(ctx.window_title.contains("[EMAIL]"));
+        assert!(!ctx.window_title.contains('@'));
+    }
+
+    #[test]
+    fn sensitive_apps_are_skipped_from_upload() {
+        let config = SchedulerConfig {
+            offline_mode: false,
+            ai_access_mode: AiAccessMode::PlatformConnected,
+            ..SchedulerConfig::default()
+        };
+        let policy = PlatformEgressPolicy::new(&config);
+        let event = Event::Context(ContextEvent {
+            app_name: "Bitwarden".to_string(),
+            window_title: "Vault".to_string(),
+            prev_app_name: None,
+            timestamp: Utc::now(),
+        });
+
+        assert!(policy.prepare_event_for_upload(event).is_none());
     }
 }

@@ -489,6 +489,9 @@ async fn run_agent(
         aggregation_interval: Duration::from_secs(3600),
         session_id,
         offline_mode,
+        ai_access_mode: config.ai_provider.access_mode,
+        external_data_policy: config.ai_provider.external_data_policy,
+        privacy_config: config.privacy.clone(),
         idle_threshold_secs: 300,
     };
 

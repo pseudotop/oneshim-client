@@ -322,6 +322,14 @@ async fn main() -> Result<()> {
         info!("서버: {}", config.server.base_url);
     }
 
+    let platform_connected_mode =
+        !args.offline && config.ai_provider.access_mode == AiAccessMode::PlatformConnected;
+    info!(
+        access_mode = ?config.ai_provider.access_mode,
+        platform_sync_enabled = platform_connected_mode,
+        "플랫폼 연동 모드 평가"
+    );
+
     integrity_guard::run_preflight(&config, args.offline)?;
 
     let runtime_auto_update = config.update.auto_install || args.auto_update || args.approve_update;
@@ -369,8 +377,8 @@ async fn main() -> Result<()> {
         token_manager.clone(),
     )?);
 
-    // 로그인 (오프라인 모드에서는 스킵)
-    if !args.offline {
+    // 로그인 (플랫폼 연동 모드에서만 수행)
+    if platform_connected_mode {
         let email =
             std::env::var("ONESHIM_EMAIL").unwrap_or_else(|_| "user@example.com".to_string());
         let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
@@ -393,6 +401,8 @@ async fn main() -> Result<()> {
             warn!("로그인 실패: {e}");
             warn!("환경변수 ONESHIM_EMAIL, ONESHIM_PASSWORD를 설정하거나 --offline 모드를 사용하세요.");
         }
+    } else {
+        info!("플랫폼 로그인 생략: standalone/비연동 모드");
     }
 
     // 2. HTTP API 클라이언트 (REST fallback)
@@ -513,6 +523,9 @@ async fn main() -> Result<()> {
             aggregation_interval: Duration::from_secs(3600),
             session_id: session_id.clone(),
             offline_mode,
+            ai_access_mode: config.ai_provider.access_mode,
+            external_data_policy: config.ai_provider.external_data_policy,
+            privacy_config: config.privacy.clone(),
             idle_threshold_secs: 300,
         },
         app_config,
@@ -624,8 +637,8 @@ async fn main() -> Result<()> {
         info!("웹 대시보드: http://localhost:{}", web_port);
     }
 
-    // SSE 제안 수신 (온라인 모드에서만)
-    if !args.offline {
+    // SSE 제안 수신 (플랫폼 연동 모드에서만)
+    if platform_connected_mode {
         let sid = session_id.clone();
         tokio::spawn(async move {
             if let Err(e) = receiver.run(&sid).await {
@@ -651,8 +664,10 @@ async fn main() -> Result<()> {
     if args.offline {
         info!("ONESHIM 오프라인 모드 실행 중 (Ctrl+C로 종료)");
         info!("로컬 모니터링 간격: {}ms", args.poll_interval);
+    } else if platform_connected_mode {
+        info!("ONESHIM 클라이언트 실행 중 (플랫폼 연동, Ctrl+C로 종료)");
     } else {
-        info!("ONESHIM 클라이언트 실행 중 (Ctrl+C로 종료)");
+        info!("ONESHIM 클라이언트 실행 중 (standalone 모드, Ctrl+C로 종료)");
     }
 
     // OS 시그널 대기
