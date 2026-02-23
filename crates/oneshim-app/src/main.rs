@@ -508,7 +508,7 @@ async fn main() -> Result<()> {
     // ── 자동화 컨트롤러 (config.automation.enabled일 때만) ──
     let automation_controller = if config.automation.enabled {
         let runtime = build_automation_runtime(&config.ai_provider, Some(frame_storage.clone()));
-        match &runtime {
+        match runtime {
             Ok(runtime) => {
                 info!(
                     ocr_provider = runtime.ocr_provider_name,
@@ -517,32 +517,49 @@ async fn main() -> Result<()> {
                     llm_source = runtime.llm_source.as_str(),
                     "AI 제공자 어댑터 해석 완료"
                 );
+
+                let policy_client = Arc::new(PolicyClient::new());
+                let sandbox = create_platform_sandbox(&config.automation.sandbox);
+                let mut controller = AutomationController::new(
+                    policy_client,
+                    audit_logger.clone(),
+                    sandbox,
+                    config.automation.sandbox.clone(),
+                );
+                controller.set_enabled(true);
+                controller.set_intent_executor(runtime.intent_executor);
+                controller.set_intent_planner(runtime.intent_planner);
+                Some(Arc::new(controller))
             }
             Err(err) => {
-                warn!(
-                    error = %err,
-                    fallback_enabled = config.ai_provider.fallback_to_local,
-                    "AI 제공자 어댑터 해석 실패; NoOp 자동화 실행기로 폴백"
-                );
+                if config.ai_provider.fallback_to_local {
+                    warn!(
+                        error = %err,
+                        fallback_enabled = true,
+                        "AI 제공자 어댑터 해석 실패; NoOp 자동화 실행기로 폴백"
+                    );
+
+                    let policy_client = Arc::new(PolicyClient::new());
+                    let sandbox = create_platform_sandbox(&config.automation.sandbox);
+                    let mut controller = AutomationController::new(
+                        policy_client,
+                        audit_logger.clone(),
+                        sandbox,
+                        config.automation.sandbox.clone(),
+                    );
+                    controller.set_enabled(true);
+                    controller.set_intent_executor(build_noop_intent_executor());
+                    Some(Arc::new(controller))
+                } else {
+                    error!(
+                        error = %err,
+                        fallback_enabled = false,
+                        "AI 제공자 어댑터 해석 실패; fallback_to_local=false 이므로 자동화 컨트롤러를 비활성화합니다"
+                    );
+                    None
+                }
             }
         }
-
-        let policy_client = Arc::new(PolicyClient::new());
-        let sandbox = create_platform_sandbox(&config.automation.sandbox);
-        let mut controller = AutomationController::new(
-            policy_client,
-            audit_logger.clone(),
-            sandbox,
-            config.automation.sandbox.clone(),
-        );
-        controller.set_enabled(true);
-        if let Ok(runtime) = runtime {
-            controller.set_intent_executor(runtime.intent_executor);
-            controller.set_intent_planner(runtime.intent_planner);
-        } else {
-            controller.set_intent_executor(build_noop_intent_executor());
-        }
-        Some(Arc::new(controller))
     } else {
         None
     };
