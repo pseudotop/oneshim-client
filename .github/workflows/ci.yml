@@ -15,7 +15,7 @@ jobs:
     name: Frontend (build + e2e)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -74,7 +74,7 @@ jobs:
     name: Check (fmt + clippy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Linux dependencies
         run: |
@@ -120,7 +120,7 @@ jobs:
     env:
       ONESHIM_ENABLE_PERF_GATES: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Linux dependencies
         run: |
@@ -162,7 +162,7 @@ jobs:
     needs: [check, frontend, perf-gates]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Linux dependencies
         run: |
@@ -217,7 +217,7 @@ jobs:
             artifact_name: oneshim-linux-x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download frontend dist artifact
         uses: actions/download-artifact@v4
