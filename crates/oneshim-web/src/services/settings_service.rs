@@ -15,6 +15,7 @@ use crate::handlers::settings::{
     TelemetrySettings, UpdateSettings,
 };
 use crate::AppState;
+use tracing::warn;
 
 /// 저장소 통계 조회.
 pub fn get_storage_stats(state: &AppState) -> Result<StorageStats, ApiError> {
@@ -57,7 +58,8 @@ pub fn update_settings(state: &AppState, settings: &AppSettings) -> Result<(), A
     validate_settings_input(settings)?;
 
     if let Some(ref config_manager) = state.config_manager {
-        let mut next_config = config_manager.get();
+        let previous_config = config_manager.get();
+        let mut next_config = previous_config.clone();
         apply_settings_to_config(&mut next_config, settings)?;
 
         next_config
@@ -66,11 +68,68 @@ pub fn update_settings(state: &AppState, settings: &AppSettings) -> Result<(), A
             .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
         config_manager
-            .update(next_config)
+            .update(next_config.clone())
             .map_err(|e| ApiError::Internal(format!("설정 저장 실패: {e}")))?;
+
+        emit_policy_change_events(state, &previous_config, &next_config);
     }
 
     Ok(())
+}
+
+fn emit_policy_change_events(state: &AppState, previous: &AppConfig, next: &AppConfig) {
+    if previous.ai_provider.allow_unredacted_external_ocr
+        != next.ai_provider.allow_unredacted_external_ocr
+    {
+        log_policy_event(
+            state,
+            "policy.settings.allow_unredacted_external_ocr.changed",
+            format!(
+                "from={} to={}",
+                previous.ai_provider.allow_unredacted_external_ocr,
+                next.ai_provider.allow_unredacted_external_ocr
+            ),
+        );
+    }
+
+    let prev_override = &previous.ai_provider.scene_action_override;
+    let next_override = &next.ai_provider.scene_action_override;
+    let override_changed = prev_override.enabled != next_override.enabled
+        || prev_override.reason != next_override.reason
+        || prev_override.approved_by != next_override.approved_by
+        || prev_override.expires_at != next_override.expires_at;
+
+    if override_changed {
+        log_policy_event(
+            state,
+            "policy.settings.scene_action_override.changed",
+            format!(
+                "from_enabled={} to_enabled={} from_reason={:?} to_reason={:?} from_approved_by={:?} to_approved_by={:?} from_expires_at={:?} to_expires_at={:?}",
+                prev_override.enabled,
+                next_override.enabled,
+                prev_override.reason.as_deref(),
+                next_override.reason.as_deref(),
+                prev_override.approved_by.as_deref(),
+                next_override.approved_by.as_deref(),
+                prev_override.expires_at.map(|value| value.to_rfc3339()),
+                next_override.expires_at.map(|value| value.to_rfc3339()),
+            ),
+        );
+    }
+}
+
+fn log_policy_event(state: &AppState, action_type: &str, details: String) {
+    let Some(logger) = state.audit_logger.as_ref() else {
+        return;
+    };
+
+    match logger.try_write() {
+        Ok(mut guard) => guard.log_event(action_type, "settings", &details),
+        Err(_) => warn!(
+            action_type = action_type,
+            "audit logger busy; policy setting change event was dropped"
+        ),
+    }
 }
 
 fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {

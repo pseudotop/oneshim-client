@@ -77,6 +77,7 @@ Connected 모드는 opt-in 프리뷰 경로로만 제공됩니다.
 - 퍼블릭 런치 플레이북: [docs/architecture/public-repo-launch-playbook.ko.md](./docs/architecture/public-repo-launch-playbook.ko.md)
 - 자동화 플레이북 템플릿: [docs/guides/automation-playbook-templates.ko.md](./docs/guides/automation-playbook-templates.ko.md)
 - Standalone 도입 런북: [docs/guides/standalone-adoption-runbook.ko.md](./docs/guides/standalone-adoption-runbook.ko.md)
+- 첫 5분 가이드: [docs/guides/first-5-minutes.ko.md](./docs/guides/first-5-minutes.ko.md)
 - 자동화 이벤트 계약: [docs/contracts/automation-event-contract.ko.md](./docs/contracts/automation-event-contract.ko.md)
 
 ## 기능

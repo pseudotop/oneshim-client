@@ -68,6 +68,17 @@ fn default_audit_limit() -> usize {
     50
 }
 
+/// 정책 이벤트 쿼리
+#[derive(Debug, Deserialize)]
+pub struct PolicyEventQuery {
+    #[serde(default = "default_policy_event_limit")]
+    pub limit: usize,
+}
+
+fn default_policy_event_limit() -> usize {
+    100
+}
+
 fn require_config_manager(state: &AppState) -> Result<&ConfigManager, ApiError> {
     state
         .config_manager
@@ -538,6 +549,39 @@ pub async fn get_audit_logs(
     Ok(Json(dtos))
 }
 
+/// GET /api/automation/policy-events — 정책 이벤트 감사 로그 조회
+pub async fn get_policy_events(
+    State(state): State<AppState>,
+    Query(query): Query<PolicyEventQuery>,
+) -> Result<Json<Vec<AuditEntryDto>>, ApiError> {
+    let Some(ref logger) = state.audit_logger else {
+        return Ok(Json(Vec::new()));
+    };
+
+    let limit = query.limit.clamp(1, 500);
+    let read_limit = limit.saturating_mul(8);
+    let guard = logger.read().await;
+    let entries = guard
+        .recent_entries(read_limit)
+        .into_iter()
+        .filter(|entry| entry.action_type.starts_with("policy."))
+        .take(limit)
+        .map(|e| AuditEntryDto {
+            schema_version: AUTOMATION_AUDIT_SCHEMA_VERSION.to_string(),
+            entry_id: e.entry_id,
+            timestamp: e.timestamp.to_rfc3339(),
+            session_id: e.session_id,
+            command_id: e.command_id,
+            action_type: e.action_type,
+            status: format!("{:?}", e.status),
+            details: e.details,
+            elapsed_ms: e.execution_time_ms,
+        })
+        .collect();
+
+    Ok(Json(entries))
+}
+
 /// GET /api/automation/policies — 활성 정책 목록
 pub async fn get_policies(State(state): State<AppState>) -> Result<Json<PoliciesDto>, ApiError> {
     if let Some(ref config_manager) = state.config_manager {
@@ -882,7 +926,26 @@ pub async fn execute_scene_action(
     };
 
     let intents = build_scene_action_intents(&req)?;
-    let policy_context = enforce_scene_action_privacy(&state, &req)?;
+    let policy_context = match enforce_scene_action_privacy(&state, &req) {
+        Ok(context) => context,
+        Err(err) => {
+            if let Some(logger) = state.audit_logger.as_ref() {
+                let mut guard = logger.write().await;
+                guard.log_event(
+                    "policy.scene_action.blocked",
+                    &req.session_id,
+                    &format!(
+                        "action_type={:?} element_id={} allow_sensitive_input={} error={}",
+                        req.action_type,
+                        req.element_id,
+                        req.allow_sensitive_input.unwrap_or(false),
+                        err
+                    ),
+                );
+            }
+            return Err(err);
+        }
+    };
     let command_id = req
         .command_id
         .as_ref()
@@ -898,6 +961,51 @@ pub async fn execute_scene_action(
 
     if let Some(logger) = state.audit_logger.as_ref() {
         let mut guard = logger.write().await;
+        if policy_context.override_active {
+            guard.log_event(
+                "policy.scene_action_override.applied",
+                &req.session_id,
+                &format!(
+                    "action_type={:?} element_id={} approved_by={:?} expires_at={:?}",
+                    req.action_type,
+                    req.element_id,
+                    policy_context.override_approved_by.as_deref(),
+                    policy_context
+                        .override_expires_at
+                        .as_ref()
+                        .map(|value| value.to_rfc3339()),
+                ),
+            );
+        } else if policy_context.override_enabled || policy_context.override_issue.is_some() {
+            guard.log_event(
+                "policy.scene_action_override.issue",
+                &req.session_id,
+                &format!(
+                    "action_type={:?} element_id={} issue={:?} enabled={} expires_at={:?}",
+                    req.action_type,
+                    req.element_id,
+                    policy_context.override_issue.as_deref(),
+                    policy_context.override_enabled,
+                    policy_context
+                        .override_expires_at
+                        .as_ref()
+                        .map(|value| value.to_rfc3339()),
+                ),
+            );
+        }
+        if req.allow_sensitive_input.unwrap_or(false) {
+            guard.log_event(
+                "policy.scene_action.allow_sensitive_input",
+                &req.session_id,
+                &format!(
+                    "action_type={:?} element_id={} policy={:?} override_active={}",
+                    req.action_type,
+                    req.element_id,
+                    policy_context.policy,
+                    policy_context.override_active,
+                ),
+            );
+        }
         guard.log_start_if(
             AuditLevel::Detailed,
             &command_id,
@@ -1183,6 +1291,13 @@ mod tests {
         let query: AuditQuery = serde_json::from_str(json).unwrap();
         assert_eq!(query.limit, 50);
         assert!(query.status.is_none());
+    }
+
+    #[test]
+    fn policy_event_query_defaults() {
+        let json = "{}";
+        let query: PolicyEventQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.limit, 100);
     }
 
     #[test]

@@ -98,6 +98,10 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::automation::get_audit_logs),
         )
         .route(
+            "/automation/policy-events",
+            get(handlers::automation::get_policy_events),
+        )
+        .route(
             "/automation/policies",
             get(handlers::automation::get_policies),
         )
@@ -137,6 +141,14 @@ pub fn api_routes() -> Router<AppState> {
         .route(
             "/automation/scene",
             get(handlers::automation::get_automation_scene),
+        )
+        .route(
+            "/onboarding/quickstart",
+            get(handlers::onboarding::get_quickstart),
+        )
+        .route(
+            "/support/diagnostics",
+            get(handlers::support::get_diagnostics),
         )
         .route("/update/status", get(handlers::update::get_update_status))
         .route("/update/action", post(handlers::update::post_update_action))

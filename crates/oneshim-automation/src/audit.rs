@@ -109,6 +109,20 @@ impl AuditLogger {
         );
     }
 
+    /// 정책/설정 이벤트 기록
+    ///
+    /// 명령 실행 흐름이 아닌 정책 이벤트(설정 변경, 오버라이드 적용/만료 등)를
+    /// 동일한 감사 버퍼에 적재한다.
+    pub fn log_event(&mut self, action_type: &str, session_id: &str, details: &str) {
+        self.push_entry(
+            &format!("event-{}", uuid::Uuid::new_v4()),
+            session_id,
+            action_type,
+            AuditStatus::Completed,
+            Some(details.to_string()),
+        );
+    }
+
     /// AuditLevel 확인 후 실행 시작 기록 (None이면 스킵)
     pub fn log_start_if(
         &mut self,
@@ -460,6 +474,25 @@ mod tests {
         let entries = logger.drain_all();
         assert_eq!(entries[0].status, AuditStatus::Failed);
         assert_eq!(entries[0].details.as_ref().unwrap(), "연결 실패: timeout");
+    }
+
+    #[test]
+    fn log_event_records_policy_event() {
+        let mut logger = AuditLogger::new(100, 10);
+        logger.log_event(
+            "policy.scene_action_override.applied",
+            "settings",
+            "override=true reason=calibration",
+        );
+
+        let entries = logger.drain_all();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].status, AuditStatus::Completed);
+        assert_eq!(
+            entries[0].action_type,
+            "policy.scene_action_override.applied"
+        );
+        assert_eq!(entries[0].session_id, "settings");
     }
 
     #[test]
