@@ -1,6 +1,6 @@
 //! Proto 코드 생성 빌드 스크립트
 //!
-//! grpc feature 활성화 시 tonic-build로 Rust 코드를 생성합니다.
+//! grpc feature 활성화 시 tonic-prost-build로 Rust 코드를 생성합니다.
 
 fn main() {
     // grpc feature가 활성화된 경우에만 proto 컴파일
@@ -43,15 +43,15 @@ fn compile_protos() {
         return;
     }
 
-    // tonic-build로 코드 생성
+    // tonic-prost-build로 코드 생성
     let out_dir = std::path::Path::new(&manifest_dir).join("src/proto/generated");
     std::fs::create_dir_all(&out_dir).expect("Failed to create output directory");
 
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(false) // 클라이언트만 생성
         .build_client(true)
         .out_dir(&out_dir)
-        .compile_protos(&protos, &[&proto_root])
+        .compile_protos(&protos, std::slice::from_ref(&proto_root))
         .expect("Failed to compile protos");
 
     // 재빌드 트리거

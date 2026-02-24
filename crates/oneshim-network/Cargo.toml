@@ -50,4 +50,4 @@ name = "compression_bench"
 harness = false
 
 [build-dependencies]
-tonic-build = { workspace = true }
+tonic-prost-build = { workspace = true }
