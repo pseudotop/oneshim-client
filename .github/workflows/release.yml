@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download frontend dist artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend
@@ -231,13 +231,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download arm64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: oneshim-macos-arm64-archive
           path: artifacts/arm64
 
       - name: Download x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: oneshim-macos-x64-archive
           path: artifacts/x64
@@ -331,7 +331,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download release archive for smoke
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: smoke-assets
@@ -400,7 +400,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: oneshim-*
           path: dist
