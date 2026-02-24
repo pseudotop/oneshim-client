@@ -7,7 +7,9 @@
 //! - 자동 알고리즘 선택 + 압축
 //! - 라운드트립 (압축 → 압축 해제)
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use oneshim_core::ports::compressor::{CompressionAlgorithm, Compressor};
 use oneshim_network::compression::AdaptiveCompressor;
 

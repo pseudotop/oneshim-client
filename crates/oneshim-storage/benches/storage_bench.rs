@@ -11,7 +11,9 @@
 // 벤치마크 코드에서 criterion 패턴 관련 clippy 경고 허용
 #![allow(clippy::redundant_closure, clippy::unit_arg)]
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use oneshim_core::models::event::{ContextEvent, Event, UserEvent, UserEventType};
 use oneshim_core::models::frame::FrameMetadata;
 use oneshim_storage::sqlite::SqliteStorage;
