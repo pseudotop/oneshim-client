@@ -51,7 +51,7 @@ jobs:
 
       - name: Upload Playwright report artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-playwright-artifacts
           path: |
@@ -64,7 +64,7 @@ jobs:
         run: tar -czf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend dist
 
       - name: Upload frontend dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend/frontend-dist.tar.gz
@@ -283,7 +283,7 @@ jobs:
           Compress-Archive -Path target/${{ matrix.target }}/release/oneshim.exe -DestinationPath ${{ matrix.artifact_name }}.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}
           path: |
