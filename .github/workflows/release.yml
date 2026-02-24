@@ -48,7 +48,7 @@ jobs:
         run: tar -czf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend dist
 
       - name: Upload frontend dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend/frontend-dist.tar.gz
@@ -197,7 +197,7 @@ jobs:
           "$($hash.Hash.ToLower())  ${{ matrix.artifact_name }}.${{ matrix.asset_ext }}" | Out-File -Encoding ascii "dist/${{ matrix.artifact_name }}.${{ matrix.asset_ext }}.sha256"
 
       - name: Upload zip/tar artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}-archive
           path: |
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload MSI artifact
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: oneshim-windows-x64-msi
           path: |
@@ -217,7 +217,7 @@ jobs:
 
       - name: Upload DEB artifact
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: oneshim-linux-x64-deb
           path: target/${{ matrix.target }}/debian/*.deb
@@ -265,7 +265,7 @@ jobs:
           shasum -a 256 dist/oneshim-macos-universal.tar.gz > dist/oneshim-macos-universal.tar.gz.sha256
 
       - name: Upload universal artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: oneshim-macos-universal
           path: |
@@ -281,7 +281,7 @@ jobs:
           hdiutil create -volname "ONESHIM" -srcfolder dmg-staging -ov -format UDZO oneshim-macos-universal.dmg
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: oneshim-macos-universal-dmg
           path: oneshim-macos-universal.dmg
@@ -301,7 +301,7 @@ jobs:
             oneshim-macos-universal.pkg
 
       - name: Upload PKG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: oneshim-macos-universal-pkg
           path: oneshim-macos-universal.pkg
