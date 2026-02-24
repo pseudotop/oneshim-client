@@ -420,7 +420,7 @@ impl AiProviderConfig {
 /// Scene action 민감 입력 오버라이드 설정.
 ///
 /// `enabled=true`일 때는 사유, 승인자, 만료 시각이 모두 필요하다.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SceneActionOverrideConfig {
     /// 오버라이드 활성화 여부
     #[serde(default)]
@@ -434,17 +434,6 @@ pub struct SceneActionOverrideConfig {
     /// 오버라이드 만료 시각 (UTC)
     #[serde(default)]
     pub expires_at: Option<DateTime<Utc>>,
-}
-
-impl Default for SceneActionOverrideConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            reason: None,
-            approved_by: None,
-            expires_at: None,
-        }
-    }
 }
 
 impl SceneActionOverrideConfig {

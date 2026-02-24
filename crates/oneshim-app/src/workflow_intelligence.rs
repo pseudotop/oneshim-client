@@ -152,6 +152,7 @@ impl WorkflowIntelligence {
     }
 
     /// 현재 전환 이벤트를 워크플로우 세그먼트에 반영하고 필요 시 플레이북 신호를 반환한다.
+    #[allow(clippy::too_many_arguments)]
     pub fn advance_workflow(
         &mut self,
         app_name: &str,

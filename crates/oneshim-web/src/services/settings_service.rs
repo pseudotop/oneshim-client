@@ -553,8 +553,10 @@ mod tests {
     #[test]
     fn update_settings_validates_input_without_config_manager() {
         let state = test_state_without_config_manager();
-        let mut settings = AppSettings::default();
-        settings.web_port = 80;
+        let settings = AppSettings {
+            web_port: 80,
+            ..AppSettings::default()
+        };
 
         let result = update_settings(&state, &settings);
         assert!(matches!(result, Err(ApiError::BadRequest(_))));

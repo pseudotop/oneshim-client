@@ -1124,8 +1124,10 @@ mod tests {
 
     #[test]
     fn allow_filtered_policy_uses_pii_filter() {
-        let mut privacy = PrivacyConfig::default();
-        privacy.pii_filter_level = PiiFilterLevel::Basic;
+        let privacy = PrivacyConfig {
+            pii_filter_level: PiiFilterLevel::Basic,
+            ..PrivacyConfig::default()
+        };
         let config = SchedulerConfig {
             offline_mode: false,
             ai_access_mode: AiAccessMode::PlatformConnected,

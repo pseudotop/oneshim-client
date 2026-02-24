@@ -32,6 +32,7 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
         from: &str,
         to: &str,
     ) -> Result<Vec<String>, CoreError>;
+    #[allow(clippy::too_many_arguments)]
     fn delete_data_in_range(
         &self,
         from: &str,
@@ -190,6 +191,7 @@ impl WebStorage for SqliteStorage {
         SqliteStorage::list_frame_file_paths_in_range(self, from, to)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn delete_data_in_range(
         &self,
         from: &str,

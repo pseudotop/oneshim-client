@@ -441,7 +441,6 @@ fn issue_command_token_for_policy(
             compute_policy_token_signature(&policy.policy_id, nonce, command_hash, &secret);
         token.push(':');
         token.push_str(&signature);
-    } else {
     }
 
     Ok(token)
@@ -527,7 +526,8 @@ fn compute_policy_token_signature(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::OnceLock;
+    use tokio::sync::Mutex;
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -789,7 +789,7 @@ mod tests {
 
     #[tokio::test]
     async fn issue_command_token_for_signed_policy_requires_secret() {
-        let env_guard = env_lock().lock().unwrap();
+        let env_guard = env_lock().lock().await;
         std::env::remove_var(POLICY_TOKEN_SIGNING_SECRET_ENV);
 
         let client = PolicyClient::new();
@@ -805,7 +805,7 @@ mod tests {
 
     #[tokio::test]
     async fn issue_command_token_for_signed_policy_generates_verifiable_token() {
-        let env_guard = env_lock().lock().unwrap();
+        let env_guard = env_lock().lock().await;
         std::env::set_var(POLICY_TOKEN_SIGNING_SECRET_ENV, "signing-secret");
 
         let client = PolicyClient::new();

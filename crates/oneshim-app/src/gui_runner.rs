@@ -423,6 +423,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
 }
 
 /// Agent 백그라운드 실행
+#[allow(clippy::too_many_arguments)]
 async fn run_agent(
     storage: Arc<dyn StorageService>,
     scheduler_storage: Arc<dyn SchedulerStorage>,

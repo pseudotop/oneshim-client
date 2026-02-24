@@ -271,23 +271,12 @@ pub struct OcrValidationSettings {
     pub max_invalid_ratio: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct SceneActionOverrideSettings {
     pub enabled: bool,
     pub reason: String,
     pub approved_by: String,
     pub expires_at: Option<String>,
-}
-
-impl Default for SceneActionOverrideSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            reason: String::new(),
-            approved_by: String::new(),
-            expires_at: None,
-        }
-    }
 }
 
 impl Default for OcrValidationSettings {

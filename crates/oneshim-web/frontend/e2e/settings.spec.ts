@@ -88,6 +88,12 @@ const mockedSettings = {
       min_confidence: 0.25,
       max_invalid_ratio: 0.6,
     },
+    scene_action_override: {
+      enabled: false,
+      reason: '',
+      approved_by: '',
+      expires_at: null,
+    },
     fallback_to_local: true,
     ocr_api: null,
     llm_api: null,
