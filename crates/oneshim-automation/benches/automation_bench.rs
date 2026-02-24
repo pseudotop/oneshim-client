@@ -6,7 +6,9 @@
 //! - AuditLogger: 로그 삽입, 배치 드레인, 상태별 필터, 통계 집계
 //! - PolicyClient: 토큰 검증, 프로세스 허용 확인, 인자 패턴 매칭
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::policy::{AuditLevel, ExecutionPolicy, PolicyClient};
 

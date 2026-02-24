@@ -7,7 +7,9 @@
 //! - 썸네일 생성 (fast_resize)
 //! - WebP 인코딩 (encode_webp)
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use image::{DynamicImage, Rgba, RgbaImage};
 use oneshim_vision::{delta, encoder, encoder::WebPQuality, thumbnail};
 
