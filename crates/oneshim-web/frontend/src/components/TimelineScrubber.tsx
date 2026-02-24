@@ -3,6 +3,7 @@
 import { useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Play, Pause, SkipBack, SkipForward, Moon } from 'lucide-react'
+import { Select } from './ui'
 import type { AppSegment, TimelineItem } from '../api/client'
 import { formatTime } from '../utils/formatters'
 
@@ -149,17 +150,18 @@ export default function TimelineScrubber({
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {t('replay.speed', '재생 속도')}:
           </span>
-          <select
+          <Select
             value={playbackSpeed}
+            selectSize="sm"
             onChange={(e) => onSpeedChange(Number(e.target.value))}
-            className="px-2 py-1 text-sm rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+            className="w-auto"
           >
             {PLAYBACK_SPEEDS.map((speed) => (
               <option key={speed} value={speed}>
                 {speed}x
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

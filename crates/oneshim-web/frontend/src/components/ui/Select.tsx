@@ -6,6 +6,7 @@
 import { forwardRef } from 'react'
 import { cn } from '../../utils/cn'
 import { selectVariants } from '../../styles/variants'
+import { colors, interaction, radius } from '../../styles/tokens'
 
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   variant?: keyof typeof selectVariants.variant
@@ -18,8 +19,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
       <select
         ref={ref}
         className={cn(
-          'border rounded-lg text-slate-900 dark:text-white',
-          'focus:ring-2 focus:ring-teal-500 focus:border-transparent',
+          'w-full border',
+          radius.md,
+          colors.text.primary,
+          interaction.focusRing,
           selectVariants.variant[variant],
           selectVariants.size[selectSize],
           className

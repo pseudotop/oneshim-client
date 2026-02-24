@@ -6,6 +6,7 @@
 import { forwardRef } from 'react'
 import { cn } from '../../utils/cn'
 import { buttonVariants } from '../../styles/variants'
+import { interaction, radius } from '../../styles/tokens'
 import { Spinner } from './Spinner'
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -20,8 +21,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          'inline-flex items-center justify-center rounded-lg transition-colors',
-          'disabled:opacity-50 disabled:cursor-not-allowed',
+          'inline-flex items-center justify-center',
+          radius.md,
+          interaction.interactive,
+          interaction.disabled,
           buttonVariants.variant[variant],
           buttonVariants.size[size],
           className

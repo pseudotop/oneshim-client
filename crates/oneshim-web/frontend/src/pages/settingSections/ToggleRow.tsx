@@ -3,6 +3,7 @@
  *
  * 설정 섹션 내 체크박스 토글 행 (라벨 + 설명 + 체크박스)
  */
+import { colors, form } from '../../styles/tokens'
 
 export interface ToggleRowProps {
   label: string
@@ -15,14 +16,14 @@ export default function ToggleRow({ label, description, checked, onChange }: Tog
   return (
     <label className="flex items-center justify-between cursor-pointer">
       <div>
-        <span className="text-slate-700 dark:text-slate-300">{label}</span>
-        <p className="text-xs text-slate-600 dark:text-slate-500">{description}</p>
+        <span className={colors.text.secondary}>{label}</span>
+        <p className={colors.text.tertiary}>{description}</p>
       </div>
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500"
+        className={form.checkbox}
       />
     </label>
   )

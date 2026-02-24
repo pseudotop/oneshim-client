@@ -18,6 +18,8 @@ import DateRangePicker from '../components/DateRangePicker'
 import { ActivityHeatmap } from '../components/ActivityHeatmap'
 import { useSSE, ConnectionStatus } from '../hooks/useSSE'
 import { Card, CardTitle, Badge, Spinner, EmptyState } from '../components/ui'
+import { colors, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
 function toApiDate(dateInput?: string): string {
@@ -36,17 +38,17 @@ function toApiDate(dateInput?: string): string {
 // 연결 상태 표시 컴포넌트
 function ConnectionIndicator({ status, t }: { status: ConnectionStatus; t: (key: string) => string }) {
   const statusConfig = {
-    connecting: { color: 'bg-yellow-500', textKey: 'dashboard.connecting' },
-    connected: { color: 'bg-green-500', textKey: 'dashboard.connected' },
-    disconnected: { color: 'bg-slate-500', textKey: 'dashboard.disconnected' },
-    error: { color: 'bg-red-500', textKey: 'dashboard.error' },
+    connecting: { color: colors.status.connecting, textKey: 'dashboard.connecting' },
+    connected: { color: colors.status.connected, textKey: 'dashboard.connected' },
+    disconnected: { color: colors.status.disconnected, textKey: 'dashboard.disconnected' },
+    error: { color: colors.status.error, textKey: 'dashboard.error' },
   }
   const config = statusConfig[status]
 
   return (
-    <div className="flex items-center space-x-2 text-sm">
-      <span className={`w-2 h-2 rounded-full ${config.color} ${status === 'connected' ? 'animate-pulse' : ''}`} />
-      <span className="text-slate-600 dark:text-slate-400">{t(config.textKey)}</span>
+    <div className={cn('flex items-center space-x-2', typography.body)}>
+      <span className={cn('w-2 h-2 rounded-full', config.color, status === 'connected' && 'animate-pulse')} />
+      <span className={colors.text.secondary}>{t(config.textKey)}</span>
     </div>
   )
 }
@@ -82,8 +84,8 @@ export default function Dashboard() {
   if (summaryLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Spinner size="lg" className="text-teal-500" />
-        <span className="ml-3 text-slate-600 dark:text-slate-400">{t('common.loading')}</span>
+        <Spinner size="lg" className={colors.primary.text} />
+        <span className={cn('ml-3', colors.text.secondary)}>{t('common.loading')}</span>
       </div>
     )
   }
@@ -103,7 +105,7 @@ export default function Dashboard() {
       {/* 헤더 */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('dashboard.title')}</h1>
+          <h1 className={cn(typography.h1, colors.text.primary)}>{t('dashboard.title')}</h1>
           <ConnectionIndicator status={status} t={t} />
         </div>
         <DateRangePicker onRangeChange={handleRangeChange} />
@@ -114,42 +116,42 @@ export default function Dashboard() {
         <Card variant="highlight" padding="md">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <span className="w-2 h-2 bg-teal-500 dark:bg-teal-400 rounded-full animate-pulse" />
-              <span className="text-sm font-medium text-teal-700 dark:text-teal-300">{t('dashboard.realtimeMonitoring')}</span>
+              <span className={cn('w-2 h-2 rounded-full animate-pulse', colors.primary.signal)} />
+              <span className={cn('text-sm font-medium', colors.primary.text)}>{t('dashboard.realtimeMonitoring')}</span>
               {idleState?.is_idle && (
                 <Badge color="warning" size="sm">
                   {t('dashboard.idle')} {Math.floor((idleState.idle_secs || 0) / 60)}{t('dashboard.minutes')}
                 </Badge>
               )}
             </div>
-            <div className="text-xs text-slate-600 dark:text-slate-400">
+            <div className={cn('text-xs', colors.text.secondary)}>
               {new Date(latestMetrics.timestamp).toLocaleTimeString()}
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
             <div>
-              <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">
+              <div className={cn(typography.stat.large, colors.accent.teal)}>
                 {latestMetrics.cpu_usage.toFixed(1)}%
               </div>
-              <div className="text-xs text-slate-600 dark:text-slate-400">{t('dashboard.cpu')}</div>
+              <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.cpu')}</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+              <div className={cn(typography.stat.large, colors.accent.blue)}>
                 {latestMetrics.memory_percent.toFixed(1)}%
               </div>
-              <div className="text-xs text-slate-600 dark:text-slate-400">{t('dashboard.memory')}</div>
+              <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.memory')}</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+              <div className={cn(typography.stat.large, colors.accent.purple)}>
                 {(latestMetrics.memory_used / 1024 / 1024 / 1024).toFixed(1)} GB
               </div>
-              <div className="text-xs text-slate-600 dark:text-slate-400">{t('dashboard.usedMemory')}</div>
+              <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.usedMemory')}</div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-slate-700 dark:text-slate-300">
+              <div className={cn(typography.stat.large, colors.accent.slate)}>
                 {metricsHistory.length}
               </div>
-              <div className="text-xs text-slate-600 dark:text-slate-400">{t('dashboard.collectedData')}</div>
+              <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.collectedData')}</div>
             </div>
           </div>
         </Card>
@@ -208,41 +210,41 @@ export default function Dashboard() {
           {processes && processes.length > 0 ? (
             <ProcessList snapshot={processes[0]} />
           ) : (
-            <div className="text-slate-600 dark:text-slate-400 text-center py-8">{t('common.noData')}</div>
+            <div className={cn(colors.text.secondary, 'text-center py-8')}>{t('common.noData')}</div>
           )}
         </Card>
       </div>
 
       {/* 활동 히트맵 */}
-      <ActivityHeatmap days={7} className="bg-slate-100 dark:bg-slate-800" />
+      <ActivityHeatmap days={7} className={colors.surface.elevated} />
 
       {/* 시스템 상태 */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('dashboard.systemStatus')}</CardTitle>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="text-center">
-            <div className="text-3xl font-bold text-teal-600 dark:text-teal-400">
+            <div className={cn(typography.stat.hero, colors.accent.teal)}>
               {summary?.cpu_avg?.toFixed(1) ?? '0'}%
             </div>
-            <div className="text-sm text-slate-600 dark:text-slate-400">{t('dashboard.avgCpu')}</div>
+            <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.avgCpu')}</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+            <div className={cn(typography.stat.hero, colors.accent.blue)}>
               {summary?.memory_avg_percent?.toFixed(1) ?? '0'}%
             </div>
-            <div className="text-sm text-slate-600 dark:text-slate-400">{t('dashboard.avgMemory')}</div>
+            <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.avgMemory')}</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+            <div className={cn(typography.stat.hero, colors.accent.purple)}>
               {summary?.top_apps?.length ?? 0}
             </div>
-            <div className="text-sm text-slate-600 dark:text-slate-400">{t('dashboard.appsUsed')}</div>
+            <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.appsUsed')}</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+            <div className={cn(typography.stat.hero, colors.accent.green)}>
               {((summary?.total_active_secs ?? 0) / ((summary?.total_active_secs ?? 0) + (summary?.total_idle_secs ?? 1)) * 100).toFixed(0)}%
             </div>
-            <div className="text-sm text-slate-600 dark:text-slate-400">{t('dashboard.activityRatio')}</div>
+            <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.activityRatio')}</div>
           </div>
         </div>
       </Card>

@@ -6,6 +6,7 @@
 import { forwardRef } from 'react'
 import { cn } from '../../utils/cn'
 import { inputVariants } from '../../styles/variants'
+import { colors, interaction, radius } from '../../styles/tokens'
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   variant?: keyof typeof inputVariants.variant
@@ -19,9 +20,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       <input
         ref={ref}
         className={cn(
-          'w-full border rounded-lg transition-colors',
-          'text-slate-900 dark:text-white placeholder-slate-500',
-          'focus:outline-none focus:border-teal-500',
+          'w-full border placeholder-slate-500',
+          radius.md,
+          colors.text.primary,
+          interaction.interactive,
+          interaction.focusRing,
           inputVariants.size[inputSize],
           error ? inputVariants.variant.error : inputVariants.variant.default,
           className

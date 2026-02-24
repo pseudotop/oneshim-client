@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
 import { Spinner } from '../components/ui/Spinner'
-import { EmptyState } from '../components/ui'
+import { EmptyState, Select } from '../components/ui'
 import {
   fetchAutomationStatus,
   fetchAutomationStats,
@@ -410,17 +410,18 @@ function Automation() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>{t('automation.auditLog')}</CardTitle>
-            <select
+            <Select
               value={auditFilter}
+              selectSize="sm"
               onChange={(e) => setAuditFilter(e.target.value)}
-              className="px-2 py-1 text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+              className="w-auto min-w-[9rem]"
             >
               <option value="">{t('common.all')}</option>
               <option value="Completed">{t('automation.successful')}</option>
               <option value="Failed">{t('automation.failed')}</option>
               <option value="Denied">{t('automation.denied')}</option>
               <option value="Timeout">{t('automation.timeout')}</option>
-            </select>
+            </Select>
           </div>
         </CardHeader>
         <CardContent>

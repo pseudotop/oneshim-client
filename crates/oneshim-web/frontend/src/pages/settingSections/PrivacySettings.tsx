@@ -4,7 +4,8 @@
  * 민감 앱 자동 제외, PII 필터 레벨, 제외 앱/패턴 설정
  */
 import { useTranslation } from 'react-i18next'
-import { Card, CardTitle, Input } from '../../components/ui'
+import { Card, CardTitle, Input, Select } from '../../components/ui'
+import { form } from '../../styles/tokens'
 import type { PrivacySettings as PrivacySettingsType } from '../../api/client'
 import ToggleRow from './ToggleRow'
 
@@ -28,24 +29,23 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
         />
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <label className={form.label}>
             {t('settings.piiLevel')}
           </label>
-          <select
+          <Select
             value={privacy.pii_filter_level}
             onChange={(e) => onChange('pii_filter_level', e.target.value)}
-            className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-teal-500 focus:border-teal-500"
           >
             <option value="Off">{t('settings.piiOff')}</option>
             <option value="Basic">{t('settings.piiBasic')}</option>
             <option value="Standard">{t('settings.piiStandard')}</option>
             <option value="Strict">{t('settings.piiStrict')}</option>
-          </select>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-500">{t('settings.piiDesc')}</p>
+          </Select>
+          <p className={form.helper}>{t('settings.piiDesc')}</p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <label className={form.label}>
             {t('settings.excludedApps')}
           </label>
           <Input
@@ -60,7 +60,7 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <label className={form.label}>
             {t('settings.excludedAppPatterns')}
           </label>
           <Input
@@ -72,11 +72,11 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
             )}
             placeholder="*bank*, *wallet*, *crypto*"
           />
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-500">{t('settings.wildcardHint')}</p>
+          <p className={form.helper}>{t('settings.wildcardHint')}</p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <label className={form.label}>
             {t('settings.excludedTitlePatterns')}
           </label>
           <Input

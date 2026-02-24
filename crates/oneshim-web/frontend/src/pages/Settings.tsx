@@ -31,7 +31,9 @@ import {
   type UpdateStatus,
   type UpdateAction
 } from '../api/client'
-import { Card, CardTitle, Input, Button, Spinner } from '../components/ui'
+import { Card, CardTitle, Input, Button, Spinner, Select } from '../components/ui'
+import { colors, form, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 import { formatBytes, formatNumber } from '../utils/formatters'
 import {
   NotificationSettings,
@@ -302,8 +304,8 @@ export default function Settings() {
   if (settingsLoading || storageLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Spinner size="lg" className="text-teal-500" />
-        <span className="ml-3 text-slate-600 dark:text-slate-400">{t('common.loading')}</span>
+        <Spinner size="lg" className={colors.primary.text} />
+        <span className={cn('ml-3', colors.text.secondary)}>{t('common.loading')}</span>
       </div>
     )
   }
@@ -311,7 +313,7 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       {/* 헤더 */}
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('settings.title')}</h1>
+      <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
 
       {/* 저장 메시지 */}
       {saveMessage && (
@@ -375,7 +377,7 @@ export default function Settings() {
               value="json"
               checked={exportFormat === 'json'}
               onChange={() => setExportFormat('json')}
-              className="w-4 h-4 bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500"
+              className={form.radio}
             />
             <span className="ml-2 text-slate-700 dark:text-slate-300">JSON</span>
           </label>
@@ -386,7 +388,7 @@ export default function Settings() {
               value="csv"
               checked={exportFormat === 'csv'}
               onChange={() => setExportFormat('csv')}
-              className="w-4 h-4 bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500"
+              className={form.radio}
             />
             <span className="ml-2 text-slate-700 dark:text-slate-300">CSV</span>
           </label>
@@ -423,7 +425,7 @@ export default function Settings() {
             <CardTitle className="mb-4">{t('settings.retentionTitle')}</CardTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                <label className={form.label}>
                   {t('settings.retentionDays')}
                 </label>
                 <Input
@@ -433,10 +435,10 @@ export default function Settings() {
                   value={formData.retention_days}
                   onChange={(e) => handleChange('retention_days', parseInt(e.target.value) || 30)}
                 />
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-500">{t('settings.retentionAutoDelete')}</p>
+                <p className={form.helper}>{t('settings.retentionAutoDelete')}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                <label className={form.label}>
                   {t('settings.maxStorageMb')}
                 </label>
                 <Input
@@ -447,7 +449,7 @@ export default function Settings() {
                   value={formData.max_storage_mb}
                   onChange={(e) => handleChange('max_storage_mb', parseInt(e.target.value) || 500)}
                 />
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-500">{t('settings.maxStorageOverflow')}</p>
+                <p className={form.helper}>{t('settings.maxStorageOverflow')}</p>
               </div>
             </div>
           </Card>
@@ -465,13 +467,13 @@ export default function Settings() {
                   type="checkbox"
                   checked={formData.capture_enabled}
                   onChange={(e) => handleChange('capture_enabled', e.target.checked)}
-                  className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500"
+                  className={form.checkbox}
                 />
               </label>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className={form.label}>
                     {t('settings.idleThresholdSecs')}
                   </label>
                   <Input
@@ -484,7 +486,7 @@ export default function Settings() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className={form.label}>
                     {t('settings.metricsIntervalSecs')}
                   </label>
                   <Input
@@ -496,7 +498,7 @@ export default function Settings() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className={form.label}>
                     {t('settings.processIntervalSecs')}
                   </label>
                   <Input
@@ -516,7 +518,7 @@ export default function Settings() {
             <CardTitle className="mb-4">{t('settings.webTitle')}</CardTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                <label className={form.label}>
                   {t('settings.portLabel')}
                 </label>
                 <Input
@@ -526,7 +528,7 @@ export default function Settings() {
                   value={formData.web_port}
                   onChange={(e) => handleChange('web_port', parseInt(e.target.value) || 9090)}
                 />
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-500">{t('settings.portRestart')}</p>
+                <p className={form.helper}>{t('settings.portRestart')}</p>
               </div>
               <div className="flex items-center">
                 <label className="flex items-center cursor-pointer">
@@ -534,7 +536,7 @@ export default function Settings() {
                     type="checkbox"
                     checked={formData.allow_external}
                     onChange={(e) => handleChange('allow_external', e.target.checked)}
-                    className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500 mr-3"
+                    className={form.checkboxInline}
                   />
                   <div>
                     <span className="text-slate-700 dark:text-slate-300">{t('settings.allowExternal')}</span>
@@ -564,7 +566,7 @@ export default function Settings() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className={form.label}>
                     {t('settings.updateIntervalHours')}
                   </label>
                   <Input
@@ -581,7 +583,7 @@ export default function Settings() {
                       type="checkbox"
                       checked={formData.update.include_prerelease}
                       onChange={(e) => handleUpdateChange('include_prerelease', e.target.checked)}
-                      className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500 mr-3"
+                      className={form.checkboxInline}
                     />
                     <div>
                       <span className="text-slate-700 dark:text-slate-300">{t('settings.updateIncludePrerelease')}</span>
@@ -760,18 +762,17 @@ export default function Settings() {
 
               <div className={`space-y-4 ${!formData.sandbox.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className={form.label}>
                     {t('settingsAutomation.sandboxProfile')}
                   </label>
-                  <select
+                  <Select
                     value={formData.sandbox.profile}
                     onChange={(e) => handleSandboxChange('profile', e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-teal-500 focus:border-teal-500"
                   >
                     <option value="Permissive">Permissive</option>
                     <option value="Standard">Standard</option>
                     <option value="Strict">Strict</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <ToggleRow
@@ -790,46 +791,43 @@ export default function Settings() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className={form.label}>
                     {t('settingsAutomation.ocrProvider')}
                   </label>
-                  <select
+                  <Select
                     value={formData.ai_provider.ocr_provider}
                     onChange={(e) => handleAiProviderChange('ocr_provider', e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-teal-500 focus:border-teal-500"
                   >
                     <option value="Local">Local</option>
                     <option value="Remote">Remote</option>
-                  </select>
+                  </Select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  <label className={form.label}>
                     {t('settingsAutomation.llmProvider')}
                   </label>
-                  <select
+                  <Select
                     value={formData.ai_provider.llm_provider}
                     onChange={(e) => handleAiProviderChange('llm_provider', e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-teal-500 focus:border-teal-500"
                   >
                     <option value="Local">Local</option>
                     <option value="Remote">Remote</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                <label className={form.label}>
                   {t('settingsAutomation.dataPolicy')}
                 </label>
-                <select
+                <Select
                   value={formData.ai_provider.external_data_policy}
                   onChange={(e) => handleAiProviderChange('external_data_policy', e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-teal-500 focus:border-teal-500"
                 >
                   <option value="PiiFilterStrict">PII Filter Strict</option>
                   <option value="PiiFilterStandard">PII Filter Standard</option>
                   <option value="AllowFiltered">Allow Filtered</option>
-                </select>
+                </Select>
               </div>
 
               <ToggleRow
@@ -1059,9 +1057,9 @@ interface StorageCardProps {
 function StorageCard({ label, value, subValue }: StorageCardProps) {
   return (
     <Card variant="elevated" padding="md">
-      <div className="text-sm text-slate-600 dark:text-slate-400">{label}</div>
-      <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{value}</div>
-      <div className="text-xs text-slate-600 dark:text-slate-500 mt-1">{subValue}</div>
+      <div className={cn('text-sm', colors.text.secondary)}>{label}</div>
+      <div className={cn('text-2xl font-bold mt-1', colors.text.primary)}>{value}</div>
+      <div className={cn('text-xs mt-1', colors.text.tertiary)}>{subValue}</div>
     </Card>
   )
 }
@@ -1082,7 +1080,7 @@ function ExportButton({ label, description, onClick, loading }: ExportButtonProp
     >
       <div className="flex items-center gap-2">
         <svg
-          className="w-5 h-5 text-teal-600 dark:text-teal-400"
+          className={cn('w-5 h-5', colors.primary.text)}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -1094,10 +1092,10 @@ function ExportButton({ label, description, onClick, loading }: ExportButtonProp
             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
           />
         </svg>
-        <span className="text-slate-900 dark:text-white font-medium">{label}</span>
-        {loading && <Spinner size="sm" className="text-teal-400" />}
+        <span className={cn('font-medium', colors.text.primary)}>{label}</span>
+        {loading && <Spinner size="sm" className={colors.primary.text} />}
       </div>
-      <span className="text-xs text-slate-600 dark:text-slate-500 mt-1">{description}</span>
+      <span className={cn('text-xs mt-1', colors.text.tertiary)}>{description}</span>
     </button>
   )
 }

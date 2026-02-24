@@ -5,6 +5,8 @@ import { Focus, Clock, MessageSquare, Zap, TrendingUp, TrendingDown, ArrowRight 
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card'
 import { Spinner } from './ui/Spinner'
 import { fetchFocusMetrics, FocusMetricsResponse } from '../api/client'
+import { colors, dataViz } from '../styles/tokens'
+import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
 /** 스파크라인 컴포넌트 (간단한 7일 트렌드) */
@@ -42,9 +44,9 @@ function CircularGauge({ value, max = 100, size = 80 }: { value: number; max?: n
 
   // 점수에 따른 색상
   const getColor = (score: number) => {
-    if (score >= 70) return '#10b981' // green-500
-    if (score >= 40) return '#f59e0b' // amber-500
-    return '#ef4444' // red-500
+    if (score >= 70) return dataViz.stroke.good
+    if (score >= 40) return dataViz.stroke.warning
+    return dataViz.stroke.critical
   }
 
   const color = getColor(value)
@@ -153,7 +155,7 @@ export default function FocusWidget() {
           </CardTitle>
           <NavLink
             to="/focus"
-            className="text-sm text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1"
+            className={cn('text-sm hover:underline flex items-center gap-1', colors.primary.text)}
           >
             {t('common.more')}
             <ArrowRight className="w-4 h-4" />
@@ -165,7 +167,7 @@ export default function FocusWidget() {
           {/* 집중도 점수 게이지 */}
           <div className="flex flex-col items-center">
             <CircularGauge value={today.focus_score} />
-            <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            <span className={cn('text-xs mt-1', colors.text.tertiary)}>
               {t('focus.score')}
             </span>
           </div>
@@ -174,12 +176,12 @@ export default function FocusWidget() {
           <div className="flex-1 grid grid-cols-2 gap-3">
             {/* 깊은 작업 시간 */}
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-blue-500" />
+              <Clock className={cn('w-4 h-4', colors.accent.blue)} />
               <div>
-                <p className="text-sm font-medium text-slate-900 dark:text-white">
+                <p className={cn('text-sm font-medium', colors.text.primary)}>
                   {formatDuration(today.deep_work_secs)}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className={cn('text-xs', colors.text.tertiary)}>
                   {t('focus.deepWork')}
                 </p>
               </div>
@@ -187,12 +189,12 @@ export default function FocusWidget() {
 
             {/* 소통 시간 */}
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-purple-500" />
+              <MessageSquare className={cn('w-4 h-4', colors.accent.purple)} />
               <div>
-                <p className="text-sm font-medium text-slate-900 dark:text-white">
+                <p className={cn('text-sm font-medium', colors.text.primary)}>
                   {formatDuration(today.communication_secs)}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className={cn('text-xs', colors.text.tertiary)}>
                   {t('focus.communication')}
                 </p>
               </div>
@@ -200,12 +202,12 @@ export default function FocusWidget() {
 
             {/* 중단 횟수 */}
             <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-500" />
+              <Zap className={cn('w-4 h-4', colors.accent.amber)} />
               <div>
-                <p className="text-sm font-medium text-slate-900 dark:text-white">
+                <p className={cn('text-sm font-medium', colors.text.primary)}>
                   {today.interruption_count}{t('focus.times')}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className={cn('text-xs', colors.text.tertiary)}>
                   {t('focus.interruptions')}
                 </p>
               </div>
@@ -214,15 +216,15 @@ export default function FocusWidget() {
             {/* 트렌드 */}
             <div className="flex items-center gap-2">
               {trend >= 0 ? (
-                <TrendingUp className="w-4 h-4 text-green-500" />
+                <TrendingUp className={cn('w-4 h-4', colors.accent.green)} />
               ) : (
-                <TrendingDown className="w-4 h-4 text-red-500" />
+                <TrendingDown className={cn('w-4 h-4', colors.accent.red)} />
               )}
               <div>
-                <p className={`text-sm font-medium ${trend >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                <p className={cn('text-sm font-medium', trend >= 0 ? colors.accent.green : colors.accent.red)}>
                   {trend >= 0 ? '+' : ''}{trend.toFixed(1)}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className={cn('text-xs', colors.text.tertiary)}>
                   {t('focus.trend')}
                 </p>
               </div>
@@ -233,9 +235,9 @@ export default function FocusWidget() {
           <div className="hidden lg:flex flex-col items-center">
             <Sparkline
               data={[...historyScores].reverse()}
-              color={trend >= 0 ? '#10b981' : '#ef4444'}
+              color={trend >= 0 ? dataViz.stroke.good : dataViz.stroke.critical}
             />
-            <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            <span className={cn('text-xs mt-1', colors.text.tertiary)}>
               {t('focus.weeklyTrend')}
             </span>
           </div>

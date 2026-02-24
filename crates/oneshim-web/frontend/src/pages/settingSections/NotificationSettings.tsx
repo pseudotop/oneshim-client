@@ -5,6 +5,7 @@
  */
 import { useTranslation } from 'react-i18next'
 import { Card, CardTitle, Input } from '../../components/ui'
+import { colors, form } from '../../styles/tokens'
 import type { NotificationSettings as NotificationSettingsType } from '../../api/client'
 
 interface NotificationSettingsProps {
@@ -20,16 +21,16 @@ export default function NotificationSettings({ notification, onChange }: Notific
       <CardTitle className="mb-4">{t('settings.notifTitle')}</CardTitle>
 
       {/* 전체 활성화 */}
-      <label className="flex items-center justify-between cursor-pointer mb-6 pb-4 border-b border-slate-300 dark:border-slate-700">
+      <label className={`flex items-center justify-between cursor-pointer mb-6 pb-4 border-b ${form.sectionDivider}`}>
         <div>
-          <span className="text-slate-700 dark:text-slate-300 font-medium">{t('settings.notifEnabled')}</span>
-          <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.notifEnabledDesc')}</p>
+          <span className={`${colors.text.secondary} font-medium`}>{t('settings.notifEnabled')}</span>
+          <p className={colors.text.tertiary}>{t('settings.notifEnabledDesc')}</p>
         </div>
         <input
           type="checkbox"
           checked={notification.enabled}
           onChange={(e) => onChange('enabled', e.target.checked)}
-          className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500"
+          className={form.checkbox}
         />
       </label>
 
@@ -41,15 +42,15 @@ export default function NotificationSettings({ notification, onChange }: Notific
               type="checkbox"
               checked={notification.idle_notification}
               onChange={(e) => onChange('idle_notification', e.target.checked)}
-              className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500 mr-3"
+              className={form.checkboxInline}
             />
             <div>
-              <span className="text-slate-700 dark:text-slate-300">{t('settings.notifIdle')}</span>
-              <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.notifIdleDesc')}</p>
+              <span className={colors.text.secondary}>{t('settings.notifIdle')}</span>
+              <p className={colors.text.tertiary}>{t('settings.notifIdleDesc')}</p>
             </div>
           </label>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            <label className={form.label}>
               {t('settings.notifIdleThreshold')}
             </label>
             <Input
@@ -64,21 +65,21 @@ export default function NotificationSettings({ notification, onChange }: Notific
         </div>
 
         {/* 장시간 작업 알림 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-4 border-t border-slate-300 dark:border-slate-700">
+        <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-4 border-t ${form.sectionDivider}`}>
           <label className="flex items-center cursor-pointer">
             <input
               type="checkbox"
               checked={notification.long_session_notification}
               onChange={(e) => onChange('long_session_notification', e.target.checked)}
-              className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500 mr-3"
+              className={form.checkboxInline}
             />
             <div>
-              <span className="text-slate-700 dark:text-slate-300">{t('settings.notifLongSession')}</span>
-              <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.notifLongSessionDesc')}</p>
+              <span className={colors.text.secondary}>{t('settings.notifLongSession')}</span>
+              <p className={colors.text.tertiary}>{t('settings.notifLongSessionDesc')}</p>
             </div>
           </label>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            <label className={form.label}>
               {t('settings.notifLongSessionThreshold')}
             </label>
             <Input
@@ -93,21 +94,21 @@ export default function NotificationSettings({ notification, onChange }: Notific
         </div>
 
         {/* 고사용량 알림 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-4 border-t border-slate-300 dark:border-slate-700">
+        <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-4 border-t ${form.sectionDivider}`}>
           <label className="flex items-center cursor-pointer">
             <input
               type="checkbox"
               checked={notification.high_usage_notification}
               onChange={(e) => onChange('high_usage_notification', e.target.checked)}
-              className="w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500 mr-3"
+              className={form.checkboxInline}
             />
             <div>
-              <span className="text-slate-700 dark:text-slate-300">{t('settings.notifHighUsage')}</span>
-              <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.notifHighUsageDesc')}</p>
+              <span className={colors.text.secondary}>{t('settings.notifHighUsage')}</span>
+              <p className={colors.text.tertiary}>{t('settings.notifHighUsageDesc')}</p>
             </div>
           </label>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            <label className={form.label}>
               {t('settings.notifHighUsageThreshold')}
             </label>
             <Input

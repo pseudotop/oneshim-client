@@ -5,6 +5,7 @@
  */
 import { useTranslation } from 'react-i18next'
 import { Card, CardTitle, Input } from '../../components/ui'
+import { colors, form } from '../../styles/tokens'
 import type { ScheduleSettings as ScheduleSettingsType } from '../../api/client'
 import ToggleRow from './ToggleRow'
 
@@ -30,7 +31,7 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
         <div className={`space-y-4 ${!schedule.active_hours_enabled ? 'opacity-50 pointer-events-none' : ''}`}>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              <label className={form.label}>
                 {t('settings.startHour')}
               </label>
               <Input
@@ -42,7 +43,7 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              <label className={form.label}>
                 {t('settings.endHour')}
               </label>
               <Input
@@ -56,7 +57,7 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            <label className={form.label}>
               {t('settings.activeDays')}
             </label>
             <div className="flex flex-wrap gap-2">
@@ -75,7 +76,7 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
                     }}
                     className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-teal-500 text-white'
+                        ? `${colors.primary.DEFAULT} ${colors.text.inverse}`
                         : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600'
                     }`}
                   >
@@ -87,7 +88,7 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
           </div>
         </div>
 
-        <div className="pt-4 border-t border-slate-300 dark:border-slate-700 space-y-4">
+        <div className={`pt-4 border-t ${form.sectionDivider} space-y-4`}>
           <ToggleRow
             label={t('settings.pauseOnLock')}
             description={t('settings.pauseOnLockDesc')}
