@@ -1,0 +1,309 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REPO="${ONESHIM_REPOSITORY:-pseudotop/oneshim-client}"
+VERSION="${ONESHIM_VERSION:-latest}"
+INSTALL_DIR="${ONESHIM_INSTALL_DIR:-$HOME/.local/bin}"
+REQUIRE_SIGNATURE="${ONESHIM_REQUIRE_SIGNATURE:-0}"
+UPDATE_SIGNATURE_PUBLIC_KEY="${ONESHIM_UPDATE_PUBLIC_KEY:-GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=}"
+BINARY_NAME="oneshim"
+
+usage() {
+  cat <<'EOF'
+ONESHIM release installer (macOS/Linux)
+
+Usage:
+  ./scripts/install.sh [options]
+
+Options:
+  --version <tag>          Release tag (e.g. v0.0.4). Default: latest
+  --install-dir <path>     Installation directory. Default: ~/.local/bin
+  --repo <owner/name>      GitHub repository. Default: pseudotop/oneshim-client
+  --require-signature      Fail if Ed25519 signature verification cannot be completed
+  -h, --help               Show help
+
+Environment:
+  ONESHIM_VERSION
+  ONESHIM_INSTALL_DIR
+  ONESHIM_REPOSITORY
+  ONESHIM_REQUIRE_SIGNATURE=1
+  ONESHIM_UPDATE_PUBLIC_KEY=<base64 ed25519 public key>
+EOF
+}
+
+info() {
+  printf '[INFO] %s\n' "$*"
+}
+
+warn() {
+  printf '[WARN] %s\n' "$*" >&2
+}
+
+fatal() {
+  printf '[ERROR] %s\n' "$*" >&2
+  exit 1
+}
+
+download_file() {
+  local url="$1"
+  local output="$2"
+
+  if command -v curl >/dev/null 2>&1; then
+    curl --fail --silent --show-error --location "$url" --output "$output"
+    return 0
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    wget -qO "$output" "$url"
+    return 0
+  fi
+
+  fatal "Neither curl nor wget is installed."
+}
+
+sha256_file() {
+  local file="$1"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print tolower($1)}'
+    return 0
+  fi
+
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print tolower($1)}'
+    return 0
+  fi
+
+  if command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$file" | awk '{print tolower($NF)}'
+    return 0
+  fi
+
+  fatal "No SHA-256 tool found (sha256sum/shasum/openssl)."
+}
+
+verify_signature_with_python() {
+  local payload_path="$1"
+  local sig_path="$2"
+  local public_key_b64="$3"
+  local python_cmd="$4"
+
+  "$python_cmd" - "$payload_path" "$sig_path" "$public_key_b64" <<'PY'
+import base64
+import sys
+from pathlib import Path
+
+payload_path = Path(sys.argv[1])
+sig_path = Path(sys.argv[2])
+pubkey_b64 = sys.argv[3].split()[0]
+
+try:
+    from nacl.exceptions import BadSignatureError
+    from nacl.signing import VerifyKey
+except Exception as exc:
+    print(f"PyNaCl is required for signature verification: {exc}", file=sys.stderr)
+    sys.exit(10)
+
+sig_tokens = sig_path.read_text(encoding="utf-8").split()
+if not sig_tokens:
+    print("Signature file is empty", file=sys.stderr)
+    sys.exit(11)
+
+signature = base64.b64decode(sig_tokens[0])
+public_key = base64.b64decode(pubkey_b64)
+
+if len(public_key) != 32:
+    print(f"Invalid public key length: {len(public_key)} (expected 32)", file=sys.stderr)
+    sys.exit(12)
+
+if len(signature) != 64:
+    print(f"Invalid signature length: {len(signature)} (expected 64)", file=sys.stderr)
+    sys.exit(13)
+
+payload = payload_path.read_bytes()
+
+try:
+    VerifyKey(public_key).verify(payload, signature)
+except BadSignatureError:
+    print("Signature verification failed", file=sys.stderr)
+    sys.exit(14)
+PY
+}
+
+normalize_tag() {
+  local version="$1"
+  if [[ "$version" == "latest" ]]; then
+    printf 'latest'
+  else
+    version="${version#v}"
+    printf 'v%s' "$version"
+  fi
+}
+
+detect_asset_name() {
+  local os_name="$1"
+  local arch_name="$2"
+
+  case "$os_name" in
+    Darwin)
+      printf 'oneshim-macos-universal.tar.gz'
+      ;;
+    Linux)
+      case "$arch_name" in
+        x86_64 | amd64)
+          printf 'oneshim-linux-x64.tar.gz'
+          ;;
+        *)
+          fatal "Unsupported Linux architecture: $arch_name (supported: x86_64)"
+          ;;
+      esac
+      ;;
+    *)
+      fatal "Unsupported OS: $os_name (supported: macOS, Linux)"
+      ;;
+  esac
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version)
+      [[ $# -ge 2 ]] || fatal "--version requires a value"
+      VERSION="$2"
+      shift 2
+      ;;
+    --install-dir)
+      [[ $# -ge 2 ]] || fatal "--install-dir requires a value"
+      INSTALL_DIR="$2"
+      shift 2
+      ;;
+    --repo)
+      [[ $# -ge 2 ]] || fatal "--repo requires a value"
+      REPO="$2"
+      shift 2
+      ;;
+    --require-signature)
+      REQUIRE_SIGNATURE=1
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      fatal "Unknown option: $1 (use --help)"
+      ;;
+  esac
+done
+
+OS_NAME="$(uname -s)"
+ARCH_NAME="$(uname -m)"
+ASSET_NAME="$(detect_asset_name "$OS_NAME" "$ARCH_NAME")"
+TAG_NAME="$(normalize_tag "$VERSION")"
+
+if [[ "$TAG_NAME" == "latest" ]]; then
+  BASE_URL="https://github.com/$REPO/releases/latest/download"
+else
+  BASE_URL="https://github.com/$REPO/releases/download/$TAG_NAME"
+fi
+
+ARTIFACT_URL="$BASE_URL/$ASSET_NAME"
+CHECKSUM_URL="$ARTIFACT_URL.sha256"
+SIGNATURE_URL="$ARTIFACT_URL.sig"
+
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/oneshim-install.XXXXXX")"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+ARTIFACT_PATH="$TMP_DIR/$ASSET_NAME"
+CHECKSUM_PATH="$ARTIFACT_PATH.sha256"
+SIGNATURE_PATH="$ARTIFACT_PATH.sig"
+EXTRACT_DIR="$TMP_DIR/extract"
+
+info "Repository: $REPO"
+info "Version: $TAG_NAME"
+info "Asset: $ASSET_NAME"
+info "Install dir: $INSTALL_DIR"
+
+info "Downloading artifact"
+download_file "$ARTIFACT_URL" "$ARTIFACT_PATH"
+
+info "Downloading checksum"
+download_file "$CHECKSUM_URL" "$CHECKSUM_PATH"
+
+info "Verifying SHA-256 checksum"
+EXPECTED_SHA="$(awk 'NF { print tolower($1); exit }' "$CHECKSUM_PATH")"
+if [[ -z "$EXPECTED_SHA" ]]; then
+  fatal "Checksum file is empty: $CHECKSUM_URL"
+fi
+ACTUAL_SHA="$(sha256_file "$ARTIFACT_PATH")"
+if [[ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]]; then
+  fatal "Checksum mismatch. expected=$EXPECTED_SHA actual=$ACTUAL_SHA"
+fi
+info "Checksum verification passed"
+
+SIGNATURE_DOWNLOADED=0
+if download_file "$SIGNATURE_URL" "$SIGNATURE_PATH"; then
+  SIGNATURE_DOWNLOADED=1
+else
+  if [[ "$REQUIRE_SIGNATURE" == "1" ]]; then
+    fatal "Failed to download signature file while --require-signature is enabled: $SIGNATURE_URL"
+  fi
+  warn "Signature file download failed. Continuing because --require-signature is not enabled."
+fi
+
+if [[ "$SIGNATURE_DOWNLOADED" == "1" ]]; then
+  PYTHON_CMD=""
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_CMD="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD="python"
+  fi
+
+  if [[ -n "$PYTHON_CMD" ]]; then
+    if verify_signature_with_python "$ARTIFACT_PATH" "$SIGNATURE_PATH" "$UPDATE_SIGNATURE_PUBLIC_KEY" "$PYTHON_CMD"; then
+      info "Ed25519 signature verification passed"
+    else
+      if [[ "$REQUIRE_SIGNATURE" == "1" ]]; then
+        fatal "Signature verification failed or PyNaCl is missing."
+      fi
+      warn "Signature verification skipped (PyNaCl missing or verification failed)."
+      warn "Run with --require-signature to fail closed."
+    fi
+  else
+    if [[ "$REQUIRE_SIGNATURE" == "1" ]]; then
+      fatal "Python is required for signature verification."
+    fi
+    warn "Python is not available, skipping signature verification."
+  fi
+fi
+
+mkdir -p "$EXTRACT_DIR"
+tar -xzf "$ARTIFACT_PATH" -C "$EXTRACT_DIR"
+
+SOURCE_BINARY="$EXTRACT_DIR/$BINARY_NAME"
+if [[ ! -f "$SOURCE_BINARY" ]]; then
+  SOURCE_BINARY="$(find "$EXTRACT_DIR" -maxdepth 3 -type f -name "$BINARY_NAME" | head -n 1)"
+fi
+if [[ -z "${SOURCE_BINARY:-}" || ! -f "$SOURCE_BINARY" ]]; then
+  fatal "Could not locate '$BINARY_NAME' inside archive."
+fi
+
+mkdir -p "$INSTALL_DIR"
+TARGET_BINARY="$INSTALL_DIR/$BINARY_NAME"
+
+if install -m 0755 "$SOURCE_BINARY" "$TARGET_BINARY" 2>/dev/null; then
+  :
+else
+  cp "$SOURCE_BINARY" "$TARGET_BINARY"
+  chmod 0755 "$TARGET_BINARY"
+fi
+
+info "Installed: $TARGET_BINARY"
+
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+  warn "$INSTALL_DIR is not in PATH."
+  warn "Add this line to your shell profile:"
+  warn "  export PATH=\"$INSTALL_DIR:\$PATH\""
+fi
+
+info "Run command: $BINARY_NAME"

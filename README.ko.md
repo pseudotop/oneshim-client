@@ -17,6 +17,28 @@
 
 AI 기반 업무 생산성 향상을 위한 데스크톱 클라이언트입니다. 로컬 컨텍스트 수집, 실시간 제안, 내장 대시보드를 제공합니다. Rust로 구축되어 macOS, Windows, Linux에서 네이티브 성능을 발휘합니다.
 
+## 30초 설치
+
+macOS / Linux:
+```bash
+curl -fsSL -o /tmp/oneshim-install.sh \
+  https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.sh
+bash /tmp/oneshim-install.sh
+```
+
+Windows (PowerShell):
+```powershell
+$tmp = Join-Path $env:TEMP "oneshim-install.ps1"
+Invoke-WebRequest -UseBasicParsing `
+  -Uri "https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.ps1" `
+  -OutFile $tmp
+powershell -ExecutionPolicy Bypass -File $tmp
+```
+
+버전 고정, 서명 검증 강제, 제거 방법:
+- 한국어: [`docs/install.ko.md`](./docs/install.ko.md)
+- English: [`docs/install.md`](./docs/install.md)
+
 ## ONESHIM을 선택하는 이유
 
 - **활동을 실행 가능한 인사이트로 전환**: 컨텍스트, 타임라인, 집중 패턴, 방해 요소를 한 곳에서 추적합니다.
@@ -143,23 +165,31 @@ cargo fmt --check
 
 ## 설치
 
-### 패키지 매니저 (권장)
+설치 가이드:
+- 한국어: [`docs/install.ko.md`](./docs/install.ko.md)
+- English: [`docs/install.md`](./docs/install.md)
 
-**Homebrew (macOS/Linux):**
+### 빠른 설치 (터미널)
+
+macOS / Linux:
 ```bash
-brew tap pseudotop/tap
-brew install oneshim
+curl -fsSL -o /tmp/oneshim-install.sh \
+  https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.sh
+bash /tmp/oneshim-install.sh
 ```
 
-**Scoop (Windows):**
+Windows (PowerShell):
 ```powershell
-scoop bucket add oneshim https://github.com/pseudotop/scoop-bucket
-scoop install oneshim
+$tmp = Join-Path $env:TEMP "oneshim-install.ps1"
+Invoke-WebRequest -UseBasicParsing `
+  -Uri "https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.ps1" `
+  -OutFile $tmp
+powershell -ExecutionPolicy Bypass -File $tmp
 ```
 
-### 바이너리 다운로드
+### 릴리즈 아티팩트
 
-[Releases](https://github.com/pseudotop/oneshim-client/releases) 페이지에서 해당 플랫폼용 바이너리를 다운로드하세요.
+[Releases](https://github.com/pseudotop/oneshim-client/releases)에서 플랫폼별 파일을 받을 수 있습니다.
 
 | 플랫폼 | 파일 |
 |--------|------|
@@ -172,76 +202,6 @@ scoop install oneshim
 | Windows x64 (MSI) | `oneshim-app-*.msi` |
 | Linux x64 (DEB 패키지) | `oneshim-*.deb` |
 | Linux x64 | `oneshim-linux-x64.tar.gz` |
-
-### macOS
-
-설치 파일 옵션:
-```bash
-# DMG 설치 파일
-open oneshim-macos-universal.dmg
-
-# PKG 설치 파일
-sudo installer -pkg oneshim-macos-universal.pkg -target /
-```
-
-```bash
-# 압축 해제
-tar -xzf oneshim-macos-*.tar.gz
-
-# 실행 권한 부여
-chmod +x oneshim
-
-# 실행
-./oneshim
-```
-
-자동 시작 설정:
-```bash
-# 설치 스크립트 사용
-./scripts/install-macos.sh
-
-# 제거
-./scripts/uninstall-macos.sh
-```
-
-### Windows
-
-설치 파일 옵션: `oneshim-app-*.msi` 실행 (권장).
-
-```powershell
-# 압축 해제
-Expand-Archive oneshim-windows-x64.zip
-
-# 실행
-.\oneshim.exe
-```
-
-자동 시작 설정:
-```powershell
-# 설치 스크립트 사용
-.\scripts\install-windows.ps1
-
-# 제거
-.\scripts\uninstall-windows.ps1
-```
-
-### Linux
-
-설치 파일 옵션:
-```bash
-sudo dpkg -i oneshim-*.deb
-```
-
-```bash
-# 압축 해제
-tar -xzf oneshim-linux-x64.tar.gz
-
-# 실행 권한 부여
-chmod +x oneshim
-
-# 실행
-./oneshim
-```
 
 ## 설정
 

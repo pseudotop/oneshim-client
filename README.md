@@ -17,6 +17,28 @@
 
 A desktop client for AI-assisted office productivity — local context capture, real-time suggestions, and a built-in dashboard. Built with Rust for native performance across macOS, Windows, and Linux.
 
+## Install in 30 Seconds
+
+macOS / Linux:
+```bash
+curl -fsSL -o /tmp/oneshim-install.sh \
+  https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.sh
+bash /tmp/oneshim-install.sh
+```
+
+Windows (PowerShell):
+```powershell
+$tmp = Join-Path $env:TEMP "oneshim-install.ps1"
+Invoke-WebRequest -UseBasicParsing `
+  -Uri "https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.ps1" `
+  -OutFile $tmp
+powershell -ExecutionPolicy Bypass -File $tmp
+```
+
+For version pinning, signature enforcement, and uninstall:
+- English: [`docs/install.md`](./docs/install.md)
+- Korean: [`docs/install.ko.md`](./docs/install.ko.md)
+
 ## Why ONESHIM
 
 - **Turn activity into actionable insight**: Track context, timeline, focus trends, and interruptions in one place.
@@ -143,23 +165,31 @@ cargo fmt --check
 
 ## Installation
 
-### Package Managers (Recommended)
+Full install guide:
+- English: [`docs/install.md`](./docs/install.md)
+- Korean: [`docs/install.ko.md`](./docs/install.ko.md)
 
-**Homebrew (macOS/Linux):**
+### Quick Install (Terminal)
+
+macOS / Linux:
 ```bash
-brew tap pseudotop/tap
-brew install oneshim
+curl -fsSL -o /tmp/oneshim-install.sh \
+  https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.sh
+bash /tmp/oneshim-install.sh
 ```
 
-**Scoop (Windows):**
+Windows (PowerShell):
 ```powershell
-scoop bucket add oneshim https://github.com/pseudotop/scoop-bucket
-scoop install oneshim
+$tmp = Join-Path $env:TEMP "oneshim-install.ps1"
+Invoke-WebRequest -UseBasicParsing `
+  -Uri "https://raw.githubusercontent.com/pseudotop/oneshim-client/main/scripts/install.ps1" `
+  -OutFile $tmp
+powershell -ExecutionPolicy Bypass -File $tmp
 ```
 
-### Download Binaries
+### Release Assets
 
-Download the binary for your platform from the [Releases](https://github.com/pseudotop/oneshim-client/releases) page.
+Download from [Releases](https://github.com/pseudotop/oneshim-client/releases):
 
 | Platform | File |
 |--------|------|
@@ -172,76 +202,6 @@ Download the binary for your platform from the [Releases](https://github.com/pse
 | Windows x64 (MSI) | `oneshim-app-*.msi` |
 | Linux x64 (DEB package) | `oneshim-*.deb` |
 | Linux x64 | `oneshim-linux-x64.tar.gz` |
-
-### macOS
-
-Installer options:
-```bash
-# DMG installer
-open oneshim-macos-universal.dmg
-
-# PKG installer
-sudo installer -pkg oneshim-macos-universal.pkg -target /
-```
-
-```bash
-# Extract archive
-tar -xzf oneshim-macos-*.tar.gz
-
-# Make executable
-chmod +x oneshim
-
-# Run
-./oneshim
-```
-
-Configure auto-start:
-```bash
-# Use install script
-./scripts/install-macos.sh
-
-# Uninstall
-./scripts/uninstall-macos.sh
-```
-
-### Windows
-
-Installer option: run `oneshim-app-*.msi` (recommended).
-
-```powershell
-# Extract archive
-Expand-Archive oneshim-windows-x64.zip
-
-# Run
-.\oneshim.exe
-```
-
-Configure auto-start:
-```powershell
-# Use install script
-.\scripts\install-windows.ps1
-
-# Uninstall
-.\scripts\uninstall-windows.ps1
-```
-
-### Linux
-
-Installer option:
-```bash
-sudo dpkg -i oneshim-*.deb
-```
-
-```bash
-# Extract archive
-tar -xzf oneshim-linux-x64.tar.gz
-
-# Make executable
-chmod +x oneshim
-
-# Run
-./oneshim
-```
 
 ## Configuration
 
