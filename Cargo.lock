@@ -5006,7 +5006,7 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "chrono",
- "core-graphics 0.24.0",
+ "core-graphics 0.25.0",
  "oneshim-core",
  "serde",
  "sysinfo",
