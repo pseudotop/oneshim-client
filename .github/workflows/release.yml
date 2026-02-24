@@ -18,7 +18,7 @@ jobs:
     name: Build Frontend Assets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -79,7 +79,7 @@ jobs:
             asset_ext: tar.gz
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download frontend dist artifact
         uses: actions/download-artifact@v7
@@ -228,7 +228,7 @@ jobs:
     needs: build-release
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download arm64 artifact
         uses: actions/download-artifact@v7
@@ -328,7 +328,7 @@ jobs:
             run_updater_tests: false
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download release archive for smoke
         uses: actions/download-artifact@v7
@@ -397,7 +397,7 @@ jobs:
     needs: [build-release, build-macos-universal, release-reliability-smoke]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all artifacts
         uses: actions/download-artifact@v7
