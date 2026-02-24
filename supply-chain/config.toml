@@ -2136,6 +2136,10 @@ criteria = "safe-to-deploy"
 version = "0.7.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.petgraph]]
+version = "0.8.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.phf]]
 version = "0.11.3"
 criteria = "safe-to-deploy"
@@ -2272,16 +2276,40 @@ criteria = "safe-to-deploy"
 version = "0.13.5"
 criteria = "safe-to-deploy"
 
+[[exemptions.prost]]
+version = "0.14.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.prost-build]]
 version = "0.13.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.prost-build]]
+version = "0.14.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.prost-derive]]
 version = "0.13.5"
 criteria = "safe-to-deploy"
 
+[[exemptions.prost-derive]]
+version = "0.14.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.prost-types]]
 version = "0.13.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.prost-types]]
+version = "0.14.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.pulldown-cmark]]
+version = "0.13.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.pulldown-cmark-to-cmark]]
+version = "22.0.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.pxfm]]
@@ -2920,8 +2948,16 @@ criteria = "safe-to-deploy"
 version = "0.12.3"
 criteria = "safe-to-deploy"
 
+[[exemptions.tonic-build]]
+version = "0.14.5"
+criteria = "safe-to-deploy"
+
 [[exemptions.tonic-health]]
 version = "0.12.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.tonic-prost-build]]
+version = "0.14.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.tower]]
