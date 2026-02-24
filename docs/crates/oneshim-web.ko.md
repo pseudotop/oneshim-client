@@ -54,11 +54,13 @@ oneshim-web/
 ```rust
 #[derive(Clone)]
 pub struct AppState {
-    pub storage: Arc<SqliteStorage>,
+    pub storage: Arc<dyn WebStorage>,
     pub frames_dir: Option<PathBuf>,
     pub event_tx: broadcast::Sender<RealtimeEvent>,
     pub config_manager: Option<ConfigManager>,
     pub audit_logger: Option<Arc<RwLock<AuditLogger>>>,
+    pub automation_controller: Option<Arc<AutomationController>>,
+    pub update_control: Option<UpdateControl>,
 }
 ```
 
@@ -68,11 +70,23 @@ pub struct AppState {
 let server = WebServer::new(storage, web_config)
     .with_config_manager(config_manager)
     .with_audit_logger(audit_logger)
+    .with_automation_controller(automation_controller)
+    .with_update_control(update_control)
     .with_event_tx(event_tx)
     .with_frames_dir(frames_dir);
 
 server.run(shutdown_rx).await?;
 ```
+
+### 저장소 포트 (`storage_port.rs`)
+
+`oneshim-web` 핸들러는 구체 구현체 `SqliteStorage`가 아니라 포트 `WebStorage`에 의존한다.
+
+- 포트 정의: `WebStorage: StorageService + MetricsStorage + Send + Sync`
+- 포함 범위: 프레임/이벤트 조회, 검색, 태그, 집중도 메트릭/제안, 백업/내보내기, 범위 삭제
+- 현재 어댑터: `impl WebStorage for SqliteStorage`
+
+이 구조로 웹 애플리케이션 계층은 저장소 구현 교체 시에도 핸들러 코드를 바꾸지 않는다.
 
 ## API 엔드포인트
 
@@ -165,6 +179,12 @@ pub struct AutomationStatusDto {
     pub llm_provider: String,
     pub external_data_policy: String,
     pub pending_audit_entries: usize,
+    pub scene_action_override_enabled: bool,
+    pub scene_action_override_active: bool,
+    pub scene_action_override_reason: Option<String>,
+    pub scene_action_override_approved_by: Option<String>,
+    pub scene_action_override_expires_at: Option<String>,
+    pub scene_action_override_issue: Option<String>,
 }
 
 /// 감사 로그 엔트리
@@ -187,6 +207,10 @@ pub struct AutomationStatsDto {
     pub denied: usize,
     pub timeout: usize,
     pub avg_elapsed_ms: f64,
+    pub success_rate: f64,
+    pub blocked_rate: f64,
+    pub p95_elapsed_ms: f64,
+    pub timing_samples: usize,
 }
 
 /// 정책 요약
@@ -196,6 +220,12 @@ pub struct PoliciesDto {
     pub sandbox_enabled: bool,
     pub allow_network: bool,
     pub external_data_policy: String,
+    pub scene_action_override_enabled: bool,
+    pub scene_action_override_active: bool,
+    pub scene_action_override_reason: Option<String>,
+    pub scene_action_override_approved_by: Option<String>,
+    pub scene_action_override_expires_at: Option<String>,
+    pub scene_action_override_issue: Option<String>,
 }
 
 /// 프리셋 실행 결과
@@ -301,6 +331,8 @@ use oneshim_web::WebServer;
 let server = WebServer::new(storage, web_config)
     .with_config_manager(config_manager)
     .with_audit_logger(audit_logger)
+    .with_automation_controller(automation_controller)
+    .with_update_control(update_control)
     .with_event_tx(event_tx);
 
 server.run(shutdown_rx).await?;

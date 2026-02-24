@@ -9,7 +9,8 @@ The crate responsible for edge image processing. Performs screen capture, delta 
 - **Screen Capture**: Multi-monitor support, active window capture
 - **Delta Encoding**: Extracts only changed regions to minimize transfer volume
 - **Adaptive Processing**: Adjusts processing level based on importance
-- **Privacy Protection**: PII filtering
+- **Privacy Protection**: PII filtering + OCR-region redaction before external OCR
+- **UI Scene Extraction**: OCR boxes to `UiElement` / `UiScene` conversion
 
 ## Directory Structure
 
@@ -23,7 +24,10 @@ oneshim-vision/src/
 ├── thumbnail.rs   # ThumbnailGenerator - thumbnail generation
 ├── processor.rs   # EdgeFrameProcessor - unified processing
 ├── ocr.rs         # OcrExtractor - text extraction
-├── privacy.rs     # PrivacySanitizer - PII filtering
+├── local_ocr_provider.rs # Local OCR provider adapter
+├── element_finder.rs # OCR text matching + UiScene builder
+├── privacy.rs     # PII marker detection + title/text sanitization
+├── privacy_gateway.rs # External OCR privacy gate + OCR-region blur
 └── timeline.rs    # FrameTimeline - frame history
 ```
 
@@ -206,25 +210,42 @@ impl OcrExtractor {
 }
 ```
 
-### PrivacySanitizer (privacy.rs)
+### LocalOcrProvider + ElementFinder (`local_ocr_provider.rs`, `element_finder.rs`)
 
-Automatic PII filtering:
+- `LocalOcrProvider`: local OCR adapter used by standalone and fallback paths
+- `ElementFinder`: converts OCR results into:
+  - `Vec<UiElement>` for element-level automation
+  - `UiScene` / `UiSceneElement` for scene overlays and coordinate-driven actions
 
-```rust
-pub struct PrivacySanitizer {
-    patterns: Vec<Regex>,
-}
+### Privacy Rules (`privacy.rs`)
 
-impl PrivacySanitizer {
-    pub fn sanitize(&self, frame: ProcessedFrame) -> Result<ProcessedFrame, CoreError>;
-}
-```
+PII detection is level-based (`Off`, `Basic`, `Standard`, `Strict`) and exposes marker-level results:
 
-**Filtering Targets**:
-- Email addresses
-- Credit card numbers
-- National identification numbers (Korean)
-- Usernames in file paths
+- Marker enum: `PiiMarker::{Email, Phone, Card, KoreanId, ApiKey, Ip, UserPath}`
+- APIs:
+  - `sanitize_title_with_level()`
+  - `detect_pii_markers_with_level()`
+  - `is_sensitive_segment_with_level()`
+- Includes sensitive app/pattern exclusion checks used by upload and OCR gateways
+
+### PrivacyGateway (`privacy_gateway.rs`)
+
+`PrivacyGateway` handles external OCR boundary controls:
+
+- Gate checks:
+  - consent (`ConsentManager`)
+  - sensitive app deny
+  - app/title exclusion policy
+- Sanitized output:
+  - `SanitizedImage { image_data, metadata_stripped, redacted_regions }`
+- Redaction pipeline (`blur_pii_regions()`):
+  - OCR word-box extraction
+  - single-word PII detection
+  - 2~5 word segment PII detection for split tokens (email/phone, etc.)
+  - region merge (`merge_sensitive_regions`)
+  - blur application over merged bounding boxes
+- Opt-out:
+  - `allow_unredacted_external_ocr=true` allows raw image pass-through
 
 ## Processing Pipeline
 
@@ -258,6 +279,14 @@ impl PrivacySanitizer {
                                       ▼
                               ProcessedFrame
 ```
+
+## External OCR Privacy Path
+
+For remote OCR providers, ONESHIM uses:
+
+1. `PrivacyGateway::sanitize_image_for_external_policy()`
+2. send sanitized image to remote OCR
+3. consume results with calibration/validation in app-layer adapter
 
 ## Dependencies
 

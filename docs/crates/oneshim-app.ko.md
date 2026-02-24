@@ -38,6 +38,23 @@ oneshim-app/src/
 
 참고: `docs/architecture/cli-subscription-bridge-research.ko.md`
 
+## AI 제공자 어댑터 (`provider_adapters.rs`)
+
+`resolve_ai_provider_adapters()`는 `AiProviderConfig`를 기준으로 OCR/LLM 제공자와 출처 메타데이터를 결정한다.
+
+- 접근 모드:
+  - `LocalModel`
+  - `ProviderApiKey`
+  - `ProviderSubscriptionCli`
+  - `PlatformConnected`
+- 폴백 동작:
+  - `fallback_to_local=true`면 원격 초기화 실패 시 로컬 제공자로 자동 폴백
+- OCR 프라이버시 게이트:
+  - 원격 OCR 호출은 `GuardedOcrProvider`로 래핑
+  - 전송 전 `PrivacyGateway::sanitize_image_for_external_policy()` 적용
+  - `allow_unredacted_external_ocr`로 원본 전송 opt-out 허용
+  - 응답 후 calibration 검증(`OcrValidationConfig`) 수행
+
 ## 주요 컴포넌트
 
 ### main.rs
@@ -47,175 +64,39 @@ oneshim-app/src/
 ```rust
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 1. 로깅 초기화
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
-
-    // 2. 설정 로드
-    let config = AppConfig::load()?;
-
-    // 3. 컴포넌트 생성 (DI 와이어링)
-    let token_manager = Arc::new(TokenManager::new(
-        &config.server.base_url,
-        &std::env::var("ONESHIM_EMAIL")?,
-        &std::env::var("ONESHIM_PASSWORD")?,
-    ));
-
-    let compressor = Arc::new(AdaptiveCompressor::default());
-    let api_client = Arc::new(HttpApiClient::new(
-        &config.server.base_url,
-        token_manager.clone(),
-        compressor.clone(),
-    ));
-
-    let sse_client = Arc::new(SseStreamClient::new(
-        &config.server.base_url,
-        token_manager.clone(),
-        config.server.sse_max_retry_secs,
-    ));
-
-    let storage = Arc::new(SqliteStorage::new(&config.storage.db_path)?);
-    let system_monitor = Arc::new(SysInfoMonitor::new());
-    let process_monitor = Arc::new(ProcessTracker::new());
-    let activity_monitor = Arc::new(ActivityTracker::new(300));
-
-    let capture_trigger = Arc::new(SmartCaptureTrigger::new(
-        config.vision.capture_throttle_ms,
-    ));
-    let frame_processor = Arc::new(EdgeFrameProcessor::new(/* ... */));
-
-    let notifier = Arc::new(DesktopNotifierImpl);
-    let suggestion_queue = Arc::new(PriorityQueue::new(50));
-    let suggestion_history = Arc::new(SuggestionHistory::new(100));
-
-    // 4. 스케줄러 생성
-    let scheduler = Scheduler::new(/* 모든 컴포넌트 주입 */);
-
-    // 5. 라이프사이클 설정
-    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let lifecycle = Lifecycle::new(shutdown_tx);
-
-    // 6. 태스크 시작
-    let monitor_task = tokio::spawn(scheduler.run_monitor_loop(shutdown_rx.clone()));
-    let sync_task = tokio::spawn(scheduler.run_sync_loop(shutdown_rx.clone()));
-    let sse_task = tokio::spawn(/* SSE 연결 */);
-
-    // 7. 종료 시그널 대기
-    lifecycle.wait_for_shutdown().await;
-
-    // 8. 정리
-    monitor_task.abort();
-    sync_task.abort();
-    sse_task.abort();
-
+    // 1. CLI 인자 파싱 + 로깅 초기화 + AppConfig 로드
+    // 2. 무결성 preflight 실행, AI 접근 모드 평가
+    // 3. 저장소/모니터/네트워크/비전/자동화 컴포넌트 DI 구성
+    // 4. 제공자 어댑터 해석 + 필요 시 CLI 브리지 동기화
+    // 5. 스케줄러(9-루프) 시작
+    // 6. 웹 서버 + 선택적 업데이트 코디네이터 시작
+    // 7. 종료 신호 대기 후 세션 종료 기록
     Ok(())
 }
 ```
 
 ### Scheduler (scheduler.rs)
 
-3개의 주기적 태스크 루프:
+현재 스케줄러는 3-루프가 아니라 **9-루프 오케스트레이터**다 (`Scheduler::run()` → `run_scheduler_loops()`).
 
-```rust
-pub struct Scheduler {
-    system_monitor: Arc<dyn SystemMonitor>,
-    process_monitor: Arc<dyn ProcessMonitor>,
-    activity_monitor: Arc<dyn ActivityMonitor>,
-    capture_trigger: Arc<dyn CaptureTrigger>,
-    frame_processor: Arc<dyn FrameProcessor>,
-    api_client: Arc<dyn ApiClient>,
-    storage: Arc<dyn StorageService>,
-    batch_uploader: Arc<BatchUploader>,
-    config: MonitorConfig,
-}
+| 루프 | 주기 | 책임 |
+|------|------|------|
+| Monitor | 1초 | 컨텍스트 수집, 유휴 전환, 캡처 트리거, 프레임 처리, 이벤트 저장, 선택적 업로드 큐 |
+| Metrics | 5초 | 시스템 메트릭 저장 + 대시보드 실시간 브로드캐스트 + 고사용량 알림 체크 |
+| Process Snapshot | 10초 | 상위 프로세스 스냅샷 저장 |
+| Sync | 10초 | 배치 업로드(플랫폼 연동 모드) + 보존 정책 실행 |
+| Heartbeat | 30초 | 연결 모드 서버 하트비트 |
+| Aggregation | 1시간 | 시간 집계 + 메트릭/프로세스/유휴 정리 |
+| Notification | 1분 | 장시간 작업 알림 점검 |
+| Focus | 1분 | `FocusAnalyzer::analyze_periodic()` + 제안 생성 |
+| Event Snapshot | 30초 | 상세 프로세스 + `InputActivityCollector` 스냅샷 이벤트 수집 |
 
-impl Scheduler {
-    /// 모니터링 루프 (1초 간격)
-    pub async fn run_monitor_loop(&self, mut shutdown: watch::Receiver<bool>) {
-        let mut interval = tokio::time::interval(
-            Duration::from_millis(self.config.poll_interval_ms)
-        );
+핵심 경계:
 
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    if let Err(e) = self.monitor_tick().await {
-                        warn!("모니터링 오류: {}", e);
-                    }
-                }
-                _ = shutdown.changed() => {
-                    if *shutdown.borrow() {
-                        info!("모니터링 루프 종료");
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    async fn monitor_tick(&self) -> Result<(), CoreError> {
-        // 1. 시스템 메트릭 수집
-        let metrics = self.system_monitor.get_metrics().await?;
-
-        // 2. 활성 창 확인
-        let window = self.process_monitor.get_active_window().await?;
-
-        // 3. 이벤트 생성
-        let event = create_context_event(window, metrics, self.activity_monitor.is_idle().await?);
-
-        // 4. 로컬 저장
-        self.storage.save_event(&event).await?;
-
-        // 5. 캡처 결정
-        if let CaptureDecision::Capture { importance } = self.capture_trigger.should_capture(&event).await? {
-            let frame = ScreenCapture::capture_active_window()?;
-            let processed = self.frame_processor.process(frame).await?;
-            self.storage.save_frame(&processed).await?;
-            self.batch_uploader.queue_frame(processed).await;
-        }
-
-        // 6. 배치 큐에 추가
-        self.batch_uploader.queue_event(event).await;
-
-        Ok(())
-    }
-
-    /// 동기화 루프 (10초 간격)
-    pub async fn run_sync_loop(&self, mut shutdown: watch::Receiver<bool>) {
-        let mut interval = tokio::time::interval(
-            Duration::from_millis(self.config.sync_interval_ms)
-        );
-
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    if let Err(e) = self.batch_uploader.flush().await {
-                        warn!("동기화 오류: {}", e);
-                    }
-                }
-                _ = shutdown.changed() => break,
-            }
-        }
-    }
-
-    /// 하트비트 루프 (30초 간격)
-    pub async fn run_heartbeat_loop(&self, mut shutdown: watch::Receiver<bool>) {
-        let mut interval = tokio::time::interval(
-            Duration::from_millis(self.config.heartbeat_interval_ms)
-        );
-
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    // 서버 하트비트 전송
-                }
-                _ = shutdown.changed() => break,
-            }
-        }
-    }
-}
-```
+- 저장소 경계: `SchedulerStorage` 포트(메트릭 저장 + 프레임 메타데이터 저장 확장)
+- 업로드/프라이버시 경계: `PlatformEgressPolicy`가 세정/전송 허용 여부 결정
+- 프레임 보존: `FrameFileStorage`의 보존/용량 제한을 Sync 루프에서 강제
+- 선택 서브시스템: `NotificationManager`, `FocusAnalyzer` 주입 시에만 활성화
 
 ### Lifecycle (lifecycle.rs)
 
@@ -342,115 +223,45 @@ impl Autostart {
 
 ### Updater (updater.rs)
 
-GitHub Releases 기반 자동 업데이트:
+자동 업데이트는 `Updater` + `update_coordinator` 조합으로 동작한다.
 
-```rust
-pub struct Updater {
-    config: UpdateConfig,
-    http_client: reqwest::Client,
-}
+- 기준 API: `https://api.github.com/repos/{owner}/{repo}/releases/latest`
+- 버전 정책:
+  - `CURRENT_VERSION` 대비 semver 비교
+  - `include_prerelease` 기반 프리릴리스 필터링
+  - 최소 허용 버전 floor 검사
+- 에셋 정책:
+  - OS/arch 패턴 기반 플랫폼별 에셋 선택
+  - 다운로드 전 허용 호스트 allowlist 검증
+- 무결성 정책:
+  - `.sha256` 기반 SHA-256 검증
+  - 선택적 Ed25519 서명 강제(`require_signature_verification=true`, `update.signature_public_key`)
+- 설치:
+  - 경로 이탈(path traversal) 방지 압축 해제
+  - `self_update::self_replace` 기반 바이너리 교체
 
-impl Updater {
-    pub async fn check_for_update(&self) -> Result<Option<Release>, CoreError> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/releases/latest",
-            self.config.repo_owner,
-            self.config.repo_name,
-        );
+### 인스톨러/릴리스 패키징 연계
 
-        let response: GitHubRelease = self.http_client
-            .get(&url)
-            .header("User-Agent", "ONESHIM-Client")
-            .send()
-            .await?
-            .json()
-            .await?;
+릴리스 아티팩트는 `.github/workflows/release.yml`에서 생성되며, 다음 경로에서 공통으로 소비한다.
 
-        let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))?;
-        let latest = semver::Version::parse(&response.tag_name.trim_start_matches('v'))?;
+- 앱 내 업데이트: `crates/oneshim-app/src/updater.rs`
+- 터미널 인스톨러:
+  - `scripts/install.sh`
+  - `scripts/install.ps1`
+  - `scripts/uninstall.sh`
+  - `scripts/uninstall.ps1`
 
-        if latest > current {
-            Ok(Some(Release {
-                version: latest,
-                download_url: Self::find_asset_url(&response)?,
-                release_notes: response.body,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub async fn download_and_install(&self, release: &Release) -> Result<(), CoreError> {
-        info!("업데이트 다운로드 중: {}", release.version);
-
-        // 1. 에셋 다운로드
-        let bytes = self.http_client
-            .get(&release.download_url)
-            .send()
-            .await?
-            .bytes()
-            .await?;
-
-        // 2. 임시 디렉토리에 압축 해제
-        let temp_dir = tempfile::tempdir()?;
-        Self::extract_archive(&bytes, temp_dir.path())?;
-
-        // 3. 바이너리 교체 (self_update 사용)
-        self_update::Move::from_source(temp_dir.path().join("oneshim"))
-            .to_dest(&std::env::current_exe()?)?;
-
-        info!("업데이트 완료. 재시작 필요.");
-        Ok(())
-    }
-
-    fn find_asset_url(release: &GitHubRelease) -> Result<String, CoreError> {
-        let pattern = match (std::env::consts::OS, std::env::consts::ARCH) {
-            ("macos", "aarch64") => "macos-arm64",
-            ("macos", "x86_64") => "macos-x64",
-            ("windows", _) => "windows-x64",
-            ("linux", _) => "linux-x64",
-            _ => return Err(CoreError::Internal("지원하지 않는 플랫폼".into())),
-        };
-
-        release.assets
-            .iter()
-            .find(|a| a.name.contains(pattern))
-            .map(|a| a.browser_download_url.clone())
-            .ok_or_else(|| CoreError::Internal("에셋을 찾을 수 없음".into()))
-    }
-}
-```
+인스톨러와 업데이터는 동일한 릴리스 에셋/체크섬/서명 사이드카를 사용하므로 설치와 업데이트 경로의 무결성 정책이 일치한다.
 
 ## 실행 흐름
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         main.rs                                  │
-│                                                                  │
-│  1. 로깅 초기화                                                   │
-│  2. 설정 로드                                                     │
-│  3. 컴포넌트 생성 (DI)                                            │
-│  4. 스케줄러 시작                                                  │
-│  5. SSE 연결                                                      │
-│  6. 종료 시그널 대기                                               │
-└─────────────────────────────────────────────────────────────────┘
-        │
-        ├─────────────────┬─────────────────┬─────────────────┐
-        ▼                 ▼                 ▼                 ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────┐
-│ Monitor Loop  │ │  Sync Loop    │ │ Heartbeat Loop│ │ SSE Task  │
-│   (1초)       │ │   (10초)      │ │   (30초)      │ │           │
-└───────────────┘ └───────────────┘ └───────────────┘ └───────────┘
-        │                 │                 │                 │
-        │                 │                 │                 │
-        └─────────────────┴─────────────────┴─────────────────┘
-                                    │
-                                    ▼
-                          ┌─────────────────┐
-                          │ Graceful Shutdown│
-                          │ (Ctrl+C/SIGTERM) │
-                          └─────────────────┘
-```
+1. `main.rs` / `gui_runner.rs`에서 설정 로드 후 DI 구성(저장소, 모니터, 네트워크, 비전, 자동화, 웹).
+2. 접근 모드(`LocalModel`, `ProviderApiKey`, `ProviderSubscriptionCli`, `PlatformConnected`)를 평가하고 AI 어댑터 해석.
+3. 구독 모드에서는 CLI 브리지 아티팩트를 선택적으로 동기화.
+4. 스케줄러 9개 루프와 선택 서브시스템(알림/집중도/실시간 이벤트) 기동.
+5. 웹 서버가 API + 임베디드 프론트엔드를 제공하고 실시간 이벤트를 소비.
+6. 업데이트 코디네이터가 릴리스 채널을 점검하고 설치 액션을 처리.
+7. 종료 신호 수신 시 세션 종료 기록 후 graceful shutdown.
 
 ## 의존성
 
@@ -487,26 +298,15 @@ cargo run -p oneshim-app
 ## 테스트
 
 ```rust
-#[tokio::test]
-async fn test_lifecycle_shutdown() {
-    let (tx, rx) = watch::channel(false);
-    let lifecycle = Lifecycle::new(tx);
-
-    // 종료 시그널 전송
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        // 실제로는 Ctrl+C 시뮬레이션
-    });
-
-    // wait_for_shutdown 테스트는 시그널 모킹 필요
+#[test]
+fn updater_rejects_unknown_download_host() {
+    let updater = Updater::new(test_config());
+    let result = updater.validate_download_url("https://evil.example.com/file.tar.gz");
+    assert!(result.is_err());
 }
 
 #[test]
-fn test_platform_detection() {
-    let pattern = Updater::get_platform_pattern();
-    #[cfg(target_os = "macos")]
-    assert!(pattern.contains("macos"));
-    #[cfg(target_os = "windows")]
-    assert!(pattern.contains("windows"));
+fn verify_signature_accepts_valid_ed25519_signature() {
+    // updater.rs의 실제 테스트에서 서명 검증 경로를 커버한다.
 }
 ```

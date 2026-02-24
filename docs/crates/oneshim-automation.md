@@ -58,10 +58,31 @@ Server policy synchronization + command verification + process permission manage
 - `AuditLevel` enum: None, Basic, Detailed, Full
 - `PolicyCache` — Policy list + TTL cache (default 5 minutes)
 - `issue_command_token(policy_id)` — Issue token using policy contract
-- `validate_command()` — token format + nonce + cache TTL + policy match + replay guard + optional signature
+- `issue_command_token_for_command(policy_id, cmd)` — Issue command-scoped token (`h{command_hash}` segment)
+- `validate_command()` — token format + nonce + cache TTL + policy match + replay guard + optional signature + optional command-scope hash verification
 - `validate_args()` — Glob pattern-based argument validation (`*` wildcard)
 - `is_process_allowed()` — Fast process permission lookup via HashSet
 - Token contract: see `docs/contracts/policy-token-contract.md`
+
+#### Policy token variants
+
+- Unsigned: `{policy_id}:{nonce}`
+- Unsigned command-scoped: `{policy_id}:{nonce}:h{command_hash}`
+- Signed: `{policy_id}:{nonce}:{signature}`
+- Signed command-scoped: `{policy_id}:{nonce}:h{command_hash}:{signature}`
+
+#### Validation semantics (fail-closed)
+
+`validate_command()` accepts a command only when all checks pass in sequence:
+
+1. Token parse + nonce format check.
+2. Policy cache TTL validity.
+3. Policy ID match in active cache.
+4. Signature verification when `require_signed_token=true`.
+5. Command-scope hash verification when token includes `h{command_hash}`.
+6. Replay guard using in-memory validated token cache within TTL.
+
+Signature verification uses `ONESHIM_POLICY_TOKEN_SIGNING_SECRET`. If a policy requires signatures and the secret is missing, verification fails closed.
 
 ### `audit.rs` — AuditLogger
 
@@ -204,6 +225,7 @@ oneshim-automation → oneshim-core (CoreError, models, port traits)
 
 - **Policy token required**: All automation commands require a server-issued policy token
 - **Signed token support**: Signed policies require SHA-256 token signature (`ONESHIM_POLICY_TOKEN_SIGNING_SECRET`)
+- **Command-scope binding**: Optional `h{command_hash}` segment binds token to a specific command scope
 - **Replay protection**: One-time token use enforced within policy cache TTL
 - **Binary hash verification**: Tamper detection via `ExecutionPolicy.process_hash`
 - **Argument pattern restriction**: Allowed arguments restricted via glob patterns

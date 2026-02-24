@@ -58,10 +58,31 @@ oneshim-automation/src/
 - `AuditLevel` enum: None, Basic, Detailed, Full
 - `PolicyCache` — 정책 목록 + TTL 캐시 (기본 5분)
 - `issue_command_token(policy_id)` — 정책 계약에 맞는 토큰 발급
-- `validate_command()` — 토큰 형식 + nonce + 캐시 TTL + 정책 매칭 + 재사용 방지 + 선택적 서명 검증
+- `issue_command_token_for_command(policy_id, cmd)` — 명령 스코프 토큰(`h{command_hash}` 세그먼트) 발급
+- `validate_command()` — 토큰 형식 + nonce + 캐시 TTL + 정책 매칭 + 재사용 방지 + 선택적 서명 검증 + 선택적 명령 스코프 해시 검증
 - `validate_args()` — glob 패턴 기반 인자 검증 (`*` 와일드카드)
 - `is_process_allowed()` — HashSet 기반 빠른 프로세스 허가 조회
 - 토큰 계약: `docs/contracts/policy-token-contract.md`
+
+#### 정책 토큰 변형
+
+- 비서명: `{policy_id}:{nonce}`
+- 비서명 명령 스코프: `{policy_id}:{nonce}:h{command_hash}`
+- 서명: `{policy_id}:{nonce}:{signature}`
+- 서명 명령 스코프: `{policy_id}:{nonce}:h{command_hash}:{signature}`
+
+#### 검증 의미론 (fail-closed)
+
+`validate_command()`는 아래 검증을 순차 통과한 경우에만 명령을 허용한다.
+
+1. 토큰 파싱 + nonce 형식 검증.
+2. 정책 캐시 TTL 유효성 검증.
+3. 활성 캐시 내 정책 ID 매칭.
+4. `require_signed_token=true`일 때 서명 검증.
+5. 토큰에 `h{command_hash}`가 있으면 명령 스코프 해시 검증.
+6. TTL 범위 내 validated token 캐시 기반 재사용 차단.
+
+서명 검증은 `ONESHIM_POLICY_TOKEN_SIGNING_SECRET`를 사용한다. 정책이 서명을 요구하는데 시크릿이 없으면 즉시 실패 폐쇄(fail-closed)한다.
 
 ### `audit.rs` — AuditLogger
 
@@ -204,6 +225,7 @@ oneshim-automation → oneshim-core (CoreError, 모델, 포트 trait)
 
 - **정책 토큰 필수**: 모든 자동화 명령은 서버 발급 정책 토큰 필요
 - **서명 토큰 지원**: 서명 정책은 SHA-256 서명(`ONESHIM_POLICY_TOKEN_SIGNING_SECRET`) 필수
+- **명령 스코프 바인딩**: 선택적 `h{command_hash}`로 토큰을 특정 명령 스코프에 묶음
 - **재사용 방지**: 정책 캐시 TTL 내 토큰 1회성 보장
 - **바이너리 해시 검증**: `ExecutionPolicy.process_hash`로 변조 감지
 - **인자 패턴 제한**: glob 패턴으로 허용 인자 제한

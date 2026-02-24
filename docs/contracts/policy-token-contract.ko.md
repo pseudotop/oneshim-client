@@ -6,8 +6,12 @@
 
 - 비서명 토큰:
   - `{policy_id}:{nonce}`
+- 비서명 명령 스코프 토큰:
+  - `{policy_id}:{nonce}:h{command_hash}`
 - 서명 토큰 (`require_signed_token=true`):
   - `{policy_id}:{nonce}:{signature}`
+- 서명 명령 스코프 토큰 (`require_signed_token=true`):
+  - `{policy_id}:{nonce}:h{command_hash}:{signature}`
 
 ## 필드 규칙
 
@@ -21,6 +25,11 @@
   - 64자 hex 문자열이어야 한다.
   - 계산식:
     - `sha256("{policy_id}:{nonce}:{secret}")`
+    - 명령 스코프 포함 시: `sha256("{policy_id}:{nonce}:{command_hash}:{secret}")`
+- `command_hash` (선택)
+  - 64자 hex 문자열이어야 한다.
+  - 토큰에서는 `h` 접두어를 포함한 `h{command_hash}` 형태여야 한다.
+  - 명령 스코프(`command_id`, `session_id`, `action`, `timeout_ms`)에 토큰을 바인딩한다.
 
 ## 서명 시크릿
 
@@ -42,6 +51,8 @@
 6. 서명 정책일 경우:
    - 서명 필드가 존재하고 hex 형식이 유효하다.
    - 서명 다이제스트가 계산값과 일치한다.
+7. `command_hash`가 포함된 경우:
+   - 토큰 해시와 명령 스코프에서 재계산한 해시가 일치해야 한다.
 
 ## 발급 API (클라이언트 유틸리티)
 
@@ -49,6 +60,10 @@
   - nonce를 생성한다.
   - 정책 설정에 따라 서명/비서명 토큰을 발급한다.
   - 서명 정책인데 시크릿이 없으면 실패 폐쇄(fail-closed)한다.
+- `PolicyClient::issue_command_token_for_command(policy_id, cmd)`
+  - nonce를 생성한다.
+  - 토큰에 명령 스코프 해시를 포함한다.
+  - 다른 명령으로의 토큰 재사용을 차단한다.
 
 ## 보안 메모
 

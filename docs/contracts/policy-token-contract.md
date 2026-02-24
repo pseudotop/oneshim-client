@@ -6,8 +6,12 @@ This document defines the policy-token issuance/verification contract used by au
 
 - Unsigned policy token:
   - `{policy_id}:{nonce}`
+- Unsigned command-scoped policy token:
+  - `{policy_id}:{nonce}:h{command_hash}`
 - Signed policy token (`require_signed_token=true`):
   - `{policy_id}:{nonce}:{signature}`
+- Signed command-scoped policy token (`require_signed_token=true`):
+  - `{policy_id}:{nonce}:h{command_hash}:{signature}`
 
 ## Field Rules
 
@@ -21,6 +25,11 @@ This document defines the policy-token issuance/verification contract used by au
   - MUST be lowercase/uppercase hex (64 chars).
   - Computed as:
     - `sha256("{policy_id}:{nonce}:{secret}")`
+    - command-scoped: `sha256("{policy_id}:{nonce}:{command_hash}:{secret}")`
+- `command_hash` (optional)
+  - MUST be 64-char hex.
+  - MUST be prefixed with `h` in token (`h{command_hash}`).
+  - Binds token to a specific command scope (`command_id`, `session_id`, `action`, `timeout_ms`).
 
 ## Signing Secret
 
@@ -42,6 +51,8 @@ Client validation succeeds only when all conditions are met:
 6. If policy requires signature:
    - signature field is present and valid hex.
    - signature digest matches computed value.
+7. If `command_hash` is present:
+   - command hash in token matches recomputed hash from command scope.
 
 ## Issuance API (Client-side Utility)
 
@@ -49,6 +60,10 @@ Client validation succeeds only when all conditions are met:
   - Generates nonce.
   - Issues signed/unsigned token depending on policy.
   - Fails closed when signed policy is configured but secret is missing.
+- `PolicyClient::issue_command_token_for_command(policy_id, cmd)`
+  - Generates nonce.
+  - Includes command scope hash in token.
+  - Prevents cross-command token reuse.
 
 ## Security Notes
 

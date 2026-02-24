@@ -38,6 +38,23 @@ When `ai_provider.access_mode` is `ProviderSubscriptionCli`, ONESHIM can sync br
 
 Reference: `docs/architecture/cli-subscription-bridge-research.md`
 
+## AI Provider Adapters (`provider_adapters.rs`)
+
+`resolve_ai_provider_adapters()` resolves OCR/LLM providers from `AiProviderConfig` and returns source metadata:
+
+- Access modes:
+  - `LocalModel`
+  - `ProviderApiKey`
+  - `ProviderSubscriptionCli`
+  - `PlatformConnected`
+- Fallback behavior:
+  - Remote init failure can fall back to local providers when `fallback_to_local=true`
+- OCR privacy gate:
+  - Remote OCR calls are wrapped by `GuardedOcrProvider`
+  - Pre-flight sanitization through `PrivacyGateway::sanitize_image_for_external_policy()`
+  - Optional opt-out for raw remote OCR via `allow_unredacted_external_ocr`
+  - Post-parse calibration validation (`OcrValidationConfig`)
+
 ## Key Components
 
 ### main.rs
@@ -47,175 +64,39 @@ Application entry point and DI assembly:
 ```rust
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 1. Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
-
-    // 2. Load configuration
-    let config = AppConfig::load()?;
-
-    // 3. Create components (DI wiring)
-    let token_manager = Arc::new(TokenManager::new(
-        &config.server.base_url,
-        &std::env::var("ONESHIM_EMAIL")?,
-        &std::env::var("ONESHIM_PASSWORD")?,
-    ));
-
-    let compressor = Arc::new(AdaptiveCompressor::default());
-    let api_client = Arc::new(HttpApiClient::new(
-        &config.server.base_url,
-        token_manager.clone(),
-        compressor.clone(),
-    ));
-
-    let sse_client = Arc::new(SseStreamClient::new(
-        &config.server.base_url,
-        token_manager.clone(),
-        config.server.sse_max_retry_secs,
-    ));
-
-    let storage = Arc::new(SqliteStorage::new(&config.storage.db_path)?);
-    let system_monitor = Arc::new(SysInfoMonitor::new());
-    let process_monitor = Arc::new(ProcessTracker::new());
-    let activity_monitor = Arc::new(ActivityTracker::new(300));
-
-    let capture_trigger = Arc::new(SmartCaptureTrigger::new(
-        config.vision.capture_throttle_ms,
-    ));
-    let frame_processor = Arc::new(EdgeFrameProcessor::new(/* ... */));
-
-    let notifier = Arc::new(DesktopNotifierImpl);
-    let suggestion_queue = Arc::new(PriorityQueue::new(50));
-    let suggestion_history = Arc::new(SuggestionHistory::new(100));
-
-    // 4. Create scheduler
-    let scheduler = Scheduler::new(/* inject all components */);
-
-    // 5. Set up lifecycle
-    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let lifecycle = Lifecycle::new(shutdown_tx);
-
-    // 6. Start tasks
-    let monitor_task = tokio::spawn(scheduler.run_monitor_loop(shutdown_rx.clone()));
-    let sync_task = tokio::spawn(scheduler.run_sync_loop(shutdown_rx.clone()));
-    let sse_task = tokio::spawn(/* SSE connection */);
-
-    // 7. Wait for shutdown signal
-    lifecycle.wait_for_shutdown().await;
-
-    // 8. Cleanup
-    monitor_task.abort();
-    sync_task.abort();
-    sse_task.abort();
-
+    // 1. parse CLI args + init logging + load AppConfig
+    // 2. run integrity preflight, evaluate AI access mode
+    // 3. build storage/monitor/network/vision/automation components
+    // 4. resolve provider adapters + optional CLI bridge sync
+    // 5. start scheduler (9-loop orchestration)
+    // 6. start web server + optional update coordinator
+    // 7. wait shutdown signal and finalize session
     Ok(())
 }
 ```
 
 ### Scheduler (scheduler.rs)
 
-Three periodic task loops:
+Current scheduler is a **9-loop orchestrator** (`Scheduler::run()` → `run_scheduler_loops()`), not a 3-loop model.
 
-```rust
-pub struct Scheduler {
-    system_monitor: Arc<dyn SystemMonitor>,
-    process_monitor: Arc<dyn ProcessMonitor>,
-    activity_monitor: Arc<dyn ActivityMonitor>,
-    capture_trigger: Arc<dyn CaptureTrigger>,
-    frame_processor: Arc<dyn FrameProcessor>,
-    api_client: Arc<dyn ApiClient>,
-    storage: Arc<dyn StorageService>,
-    batch_uploader: Arc<BatchUploader>,
-    config: MonitorConfig,
-}
+| Loop | Interval | Responsibility |
+|------|----------|----------------|
+| Monitor | 1s | Context collection, idle transitions, capture trigger, frame processing, event persistence, optional upload enqueue |
+| Metrics | 5s | System metrics persistence + dashboard realtime broadcast + notification high-usage checks |
+| Process Snapshot | 10s | Top process snapshot persistence |
+| Sync | 10s | Batched upload (platform-connected mode only) + retention enforcement |
+| Heartbeat | 30s | Server heartbeat in connected mode |
+| Aggregation | 1h | Hourly aggregation + metrics/process/idle cleanup |
+| Notification | 1m | Long-session notification checks |
+| Focus | 1m | `FocusAnalyzer::analyze_periodic()` and suggestion generation |
+| Event Snapshot | 30s | Detailed process snapshot + `InputActivityCollector` snapshot events |
 
-impl Scheduler {
-    /// Monitoring loop (1-second interval)
-    pub async fn run_monitor_loop(&self, mut shutdown: watch::Receiver<bool>) {
-        let mut interval = tokio::time::interval(
-            Duration::from_millis(self.config.poll_interval_ms)
-        );
+Key scheduler boundaries:
 
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    if let Err(e) = self.monitor_tick().await {
-                        warn!("Monitoring error: {}", e);
-                    }
-                }
-                _ = shutdown.changed() => {
-                    if *shutdown.borrow() {
-                        info!("Monitoring loop terminated");
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    async fn monitor_tick(&self) -> Result<(), CoreError> {
-        // 1. Collect system metrics
-        let metrics = self.system_monitor.get_metrics().await?;
-
-        // 2. Check active window
-        let window = self.process_monitor.get_active_window().await?;
-
-        // 3. Create event
-        let event = create_context_event(window, metrics, self.activity_monitor.is_idle().await?);
-
-        // 4. Store locally
-        self.storage.save_event(&event).await?;
-
-        // 5. Capture decision
-        if let CaptureDecision::Capture { importance } = self.capture_trigger.should_capture(&event).await? {
-            let frame = ScreenCapture::capture_active_window()?;
-            let processed = self.frame_processor.process(frame).await?;
-            self.storage.save_frame(&processed).await?;
-            self.batch_uploader.queue_frame(processed).await;
-        }
-
-        // 6. Add to batch queue
-        self.batch_uploader.queue_event(event).await;
-
-        Ok(())
-    }
-
-    /// Sync loop (10-second interval)
-    pub async fn run_sync_loop(&self, mut shutdown: watch::Receiver<bool>) {
-        let mut interval = tokio::time::interval(
-            Duration::from_millis(self.config.sync_interval_ms)
-        );
-
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    if let Err(e) = self.batch_uploader.flush().await {
-                        warn!("Sync error: {}", e);
-                    }
-                }
-                _ = shutdown.changed() => break,
-            }
-        }
-    }
-
-    /// Heartbeat loop (30-second interval)
-    pub async fn run_heartbeat_loop(&self, mut shutdown: watch::Receiver<bool>) {
-        let mut interval = tokio::time::interval(
-            Duration::from_millis(self.config.heartbeat_interval_ms)
-        );
-
-        loop {
-            tokio::select! {
-                _ = interval.tick() => {
-                    // Send server heartbeat
-                }
-                _ = shutdown.changed() => break,
-            }
-        }
-    }
-}
-```
+- Storage boundary: `SchedulerStorage` port (extends metrics storage with frame metadata write path)
+- Privacy/upload boundary: `PlatformEgressPolicy` decides sanitization and upload eligibility
+- Frame retention: `FrameFileStorage` retention + storage-limit enforcement in sync loop
+- Optional subsystems: `NotificationManager` and `FocusAnalyzer` are injected and run conditionally
 
 ### Lifecycle (lifecycle.rs)
 
@@ -342,115 +223,45 @@ impl Autostart {
 
 ### Updater (updater.rs)
 
-Auto update based on GitHub Releases:
+Auto update flow is driven by `Updater` + `update_coordinator`:
 
-```rust
-pub struct Updater {
-    config: UpdateConfig,
-    http_client: reqwest::Client,
-}
+- Source of truth: `https://api.github.com/repos/{owner}/{repo}/releases/latest`
+- Version policy:
+  - compares semver against `CURRENT_VERSION`
+  - supports prerelease filtering (`include_prerelease`)
+  - enforces minimum version floor
+- Asset policy:
+  - selects platform-specific asset by OS/arch pattern
+  - validates download host allowlist before fetch
+- Integrity policy:
+  - always verifies `SHA-256` checksum (`.sha256`)
+  - optionally enforces Ed25519 signature verification (`require_signature_verification=true`, `update.signature_public_key`)
+- Install:
+  - archive extraction with path traversal guards
+  - binary replacement via `self_update::self_replace`
 
-impl Updater {
-    pub async fn check_for_update(&self) -> Result<Option<Release>, CoreError> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/releases/latest",
-            self.config.repo_owner,
-            self.config.repo_name,
-        );
+### Installer/Release Packaging Link
 
-        let response: GitHubRelease = self.http_client
-            .get(&url)
-            .header("User-Agent", "ONESHIM-Client")
-            .send()
-            .await?
-            .json()
-            .await?;
+Release artifacts are packaged by `.github/workflows/release.yml`, then consumed by:
 
-        let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))?;
-        let latest = semver::Version::parse(&response.tag_name.trim_start_matches('v'))?;
+- App updater (`crates/oneshim-app/src/updater.rs`) for in-app updates
+- Cross-platform terminal installers:
+  - `scripts/install.sh`
+  - `scripts/install.ps1`
+  - `scripts/uninstall.sh`
+  - `scripts/uninstall.ps1`
 
-        if latest > current {
-            Ok(Some(Release {
-                version: latest,
-                download_url: Self::find_asset_url(&response)?,
-                release_notes: response.body,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub async fn download_and_install(&self, release: &Release) -> Result<(), CoreError> {
-        info!("Downloading update: {}", release.version);
-
-        // 1. Download asset
-        let bytes = self.http_client
-            .get(&release.download_url)
-            .send()
-            .await?
-            .bytes()
-            .await?;
-
-        // 2. Extract to temporary directory
-        let temp_dir = tempfile::tempdir()?;
-        Self::extract_archive(&bytes, temp_dir.path())?;
-
-        // 3. Replace binary (using self_update)
-        self_update::Move::from_source(temp_dir.path().join("oneshim"))
-            .to_dest(&std::env::current_exe()?)?;
-
-        info!("Update complete. Restart required.");
-        Ok(())
-    }
-
-    fn find_asset_url(release: &GitHubRelease) -> Result<String, CoreError> {
-        let pattern = match (std::env::consts::OS, std::env::consts::ARCH) {
-            ("macos", "aarch64") => "macos-arm64",
-            ("macos", "x86_64") => "macos-x64",
-            ("windows", _) => "windows-x64",
-            ("linux", _) => "linux-x64",
-            _ => return Err(CoreError::Internal("Unsupported platform".into())),
-        };
-
-        release.assets
-            .iter()
-            .find(|a| a.name.contains(pattern))
-            .map(|a| a.browser_download_url.clone())
-            .ok_or_else(|| CoreError::Internal("Asset not found".into()))
-    }
-}
-```
+The installers and updater share the same release assets/checksum/signature sidecars, so integrity behavior is consistent across install and in-app upgrade paths.
 
 ## Execution Flow
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         main.rs                                  │
-│                                                                  │
-│  1. Initialize logging                                           │
-│  2. Load configuration                                           │
-│  3. Create components (DI)                                       │
-│  4. Start scheduler                                              │
-│  5. SSE connection                                               │
-│  6. Wait for shutdown signal                                     │
-└─────────────────────────────────────────────────────────────────┘
-        │
-        ├─────────────────┬─────────────────┬─────────────────┐
-        ▼                 ▼                 ▼                 ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────┐
-│ Monitor Loop  │ │  Sync Loop    │ │ Heartbeat Loop│ │ SSE Task  │
-│   (1s)        │ │   (10s)       │ │   (30s)       │ │           │
-└───────────────┘ └───────────────┘ └───────────────┘ └───────────┘
-        │                 │                 │                 │
-        │                 │                 │                 │
-        └─────────────────┴─────────────────┴─────────────────┘
-                                    │
-                                    ▼
-                          ┌─────────────────┐
-                          │ Graceful Shutdown│
-                          │ (Ctrl+C/SIGTERM) │
-                          └─────────────────┘
-```
+1. `main.rs` / `gui_runner.rs` loads config and wires DI (storage, monitor, network, vision, automation, web).
+2. Access mode is evaluated (`LocalModel`, `ProviderApiKey`, `ProviderSubscriptionCli`, `PlatformConnected`) and AI adapters are resolved.
+3. Optional CLI subscription bridge artifacts are synced in subscription mode.
+4. Scheduler starts 9 loops and optional subsystems (notification/focus/realtime).
+5. Web server serves API + embedded frontend and consumes shared realtime events.
+6. Update coordinator checks release channel and handles gated install actions.
+7. Shutdown signal triggers graceful stop and session finalization.
 
 ## Dependencies
 
@@ -487,26 +298,15 @@ cargo run -p oneshim-app
 ## Tests
 
 ```rust
-#[tokio::test]
-async fn test_lifecycle_shutdown() {
-    let (tx, rx) = watch::channel(false);
-    let lifecycle = Lifecycle::new(tx);
-
-    // Send shutdown signal
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        // In practice, simulates Ctrl+C
-    });
-
-    // wait_for_shutdown test requires signal mocking
+#[test]
+fn updater_rejects_unknown_download_host() {
+    let updater = Updater::new(test_config());
+    let result = updater.validate_download_url("https://evil.example.com/file.tar.gz");
+    assert!(result.is_err());
 }
 
 #[test]
-fn test_platform_detection() {
-    let pattern = Updater::get_platform_pattern();
-    #[cfg(target_os = "macos")]
-    assert!(pattern.contains("macos"));
-    #[cfg(target_os = "windows")]
-    assert!(pattern.contains("windows"));
+fn verify_signature_accepts_valid_ed25519_signature() {
+    // updater signature verification happy-path is covered in updater.rs tests
 }
 ```

@@ -54,11 +54,13 @@ oneshim-web/
 ```rust
 #[derive(Clone)]
 pub struct AppState {
-    pub storage: Arc<SqliteStorage>,
+    pub storage: Arc<dyn WebStorage>,
     pub frames_dir: Option<PathBuf>,
     pub event_tx: broadcast::Sender<RealtimeEvent>,
     pub config_manager: Option<ConfigManager>,
     pub audit_logger: Option<Arc<RwLock<AuditLogger>>>,
+    pub automation_controller: Option<Arc<AutomationController>>,
+    pub update_control: Option<UpdateControl>,
 }
 ```
 
@@ -68,11 +70,23 @@ pub struct AppState {
 let server = WebServer::new(storage, web_config)
     .with_config_manager(config_manager)
     .with_audit_logger(audit_logger)
+    .with_automation_controller(automation_controller)
+    .with_update_control(update_control)
     .with_event_tx(event_tx)
     .with_frames_dir(frames_dir);
 
 server.run(shutdown_rx).await?;
 ```
+
+### Storage Port (`storage_port.rs`)
+
+`oneshim-web` handlers depend on `WebStorage` (port), not `SqliteStorage` (adapter).
+
+- Port: `WebStorage: StorageService + MetricsStorage + Send + Sync`
+- Coverage: frame/event queries, search, tags, focus metrics/suggestions, backup/export, retention/delete ranges
+- Current adapter: `impl WebStorage for SqliteStorage`
+
+This keeps the web application layer open for alternate storage adapters without changing handler logic.
 
 ## API Endpoints
 
@@ -165,6 +179,12 @@ pub struct AutomationStatusDto {
     pub llm_provider: String,
     pub external_data_policy: String,
     pub pending_audit_entries: usize,
+    pub scene_action_override_enabled: bool,
+    pub scene_action_override_active: bool,
+    pub scene_action_override_reason: Option<String>,
+    pub scene_action_override_approved_by: Option<String>,
+    pub scene_action_override_expires_at: Option<String>,
+    pub scene_action_override_issue: Option<String>,
 }
 
 /// Audit log entry
@@ -187,6 +207,10 @@ pub struct AutomationStatsDto {
     pub denied: usize,
     pub timeout: usize,
     pub avg_elapsed_ms: f64,
+    pub success_rate: f64,
+    pub blocked_rate: f64,
+    pub p95_elapsed_ms: f64,
+    pub timing_samples: usize,
 }
 
 /// Policy summary
@@ -196,6 +220,12 @@ pub struct PoliciesDto {
     pub sandbox_enabled: bool,
     pub allow_network: bool,
     pub external_data_policy: String,
+    pub scene_action_override_enabled: bool,
+    pub scene_action_override_active: bool,
+    pub scene_action_override_reason: Option<String>,
+    pub scene_action_override_approved_by: Option<String>,
+    pub scene_action_override_expires_at: Option<String>,
+    pub scene_action_override_issue: Option<String>,
 }
 
 /// Preset run result
@@ -301,6 +331,8 @@ use oneshim_web::WebServer;
 let server = WebServer::new(storage, web_config)
     .with_config_manager(config_manager)
     .with_audit_logger(audit_logger)
+    .with_automation_controller(automation_controller)
+    .with_update_control(update_control)
     .with_event_tx(event_tx);
 
 server.run(shutdown_rx).await?;

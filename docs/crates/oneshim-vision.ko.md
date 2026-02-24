@@ -9,7 +9,8 @@ Edge 이미지 처리를 담당하는 크레이트. 스크린 캡처, 델타 인
 - **스크린 캡처**: 멀티모니터 지원, 활성 창 캡처
 - **델타 인코딩**: 변경 영역만 추출하여 전송량 최소화
 - **적응형 처리**: 중요도에 따른 처리 수준 조절
-- **개인정보 보호**: PII 필터링
+- **개인정보 보호**: PII 필터링 + 외부 OCR 전송 전 영역 블러
+- **UI Scene 추출**: OCR 박스를 `UiElement` / `UiScene`으로 변환
 
 ## 디렉토리 구조
 
@@ -23,7 +24,10 @@ oneshim-vision/src/
 ├── thumbnail.rs   # ThumbnailGenerator - 썸네일 생성
 ├── processor.rs   # EdgeFrameProcessor - 통합 처리
 ├── ocr.rs         # OcrExtractor - 텍스트 추출
-├── privacy.rs     # PrivacySanitizer - PII 필터링
+├── local_ocr_provider.rs # 로컬 OCR 제공자 어댑터
+├── element_finder.rs # OCR 텍스트 매칭 + UiScene 구성
+├── privacy.rs     # PII 마커 감지 + 제목/텍스트 세정
+├── privacy_gateway.rs # 외부 OCR 프라이버시 게이트 + OCR 영역 블러
 └── timeline.rs    # FrameTimeline - 프레임 이력
 ```
 
@@ -206,25 +210,42 @@ impl OcrExtractor {
 }
 ```
 
-### PrivacySanitizer (privacy.rs)
+### LocalOcrProvider + ElementFinder (`local_ocr_provider.rs`, `element_finder.rs`)
 
-PII 자동 필터링:
+- `LocalOcrProvider`: standalone/폴백 경로에서 쓰는 로컬 OCR 어댑터
+- `ElementFinder`: OCR 결과를 아래 타입으로 변환
+  - 요소 단위 자동화용 `Vec<UiElement>`
+  - 오버레이/좌표 실행용 `UiScene` / `UiSceneElement`
 
-```rust
-pub struct PrivacySanitizer {
-    patterns: Vec<Regex>,
-}
+### Privacy Rules (`privacy.rs`)
 
-impl PrivacySanitizer {
-    pub fn sanitize(&self, frame: ProcessedFrame) -> Result<ProcessedFrame, CoreError>;
-}
-```
+PII 감지는 레벨 기반(`Off`, `Basic`, `Standard`, `Strict`)으로 동작하고 마커 단위 결과를 제공한다.
 
-**필터링 대상**:
-- 이메일 주소
-- 신용카드 번호
-- 주민등록번호 (한국)
-- 파일 경로 내 사용자명
+- 마커 enum: `PiiMarker::{Email, Phone, Card, KoreanId, ApiKey, Ip, UserPath}`
+- 주요 API:
+  - `sanitize_title_with_level()`
+  - `detect_pii_markers_with_level()`
+  - `is_sensitive_segment_with_level()`
+- 업로드/OCR 게이트에서 사용하는 민감 앱/패턴 제외 규칙도 포함
+
+### PrivacyGateway (`privacy_gateway.rs`)
+
+`PrivacyGateway`는 외부 OCR 경계에서 프라이버시 통제를 담당한다.
+
+- 게이트 검사:
+  - 동의(`ConsentManager`)
+  - 민감 앱 차단
+  - 앱/제목 제외 정책
+- 세정 결과:
+  - `SanitizedImage { image_data, metadata_stripped, redacted_regions }`
+- 블러 파이프라인 (`blur_pii_regions()`):
+  - OCR 워드 박스 추출
+  - 단일 워드 PII 감지
+  - 분절된 토큰(이메일/전화번호 등) 보강을 위한 2~5 워드 세그먼트 감지
+  - 영역 병합(`merge_sensitive_regions`)
+  - 병합 영역 바운딩 박스 블러 적용
+- opt-out:
+  - `allow_unredacted_external_ocr=true`면 원본 이미지 패스스루 허용
 
 ## 처리 파이프라인
 
@@ -258,6 +279,14 @@ impl PrivacySanitizer {
                                       ▼
                               ProcessedFrame
 ```
+
+## 외부 OCR 프라이버시 경로
+
+원격 OCR 제공자 사용 시 흐름:
+
+1. `PrivacyGateway::sanitize_image_for_external_policy()` 실행
+2. 세정된 이미지를 원격 OCR로 전송
+3. 앱 계층 어댑터에서 calibration/validation 적용 후 결과 사용
 
 ## 의존성
 
