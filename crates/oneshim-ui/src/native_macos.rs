@@ -35,6 +35,7 @@ pub fn hide_app() {
 ///
 /// NSApplication.unhide() + activate 호출
 #[allow(deprecated)]
+#[allow(unused_unsafe)]
 pub fn show_app() {
     let Some(mtm) = get_mtm() else {
         warn!("macOS: 메인 스레드가 아니므로 앱 표시 실패");
@@ -42,13 +43,15 @@ pub fn show_app() {
     };
 
     let app = NSApplication::sharedApplication(mtm);
-    app.unhide(None);
+    // SAFETY: GUI 이벤트 루프의 메인 스레드에서 호출되며, 인자로 전달하는 객체 참조가 없음.
+    unsafe { app.unhide(None) };
     // activateIgnoringOtherApps는 deprecated되었지만 아직 사용 가능
     app.activateIgnoringOtherApps(true);
     info!("macOS: 앱 표시 (NSApplication.unhide + activate)");
 }
 
 /// 앱이 숨겨져 있는지 확인
+#[allow(unused_unsafe)]
 pub fn is_app_hidden() -> bool {
     let Some(mtm) = get_mtm() else {
         warn!("macOS: 메인 스레드가 아니므로 상태 확인 실패");
@@ -56,7 +59,8 @@ pub fn is_app_hidden() -> bool {
     };
 
     let app = NSApplication::sharedApplication(mtm);
-    let hidden = app.isHidden();
+    // SAFETY: 메인 스레드의 NSApplication 단일 인스턴스 조회로, ObjC 런타임 전제 조건을 만족함.
+    let hidden = unsafe { app.isHidden() };
     debug!("macOS: 앱 숨김 상태 = {}", hidden);
     hidden
 }
