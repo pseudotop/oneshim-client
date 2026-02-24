@@ -1,8 +1,4 @@
-//! 통합 네트워크 클라이언트
 //!
-//! REST API와 gRPC를 Feature Flag로 전환하는 통합 클라이언트.
-//! GrpcConfig의 `use_grpc_auth`, `use_grpc_context` 설정에 따라
-//! 자동으로 적절한 프로토콜을 선택합니다.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -24,14 +20,12 @@ use super::session_client::GrpcSessionClient;
 use crate::auth::TokenManager;
 use crate::http_client::HttpApiClient;
 
-// Re-export gRPC 관련 타입
 pub use crate::proto::user_context::{
     ContextBatchUploadRequest, ContextBatchUploadResponse, FeedbackType, ListSuggestionsResponse,
     Suggestion, SuggestionType,
 };
 pub use tonic::Streaming;
 
-/// 인증 응답
 #[derive(Debug, Clone)]
 pub struct AuthResponse {
     pub access_token: String,
@@ -40,7 +34,6 @@ pub struct AuthResponse {
     pub user_id: Option<String>,
 }
 
-/// 세션 응답
 #[derive(Debug, Clone)]
 pub struct SessionResponse {
     pub session_id: String,
@@ -49,32 +42,26 @@ pub struct SessionResponse {
     pub refresh_token: Option<String>,
 }
 
-/// 통합 네트워크 클라이언트
 ///
-/// REST와 gRPC를 Feature Flag로 전환하는 클라이언트.
 pub struct UnifiedClient {
     config: GrpcConfig,
 
-    // gRPC 클라이언트 (lazy init)
     grpc_auth: RwLock<Option<GrpcAuthClient>>,
     grpc_session: RwLock<Option<GrpcSessionClient>>,
     grpc_context: RwLock<Option<GrpcContextClient>>,
 
-    // REST 클라이언트 (fallback)
     token_manager: Arc<TokenManager>,
     http_client: HttpApiClient,
 }
 
 impl UnifiedClient {
-    /// 새 통합 클라이언트 생성
     pub fn new(config: GrpcConfig, token_manager: Arc<TokenManager>) -> Result<Self, CoreError> {
         info!(
             use_grpc_auth = config.use_grpc_auth,
             use_grpc_context = config.use_grpc_context,
-            "UnifiedClient 초기화"
+            "UnifiedClient initialize"
         );
 
-        // REST fallback용 HTTP 클라이언트
         let http_client = HttpApiClient::new(
             &config.rest_endpoint,
             token_manager.clone(),
@@ -91,7 +78,6 @@ impl UnifiedClient {
         })
     }
 
-    /// gRPC 인증 클라이언트 초기화 (lazy)
     async fn ensure_grpc_auth(&self) -> Result<(), CoreError> {
         if self.grpc_auth.read().await.is_some() {
             return Ok(());
@@ -102,7 +88,6 @@ impl UnifiedClient {
         Ok(())
     }
 
-    /// gRPC 세션 클라이언트 초기화 (lazy)
     async fn ensure_grpc_session(&self) -> Result<(), CoreError> {
         if self.grpc_session.read().await.is_some() {
             return Ok(());
@@ -113,7 +98,6 @@ impl UnifiedClient {
         Ok(())
     }
 
-    /// gRPC 컨텍스트 클라이언트 초기화 (lazy)
     #[allow(dead_code)]
     async fn ensure_grpc_context(&self) -> Result<(), CoreError> {
         if self.grpc_context.read().await.is_some() {
@@ -125,7 +109,6 @@ impl UnifiedClient {
         Ok(())
     }
 
-    /// gRPC 컨텍스트 클라이언트 공통 실행 헬퍼.
     async fn with_grpc_context_client<R, F>(&self, op: &str, f: F) -> Result<R, CoreError>
     where
         F: for<'a> FnOnce(
@@ -136,14 +119,12 @@ impl UnifiedClient {
         self.ensure_grpc_context().await?;
         let mut guard = self.grpc_context.write().await;
         let client = guard.as_mut().ok_or_else(|| {
-            CoreError::Network(format!("gRPC 컨텍스트 클라이언트 초기화 실패 ({op})"))
+            CoreError::Network(format!("gRPC context client initialize failure ({op})"))
         })?;
         f(client).await
     }
 
-    /// 로그인
     ///
-    /// Feature Flag에 따라 gRPC 또는 REST 사용
     pub async fn login(
         &self,
         identifier: &str,
@@ -151,10 +132,10 @@ impl UnifiedClient {
         organization_id: &str,
     ) -> Result<AuthResponse, CoreError> {
         if self.config.should_use_grpc_for_auth() {
-            debug!("gRPC로 로그인 시도");
+            debug!("gRPC login attempt");
             self.login_grpc(identifier, password, organization_id).await
         } else {
-            debug!("REST로 로그인 시도");
+            debug!("REST login attempt");
             self.login_rest(identifier, password, organization_id).await
         }
     }
@@ -170,7 +151,7 @@ impl UnifiedClient {
         let mut guard = self.grpc_auth.write().await;
         let client = guard
             .as_mut()
-            .ok_or_else(|| CoreError::Network("gRPC 인증 클라이언트 초기화 실패".to_string()))?;
+            .ok_or_else(|| CoreError::Network("gRPC 인증 client initialize failure".to_string()))?;
 
         let device_info = HashMap::new();
         let response = client
@@ -195,27 +176,22 @@ impl UnifiedClient {
         password: &str,
         organization_id: &str,
     ) -> Result<AuthResponse, CoreError> {
-        // TokenManager는 내부적으로 토큰을 저장
         self.token_manager
             .login_with_org(identifier, password, organization_id)
             .await?;
 
-        // TokenManager에서 토큰을 가져옴
         let access_token = self.token_manager.get_token().await?;
 
         Ok(AuthResponse {
             access_token,
-            refresh_token: String::new(), // REST에서는 refresh_token 직접 접근 불가
+            refresh_token: String::new(), // refresh token is not exposed in REST mode
             expires_in: 3600,
             user_id: None,
         })
     }
 
-    /// 토큰 갱신
     pub async fn refresh_token(&self) -> Result<AuthResponse, CoreError> {
         if self.config.should_use_grpc_for_auth() {
-            // gRPC는 refresh_token을 직접 전달해야 하므로 현재는 REST fallback
-            // 추후 토큰 저장소 통합 시 개선
             self.refresh_token_rest().await
         } else {
             self.refresh_token_rest().await
@@ -235,7 +211,6 @@ impl UnifiedClient {
         })
     }
 
-    /// 세션 생성 (gRPC 전용)
     pub async fn create_session(
         &self,
         client_id: &str,
@@ -244,7 +219,6 @@ impl UnifiedClient {
         if self.config.should_use_grpc_for_context() {
             self.create_session_grpc(client_id, device_info).await
         } else {
-            // REST에는 별도 세션 생성 API가 없으므로 더미 응답
             Ok(SessionResponse {
                 session_id: String::new(),
                 user_id: String::new(),
@@ -264,13 +238,13 @@ impl UnifiedClient {
         let mut guard = self.grpc_session.write().await;
         let client = guard
             .as_mut()
-            .ok_or_else(|| CoreError::Network("gRPC 세션 클라이언트 초기화 실패".to_string()))?;
+            .ok_or_else(|| CoreError::Network("gRPC session client initialize failure".to_string()))?;
 
         let response = client.create_session(client_id, device_info).await?;
 
         let session = response
             .session
-            .ok_or_else(|| CoreError::Network("세션 응답이 비어있음".to_string()))?;
+            .ok_or_else(|| CoreError::Network("session response이 비어있음".to_string()))?;
 
         Ok(SessionResponse {
             session_id: session.session_id,
@@ -288,12 +262,10 @@ impl UnifiedClient {
         })
     }
 
-    /// 하트비트 전송
     pub async fn heartbeat(&self, session_id: &str, client_id: &str) -> Result<bool, CoreError> {
         if self.config.should_use_grpc_for_context() {
             self.heartbeat_grpc(session_id, client_id).await
         } else {
-            // REST에서는 별도 heartbeat가 없으므로 항상 성공
             Ok(true)
         }
     }
@@ -304,7 +276,7 @@ impl UnifiedClient {
         let mut guard = self.grpc_session.write().await;
         let client = guard
             .as_mut()
-            .ok_or_else(|| CoreError::Network("gRPC 세션 클라이언트 초기화 실패".to_string()))?;
+            .ok_or_else(|| CoreError::Network("gRPC session client initialize failure".to_string()))?;
 
         let response = client
             .heartbeat(session_id, client_id, HashMap::new())
@@ -313,23 +285,16 @@ impl UnifiedClient {
         Ok(response.success)
     }
 
-    /// 제안 스트림 구독
     ///
-    /// 서버에서 실시간으로 제안을 수신합니다.
-    /// gRPC Server-Streaming RPC를 사용하며, SSE를 대체합니다.
     ///
     /// # Arguments
-    /// * `session_id` - 세션 ID
-    /// * `client_id` - 클라이언트 ID
     ///
     /// # Returns
-    /// `tonic::Streaming<Suggestion>` - 비동기 제안 스트림
     ///
     /// # Example
     /// ```ignore
     /// let mut stream = client.subscribe_suggestions("session-123", "client-456").await?;
     /// while let Some(suggestion) = stream.message().await? {
-    ///     println!("제안 수신: {}", suggestion.content);
     /// }
     /// ```
     pub async fn subscribe_suggestions(
@@ -339,40 +304,34 @@ impl UnifiedClient {
     ) -> Result<Streaming<Suggestion>, CoreError> {
         if !self.config.should_use_grpc_for_context() {
             return Err(CoreError::Network(
-                "제안 스트리밍은 gRPC 모드에서만 사용 가능합니다. use_grpc_context=true 설정 필요"
+                "suggestion 스트리밍은 gRPC mode에서만 사용 가능합니다. use_grpc_context=true 설정 필요"
                     .to_string(),
             ));
         }
 
         debug!(
-            "gRPC 제안 스트림 구독 시작: session_id={}, client_id={}",
+            "gRPC suggestion 스트림 subscribe started: session_id={}, client_id={}",
             session_id, client_id
         );
         self.ensure_grpc_context().await?;
 
         let mut guard = self.grpc_context.write().await;
         let client = guard.as_mut().ok_or_else(|| {
-            CoreError::Network("gRPC 컨텍스트 클라이언트 초기화 실패".to_string())
+            CoreError::Network("gRPC context client initialize failure".to_string())
         })?;
 
         let stream = client.subscribe_suggestions(session_id, client_id).await?;
-        info!("gRPC 제안 스트림 구독 성공");
+        info!("gRPC suggestion stream subscribe success");
 
         Ok(stream)
     }
 
-    /// 배치 업로드
     ///
-    /// 이벤트와 프레임을 서버로 일괄 전송합니다.
-    /// gRPC 모드에서는 `UploadBatch` RPC를, REST 모드에서는 `/user_context/sync/batch`를 사용합니다.
     ///
-    /// **주의**: REST 모드에서는 프레임 업로드가 지원되지 않습니다.
     ///
     /// # Arguments
-    /// * `request` - 배치 업로드 요청 (client_id, session_id, events, frames 등)
     ///
     /// # Returns
-    /// `ContextBatchUploadResponse` - 처리 결과 (status, processed_events, processed_frames 등)
     ///
     /// # Example
     /// ```ignore
@@ -384,7 +343,6 @@ impl UnifiedClient {
     ///     ..Default::default()
     /// };
     /// let response = client.upload_batch(request).await?;
-    /// println!("처리된 이벤트: {}", response.processed_events);
     /// ```
     pub async fn upload_batch(
         &self,
@@ -392,7 +350,7 @@ impl UnifiedClient {
     ) -> Result<ContextBatchUploadResponse, CoreError> {
         if self.config.should_use_grpc_for_context() {
             debug!(
-                "gRPC 배치 업로드 시작: session_id={}, events={}, frames={}",
+                "gRPC batch upload started: session_id={}, events={}, frames={}",
                 request.session_id,
                 request.events.len(),
                 request.frames.len()
@@ -403,39 +361,37 @@ impl UnifiedClient {
                 })
                 .await?;
             info!(
-                "gRPC 배치 업로드 완료: processed_events={}, processed_frames={}, status={}",
+                "gRPC batch upload completed: processed_events={}, processed_frames={}, status={}",
                 response.processed_events, response.processed_frames, response.status
             );
 
             Ok(response)
         } else {
-            // REST fallback — 프레임 업로드 미지원 경고
             if !request.frames.is_empty() {
                 warn!(
-                    "REST 모드에서는 프레임 업로드가 지원되지 않습니다. {} 프레임 무시됨",
+                    "REST mode does not support frame upload. Ignoring {} frame(s).",
                     request.frames.len()
                 );
             }
 
             debug!(
-                "REST 배치 업로드 시작: session_id={}, events={}",
+                "REST batch upload started: session_id={}, events={}",
                 request.session_id,
                 request.events.len()
             );
 
-            // gRPC → REST 타입 변환 (빈 이벤트 목록으로 전송)
             let batch = EventBatch {
                 session_id: request.session_id.clone(),
-                events: vec![], // gRPC Event와 REST Event 타입이 다름, 빈 배열로 전송
+                events: vec![], // REST path only sends event batches
                 created_at: chrono::Utc::now(),
             };
 
             self.http_client.upload_batch(&batch).await?;
-            info!("REST 배치 업로드 완료");
+            info!("REST batch upload completed");
 
             Ok(ContextBatchUploadResponse {
                 status: "success".to_string(),
-                processed_events: 0, // REST에서는 실제 처리 결과 알 수 없음
+                processed_events: 0, // REST endpoint does not return this count
                 processed_frames: 0,
                 sync_sequence: request.sync_sequence,
                 next_sync_time: None,
@@ -445,22 +401,15 @@ impl UnifiedClient {
         }
     }
 
-    /// 제안 피드백 전송
     ///
-    /// 사용자가 제안을 수락/거절/연기했을 때 서버에 피드백을 전송합니다.
-    /// gRPC 모드에서는 `SendFeedback` RPC를, REST 모드에서는 `/user_context/suggestions/feedback`를 사용합니다.
     ///
     /// # Arguments
-    /// * `suggestion_id` - 피드백 대상 제안 ID
-    /// * `feedback_type` - 피드백 유형 (Accepted, Rejected, Deferred)
-    /// * `comment` - 선택적 코멘트
     ///
     /// # Example
     /// ```ignore
     /// client.send_feedback(
     ///     "suggestion-123",
     ///     FeedbackType::Accepted,
-    ///     Some("유용한 제안이었습니다")
     /// ).await?;
     /// ```
     pub async fn send_feedback(
@@ -471,7 +420,7 @@ impl UnifiedClient {
     ) -> Result<(), CoreError> {
         if self.config.should_use_grpc_for_context() {
             debug!(
-                "gRPC 피드백 전송: suggestion_id={}, feedback_type={:?}",
+                "gRPC feedback sent: suggestion_id={}, feedback_type={:?}",
                 suggestion_id, feedback_type
             );
             let suggestion_id_owned = suggestion_id.to_string();
@@ -486,21 +435,20 @@ impl UnifiedClient {
                 })
             })
             .await?;
-            info!("gRPC 피드백 전송 완료: suggestion_id={}", suggestion_id);
+            info!("gRPC feedback sent completed: suggestion_id={}", suggestion_id);
 
             Ok(())
         } else {
             debug!(
-                "REST 피드백 전송: suggestion_id={}, feedback_type={:?}",
+                "REST feedback sent: suggestion_id={}, feedback_type={:?}",
                 suggestion_id, feedback_type
             );
 
-            // gRPC FeedbackType → REST FeedbackType 변환
             let rest_feedback_type = match feedback_type {
                 FeedbackType::Accepted => oneshim_core::models::suggestion::FeedbackType::Accepted,
                 FeedbackType::Rejected => oneshim_core::models::suggestion::FeedbackType::Rejected,
                 FeedbackType::Deferred => oneshim_core::models::suggestion::FeedbackType::Deferred,
-                _ => oneshim_core::models::suggestion::FeedbackType::Rejected, // 알 수 없는 타입은 Rejected로 처리
+                _ => oneshim_core::models::suggestion::FeedbackType::Rejected, // unknown -> rejected
             };
 
             let feedback = RestSuggestionFeedback {
@@ -511,33 +459,23 @@ impl UnifiedClient {
             };
 
             self.http_client.send_feedback(&feedback).await?;
-            info!("REST 피드백 전송 완료: suggestion_id={}", suggestion_id);
+            info!("REST feedback sent completed: suggestion_id={}", suggestion_id);
 
             Ok(())
         }
     }
 
-    /// 제안 목록 조회
     ///
-    /// 서버에서 제안 목록을 가져옵니다.
-    /// gRPC 모드에서는 `ListSuggestions` RPC를 사용합니다.
     ///
-    /// **주의**: REST 모드에서는 `/suggestions/history` 엔드포인트가 다른 형식을 반환하므로
-    /// 빈 목록이 반환됩니다. 전체 기능을 사용하려면 `use_grpc_context=true`를 설정하세요.
     ///
     /// # Arguments
-    /// * `types` - 조회할 제안 유형 필터 (빈 배열이면 전체 조회)
-    /// * `limit` - 최대 조회 개수
     ///
     /// # Example
     /// ```ignore
-    /// // 모든 유형 20개 조회
     /// let response = client.list_suggestions(vec![], 20).await?;
     /// for suggestion in response.suggestions {
-    ///     println!("제안: {}", suggestion.content);
     /// }
     ///
-    /// // 특정 유형만 조회
     /// let response = client.list_suggestions(
     ///     vec![SuggestionType::WorkGuidance, SuggestionType::ProductivityTip],
     ///     10
@@ -549,22 +487,21 @@ impl UnifiedClient {
         limit: i32,
     ) -> Result<ListSuggestionsResponse, CoreError> {
         if self.config.should_use_grpc_for_context() {
-            debug!("gRPC 제안 목록 조회: types={:?}, limit={}", types, limit);
+            debug!("gRPC suggestion list query: types={:?}, limit={}", types, limit);
             let response = self
                 .with_grpc_context_client("list_suggestions", |client| {
                     Box::pin(async move { client.list_suggestions(types, limit).await })
                 })
                 .await?;
             info!(
-                "gRPC 제안 목록 조회 완료: count={}",
+                "gRPC suggestion list query completed: count={}",
                 response.suggestions.len()
             );
 
             Ok(response)
         } else {
-            // REST 모드에서는 /suggestions/history 형식이 다르므로 빈 목록 반환
             warn!(
-                "REST 모드에서는 제안 목록 조회가 제한적입니다. \
+                "REST mode에서는 suggestion list query가 제한적입니다. \
                  전체 기능을 사용하려면 use_grpc_context=true를 설정하세요."
             );
 
@@ -575,17 +512,14 @@ impl UnifiedClient {
         }
     }
 
-    /// 설정 조회
     pub fn config(&self) -> &GrpcConfig {
         &self.config
     }
 
-    /// gRPC 사용 여부 확인
     pub fn is_using_grpc(&self) -> bool {
         self.config.use_grpc_auth || self.config.use_grpc_context
     }
 
-    /// TokenManager 참조 반환
     pub fn token_manager(&self) -> &Arc<TokenManager> {
         &self.token_manager
     }

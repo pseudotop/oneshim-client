@@ -1,7 +1,5 @@
 //! Workflow Intelligence.
 //!
-//! 앱 사용 빈도/시간 기반 relevance 점수, GUI 의도 분류, 워크플로우 세그먼트,
-//! 반복 플레이북 추출을 담당한다.
 
 use chrono::{DateTime, Utc};
 use oneshim_core::models::work_session::AppCategory;
@@ -9,7 +7,6 @@ use std::collections::{HashMap, HashSet};
 
 const MAX_SEGMENT_STEPS: usize = 10;
 
-/// GUI 의도 분류
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GuiIntent {
     Communicate,
@@ -68,14 +65,12 @@ struct PlaybookStats {
     representative_intents: String,
 }
 
-/// Playbook 신호
 #[derive(Debug, Clone)]
 pub struct PlaybookSignal {
     pub description: String,
     pub confidence: f32,
 }
 
-/// Workflow Intelligence 집계기
 #[derive(Debug, Default)]
 pub struct WorkflowIntelligence {
     usage: HashMap<String, AppUsageStats>,
@@ -84,7 +79,6 @@ pub struct WorkflowIntelligence {
 }
 
 impl WorkflowIntelligence {
-    /// 앱 사용량을 누적하고 relevance 점수를 갱신한다.
     pub fn update_usage(
         &mut self,
         app_name: &str,
@@ -121,7 +115,6 @@ impl WorkflowIntelligence {
         entry.relevance
     }
 
-    /// 앱 전환 발생을 표시한다. (지속시간 확정 전 frequency 반영용)
     pub fn touch_app(&mut self, app_name: &str, category: AppCategory, now: DateTime<Utc>) -> f32 {
         if app_name.trim().is_empty() {
             return 0.0;
@@ -151,7 +144,6 @@ impl WorkflowIntelligence {
         entry.relevance
     }
 
-    /// 현재 전환 이벤트를 워크플로우 세그먼트에 반영하고 필요 시 플레이북 신호를 반환한다.
     #[allow(clippy::too_many_arguments)]
     pub fn advance_workflow(
         &mut self,
@@ -222,7 +214,6 @@ impl WorkflowIntelligence {
         None
     }
 
-    /// 유휴 시간으로 오래 열린 세그먼트를 강제 종료한다.
     pub fn flush_stale_segment(
         &mut self,
         now: DateTime<Utc>,
@@ -347,7 +338,6 @@ impl WorkflowIntelligence {
         entry.representative_path = app_path;
         entry.representative_intents = intents_label;
 
-        // 3회 이상 반복되면 플레이북으로 간주. 이후는 5회 단위로 리마인드.
         let emit = entry.occurrences == 3 || (entry.occurrences > 3 && entry.occurrences % 5 == 0);
         if !emit {
             return None;
@@ -361,7 +351,7 @@ impl WorkflowIntelligence {
 
         Some(PlaybookSignal {
             description: format!(
-                "반복 업무 흐름 감지 ({}회): {} / intent: {} / 평균 {}분",
+                "반복 업무 흐름 detection ({}회): {} / intent: {} / 평균 {}분",
                 entry.occurrences,
                 entry.representative_path,
                 entry.representative_intents,
@@ -458,7 +448,7 @@ fn infer_gui_intent(
     if contains_any(
         &context,
         &[
-            "run", "build", "deploy", "submit", "publish", "commit", "merge", "release", "실행",
+            "run", "build", "deploy", "submit", "publish", "commit", "merge", "release", "execution",
             "배포", "제출",
         ],
     ) {
@@ -486,7 +476,7 @@ fn infer_gui_intent(
     if contains_any(
         &context,
         &[
-            "compose", "write", "draft", "edit", "reply", "new", "작성", "편집", "답장", "생성",
+            "compose", "write", "draft", "edit", "reply", "new", "작성", "편집", "답장", "create",
         ],
     ) {
         return GuiIntent::Compose;
@@ -504,8 +494,8 @@ fn infer_gui_intent(
             "failed",
             "분석",
             "통계",
-            "리포트",
-            "오류",
+            "리port",
+            "error",
         ],
     ) {
         return GuiIntent::Analyze;

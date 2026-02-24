@@ -1,4 +1,3 @@
-// 전역 키보드 단축키 훅
 import { useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -14,24 +13,19 @@ interface ShortcutHandlers {
 }
 
 /**
- * 키보드 단축키 훅
  *
- * @param handlers - 각 키에 대한 핸들러 (선택적)
- * @param enabled - 단축키 활성화 여부 (기본: true)
  */
 export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = true) {
   const navigate = useNavigate()
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      // 입력 필드에서는 단축키 무시
       const target = event.target as HTMLElement
       if (
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       ) {
-        // ESC는 입력 필드에서도 동작
         if (event.key === 'Escape' && handlers.onEscape) {
           handlers.onEscape()
           return
@@ -39,7 +33,6 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
         return
       }
 
-      // 전역 네비게이션 단축키
       switch (event.key.toLowerCase()) {
         case 'd':
           event.preventDefault()
@@ -69,7 +62,6 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
           break
       }
 
-      // 컴포넌트별 단축키
       switch (event.key) {
         case 'Escape':
           handlers.onEscape?.()
@@ -111,7 +103,6 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
 }
 
 /**
- * 단축키 목록 반환 (도움말 표시용)
  */
 export function getShortcutsList() {
   return [
@@ -121,7 +112,7 @@ export function getShortcutsList() {
     { key: 'P', description: '개인정보로 이동' },
     { key: '?', description: '단축키 도움말' },
     { key: 'ESC', description: '선택 해제 / 모달 닫기' },
-    { key: '← →', description: '이전/다음 항목' },
+    { key: '← →', description: '이전/next 항목' },
     { key: 'Enter', description: '선택 확인' },
   ]
 }

@@ -1,4 +1,3 @@
-//! 시스템 메트릭 API 핸들러.
 
 use axum::extract::{Query, State};
 use axum::Json;
@@ -10,54 +9,34 @@ use crate::AppState;
 
 use super::TimeRangeQuery;
 
-/// 메트릭 응답 DTO
 #[derive(Debug, Serialize)]
 pub struct MetricsResponse {
-    /// 타임스탬프 (RFC3339)
     pub timestamp: String,
-    /// CPU 사용률 (%)
     pub cpu_usage: f64,
-    /// 메모리 사용량 (bytes)
     pub memory_used: u64,
-    /// 전체 메모리 (bytes)
     pub memory_total: u64,
-    /// 메모리 사용률 (%)
     pub memory_percent: f64,
-    /// 디스크 사용량 (bytes)
     pub disk_used: u64,
-    /// 전체 디스크 (bytes)
     pub disk_total: u64,
-    /// 네트워크 업로드 속도 (bytes/s)
     pub network_upload: u64,
-    /// 네트워크 다운로드 속도 (bytes/s)
     pub network_download: u64,
 }
 
-/// 시간별 메트릭 쿼리
 #[derive(Debug, Deserialize)]
 pub struct HourlyQuery {
-    /// 조회할 시간 수 (기본: 24)
     pub hours: Option<usize>,
 }
 
-/// 시간별 집계 메트릭 응답
 #[derive(Debug, Serialize)]
 pub struct HourlyMetricsResponse {
-    /// 시각 (시간 단위, RFC3339)
     pub hour: String,
-    /// 평균 CPU 사용률
     pub cpu_avg: f64,
-    /// 최대 CPU 사용률
     pub cpu_max: f64,
-    /// 평균 메모리 사용량 (bytes)
     pub memory_avg: u64,
-    /// 최대 메모리 사용량 (bytes)
     pub memory_max: u64,
-    /// 샘플 수
     pub sample_count: u64,
 }
 
-/// 시스템 메트릭 조회
 ///
 /// GET /api/metrics?from=&to=&limit=
 pub async fn get_metrics(
@@ -96,7 +75,6 @@ pub async fn get_metrics(
     Ok(Json(response))
 }
 
-/// 시간별 집계 메트릭 조회
 ///
 /// GET /api/metrics/hourly?hours=24
 pub async fn get_hourly_metrics(

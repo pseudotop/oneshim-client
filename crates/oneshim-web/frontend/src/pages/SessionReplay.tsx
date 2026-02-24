@@ -1,4 +1,3 @@
-// 세션 리플레이 페이지 - Datadog RUM Replay / Microsoft Clarity 스타일
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -25,22 +24,19 @@ import type { TimelineItem } from '../api/client'
 export default function SessionReplay() {
   const { t } = useTranslation()
 
-  // 날짜 범위
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date()
-    d.setHours(d.getHours() - 1) // 기본 1시간 전
+    d.setHours(d.getHours() - 1) // default to 1 hour ago
     return d.toISOString().slice(0, 16)
   })
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 16))
 
-  // 타임라인 데이터 (React Query)
   const { data: timeline, isLoading: loading, error: timelineError } = useQuery({
     queryKey: ['timeline', fromDate, toDate],
     queryFn: () => fetchTimeline({ from: new Date(fromDate).toISOString(), to: new Date(toDate).toISOString() }),
   })
-  const error = timelineError ? (timelineError instanceof Error ? timelineError.message : '타임라인 로드 실패') : null
+  const error = timelineError ? (timelineError instanceof Error ? timelineError.message : '타임라인 로드 failure') : null
 
-  // 재생 상태
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
@@ -56,17 +52,14 @@ export default function SessionReplay() {
   const sceneViewportRef = useRef<HTMLDivElement | null>(null)
   const [sceneViewportSize, setSceneViewportSize] = useState({ width: 0, height: 0 })
 
-  // 재생 타이머
   const playIntervalRef = useRef<number | null>(null)
 
-  // 타임라인 로드 시 시작 시간으로 초기화
   useEffect(() => {
     if (timeline?.session) {
       setCurrentTime(new Date(timeline.session.start))
     }
   }, [timeline])
 
-  // 시작/종료 시간
   const startTime = useMemo(() => {
     return timeline?.session ? new Date(timeline.session.start) : new Date()
   }, [timeline])
@@ -75,7 +68,6 @@ export default function SessionReplay() {
     return timeline?.session ? new Date(timeline.session.end) : new Date()
   }, [timeline])
 
-  // 현재 시간에 해당하는 프레임 찾기
   const currentFrame = useMemo(() => {
     if (!timeline?.items) return null
 
@@ -87,7 +79,6 @@ export default function SessionReplay() {
 
     const currentMs = currentTime.getTime()
 
-    // 현재 시간 이전의 가장 가까운 프레임
     let closest: typeof frames[0] | null = null
     let closestDiff = Infinity
 
@@ -109,7 +100,6 @@ export default function SessionReplay() {
     setImageLoadFailed(false)
   }, [currentFrame?.id])
 
-  // 현재 프레임 태그 로드 (React Query)
   const { data: currentFrameTags = [] } = useQuery({
     queryKey: ['frameTags', currentFrame?.id],
     queryFn: () => fetchFrameTags(currentFrame!.id),
@@ -286,13 +276,11 @@ export default function SessionReplay() {
     },
   })
 
-  // 재생 로직
   useEffect(() => {
     if (isPlaying && timeline) {
       playIntervalRef.current = window.setInterval(() => {
         setCurrentTime((prev) => {
           const newTime = new Date(prev.getTime() + playbackSpeed * 1000)
-          // 끝에 도달하면 정지
           if (newTime >= endTime) {
             setIsPlaying(false)
             return endTime
@@ -314,7 +302,6 @@ export default function SessionReplay() {
     }
   }, [isPlaying, playbackSpeed, endTime, timeline])
 
-  // 이벤트 핸들러
   const handlePlayPause = useCallback(() => {
     setIsPlaying((prev) => !prev)
   }, [])
@@ -342,7 +329,6 @@ export default function SessionReplay() {
     if (to) setToDate(to)
   }, [])
 
-  // 시간 포맷 (상세)
   const formatDetailTime = (date: Date) => {
     return date.toLocaleString('ko-KR', {
       year: 'numeric',
@@ -357,10 +343,10 @@ export default function SessionReplay() {
 
   return (
     <div className="space-y-4">
-      {/* 헤더 */}
+      {/* UI note */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-          {t('replay.title', '세션 리플레이')}
+          {t('replay.title', 'session 리플레이')}
         </h1>
         <DateRangePicker
           onRangeChange={handleDateRangeChange}
@@ -369,7 +355,7 @@ export default function SessionReplay() {
         />
       </div>
 
-      {/* 에러 메시지 */}
+      {/* UI note */}
       {error && (
         <div className="flex items-center space-x-2 text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
           <AlertCircle className="w-5 h-5" />
@@ -377,14 +363,14 @@ export default function SessionReplay() {
         </div>
       )}
 
-      {/* 로딩 */}
+      {/* UI note */}
       {loading && (
         <div className="flex items-center justify-center py-12">
           <Spinner />
         </div>
       )}
 
-      {/* 빈 상태 */}
+      {/* UI note */}
       {!loading && (!timeline || timeline.items.length === 0) && !error && (
         <EmptyState
           icon={<Play className="w-8 h-8" />}
@@ -393,10 +379,10 @@ export default function SessionReplay() {
         />
       )}
 
-      {/* 메인 콘텐츠 */}
+      {/* UI note */}
       {!loading && timeline && timeline.items.length > 0 && (
         <>
-          {/* 타임라인 스크러버 */}
+          {/* UI note */}
           <TimelineScrubber
             startTime={startTime}
             endTime={endTime}
@@ -412,9 +398,9 @@ export default function SessionReplay() {
             onSkipToEnd={handleSkipToEnd}
           />
 
-          {/* 스크린샷 뷰어 + 이벤트 로그 */}
+          {/* UI note */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* 스크린샷 뷰어 (2/3) */}
+            {/* UI note */}
             <div className="lg:col-span-2">
               <Card>
                 <CardHeader>
@@ -427,7 +413,7 @@ export default function SessionReplay() {
                 <CardContent>
                   {currentFrame ? (
                     <div className="space-y-4">
-                      {/* 이미지 */}
+                      {/* UI note */}
                       <div
                         ref={sceneViewportRef}
                         className="relative aspect-video bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden"
@@ -441,7 +427,7 @@ export default function SessionReplay() {
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-sm text-slate-600 dark:text-slate-300 px-4 text-center">
-                            {t('replay.imageUnavailable', '스크린샷 이미지를 불러오지 못했습니다. 파일 보존 정책 또는 경로 상태를 확인하세요.')}
+                            {t('replay.imageUnavailable', '스크린샷 이미지를 불러오지 못했습니다. file 보존 policy 또는 path state를 확인하세요.')}
                           </div>
                         )}
                         {!imageLoadFailed &&
@@ -474,7 +460,7 @@ export default function SessionReplay() {
                           ))}
                       </div>
 
-                      {/* 프레임 메타데이터 */}
+                      {/* UI note */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div className="flex items-center space-x-2 text-sm">
                           <AppWindow className="w-4 h-4 text-slate-400" />
@@ -504,7 +490,7 @@ export default function SessionReplay() {
                         </div>
                       </div>
 
-                      {/* 태그 */}
+                      {/* UI note */}
                       {currentFrameTags.length > 0 && (
                         <div className="flex items-center flex-wrap gap-2">
                           <TagIcon className="w-4 h-4 text-slate-400" />
@@ -575,14 +561,14 @@ export default function SessionReplay() {
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-slate-500 dark:text-slate-400">
                       <Image className="w-12 h-12 mb-3 opacity-50" />
-                      <p>{t('replay.noFrames', '해당 시간의 프레임이 없습니다')}</p>
+                      <p>{t('replay.noFrames', '해당 시간의 frame이 없습니다')}</p>
                     </div>
                   )}
                 </CardContent>
               </Card>
             </div>
 
-            {/* 이벤트 로그 (1/3) */}
+            {/* UI note */}
             <div className="lg:col-span-1 space-y-4">
               <Card>
                 <CardHeader>
@@ -743,13 +729,13 @@ export default function SessionReplay() {
             </div>
           </div>
 
-          {/* 세션 통계 */}
+          {/* UI note */}
           <Card>
             <CardContent className="py-3">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center">
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {t('replay.duration', '세션 시간')}
+                    {t('replay.duration', 'session 시간')}
                   </p>
                   <p className="text-lg font-semibold text-slate-900 dark:text-white">
                     {Math.round(timeline.session.duration_secs / 60)}{t('dashboard.minutes', '분')}
@@ -757,7 +743,7 @@ export default function SessionReplay() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {t('replay.totalEvents', '총 이벤트')}
+                    {t('replay.totalEvents', '총 event')}
                   </p>
                   <p className="text-lg font-semibold text-slate-900 dark:text-white">
                     {timeline.session.total_events}
@@ -765,7 +751,7 @@ export default function SessionReplay() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {t('replay.totalFrames', '총 프레임')}
+                    {t('replay.totalFrames', '총 frame')}
                   </p>
                   <p className="text-lg font-semibold text-slate-900 dark:text-white">
                     {timeline.session.total_frames}
@@ -773,7 +759,7 @@ export default function SessionReplay() {
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {t('replay.totalIdle', '총 유휴')}
+                    {t('replay.totalIdle', '총 idle')}
                   </p>
                   <p className="text-lg font-semibold text-slate-900 dark:text-white">
                     {Math.round(timeline.session.total_idle_secs / 60)}{t('dashboard.minutes', '분')}

@@ -1,7 +1,5 @@
 /**
- * 타임라인 페이지
  *
- * 스크린샷 프레임 타임라인 + 필터링 + 상세 뷰어 + 태그
  */
 import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -21,7 +19,6 @@ import { formatTime, formatDate } from '../utils/formatters'
 type ViewMode = 'grid' | 'list'
 type ImportanceFilter = 'all' | 'high' | 'medium' | 'low'
 
-// 중요도에 따른 배지 색상
 function getImportanceBadge(importance: number) {
   if (importance >= 0.7) return { color: 'success' as const, label: `${(importance * 100).toFixed(0)}%` }
   if (importance >= 0.4) return { color: 'warning' as const, label: `${(importance * 100).toFixed(0)}%` }
@@ -48,20 +45,17 @@ export default function Timeline() {
     setPage(0)
   }, [])
 
-  // 모든 태그 조회
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: fetchTags,
   })
 
-  // 선택된 프레임의 태그 조회
   const { data: selectedFrameTags = [] } = useQuery({
     queryKey: ['frame-tags', selectedFrame?.id],
     queryFn: () => (selectedFrame ? fetchFrameTags(selectedFrame.id) : Promise.resolve([])),
     enabled: !!selectedFrame,
   })
 
-  // 프레임에 태그 추가 mutation
   const addTagMutation = useMutation({
     mutationFn: ({ frameId, tagId }: { frameId: number; tagId: number }) =>
       addTagToFrame(frameId, tagId),
@@ -70,7 +64,6 @@ export default function Timeline() {
     },
   })
 
-  // 프레임에서 태그 제거 mutation
   const removeTagMutation = useMutation({
     mutationFn: ({ frameId, tagId }: { frameId: number; tagId: number }) =>
       removeTagFromFrame(frameId, tagId),
@@ -87,7 +80,6 @@ export default function Timeline() {
   const frames = response?.data ?? []
   const pagination = response?.pagination
 
-  // 필터링된 프레임
   const filteredFrames = useMemo(() => {
     return frames.filter((frame) => {
       if (appFilter !== 'all' && frame.app_name !== appFilter) return false
@@ -99,19 +91,16 @@ export default function Timeline() {
     })
   }, [frames, appFilter, importanceFilter, tagFilter])
 
-  // 앱 목록 추출
   const appList = useMemo(() => {
     const apps = new Set(frames.map((f) => f.app_name))
     return Array.from(apps).sort()
   }, [frames])
 
-  // 프레임 선택
   const selectFrame = useCallback((frame: Frame, index: number) => {
     setSelectedFrame(frame)
     setSelectedIndex(index)
   }, [])
 
-  // 이전/다음 프레임 이동
   const goToPrev = useCallback(() => {
     if (selectedIndex > 0) {
       const newIndex = selectedIndex - 1
@@ -128,14 +117,12 @@ export default function Timeline() {
     }
   }, [selectedIndex, filteredFrames])
 
-  // 라이트박스 열기
   const openLightbox = useCallback(() => {
     if (selectedFrame?.image_url) {
       setLightboxOpen(true)
     }
   }, [selectedFrame])
 
-  // 키보드 단축키
   useKeyboardShortcuts({
     onEscape: () => {
       if (lightboxOpen) {
@@ -172,7 +159,7 @@ export default function Timeline() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
+      {/* UI note */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('timeline.title')}</h1>
@@ -184,10 +171,10 @@ export default function Timeline() {
         <DateRangePicker onRangeChange={handleRangeChange} />
       </div>
 
-      {/* 필터 + 뷰 모드 */}
+      {/* UI note */}
       <Card variant="default" padding="md">
         <div className="flex flex-wrap items-center gap-4">
-          {/* 앱 필터 */}
+          {/* UI note */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-slate-600 dark:text-slate-400">{t('timeline.app')}:</label>
             <Select
@@ -202,7 +189,7 @@ export default function Timeline() {
             </Select>
           </div>
 
-          {/* 중요도 필터 */}
+          {/* UI note */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-slate-600 dark:text-slate-400">{t('timeline.importance')}:</label>
             <Select
@@ -217,7 +204,7 @@ export default function Timeline() {
             </Select>
           </div>
 
-          {/* 태그 필터 */}
+          {/* UI note */}
           {allTags.length > 0 && (
             <div className="flex items-center gap-2">
               <label className="text-sm text-slate-600 dark:text-slate-400">{t('timeline.tag')}:</label>
@@ -234,7 +221,7 @@ export default function Timeline() {
             </div>
           )}
 
-          {/* 뷰 모드 토글 */}
+          {/* UI note */}
           <div className="flex items-center gap-1 ml-auto">
             <Button
               variant={viewMode === 'grid' ? 'primary' : 'secondary'}
@@ -258,7 +245,7 @@ export default function Timeline() {
             </Button>
           </div>
 
-          {/* 단축키 힌트 */}
+          {/* UI note */}
           <div className="hidden md:flex items-center text-xs text-slate-500 dark:text-slate-500">
             <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-600 rounded text-slate-700 dark:text-slate-300">← →</kbd>
             <span className="ml-1">{t('timeline.move')}</span>
@@ -269,7 +256,7 @@ export default function Timeline() {
         </div>
       </Card>
 
-      {/* 그리드 뷰 */}
+      {/* UI note */}
       {viewMode === 'grid' && (
         <Card variant="default" padding="md">
           <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
@@ -311,7 +298,7 @@ export default function Timeline() {
         </Card>
       )}
 
-      {/* 리스트 뷰 */}
+      {/* UI note */}
       {viewMode === 'list' && (
         <Card variant="default" padding="none">
           <div className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -332,7 +319,7 @@ export default function Timeline() {
                       : 'hover:bg-slate-200/50 dark:hover:bg-slate-700/50'
                   )}
                 >
-                  {/* 썸네일 */}
+                  {/* UI note */}
                   <div className="w-24 h-14 flex-shrink-0 bg-slate-200 dark:bg-slate-700 rounded overflow-hidden">
                     {frame.image_url ? (
                       <img
@@ -348,7 +335,7 @@ export default function Timeline() {
                     )}
                   </div>
 
-                  {/* 정보 */}
+                  {/* UI note */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-slate-900 dark:text-white truncate">
@@ -363,7 +350,7 @@ export default function Timeline() {
                     </p>
                   </div>
 
-                  {/* 시간 */}
+                  {/* UI note */}
                   <div className="text-right text-sm text-slate-500 dark:text-slate-500 flex-shrink-0">
                     <div>{formatDate(frame.timestamp)}</div>
                     <div>{formatTime(frame.timestamp)}</div>
@@ -380,7 +367,7 @@ export default function Timeline() {
         </Card>
       )}
 
-      {/* 페이지네이션 */}
+      {/* UI note */}
       {pagination && pagination.total > pageSize && (
         <div className="flex items-center justify-center space-x-4">
           <Button
@@ -403,11 +390,11 @@ export default function Timeline() {
         </div>
       )}
 
-      {/* 선택된 프레임 상세 */}
+      {/* UI note */}
       {selectedFrame && (
         <Card variant="default" padding="lg">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* 이미지 */}
+            {/* UI note */}
             <div
               className="aspect-video bg-slate-200 dark:bg-slate-900 rounded-lg overflow-hidden cursor-pointer group relative"
               onClick={openLightbox}
@@ -432,7 +419,7 @@ export default function Timeline() {
               )}
             </div>
 
-            {/* 메타데이터 */}
+            {/* UI note */}
             <div className="space-y-4">
               <div>
                 <CardTitle className="mb-2">{t('timeline.frameInfo')}</CardTitle>
@@ -471,11 +458,11 @@ export default function Timeline() {
                 </dl>
               </div>
 
-              {/* 태그 */}
+              {/* UI note */}
               <div>
                 <h4 className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">{t('timeline.tags')}</h4>
                 <div className="space-y-2">
-                  {/* 현재 태그 표시 */}
+                  {/* UI note */}
                   {selectedFrameTags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {selectedFrameTags.map((tag) => (
@@ -493,7 +480,7 @@ export default function Timeline() {
                       ))}
                     </div>
                   )}
-                  {/* 태그 추가 */}
+                  {/* UI note */}
                   <TagInput
                     selectedTags={selectedFrameTags}
                     onAddTag={(tag) => {
@@ -511,7 +498,7 @@ export default function Timeline() {
                 </div>
               </div>
 
-              {/* OCR 텍스트 */}
+              {/* UI note */}
               {selectedFrame.ocr_text && (
                 <div>
                   <h4 className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">{t('timeline.ocrText')}</h4>
@@ -521,7 +508,7 @@ export default function Timeline() {
                 </div>
               )}
 
-              {/* 네비게이션 버튼 */}
+              {/* UI note */}
               <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
                 <Button
                   variant="secondary"
@@ -552,7 +539,7 @@ export default function Timeline() {
         </Card>
       )}
 
-      {/* 라이트박스 */}
+      {/* UI note */}
       {lightboxOpen && selectedFrame?.image_url && (
         <Lightbox
           imageUrl={selectedFrame.image_url}

@@ -1,5 +1,4 @@
 /**
- * UI 컴포넌트 배럴 export
  */
 export { Button, type ButtonProps } from './Button'
 export { Card, CardHeader, CardTitle, CardContent, type CardProps } from './Card'

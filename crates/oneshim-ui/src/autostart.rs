@@ -1,10 +1,7 @@
-//! 자동 시작(Login Item) 관리 모듈.
 //!
 //! macOS: LaunchAgent plist
 //! Windows: Registry (HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run)
-//! Linux: XDG autostart (미구현)
 
-/// 자동 시작 상태 확인
 pub fn check_autostart_status() -> bool {
     #[cfg(target_os = "macos")]
     {
@@ -15,7 +12,6 @@ pub fn check_autostart_status() -> bool {
 
     #[cfg(target_os = "windows")]
     {
-        // Windows Registry 확인 (간단한 구현)
         false
     }
 
@@ -25,7 +21,6 @@ pub fn check_autostart_status() -> bool {
     }
 }
 
-/// 자동 시작 활성화
 pub fn enable_autostart() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -73,7 +68,6 @@ pub fn enable_autostart() -> Result<(), String> {
     }
 }
 
-/// 자동 시작 비활성화
 pub fn disable_autostart() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {

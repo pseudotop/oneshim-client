@@ -1,14 +1,18 @@
-// i18n 설정
+// i18n setup
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 
 import ko from './locales/ko.json'
 import en from './locales/en.json'
+import ja from './locales/ja.json'
+import zh from './locales/zh.json'
 
 const resources = {
   ko: { translation: ko },
   en: { translation: en },
+  ja: { translation: ja },
+  zh: { translation: zh },
 }
 
 i18n
@@ -17,7 +21,7 @@ i18n
   .init({
     resources,
     fallbackLng: 'en',
-    supportedLngs: ['ko', 'en'],
+    supportedLngs: ['ko', 'en', 'ja', 'zh'],
 
     detection: {
       order: ['localStorage'],
@@ -26,30 +30,36 @@ i18n
     },
 
     interpolation: {
-      escapeValue: false, // React에서 XSS 방지됨
+      escapeValue: false, // React handles escaping
     },
 
     react: {
-      useSuspense: false, // SSR 없이 사용
+      useSuspense: false, // Used without SSR
     },
   })
 
 export default i18n
 
-// 언어 변경 헬퍼
-export const changeLanguage = (lng: 'ko' | 'en') => {
+export type SupportedLanguageCode = 'ko' | 'en' | 'ja' | 'zh'
+
+// Language change helper
+export const changeLanguage = (lng: SupportedLanguageCode) => {
   i18n.changeLanguage(lng)
   localStorage.setItem('oneshim-language', lng)
 }
 
-// 현재 언어 가져오기
-export const getCurrentLanguage = (): 'ko' | 'en' => {
+// Get current language
+export const getCurrentLanguage = (): SupportedLanguageCode => {
   const lng = i18n.language
-  return lng === 'ko' ? 'ko' : 'en'
+  return (['ko', 'en', 'ja', 'zh'] as const).includes(lng as SupportedLanguageCode)
+    ? (lng as SupportedLanguageCode)
+    : 'en'
 }
 
-// 지원 언어 목록
+// Supported language list
 export const supportedLanguages = [
   { code: 'en', name: 'English' },
   { code: 'ko', name: '한국어' },
+  { code: 'ja', name: '日本語' },
+  { code: 'zh', name: '中文' },
 ] as const

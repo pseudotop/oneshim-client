@@ -1,33 +1,20 @@
-//! 제안 프레젠터.
 //!
-//! Suggestion → UI 표시용 데이터 변환.
 
 use oneshim_core::models::suggestion::{Priority, Suggestion, SuggestionType};
 
-/// UI 표시용 제안 데이터
 #[derive(Debug, Clone)]
 pub struct SuggestionView {
-    /// 제안 ID
     pub id: String,
-    /// 제목 (유형 기반)
     pub title: String,
-    /// 본문 (제안 내용)
     pub body: String,
-    /// 우선순위 라벨
     pub priority_label: String,
-    /// 우선순위 색상 (#RRGGBB)
     pub priority_color: String,
-    /// 유형 아이콘 이모지
     pub type_icon: String,
-    /// 신뢰도 텍스트
     pub confidence_text: String,
-    /// 실행 가능 여부
     pub is_actionable: bool,
-    /// 시간 텍스트 (상대)
     pub time_text: String,
 }
 
-/// Suggestion → SuggestionView 변환
 pub fn present(suggestion: &Suggestion) -> SuggestionView {
     SuggestionView {
         id: suggestion.suggestion_id.clone(),
@@ -42,7 +29,6 @@ pub fn present(suggestion: &Suggestion) -> SuggestionView {
     }
 }
 
-/// 여러 제안 일괄 변환
 pub fn present_all(suggestions: &[Suggestion]) -> Vec<SuggestionView> {
     suggestions.iter().map(present).collect()
 }
@@ -53,7 +39,7 @@ fn type_to_title(st: &SuggestionType) -> String {
         SuggestionType::EmailDraft => "이메일 초안".to_string(),
         SuggestionType::ProductivityTip => "생산성 팁".to_string(),
         SuggestionType::WorkflowOptimization => "워크플로우 최적화".to_string(),
-        SuggestionType::ContextBased => "컨텍스트 기반 제안".to_string(),
+        SuggestionType::ContextBased => "context 기반 suggestion".to_string(),
     }
 }
 
@@ -109,7 +95,7 @@ mod tests {
         Suggestion {
             suggestion_id: "sug_001".to_string(),
             suggestion_type: SuggestionType::WorkGuidance,
-            content: "테스트 제안".to_string(),
+            content: "test suggestion".to_string(),
             priority: Priority::High,
             confidence_score: 0.95,
             relevance_score: 0.88,

@@ -1,7 +1,5 @@
 /**
- * Select 컴포넌트
  *
- * 드롭다운 선택 UI
  */
 import { forwardRef } from 'react'
 import { cn } from '../../utils/cn'

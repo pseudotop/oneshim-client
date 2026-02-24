@@ -1,6 +1,4 @@
-//! 프로세스 및 활성 창 모니터링.
 //!
-//! `ProcessMonitor` 포트 구현.
 
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
@@ -12,13 +10,11 @@ use std::sync::Mutex;
 use sysinfo::System;
 use tracing::debug;
 
-/// 프로세스 추적기 — `ProcessMonitor` 포트 구현
 pub struct ProcessTracker {
     sys: Mutex<System>,
 }
 
 impl ProcessTracker {
-    /// 새 프로세스 추적기 생성
     pub fn new() -> Self {
         Self {
             sys: Mutex::new(System::new_all()),
@@ -35,7 +31,6 @@ impl Default for ProcessTracker {
 #[async_trait]
 impl ProcessMonitor for ProcessTracker {
     async fn get_active_window(&self) -> Result<Option<WindowInfo>, CoreError> {
-        // 플랫폼별 구현 호출
         #[cfg(target_os = "macos")]
         {
             crate::macos::get_active_window_macos()
@@ -50,7 +45,6 @@ impl ProcessMonitor for ProcessTracker {
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
-            // 기타 플랫폼: 미구현
             Ok(None)
         }
     }
@@ -59,7 +53,7 @@ impl ProcessMonitor for ProcessTracker {
         let mut sys = self
             .sys
             .lock()
-            .map_err(|e| CoreError::Internal(format!("시스템 잠금 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("시스템 잠금 failure: {e}")))?;
         sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
         let mut processes: Vec<ProcessInfo> = sys
@@ -73,7 +67,6 @@ impl ProcessMonitor for ProcessTracker {
             })
             .collect();
 
-        // CPU 사용률 기준 내림차순 정렬
         processes.sort_by(|a, b| {
             b.cpu_usage
                 .partial_cmp(&a.cpu_usage)
@@ -81,7 +74,7 @@ impl ProcessMonitor for ProcessTracker {
         });
         processes.truncate(limit);
 
-        debug!("상위 프로세스 {}개 수집", processes.len());
+        debug!("top {}items collect", processes.len());
         Ok(processes)
     }
 
@@ -93,7 +86,7 @@ impl ProcessMonitor for ProcessTracker {
         let mut sys = self
             .sys
             .lock()
-            .map_err(|e| CoreError::Internal(format!("시스템 잠금 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("시스템 잠금 failure: {e}")))?;
         sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
         let now = std::time::SystemTime::now()
@@ -101,7 +94,6 @@ impl ProcessMonitor for ProcessTracker {
             .unwrap_or_default()
             .as_secs();
 
-        // 모든 프로세스를 ProcessDetail로 변환
         let mut all_details: Vec<ProcessDetail> = sys
             .processes()
             .values()
@@ -114,10 +106,8 @@ impl ProcessMonitor for ProcessTracker {
                     0
                 };
 
-                // 실행 경로 익명화 (홈 디렉토리 마스킹)
                 let exe_path = p.exe().map(|path| {
                     let path_str = path.to_string_lossy().to_string();
-                    // 홈 디렉토리 패턴 마스킹
                     if path_str.contains("/Users/") {
                         path_str
                             .split("/Users/")
@@ -142,7 +132,7 @@ impl ProcessMonitor for ProcessTracker {
                     pid,
                     cpu_percent: p.cpu_usage(),
                     memory_mb: p.memory() as f64 / (1024.0 * 1024.0),
-                    window_count: 0, // 플랫폼별 API로 채워야 함
+                    window_count: 0, // filled by platform-specific window APIs
                     is_foreground: foreground_pid == Some(pid),
                     running_secs,
                     executable_path: exe_path,
@@ -150,18 +140,15 @@ impl ProcessMonitor for ProcessTracker {
             })
             .collect();
 
-        // CPU 사용률 기준 정렬
         all_details.sort_by(|a, b| {
             b.cpu_percent
                 .partial_cmp(&a.cpu_percent)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Foreground + Top N 선택 (중복 제거)
         let mut result: Vec<ProcessDetail> = Vec::with_capacity(top_n + 1);
         let mut seen_pids: HashSet<u32> = HashSet::new();
 
-        // Foreground 프로세스 우선 추가
         if let Some(fg_pid) = foreground_pid {
             if let Some(fg_detail) = all_details.iter().find(|d| d.pid == fg_pid) {
                 result.push(fg_detail.clone());
@@ -169,7 +156,6 @@ impl ProcessMonitor for ProcessTracker {
             }
         }
 
-        // Top N 추가 (중복 제외)
         for detail in all_details {
             if result.len() > top_n {
                 break;
@@ -181,7 +167,7 @@ impl ProcessMonitor for ProcessTracker {
         }
 
         debug!(
-            "상세 프로세스 {}개 수집 (foreground={:?})",
+            "상세 프로세스 {}개 collect (foreground={:?})",
             result.len(),
             foreground_pid
         );
@@ -198,7 +184,6 @@ mod tests {
         let tracker = ProcessTracker::new();
         let procs = tracker.get_top_processes(5).await.unwrap();
         assert!(procs.len() <= 5);
-        // 적어도 하나의 프로세스는 존재
         assert!(!procs.is_empty());
     }
 }

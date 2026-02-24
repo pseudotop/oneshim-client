@@ -1,4 +1,3 @@
-//! 이벤트 API 핸들러.
 
 use axum::extract::{Query, State};
 use axum::Json;
@@ -10,20 +9,13 @@ use crate::AppState;
 
 use super::{PaginatedResponse, PaginationMeta, TimeRangeQuery};
 
-/// 이벤트 응답 DTO
 #[derive(Debug, Serialize)]
 pub struct EventResponse {
-    /// 이벤트 ID
     pub event_id: String,
-    /// 이벤트 타입 (User, System, Context)
     pub event_type: String,
-    /// 타임스탬프 (RFC3339)
     pub timestamp: String,
-    /// 앱 이름
     pub app_name: Option<String>,
-    /// 창 제목
     pub window_title: Option<String>,
-    /// 이벤트 상세 데이터 (JSON)
     pub data: serde_json::Value,
 }
 
@@ -128,7 +120,6 @@ impl From<Event> for EventResponse {
     }
 }
 
-/// 이벤트 목록 조회 (페이지네이션)
 ///
 /// GET /api/events?from=&to=&limit=&offset=
 pub async fn get_events(
@@ -145,7 +136,6 @@ pub async fn get_events(
         .count_events_in_range(&from.to_rfc3339(), &to.to_rfc3339())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    // offset이 있으면 더 많이 가져와서 스킵
     let fetch_limit = limit + offset;
     let events = state.storage.get_events(from, to, fetch_limit).await?;
 

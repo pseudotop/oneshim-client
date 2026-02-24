@@ -1,10 +1,6 @@
-//! 자동 업데이트 모듈.
 //!
-//! GitHub Releases API를 통해 새 버전을 확인하고,
-//! 바이너리를 다운로드하여 자동으로 업데이트한다.
 
-#![allow(dead_code)] // UI 연동 전까지 일부 메서드/필드 미사용
-
+#![allow(dead_code)] // UI /
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use oneshim_core::config::UpdateConfig;
@@ -16,104 +12,76 @@ use std::path::PathBuf;
 use std::path::{Component, Path};
 use thiserror::Error;
 
-/// 현재 앱 버전 (Cargo.toml에서 가져옴)
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// 업데이트 관련 에러
 #[derive(Debug, Error)]
 pub enum UpdateError {
-    /// GitHub API 요청 실패
     #[error("GitHub API request failed: {0}")]
     ApiRequest(#[from] reqwest::Error),
 
-    /// API 응답 파싱 실패
     #[error("Failed to parse API response: {0}")]
     ParseResponse(String),
 
-    /// 버전 파싱 실패
     #[error("Failed to parse version: {0}")]
     VersionParse(#[from] semver::Error),
 
-    /// 다운로드 실패
     #[error("Download failed: {0}")]
     Download(String),
 
-    /// 설치 실패
     #[error("Installation failed: {0}")]
     Install(String),
 
-    /// 플랫폼 지원 안됨
     #[error("Unsupported platform: {0}")]
     UnsupportedPlatform(String),
 
-    /// 파일 시스템 에러
     #[error("Filesystem error: {0}")]
     Filesystem(#[from] std::io::Error),
 
-    /// 업데이트 비활성화
     #[error("Auto-update is disabled")]
     Disabled,
 
-    /// 최신 버전
     #[error("Already on latest version")]
     AlreadyLatest,
 
-    /// 릴리즈에 적합한 에셋 없음
     #[error("No suitable release asset found for current platform")]
     NoSuitableAsset,
 
-    /// 무결성 검증 실패
     #[error("Integrity verification failed: {0}")]
     Integrity(String),
 }
 
-/// GitHub Release 정보
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReleaseInfo {
-    /// 릴리즈 태그 (예: "v0.2.0")
     pub tag_name: String,
-    /// 릴리즈 이름
     pub name: Option<String>,
-    /// 릴리즈 본문 (변경 로그)
     pub body: Option<String>,
-    /// 사전 릴리즈 여부
     pub prerelease: bool,
-    /// 다운로드 가능한 에셋 목록
     pub assets: Vec<ReleaseAsset>,
     /// HTML URL
     pub html_url: String,
-    /// 게시 일시
     pub published_at: Option<String>,
 }
 
-/// GitHub Release 에셋
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReleaseAsset {
-    /// 에셋 이름 (예: "oneshim-macos-arm64.tar.gz")
     pub name: String,
-    /// 다운로드 URL
     pub browser_download_url: String,
-    /// 파일 크기 (바이트)
     pub size: u64,
     /// Content-Type
     pub content_type: String,
 }
 
-/// 업데이트 확인 결과
 #[derive(Debug)]
 pub enum UpdateCheckResult {
-    /// 새 버전 사용 가능
     Available {
         current: semver::Version,
         latest: semver::Version,
         release: Box<ReleaseInfo>,
         download_url: String,
     },
-    /// 이미 최신 버전
     UpToDate { current: semver::Version },
 }
 
-/// 자동 업데이트 관리자
 pub struct Updater {
     config: UpdateConfig,
     http_client: reqwest::Client,
@@ -127,7 +95,6 @@ impl Updater {
         "githubusercontent.com",
     ];
 
-    /// 새 Updater 인스턴스 생성
     pub fn new(config: UpdateConfig) -> Self {
         let http_client = reqwest::Client::builder()
             .user_agent(format!("oneshim/{}", CURRENT_VERSION))
@@ -140,7 +107,6 @@ impl Updater {
         }
     }
 
-    /// 커스텀 HTTP 클라이언트로 생성 (테스트용)
     #[cfg(test)]
     pub fn with_client(config: UpdateConfig, http_client: reqwest::Client) -> Self {
         Self {
@@ -149,7 +115,6 @@ impl Updater {
         }
     }
 
-    /// 커스텀 base URL로 업데이트 확인 (테스트용)
     #[cfg(test)]
     pub async fn check_for_updates_with_base_url(
         &self,
@@ -161,7 +126,6 @@ impl Updater {
 
         let current = semver::Version::parse(CURRENT_VERSION)?;
 
-        // GitHub Releases API 호출
         let url = format!(
             "{}/repos/{}/{}/releases/latest",
             base_url, self.config.repo_owner, self.config.repo_name
@@ -178,18 +142,15 @@ impl Updater {
 
         let release: ReleaseInfo = response.json().await?;
 
-        // 사전 릴리즈 필터링
         if release.prerelease && !self.config.include_prerelease {
             return Ok(UpdateCheckResult::UpToDate { current });
         }
 
-        // 버전 비교
         let latest_tag = release.tag_name.trim_start_matches('v');
         let latest = semver::Version::parse(latest_tag)?;
         self.enforce_version_floor(&latest)?;
 
         if latest > current {
-            // 플랫폼에 맞는 에셋 찾기
             let download_url = self.find_platform_asset(&release)?;
 
             Ok(UpdateCheckResult::Available {
@@ -203,7 +164,6 @@ impl Updater {
         }
     }
 
-    /// 새 버전 확인
     pub async fn check_for_updates(&self) -> Result<UpdateCheckResult, UpdateError> {
         if !self.config.enabled {
             return Err(UpdateError::Disabled);
@@ -211,7 +171,6 @@ impl Updater {
 
         let current = semver::Version::parse(CURRENT_VERSION)?;
 
-        // GitHub Releases API 호출
         let url = format!(
             "https://api.github.com/repos/{}/{}/releases/latest",
             self.config.repo_owner, self.config.repo_name
@@ -228,18 +187,15 @@ impl Updater {
 
         let release: ReleaseInfo = response.json().await?;
 
-        // 사전 릴리즈 필터링
         if release.prerelease && !self.config.include_prerelease {
             return Ok(UpdateCheckResult::UpToDate { current });
         }
 
-        // 버전 비교
         let latest_tag = release.tag_name.trim_start_matches('v');
         let latest = semver::Version::parse(latest_tag)?;
         self.enforce_version_floor(&latest)?;
 
         if latest > current {
-            // 플랫폼에 맞는 에셋 찾기
             let download_url = self.find_platform_asset(&release)?;
 
             Ok(UpdateCheckResult::Available {
@@ -253,7 +209,6 @@ impl Updater {
         }
     }
 
-    /// 현재 플랫폼에 맞는 에셋 찾기
     fn find_platform_asset(&self, release: &ReleaseInfo) -> Result<String, UpdateError> {
         let platform_patterns = Self::get_platform_patterns()?;
 
@@ -269,7 +224,6 @@ impl Updater {
         Err(UpdateError::NoSuitableAsset)
     }
 
-    /// 현재 플랫폼에 해당하는 에셋 이름 패턴
     fn get_platform_patterns() -> Result<Vec<&'static str>, UpdateError> {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
@@ -322,7 +276,6 @@ impl Updater {
         }
     }
 
-    /// 업데이트 다운로드
     pub async fn download_update(&self, download_url: &str) -> Result<PathBuf, UpdateError> {
         let validated_url = self.validate_download_url(download_url)?;
         tracing::info!("Starting update download: {}", validated_url);
@@ -650,10 +603,8 @@ impl Updater {
         }
     }
 
-    /// 업데이트 설치 및 재시작
     ///
     /// # Safety
-    /// 이 함수는 현재 실행 중인 바이너리를 교체하고 프로세스를 재시작한다.
     pub fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
         use self_update::self_replace;
 
@@ -669,7 +620,6 @@ impl Updater {
         )
     }
 
-    /// tar.gz 아카이브에서 바이너리 추출
     fn extract_tar_gz(&self, archive_path: &Path) -> Result<PathBuf, UpdateError> {
         use flate2::read::GzDecoder;
         use std::fs::File;
@@ -714,11 +664,9 @@ impl Updater {
             entry.unpack(&outpath)?;
         }
 
-        // 바이너리 파일 찾기
         self.find_binary_in_dir(extract_dir)
     }
 
-    /// zip 아카이브에서 바이너리 추출
     fn extract_zip(&self, archive_path: &Path) -> Result<PathBuf, UpdateError> {
         use std::fs::File;
 
@@ -764,7 +712,6 @@ impl Updater {
         self.find_binary_in_dir(extract_dir)
     }
 
-    /// 디렉토리에서 바이너리 파일 찾기
     fn find_binary_in_dir(&self, dir: &std::path::Path) -> Result<PathBuf, UpdateError> {
         let binary_name = if cfg!(windows) {
             "oneshim.exe"
@@ -772,13 +719,11 @@ impl Updater {
             "oneshim"
         };
 
-        // 직접 경로 확인
         let direct_path = dir.join(binary_name);
         if direct_path.exists() {
             return Ok(direct_path);
         }
 
-        // 서브 디렉토리 검색
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -798,7 +743,6 @@ impl Updater {
         )))
     }
 
-    /// 애플리케이션 재시작
     fn restart_app(&self) -> Result<(), UpdateError> {
         let current_exe = std::env::current_exe()?;
         let args: Vec<String> = std::env::args().skip(1).collect();
@@ -827,14 +771,12 @@ impl Updater {
         }
     }
 
-    /// 마지막 업데이트 확인 시간 저장/로드를 위한 경로
     pub fn last_check_path() -> PathBuf {
         directories::BaseDirs::new()
             .map(|d| d.cache_dir().join("oneshim").join("last_update_check"))
             .unwrap_or_else(|| PathBuf::from("/tmp/oneshim_last_update_check"))
     }
 
-    /// 마지막 업데이트 확인 시간 저장
     pub fn save_last_check_time(&self) -> Result<(), UpdateError> {
         let path = Self::last_check_path();
         if let Some(parent) = path.parent() {
@@ -845,7 +787,6 @@ impl Updater {
         Ok(())
     }
 
-    /// 업데이트 확인이 필요한지 판단
     pub fn should_check_for_updates(&self) -> bool {
         if !self.config.enabled {
             return false;
@@ -959,7 +900,6 @@ mod tests {
         let config = test_config();
         let updater = Updater::new(config);
 
-        // 현재 플랫폼에 맞는 에셋 이름 생성
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         let asset_name = "oneshim-macos-arm64.tar.gz";
         #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
@@ -993,7 +933,6 @@ mod tests {
 
         let result = updater.find_platform_asset(&release);
 
-        // 지원되는 플랫폼에서만 성공해야 함
         #[cfg(any(
             all(target_os = "macos", target_arch = "aarch64"),
             all(target_os = "macos", target_arch = "x86_64"),
@@ -1008,8 +947,6 @@ mod tests {
         let config = test_config();
         let updater = Updater::new(config);
 
-        // 마지막 체크 파일이 없으면 true
-        // (실제 환경에서는 파일이 있을 수 있으므로 로직만 테스트)
         assert!(updater.config.enabled);
     }
 
@@ -1050,7 +987,6 @@ mod tests {
     async fn check_for_updates_with_mock_api_available() {
         let mut server = mockito::Server::new_async().await;
 
-        // 현재 버전보다 높은 버전 반환
         let newer_version = "99.0.0";
 
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -1100,7 +1036,6 @@ mod tests {
 
         mock.assert_async().await;
 
-        // 지원되는 플랫폼에서만 Available 반환
         #[cfg(any(
             all(target_os = "macos", target_arch = "aarch64"),
             all(target_os = "macos", target_arch = "x86_64"),
@@ -1168,7 +1103,6 @@ mod tests {
 
         mock.assert_async().await;
 
-        // 사전 릴리즈는 필터링되어 UpToDate 반환
         assert!(matches!(result, Ok(UpdateCheckResult::UpToDate { .. })));
     }
 

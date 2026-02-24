@@ -1,7 +1,5 @@
 /**
- * 프라이버시 설정 섹션 컴포넌트
  *
- * 민감 앱 자동 제외, PII 필터 레벨, 제외 앱/패턴 설정
  */
 import { useTranslation } from 'react-i18next'
 import { Card, CardTitle, Input, Select } from '../../components/ui'

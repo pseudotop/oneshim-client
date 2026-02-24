@@ -1,21 +1,13 @@
-//! 상태바 뷰.
 
-/// 상태바 상태
 #[derive(Debug, Clone)]
 pub struct StatusBarState {
-    /// 연결 상태 아이콘
     pub connection_icon: ConnectionIcon,
-    /// 업로드 진행률 (0.0~1.0, None이면 숨김)
     pub upload_progress: Option<f32>,
-    /// 큐 대기 이벤트 수
     pub pending_events: usize,
-    /// SSE 지연 (밀리초)
     pub sse_latency_ms: Option<f64>,
-    /// 자동화 활성화 상태
     pub automation_enabled: bool,
 }
 
-/// 연결 상태 아이콘
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionIcon {
     Connected,

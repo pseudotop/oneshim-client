@@ -9,7 +9,6 @@ import { colors, dataViz } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
-/** 스파크라인 컴포넌트 (간단한 7일 트렌드) */
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   if (data.length === 0) return null
 
@@ -36,13 +35,11 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   )
 }
 
-/** 원형 게이지 컴포넌트 */
 function CircularGauge({ value, max = 100, size = 80 }: { value: number; max?: number; size?: number }) {
   const percentage = Math.min(value / max, 1)
   const circumference = 2 * Math.PI * 35
   const strokeDashoffset = circumference * (1 - percentage)
 
-  // 점수에 따른 색상
   const getColor = (score: number) => {
     if (score >= 70) return dataViz.stroke.good
     if (score >= 40) return dataViz.stroke.warning
@@ -53,7 +50,7 @@ function CircularGauge({ value, max = 100, size = 80 }: { value: number; max?: n
 
   return (
     <svg width={size} height={size} viewBox="0 0 80 80">
-      {/* 배경 원 */}
+      {/* UI note */}
       <circle
         cx="40"
         cy="40"
@@ -63,7 +60,7 @@ function CircularGauge({ value, max = 100, size = 80 }: { value: number; max?: n
         strokeWidth="6"
         className="text-slate-200 dark:text-slate-700"
       />
-      {/* 진행 원 */}
+      {/* UI note */}
       <circle
         cx="40"
         cy="40"
@@ -77,7 +74,7 @@ function CircularGauge({ value, max = 100, size = 80 }: { value: number; max?: n
         transform="rotate(-90 40 40)"
         className="transition-all duration-500"
       />
-      {/* 점수 텍스트 */}
+      {/* UI note */}
       <text
         x="40"
         y="40"
@@ -164,7 +161,7 @@ export default function FocusWidget() {
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-6">
-          {/* 집중도 점수 게이지 */}
+          {/* UI note */}
           <div className="flex flex-col items-center">
             <CircularGauge value={today.focus_score} />
             <span className={cn('text-xs mt-1', colors.text.tertiary)}>
@@ -172,9 +169,9 @@ export default function FocusWidget() {
             </span>
           </div>
 
-          {/* 메트릭 그리드 */}
+          {/* UI note */}
           <div className="flex-1 grid grid-cols-2 gap-3">
-            {/* 깊은 작업 시간 */}
+            {/* UI note */}
             <div className="flex items-center gap-2">
               <Clock className={cn('w-4 h-4', colors.accent.blue)} />
               <div>
@@ -187,7 +184,7 @@ export default function FocusWidget() {
               </div>
             </div>
 
-            {/* 소통 시간 */}
+            {/* UI note */}
             <div className="flex items-center gap-2">
               <MessageSquare className={cn('w-4 h-4', colors.accent.purple)} />
               <div>
@@ -200,7 +197,7 @@ export default function FocusWidget() {
               </div>
             </div>
 
-            {/* 중단 횟수 */}
+            {/* UI note */}
             <div className="flex items-center gap-2">
               <Zap className={cn('w-4 h-4', colors.accent.amber)} />
               <div>
@@ -213,7 +210,7 @@ export default function FocusWidget() {
               </div>
             </div>
 
-            {/* 트렌드 */}
+            {/* UI note */}
             <div className="flex items-center gap-2">
               {trend >= 0 ? (
                 <TrendingUp className={cn('w-4 h-4', colors.accent.green)} />
@@ -231,7 +228,7 @@ export default function FocusWidget() {
             </div>
           </div>
 
-          {/* 7일 스파크라인 */}
+          {/* UI note */}
           <div className="hidden lg:flex flex-col items-center">
             <Sparkline
               data={[...historyScores].reverse()}

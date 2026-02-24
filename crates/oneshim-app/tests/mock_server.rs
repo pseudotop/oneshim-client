@@ -1,7 +1,4 @@
-//! Mock 서버 모듈
 //!
-//! 클라이언트 통합 테스트를 위한 경량 mock 서버.
-//! Axum 기반으로 실제 서버 API를 모의합니다.
 
 use axum::{
     extract::State,
@@ -17,20 +14,14 @@ use std::sync::{atomic::AtomicU64, Arc};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
-/// Mock 서버 상태
 #[derive(Debug, Default)]
 pub struct MockServerState {
-    /// 수신된 요청 수
     pub request_count: AtomicU64,
-    /// 저장된 컨텍스트 (세션별)
     pub contexts: RwLock<HashMap<String, Vec<ContextUploadRecord>>>,
-    /// 활성 세션
     pub sessions: RwLock<HashMap<String, SessionInfo>>,
-    /// 발급된 토큰
     pub tokens: RwLock<HashMap<String, TokenInfo>>,
 }
 
-/// 컨텍스트 업로드 기록
 #[derive(Debug, Clone, Serialize)]
 pub struct ContextUploadRecord {
     pub timestamp: String,
@@ -38,7 +29,6 @@ pub struct ContextUploadRecord {
     pub window_title: String,
 }
 
-/// 세션 정보
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionInfo {
     pub session_id: String,
@@ -47,7 +37,6 @@ pub struct SessionInfo {
     pub created_at: String,
 }
 
-/// 토큰 정보
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TokenInfo {
@@ -55,20 +44,16 @@ pub struct TokenInfo {
     pub expires_at: i64,
 }
 
-/// 로그인 요청 (identifier 필드 지원, email은 하위 호환용)
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    /// 새 형식: identifier (email, username, phone)
     #[serde(alias = "email")]
     pub identifier: String,
     pub password: String,
-    /// 조직 ID (선택)
     #[serde(default)]
     pub organization_id: Option<String>,
 }
 
-/// 로그인 응답
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginResponse {
     pub access_token: String,
@@ -77,7 +62,6 @@ pub struct LoginResponse {
     pub expires_in: i64,
 }
 
-/// 세션 생성 요청
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SessionCreateRequest {
@@ -85,7 +69,6 @@ pub struct SessionCreateRequest {
     pub metadata: Option<HashMap<String, String>>,
 }
 
-/// 세션 생성 응답
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SessionCreateResponse {
     pub session_id: String,
@@ -94,7 +77,6 @@ pub struct SessionCreateResponse {
     pub permissions: Vec<String>,
 }
 
-/// 컨텍스트 업로드 요청 (실제 클라이언트 형식)
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ContextUploadRequest {
@@ -105,7 +87,6 @@ pub struct ContextUploadRequest {
     pub image: Option<serde_json::Value>,
 }
 
-/// 컨텍스트 메타데이터
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ContextMetadata {
@@ -117,27 +98,23 @@ pub struct ContextMetadata {
     pub importance: f32,
 }
 
-/// 배치 동기화 요청
 #[derive(Debug, Deserialize)]
 pub struct BatchSyncRequest {
     pub events: Vec<serde_json::Value>,
 }
 
-/// 배치 동기화 응답
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BatchSyncResponse {
     pub synced_count: usize,
     pub failed_count: usize,
 }
 
-/// 헬스체크 응답
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub status: String,
     pub session_active: bool,
 }
 
-/// Mock 서버 핸들
 pub struct MockServer {
     pub addr: String,
     pub port: u16,
@@ -146,36 +123,32 @@ pub struct MockServer {
 }
 
 impl MockServer {
-    /// 새 mock 서버 시작
     pub async fn start() -> Self {
-        Self::start_on_port(0).await // 0 = 자동 포트 할당
+        Self::start_on_port(0).await // 0 = random port
     }
 
-    /// 지정 포트에서 mock 서버 시작
     pub async fn start_on_port(port: u16) -> Self {
         let state = Arc::new(MockServerState::default());
         let app = create_router(state.clone());
 
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
             .await
-            .expect("포트 바인딩 실패");
+            .expect("port 바인딩 failure");
 
         let local_addr = listener.local_addr().unwrap();
         let actual_port = local_addr.port();
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
-        // 서버 태스크 시작
         tokio::spawn(async move {
             axum::serve(listener, app)
                 .with_graceful_shutdown(async {
                     let _ = shutdown_rx.await;
                 })
                 .await
-                .expect("서버 실행 실패");
+                .expect("server execution failure");
         });
 
-        // 서버 시작 대기
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
         Self {
@@ -186,24 +159,20 @@ impl MockServer {
         }
     }
 
-    /// 서버 주소 반환
     pub fn url(&self) -> &str {
         &self.addr
     }
 
-    /// 요청 수 조회
     pub fn request_count(&self) -> u64 {
         self.state
             .request_count
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    /// 저장된 컨텍스트 수 조회
     pub fn context_count(&self) -> usize {
         self.state.contexts.read().values().map(|v| v.len()).sum()
     }
 
-    /// 활성 세션 수 조회
     pub fn session_count(&self) -> usize {
         self.state.sessions.read().len()
     }
@@ -217,30 +186,22 @@ impl Drop for MockServer {
     }
 }
 
-/// 라우터 생성
 fn create_router(state: Arc<MockServerState>) -> Router {
     Router::new()
-        // ==================== REST 표준 경로 ====================
-        // 인증
-        .route("/api/v1/auth/tokens", post(handle_login)) // 로그인
-        .route("/api/v1/auth/tokens/refresh", post(handle_refresh)) // 토큰 갱신
-        // 세션
+        .route("/api/v1/auth/tokens", post(handle_login)) // login
+        .route("/api/v1/auth/tokens/refresh", post(handle_refresh)) // token refresh
         .route("/user_context/sessions/", post(handle_create_session))
         .route(
             "/user_context/sessions/:session_id/heartbeat",
             post(handle_health),
         )
-        // 컨텍스트
         .route("/user_context/contexts", post(handle_context_upload))
         .route("/user_context/batches", post(handle_batch_sync))
-        // 피드백
         .route("/user_context/suggestions/feedback", post(handle_feedback))
-        // SSE 스트림 (제안)
         .route("/user_context/suggestions/stream", get(handle_sse_stream))
         .with_state(state)
 }
 
-/// 로그인 핸들러
 async fn handle_login(
     State(state): State<Arc<MockServerState>>,
     Json(req): Json<LoginRequest>,
@@ -249,7 +210,6 @@ async fn handle_login(
         .request_count
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    // 간단한 검증
     if req.identifier.is_empty() || req.password.is_empty() {
         return (
             StatusCode::UNAUTHORIZED,
@@ -261,7 +221,6 @@ async fn handle_login(
     let access_token = format!("mock_access_{}", uuid::Uuid::new_v4());
     let refresh_token = format!("mock_refresh_{}", uuid::Uuid::new_v4());
 
-    // 토큰 저장
     state.tokens.write().insert(
         access_token.clone(),
         TokenInfo {
@@ -279,7 +238,6 @@ async fn handle_login(
     .into_response()
 }
 
-/// 토큰 갱신 핸들러
 async fn handle_refresh(State(state): State<Arc<MockServerState>>) -> impl IntoResponse {
     state
         .request_count
@@ -295,7 +253,6 @@ async fn handle_refresh(State(state): State<Arc<MockServerState>>) -> impl IntoR
     })
 }
 
-/// 세션 생성 핸들러
 async fn handle_create_session(
     State(state): State<Arc<MockServerState>>,
     Json(req): Json<SessionCreateRequest>,
@@ -324,7 +281,6 @@ async fn handle_create_session(
     })
 }
 
-/// 헬스체크 핸들러
 async fn handle_health(State(state): State<Arc<MockServerState>>) -> impl IntoResponse {
     state
         .request_count
@@ -336,7 +292,6 @@ async fn handle_health(State(state): State<Arc<MockServerState>>) -> impl IntoRe
     })
 }
 
-/// 컨텍스트 업로드 핸들러
 async fn handle_context_upload(
     State(state): State<Arc<MockServerState>>,
     Json(req): Json<ContextUploadRequest>,
@@ -351,7 +306,6 @@ async fn handle_context_upload(
         window_title: req.metadata.window_title,
     };
 
-    // 세션 ID로 저장
     state
         .contexts
         .write()
@@ -365,7 +319,6 @@ async fn handle_context_upload(
     )
 }
 
-/// 배치 동기화 핸들러
 async fn handle_batch_sync(
     State(state): State<Arc<MockServerState>>,
     Json(req): Json<BatchSyncRequest>,
@@ -382,7 +335,6 @@ async fn handle_batch_sync(
     })
 }
 
-/// 피드백 핸들러
 async fn handle_feedback(State(state): State<Arc<MockServerState>>) -> impl IntoResponse {
     state
         .request_count
@@ -391,13 +343,11 @@ async fn handle_feedback(State(state): State<Arc<MockServerState>>) -> impl Into
     Json(serde_json::json!({"status": "ok"}))
 }
 
-/// SSE 스트림 핸들러
 async fn handle_sse_stream(State(state): State<Arc<MockServerState>>) -> impl IntoResponse {
     state
         .request_count
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    // SSE 응답 (간단한 ping만 전송)
     let body = "event: ping\ndata: {\"type\":\"ping\"}\n\n";
 
     (
@@ -541,7 +491,6 @@ mod tests {
 
         let client = reqwest::Client::new();
 
-        // 3개 요청 (heartbeat 엔드포인트)
         let _ = client
             .post(format!(
                 "{}/user_context/sessions/s1/heartbeat",

@@ -1,15 +1,10 @@
-//! 자동 시작(로그인 시 실행) 관리.
 //!
 //! - macOS: `~/Library/LaunchAgents/com.oneshim.agent.plist`
-//! - Windows: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 레지스트리
-//! - 미지원 플랫폼: no-op (warning 로그)
 
 #![allow(dead_code)]
 
-/// 앱 식별자
 const APP_LABEL: &str = "com.oneshim.agent";
 
-/// 자동 시작 활성화
 pub fn enable_autostart() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -23,12 +18,11 @@ pub fn enable_autostart() -> Result<(), String> {
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        tracing::warn!("자동 시작: 현재 플랫폼 미지원");
+        tracing::warn!("auto-start: current");
         Ok(())
     }
 }
 
-/// 자동 시작 비활성화
 pub fn disable_autostart() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -42,12 +36,11 @@ pub fn disable_autostart() -> Result<(), String> {
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        tracing::warn!("자동 시작 비활성화: 현재 플랫폼 미지원");
+        tracing::warn!("auto-start disabled: current");
         Ok(())
     }
 }
 
-/// 자동 시작 상태 확인
 pub fn is_autostart_enabled() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
@@ -61,12 +54,11 @@ pub fn is_autostart_enabled() -> Result<bool, String> {
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        tracing::warn!("자동 시작 확인: 현재 플랫폼 미지원");
+        tracing::warn!("auto-start check: current");
         Ok(false)
     }
 }
 
-// ── macOS LaunchAgent 구현 ──
 
 #[cfg(target_os = "macos")]
 mod macos {
@@ -75,23 +67,20 @@ mod macos {
     use std::path::PathBuf;
     use std::process::Command;
 
-    /// LaunchAgents 디렉토리 내 plist 경로
     pub fn plist_path() -> Result<PathBuf, String> {
-        let home = std::env::var("HOME").map_err(|_| "HOME 환경변수 없음".to_string())?;
+        let home = std::env::var("HOME").map_err(|_| "HOME 환경변수 none".to_string())?;
         Ok(PathBuf::from(home)
             .join("Library")
             .join("LaunchAgents")
             .join(format!("{APP_LABEL}.plist")))
     }
 
-    /// 현재 바이너리 경로
     fn binary_path() -> Result<String, String> {
         std::env::current_exe()
             .map(|p| p.to_string_lossy().to_string())
-            .map_err(|e| format!("바이너리 경로 확인 실패: {e}"))
+            .map_err(|e| format!("바이너리 path 확인 failure: {e}"))
     }
 
-    /// plist XML 생성
     pub fn generate_plist(program_path: &str) -> String {
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -123,19 +112,18 @@ mod macos {
         let bin = binary_path()?;
         let plist_content = generate_plist(&bin);
 
-        // LaunchAgents 디렉토리 생성 (없으면)
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e| format!("LaunchAgents 디렉토리 생성 실패: {e}"))?;
+                .map_err(|e| format!("LaunchAgents 디렉토리 create failure: {e}"))?;
         }
 
-        fs::write(&path, plist_content).map_err(|e| format!("plist 파일 작성 실패: {e}"))?;
+        fs::write(&path, plist_content).map_err(|e| format!("plist file 작성 failure: {e}"))?;
 
         // launchctl load
         Command::new("launchctl")
             .args(["load", &path.to_string_lossy()])
             .output()
-            .map_err(|e| format!("launchctl load 실패: {e}"))?;
+            .map_err(|e| format!("launchctl load failure: {e}"))?;
 
         Ok(())
     }
@@ -149,7 +137,7 @@ mod macos {
                 .args(["unload", &path.to_string_lossy()])
                 .output();
 
-            fs::remove_file(&path).map_err(|e| format!("plist 삭제 실패: {e}"))?;
+            fs::remove_file(&path).map_err(|e| format!("plist delete failure: {e}"))?;
         }
 
         Ok(())
@@ -161,7 +149,6 @@ mod macos {
     }
 }
 
-// ── Windows 레지스트리 구현 ──
 
 #[cfg(target_os = "windows")]
 mod windows {
@@ -176,7 +163,6 @@ mod windows {
     const SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
     const VALUE_NAME: &str = "ONESHIM";
 
-    /// UTF-16 문자열로 변환 (null-terminated)
     fn to_wide(s: &str) -> Vec<u16> {
         OsStr::new(s)
             .encode_wide()
@@ -185,7 +171,7 @@ mod windows {
     }
 
     pub fn enable() -> Result<(), String> {
-        let exe = std::env::current_exe().map_err(|e| format!("바이너리 경로 확인 실패: {e}"))?;
+        let exe = std::env::current_exe().map_err(|e| format!("바이너리 path 확인 failure: {e}"))?;
         let exe_str = exe.to_string_lossy();
         let exe_wide = to_wide(&exe_str);
 
@@ -202,7 +188,7 @@ mod windows {
                 &mut hkey,
             );
             if result != 0 {
-                return Err(format!("레지스트리 열기 실패: 코드 {result}"));
+                return Err(format!("레지스트리 열기 failure: 코드 {result}"));
             }
 
             let byte_len = (exe_wide.len() * 2) as u32;
@@ -217,7 +203,7 @@ mod windows {
             RegCloseKey(hkey);
 
             if result != 0 {
-                return Err(format!("레지스트리 값 설정 실패: 코드 {result}"));
+                return Err(format!("레지스트리 값 설정 failure: 코드 {result}"));
             }
         }
 
@@ -238,7 +224,6 @@ mod windows {
                 &mut hkey,
             );
             if result != 0 {
-                // 키가 없으면 이미 비활성화된 것
                 return Ok(());
             }
 
@@ -320,9 +305,6 @@ mod tests {
 
     #[test]
     fn enable_disable_roundtrip_unsupported_platform() {
-        // macOS/Windows에서는 실제 시스템 변경이 일어나므로
-        // 미지원 플랫폼 코드 경로를 항상 테스트 가능하도록 검증
-        // 이 테스트는 함수 시그니처와 반환 타입 검증용
         let _ = enable_autostart();
         let _ = disable_autostart();
         let _ = is_autostart_enabled();

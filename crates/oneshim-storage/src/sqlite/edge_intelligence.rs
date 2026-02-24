@@ -1,6 +1,4 @@
-//! Edge Intelligence 저장소 메서드 (V6 스키마).
 //!
-//! 작업 세션, 인터럽션, 집중도 메트릭, 로컬 제안 관련 스토리지.
 
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
@@ -15,10 +13,8 @@ use super::{
 
 impl SqliteStorage {
     // --------------------------------------------------------
-    // 작업 세션
     // --------------------------------------------------------
 
-    /// 새 작업 세션 시작
     pub fn start_work_session(
         &self,
         primary_app: &str,
@@ -27,7 +23,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let now = Utc::now();
         let category_str = format!("{:?}", category);
@@ -37,11 +33,11 @@ impl SqliteStorage {
              VALUES (?1, ?2, ?3, 'active')",
             rusqlite::params![now.to_rfc3339(), primary_app, category_str],
         )
-        .map_err(|e| CoreError::Internal(format!("작업 세션 시작 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("작업 session started failure: {e}")))?;
 
         let id = conn.last_insert_rowid();
         debug!(
-            "작업 세션 시작: id={}, app={}, category={:?}",
+            "작업 session started: id={}, app={}, category={:?}",
             id, primary_app, category
         );
 
@@ -58,12 +54,11 @@ impl SqliteStorage {
         })
     }
 
-    /// 진행 중인 작업 세션 조회
     pub fn get_active_work_session(&self) -> Result<Option<WorkSession>, CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let result = conn.query_row(
             "SELECT id, started_at, primary_app, category, interruption_count, deep_work_secs, duration_secs
@@ -111,24 +106,20 @@ impl SqliteStorage {
                 }))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::Internal(format!("작업 세션 조회 실패: {e}"))),
+            Err(e) => Err(CoreError::Internal(format!("작업 session query failure: {e}"))),
         }
     }
 
-    /// 작업 세션 종료
     ///
-    /// RETURNING clause로 SELECT+UPDATE를 1개 쿼리로 최적화 (N+1 제거)
     pub fn end_work_session(&self, session_id: i64) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let now = Utc::now();
         let now_str = now.to_rfc3339();
 
-        // RETURNING clause로 duration_secs를 한 번에 계산 + 반환
-        // julianday 차이 * 86400 = 초 단위 기간
         let duration_secs: i64 = conn
             .query_row(
                 "UPDATE work_sessions
@@ -140,55 +131,49 @@ impl SqliteStorage {
                 rusqlite::params![now_str, session_id],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("작업 세션 종료 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("작업 session ended failure: {e}")))?;
 
         debug!(
-            "작업 세션 종료: id={}, duration={}초",
+            "작업 session ended: id={}, duration={}초",
             session_id, duration_secs
         );
         Ok(())
     }
 
-    /// 작업 세션 인터럽션 카운트 증가
     pub fn increment_work_session_interruption(&self, session_id: i64) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE work_sessions SET interruption_count = interruption_count + 1 WHERE id = ?1",
             rusqlite::params![session_id],
         )
-        .map_err(|e| CoreError::Internal(format!("인터럽션 카운트 증가 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("인터럽션 카운트 증가 failure: {e}")))?;
 
         Ok(())
     }
 
-    /// 작업 세션 deep_work_secs 누적
     pub fn add_deep_work_secs(&self, session_id: i64, secs: u64) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE work_sessions SET deep_work_secs = deep_work_secs + ?1 WHERE id = ?2",
             rusqlite::params![secs as i64, session_id],
         )
-        .map_err(|e| CoreError::Internal(format!("deep_work_secs 증가 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("deep_work_secs 증가 failure: {e}")))?;
 
         Ok(())
     }
 
     // --------------------------------------------------------
-    // 작업 세션 집계 쿼리
     // --------------------------------------------------------
 
-    /// 날짜 범위 내 앱별 작업시간 집계
     ///
-    /// work_sessions 테이블에서 completed 세션의 duration_secs를 앱별로 합산.
-    /// 반환: Vec<(app_name, total_duration_secs)>
     pub fn get_app_durations_by_date(
         &self,
         from: &str,
@@ -197,7 +182,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -208,23 +193,20 @@ impl SqliteStorage {
                  GROUP BY primary_app
                  ORDER BY total_secs DESC",
             )
-            .map_err(|e| CoreError::Internal(format!("SQL 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("SQL 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 failure: {e}")))?;
 
         let result: Vec<_> = rows.flatten().collect();
 
         Ok(result)
     }
 
-    /// 날짜 범위 내 일별 총 활동시간 집계
     ///
-    /// work_sessions 테이블에서 completed 세션의 duration_secs를 날짜별로 합산.
-    /// 반환: Vec<(date_str, total_active_secs)>
     pub fn get_daily_active_secs(
         &self,
         from: &str,
@@ -233,7 +215,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -244,13 +226,13 @@ impl SqliteStorage {
                  GROUP BY day
                  ORDER BY day",
             )
-            .map_err(|e| CoreError::Internal(format!("SQL 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("SQL 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 failure: {e}")))?;
 
         let result: Vec<_> = rows.flatten().collect();
 
@@ -258,15 +240,13 @@ impl SqliteStorage {
     }
 
     // --------------------------------------------------------
-    // 인터럽션
     // --------------------------------------------------------
 
-    /// 인터럽션 기록
     pub fn record_interruption(&self, interruption: &Interruption) -> Result<i64, CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "INSERT INTO interruptions (interrupted_at, from_app, from_category, to_app, to_category, snapshot_frame_id)
@@ -280,17 +260,16 @@ impl SqliteStorage {
                 interruption.snapshot_frame_id,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("인터럽션 기록 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("인터럽션 record failure: {e}")))?;
 
         let id = conn.last_insert_rowid();
         debug!(
-            "인터럽션 기록: {} → {}",
+            "인터럽션 record: {} → {}",
             interruption.from_app, interruption.to_app
         );
         Ok(id)
     }
 
-    /// 인터럽션 복귀 기록
     pub fn record_interruption_resume(
         &self,
         interruption_id: i64,
@@ -299,23 +278,22 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE interruptions SET resumed_at = ?1, resumed_to_app = ?2 WHERE id = ?3",
             rusqlite::params![Utc::now().to_rfc3339(), resumed_to_app, interruption_id],
         )
-        .map_err(|e| CoreError::Internal(format!("인터럽션 복귀 기록 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("인터럽션 복귀 record failure: {e}")))?;
 
         Ok(())
     }
 
-    /// 최근 미복귀 인터럽션 조회
     pub fn get_pending_interruption(&self) -> Result<Option<Interruption>, CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let result = conn.query_row(
             "SELECT id, interrupted_at, from_app, from_category, to_app, to_category, snapshot_frame_id
@@ -362,28 +340,24 @@ impl SqliteStorage {
                 }))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::Internal(format!("인터럽션 조회 실패: {e}"))),
+            Err(e) => Err(CoreError::Internal(format!("인터럽션 query failure: {e}"))),
         }
     }
 
     // --------------------------------------------------------
-    // 집중도 메트릭
     // --------------------------------------------------------
 
-    /// 오늘 집중도 메트릭 조회 또는 생성
     pub fn get_or_create_today_focus_metrics(&self) -> Result<FocusMetrics, CoreError> {
         let today = Utc::now().format("%Y-%m-%d").to_string();
         self.get_or_create_focus_metrics(&today)
     }
 
-    /// 특정 날짜 집중도 메트릭 조회 또는 생성
     pub fn get_or_create_focus_metrics(&self, date: &str) -> Result<FocusMetrics, CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
-        // 먼저 존재 여부 확인
         let result = conn.query_row(
             "SELECT total_active_secs, deep_work_secs, communication_secs, context_switches,
                     interruption_count, avg_focus_duration_secs, max_focus_duration_secs, focus_score
@@ -403,7 +377,6 @@ impl SqliteStorage {
             },
         );
 
-        // 날짜 파싱해서 period_start/end 설정
         let (period_start, period_end) = Self::date_to_period_range(date);
 
         match result {
@@ -429,20 +402,18 @@ impl SqliteStorage {
                 focus_score,
             }),
             Err(rusqlite::Error::QueryReturnedNoRows) => {
-                // 없으면 새로 생성
                 conn.execute(
                     "INSERT INTO focus_metrics (date) VALUES (?1)",
                     rusqlite::params![date],
                 )
-                .map_err(|e| CoreError::Internal(format!("집중도 메트릭 생성 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("집중도 메트릭 create failure: {e}")))?;
 
                 Ok(FocusMetrics::new(period_start, period_end))
             }
-            Err(e) => Err(CoreError::Internal(format!("집중도 메트릭 조회 실패: {e}"))),
+            Err(e) => Err(CoreError::Internal(format!("집중도 메트릭 query failure: {e}"))),
         }
     }
 
-    /// 집중도 메트릭 업데이트
     pub fn update_focus_metrics(
         &self,
         date: &str,
@@ -451,7 +422,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE focus_metrics SET
@@ -477,16 +448,15 @@ impl SqliteStorage {
                 date,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("집중도 메트릭 업데이트 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("집중도 메트릭 update failure: {e}")))?;
 
         debug!(
-            "집중도 메트릭 업데이트: date={}, score={:.2}",
+            "집중도 메트릭 update: date={}, score={:.2}",
             date, metrics.focus_score
         );
         Ok(())
     }
 
-    /// 집중도 메트릭 증분 업데이트
     pub fn increment_focus_metrics(
         &self,
         date: &str,
@@ -496,13 +466,12 @@ impl SqliteStorage {
         context_switches: u32,
         interruption_count: u32,
     ) -> Result<(), CoreError> {
-        // 먼저 레코드가 존재하는지 확인 (없으면 생성)
         let _ = self.get_or_create_focus_metrics(date)?;
 
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE focus_metrics SET
@@ -522,12 +491,11 @@ impl SqliteStorage {
                 date,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("집중도 메트릭 증분 업데이트 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("집중도 메트릭 증분 update failure: {e}")))?;
 
         Ok(())
     }
 
-    /// 최근 N일 집중도 메트릭 조회
     pub fn get_recent_focus_metrics(
         &self,
         days: usize,
@@ -535,7 +503,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -543,7 +511,7 @@ impl SqliteStorage {
                         interruption_count, avg_focus_duration_secs, max_focus_duration_secs, focus_score
                  FROM focus_metrics ORDER BY date DESC LIMIT ?1",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![days as i64], |row| {
@@ -559,7 +527,7 @@ impl SqliteStorage {
                     row.get::<_, f32>(8)?,
                 ))
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut results = Vec::new();
         for row in rows {
@@ -573,7 +541,7 @@ impl SqliteStorage {
                 avg_focus_duration_secs,
                 max_focus_duration_secs,
                 focus_score,
-            ) = row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?;
+            ) = row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?;
 
             let (period_start, period_end) = Self::date_to_period_range(&date);
 
@@ -606,7 +574,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -617,7 +585,7 @@ impl SqliteStorage {
                  ORDER BY started_at DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to, limit as i64], |row| {
@@ -633,11 +601,11 @@ impl SqliteStorage {
                     duration_secs: row.get(8)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }
@@ -651,7 +619,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -665,7 +633,7 @@ impl SqliteStorage {
                  ORDER BY interrupted_at DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to, limit as i64], |row| {
@@ -681,11 +649,11 @@ impl SqliteStorage {
                     duration_secs: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }
@@ -698,7 +666,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -708,7 +676,7 @@ impl SqliteStorage {
                  ORDER BY created_at DESC
                  LIMIT ?2",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![cutoff, limit as i64], |row| {
@@ -726,25 +694,23 @@ impl SqliteStorage {
                     acted_at: row.get(6)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }
 
     // --------------------------------------------------------
-    // 로컬 제안
     // --------------------------------------------------------
 
-    /// 로컬 제안 저장
     pub fn save_local_suggestion(&self, suggestion: &LocalSuggestion) -> Result<i64, CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let (suggestion_type, payload) = Self::serialize_suggestion(suggestion);
 
@@ -752,66 +718,61 @@ impl SqliteStorage {
             "INSERT INTO local_suggestions (suggestion_type, payload) VALUES (?1, ?2)",
             rusqlite::params![suggestion_type, payload],
         )
-        .map_err(|e| CoreError::Internal(format!("로컬 제안 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("로컬 suggestion save failure: {e}")))?;
 
         let id = conn.last_insert_rowid();
-        debug!("로컬 제안 저장: id={}, type={}", id, suggestion_type);
+        debug!("suggestion save: id={}, type={}", id, suggestion_type);
         Ok(id)
     }
 
-    /// 로컬 제안 표시 완료 기록
     pub fn mark_suggestion_shown(&self, suggestion_id: i64) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET shown_at = datetime('now') WHERE id = ?1",
             rusqlite::params![suggestion_id],
         )
-        .map_err(|e| CoreError::Internal(format!("제안 표시 기록 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("suggestion display record failure: {e}")))?;
 
         Ok(())
     }
 
-    /// 로컬 제안 무시 기록
     pub fn mark_suggestion_dismissed(&self, suggestion_id: i64) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET dismissed_at = datetime('now') WHERE id = ?1",
             rusqlite::params![suggestion_id],
         )
-        .map_err(|e| CoreError::Internal(format!("제안 무시 기록 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("suggestion 무시 record failure: {e}")))?;
 
         Ok(())
     }
 
-    /// 로컬 제안 실행 기록
     pub fn mark_suggestion_acted(&self, suggestion_id: i64) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET acted_at = datetime('now') WHERE id = ?1",
             rusqlite::params![suggestion_id],
         )
-        .map_err(|e| CoreError::Internal(format!("제안 실행 기록 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("suggestion execution record failure: {e}")))?;
 
         Ok(())
     }
 
     // --------------------------------------------------------
-    // 유틸리티
     // --------------------------------------------------------
 
-    /// 날짜 문자열(YYYY-MM-DD)을 해당 날짜의 시작과 끝 DateTime으로 변환
     pub(super) fn date_to_period_range(date: &str) -> (DateTime<Utc>, DateTime<Utc>) {
         use chrono::NaiveDate;
 
@@ -826,7 +787,6 @@ impl SqliteStorage {
                 .unwrap_or_else(Utc::now);
             (start, end)
         } else {
-            // 파싱 실패 시 현재 날짜 사용
             let now = Utc::now();
             let start = now
                 .date_naive()
@@ -842,7 +802,6 @@ impl SqliteStorage {
         }
     }
 
-    /// 카테고리 문자열 파싱
     pub(crate) fn parse_app_category(s: &str) -> AppCategory {
         match s {
             "Communication" => AppCategory::Communication,
@@ -856,7 +815,6 @@ impl SqliteStorage {
         }
     }
 
-    /// 제안 직렬화
     fn serialize_suggestion(suggestion: &LocalSuggestion) -> (String, String) {
         match suggestion {
             LocalSuggestion::NeedFocusTime {

@@ -1,6 +1,4 @@
-//! 백업/복원 API 핸들러.
 //!
-//! 설정, 태그, 프레임 메타데이터를 JSON 아카이브로 백업/복원합니다.
 
 use axum::{
     extract::{Query, State},
@@ -13,19 +11,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{error::ApiError, AppState};
 
-/// 백업 쿼리 파라미터
 #[derive(Debug, Deserialize)]
 pub struct BackupQuery {
-    /// 설정 포함 여부 (기본: true)
     #[serde(default = "default_true")]
     pub include_settings: bool,
-    /// 태그 포함 여부 (기본: true)
     #[serde(default = "default_true")]
     pub include_tags: bool,
-    /// 이벤트 포함 여부 (기본: false)
     #[serde(default)]
     pub include_events: bool,
-    /// 프레임 메타데이터 포함 여부 (기본: false)
     #[serde(default)]
     pub include_frames: bool,
 }
@@ -34,20 +27,14 @@ fn default_true() -> bool {
     true
 }
 
-/// 백업 메타데이터
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BackupMetadata {
-    /// 백업 버전
     pub version: String,
-    /// 생성 시각
     pub created_at: String,
-    /// 앱 버전
     pub app_version: String,
-    /// 포함된 데이터 유형
     pub includes: BackupIncludes,
 }
 
-/// 백업 포함 여부
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BackupIncludes {
     pub settings: bool,
@@ -56,7 +43,6 @@ pub struct BackupIncludes {
     pub frames: bool,
 }
 
-/// 태그 백업 레코드
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TagBackup {
     pub id: i64,
@@ -65,7 +51,6 @@ pub struct TagBackup {
     pub created_at: String,
 }
 
-/// 프레임-태그 연결 백업
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FrameTagBackup {
     pub frame_id: i64,
@@ -73,7 +58,6 @@ pub struct FrameTagBackup {
     pub created_at: String,
 }
 
-/// 설정 백업
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SettingsBackup {
     pub capture_enabled: bool,
@@ -87,7 +71,6 @@ pub struct SettingsBackup {
     pub high_usage_threshold_percent: u8,
 }
 
-/// 이벤트 백업 레코드
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EventBackup {
     pub event_id: String,
@@ -97,7 +80,6 @@ pub struct EventBackup {
     pub window_title: Option<String>,
 }
 
-/// 프레임 메타데이터 백업 (이미지 제외)
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FrameBackup {
     pub id: i64,
@@ -111,7 +93,6 @@ pub struct FrameBackup {
     pub ocr_text: Option<String>,
 }
 
-/// 전체 백업 아카이브
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BackupArchive {
     pub metadata: BackupMetadata,
@@ -127,7 +108,6 @@ pub struct BackupArchive {
     pub frames: Option<Vec<FrameBackup>>,
 }
 
-/// 복원 결과
 #[derive(Debug, Serialize)]
 pub struct RestoreResult {
     pub success: bool,
@@ -135,7 +115,6 @@ pub struct RestoreResult {
     pub errors: Vec<String>,
 }
 
-/// 복원된 항목 수
 #[derive(Debug, Serialize)]
 pub struct RestoredCounts {
     pub settings: bool,
@@ -145,7 +124,6 @@ pub struct RestoredCounts {
     pub frames: u64,
 }
 
-/// GET /api/backup - 백업 생성
 pub async fn create_backup(
     State(state): State<AppState>,
     Query(params): Query<BackupQuery>,
@@ -169,13 +147,11 @@ pub async fn create_backup(
         frames: None,
     };
 
-    // 설정 백업
     if params.include_settings {
         let settings = backup_settings_from_state(&state);
         archive.settings = Some(settings);
     }
 
-    // 태그 백업
     if params.include_tags {
         let tags = state
             .storage
@@ -206,7 +182,6 @@ pub async fn create_backup(
         archive.frame_tags = Some(frame_tags);
     }
 
-    // 이벤트 백업
     if params.include_events {
         let events = state
             .storage
@@ -224,7 +199,6 @@ pub async fn create_backup(
         archive.events = Some(events);
     }
 
-    // 프레임 메타데이터 백업
     if params.include_frames {
         let frames = state
             .storage
@@ -247,7 +221,7 @@ pub async fn create_backup(
     }
 
     let json = serde_json::to_string_pretty(&archive)
-        .map_err(|e| ApiError::Internal(format!("JSON 직렬화 실패: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("JSON 직렬화 failure: {e}")))?;
 
     let now = Utc::now().format("%Y%m%d_%H%M%S");
     let filename = format!("oneshim_backup_{now}.json");
@@ -265,7 +239,6 @@ pub async fn create_backup(
         .into_response())
 }
 
-/// POST /api/backup/restore - 백업 복원
 pub async fn restore_backup(
     State(state): State<AppState>,
     Json(archive): Json<BackupArchive>,
@@ -279,15 +252,13 @@ pub async fn restore_backup(
         frames: 0,
     };
 
-    // 설정 복원
     if let Some(settings) = &archive.settings {
         match restore_settings_to_state(&state, settings) {
             Ok(_) => restored.settings = true,
-            Err(e) => errors.push(format!("설정 복원 실패: {e}")),
+            Err(e) => errors.push(format!("설정 복원 failure: {e}")),
         }
     }
 
-    // 태그 복원 (기존 태그 유지, 새 태그만 추가)
     if let Some(tags) = &archive.tags {
         for tag in tags {
             match state
@@ -295,12 +266,11 @@ pub async fn restore_backup(
                 .upsert_backup_tag(tag.id, &tag.name, &tag.color, &tag.created_at)
             {
                 Ok(_) => restored.tags += 1,
-                Err(e) => errors.push(format!("태그 '{}' 복원 실패: {e}", tag.name)),
+                Err(e) => errors.push(format!("태그 '{}' 복원 failure: {e}", tag.name)),
             }
         }
     }
 
-    // 프레임-태그 연결 복원
     if let Some(frame_tags) = &archive.frame_tags {
         for ft in frame_tags {
             match state
@@ -308,12 +278,11 @@ pub async fn restore_backup(
                 .upsert_backup_frame_tag(ft.frame_id, ft.tag_id, &ft.created_at)
             {
                 Ok(_) => restored.frame_tags += 1,
-                Err(e) => errors.push(format!("프레임-태그 연결 복원 실패: {e}")),
+                Err(e) => errors.push(format!("frame-태그 connection 복원 failure: {e}")),
             }
         }
     }
 
-    // 이벤트 복원
     if let Some(events) = &archive.events {
         for event in events {
             match state.storage.upsert_backup_event(
@@ -324,12 +293,11 @@ pub async fn restore_backup(
                 event.window_title.as_deref(),
             ) {
                 Ok(_) => restored.events += 1,
-                Err(e) => errors.push(format!("이벤트 복원 실패: {e}")),
+                Err(e) => errors.push(format!("event 복원 failure: {e}")),
             }
         }
     }
 
-    // 프레임 메타데이터 복원
     if let Some(frames) = &archive.frames {
         for frame in frames {
             match state.storage.upsert_backup_frame(
@@ -344,7 +312,7 @@ pub async fn restore_backup(
                 frame.ocr_text.as_deref(),
             ) {
                 Ok(_) => restored.frames += 1,
-                Err(e) => errors.push(format!("프레임 복원 실패: {e}")),
+                Err(e) => errors.push(format!("frame 복원 failure: {e}")),
             }
         }
     }
@@ -356,7 +324,6 @@ pub async fn restore_backup(
     }))
 }
 
-/// 설정 백업
 fn backup_settings_from_state(state: &AppState) -> SettingsBackup {
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
@@ -404,7 +371,7 @@ fn restore_settings_to_state(state: &AppState, settings: &SettingsBackup) -> Res
             config.notification.long_session_mins = settings.long_session_notification_mins as u32;
             config.notification.high_usage_threshold = settings.high_usage_threshold_percent as u32;
         })
-        .map_err(|e| ApiError::Internal(format!("설정 저장 실패: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("설정 save failure: {e}")))?;
 
     Ok(())
 }

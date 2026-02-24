@@ -1,7 +1,5 @@
 /**
- * 스케줄 설정 섹션 컴포넌트
  *
- * 활성 시간/요일, 화면 잠금/배터리 절약 시 일시정지 설정
  */
 import { useTranslation } from 'react-i18next'
 import { Card, CardTitle, Input } from '../../components/ui'

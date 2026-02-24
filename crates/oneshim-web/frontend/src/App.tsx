@@ -78,7 +78,6 @@ function App() {
     }
   }, [])
 
-  // 전역 키보드 단축키
   useKeyboardShortcuts({
     onHelp: () => setShowShortcutsHelp(true),
     onEscape: () => setShowShortcutsHelp(false),
@@ -95,7 +94,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-900 transition-colors">
-      {/* 네비게이션 */}
+      {/* UI note */}
       <nav className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 transition-colors">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between h-14">
@@ -161,7 +160,7 @@ function App() {
                 </div>
               </div>
             </div>
-            {/* 글로벌 검색 */}
+            {/* UI note */}
             <form onSubmit={handleGlobalSearch} className="hidden md:flex items-center">
               <input
                 type="text"
@@ -172,9 +171,9 @@ function App() {
               />
             </form>
             <div className="flex items-center space-x-1 sm:space-x-2">
-              {/* 언어 선택기 */}
+              {/* UI note */}
               <LanguageSelector />
-              {/* 단축키 도움말 버튼 */}
+              {/* UI note */}
               <button
                 onClick={() => setShowShortcutsHelp(true)}
                 className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
@@ -184,7 +183,7 @@ function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </button>
-              {/* 테마 토글 버튼 */}
+              {/* UI note */}
               <button
                 onClick={toggleTheme}
                 className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
@@ -204,7 +203,7 @@ function App() {
                   </svg>
                 )}
               </button>
-              {/* 상태 표시 */}
+              {/* state display */}
               <div className="hidden sm:flex items-center space-x-2 text-sm text-slate-600 dark:text-slate-400">
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                 <span>{t('common.running')}</span>
@@ -214,7 +213,7 @@ function App() {
         </div>
       </nav>
 
-      {/* 메인 콘텐츠 */}
+      {/* UI note */}
       <main className="max-w-7xl mx-auto px-4 py-6">
         <ErrorBoundary>
           <Suspense
@@ -240,7 +239,7 @@ function App() {
         </ErrorBoundary>
       </main>
 
-      {/* 단축키 도움말 모달 */}
+      {/* UI note */}
       {showShortcutsHelp && (
         <ShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />
       )}

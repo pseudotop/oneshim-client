@@ -1,7 +1,4 @@
-//! 감사 로깅.
 //!
-//! 모든 자동화 명령의 실행 기록을 로컬 버퍼에 저장하고,
-//! 배치로 서버에 전송한다.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -9,54 +6,34 @@ use std::collections::VecDeque;
 
 use crate::policy::AuditLevel;
 
-/// 감사 로그 상태
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AuditStatus {
-    /// 실행 시작
     Started,
-    /// 실행 완료
     Completed,
-    /// 실행 실패
     Failed,
-    /// 정책 거부
     Denied,
-    /// 타임아웃
     Timeout,
 }
 
-/// 감사 로그 항목
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
-    /// 엔트리 고유 ID
     pub entry_id: String,
-    /// 시각
     pub timestamp: DateTime<Utc>,
-    /// 세션 ID
     pub session_id: String,
-    /// 명령 ID
     pub command_id: String,
-    /// 액션 유형 설명
     pub action_type: String,
-    /// 상태
     pub status: AuditStatus,
-    /// 상세 정보
     pub details: Option<String>,
-    /// 실행 시간 (밀리초)
     pub execution_time_ms: Option<u64>,
 }
 
-/// 감사 로거 — 로컬 버퍼 + 배치 전송
 pub struct AuditLogger {
-    /// 로컬 버퍼 (전송 대기 중인 항목)
     buffer: VecDeque<AuditEntry>,
-    /// 최대 버퍼 크기
     max_buffer_size: usize,
-    /// 배치 크기 (이 수 이상 쌓이면 전송)
     batch_size: usize,
 }
 
 impl AuditLogger {
-    /// 새 감사 로거 생성
     pub fn new(max_buffer_size: usize, batch_size: usize) -> Self {
         Self {
             buffer: VecDeque::with_capacity(max_buffer_size),
@@ -65,7 +42,6 @@ impl AuditLogger {
         }
     }
 
-    /// 명령 실행 시작 기록
     pub fn log_start(&mut self, command_id: &str, session_id: &str, action_type: &str) {
         self.push_entry(
             command_id,
@@ -76,7 +52,6 @@ impl AuditLogger {
         );
     }
 
-    /// 명령 실행 완료 기록
     pub fn log_complete(&mut self, command_id: &str, session_id: &str, details: &str) {
         self.push_entry(
             command_id,
@@ -87,7 +62,6 @@ impl AuditLogger {
         );
     }
 
-    /// 명령 실행 거부 기록
     pub fn log_denied(&mut self, command_id: &str, session_id: &str, action_type: &str) {
         self.push_entry(
             command_id,
@@ -98,7 +72,6 @@ impl AuditLogger {
         );
     }
 
-    /// 명령 실행 실패 기록
     pub fn log_failed(&mut self, command_id: &str, session_id: &str, error: &str) {
         self.push_entry(
             command_id,
@@ -109,10 +82,7 @@ impl AuditLogger {
         );
     }
 
-    /// 정책/설정 이벤트 기록
     ///
-    /// 명령 실행 흐름이 아닌 정책 이벤트(설정 변경, 오버라이드 적용/만료 등)를
-    /// 동일한 감사 버퍼에 적재한다.
     pub fn log_event(&mut self, action_type: &str, session_id: &str, details: &str) {
         self.push_entry(
             &format!("event-{}", uuid::Uuid::new_v4()),
@@ -123,7 +93,6 @@ impl AuditLogger {
         );
     }
 
-    /// AuditLevel 확인 후 실행 시작 기록 (None이면 스킵)
     pub fn log_start_if(
         &mut self,
         level: AuditLevel,
@@ -143,7 +112,6 @@ impl AuditLogger {
         );
     }
 
-    /// 실행 완료 기록 (실행 시간 포함)
     pub fn log_complete_with_time(
         &mut self,
         level: AuditLevel,
@@ -165,7 +133,6 @@ impl AuditLogger {
         );
     }
 
-    /// 타임아웃 기록
     pub fn log_timeout(&mut self, command_id: &str, session_id: &str, timeout_ms: u64) {
         self.push_entry_with_time(
             command_id,
@@ -177,33 +144,27 @@ impl AuditLogger {
         );
     }
 
-    /// 전송할 배치가 준비되었는지 확인
     pub fn has_pending_batch(&self) -> bool {
         self.buffer.len() >= self.batch_size
     }
 
-    /// 전송 대기 중인 항목 수
     pub fn pending_count(&self) -> usize {
         self.buffer.len()
     }
 
-    /// 배치 크기만큼 항목을 꺼내기 (전송용)
     pub fn drain_batch(&mut self) -> Vec<AuditEntry> {
         let count = self.buffer.len().min(self.batch_size);
         self.buffer.drain(..count).collect()
     }
 
-    /// 모든 항목 꺼내기 (셧다운 시 사용)
     pub fn drain_all(&mut self) -> Vec<AuditEntry> {
         self.buffer.drain(..).collect()
     }
 
-    /// 최근 N개 항목 조회 (비파괴)
     pub fn recent_entries(&self, limit: usize) -> Vec<AuditEntry> {
         self.buffer.iter().rev().take(limit).cloned().collect()
     }
 
-    /// 상태별 필터링 조회 (비파괴)
     pub fn entries_by_status(&self, status: &AuditStatus, limit: usize) -> Vec<AuditEntry> {
         self.buffer
             .iter()
@@ -214,7 +175,6 @@ impl AuditLogger {
             .collect()
     }
 
-    /// 통계 집계 (total, success, failed, denied, timeout)
     pub fn stats(&self) -> (usize, usize, usize, usize, usize) {
         let mut success = 0;
         let mut failed = 0;
@@ -233,7 +193,6 @@ impl AuditLogger {
         (total, success, failed, denied, timeout)
     }
 
-    /// 내부: 항목 추가
     fn push_entry(
         &mut self,
         command_id: &str,
@@ -242,10 +201,9 @@ impl AuditLogger {
         status: AuditStatus,
         details: Option<String>,
     ) {
-        // 버퍼 풀이면 가장 오래된 항목 제거
         if self.buffer.len() >= self.max_buffer_size {
             self.buffer.pop_front();
-            tracing::warn!("감사 로그 버퍼 오버플로 — 가장 오래된 항목 삭제");
+            tracing::warn!("— delete");
         }
 
         let entry = AuditEntry {
@@ -262,7 +220,6 @@ impl AuditLogger {
         self.buffer.push_back(entry);
     }
 
-    /// 내부: 실행 시간 포함 항목 추가
     fn push_entry_with_time(
         &mut self,
         command_id: &str,
@@ -272,10 +229,9 @@ impl AuditLogger {
         details: Option<String>,
         execution_time_ms: Option<u64>,
     ) {
-        // 버퍼 풀이면 가장 오래된 항목 제거
         if self.buffer.len() >= self.max_buffer_size {
             self.buffer.pop_front();
-            tracing::warn!("감사 로그 버퍼 오버플로 — 가장 오래된 항목 삭제");
+            tracing::warn!("— delete");
         }
 
         let entry = AuditEntry {
@@ -324,12 +280,10 @@ mod tests {
         logger.log_start("cmd-1", "s", "a");
         logger.log_start("cmd-2", "s", "b");
         logger.log_start("cmd-3", "s", "c");
-        // 4번째 항목 추가 시 1번째 제거
         logger.log_start("cmd-4", "s", "d");
 
         assert_eq!(logger.pending_count(), 3);
         let entries = logger.drain_all();
-        // cmd-1은 제거됨
         assert_eq!(entries[0].command_id, "cmd-2");
     }
 
@@ -409,10 +363,8 @@ mod tests {
 
         let recent = logger.recent_entries(2);
         assert_eq!(recent.len(), 2);
-        // 최신 순 (역순)
         assert_eq!(recent[0].command_id, "cmd-3");
         assert_eq!(recent[1].command_id, "cmd-2");
-        // 비파괴 확인
         assert_eq!(logger.pending_count(), 3);
     }
 
@@ -441,14 +393,13 @@ mod tests {
         logger.log_complete("cmd-6", "s", "ok2");
 
         let (total, success, failed, denied, timeout) = logger.stats();
-        assert_eq!(total, 5); // Started 제외
+        assert_eq!(total, 5); // Started is excluded
         assert_eq!(success, 2);
         assert_eq!(failed, 1);
         assert_eq!(denied, 1);
         assert_eq!(timeout, 1);
     }
 
-    // --- 추가 테스트 ---
 
     #[test]
     fn log_complete_with_time_skips_on_none_level() {
@@ -470,10 +421,10 @@ mod tests {
     #[test]
     fn log_failed_includes_error_details() {
         let mut logger = AuditLogger::new(100, 10);
-        logger.log_failed("cmd-1", "sess-1", "연결 실패: timeout");
+        logger.log_failed("cmd-1", "sess-1", "connection failure: timeout");
         let entries = logger.drain_all();
         assert_eq!(entries[0].status, AuditStatus::Failed);
-        assert_eq!(entries[0].details.as_ref().unwrap(), "연결 실패: timeout");
+        assert_eq!(entries[0].details.as_ref().unwrap(), "connection failure: timeout");
     }
 
     #[test]

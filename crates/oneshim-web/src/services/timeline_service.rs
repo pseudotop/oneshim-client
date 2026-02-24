@@ -1,4 +1,3 @@
-//! 타임라인 관련 서비스 로직.
 
 use chrono::{DateTime, Utc};
 use oneshim_core::models::event::Event;
@@ -7,7 +6,6 @@ use crate::error::ApiError;
 use crate::handlers::timeline::{AppSegment, SessionInfo, TimelineItem, TimelineResponse};
 use crate::AppState;
 
-/// 앱 이름 → 색상 매핑 (해시 기반)
 const APP_COLORS: &[&str] = &[
     "#3B82F6", // blue
     "#10B981", // green
@@ -19,7 +17,6 @@ const APP_COLORS: &[&str] = &[
     "#84CC16", // lime
 ];
 
-/// 타임라인 응답 구성.
 pub async fn build_timeline_response(
     state: &AppState,
     from: DateTime<Utc>,
@@ -135,7 +132,6 @@ pub async fn build_timeline_response(
     })
 }
 
-/// 앱 이름을 해시하여 색상 반환.
 pub(crate) fn app_to_color(app_name: &str) -> String {
     let hash = app_name
         .bytes()
@@ -143,7 +139,6 @@ pub(crate) fn app_to_color(app_name: &str) -> String {
     APP_COLORS[hash % APP_COLORS.len()].to_string()
 }
 
-/// 앱 세그먼트 계산 (연속적인 앱 사용 기간).
 pub(crate) fn calculate_app_segments(items: &[TimelineItem]) -> Vec<AppSegment> {
     let mut segments: Vec<AppSegment> = Vec::new();
 

@@ -1,4 +1,3 @@
-// 이벤트 로그 컴포넌트 - 타임라인 이벤트 목록 + 현재 위치 하이라이트
 
 import { useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,15 +6,11 @@ import type { TimelineItem } from '../api/client'
 import { formatTime } from '../utils/formatters'
 
 interface EventLogProps {
-  /** 타임라인 아이템 목록 */
   items: TimelineItem[]
-  /** 현재 재생 시각 */
   currentTime: Date
-  /** 이벤트 클릭 시 해당 시간으로 이동 */
   onItemClick: (time: Date) => void
 }
 
-// 이벤트 타입별 아이콘 및 색상
 function getEventIcon(item: TimelineItem) {
   if (item.type === 'Frame') {
     return <Camera className="w-4 h-4 text-teal-500" />
@@ -23,7 +18,6 @@ function getEventIcon(item: TimelineItem) {
   if (item.type === 'IdlePeriod') {
     return <Moon className="w-4 h-4 text-slate-400" />
   }
-  // Event 타입
   const eventType = item.event_type.toLowerCase()
   if (eventType.includes('appswitch') || eventType.includes('context')) {
     return <ArrowRightLeft className="w-4 h-4 text-blue-500" />
@@ -34,7 +28,6 @@ function getEventIcon(item: TimelineItem) {
   return <Monitor className="w-4 h-4 text-amber-500" />
 }
 
-// 이벤트 타입 라벨
 function getEventLabel(item: TimelineItem, captureLabel: string, idleLabel: string, minLabel: string) {
   if (item.type === 'Frame') {
     return captureLabel
@@ -46,7 +39,6 @@ function getEventLabel(item: TimelineItem, captureLabel: string, idleLabel: stri
   return item.event_type
 }
 
-// 아이템 타임스탬프 추출
 function getItemTime(item: TimelineItem): Date {
   if (item.type === 'IdlePeriod') {
     return new Date(item.start)
@@ -59,12 +51,10 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
   const listRef = useRef<HTMLDivElement>(null)
   const activeItemRef = useRef<HTMLDivElement>(null)
 
-  // 번역된 라벨
   const captureLabel = t('replay.capture', '캡처')
-  const idleLabel = t('replay.idle', '유휴')
+  const idleLabel = t('replay.idle', 'idle')
   const minLabel = t('dashboard.minutes', '분')
 
-  // 현재 시간에 가장 가까운 아이템 인덱스
   const activeIndex = useMemo(() => {
     if (items.length === 0) return -1
     const currentMs = currentTime.getTime()
@@ -76,7 +66,6 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
       const itemTime = getItemTime(items[i]).getTime()
       const diff = Math.abs(itemTime - currentMs)
 
-      // 현재 시간 이전이면서 가장 가까운 아이템
       if (itemTime <= currentMs && diff < closestDiff) {
         closestDiff = diff
         closestIndex = i
@@ -86,7 +75,6 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
     return closestIndex
   }, [items, currentTime])
 
-  // 활성 아이템으로 스크롤
   useEffect(() => {
     if (activeItemRef.current && listRef.current) {
       const container = listRef.current
@@ -94,7 +82,6 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
       const containerRect = container.getBoundingClientRect()
       const itemRect = item.getBoundingClientRect()
 
-      // 아이템이 보이는 영역 밖에 있으면 스크롤
       if (itemRect.top < containerRect.top || itemRect.bottom > containerRect.bottom) {
         item.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
@@ -103,24 +90,24 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow border border-slate-200 dark:border-slate-700 h-full flex flex-col">
-      {/* 헤더 */}
+      {/* UI note */}
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-          {t('replay.eventLog', '이벤트 로그')}
+          {t('replay.eventLog', 'event 로그')}
         </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
           {items.length} {t('replay.items', '개 항목')}
         </p>
       </div>
 
-      {/* 이벤트 목록 */}
+      {/* event list */}
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto"
       >
         {items.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-slate-500 dark:text-slate-400 text-sm">
-            {t('common.noData', '데이터 없음')}
+            {t('common.noData', '데이터 none')}
           </div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -143,14 +130,14 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                   onClick={() => onItemClick(itemTime)}
                 >
                   <div className="flex items-start space-x-3">
-                    {/* 아이콘 */}
+                    {/* UI note */}
                     <div className="mt-0.5">
                       {getEventIcon(item)}
                     </div>
 
-                    {/* 내용 */}
+                    {/* UI note */}
                     <div className="flex-1 min-w-0">
-                      {/* 시간 + 타입 */}
+                      {/* UI note */}
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
                           {timeStr}
@@ -166,7 +153,7 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                         </span>
                       </div>
 
-                      {/* 앱/창 정보 */}
+                      {/* UI note */}
                       {item.type !== 'IdlePeriod' && (
                         <div className="mt-1">
                           {item.type === 'Frame' ? (
@@ -193,7 +180,7 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                         </div>
                       )}
 
-                      {/* 프레임 중요도 */}
+                      {/* UI note */}
                       {item.type === 'Frame' && (
                         <div className="mt-1 flex items-center space-x-2">
                           <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">

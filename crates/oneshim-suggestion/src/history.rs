@@ -1,27 +1,20 @@
-//! 제안 이력 캐시.
 //!
-//! 로컬 제안 이력 관리 (메모리 캐시).
 
 use oneshim_core::models::suggestion::{FeedbackType, Suggestion};
 use std::collections::VecDeque;
 
-/// 이력 항목
 #[derive(Debug, Clone)]
 pub struct HistoryEntry {
-    /// 원본 제안
     pub suggestion: Suggestion,
-    /// 사용자 피드백 (None이면 미응답)
     pub feedback: Option<FeedbackType>,
 }
 
-/// 제안 이력 캐시 (FIFO, 최대 크기 제한)
 pub struct SuggestionHistory {
     entries: VecDeque<HistoryEntry>,
     max_size: usize,
 }
 
 impl SuggestionHistory {
-    /// 새 이력 캐시 생성
     pub fn new(max_size: usize) -> Self {
         Self {
             entries: VecDeque::new(),
@@ -29,7 +22,6 @@ impl SuggestionHistory {
         }
     }
 
-    /// 제안 이력에 추가
     pub fn add(&mut self, suggestion: Suggestion) {
         if self.entries.len() >= self.max_size {
             self.entries.pop_front();
@@ -40,7 +32,6 @@ impl SuggestionHistory {
         });
     }
 
-    /// 피드백 기록
     pub fn record_feedback(&mut self, suggestion_id: &str, feedback: FeedbackType) -> bool {
         for entry in self.entries.iter_mut().rev() {
             if entry.suggestion.suggestion_id == suggestion_id {
@@ -51,27 +42,22 @@ impl SuggestionHistory {
         false
     }
 
-    /// 최근 이력 조회
     pub fn recent(&self, limit: usize) -> Vec<&HistoryEntry> {
         self.entries.iter().rev().take(limit).collect()
     }
 
-    /// 전체 이력 수
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// 비어있는지
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
-    /// 이력 비우기
     pub fn clear(&mut self) {
         self.entries.clear();
     }
 
-    /// 통계: 수락/거절/미응답 수
     pub fn stats(&self) -> HistoryStats {
         let mut accepted = 0u32;
         let mut rejected = 0u32;
@@ -97,7 +83,6 @@ impl SuggestionHistory {
     }
 }
 
-/// 이력 통계
 #[derive(Debug, Clone)]
 pub struct HistoryStats {
     pub total: u32,
@@ -117,7 +102,7 @@ mod tests {
         Suggestion {
             suggestion_id: id.to_string(),
             suggestion_type: SuggestionType::WorkGuidance,
-            content: format!("제안 {id}"),
+            content: format!("suggestion {id}"),
             priority: Priority::Medium,
             confidence_score: 0.9,
             relevance_score: 0.8,

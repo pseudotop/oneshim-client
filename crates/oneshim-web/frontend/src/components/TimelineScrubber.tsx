@@ -1,4 +1,3 @@
-// 타임라인 스크러버 컴포넌트 - 재생 컨트롤, 앱 세그먼트 바, 유휴 구간 표시
 
 import { useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -8,29 +7,17 @@ import type { AppSegment, TimelineItem } from '../api/client'
 import { formatTime } from '../utils/formatters'
 
 interface TimelineScrubberProps {
-  /** 시작 시각 */
   startTime: Date
-  /** 종료 시각 */
   endTime: Date
-  /** 현재 재생 시각 */
   currentTime: Date
-  /** 재생 중 여부 */
   isPlaying: boolean
-  /** 재생 속도 (1x, 2x, 5x, 10x) */
   playbackSpeed: number
-  /** 앱 세그먼트 목록 */
   segments: AppSegment[]
-  /** 타임라인 아이템 (유휴 기간 표시용) */
   items: TimelineItem[]
-  /** 시간 변경 콜백 */
   onTimeChange: (time: Date) => void
-  /** 재생/일시정지 토글 */
   onPlayPause: () => void
-  /** 재생 속도 변경 */
   onSpeedChange: (speed: number) => void
-  /** 처음으로 */
   onSkipToStart: () => void
-  /** 끝으로 */
   onSkipToEnd: () => void
 }
 
@@ -53,15 +40,12 @@ export default function TimelineScrubber({
   const { t } = useTranslation()
   const trackRef = useRef<HTMLDivElement>(null)
 
-  // 전체 시간 범위 (밀리초)
   const totalDuration = endTime.getTime() - startTime.getTime()
 
-  // 현재 위치 비율 (0-1)
   const currentPosition = totalDuration > 0
     ? (currentTime.getTime() - startTime.getTime()) / totalDuration
     : 0
 
-  // 유휴 기간 추출
   const idlePeriods = useMemo(() => {
     return items
       .filter((item): item is Extract<TimelineItem, { type: 'IdlePeriod' }> => item.type === 'IdlePeriod')
@@ -71,7 +55,6 @@ export default function TimelineScrubber({
       }))
   }, [items])
 
-  // 클릭으로 시간 이동
   const handleTrackClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!trackRef.current || totalDuration <= 0) return
 
@@ -82,7 +65,6 @@ export default function TimelineScrubber({
     onTimeChange(newTime)
   }, [startTime, totalDuration, onTimeChange])
 
-  // 드래그로 시간 이동
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!trackRef.current || totalDuration <= 0) return
 
@@ -103,16 +85,15 @@ export default function TimelineScrubber({
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
 
-    // 초기 클릭 위치도 적용
     handleTrackClick(e)
   }, [startTime, totalDuration, onTimeChange, handleTrackClick])
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow border border-slate-200 dark:border-slate-700">
-      {/* 컨트롤 버튼 */}
+      {/* UI note */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
-          {/* 처음으로 */}
+          {/* UI note */}
           <button
             onClick={onSkipToStart}
             className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -121,7 +102,7 @@ export default function TimelineScrubber({
             <SkipBack className="w-5 h-5" />
           </button>
 
-          {/* 재생/일시정지 */}
+          {/* UI note */}
           <button
             onClick={onPlayPause}
             className="p-2 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors"
@@ -130,7 +111,7 @@ export default function TimelineScrubber({
             {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
           </button>
 
-          {/* 끝으로 */}
+          {/* UI note */}
           <button
             onClick={onSkipToEnd}
             className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -139,13 +120,13 @@ export default function TimelineScrubber({
             <SkipForward className="w-5 h-5" />
           </button>
 
-          {/* 현재 시간 */}
+          {/* UI note */}
           <span className="ml-3 text-sm font-mono text-slate-700 dark:text-slate-300">
             {formatTime(currentTime.toISOString())}
           </span>
         </div>
 
-        {/* 재생 속도 */}
+        {/* UI note */}
         <div className="flex items-center space-x-2">
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {t('replay.speed', '재생 속도')}:
@@ -165,14 +146,14 @@ export default function TimelineScrubber({
         </div>
       </div>
 
-      {/* 타임라인 트랙 */}
+      {/* UI note */}
       <div
         ref={trackRef}
         className="relative h-10 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer overflow-hidden"
         onClick={handleTrackClick}
         onMouseDown={handleMouseDown}
       >
-        {/* 앱 세그먼트 */}
+        {/* UI note */}
         {segments.map((segment, index) => {
           const segmentStart = new Date(segment.start).getTime()
           const segmentEnd = new Date(segment.end).getTime()
@@ -197,7 +178,7 @@ export default function TimelineScrubber({
           )
         })}
 
-        {/* 유휴 기간 표시 (줄무늬) */}
+        {/* UI note */}
         {idlePeriods.map((idle, index) => {
           const left = totalDuration > 0
             ? ((idle.start - startTime.getTime()) / totalDuration) * 100
@@ -215,7 +196,7 @@ export default function TimelineScrubber({
                 width: `${Math.max(width, 0.5)}%`,
                 background: 'repeating-linear-gradient(45deg, rgba(100,116,139,0.3), rgba(100,116,139,0.3) 2px, transparent 2px, transparent 4px)',
               }}
-              title={t('replay.idle', '유휴')}
+              title={t('replay.idle', 'idle')}
             >
               {width > 3 && (
                 <Moon className="w-3 h-3 text-slate-500 dark:text-slate-400 opacity-70" />
@@ -224,16 +205,16 @@ export default function TimelineScrubber({
           )
         })}
 
-        {/* 현재 위치 인디케이터 */}
+        {/* UI note */}
         <div
           className="absolute top-0 w-0.5 h-full bg-red-500 shadow-lg z-10"
           style={{ left: `${currentPosition * 100}%` }}
         >
-          {/* 핸들 */}
+          {/* UI note */}
           <div className="absolute -top-1 -left-1.5 w-4 h-4 bg-red-500 rounded-full shadow-lg" />
         </div>
 
-        {/* 시작/종료 시간 표시 */}
+        {/* UI note */}
         <div className="absolute bottom-0 left-1 text-xs text-slate-600 dark:text-slate-400 opacity-70">
           {formatTime(startTime.toISOString())}
         </div>
@@ -242,10 +223,10 @@ export default function TimelineScrubber({
         </div>
       </div>
 
-      {/* 앱 범례 */}
+      {/* UI note */}
       {segments.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-3">
-          {/* 고유 앱 목록 */}
+          {/* UI note */}
           {Array.from(new Set(segments.map(s => s.app_name))).slice(0, 8).map((appName) => {
             const segment = segments.find(s => s.app_name === appName)
             return (
@@ -260,7 +241,7 @@ export default function TimelineScrubber({
               </div>
             )
           })}
-          {/* 유휴 범례 */}
+          {/* UI note */}
           {idlePeriods.length > 0 && (
             <div className="flex items-center space-x-1">
               <div
@@ -270,7 +251,7 @@ export default function TimelineScrubber({
                 }}
               />
               <span className="text-xs text-slate-600 dark:text-slate-400">
-                {t('replay.idle', '유휴')}
+                {t('replay.idle', 'idle')}
               </span>
             </div>
           )}

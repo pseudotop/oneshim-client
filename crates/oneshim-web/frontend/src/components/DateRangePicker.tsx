@@ -19,20 +19,17 @@ export default function DateRangePicker({
   const [customFrom, setCustomFrom] = useState(initialFrom || '')
   const [customTo, setCustomTo] = useState(initialTo || '')
 
-  // 오늘 날짜 계산
   const getToday = () => {
     const now = new Date()
     return now.toISOString().split('T')[0]
   }
 
-  // N일 전 날짜 계산
   const getDaysAgo = (days: number) => {
     const date = new Date()
     date.setDate(date.getDate() - days)
     return date.toISOString().split('T')[0]
   }
 
-  // 프리셋 변경 시 날짜 범위 업데이트
   useEffect(() => {
     let from: string | undefined
     let to: string | undefined
@@ -67,7 +64,7 @@ export default function DateRangePicker({
 
   return (
     <div className="flex items-center space-x-2 flex-wrap gap-2">
-      {/* 프리셋 버튼 */}
+      {/* UI note */}
       <div className="flex space-x-1">
         <button
           onClick={() => handlePresetClick('today')}
@@ -111,7 +108,7 @@ export default function DateRangePicker({
         </button>
       </div>
 
-      {/* 커스텀 날짜 입력 */}
+      {/* UI note */}
       {preset === 'custom' && (
         <div className="flex items-center space-x-2">
           <input

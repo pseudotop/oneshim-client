@@ -1,17 +1,15 @@
-//! 데이터 삭제 관련 서비스 로직.
 
 use crate::error::ApiError;
 use crate::handlers::data::{DeleteRangeRequest, DeleteResult};
 use crate::AppState;
 
-/// 날짜 범위 데이터 삭제.
 pub fn delete_data_range(
     state: &AppState,
     request: &DeleteRangeRequest,
 ) -> Result<DeleteResult, ApiError> {
     if request.from.is_empty() || request.to.is_empty() {
         return Err(ApiError::BadRequest(
-            "시작 날짜와 종료 날짜가 필요합니다".to_string(),
+            "started 날짜와 ended 날짜가 필요합니다".to_string(),
         ));
     }
 
@@ -51,12 +49,11 @@ pub fn delete_data_range(
     result.metrics_deleted = deleted.metrics_deleted;
     result.process_snapshots_deleted = deleted.process_snapshots_deleted;
     result.idle_periods_deleted = deleted.idle_periods_deleted;
-    result.message = format!("{}개의 레코드가 삭제되었습니다", result.total());
+    result.message = format!("{}개의 레코드가 delete되었습니다", result.total());
 
     Ok(result)
 }
 
-/// 전체 데이터 삭제.
 pub fn delete_all_data(state: &AppState) -> Result<DeleteResult, ApiError> {
     let mut result = DeleteResult::empty();
 
@@ -83,7 +80,7 @@ pub fn delete_all_data(state: &AppState) -> Result<DeleteResult, ApiError> {
     result.metrics_deleted = deleted.metrics_deleted;
     result.process_snapshots_deleted = deleted.process_snapshots_deleted;
     result.idle_periods_deleted = deleted.idle_periods_deleted;
-    result.message = format!("모든 데이터가 삭제되었습니다 ({}개 레코드)", result.total());
+    result.message = format!("all 데이터가 delete되었습니다 ({}개 레코드)", result.total());
 
     Ok(result)
 }

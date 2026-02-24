@@ -1,4 +1,3 @@
-// 전체 화면 이미지 뷰어 컴포넌트
 import { useEffect, useCallback } from 'react'
 
 interface LightboxProps {
@@ -20,7 +19,6 @@ export default function Lightbox({
   hasPrev = false,
   hasNext = false,
 }: LightboxProps) {
-  // 키보드 이벤트 처리
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       switch (event.key) {
@@ -46,7 +44,6 @@ export default function Lightbox({
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
-    // 스크롤 방지
     document.body.style.overflow = 'hidden'
 
     return () => {
@@ -60,7 +57,7 @@ export default function Lightbox({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
       onClick={onClose}
     >
-      {/* 닫기 버튼 */}
+      {/* UI note */}
       <button
         onClick={onClose}
         className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors z-10"
@@ -71,7 +68,7 @@ export default function Lightbox({
         </svg>
       </button>
 
-      {/* 이전 버튼 */}
+      {/* UI note */}
       {hasPrev && onPrev && (
         <button
           onClick={(e) => {
@@ -87,7 +84,7 @@ export default function Lightbox({
         </button>
       )}
 
-      {/* 이미지 */}
+      {/* UI note */}
       <img
         src={imageUrl}
         alt={alt}
@@ -95,7 +92,7 @@ export default function Lightbox({
         onClick={(e) => e.stopPropagation()}
       />
 
-      {/* 다음 버튼 */}
+      {/* UI note */}
       {hasNext && onNext && (
         <button
           onClick={(e) => {
@@ -103,7 +100,7 @@ export default function Lightbox({
             onNext()
           }}
           className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-full transition-all z-10"
-          aria-label="다음"
+          aria-label="next"
         >
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -111,7 +108,7 @@ export default function Lightbox({
         </button>
       )}
 
-      {/* 단축키 힌트 */}
+      {/* UI note */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 text-sm text-white/50">
         <span>ESC 닫기</span>
         {(hasPrev || hasNext) && <span>← → 이동</span>}

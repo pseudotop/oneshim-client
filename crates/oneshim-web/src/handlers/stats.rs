@@ -1,4 +1,3 @@
-//! 통계 API 핸들러.
 
 use axum::extract::{Query, State};
 use axum::Json;
@@ -9,95 +8,63 @@ use std::collections::HashMap;
 use crate::error::ApiError;
 use crate::AppState;
 
-/// 날짜 쿼리 파라미터
 #[derive(Debug, Deserialize)]
 pub struct DateQuery {
-    /// 날짜 (YYYY-MM-DD, 기본: 오늘)
     pub date: Option<String>,
 }
 
-/// 앱 사용 시간 엔트리
 #[derive(Debug, Serialize)]
 pub struct AppUsageEntry {
-    /// 앱 이름
     pub name: String,
-    /// 사용 시간 (초)
     pub duration_secs: u64,
-    /// 이벤트 수
     pub event_count: u64,
-    /// 프레임 수
     pub frame_count: u64,
 }
 
-/// 일일 요약 응답
 #[derive(Debug, Serialize)]
 pub struct DailySummaryResponse {
-    /// 날짜 (YYYY-MM-DD)
     pub date: String,
-    /// 총 활동 시간 (초)
     pub total_active_secs: u64,
-    /// 총 유휴 시간 (초)
     pub total_idle_secs: u64,
-    /// 상위 앱 목록
     pub top_apps: Vec<AppUsageEntry>,
-    /// 평균 CPU 사용률
     pub cpu_avg: f64,
-    /// 평균 메모리 사용률 (%)
     pub memory_avg_percent: f64,
-    /// 캡처된 프레임 수
     pub frames_captured: u64,
-    /// 기록된 이벤트 수
     pub events_logged: u64,
 }
 
-/// 앱 사용 시간 목록 응답
 #[derive(Debug, Serialize)]
 pub struct AppUsageResponse {
-    /// 날짜 (YYYY-MM-DD)
     pub date: String,
-    /// 앱별 사용 시간
     pub apps: Vec<AppUsageEntry>,
 }
 
-/// 히트맵 쿼리 파라미터
 #[derive(Debug, Deserialize)]
 pub struct HeatmapQuery {
-    /// 조회할 일수 (기본: 7)
     pub days: Option<u32>,
 }
 
-/// 히트맵 셀 데이터
 #[derive(Debug, Serialize, Clone)]
 pub struct HeatmapCell {
-    /// 요일 (0=월, 1=화, ..., 6=일)
     pub day: u8,
-    /// 시간 (0-23)
     pub hour: u8,
-    /// 활동량 (이벤트 + 프레임 수)
     pub value: u32,
 }
 
-/// 히트맵 응답
 #[derive(Debug, Serialize)]
 pub struct HeatmapResponse {
-    /// 시작 날짜
     pub from_date: String,
-    /// 종료 날짜
     pub to_date: String,
-    /// 히트맵 데이터 (7일 x 24시간)
     pub cells: Vec<HeatmapCell>,
-    /// 최대값 (색상 스케일링용)
     pub max_value: u32,
 }
 
-/// 일일 요약 통계 조회
 ///
 /// GET /api/stats/summary?date=YYYY-MM-DD
 pub async fn get_summary(
     State(state): State<AppState>,
     Query(params): Query<DateQuery>,
 ) -> Result<Json<DailySummaryResponse>, ApiError> {
-    // 날짜 범위 계산
     let date_str = params
         .date
         .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
@@ -110,7 +77,6 @@ pub async fn get_summary(
 
     let to = from + Duration::days(1);
 
-    // 메트릭 조회
     let metrics = state.storage.get_metrics(from, to, 10000).await?;
 
     let (cpu_sum, memory_sum, count) = metrics.iter().fold((0.0f64, 0.0f64, 0u64), |acc, m| {
@@ -133,19 +99,15 @@ pub async fn get_summary(
         0.0
     };
 
-    // 유휴 시간 계산
     let idle_periods = state.storage.get_idle_periods(from, to).await?;
     let total_idle_secs: u64 = idle_periods.iter().filter_map(|p| p.duration_secs).sum();
 
-    // 이벤트 수
     let events = state.storage.get_events(from, to, 100000).await?;
     let events_logged = events.len() as u64;
 
-    // 프레임 수 + 앱별 통계
     let frames = state.storage.get_frames(from, to, 100000)?;
     let frames_captured = frames.len() as u64;
 
-    // 앱별 이벤트/프레임 집계
     let mut app_stats: HashMap<String, (u64, u64)> = HashMap::new();
 
     for event in &events {
@@ -164,17 +126,15 @@ pub async fn get_summary(
         entry.1 += 1;
     }
 
-    // work_sessions 기반 앱별 실제 사용시간 조회 (Fallback: event_count * 5)
     let session_app_durations: HashMap<String, i64> = {
         let from_rfc = from.to_rfc3339();
         let to_rfc = to.to_rfc3339();
         match state.storage.get_app_durations_by_date(&from_rfc, &to_rfc) {
             Ok(durations) => durations.into_iter().collect(),
-            Err(_) => HashMap::new(), // 세션 데이터 없으면 빈 맵
+            Err(_) => HashMap::new(), // no session data
         }
     };
 
-    // 상위 앱 정렬 (세션 기반 duration 우선, 없으면 이벤트 추정)
     let mut top_apps: Vec<AppUsageEntry> = app_stats
         .into_iter()
         .map(|(name, (event_count, frame_count))| {
@@ -194,7 +154,6 @@ pub async fn get_summary(
     top_apps.sort_by(|a, b| b.duration_secs.cmp(&a.duration_secs));
     top_apps.truncate(10);
 
-    // 총 활동 시간: work_sessions 기반 (Fallback: event_count * 5)
     let total_active_secs = {
         let from_rfc = from.to_rfc3339();
         let to_rfc = to.to_rfc3339();
@@ -216,7 +175,6 @@ pub async fn get_summary(
     }))
 }
 
-/// 앱별 사용 시간 조회
 ///
 /// GET /api/stats/apps?date=YYYY-MM-DD
 pub async fn get_app_usage(
@@ -235,7 +193,6 @@ pub async fn get_app_usage(
 
     let to = from + Duration::days(1);
 
-    // 이벤트 기반 앱 사용 시간 집계
     let events = state.storage.get_events(from, to, 100000).await?;
     let frames = state.storage.get_frames(from, to, 100000)?;
 
@@ -257,7 +214,6 @@ pub async fn get_app_usage(
         entry.1 += 1;
     }
 
-    // work_sessions 기반 앱별 실제 사용시간 조회 (Fallback: event_count * 5)
     let session_app_durations: HashMap<String, i64> = {
         let from_rfc = from.to_rfc3339();
         let to_rfc = to.to_rfc3339();
@@ -291,11 +247,9 @@ pub async fn get_app_usage(
     }))
 }
 
-/// 활동 히트맵 조회
 ///
 /// GET /api/stats/heatmap?days=7
 ///
-/// 요일(0=월~6=일) x 시간(0-23) 활동량 데이터 반환
 pub async fn get_heatmap(
     State(state): State<AppState>,
     Query(params): Query<HeatmapQuery>,
@@ -305,14 +259,11 @@ pub async fn get_heatmap(
     let to = Utc::now();
     let from = to - Duration::days(days);
 
-    // 이벤트 + 프레임 조회
     let events = state.storage.get_events(from, to, 100000).await?;
     let frames = state.storage.get_frames(from, to, 100000)?;
 
-    // 7일 x 24시간 그리드 초기화
     let mut grid: [[u32; 24]; 7] = [[0; 24]; 7];
 
-    // 이벤트 타임스탬프 집계
     for event in &events {
         let ts = match event {
             oneshim_core::models::event::Event::User(e) => e.timestamp,
@@ -322,7 +273,6 @@ pub async fn get_heatmap(
             oneshim_core::models::event::Event::Process(e) => e.timestamp,
             oneshim_core::models::event::Event::Window(e) => e.timestamp,
         };
-        // 요일: 0=월, 6=일 (chrono는 1=월, 7=일)
         let day = (ts.weekday().num_days_from_monday()) as usize;
         let hour = ts.hour() as usize;
         if day < 7 && hour < 24 {
@@ -330,7 +280,6 @@ pub async fn get_heatmap(
         }
     }
 
-    // 프레임 타임스탬프 집계 (FrameRecord.timestamp는 RFC3339 String)
     for frame in &frames {
         if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&frame.timestamp) {
             let ts_utc = ts.with_timezone(&Utc);
@@ -342,7 +291,6 @@ pub async fn get_heatmap(
         }
     }
 
-    // 셀 목록 생성
     let mut cells = Vec::with_capacity(7 * 24);
     let mut max_value = 0u32;
 

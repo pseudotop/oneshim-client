@@ -1,8 +1,5 @@
-//! 서버 통합 테스트
 //!
-//! Mock 서버와 실제 클라이언트 코드를 연결하여 통합 테스트합니다.
 //!
-//! 실행:
 //! ```
 //! cargo test -p oneshim-app --test server_integration_test -- --nocapture
 //! ```
@@ -19,84 +16,73 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// TokenManager 로그인 테스트
 #[tokio::test]
 async fn test_token_manager_login() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
     let token_manager = TokenManager::new(server.url());
 
-    // 로그인 시도
     let result = token_manager
         .login("test@example.com", "test-password-placeholder")
         .await;
-    assert!(result.is_ok(), "로그인 실패: {:?}", result.err());
+    assert!(result.is_ok(), "login failure: {:?}", result.err());
 
-    // 토큰 획득 확인
     let token = token_manager.get_token().await;
-    assert!(token.is_ok(), "토큰 획득 실패: {:?}", token.err());
+    assert!(token.is_ok(), "token 획득 failure: {:?}", token.err());
 
     let token_str = token.unwrap();
     assert!(
         token_str.starts_with("mock_access_"),
-        "토큰 형식 불일치: {}",
+        "token 형식 불일치: {}",
         token_str
     );
 
-    println!("✅ 로그인 성공, 토큰: {}...", &token_str[..20]);
+    println!("✅ login success, token: {}...", &token_str[..20]);
 }
 
-/// HttpApiClient 세션 생성 테스트
 #[tokio::test]
 async fn test_api_client_create_session() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
-    // TokenManager 설정 및 로그인
     let token_manager = Arc::new(TokenManager::new(server.url()));
     token_manager
         .login("test@example.com", "test-password-placeholder")
         .await
-        .expect("로그인 실패");
+        .expect("login failure");
 
-    // HttpApiClient 생성
     let api_client =
         HttpApiClient::new(server.url(), token_manager, Duration::from_secs(30)).unwrap();
 
-    // 세션 생성
     let client_id = format!("client_{}", Uuid::new_v4());
     let result = api_client.create_session(&client_id).await;
 
-    assert!(result.is_ok(), "세션 생성 실패: {:?}", result.err());
+    assert!(result.is_ok(), "session create failure: {:?}", result.err());
 
     let session = result.unwrap();
     assert!(session.session_id.starts_with("session_"));
     assert_eq!(session.client_id, client_id);
 
-    println!("✅ 세션 생성 성공: {}", session.session_id);
+    println!("✅ session create success: {}", session.session_id);
     println!("   - User ID: {}", session.user_id);
     println!("   - Capabilities: {:?}", session.capabilities);
 }
 
-/// 컨텍스트 업로드 테스트
 #[tokio::test]
 async fn test_api_client_upload_context() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
-    // TokenManager 설정 및 로그인
     let token_manager = Arc::new(TokenManager::new(server.url()));
     token_manager
         .login("test@example.com", "test-password-placeholder")
         .await
-        .expect("로그인 실패");
+        .expect("login failure");
 
-    // HttpApiClient 생성
     let api_client =
         HttpApiClient::new(server.url(), token_manager, Duration::from_secs(30)).unwrap();
 
-    // 컨텍스트 업로드 생성
     let context = ContextUpload {
         session_id: "test_session_123".to_string(),
         timestamp: chrono::Utc::now(),
@@ -108,40 +94,34 @@ async fn test_api_client_upload_context() {
             resolution: (1920, 1080),
             importance: 0.8,
         },
-        ocr_text: Some("테스트 텍스트".to_string()),
+        ocr_text: Some("test 텍스트".to_string()),
         image: None,
     };
 
-    // 업로드
     let result = api_client.upload_context(&context).await;
-    assert!(result.is_ok(), "컨텍스트 업로드 실패: {:?}", result.err());
+    assert!(result.is_ok(), "context upload failure: {:?}", result.err());
 
-    // 서버에 저장 확인
     assert_eq!(server.context_count(), 1);
 
-    println!("✅ 컨텍스트 업로드 성공");
+    println!("✅ context upload success");
     println!("   - App: {}", context.metadata.app_name);
     println!("   - Window: {}", context.metadata.window_title);
 }
 
-/// 배치 이벤트 업로드 테스트
 #[tokio::test]
 async fn test_api_client_upload_batch() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
-    // TokenManager 설정 및 로그인
     let token_manager = Arc::new(TokenManager::new(server.url()));
     token_manager
         .login("test@example.com", "test-password-placeholder")
         .await
-        .expect("로그인 실패");
+        .expect("login failure");
 
-    // HttpApiClient 생성
     let api_client =
         HttpApiClient::new(server.url(), token_manager, Duration::from_secs(30)).unwrap();
 
-    // 이벤트 배치 생성
     let events: Vec<Event> = (0..5)
         .map(|i| {
             Event::User(UserEvent {
@@ -160,100 +140,85 @@ async fn test_api_client_upload_batch() {
         created_at: chrono::Utc::now(),
     };
 
-    // 업로드
     let result = api_client.upload_batch(&batch).await;
-    assert!(result.is_ok(), "배치 업로드 실패: {:?}", result.err());
+    assert!(result.is_ok(), "batch upload failure: {:?}", result.err());
 
-    println!("✅ 배치 이벤트 업로드 성공");
+    println!("✅ batch event upload success");
     println!("   - Session ID: {}", batch.session_id);
-    println!("   - Events: {} 개", batch.events.len());
+    println!("- Events: {} items", batch.events.len());
 }
 
-/// 헬스체크 테스트
 #[tokio::test]
 async fn test_api_client_health_check() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
-    // TokenManager 설정 및 로그인
     let token_manager = Arc::new(TokenManager::new(server.url()));
     token_manager
         .login("test@example.com", "test-password-placeholder")
         .await
-        .expect("로그인 실패");
+        .expect("login failure");
 
-    // HttpApiClient 생성
     let api_client =
         HttpApiClient::new(server.url(), token_manager, Duration::from_secs(30)).unwrap();
 
-    // 세션 생성
     let session = api_client
         .create_session("test_client")
         .await
-        .expect("세션 생성 실패");
+        .expect("session create failure");
 
-    // 헬스체크
     let result = api_client.send_heartbeat(&session.session_id).await;
-    assert!(result.is_ok(), "헬스체크 실패: {:?}", result.err());
+    assert!(result.is_ok(), "헬스체크 failure: {:?}", result.err());
 
-    println!("✅ 헬스체크 성공");
+    println!("✅ success");
 }
 
-/// 토큰 갱신 테스트
 #[tokio::test]
 async fn test_token_refresh() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
     let token_manager = TokenManager::new(server.url());
 
-    // 로그인
     token_manager
         .login("test@example.com", "test-password-placeholder")
         .await
-        .expect("로그인 실패");
+        .expect("login failure");
 
-    let token1 = token_manager.get_token().await.expect("토큰 획득 실패");
+    let token1 = token_manager.get_token().await.expect("token 획득 failure");
 
-    // 강제 갱신
-    token_manager.refresh().await.expect("토큰 갱신 실패");
+    token_manager.refresh().await.expect("token refresh failure");
 
-    let token2 = token_manager.get_token().await.expect("토큰 획득 실패");
+    let token2 = token_manager.get_token().await.expect("token 획득 failure");
 
-    // 토큰이 변경되었는지 확인
-    assert_ne!(token1, token2, "토큰이 갱신되지 않음");
+    assert_ne!(token1, token2, "token이 refresh되지 않음");
 
-    println!("✅ 토큰 갱신 성공");
+    println!("✅ token refresh success");
     println!("   - Old: {}...", &token1[..20]);
     println!("   - New: {}...", &token2[..20]);
 }
 
-/// 다중 요청 시퀀스 테스트
 #[tokio::test]
 async fn test_full_client_workflow() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
-    // 1. TokenManager 설정 및 로그인
     let token_manager = Arc::new(TokenManager::new(server.url()));
     token_manager
         .login("user@example.com", "test-password-placeholder")
         .await
-        .expect("Step 1: 로그인 실패");
-    println!("1️⃣ 로그인 완료");
+        .expect("Step 1: login failure");
+    println!("1️⃣ login completed");
 
-    // 2. API 클라이언트 생성
     let api_client =
         HttpApiClient::new(server.url(), token_manager.clone(), Duration::from_secs(30)).unwrap();
 
-    // 3. 세션 생성
     let session = api_client
         .create_session("oneshim_client_v1")
         .await
-        .expect("Step 3: 세션 생성 실패");
-    println!("2️⃣ 세션 생성: {}", session.session_id);
+        .expect("Step 3: session create failure");
+    println!("2️⃣ session create: {}", session.session_id);
 
-    // 4. 컨텍스트 업로드 (3회)
     for i in 0..3 {
         let context = ContextUpload {
             session_id: session.session_id.clone(),
@@ -272,11 +237,10 @@ async fn test_full_client_workflow() {
         api_client
             .upload_context(&context)
             .await
-            .unwrap_or_else(|_| panic!("Step 4-{}: 컨텍스트 업로드 실패", i));
+            .unwrap_or_else(|_| panic!("Step 4-{}: context upload failure", i));
     }
-    println!("3️⃣ 컨텍스트 업로드 3회 완료");
+    println!("3️⃣ context upload 3 completed");
 
-    // 5. 이벤트 배치 업로드
     let events: Vec<Event> = (0..10)
         .map(|i| {
             Event::User(UserEvent {
@@ -298,68 +262,58 @@ async fn test_full_client_workflow() {
     api_client
         .upload_batch(&batch)
         .await
-        .expect("Step 5: 배치 업로드 실패");
-    println!("4️⃣ 이벤트 배치 업로드 완료 (10개)");
+        .expect("Step 5: batch upload failure");
+    println!("4️⃣ event batch upload completed (10items)");
 
-    // 6. 헬스체크
     api_client
         .send_heartbeat(&session.session_id)
         .await
-        .expect("Step 6: 헬스체크 실패");
-    println!("5️⃣ 헬스체크 완료");
+        .expect("Step 6: 헬스체크 failure");
+    println!("5️⃣ completed");
 
-    // 결과 검증
-    assert!(server.request_count() >= 7, "요청 수 부족");
-    assert_eq!(server.context_count(), 3, "컨텍스트 수 불일치");
-    assert_eq!(server.session_count(), 1, "세션 수 불일치");
+    assert!(server.request_count() >= 7, "request 수 부족");
+    assert_eq!(server.context_count(), 3, "context 수 불일치");
+    assert_eq!(server.session_count(), 1, "session 수 불일치");
 
-    println!("\n✅ 전체 워크플로우 성공!");
-    println!("   - 총 요청 수: {}", server.request_count());
-    println!("   - 컨텍스트: {} 개", server.context_count());
-    println!("   - 세션: {} 개", server.session_count());
+    println!("\n✅ success!");
+    println!("- request: {}", server.request_count());
+    println!("- context: {} items", server.context_count());
+    println!("- session: {} items", server.session_count());
 }
 
-/// 잘못된 인증 정보 테스트
 #[tokio::test]
 async fn test_invalid_credentials() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
     let token_manager = TokenManager::new(server.url());
 
-    // 로그인 시도 - 빈 credentials는 실패
     let result = token_manager.login("", "").await;
 
-    // Mock 서버는 빈 credentials에 대해 401 반환
-    assert!(result.is_err(), "빈 인증 정보로 로그인 성공하면 안됨");
-    println!("✅ 잘못된 인증 정보 거부 확인");
+    assert!(result.is_err(), "빈 인증 정보로 login success하면 안됨");
+    println!("✅ deny check");
 }
 
-/// 동시 요청 테스트
 #[tokio::test]
 async fn test_concurrent_requests() {
     let server = MockServer::start().await;
-    println!("Mock 서버 시작: {}", server.url());
+    println!("Mock server started: {}", server.url());
 
-    // TokenManager 설정 및 로그인
     let token_manager = Arc::new(TokenManager::new(server.url()));
     token_manager
         .login("test@example.com", "test-password-placeholder")
         .await
-        .expect("로그인 실패");
+        .expect("login failure");
 
-    // HttpApiClient 생성
     let api_client =
         Arc::new(HttpApiClient::new(server.url(), token_manager, Duration::from_secs(30)).unwrap());
 
-    // 세션 생성
     let session = api_client
         .create_session("concurrent_test")
         .await
-        .expect("세션 생성 실패");
+        .expect("session create failure");
     let session_id = session.session_id.clone();
 
-    // 10개 동시 헬스체크 요청
     let mut handles = Vec::new();
     for _ in 0..10 {
         let client = api_client.clone();
@@ -369,16 +323,14 @@ async fn test_concurrent_requests() {
         ));
     }
 
-    // 모든 요청 완료 대기
     let results: Vec<_> = futures::future::join_all(handles).await;
 
-    // 모든 요청 성공 확인
     let success_count = results
         .iter()
         .filter(|r| r.is_ok() && r.as_ref().unwrap().is_ok())
         .count();
-    assert_eq!(success_count, 10, "일부 동시 요청 실패");
+    assert_eq!(success_count, 10, "일부 동시 request failure");
 
-    println!("✅ 동시 요청 10개 모두 성공");
-    println!("   - 총 요청 수: {}", server.request_count());
+    println!("✅ request 10items success");
+    println!("- request: {}", server.request_count());
 }

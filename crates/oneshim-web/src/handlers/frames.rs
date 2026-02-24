@@ -1,4 +1,3 @@
-//! 프레임(스크린샷) API 핸들러.
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
@@ -11,35 +10,22 @@ use crate::AppState;
 
 use super::{PaginatedResponse, PaginationMeta, TimeRangeQuery};
 
-/// 프레임 응답 DTO
 #[derive(Debug, Serialize)]
 pub struct FrameResponse {
-    /// 프레임 ID
     pub id: i64,
-    /// 캡처 시각 (RFC3339)
     pub timestamp: String,
-    /// 트리거 유형
     pub trigger_type: String,
-    /// 앱 이름
     pub app_name: String,
-    /// 창 제목
     pub window_title: String,
-    /// 중요도 점수
     pub importance: f32,
-    /// 해상도 (너비 x 높이)
     pub resolution: String,
-    /// 이미지 파일 경로 (있는 경우)
     pub file_path: Option<String>,
-    /// OCR 텍스트 (있는 경우)
     pub ocr_text: Option<String>,
-    /// 이미지 URL
     pub image_url: Option<String>,
-    /// 연결된 태그 ID 목록
     #[serde(default)]
     pub tag_ids: Vec<i64>,
 }
 
-/// 프레임 목록 조회 (페이지네이션)
 ///
 /// GET /api/frames?from=&to=&limit=&offset=
 pub async fn get_frames(
@@ -56,7 +42,6 @@ pub async fn get_frames(
         .count_frames_in_range(&from.to_rfc3339(), &to.to_rfc3339())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    // offset이 있으면 더 많이 가져와서 스킵
     let fetch_limit = limit + offset;
     let frames = state.storage.get_frames(from, to, fetch_limit)?;
 
@@ -84,7 +69,6 @@ pub async fn get_frames(
         })
         .collect();
 
-    // 프레임별 태그 ID 일괄 조회
     let data: Vec<FrameResponse> = {
         let frame_ids: Vec<i64> = data.iter().map(|f| f.id).collect();
         if frame_ids.is_empty() {
@@ -119,34 +103,31 @@ pub async fn get_frames(
     }))
 }
 
-/// 프레임 이미지 조회
 ///
 /// GET /api/frames/:id/image
 pub async fn get_frame_image(State(state): State<AppState>, Path(frame_id): Path<i64>) -> Response {
     let file_path = match state.storage.get_frame_file_path(frame_id) {
         Ok(Some(path)) => path,
         Ok(None) => {
-            return ApiError::NotFound(format!("프레임 {frame_id}에 이미지가 없음")).into_response()
+            return ApiError::NotFound(format!("frame {frame_id}에 이미지가 none")).into_response()
         }
         Err(e) => return ApiError::Internal(e.to_string()).into_response(),
     };
 
-    // 프레임 저장 디렉토리와 결합 + 경로 순회 방어
     let full_path = if let Some(ref frames_dir) = state.frames_dir {
         let joined = frames_dir.join(&file_path);
-        // canonicalize로 심볼릭 링크/.. 해석 후 경계 검증
         match joined.canonicalize() {
             Ok(canonical) => {
                 let frames_canonical = frames_dir
                     .canonicalize()
                     .unwrap_or_else(|_| frames_dir.clone());
                 if !canonical.starts_with(&frames_canonical) {
-                    return ApiError::BadRequest("잘못된 파일 경로".to_string()).into_response();
+                    return ApiError::BadRequest("잘못된 file path".to_string()).into_response();
                 }
                 canonical
             }
             Err(_) => {
-                return ApiError::NotFound(format!("이미지 파일 없음: {}", file_path))
+                return ApiError::NotFound(format!("이미지 file none: {}", file_path))
                     .into_response();
             }
         }
@@ -154,13 +135,11 @@ pub async fn get_frame_image(State(state): State<AppState>, Path(frame_id): Path
         std::path::PathBuf::from(&file_path)
     };
 
-    // 파일 읽기 (동기)
     let data = match std::fs::read(&full_path) {
         Ok(d) => d,
-        Err(e) => return ApiError::Internal(format!("파일 읽기 실패: {e}")).into_response(),
+        Err(e) => return ApiError::Internal(format!("file read failure: {e}")).into_response(),
     };
 
-    // Content-Type 결정
     let content_type = mime_guess::from_path(&full_path)
         .first_or_octet_stream()
         .to_string();

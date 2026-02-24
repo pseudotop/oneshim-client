@@ -1,4 +1,3 @@
-//! 운영 지원용 진단 번들 핸들러.
 
 use axum::{extract::State, Json};
 use chrono::Utc;
@@ -11,7 +10,6 @@ use crate::{services::settings_service, AppState};
 const SUPPORT_DIAGNOSTICS_SCHEMA_VERSION: &str = "support.diagnostics.v1";
 const SUPPORT_AUDIT_SCHEMA_VERSION: &str = "automation.audit.v1";
 
-/// 진단 헬스 상태
 #[derive(Debug, Serialize)]
 pub struct DiagnosticsHealthDto {
     pub storage_ok: bool,
@@ -24,7 +22,6 @@ pub struct DiagnosticsHealthDto {
     pub update_control_configured: bool,
 }
 
-/// 운영 지원 진단 번들
 #[derive(Debug, Serialize)]
 pub struct DiagnosticsBundleDto {
     pub schema_version: String,
@@ -50,7 +47,6 @@ fn to_audit_entry_dto(entry: oneshim_automation::audit::AuditEntry) -> AuditEntr
     }
 }
 
-/// GET /api/support/diagnostics — 운영 진단 번들 조회
 pub async fn get_diagnostics(State(state): State<AppState>) -> Json<DiagnosticsBundleDto> {
     let settings_snapshot = settings_service::get_settings(&state);
     let (storage_stats, storage_error) = match settings_service::get_storage_stats(&state) {

@@ -1,4 +1,3 @@
-//! UI 뷰 모듈.
 
 pub mod context_panel;
 pub mod main_window;

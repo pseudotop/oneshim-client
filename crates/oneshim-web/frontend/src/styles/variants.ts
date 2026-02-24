@@ -1,11 +1,8 @@
 /**
- * 컴포넌트 변형 정의
  *
- * 각 컴포넌트의 variant/size 조합을 정의
  */
 import { colors } from './tokens'
 
-// 버튼 변형
 export const buttonVariants = {
   variant: {
     primary: `${colors.primary.DEFAULT} ${colors.primary.hover} ${colors.text.inverse} font-medium`,
@@ -22,7 +19,6 @@ export const buttonVariants = {
   },
 } as const
 
-// 카드 변형
 export const cardVariants = {
   variant: {
     default: colors.surface.elevated,
@@ -39,7 +35,6 @@ export const cardVariants = {
   },
 } as const
 
-// 입력 변형
 export const inputVariants = {
   variant: {
     default: `${colors.surface.muted} ${colors.surface.border}`,
@@ -52,7 +47,6 @@ export const inputVariants = {
   },
 } as const
 
-// 배지 변형
 export const badgeVariants = {
   color: {
     default: 'bg-slate-500/20 text-slate-600 dark:text-slate-400',
@@ -69,7 +63,6 @@ export const badgeVariants = {
   },
 } as const
 
-// Select 변형
 export const selectVariants = {
   variant: {
     default: `${colors.surface.base} ${colors.surface.border}`,
@@ -80,7 +73,6 @@ export const selectVariants = {
   },
 } as const
 
-// StatCard 색상 맵
 export const statColorMap = {
   teal: `bg-teal-500/10 ${colors.accent.teal}`,
   slate: 'bg-slate-500/10 text-slate-600 dark:text-slate-400',

@@ -1,5 +1,4 @@
 /**
- * 설정 서브 컴포넌트 배럴 export
  */
 export { default as NotificationSettings } from './NotificationSettings'
 export { default as PrivacySettings } from './PrivacySettings'

@@ -1,4 +1,3 @@
-// 활동 히트맵 컴포넌트 (요일 x 시간)
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchHeatmap, HeatmapResponse } from '../api/client'
@@ -10,7 +9,6 @@ interface ActivityHeatmapProps {
 const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
 const DAY_LABELS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-// 활동량에 따른 색상 반환 (0-1 비율)
 function getColor(ratio: number): string {
   if (ratio === 0) return 'bg-slate-200 dark:bg-slate-700'
   if (ratio < 0.2) return 'bg-green-100 dark:bg-green-900'
@@ -26,7 +24,7 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
   const { data, isLoading, error } = useQuery<HeatmapResponse>({
     queryKey: ['heatmap', days],
     queryFn: () => fetchHeatmap(days),
-    refetchInterval: 60000, // 1분마다 갱신
+    refetchInterval: 60000, // 1 min refresh
   })
 
   if (isLoading) {
@@ -49,7 +47,6 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
     )
   }
 
-  // 7x24 그리드 생성
   const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
   for (const cell of data.cells) {
     if (cell.day < 7 && cell.hour < 24) {
@@ -68,7 +65,7 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
         </span>
       </div>
 
-      {/* 시간 레이블 */}
+      {/* UI note */}
       <div className="flex ml-8 mb-1">
         {HOUR_LABELS.map((hour, i) => (
           <div
@@ -81,15 +78,15 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
         ))}
       </div>
 
-      {/* 히트맵 그리드 */}
+      {/* UI note */}
       <div className="flex flex-col gap-0.5">
         {grid.map((row, dayIndex) => (
           <div key={dayIndex} className="flex items-center gap-0.5">
-            {/* 요일 레이블 */}
+            {/* UI note */}
             <div className="w-8 text-xs text-slate-600 dark:text-slate-400 text-right pr-2">
               {dayLabels[dayIndex]}
             </div>
-            {/* 시간별 셀 */}
+            {/* UI note */}
             {row.map((value, hourIndex) => {
               const ratio = value / maxValue
               return (
@@ -104,7 +101,7 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
         ))}
       </div>
 
-      {/* 범례 */}
+      {/* UI note */}
       <div className="flex items-center justify-end gap-2 mt-4">
         <span className="text-xs text-slate-600 dark:text-slate-400">{t('heatmap.low')}</span>
         <div className="flex gap-0.5">

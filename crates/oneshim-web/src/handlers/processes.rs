@@ -1,4 +1,3 @@
-//! 프로세스 스냅샷 API 핸들러.
 
 use axum::extract::{Query, State};
 use axum::Json;
@@ -9,29 +8,20 @@ use crate::AppState;
 
 use super::TimeRangeQuery;
 
-/// 프로세스 엔트리 응답 DTO
 #[derive(Debug, Serialize)]
 pub struct ProcessEntryResponse {
-    /// 프로세스 ID
     pub pid: u32,
-    /// 프로세스 이름
     pub name: String,
-    /// CPU 사용률 (%)
     pub cpu_usage: f64,
-    /// 메모리 사용량 (bytes)
     pub memory_bytes: u64,
 }
 
-/// 프로세스 스냅샷 응답 DTO
 #[derive(Debug, Serialize)]
 pub struct ProcessSnapshotResponse {
-    /// 스냅샷 시각 (RFC3339)
     pub timestamp: String,
-    /// 프로세스 목록
     pub processes: Vec<ProcessEntryResponse>,
 }
 
-/// 프로세스 스냅샷 조회
 ///
 /// GET /api/processes?from=&to=&limit=
 pub async fn get_processes(

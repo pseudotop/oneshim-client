@@ -1,7 +1,5 @@
 /**
- * 알림 설정 섹션 컴포넌트
  *
- * 알림 활성화, 유휴 알림, 장시간 작업 알림, 고사용량 알림 설정
  */
 import { useTranslation } from 'react-i18next'
 import { Card, CardTitle, Input } from '../../components/ui'
@@ -20,7 +18,7 @@ export default function NotificationSettings({ notification, onChange }: Notific
     <Card variant="default" padding="lg">
       <CardTitle className="mb-4">{t('settings.notifTitle')}</CardTitle>
 
-      {/* 전체 활성화 */}
+      {/* UI note */}
       <label className={`flex items-center justify-between cursor-pointer mb-6 pb-4 border-b ${form.sectionDivider}`}>
         <div>
           <span className={`${colors.text.secondary} font-medium`}>{t('settings.notifEnabled')}</span>
@@ -35,7 +33,7 @@ export default function NotificationSettings({ notification, onChange }: Notific
       </label>
 
       <div className={`space-y-6 ${!notification.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-        {/* 유휴 알림 */}
+        {/* idle notification */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <label className="flex items-center cursor-pointer">
             <input
@@ -64,7 +62,7 @@ export default function NotificationSettings({ notification, onChange }: Notific
           </div>
         </div>
 
-        {/* 장시간 작업 알림 */}
+        {/* UI note */}
         <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-4 border-t ${form.sectionDivider}`}>
           <label className="flex items-center cursor-pointer">
             <input
@@ -93,7 +91,7 @@ export default function NotificationSettings({ notification, onChange }: Notific
           </div>
         </div>
 
-        {/* 고사용량 알림 */}
+        {/* UI note */}
         <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-4 border-t ${form.sectionDivider}`}>
           <label className="flex items-center cursor-pointer">
             <input

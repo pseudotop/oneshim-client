@@ -1,4 +1,3 @@
-//! 설정 관련 서비스 로직.
 
 use chrono::{DateTime, Utc};
 use oneshim_core::config::{
@@ -17,7 +16,6 @@ use crate::handlers::settings::{
 use crate::AppState;
 use tracing::warn;
 
-/// 저장소 통계 조회.
 pub fn get_storage_stats(state: &AppState) -> Result<StorageStats, ApiError> {
     let stats = state
         .storage
@@ -43,7 +41,6 @@ pub fn get_storage_stats(state: &AppState) -> Result<StorageStats, ApiError> {
     })
 }
 
-/// 앱 설정 조회.
 pub fn get_settings(state: &AppState) -> AppSettings {
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
@@ -53,7 +50,6 @@ pub fn get_settings(state: &AppState) -> AppSettings {
     }
 }
 
-/// 앱 설정 업데이트.
 pub fn update_settings(state: &AppState, settings: &AppSettings) -> Result<(), ApiError> {
     validate_settings_input(settings)?;
 
@@ -69,7 +65,7 @@ pub fn update_settings(state: &AppState, settings: &AppSettings) -> Result<(), A
 
         config_manager
             .update(next_config.clone())
-            .map_err(|e| ApiError::Internal(format!("설정 저장 실패: {e}")))?;
+            .map_err(|e| ApiError::Internal(format!("설정 save failure: {e}")))?;
 
         emit_policy_change_events(state, &previous_config, &next_config);
     }
@@ -174,17 +170,17 @@ fn log_policy_event(state: &AppState, action_type: &str, details: String) {
 fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
     if settings.retention_days == 0 || settings.retention_days > 365 {
         return Err(ApiError::BadRequest(
-            "보존 기간은 1-365일 사이여야 합니다".to_string(),
+            "보존 period은 1-365일 사이여야 합니다".to_string(),
         ));
     }
     if settings.max_storage_mb < 100 || settings.max_storage_mb > 10000 {
         return Err(ApiError::BadRequest(
-            "최대 저장소 용량은 100MB-10GB 사이여야 합니다".to_string(),
+            "최대 save소 용량은 100MB-10GB 사이여야 합니다".to_string(),
         ));
     }
     if settings.web_port < 1024 {
         return Err(ApiError::BadRequest(
-            "포트는 1024 이상이어야 합니다".to_string(),
+            "port는 1024 이상이어야 합니다".to_string(),
         ));
     }
     if !settings
@@ -496,7 +492,6 @@ fn parse_external_data_policy(value: &str) -> Result<ExternalDataPolicy, ApiErro
     }
 }
 
-/// 테스트와 설정 저장 경로에서 재사용되는 설정 적용 함수.
 pub(crate) fn apply_settings_to_config(
     config: &mut AppConfig,
     settings: &AppSettings,
@@ -624,7 +619,6 @@ pub(crate) fn apply_settings_to_config(
     Ok(())
 }
 
-/// API 키 마스킹 — 앞 2자 + "..." + 뒤 4자.
 pub(crate) fn mask_api_key(key: &str) -> String {
     if key.len() <= 8 {
         return "***".to_string();
@@ -632,7 +626,6 @@ pub(crate) fn mask_api_key(key: &str) -> String {
     format!("{}...{}", &key[..2], &key[key.len() - 4..])
 }
 
-/// POST에서 받은 값이 마스킹된 값인지 확인.
 pub(crate) fn is_masked_key(value: &str) -> bool {
     value.contains("...") && value.len() <= 12
 }

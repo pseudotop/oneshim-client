@@ -1,6 +1,4 @@
-//! 시스템 리소스 모니터링.
 //!
-//! `SystemMonitor` 포트 구현. sysinfo 기반 CPU/메모리/디스크 수집.
 
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
@@ -10,7 +8,6 @@ use std::sync::Mutex;
 use sysinfo::{Disks, Networks, System};
 use tracing::debug;
 
-/// sysinfo 기반 시스템 모니터 — `SystemMonitor` 포트 구현
 pub struct SysInfoMonitor {
     sys: Mutex<System>,
     disks: Mutex<Disks>,
@@ -18,7 +15,6 @@ pub struct SysInfoMonitor {
 }
 
 impl SysInfoMonitor {
-    /// 새 시스템 모니터 생성
     pub fn new() -> Self {
         Self {
             sys: Mutex::new(System::new_all()),
@@ -37,49 +33,44 @@ impl Default for SysInfoMonitor {
 #[async_trait]
 impl SystemMonitor for SysInfoMonitor {
     async fn collect_metrics(&self) -> Result<SystemMetrics, CoreError> {
-        // CPU 갱신
         {
             let mut sys = self
                 .sys
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("시스템 잠금 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("시스템 잠금 failure: {e}")))?;
             sys.refresh_cpu_usage();
             sys.refresh_memory();
         }
 
-        // 디스크 갱신
         {
             let mut disks = self
                 .disks
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("디스크 잠금 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("디스크 잠금 failure: {e}")))?;
             disks.refresh(true);
         }
 
-        // 네트워크 갱신
         {
             let mut networks = self
                 .networks
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("네트워크 잠금 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("네트워크 잠금 failure: {e}")))?;
             networks.refresh(true);
         }
 
-        // 메트릭 수집
         let sys = self
             .sys
             .lock()
-            .map_err(|e| CoreError::Internal(format!("시스템 잠금 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("시스템 잠금 failure: {e}")))?;
 
         let cpu_usage = sys.global_cpu_usage();
         let memory_used = sys.used_memory();
         let memory_total = sys.total_memory();
 
-        // 디스크 합계
         let disks = self
             .disks
             .lock()
-            .map_err(|e| CoreError::Internal(format!("디스크 잠금 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("디스크 잠금 failure: {e}")))?;
         let (disk_used, disk_total) = disks.list().iter().fold((0u64, 0u64), |(used, total), d| {
             (
                 used + d.total_space() - d.available_space(),
@@ -87,11 +78,10 @@ impl SystemMonitor for SysInfoMonitor {
             )
         });
 
-        // 네트워크 합계
         let networks = self
             .networks
             .lock()
-            .map_err(|e| CoreError::Internal(format!("네트워크 잠금 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("네트워크 잠금 failure: {e}")))?;
         let (upload_speed, download_speed) = networks
             .list()
             .iter()

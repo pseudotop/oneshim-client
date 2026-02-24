@@ -1,6 +1,4 @@
-//! oneshim-web 전용 저장소 포트.
 //!
-//! 웹 핸들러가 구체 `SqliteStorage` 타입 대신 포트에 의존하도록 분리한다.
 
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
@@ -14,7 +12,6 @@ use oneshim_storage::sqlite::{
     TagRecord,
 };
 
-/// oneshim-web 핸들러가 필요로 하는 저장소 API 집합.
 pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
     fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError>;
     fn count_frames_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError>;

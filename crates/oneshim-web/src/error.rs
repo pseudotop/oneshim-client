@@ -1,4 +1,3 @@
-//! API 에러 처리.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -6,28 +5,21 @@ use axum::Json;
 use serde::Serialize;
 use thiserror::Error;
 
-/// API 에러
 #[derive(Debug, Error)]
 pub enum ApiError {
-    /// 내부 서버 오류
-    #[error("내부 서버 오류: {0}")]
+    #[error("within부 server error: {0}")]
     Internal(String),
 
-    /// 리소스를 찾을 수 없음
-    #[error("리소스를 찾을 수 없음: {0}")]
+    #[error("리소스를 찾을 수 none: {0}")]
     NotFound(String),
 
-    /// 잘못된 요청
-    #[error("잘못된 요청: {0}")]
+    #[error("잘못된 request: {0}")]
     BadRequest(String),
 }
 
-/// 에러 응답 본문
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
-    /// 에러 메시지
     pub error: String,
-    /// HTTP 상태 코드
     pub status: u16,
 }
 
@@ -60,7 +52,7 @@ mod tests {
 
     #[test]
     fn error_display() {
-        let err = ApiError::NotFound("세션".to_string());
-        assert!(err.to_string().contains("세션"));
+        let err = ApiError::NotFound("session".to_string());
+        assert!(err.to_string().contains("session"));
     }
 }

@@ -1,4 +1,3 @@
-//! 통합 타임라인 API - 이벤트 + 프레임 + 유휴 기간을 시간순 정렬
 
 use axum::extract::{Query, State};
 use axum::Json;
@@ -9,28 +8,19 @@ use crate::error::ApiError;
 use crate::services::timeline_service;
 use crate::AppState;
 
-/// 세션 정보
 #[derive(Debug, Serialize)]
 pub struct SessionInfo {
-    /// 시작 시각 (RFC3339)
     pub start: String,
-    /// 종료 시각 (RFC3339)
     pub end: String,
-    /// 세션 지속 시간 (초)
     pub duration_secs: i64,
-    /// 총 이벤트 수
     pub total_events: i64,
-    /// 총 프레임 수
     pub total_frames: i64,
-    /// 총 유휴 시간 (초)
     pub total_idle_secs: i64,
 }
 
-/// 타임라인 아이템 (태그 기반 enum)
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
 pub enum TimelineItem {
-    /// 이벤트 아이템
     Event {
         id: String,
         timestamp: String,
@@ -38,7 +28,6 @@ pub enum TimelineItem {
         app_name: Option<String>,
         window_title: Option<String>,
     },
-    /// 프레임(스크린샷) 아이템
     Frame {
         id: i64,
         timestamp: String,
@@ -47,7 +36,6 @@ pub enum TimelineItem {
         importance: f32,
         image_url: String,
     },
-    /// 유휴 기간 아이템
     IdlePeriod {
         start: String,
         end: String,
@@ -55,45 +43,30 @@ pub enum TimelineItem {
     },
 }
 
-/// 앱 세그먼트 (타임라인 바용)
 #[derive(Debug, Serialize)]
 pub struct AppSegment {
-    /// 앱 이름
     pub app_name: String,
-    /// 시작 시각 (RFC3339)
     pub start: String,
-    /// 종료 시각 (RFC3339)
     pub end: String,
-    /// 표시 색상 (hex)
     pub color: String,
 }
 
-/// 통합 타임라인 응답
 #[derive(Debug, Serialize)]
 pub struct TimelineResponse {
-    /// 세션 정보
     pub session: SessionInfo,
-    /// 타임라인 아이템 목록 (시간순)
     pub items: Vec<TimelineItem>,
-    /// 앱 세그먼트 목록 (타임라인 바용)
     pub segments: Vec<AppSegment>,
 }
 
-/// 타임라인 쿼리 파라미터
 #[derive(Debug, Deserialize)]
 pub struct TimelineQuery {
-    /// 시작 시각 (RFC3339, 기본: 1시간 전)
     pub from: Option<String>,
-    /// 종료 시각 (RFC3339, 기본: 현재)
     pub to: Option<String>,
-    /// 최대 이벤트 조회 개수 (기본: 1000)
     pub max_events: Option<usize>,
-    /// 최대 프레임 조회 개수 (기본: 500)
     pub max_frames: Option<usize>,
 }
 
 impl TimelineQuery {
-    /// 기본값이 적용된 시작 시각
     pub fn from_datetime(&self) -> DateTime<Utc> {
         self.from
             .as_ref()
@@ -102,7 +75,6 @@ impl TimelineQuery {
             .unwrap_or_else(|| Utc::now() - chrono::Duration::hours(1))
     }
 
-    /// 기본값이 적용된 종료 시각
     pub fn to_datetime(&self) -> DateTime<Utc> {
         self.to
             .as_ref()
@@ -111,18 +83,15 @@ impl TimelineQuery {
             .unwrap_or_else(Utc::now)
     }
 
-    /// 최대 이벤트 개수 (기본: 1000)
     pub fn max_events(&self) -> usize {
         self.max_events.unwrap_or(1000)
     }
 
-    /// 최대 프레임 개수 (기본: 500)
     pub fn max_frames(&self) -> usize {
         self.max_frames.unwrap_or(500)
     }
 }
 
-/// 통합 타임라인 조회
 ///
 /// GET /api/timeline?from=&to=&max_events=&max_frames=
 pub async fn get_timeline(
@@ -145,7 +114,6 @@ mod tests {
 
     #[test]
     fn app_to_color_is_consistent() {
-        // 같은 앱 이름은 항상 같은 색상
         assert_eq!(
             timeline_service::app_to_color("Chrome"),
             timeline_service::app_to_color("Chrome")
@@ -158,10 +126,8 @@ mod tests {
 
     #[test]
     fn app_to_color_varies() {
-        // 다른 앱은 보통 다른 색상 (충돌 가능하지만 확률 낮음)
         let chrome_color = timeline_service::app_to_color("Chrome");
         let code_color = timeline_service::app_to_color("Code");
-        // 색상이 유효한 hex인지 확인
         assert!(chrome_color.starts_with('#'));
         assert!(code_color.starts_with('#'));
     }

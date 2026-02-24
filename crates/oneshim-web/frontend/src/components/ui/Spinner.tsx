@@ -1,5 +1,4 @@
 /**
- * 로딩 스피너 컴포넌트
  */
 import { cn } from '../../utils/cn'
 

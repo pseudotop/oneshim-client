@@ -229,7 +229,7 @@ pub fn materialize_bridge_file(
     if let Some(parent) = plan.file_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             CoreError::Internal(format!(
-                "브리지 디렉토리 생성 실패 ({}): {}",
+                "브리지 디렉토리 create failure ({}): {}",
                 parent.display(),
                 e
             ))
@@ -246,7 +246,7 @@ pub fn materialize_bridge_file(
 
     std::fs::write(&plan.file_path, content).map_err(|e| {
         CoreError::Internal(format!(
-            "브리지 파일 생성 실패 ({}): {}",
+            "브리지 file create failure ({}): {}",
             plan.file_path.display(),
             e
         ))

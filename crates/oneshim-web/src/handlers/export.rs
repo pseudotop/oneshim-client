@@ -1,4 +1,3 @@
-//! 데이터 내보내기 API 핸들러.
 
 use axum::{
     extract::{Query, State},
@@ -10,14 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{error::ApiError, AppState};
 
-/// 내보내기 쿼리 파라미터
 #[derive(Debug, Deserialize)]
 pub struct ExportQuery {
-    /// 시작 시간 (RFC3339)
     pub from: Option<String>,
-    /// 종료 시간 (RFC3339)
     pub to: Option<String>,
-    /// 내보내기 형식 (csv, json)
     #[serde(default = "default_format")]
     pub format: String,
 }
@@ -26,7 +21,6 @@ fn default_format() -> String {
     "json".to_string()
 }
 
-/// 메트릭 내보내기 레코드
 #[derive(Debug, Serialize)]
 pub struct MetricExportRecord {
     pub timestamp: String,
@@ -40,7 +34,6 @@ pub struct MetricExportRecord {
     pub network_download: u64,
 }
 
-/// 이벤트 내보내기 레코드
 #[derive(Debug, Serialize)]
 pub struct EventExportRecord {
     pub event_id: String,
@@ -50,7 +43,6 @@ pub struct EventExportRecord {
     pub window_title: Option<String>,
 }
 
-/// 프레임 내보내기 레코드 (메타데이터만)
 #[derive(Debug, Serialize)]
 pub struct FrameExportRecord {
     pub id: i64,
@@ -63,7 +55,6 @@ pub struct FrameExportRecord {
     pub ocr_text: Option<String>,
 }
 
-/// GET /api/export/metrics - 메트릭 내보내기
 pub async fn export_metrics(
     State(state): State<AppState>,
     Query(params): Query<ExportQuery>,
@@ -109,7 +100,6 @@ pub async fn export_metrics(
     export_response(&records, &params.format, "metrics")
 }
 
-/// GET /api/export/events - 이벤트 내보내기
 pub async fn export_events(
     State(state): State<AppState>,
     Query(params): Query<ExportQuery>,
@@ -144,7 +134,6 @@ pub async fn export_events(
     export_response(&records, &params.format, "events")
 }
 
-/// GET /api/export/frames - 프레임 메타데이터 내보내기
 pub async fn export_frames(
     State(state): State<AppState>,
     Query(params): Query<ExportQuery>,
@@ -182,7 +171,6 @@ pub async fn export_frames(
     export_response(&records, &params.format, "frames")
 }
 
-/// 내보내기 응답 생성 (JSON 또는 CSV)
 fn export_response<T: Serialize>(
     records: &[T],
     format: &str,
@@ -207,9 +195,8 @@ fn export_response<T: Serialize>(
                 .into_response())
         }
         _ => {
-            // JSON (기본값)
             let json = serde_json::to_string_pretty(records)
-                .map_err(|e| ApiError::Internal(format!("JSON 직렬화 실패: {e}")))?;
+                .map_err(|e| ApiError::Internal(format!("JSON 직렬화 failure: {e}")))?;
             let filename = format!("{filename_prefix}_{now}.json");
             Ok((
                 [
@@ -226,20 +213,17 @@ fn export_response<T: Serialize>(
     }
 }
 
-/// 레코드를 CSV 문자열로 변환
 fn records_to_csv<T: Serialize>(records: &[T]) -> Result<String, ApiError> {
     if records.is_empty() {
         return Ok(String::new());
     }
 
-    // JSON 값을 사용하여 CSV 생성
     let json_values: Vec<serde_json::Value> = records
         .iter()
         .map(serde_json::to_value)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| ApiError::Internal(format!("JSON 변환 실패: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("JSON 변환 failure: {e}")))?;
 
-    // 헤더 추출
     let headers: Vec<String> = json_values
         .first()
         .and_then(|v| v.as_object())
@@ -248,7 +232,6 @@ fn records_to_csv<T: Serialize>(records: &[T]) -> Result<String, ApiError> {
 
     let mut csv = headers.join(",") + "\n";
 
-    // 데이터 행 추가
     for value in &json_values {
         if let Some(obj) = value.as_object() {
             let row: Vec<String> = headers
@@ -258,7 +241,6 @@ fn records_to_csv<T: Serialize>(records: &[T]) -> Result<String, ApiError> {
                         .map(|v| {
                             match v {
                                 serde_json::Value::String(s) => {
-                                    // CSV 이스케이프 (쌍따옴표, 쉼표, 줄바꿈 포함 시)
                                     if s.contains(',') || s.contains('"') || s.contains('\n') {
                                         format!("\"{}\"", s.replace('"', "\"\""))
                                     } else {
@@ -291,10 +273,10 @@ mod tests {
             event_type: "context".to_string(),
             timestamp: "2024-01-30T10:00:00Z".to_string(),
             app_name: Some("VS Code".to_string()),
-            window_title: Some("file.rs, modified".to_string()), // 쉼표 포함
+            window_title: Some("file.rs, modified".to_string()), // includes comma
         }];
         let csv = records_to_csv(&records).unwrap();
-        assert!(csv.contains("\"file.rs, modified\"")); // 쌍따옴표로 감싸짐
+        assert!(csv.contains("\"file.rs, modified\"")); // quoted field
     }
 
     #[test]

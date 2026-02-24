@@ -1,6 +1,4 @@
-//! 자동화 런타임 와이어링.
 //!
-//! AI 제공자 설정 + 최신 프레임 소스를 이용해 IntentExecutor를 구성한다.
 
 use async_trait::async_trait;
 use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
@@ -19,7 +17,6 @@ use tracing::warn;
 
 use crate::provider_adapters::{resolve_ai_provider_adapters, ProviderSource};
 
-/// 자동화 실행기에 필요한 런타임 구성요소.
 pub struct AutomationRuntime {
     pub element_finder: Arc<dyn ElementFinder>,
     pub intent_executor: Arc<IntentExecutor>,
@@ -31,7 +28,6 @@ pub struct AutomationRuntime {
     pub llm_source: ProviderSource,
 }
 
-/// AI 제공자 + 최신 프레임 기반 자동화 런타임 생성.
 pub fn build_automation_runtime(
     ai_config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
@@ -48,7 +44,7 @@ pub fn build_automation_runtime(
             adapters.ocr.clone(),
         ))
     } else {
-        warn!("프레임 저장소 미설정: NoOpElementFinder로 폴백");
+        warn!("frame save settings: NoOpElementFinder");
         Arc::new(NoOpElementFinder)
     };
 
@@ -76,7 +72,6 @@ pub fn build_automation_runtime(
     })
 }
 
-/// 안전 폴백용 NoOp 실행기 생성.
 pub fn build_noop_intent_executor() -> Arc<IntentExecutor> {
     let input_driver: Arc<dyn InputDriver> = Arc::new(NoOpInputDriver);
     let element_finder: Arc<dyn ElementFinder> = Arc::new(NoOpElementFinder);
@@ -84,7 +79,6 @@ pub fn build_noop_intent_executor() -> Arc<IntentExecutor> {
     Arc::new(IntentExecutor::new(resolver, IntentConfig::default()))
 }
 
-/// 최신 저장 프레임을 자동으로 로드해 OCR 기반 탐색을 수행하는 ElementFinder.
 pub struct LatestFrameOcrElementFinder {
     frame_storage: Arc<FrameFileStorage>,
     inner: OcrElementFinder,
@@ -122,7 +116,7 @@ impl ElementFinder for LatestFrameOcrElementFinder {
     ) -> Result<Vec<UiElement>, CoreError> {
         if !self.refresh_latest_frame().await? {
             return Err(CoreError::ElementNotFound(
-                "자동화용 최신 프레임이 없습니다".to_string(),
+                "자동화용 최신 frame이 없습니다".to_string(),
             ));
         }
         self.inner.find_element(text, role, region).await
@@ -135,7 +129,7 @@ impl ElementFinder for LatestFrameOcrElementFinder {
     ) -> Result<UiScene, CoreError> {
         if !self.refresh_latest_frame().await? {
             return Err(CoreError::ElementNotFound(
-                "자동화용 최신 프레임이 없습니다".to_string(),
+                "자동화용 최신 frame이 없습니다".to_string(),
             ));
         }
         self.inner.analyze_scene(app_name, screen_id).await
@@ -190,7 +184,7 @@ mod tests {
             }
 
             Ok(vec![OcrResult {
-                text: "저장".to_string(),
+                text: "save".to_string(),
                 x: 100,
                 y: 100,
                 width: 60,
@@ -211,7 +205,7 @@ mod tests {
     async fn create_test_storage(base_dir: PathBuf) -> FrameFileStorage {
         FrameFileStorage::new(base_dir, 100, 7)
             .await
-            .expect("테스트 프레임 저장소 생성 실패")
+            .expect("test frame save소 create failure")
     }
 
     #[tokio::test]
@@ -225,12 +219,12 @@ mod tests {
 
         let finder = LatestFrameOcrElementFinder::new(storage, Arc::new(FakeOcrProvider));
         let result = finder
-            .find_element(Some("저장"), Some("button"), None)
+            .find_element(Some("save"), Some("button"), None)
             .await
             .unwrap();
 
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].text, "저장");
+        assert_eq!(result[0].text, "save");
     }
 
     #[tokio::test]
@@ -240,7 +234,7 @@ mod tests {
         let finder = LatestFrameOcrElementFinder::new(storage, Arc::new(FakeOcrProvider));
 
         let err = finder
-            .find_element(Some("저장"), None, None)
+            .find_element(Some("save"), None, None)
             .await
             .unwrap_err();
         assert!(matches!(err, CoreError::ElementNotFound(_)));
@@ -275,7 +269,7 @@ mod tests {
         };
 
         match build_automation_runtime(&config, PiiFilterLevel::Standard, None) {
-            Ok(_) => panic!("오류가 발생해야 함"),
+            Ok(_) => panic!("error가 발생해야 함"),
             Err(err) => assert!(matches!(err, CoreError::Config(_))),
         }
     }

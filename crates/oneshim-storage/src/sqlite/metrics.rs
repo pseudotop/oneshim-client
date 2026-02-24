@@ -1,6 +1,4 @@
-//! 메트릭 스토리지 (MetricsStorage 포트 구현).
 //!
-//! 시스템 메트릭, 프로세스 스냅샷, 유휴 기간, 세션 통계.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Timelike, Utc};
@@ -19,7 +17,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -28,7 +26,7 @@ impl SqliteStorage {
                  ORDER BY started_at DESC
                  LIMIT ?1",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![limit as i64], |row| {
@@ -41,12 +39,12 @@ impl SqliteStorage {
                     row.get::<_, i64>(5)?,
                 ))
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut sessions = Vec::new();
         for row in rows {
             let (session_id, started_str, ended_str, events, frames, idle) =
-                row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?;
+                row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?;
 
             let started_at = DateTime::parse_from_rfc3339(&started_str)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -78,7 +76,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -87,7 +85,7 @@ impl SqliteStorage {
                  WHERE hour >= ?1
                  ORDER BY hour ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from_hour], |row| {
@@ -100,11 +98,11 @@ impl SqliteStorage {
                     sample_count: row.get::<_, i64>(5)? as u64,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut result = Vec::new();
         for row in rows {
-            result.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            result.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
 
         Ok(result)
@@ -114,14 +112,13 @@ impl SqliteStorage {
 #[async_trait]
 impl MetricsStorage for SqliteStorage {
     // --------------------------------------------------------
-    // 시스템 메트릭
     // --------------------------------------------------------
 
     async fn save_metrics(&self, metrics: &SystemMetrics) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let (upload, download) = metrics
             .network
@@ -143,10 +140,10 @@ impl MetricsStorage for SqliteStorage {
                 download,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("시스템 메트릭 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("시스템 메트릭 save failure: {e}")))?;
 
         debug!(
-            "시스템 메트릭 저장: CPU {:.1}%, 메모리 {}MB",
+            "시스템 메트릭 save: CPU {:.1}%, 메모리 {}MB",
             metrics.cpu_usage,
             metrics.memory_used / 1_048_576
         );
@@ -165,7 +162,7 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -175,7 +172,7 @@ impl MetricsStorage for SqliteStorage {
                  ORDER BY timestamp DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let metrics = stmt
             .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
@@ -200,7 +197,7 @@ impl MetricsStorage for SqliteStorage {
                     }),
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -208,7 +205,6 @@ impl MetricsStorage for SqliteStorage {
     }
 
     async fn aggregate_hourly_metrics(&self, hour: DateTime<Utc>) -> Result<(), CoreError> {
-        // 해당 시간의 시작과 끝 계산
         let hour_start = hour
             .with_minute(0)
             .and_then(|dt| dt.with_second(0))
@@ -223,9 +219,8 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
-        // 해당 시간의 메트릭 집계
         let result: Result<(f64, f64, i64, i64, i64), rusqlite::Error> = conn.query_row(
             "SELECT AVG(cpu_usage), MAX(cpu_usage), AVG(memory_used), MAX(memory_used), COUNT(*)
              FROM system_metrics
@@ -249,11 +244,11 @@ impl MetricsStorage for SqliteStorage {
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     rusqlite::params![hour_str, cpu_avg, cpu_max, memory_avg, memory_max, count],
                 )
-                .map_err(|e| CoreError::Internal(format!("시간별 집계 저장 실패: {e}")))?;
-                debug!("시간별 메트릭 집계: {} ({count}개 샘플)", hour_str);
+                .map_err(|e| CoreError::Internal(format!("시간별 집계 save failure: {e}")))?;
+                debug!("hour: {} ({count}items )", hour_str);
             }
             _ => {
-                debug!("시간별 메트릭 집계: {} (데이터 없음)", hour_str);
+                debug!("hour: {} (data none)", hour_str);
             }
         }
 
@@ -266,30 +261,29 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let deleted = conn
             .execute(
                 "DELETE FROM system_metrics WHERE timestamp < ?1",
                 rusqlite::params![cutoff],
             )
-            .map_err(|e| CoreError::Internal(format!("오래된 메트릭 삭제 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("오래된 메트릭 delete failure: {e}")))?;
 
         if deleted > 0 {
-            info!("오래된 메트릭 {deleted}개 삭제");
+            info!("{deleted}items delete");
         }
         Ok(deleted)
     }
 
     // --------------------------------------------------------
-    // 프로세스 스냅샷
     // --------------------------------------------------------
 
     async fn save_process_snapshot(&self, snapshot: &ProcessSnapshot) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let data = serde_json::to_string(&snapshot.processes)?;
 
@@ -297,10 +291,10 @@ impl MetricsStorage for SqliteStorage {
             "INSERT INTO process_snapshots (timestamp, snapshot_data) VALUES (?1, ?2)",
             rusqlite::params![snapshot.timestamp.to_rfc3339(), data],
         )
-        .map_err(|e| CoreError::Internal(format!("프로세스 스냅샷 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("프로세스 스냅샷 save failure: {e}")))?;
 
         debug!(
-            "프로세스 스냅샷 저장: {}개 프로세스",
+            "프로세스 스냅샷 save: {}개 프로세스",
             snapshot.processes.len()
         );
         Ok(())
@@ -318,7 +312,7 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -327,7 +321,7 @@ impl MetricsStorage for SqliteStorage {
                  ORDER BY timestamp DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let snapshots = stmt
             .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
@@ -346,7 +340,7 @@ impl MetricsStorage for SqliteStorage {
                     processes,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -362,54 +356,50 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let deleted = conn
             .execute(
                 "DELETE FROM process_snapshots WHERE timestamp < ?1",
                 rusqlite::params![cutoff],
             )
-            .map_err(|e| CoreError::Internal(format!("오래된 스냅샷 삭제 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("오래된 스냅샷 delete failure: {e}")))?;
 
         if deleted > 0 {
-            info!("오래된 프로세스 스냅샷 {deleted}개 삭제");
+            info!("{deleted}items delete");
         }
         Ok(deleted)
     }
 
     // --------------------------------------------------------
-    // 유휴 기간
     // --------------------------------------------------------
 
     async fn start_idle_period(&self, start_time: DateTime<Utc>) -> Result<i64, CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "INSERT INTO idle_periods (start_time) VALUES (?1)",
             rusqlite::params![start_time.to_rfc3339()],
         )
-        .map_err(|e| CoreError::Internal(format!("유휴 기간 시작 기록 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("idle period started record failure: {e}")))?;
 
         let id = conn.last_insert_rowid();
-        debug!("유휴 기간 시작: id={}", id);
+        debug!("idle period started: id={}", id);
         Ok(id)
     }
 
-    /// 유휴 기간 종료
     ///
-    /// RETURNING clause로 SELECT+UPDATE를 1개 쿼리로 최적화 (N+1 제거)
     async fn end_idle_period(&self, id: i64, end_time: DateTime<Utc>) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let end_time_str = end_time.to_rfc3339();
 
-        // RETURNING clause로 duration_secs를 한 번에 계산 + 반환
         let duration_secs: i64 = conn
             .query_row(
                 "UPDATE idle_periods
@@ -420,9 +410,9 @@ impl MetricsStorage for SqliteStorage {
                 rusqlite::params![end_time_str, id],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("유휴 기간 종료 기록 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("idle period ended record failure: {e}")))?;
 
-        debug!("유휴 기간 종료: id={}, 지속={}초", id, duration_secs);
+        debug!("idle period ended: id={}, duration={}s", id, duration_secs);
         Ok(())
     }
 
@@ -430,7 +420,7 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let result: Result<(i64, String), rusqlite::Error> = conn.query_row(
             "SELECT id, start_time FROM idle_periods WHERE end_time IS NULL ORDER BY id DESC LIMIT 1",
@@ -455,7 +445,7 @@ impl MetricsStorage for SqliteStorage {
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(CoreError::Internal(format!(
-                "진행 중 유휴 기간 조회 실패: {e}"
+                "진행 중 idle period query failure: {e}"
             ))),
         }
     }
@@ -471,7 +461,7 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -479,7 +469,7 @@ impl MetricsStorage for SqliteStorage {
                  WHERE start_time >= ?1 AND start_time <= ?2
                  ORDER BY start_time DESC",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let periods = stmt
             .query_map(rusqlite::params![from_str, to_str], |row| {
@@ -503,7 +493,7 @@ impl MetricsStorage for SqliteStorage {
                     duration_secs: duration.map(|d| d as u64),
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -516,30 +506,29 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let deleted = conn
             .execute(
                 "DELETE FROM idle_periods WHERE start_time < ?1 AND end_time IS NOT NULL",
                 rusqlite::params![cutoff],
             )
-            .map_err(|e| CoreError::Internal(format!("오래된 유휴 기간 삭제 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("오래된 idle period delete failure: {e}")))?;
 
         if deleted > 0 {
-            info!("오래된 유휴 기간 {deleted}개 삭제");
+            info!("idle period {deleted}items delete");
         }
         Ok(deleted)
     }
 
     // --------------------------------------------------------
-    // 세션 통계
     // --------------------------------------------------------
 
     async fn upsert_session(&self, stats: &SessionStats) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "INSERT INTO session_stats (session_id, started_at, ended_at, total_events, total_frames, total_idle_secs)
@@ -558,9 +547,9 @@ impl MetricsStorage for SqliteStorage {
                 stats.total_idle_secs as i64,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("세션 통계 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("session 통계 save failure: {e}")))?;
 
-        debug!("세션 통계 저장: {}", stats.session_id);
+        debug!("session save: {}", stats.session_id);
         Ok(())
     }
 
@@ -568,7 +557,7 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let result: Result<(String, Option<String>, i64, i64, i64), rusqlite::Error> = conn
             .query_row(
@@ -608,7 +597,7 @@ impl MetricsStorage for SqliteStorage {
                 }))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::Internal(format!("세션 조회 실패: {e}"))),
+            Err(e) => Err(CoreError::Internal(format!("session query failure: {e}"))),
         }
     }
 
@@ -620,15 +609,15 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE session_stats SET ended_at = ?1 WHERE session_id = ?2",
             rusqlite::params![ended_at.to_rfc3339(), session_id],
         )
-        .map_err(|e| CoreError::Internal(format!("세션 종료 기록 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("session ended record failure: {e}")))?;
 
-        debug!("세션 종료: {}", session_id);
+        debug!("session ended: {}", session_id);
         Ok(())
     }
 
@@ -642,7 +631,7 @@ impl MetricsStorage for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "UPDATE session_stats SET
@@ -652,7 +641,7 @@ impl MetricsStorage for SqliteStorage {
              WHERE session_id = ?4",
             rusqlite::params![events as i64, frames as i64, idle_secs as i64, session_id],
         )
-        .map_err(|e| CoreError::Internal(format!("세션 카운터 증가 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("session 카운터 증가 failure: {e}")))?;
 
         Ok(())
     }

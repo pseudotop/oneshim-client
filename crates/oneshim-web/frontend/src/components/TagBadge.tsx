@@ -1,22 +1,14 @@
 /**
- * 태그 배지 컴포넌트
  *
- * 단일 태그를 색상과 함께 표시하며 삭제 버튼 옵션 제공
  */
 import { cn } from '../utils/cn'
 
 interface TagBadgeProps {
-  /** 태그 이름 */
   name: string
-  /** 태그 색상 (hex) */
   color: string
-  /** 삭제 버튼 표시 여부 */
   onRemove?: () => void
-  /** 클릭 핸들러 */
   onClick?: () => void
-  /** 선택됨 상태 */
   selected?: boolean
-  /** 크기 */
   size?: 'sm' | 'md'
 }
 
@@ -28,8 +20,7 @@ export function TagBadge({
   selected = false,
   size = 'md',
 }: TagBadgeProps) {
-  // hex 색상을 배경과 테두리에 사용
-  const bgColor = `${color}20` // 투명도 추가
+  const bgColor = `${color}20`
   const borderColor = selected ? color : `${color}60`
 
   const sizeClasses = {
@@ -66,7 +57,7 @@ export function TagBadge({
             e.stopPropagation()
             onRemove()
           }}
-          aria-label={`${name} 태그 삭제`}
+          aria-label={`${name} 태그 delete`}
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -77,7 +68,6 @@ export function TagBadge({
   )
 }
 
-/** 기본 태그 색상 팔레트 */
 export const TAG_COLORS = [
   '#3b82f6', // blue
   '#ef4444', // red
@@ -91,7 +81,6 @@ export const TAG_COLORS = [
   '#84cc16', // lime
 ]
 
-/** 랜덤 태그 색상 선택 */
 export function getRandomTagColor(): string {
   return TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)]
 }

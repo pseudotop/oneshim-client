@@ -1,7 +1,5 @@
 /**
- * 카드 컴포넌트
  *
- * variant와 padding props로 다양한 스타일 적용
  */
 import { forwardRef } from 'react'
 import { cn } from '../../utils/cn'
@@ -33,7 +31,6 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
 
 Card.displayName = 'Card'
 
-// CardHeader, CardTitle, CardContent 서브 컴포넌트
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('mb-4', className)} {...props} />
 }

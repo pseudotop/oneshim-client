@@ -1,13 +1,5 @@
-//! SQLite 저장소 어댑터.
 //!
-//! `StorageService` + `MetricsStorage` 포트 구현.
 //!
-//! # 모듈 구조
-//! - `edge_intelligence`: 작업 세션, 인터럽션, 집중도 메트릭, 로컬 제안
-//! - `events`: 이벤트 저장 (StorageService 포트)
-//! - `frames`: 프레임 메타데이터 저장
-//! - `metrics`: 시스템 메트릭, 프로세스 스냅샷, 유휴 기간, 세션 통계 (MetricsStorage 포트)
-//! - `tags`: 태그 관리
 
 pub(crate) mod edge_intelligence;
 mod events;
@@ -24,19 +16,16 @@ use tracing::info;
 
 use crate::migration;
 
-/// SQLite 저장소 — `StorageService` + `MetricsStorage` 포트 구현
 pub struct SqliteStorage {
     pub(super) conn: Mutex<Connection>,
     pub(super) retention_days: u32,
 }
 
 impl SqliteStorage {
-    /// 파일 기반 SQLite 저장소 생성
     pub fn open(path: &Path, retention_days: u32) -> Result<Self, CoreError> {
         let conn = Connection::open(path)
-            .map_err(|e| CoreError::Internal(format!("SQLite 열기 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("SQLite 열기 failure: {e}")))?;
 
-        // 성능 최적화 PRAGMA 설정
         conn.execute_batch(
             "
             PRAGMA journal_mode=WAL;
@@ -47,12 +36,12 @@ impl SqliteStorage {
             PRAGMA page_size=4096;
             ",
         )
-        .map_err(|e| CoreError::Internal(format!("PRAGMA 설정 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("PRAGMA 설정 failure: {e}")))?;
 
         migration::run_migrations(&conn)
-            .map_err(|e| CoreError::Internal(format!("마이그레이션 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("migration failure: {e}")))?;
 
-        info!("SQLite 저장소 초기화: {}", path.display());
+        info!("SQLite save initialize: {}", path.display());
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -60,13 +49,12 @@ impl SqliteStorage {
         })
     }
 
-    /// 인메모리 SQLite 저장소 생성 (테스트용)
     pub fn open_in_memory(retention_days: u32) -> Result<Self, CoreError> {
         let conn = Connection::open_in_memory()
-            .map_err(|e| CoreError::Internal(format!("인메모리 SQLite 생성 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("인메모리 SQLite create failure: {e}")))?;
 
         migration::run_migrations(&conn)
-            .map_err(|e| CoreError::Internal(format!("마이그레이션 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("migration failure: {e}")))?;
 
         Ok(Self {
             conn: Mutex::new(conn),
@@ -75,41 +63,25 @@ impl SqliteStorage {
     }
 }
 
-/// 프레임 레코드 (DB 조회 결과)
 #[derive(Debug, Clone)]
 pub struct FrameRecord {
-    /// 프레임 ID
     pub id: i64,
-    /// 캡처 시각 (RFC3339)
     pub timestamp: String,
-    /// 트리거 유형
     pub trigger_type: String,
-    /// 앱 이름
     pub app_name: String,
-    /// 창 제목
     pub window_title: String,
-    /// 중요도 점수
     pub importance: f32,
-    /// 해상도 (너비)
     pub resolution_w: u32,
-    /// 해상도 (높이)
     pub resolution_h: u32,
-    /// 이미지 파일 경로 (None이면 이미지 없음)
     pub file_path: Option<String>,
-    /// OCR 텍스트
     pub ocr_text: Option<String>,
 }
 
-/// 태그 레코드 (DB 조회 결과)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TagRecord {
-    /// 태그 ID
     pub id: i64,
-    /// 태그 이름
     pub name: String,
-    /// 태그 색상 (hex)
     pub color: String,
-    /// 생성 시각 (RFC3339)
     pub created_at: String,
 }
 
@@ -299,16 +271,13 @@ mod tests {
 
     #[tokio::test]
     async fn enforce_retention() {
-        let storage = SqliteStorage::open_in_memory(0).unwrap(); // 0일 보존 → 즉시 삭제
-
+        let storage = SqliteStorage::open_in_memory(0).unwrap(); // 0 → delete
         storage.save_event(&make_user_event()).await.unwrap();
 
-        // 먼저 전송 완료로 마킹 (미전송은 삭제 안됨)
         {
             let conn = storage.conn.lock().unwrap();
             conn.execute("UPDATE events SET is_sent = 1", []).unwrap();
-        } // MutexGuard 해제 후 await 호출
-
+        } // MutexGuard await
         let deleted = storage.enforce_retention().await.unwrap();
         assert!(deleted >= 1);
     }
@@ -328,7 +297,6 @@ mod tests {
 
         storage.save_event(&make_user_event()).await.unwrap();
 
-        // from > to인 경우에도 에러 없이 빈 결과
         let from = Utc::now() + Duration::hours(1);
         let to = Utc::now() - Duration::hours(1);
         let events = storage.get_events(from, to, 100).await.unwrap();
@@ -339,12 +307,10 @@ mod tests {
     async fn mark_nonexistent_ids_no_error() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 존재하지 않는 ID도 에러 없이 처리
         let ids = vec!["nonexistent1".to_string(), "nonexistent2".to_string()];
         let result = storage.mark_as_sent(&ids).await;
         assert!(result.is_ok());
 
-        // 빈 배열도 처리
         let result = storage.mark_as_sent(&[]).await;
         assert!(result.is_ok());
     }
@@ -353,7 +319,6 @@ mod tests {
     async fn large_batch_insert() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 100개 이벤트 배치 삽입
         for _ in 0..100 {
             storage.save_event(&make_user_event()).await.unwrap();
         }
@@ -370,10 +335,8 @@ mod tests {
 
         storage.save_event(&make_user_event()).await.unwrap();
 
-        // 전송 완료 마킹 없이 enforce_retention
         let deleted = storage.enforce_retention().await.unwrap();
 
-        // 미전송 이벤트는 삭제되지 않아야 함
         assert_eq!(deleted, 0);
 
         let pending = storage.get_pending_events(100).await.unwrap();
@@ -384,7 +347,6 @@ mod tests {
     async fn mark_as_sent_affects_pending() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 이벤트 저장
         let event = make_user_event();
         let event_id = match &event {
             Event::User(e) => e.event_id.to_string(),
@@ -392,14 +354,11 @@ mod tests {
         };
         storage.save_event(&event).await.unwrap();
 
-        // 전송 전 pending 확인
         let pending = storage.get_pending_events(100).await.unwrap();
         assert_eq!(pending.len(), 1);
 
-        // 전송 완료 마킹
         storage.mark_as_sent(&[event_id]).await.unwrap();
 
-        // 전송 후 pending 확인
         let pending = storage.get_pending_events(100).await.unwrap();
         assert!(pending.is_empty());
     }
@@ -429,9 +388,6 @@ mod tests {
         assert_eq!(events.len(), 100);
     }
 
-    // ============================================================
-    // 메트릭 테스트
-    // ============================================================
 
     fn make_system_metrics() -> SystemMetrics {
         SystemMetrics {
@@ -488,7 +444,6 @@ mod tests {
 
         storage.save_metrics(&make_system_metrics()).await.unwrap();
 
-        // 미래 시점 기준으로 cleanup → 삭제됨
         let future = Utc::now() + Duration::days(1);
         let deleted = storage.cleanup_old_metrics(future).await.unwrap();
         assert_eq!(deleted, 1);
@@ -514,26 +469,21 @@ mod tests {
     async fn idle_period_lifecycle() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 유휴 시작
         let start = Utc::now();
         let id = storage.start_idle_period(start).await.unwrap();
         assert!(id > 0);
 
-        // 진행 중 조회
         let ongoing = storage.get_ongoing_idle_period().await.unwrap();
         assert!(ongoing.is_some());
         let (ongoing_id, _) = ongoing.unwrap();
         assert_eq!(ongoing_id, id);
 
-        // 유휴 종료
         let end = start + Duration::minutes(5);
         storage.end_idle_period(id, end).await.unwrap();
 
-        // 종료 후 조회
         let ongoing = storage.get_ongoing_idle_period().await.unwrap();
         assert!(ongoing.is_none());
 
-        // 기간 조회
         let from = Utc::now() - Duration::hours(1);
         let to = Utc::now() + Duration::hours(1);
         let periods = storage.get_idle_periods(from, to).await.unwrap();
@@ -555,16 +505,13 @@ mod tests {
             total_idle_secs: 60,
         };
 
-        // 세션 생성
         storage.upsert_session(&stats).await.unwrap();
 
-        // 조회
         let loaded = storage.get_session(session_id).await.unwrap();
         assert!(loaded.is_some());
         let loaded = loaded.unwrap();
         assert_eq!(loaded.total_events, 10);
 
-        // 카운터 증가
         storage
             .increment_session_counters(session_id, 5, 2, 30)
             .await
@@ -575,7 +522,6 @@ mod tests {
         assert_eq!(loaded.total_frames, 7);
         assert_eq!(loaded.total_idle_secs, 90);
 
-        // 세션 종료
         storage.end_session(session_id, Utc::now()).await.unwrap();
 
         let loaded = storage.get_session(session_id).await.unwrap().unwrap();
@@ -589,9 +535,6 @@ mod tests {
         assert!(result.is_none());
     }
 
-    // ============================================================
-    // 태그 테스트
-    // ============================================================
 
     #[test]
     fn create_and_get_tags() {
@@ -647,7 +590,6 @@ mod tests {
     fn frame_tag_operations() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 프레임 생성 (frames 테이블에 직접 삽입)
         {
             let conn = storage.conn.lock().unwrap();
             conn.execute(
@@ -658,23 +600,18 @@ mod tests {
             .unwrap();
         }
 
-        // 태그 생성
         let tag1 = storage.create_tag("tag1", "#ff0000").unwrap();
         let tag2 = storage.create_tag("tag2", "#00ff00").unwrap();
 
-        // 프레임에 태그 추가
         storage.add_tag_to_frame(1, tag1.id).unwrap();
         storage.add_tag_to_frame(1, tag2.id).unwrap();
 
-        // 프레임 태그 조회
         let tags = storage.get_tags_for_frame(1).unwrap();
         assert_eq!(tags.len(), 2);
 
-        // 태그별 프레임 조회
         let frames = storage.get_frames_by_tag(tag1.id, 100).unwrap();
         assert_eq!(frames.len(), 1);
 
-        // 태그 제거
         let removed = storage.remove_tag_from_frame(1, tag1.id).unwrap();
         assert!(removed);
 
@@ -695,7 +632,6 @@ mod tests {
     fn add_tag_to_frame_idempotent() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 프레임 생성
         {
             let conn = storage.conn.lock().unwrap();
             conn.execute(
@@ -708,7 +644,6 @@ mod tests {
 
         let tag = storage.create_tag("tag", "#000000").unwrap();
 
-        // 같은 태그 두 번 추가 → 에러 없이 무시 (INSERT OR IGNORE)
         storage.add_tag_to_frame(1, tag.id).unwrap();
         storage.add_tag_to_frame(1, tag.id).unwrap();
 
@@ -716,29 +651,22 @@ mod tests {
         assert_eq!(tags.len(), 1);
     }
 
-    // ============================================================
-    // Edge Intelligence 테스트
-    // ============================================================
 
     #[test]
     fn work_session_lifecycle() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 세션 시작
         let session = storage
             .start_work_session("Code", AppCategory::Development)
             .unwrap();
         assert!(session.id > 0);
         assert_eq!(session.category, AppCategory::Development);
 
-        // 활성 세션 조회
         let active = storage.get_active_work_session().unwrap();
         assert!(active.is_some());
 
-        // 세션 종료
         storage.end_work_session(session.id).unwrap();
 
-        // 활성 세션 없음
         let active = storage.get_active_work_session().unwrap();
         assert!(active.is_none());
     }
@@ -747,13 +675,10 @@ mod tests {
     fn interruption_tracking() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 세션 시작
         let session = storage
             .start_work_session("Code", AppCategory::Development)
             .unwrap();
-        let _ = session; // 세션 ID 사용
-
-        // 인터럽션 기록 (Interruption::new 사용)
+        let _ = session; // session ID
         let interruption = Interruption::new(
             0,
             "Code".to_string(),
@@ -764,14 +689,11 @@ mod tests {
         let int_id = storage.record_interruption(&interruption).unwrap();
         assert!(int_id > 0);
 
-        // 대기 중 인터럽션 조회
         let pending = storage.get_pending_interruption().unwrap();
         assert!(pending.is_some());
 
-        // 복귀 기록
         storage.record_interruption_resume(int_id, "Code").unwrap();
 
-        // 대기 중 인터럽션 없음
         let pending = storage.get_pending_interruption().unwrap();
         assert!(pending.is_none());
     }
@@ -780,11 +702,9 @@ mod tests {
     fn focus_metrics_lifecycle() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        // 오늘 메트릭 조회/생성
         let metrics = storage.get_or_create_today_focus_metrics().unwrap();
         assert_eq!(metrics.deep_work_secs, 0);
 
-        // 메트릭 증가
         // increment_focus_metrics(date, total_active_secs, deep_work_secs, communication_secs, context_switches, interruption_count)
         let today = Utc::now().format("%Y-%m-%d").to_string();
         storage
@@ -798,7 +718,6 @@ mod tests {
         assert_eq!(updated.context_switches, 5);
         assert_eq!(updated.interruption_count, 2);
 
-        // 직접 업데이트
         let full_metrics = FocusMetrics::new(updated.period_start, updated.period_end);
         storage.update_focus_metrics(&today, &full_metrics).unwrap();
     }
@@ -815,7 +734,6 @@ mod tests {
         let id = storage.save_local_suggestion(&suggestion).unwrap();
         assert!(id > 0);
 
-        // 표시/무시/실행 마킹
         storage.mark_suggestion_shown(id).unwrap();
         storage.mark_suggestion_dismissed(id).unwrap();
 
@@ -828,7 +746,6 @@ mod tests {
 
     #[test]
     fn app_category_parsing() {
-        // parse_app_category는 SqliteStorage의 메서드
         assert_eq!(
             SqliteStorage::parse_app_category("Communication"),
             AppCategory::Communication

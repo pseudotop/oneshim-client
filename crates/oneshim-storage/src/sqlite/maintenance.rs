@@ -10,11 +10,11 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare("SELECT id, name, color, created_at FROM tags ORDER BY id")
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map([], |row| {
@@ -25,11 +25,11 @@ impl SqliteStorage {
                     created_at: row.get(3)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }
@@ -38,13 +38,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT frame_id, tag_id, created_at FROM frame_tags ORDER BY frame_id, tag_id",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map([], |row| {
@@ -54,11 +54,11 @@ impl SqliteStorage {
                     created_at: row.get(2)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }
@@ -73,13 +73,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "INSERT OR IGNORE INTO tags (id, name, color, created_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![id, name, color, created_at],
         )
-        .map_err(|e| CoreError::Internal(format!("태그 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("태그 save failure: {e}")))?;
 
         Ok(())
     }
@@ -93,13 +93,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         conn.execute(
             "INSERT OR IGNORE INTO frame_tags (frame_id, tag_id, created_at) VALUES (?1, ?2, ?3)",
             rusqlite::params![frame_id, tag_id, created_at],
         )
-        .map_err(|e| CoreError::Internal(format!("프레임-태그 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("frame-태그 save failure: {e}")))?;
 
         Ok(())
     }
@@ -115,7 +115,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let data = serde_json::json!({
             "app_name": app_name,
@@ -128,7 +128,7 @@ impl SqliteStorage {
              VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![event_id, event_type, timestamp, data],
         )
-        .map_err(|e| CoreError::Internal(format!("이벤트 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("event save failure: {e}")))?;
 
         Ok(())
     }
@@ -149,7 +149,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let exists: bool = conn
             .query_row(
@@ -177,7 +177,7 @@ impl SqliteStorage {
                     ocr_text,
                 ],
             )
-            .map_err(|e| CoreError::Internal(format!("프레임 저장 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("frame save failure: {e}")))?;
         }
 
         Ok(())
@@ -187,7 +187,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let frame_count: u64 = conn
             .query_row("SELECT COUNT(*) FROM frames", [], |row| row.get(0))
@@ -253,22 +253,22 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare("SELECT file_path FROM frames WHERE timestamp >= ?1 AND timestamp <= ?2")
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
                 row.get::<_, Option<String>>(0)
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut paths = Vec::new();
         for row in rows {
             if let Some(path) = row
-                .map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?
+                .map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?
                 .filter(|p| !p.is_empty())
             {
                 paths.push(path);
@@ -291,7 +291,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut counts = DeletedRangeCounts::default();
 
@@ -301,7 +301,7 @@ impl SqliteStorage {
                     "DELETE FROM events WHERE timestamp >= ?1 AND timestamp <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("이벤트 삭제 실패: {e}")))?
+                .map_err(|e| CoreError::Internal(format!("event delete failure: {e}")))?
                 as u64;
         }
 
@@ -311,7 +311,7 @@ impl SqliteStorage {
                     "DELETE FROM frames WHERE timestamp >= ?1 AND timestamp <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("프레임 삭제 실패: {e}")))?
+                .map_err(|e| CoreError::Internal(format!("frame delete failure: {e}")))?
                 as u64;
         }
 
@@ -321,7 +321,7 @@ impl SqliteStorage {
                     "DELETE FROM system_metrics WHERE timestamp >= ?1 AND timestamp <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("메트릭 삭제 실패: {e}")))?
+                .map_err(|e| CoreError::Internal(format!("메트릭 delete failure: {e}")))?
                 as u64;
 
             let _ = conn.execute(
@@ -336,7 +336,7 @@ impl SqliteStorage {
                     "DELETE FROM process_snapshots WHERE timestamp >= ?1 AND timestamp <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("프로세스 스냅샷 삭제 실패: {e}")))?
+                .map_err(|e| CoreError::Internal(format!("프로세스 스냅샷 delete failure: {e}")))?
                 as u64;
         }
 
@@ -346,7 +346,7 @@ impl SqliteStorage {
                     "DELETE FROM idle_periods WHERE start_time >= ?1 AND start_time <= ?2",
                     rusqlite::params![from, to],
                 )
-                .map_err(|e| CoreError::Internal(format!("유휴 기록 삭제 실패: {e}")))?
+                .map_err(|e| CoreError::Internal(format!("idle record delete failure: {e}")))?
                 as u64;
         }
 
@@ -357,29 +357,29 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let events_deleted = conn
             .execute("DELETE FROM events", [])
-            .map_err(|e| CoreError::Internal(format!("이벤트 삭제 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("event delete failure: {e}")))?
             as u64;
         let frames_deleted = conn
             .execute("DELETE FROM frames", [])
-            .map_err(|e| CoreError::Internal(format!("프레임 삭제 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("frame delete failure: {e}")))?
             as u64;
         let metrics_deleted = conn
             .execute("DELETE FROM system_metrics", [])
-            .map_err(|e| CoreError::Internal(format!("메트릭 삭제 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("메트릭 delete failure: {e}")))?
             as u64;
         let _ = conn.execute("DELETE FROM system_metrics_hourly", []);
 
         let process_snapshots_deleted = conn
             .execute("DELETE FROM process_snapshots", [])
-            .map_err(|e| CoreError::Internal(format!("프로세스 스냅샷 삭제 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("프로세스 스냅샷 delete failure: {e}")))?
             as u64;
         let idle_periods_deleted = conn
             .execute("DELETE FROM idle_periods", [])
-            .map_err(|e| CoreError::Internal(format!("유휴 기록 삭제 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("idle record delete failure: {e}")))?
             as u64;
 
         let _ = conn.execute("DELETE FROM session_stats", []);
@@ -401,7 +401,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -410,7 +410,7 @@ impl SqliteStorage {
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                  ORDER BY timestamp ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
@@ -422,11 +422,11 @@ impl SqliteStorage {
                     window_title: row.get(4)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }
@@ -439,7 +439,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -449,7 +449,7 @@ impl SqliteStorage {
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                  ORDER BY timestamp ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
@@ -464,11 +464,11 @@ impl SqliteStorage {
                     network_download: row.get(7)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }
@@ -481,7 +481,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -491,7 +491,7 @@ impl SqliteStorage {
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                  ORDER BY timestamp ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
@@ -507,11 +507,11 @@ impl SqliteStorage {
                     ocr_text: row.get(8)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }
@@ -524,15 +524,15 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let count: i64 = match pattern {
             Some(p) => conn
                 .query_row(count_sql, rusqlite::params![p], |row| row.get(0))
-                .map_err(|e| CoreError::Internal(format!("프레임 검색 개수 조회 실패: {e}")))?,
+                .map_err(|e| CoreError::Internal(format!("frame 검색 개수 query failure: {e}")))?,
             None => conn
                 .query_row(count_sql, [], |row| row.get(0))
-                .map_err(|e| CoreError::Internal(format!("프레임 검색 개수 조회 실패: {e}")))?,
+                .map_err(|e| CoreError::Internal(format!("frame 검색 개수 query failure: {e}")))?,
         };
 
         Ok(count as u64)
@@ -548,11 +548,11 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(select_sql)
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         if let Some(p) = pattern {
             let rows = stmt
@@ -570,11 +570,11 @@ impl SqliteStorage {
                         })
                     },
                 )
-                .map_err(|e| CoreError::Internal(format!("프레임 검색 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("frame 검색 failure: {e}")))?;
 
             let mut records = Vec::new();
             for row in rows {
-                records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+                records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
             }
             Ok(records)
         } else {
@@ -593,11 +593,11 @@ impl SqliteStorage {
                         })
                     },
                 )
-                .map_err(|e| CoreError::Internal(format!("프레임 검색 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("frame 검색 failure: {e}")))?;
 
             let mut records = Vec::new();
             for row in rows {
-                records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+                records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
             }
             Ok(records)
         }
@@ -607,7 +607,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let count: i64 = conn
             .query_row(
@@ -616,7 +616,7 @@ impl SqliteStorage {
                 rusqlite::params![pattern],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("이벤트 검색 개수 조회 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("event 검색 개수 query failure: {e}")))?;
 
         Ok(count as u64)
     }
@@ -630,7 +630,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -640,7 +640,7 @@ impl SqliteStorage {
                  ORDER BY timestamp DESC
                  LIMIT ?2 OFFSET ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
 
         let rows = stmt
             .query_map(
@@ -655,11 +655,11 @@ impl SqliteStorage {
                     })
                 },
             )
-            .map_err(|e| CoreError::Internal(format!("이벤트 검색 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("event 검색 failure: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 읽기 실패: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
         }
         Ok(records)
     }

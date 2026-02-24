@@ -1,7 +1,5 @@
 /**
- * 태그 입력 컴포넌트
  *
- * 태그 검색, 선택, 생성 기능 제공
  */
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -12,13 +10,9 @@ import { Input } from './ui'
 import { cn } from '../utils/cn'
 
 interface TagInputProps {
-  /** 선택된 태그 목록 */
   selectedTags: Tag[]
-  /** 태그 추가 핸들러 */
   onAddTag: (tag: Tag) => void
-  /** 태그 제거 핸들러 */
   onRemoveTag: (tag: Tag) => void
-  /** 플레이스홀더 */
   placeholder?: string
 }
 
@@ -36,13 +30,11 @@ export function TagInput({
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // 모든 태그 조회
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: fetchTags,
   })
 
-  // 태그 생성 mutation
   const createTagMutation = useMutation({
     mutationFn: createTag,
     onSuccess: (newTag) => {
@@ -53,20 +45,17 @@ export function TagInput({
     },
   })
 
-  // 필터링된 태그 목록 (선택되지 않은 것만)
   const filteredTags = allTags.filter((tag) => {
     const notSelected = !selectedTags.some((t) => t.id === tag.id)
     const matchesSearch = tag.name.toLowerCase().includes(inputValue.toLowerCase())
     return notSelected && matchesSearch
   })
 
-  // 입력값과 정확히 일치하는 태그 존재 여부
   const exactMatch = allTags.find(
     (tag) => tag.name.toLowerCase() === inputValue.toLowerCase()
   )
   const canCreateNew = inputValue.trim() && !exactMatch
 
-  // 외부 클릭 시 드롭다운 닫기
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -118,7 +107,7 @@ export function TagInput({
 
   return (
     <div className="relative">
-      {/* 선택된 태그 목록 */}
+      {/* UI note */}
       {selectedTags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {selectedTags.map((tag) => (
@@ -133,7 +122,7 @@ export function TagInput({
         </div>
       )}
 
-      {/* 입력 필드 */}
+      {/* UI note */}
       <div className="relative">
         <Input
           ref={inputRef}
@@ -146,7 +135,7 @@ export function TagInput({
           inputSize="sm"
         />
 
-        {/* 드롭다운 메뉴 */}
+        {/* UI note */}
         {isOpen && (inputValue || filteredTags.length > 0) && (
           <div
             ref={dropdownRef}
@@ -156,7 +145,7 @@ export function TagInput({
               'max-h-60 overflow-auto'
             )}
           >
-            {/* 기존 태그 목록 */}
+            {/* UI note */}
             {filteredTags.length > 0 && (
               <div className="p-1">
                 {filteredTags.map((tag) => (
@@ -179,7 +168,7 @@ export function TagInput({
               </div>
             )}
 
-            {/* 새 태그 생성 옵션 */}
+            {/* UI note */}
             {canCreateNew && (
               <>
                 {filteredTags.length > 0 && (
@@ -230,7 +219,7 @@ export function TagInput({
               </>
             )}
 
-            {/* 결과 없음 */}
+            {/* UI note */}
             {filteredTags.length === 0 && !canCreateNew && (
               <div className="p-3 text-sm text-slate-500 dark:text-slate-400 text-center">
                 {t('timeline.noSearchResults')}

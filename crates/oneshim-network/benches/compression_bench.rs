@@ -1,11 +1,5 @@
-//! oneshim-network 압축 성능 벤치마크
 //!
-//! 실행: cargo bench -p oneshim-network
 //!
-//! 벤치마크 대상:
-//! - 알고리즘별 압축 (gzip, zstd, lz4)
-//! - 자동 알고리즘 선택 + 압축
-//! - 라운드트립 (압축 → 압축 해제)
 
 use std::hint::black_box;
 
@@ -13,19 +7,16 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Through
 use oneshim_core::ports::compressor::{CompressionAlgorithm, Compressor};
 use oneshim_network::compression::AdaptiveCompressor;
 
-/// 테스트용 데이터 생성 (반복 패턴 — 압축 가능)
 fn create_compressible_data(size: usize) -> Vec<u8> {
     let pattern =
         b"ONESHIM event payload with repeated structure and timestamps 2026-01-31T12:00:00Z ";
     pattern.iter().cycle().take(size).copied().collect()
 }
 
-/// 테스트용 데이터 생성 (무작위 — 압축 어려움)
 fn create_random_data(size: usize) -> Vec<u8> {
     (0..size).map(|i| ((i * 17 + 31) % 256) as u8).collect()
 }
 
-/// 알고리즘별 압축 벤치마크
 fn bench_compress_by_algorithm(c: &mut Criterion) {
     let mut group = c.benchmark_group("compress_algorithm");
     let compressor = AdaptiveCompressor::new();
@@ -55,13 +46,11 @@ fn bench_compress_by_algorithm(c: &mut Criterion) {
     group.finish();
 }
 
-/// 자동 선택 압축 벤치마크
 fn bench_compress_auto(c: &mut Criterion) {
     let mut group = c.benchmark_group("compress_auto");
     let compressor = AdaptiveCompressor::new();
 
-    let sizes = [512, 2048, 16_384, 65_536]; // 다양한 크기 → 다른 알고리즘 선택
-
+    let sizes = [512, 2048, 16_384, 65_536]; // size →
     for size in sizes {
         let data = create_compressible_data(size);
         group.throughput(Throughput::Bytes(size as u64));
@@ -75,7 +64,6 @@ fn bench_compress_auto(c: &mut Criterion) {
         );
     }
 
-    // 랜덤 데이터 (비압축성)
     let random_data = create_random_data(65_536);
     group.throughput(Throughput::Bytes(65_536));
     group.bench_function("random_64KB", |b| {
@@ -85,7 +73,6 @@ fn bench_compress_auto(c: &mut Criterion) {
     group.finish();
 }
 
-/// 라운드트립 (압축 → 압축 해제) 벤치마크
 fn bench_roundtrip(c: &mut Criterion) {
     let mut group = c.benchmark_group("compress_roundtrip");
     let compressor = AdaptiveCompressor::new();
@@ -114,7 +101,6 @@ fn bench_roundtrip(c: &mut Criterion) {
     group.finish();
 }
 
-/// 알고리즘 선택 벤치마크 (순수 분기 성능)
 fn bench_algorithm_selection(c: &mut Criterion) {
     let mut group = c.benchmark_group("algorithm_selection");
 
