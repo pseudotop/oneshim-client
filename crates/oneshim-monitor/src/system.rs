@@ -53,7 +53,7 @@ impl SystemMonitor for SysInfoMonitor {
                 .disks
                 .lock()
                 .map_err(|e| CoreError::Internal(format!("디스크 잠금 실패: {e}")))?;
-            disks.refresh();
+            disks.refresh(true);
         }
 
         // 네트워크 갱신
@@ -62,7 +62,7 @@ impl SystemMonitor for SysInfoMonitor {
                 .networks
                 .lock()
                 .map_err(|e| CoreError::Internal(format!("네트워크 잠금 실패: {e}")))?;
-            networks.refresh();
+            networks.refresh(true);
         }
 
         // 메트릭 수집

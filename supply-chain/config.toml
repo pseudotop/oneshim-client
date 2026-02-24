@@ -737,7 +737,15 @@ version = "0.1.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.drm]]
+version = "0.12.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.drm]]
 version = "0.14.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.drm-ffi]]
+version = "0.8.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.drm-ffi]]
@@ -746,6 +754,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.drm-fourcc]]
 version = "2.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.drm-sys]]
+version = "0.7.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.drm-sys]]
@@ -1761,11 +1773,23 @@ version = "0.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-app-kit]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-app-kit]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-av-foundation]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-av-foundation]]
 version = "0.3.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-avf-audio]]
+version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-avf-audio]]
@@ -1777,11 +1801,19 @@ version = "0.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-cloud-kit]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-cloud-kit]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-contacts]]
 version = "0.2.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-core-audio]]
+version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-audio]]
@@ -1797,11 +1829,23 @@ version = "0.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-data]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-core-data]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-foundation]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-core-foundation]]
 version = "0.3.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-core-graphics]]
+version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-graphics]]
@@ -1813,6 +1857,10 @@ version = "0.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-image]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-core-image]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
@@ -1821,11 +1869,19 @@ version = "0.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-media]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-core-media]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-text]]
 version = "0.3.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-core-video]]
+version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-core-video]]
@@ -1841,11 +1897,23 @@ version = "0.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-foundation]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-foundation]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-image-io]]
 version = "0.3.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-io-kit]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-io-surface]]
+version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-io-surface]]
@@ -1865,11 +1933,19 @@ version = "0.2.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-metal]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-metal]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-quartz-core]]
 version = "0.2.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.objc2-quartz-core]]
+version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc2-quartz-core]]
@@ -2577,6 +2653,10 @@ version = "0.6.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.softbuffer]]
+version = "0.4.6"
+criteria = "safe-to-deploy"
+
+[[exemptions.softbuffer]]
 version = "0.4.8"
 criteria = "safe-to-deploy"
 
@@ -2638,6 +2718,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.sysinfo]]
 version = "0.32.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.sysinfo]]
+version = "0.38.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.system-deps]]
@@ -3156,8 +3240,16 @@ criteria = "safe-to-deploy"
 version = "0.61.3"
 criteria = "safe-to-deploy"
 
+[[exemptions.windows]]
+version = "0.62.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.windows-collections]]
 version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.windows-collections]]
+version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.windows-core]]
@@ -3178,6 +3270,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.windows-future]]
 version = "0.2.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.windows-future]]
+version = "0.3.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.windows-implement]]
@@ -3206,6 +3302,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.windows-numerics]]
 version = "0.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.windows-numerics]]
+version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.windows-result]]
@@ -3270,6 +3370,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.windows-threading]]
 version = "0.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.windows-threading]]
+version = "0.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.windows-version]]
