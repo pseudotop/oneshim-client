@@ -1089,6 +1089,7 @@ export interface AiProviderSettings {
   allow_unredacted_external_ocr: boolean
   ocr_validation: OcrValidationSettings
   scene_action_override: SceneActionOverrideSettings
+  scene_intelligence: SceneIntelligenceSettings
   fallback_to_local: boolean
   ocr_api: ExternalApiSettings | null
   llm_api: ExternalApiSettings | null
@@ -1105,6 +1106,17 @@ export interface OcrValidationSettings {
   enabled: boolean
   min_confidence: number
   max_invalid_ratio: number
+}
+
+export interface SceneIntelligenceSettings {
+  enabled: boolean
+  overlay_enabled: boolean
+  allow_action_execution: boolean
+  min_confidence: number
+  max_elements: number
+  calibration_enabled: boolean
+  calibration_min_elements: number
+  calibration_min_avg_confidence: number
 }
 
 export interface ExternalApiSettings {
@@ -1294,6 +1306,19 @@ export interface UiScene {
   elements: UiSceneElement[]
 }
 
+export interface SceneCalibrationReport {
+  schema_version: string
+  scene_id: string
+  total_elements: number
+  considered_elements: number
+  avg_confidence: number
+  min_confidence: number
+  min_required_elements: number
+  min_required_avg_confidence: number
+  passed: boolean
+  reasons: string[]
+}
+
 /** 자동화 상태 조회 */
 export async function fetchAutomationStatus(): Promise<AutomationStatus> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/status`)
@@ -1424,6 +1449,26 @@ export async function fetchAutomationScene(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Scene 조회 실패' }))
     throw new Error(err.error || 'Scene 조회 실패')
+  }
+  return res.json()
+}
+
+/** 현재 화면 scene calibration 결과 조회 */
+export async function fetchSceneCalibration(
+  params: { appName?: string; screenId?: string; frameId?: number } = {}
+): Promise<SceneCalibrationReport> {
+  const query = new URLSearchParams()
+  if (params.appName) query.set('app_name', params.appName)
+  if (params.screenId) query.set('screen_id', params.screenId)
+  if (typeof params.frameId === 'number') query.set('frame_id', String(params.frameId))
+
+  const suffix = query.toString()
+  const res = await fetchWithRetry(
+    `${BASE_URL}/automation/scene/calibration${suffix.length > 0 ? `?${suffix}` : ''}`
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Scene calibration 조회 실패' }))
+    throw new Error(err.error || 'Scene calibration 조회 실패')
   }
   return res.json()
 }

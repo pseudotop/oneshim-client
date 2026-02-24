@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use oneshim_automation::audit::AuditStatus;
 use oneshim_automation::policy::AuditLevel;
 use oneshim_automation::presets::builtin_presets;
-use oneshim_core::config::{ExternalDataPolicy, PiiFilterLevel, SceneActionOverrideConfig};
+use oneshim_core::config::{
+    ExternalDataPolicy, PiiFilterLevel, SceneActionOverrideConfig, SceneIntelligenceConfig,
+};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
@@ -25,6 +27,7 @@ use crate::{error::ApiError, AppState};
 
 const AUTOMATION_AUDIT_SCHEMA_VERSION: &str = "automation.audit.v1";
 const AUTOMATION_SCENE_ACTION_SCHEMA_VERSION: &str = "automation.scene_action.v1";
+const AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION: &str = "automation.scene_calibration.v1";
 
 // ============================================================
 // DTO
@@ -263,6 +266,29 @@ pub struct SceneQuery {
     pub frame_id: Option<i64>,
 }
 
+/// Scene calibration 쿼리
+#[derive(Debug, Deserialize)]
+pub struct SceneCalibrationQuery {
+    pub app_name: Option<String>,
+    pub screen_id: Option<String>,
+    pub frame_id: Option<i64>,
+}
+
+/// Scene calibration 결과
+#[derive(Debug, Serialize)]
+pub struct SceneCalibrationDto {
+    pub schema_version: String,
+    pub scene_id: String,
+    pub total_elements: usize,
+    pub considered_elements: usize,
+    pub avg_confidence: f64,
+    pub min_confidence: f64,
+    pub min_required_elements: usize,
+    pub min_required_avg_confidence: f64,
+    pub passed: bool,
+    pub reasons: Vec<String>,
+}
+
 fn build_scene_action_intents(
     req: &ExecuteSceneActionRequest,
 ) -> Result<Vec<AutomationIntent>, ApiError> {
@@ -305,6 +331,93 @@ fn build_scene_action_intents(
                 AutomationIntent::Raw(AutomationAction::KeyType { text }),
             ])
         }
+    }
+}
+
+fn read_scene_intelligence_config(state: &AppState) -> SceneIntelligenceConfig {
+    state
+        .config_manager
+        .as_ref()
+        .map(|config_manager| config_manager.get().ai_provider.scene_intelligence)
+        .unwrap_or_default()
+}
+
+fn apply_scene_intelligence_filter(
+    mut scene: UiScene,
+    cfg: &SceneIntelligenceConfig,
+) -> Result<UiScene, ApiError> {
+    if !cfg.enabled {
+        return Err(ApiError::BadRequest(
+            "Scene intelligence가 비활성화되어 있습니다.".to_string(),
+        ));
+    }
+
+    scene.elements = scene
+        .elements
+        .into_iter()
+        .filter(|element| {
+            element.confidence.is_finite() && element.confidence >= cfg.min_confidence
+        })
+        .collect();
+
+    scene.elements.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    scene.elements.truncate(cfg.max_elements);
+    Ok(scene)
+}
+
+fn build_scene_calibration(scene: &UiScene, cfg: &SceneIntelligenceConfig) -> SceneCalibrationDto {
+    let considered_elements = scene
+        .elements
+        .iter()
+        .filter(|element| element.confidence.is_finite())
+        .count();
+    let sum_confidence: f64 = scene
+        .elements
+        .iter()
+        .filter(|element| element.confidence.is_finite())
+        .map(|element| element.confidence)
+        .sum();
+    let avg_confidence = if considered_elements == 0 {
+        0.0
+    } else {
+        sum_confidence / considered_elements as f64
+    };
+
+    let mut reasons = Vec::new();
+    if !cfg.calibration_enabled {
+        reasons.push("calibration disabled by configuration".to_string());
+    } else {
+        if considered_elements < cfg.calibration_min_elements {
+            reasons.push(format!(
+                "insufficient elements: {} < {}",
+                considered_elements, cfg.calibration_min_elements
+            ));
+        }
+        if avg_confidence < cfg.calibration_min_avg_confidence {
+            reasons.push(format!(
+                "low average confidence: {:.3} < {:.3}",
+                avg_confidence, cfg.calibration_min_avg_confidence
+            ));
+        }
+    }
+
+    let passed = cfg.calibration_enabled && reasons.is_empty();
+
+    SceneCalibrationDto {
+        schema_version: AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION.to_string(),
+        scene_id: scene.scene_id.clone(),
+        total_elements: scene.elements.len(),
+        considered_elements,
+        avg_confidence,
+        min_confidence: cfg.min_confidence,
+        min_required_elements: cfg.calibration_min_elements,
+        min_required_avg_confidence: cfg.calibration_min_avg_confidence,
+        passed,
+        reasons,
     }
 }
 
@@ -471,6 +584,54 @@ fn resolve_frame_image_path(state: &AppState, stored_path: &str) -> Result<PathB
         .into_iter()
         .next()
         .unwrap_or_else(|| base.join(path)))
+}
+
+async fn analyze_scene_by_query(
+    state: &AppState,
+    controller: &oneshim_automation::controller::AutomationController,
+    frame_id: Option<i64>,
+    app_name: Option<&str>,
+    screen_id: Option<&str>,
+) -> Result<UiScene, ApiError> {
+    let analyze_result = if let Some(frame_id) = frame_id {
+        let stored_path = state
+            .storage
+            .get_frame_file_path(frame_id)
+            .map_err(|e| ApiError::Internal(format!("프레임 경로 조회 실패: {e}")))?
+            .ok_or_else(|| ApiError::NotFound(format!("프레임 {frame_id}에 이미지가 없습니다")))?;
+
+        let image_path = resolve_frame_image_path(state, &stored_path)?;
+        let image_data = std::fs::read(&image_path)
+            .map_err(|e| ApiError::Internal(format!("프레임 이미지 읽기 실패: {e}")))?;
+
+        controller
+            .analyze_scene_from_image(
+                image_data,
+                infer_image_format(&image_path),
+                app_name,
+                screen_id,
+            )
+            .await
+    } else {
+        controller.analyze_scene(app_name, screen_id).await
+    };
+
+    match analyze_result {
+        Ok(scene) => Ok(scene),
+        Err(
+            CoreError::PolicyDenied(msg)
+            | CoreError::InvalidArguments(msg)
+            | CoreError::ElementNotFound(msg),
+        ) => Err(ApiError::BadRequest(msg)),
+        Err(CoreError::Internal(msg))
+            if msg.contains("Scene 분석기")
+                || msg.contains("scene 분석을 지원하지")
+                || msg.contains("이미지 직접 scene 분석") =>
+        {
+            Err(ApiError::BadRequest(msg))
+        }
+        Err(e) => Err(ApiError::Internal(format!("scene 분석 실패: {e}"))),
+    }
 }
 
 // ============================================================
@@ -925,6 +1086,18 @@ pub async fn execute_scene_action(
         ));
     };
 
+    let scene_cfg = read_scene_intelligence_config(&state);
+    if !scene_cfg.enabled {
+        return Err(ApiError::BadRequest(
+            "Scene intelligence가 비활성화되어 있습니다.".to_string(),
+        ));
+    }
+    if !scene_cfg.allow_action_execution {
+        return Err(ApiError::BadRequest(
+            "Scene action 실행이 설정에서 비활성화되어 있습니다.".to_string(),
+        ));
+    }
+
     let intents = build_scene_action_intents(&req)?;
     let policy_context = match enforce_scene_action_privacy(&state, &req) {
         Ok(context) => context,
@@ -1128,47 +1301,43 @@ pub async fn get_automation_scene(
         ));
     };
 
-    let analyze_result = if let Some(frame_id) = query.frame_id {
-        let stored_path = state
-            .storage
-            .get_frame_file_path(frame_id)
-            .map_err(|e| ApiError::Internal(format!("프레임 경로 조회 실패: {e}")))?
-            .ok_or_else(|| ApiError::NotFound(format!("프레임 {frame_id}에 이미지가 없습니다")))?;
+    let scene_cfg = read_scene_intelligence_config(&state);
+    let scene = analyze_scene_by_query(
+        &state,
+        controller,
+        query.frame_id,
+        query.app_name.as_deref(),
+        query.screen_id.as_deref(),
+    )
+    .await?;
+    let filtered = apply_scene_intelligence_filter(scene, &scene_cfg)?;
 
-        let image_path = resolve_frame_image_path(&state, &stored_path)?;
-        let image_data = std::fs::read(&image_path)
-            .map_err(|e| ApiError::Internal(format!("프레임 이미지 읽기 실패: {e}")))?;
+    Ok(Json(filtered))
+}
 
-        controller
-            .analyze_scene_from_image(
-                image_data,
-                infer_image_format(&image_path),
-                query.app_name.as_deref(),
-                query.screen_id.as_deref(),
-            )
-            .await
-    } else {
-        controller
-            .analyze_scene(query.app_name.as_deref(), query.screen_id.as_deref())
-            .await
+/// GET /api/automation/scene/calibration — 현재 scene 캘리브레이션 검증 결과
+pub async fn get_automation_scene_calibration(
+    State(state): State<AppState>,
+    Query(query): Query<SceneCalibrationQuery>,
+) -> Result<Json<SceneCalibrationDto>, ApiError> {
+    let Some(ref controller) = state.automation_controller else {
+        return Err(ApiError::BadRequest(
+            "자동화 컨트롤러가 활성화되지 않았습니다".to_string(),
+        ));
     };
 
-    match analyze_result {
-        Ok(scene) => Ok(Json(scene)),
-        Err(
-            CoreError::PolicyDenied(msg)
-            | CoreError::InvalidArguments(msg)
-            | CoreError::ElementNotFound(msg),
-        ) => Err(ApiError::BadRequest(msg)),
-        Err(CoreError::Internal(msg))
-            if msg.contains("Scene 분석기")
-                || msg.contains("scene 분석을 지원하지")
-                || msg.contains("이미지 직접 scene 분석") =>
-        {
-            Err(ApiError::BadRequest(msg))
-        }
-        Err(e) => Err(ApiError::Internal(format!("scene 분석 실패: {e}"))),
-    }
+    let scene_cfg = read_scene_intelligence_config(&state);
+    let scene = analyze_scene_by_query(
+        &state,
+        controller,
+        query.frame_id,
+        query.app_name.as_deref(),
+        query.screen_id.as_deref(),
+    )
+    .await?;
+    let filtered = apply_scene_intelligence_filter(scene, &scene_cfg)?;
+    let report = build_scene_calibration(&filtered, &scene_cfg);
+    Ok(Json(report))
 }
 
 // ============================================================
@@ -1437,5 +1606,85 @@ mod tests {
         let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
         assert!(active);
         assert!(issue.is_none());
+    }
+
+    fn sample_scene_with_confidence(values: &[f64]) -> UiScene {
+        UiScene {
+            schema_version: UI_SCENE_SCHEMA_VERSION.to_string(),
+            scene_id: "scene-test".to_string(),
+            app_name: Some("TestApp".to_string()),
+            screen_id: Some("screen-1".to_string()),
+            captured_at: Utc::now(),
+            screen_width: 1920,
+            screen_height: 1080,
+            elements: values
+                .iter()
+                .enumerate()
+                .map(
+                    |(idx, confidence)| oneshim_core::models::ui_scene::UiSceneElement {
+                        element_id: format!("el-{idx}"),
+                        bbox_abs: ElementBounds {
+                            x: (idx as i32) * 10,
+                            y: 10,
+                            width: 100,
+                            height: 30,
+                        },
+                        bbox_norm: oneshim_core::models::ui_scene::NormalizedBounds::new(
+                            0.1, 0.1, 0.2, 0.05,
+                        ),
+                        label: format!("Element {idx}"),
+                        role: Some("button".to_string()),
+                        intent: None,
+                        state: None,
+                        confidence: *confidence,
+                        text_masked: Some(format!("Element {idx}")),
+                        parent_id: None,
+                    },
+                )
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn apply_scene_intelligence_filter_rejects_disabled_config() {
+        let scene = sample_scene_with_confidence(&[0.9, 0.7, 0.5]);
+        let cfg = SceneIntelligenceConfig {
+            enabled: false,
+            ..SceneIntelligenceConfig::default()
+        };
+        let result = apply_scene_intelligence_filter(scene, &cfg);
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
+    }
+
+    #[test]
+    fn apply_scene_intelligence_filter_applies_threshold_and_limit() {
+        let scene = sample_scene_with_confidence(&[0.95, 0.7, 0.61, 0.42, 0.2]);
+        let cfg = SceneIntelligenceConfig {
+            min_confidence: 0.6,
+            max_elements: 2,
+            ..SceneIntelligenceConfig::default()
+        };
+        let filtered = apply_scene_intelligence_filter(scene, &cfg).unwrap();
+        assert_eq!(filtered.elements.len(), 2);
+        assert!(filtered.elements[0].confidence >= filtered.elements[1].confidence);
+        assert!(filtered.elements.iter().all(|e| e.confidence >= 0.6));
+    }
+
+    #[test]
+    fn build_scene_calibration_reports_failures() {
+        let scene = sample_scene_with_confidence(&[0.4, 0.5]);
+        let cfg = SceneIntelligenceConfig {
+            calibration_enabled: true,
+            calibration_min_elements: 4,
+            calibration_min_avg_confidence: 0.8,
+            ..SceneIntelligenceConfig::default()
+        };
+        let report = build_scene_calibration(&scene, &cfg);
+        assert!(!report.passed);
+        assert_eq!(
+            report.schema_version,
+            AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION
+        );
+        assert!(!report.reasons.is_empty());
     }
 }

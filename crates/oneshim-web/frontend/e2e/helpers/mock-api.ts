@@ -136,6 +136,16 @@ const fallbackSettings = {
       approved_by: '',
       expires_at: null,
     },
+    scene_intelligence: {
+      enabled: true,
+      overlay_enabled: true,
+      allow_action_execution: true,
+      min_confidence: 0.35,
+      max_elements: 120,
+      calibration_enabled: true,
+      calibration_min_elements: 8,
+      calibration_min_avg_confidence: 0.55,
+    },
     fallback_to_local: true,
     ocr_api: null,
     llm_api: null,
@@ -277,6 +287,18 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
     screen_width: 1280,
     screen_height: 720,
     elements: [],
+  })
+  await mockStaticJson(page, '**/api/automation/scene/calibration**', {
+    schema_version: 'automation.scene_calibration.v1',
+    scene_id: 'scene-e2e',
+    total_elements: 0,
+    considered_elements: 0,
+    avg_confidence: 0,
+    min_confidence: 0.35,
+    min_required_elements: 8,
+    min_required_avg_confidence: 0.55,
+    passed: false,
+    reasons: ['insufficient elements: 0 < 8'],
   })
   await mockDynamicJson(page, '**/api/automation/execute-hint', (request) => {
     const payload = request.postDataJSON() as

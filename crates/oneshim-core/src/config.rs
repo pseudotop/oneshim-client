@@ -362,6 +362,9 @@ pub struct AiProviderConfig {
     /// Scene action 민감 입력 오버라이드 설정 (사유/승인/TTL 기반)
     #[serde(default)]
     pub scene_action_override: SceneActionOverrideConfig,
+    /// OCR 기반 Scene 인텔리전스 설정 (오버레이/추천/캘리브레이션)
+    #[serde(default)]
+    pub scene_intelligence: SceneIntelligenceConfig,
     /// 외부 API 실패 시 로컬 폴백
     #[serde(default = "default_true")]
     pub fallback_to_local: bool,
@@ -379,6 +382,7 @@ impl Default for AiProviderConfig {
             allow_unredacted_external_ocr: false,
             ocr_validation: OcrValidationConfig::default(),
             scene_action_override: SceneActionOverrideConfig::default(),
+            scene_intelligence: SceneIntelligenceConfig::default(),
             fallback_to_local: true,
         }
     }
@@ -391,6 +395,7 @@ impl AiProviderConfig {
     pub fn validate_selected_remote_endpoints(&self) -> Result<(), CoreError> {
         self.ocr_validation.validate()?;
         self.scene_action_override.validate()?;
+        self.scene_intelligence.validate()?;
 
         match self.access_mode {
             AiAccessMode::ProviderApiKey | AiAccessMode::PlatformConnected => {
@@ -493,6 +498,84 @@ impl SceneActionOverrideConfig {
             ));
         }
 
+        Ok(())
+    }
+}
+
+/// OCR 기반 Scene 인텔리전스 설정.
+///
+/// 웹 리플레이 오버레이/추천/캘리브레이션 및 결정적 실행 허용 여부를 제어한다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SceneIntelligenceConfig {
+    /// Scene 분석 기능 전체 활성화 여부
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// 리플레이 화면에서 bbox 오버레이 표시 허용
+    #[serde(default = "default_true")]
+    pub overlay_enabled: bool,
+    /// Scene 기반 결정적 액션 실행 허용 여부 (RPA 실행 게이트)
+    #[serde(default = "default_false")]
+    pub allow_action_execution: bool,
+    /// 오버레이/추천에 포함할 최소 confidence (0.0 ~ 1.0)
+    #[serde(default = "default_scene_min_confidence")]
+    pub min_confidence: f64,
+    /// 오버레이/추천 최대 요소 수
+    #[serde(default = "default_scene_max_elements")]
+    pub max_elements: usize,
+    /// 캘리브레이션/검증 단계 활성화
+    #[serde(default = "default_true")]
+    pub calibration_enabled: bool,
+    /// 캘리브레이션 통과를 위한 최소 요소 수
+    #[serde(default = "default_scene_calibration_min_elements")]
+    pub calibration_min_elements: usize,
+    /// 캘리브레이션 통과를 위한 최소 평균 confidence (0.0 ~ 1.0)
+    #[serde(default = "default_scene_calibration_min_avg_confidence")]
+    pub calibration_min_avg_confidence: f64,
+}
+
+impl Default for SceneIntelligenceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            overlay_enabled: true,
+            allow_action_execution: default_false(),
+            min_confidence: default_scene_min_confidence(),
+            max_elements: default_scene_max_elements(),
+            calibration_enabled: true,
+            calibration_min_elements: default_scene_calibration_min_elements(),
+            calibration_min_avg_confidence: default_scene_calibration_min_avg_confidence(),
+        }
+    }
+}
+
+impl SceneIntelligenceConfig {
+    pub fn validate(&self) -> Result<(), CoreError> {
+        if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
+            return Err(CoreError::Config(
+                "`ai_provider.scene_intelligence.min_confidence`는 0.0~1.0 범위여야 합니다."
+                    .to_string(),
+            ));
+        }
+        if self.max_elements == 0 || self.max_elements > 1000 {
+            return Err(CoreError::Config(
+                "`ai_provider.scene_intelligence.max_elements`는 1~1000 범위여야 합니다."
+                    .to_string(),
+            ));
+        }
+        if self.calibration_min_elements == 0 || self.calibration_min_elements > 1000 {
+            return Err(CoreError::Config(
+                "`ai_provider.scene_intelligence.calibration_min_elements`는 1~1000 범위여야 합니다."
+                    .to_string(),
+            ));
+        }
+        if !self.calibration_min_avg_confidence.is_finite()
+            || !(0.0..=1.0).contains(&self.calibration_min_avg_confidence)
+        {
+            return Err(CoreError::Config(
+                "`ai_provider.scene_intelligence.calibration_min_avg_confidence`는 0.0~1.0 범위여야 합니다."
+                    .to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -686,6 +769,22 @@ fn default_ocr_min_confidence() -> f64 {
 
 fn default_ocr_max_invalid_ratio() -> f64 {
     0.6
+}
+
+fn default_scene_min_confidence() -> f64 {
+    0.35
+}
+
+fn default_scene_max_elements() -> usize {
+    120
+}
+
+fn default_scene_calibration_min_elements() -> usize {
+    8
+}
+
+fn default_scene_calibration_min_avg_confidence() -> f64 {
+    0.55
 }
 
 fn default_excluded_extensions() -> Vec<String> {
@@ -1119,6 +1218,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_false() -> bool {
+    false
+}
+
 fn default_integrity_enabled() -> bool {
     true
 }
@@ -1390,6 +1493,39 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("max_invalid_ratio"));
+    }
+
+    #[test]
+    fn ai_provider_validation_rejects_invalid_scene_min_confidence() {
+        let config = AiProviderConfig {
+            scene_intelligence: SceneIntelligenceConfig {
+                min_confidence: 1.2,
+                ..SceneIntelligenceConfig::default()
+            },
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("scene_intelligence"));
+    }
+
+    #[test]
+    fn ai_provider_validation_rejects_invalid_scene_max_elements() {
+        let config = AiProviderConfig {
+            scene_intelligence: SceneIntelligenceConfig {
+                max_elements: 0,
+                ..SceneIntelligenceConfig::default()
+            },
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("max_elements"));
     }
 
     #[test]

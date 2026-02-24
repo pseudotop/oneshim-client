@@ -143,6 +143,10 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::automation::get_automation_scene),
         )
         .route(
+            "/automation/scene/calibration",
+            get(handlers::automation::get_automation_scene_calibration),
+        )
+        .route(
             "/onboarding/quickstart",
             get(handlers::onboarding::get_quickstart),
         )

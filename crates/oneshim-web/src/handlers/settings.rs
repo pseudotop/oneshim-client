@@ -256,6 +256,9 @@ pub struct AiProviderSettings {
     /// Scene action 민감 입력 오버라이드 설정
     #[serde(default)]
     pub scene_action_override: SceneActionOverrideSettings,
+    /// Scene 인텔리전스 설정 (오버레이/추천/캘리브레이션/실행 게이트)
+    #[serde(default)]
+    pub scene_intelligence: SceneIntelligenceSettings,
     /// 로컬 폴백 활성화
     pub fallback_to_local: bool,
     /// OCR API 설정 (Remote 선택 시)
@@ -279,12 +282,39 @@ pub struct SceneActionOverrideSettings {
     pub expires_at: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SceneIntelligenceSettings {
+    pub enabled: bool,
+    pub overlay_enabled: bool,
+    pub allow_action_execution: bool,
+    pub min_confidence: f64,
+    pub max_elements: u32,
+    pub calibration_enabled: bool,
+    pub calibration_min_elements: u32,
+    pub calibration_min_avg_confidence: f64,
+}
+
 impl Default for OcrValidationSettings {
     fn default() -> Self {
         Self {
             enabled: true,
             min_confidence: 0.25,
             max_invalid_ratio: 0.6,
+        }
+    }
+}
+
+impl Default for SceneIntelligenceSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            overlay_enabled: true,
+            allow_action_execution: false,
+            min_confidence: 0.35,
+            max_elements: 120,
+            calibration_enabled: true,
+            calibration_min_elements: 8,
+            calibration_min_avg_confidence: 0.55,
         }
     }
 }
@@ -299,6 +329,7 @@ impl Default for AiProviderSettings {
             allow_unredacted_external_ocr: false,
             ocr_validation: OcrValidationSettings::default(),
             scene_action_override: SceneActionOverrideSettings::default(),
+            scene_intelligence: SceneIntelligenceSettings::default(),
             fallback_to_local: true,
             ocr_api: None,
             llm_api: None,

@@ -4,15 +4,15 @@ use chrono::{DateTime, Utc};
 use oneshim_core::config::{
     AiAccessMode, AiProviderType, AppConfig, ExternalApiEndpoint, ExternalDataPolicy,
     LlmProviderType, OcrProviderType, OcrValidationConfig, PiiFilterLevel, SandboxProfile,
-    SceneActionOverrideConfig, Weekday,
+    SceneActionOverrideConfig, SceneIntelligenceConfig, Weekday,
 };
 
 use crate::error::ApiError;
 use crate::handlers::settings::{
     AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
     MonitorControlSettings, NotificationSettings, OcrValidationSettings, PrivacySettings,
-    SandboxSettings, SceneActionOverrideSettings, ScheduleSettings, StorageStats,
-    TelemetrySettings, UpdateSettings,
+    SandboxSettings, SceneActionOverrideSettings, SceneIntelligenceSettings, ScheduleSettings,
+    StorageStats, TelemetrySettings, UpdateSettings,
 };
 use crate::AppState;
 use tracing::warn;
@@ -116,6 +116,45 @@ fn emit_policy_change_events(state: &AppState, previous: &AppConfig, next: &AppC
             ),
         );
     }
+
+    let prev_scene = &previous.ai_provider.scene_intelligence;
+    let next_scene = &next.ai_provider.scene_intelligence;
+    let scene_changed = prev_scene.enabled != next_scene.enabled
+        || prev_scene.overlay_enabled != next_scene.overlay_enabled
+        || prev_scene.allow_action_execution != next_scene.allow_action_execution
+        || (prev_scene.min_confidence - next_scene.min_confidence).abs() > f64::EPSILON
+        || prev_scene.max_elements != next_scene.max_elements
+        || prev_scene.calibration_enabled != next_scene.calibration_enabled
+        || prev_scene.calibration_min_elements != next_scene.calibration_min_elements
+        || (prev_scene.calibration_min_avg_confidence - next_scene.calibration_min_avg_confidence)
+            .abs()
+            > f64::EPSILON;
+
+    if scene_changed {
+        log_policy_event(
+            state,
+            "policy.settings.scene_intelligence.changed",
+            format!(
+                "enabled {}->{} overlay {}->{} allow_action_execution {}->{} min_confidence {:.2}->{:.2} max_elements {}->{} calibration_enabled {}->{} calibration_min_elements {}->{} calibration_min_avg_confidence {:.2}->{:.2}",
+                prev_scene.enabled,
+                next_scene.enabled,
+                prev_scene.overlay_enabled,
+                next_scene.overlay_enabled,
+                prev_scene.allow_action_execution,
+                next_scene.allow_action_execution,
+                prev_scene.min_confidence,
+                next_scene.min_confidence,
+                prev_scene.max_elements,
+                next_scene.max_elements,
+                prev_scene.calibration_enabled,
+                next_scene.calibration_enabled,
+                prev_scene.calibration_min_elements,
+                next_scene.calibration_min_elements,
+                prev_scene.calibration_min_avg_confidence,
+                next_scene.calibration_min_avg_confidence,
+            ),
+        );
+    }
 }
 
 fn log_policy_event(state: &AppState, action_type: &str, details: String) {
@@ -168,6 +207,57 @@ fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
     {
         return Err(ApiError::BadRequest(
             "ai_provider.ocr_validation.max_invalid_ratio는 0.0~1.0 범위여야 합니다".to_string(),
+        ));
+    }
+    if !settings
+        .ai_provider
+        .scene_intelligence
+        .min_confidence
+        .is_finite()
+        || !(0.0..=1.0).contains(&settings.ai_provider.scene_intelligence.min_confidence)
+    {
+        return Err(ApiError::BadRequest(
+            "ai_provider.scene_intelligence.min_confidence는 0.0~1.0 범위여야 합니다".to_string(),
+        ));
+    }
+    if settings.ai_provider.scene_intelligence.max_elements == 0
+        || settings.ai_provider.scene_intelligence.max_elements > 1000
+    {
+        return Err(ApiError::BadRequest(
+            "ai_provider.scene_intelligence.max_elements는 1~1000 범위여야 합니다".to_string(),
+        ));
+    }
+    if settings
+        .ai_provider
+        .scene_intelligence
+        .calibration_min_elements
+        == 0
+        || settings
+            .ai_provider
+            .scene_intelligence
+            .calibration_min_elements
+            > 1000
+    {
+        return Err(ApiError::BadRequest(
+            "ai_provider.scene_intelligence.calibration_min_elements는 1~1000 범위여야 합니다"
+                .to_string(),
+        ));
+    }
+    if !settings
+        .ai_provider
+        .scene_intelligence
+        .calibration_min_avg_confidence
+        .is_finite()
+        || !(0.0..=1.0).contains(
+            &settings
+                .ai_provider
+                .scene_intelligence
+                .calibration_min_avg_confidence,
+        )
+    {
+        return Err(ApiError::BadRequest(
+            "ai_provider.scene_intelligence.calibration_min_avg_confidence는 0.0~1.0 범위여야 합니다"
+                .to_string(),
         ));
     }
     Ok(())
@@ -271,6 +361,25 @@ fn config_to_settings(config: &AppConfig) -> AppSettings {
                     .scene_action_override
                     .expires_at
                     .map(|v| v.to_rfc3339()),
+            },
+            scene_intelligence: SceneIntelligenceSettings {
+                enabled: config.ai_provider.scene_intelligence.enabled,
+                overlay_enabled: config.ai_provider.scene_intelligence.overlay_enabled,
+                allow_action_execution: config
+                    .ai_provider
+                    .scene_intelligence
+                    .allow_action_execution,
+                min_confidence: config.ai_provider.scene_intelligence.min_confidence,
+                max_elements: config.ai_provider.scene_intelligence.max_elements as u32,
+                calibration_enabled: config.ai_provider.scene_intelligence.calibration_enabled,
+                calibration_min_elements: config
+                    .ai_provider
+                    .scene_intelligence
+                    .calibration_min_elements as u32,
+                calibration_min_avg_confidence: config
+                    .ai_provider
+                    .scene_intelligence
+                    .calibration_min_avg_confidence,
             },
             fallback_to_local: config.ai_provider.fallback_to_local,
             ocr_api: config
@@ -466,6 +575,25 @@ pub(crate) fn apply_settings_to_config(
                 .as_deref(),
             "ai_provider.scene_action_override.expires_at",
         )?,
+    };
+    config.ai_provider.scene_intelligence = SceneIntelligenceConfig {
+        enabled: settings.ai_provider.scene_intelligence.enabled,
+        overlay_enabled: settings.ai_provider.scene_intelligence.overlay_enabled,
+        allow_action_execution: settings
+            .ai_provider
+            .scene_intelligence
+            .allow_action_execution,
+        min_confidence: settings.ai_provider.scene_intelligence.min_confidence,
+        max_elements: settings.ai_provider.scene_intelligence.max_elements as usize,
+        calibration_enabled: settings.ai_provider.scene_intelligence.calibration_enabled,
+        calibration_min_elements: settings
+            .ai_provider
+            .scene_intelligence
+            .calibration_min_elements as usize,
+        calibration_min_avg_confidence: settings
+            .ai_provider
+            .scene_intelligence
+            .calibration_min_avg_confidence,
     };
     config.ai_provider.fallback_to_local = settings.ai_provider.fallback_to_local;
 

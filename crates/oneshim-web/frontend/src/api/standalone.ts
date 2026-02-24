@@ -177,6 +177,16 @@ function makeDefaultSettings(): AppSettings {
         approved_by: '',
         expires_at: null,
       },
+      scene_intelligence: {
+        enabled: true,
+        overlay_enabled: true,
+        allow_action_execution: false,
+        min_confidence: 0.35,
+        max_elements: 120,
+        calibration_enabled: true,
+        calibration_min_elements: 8,
+        calibration_min_avg_confidence: 0.55,
+      },
       fallback_to_local: true,
       ocr_api: null,
       llm_api: null,
@@ -730,13 +740,73 @@ export async function handleStandaloneRequest(
   if (path === '/api/automation/scene' && method === 'GET') {
     const frameIdRaw = requestUrl.searchParams.get('frame_id')
     const frameId = frameIdRaw == null ? undefined : Number(frameIdRaw)
-    return jsonResponse(
-      makeDefaultAutomationScene(
-        requestUrl.searchParams.get('app_name') ?? undefined,
-        requestUrl.searchParams.get('screen_id') ?? undefined,
-        Number.isFinite(frameId) ? frameId : undefined
-      )
+    const scene = makeDefaultAutomationScene(
+      requestUrl.searchParams.get('app_name') ?? undefined,
+      requestUrl.searchParams.get('screen_id') ?? undefined,
+      Number.isFinite(frameId) ? frameId : undefined
     )
+    const cfg = state.settings.ai_provider.scene_intelligence
+    if (!cfg.enabled) {
+      return jsonResponse({ error: 'Scene intelligence is disabled' }, 400)
+    }
+    const filtered = scene.elements
+      .filter((item) => item.confidence >= cfg.min_confidence)
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, cfg.max_elements)
+    return jsonResponse({
+      ...scene,
+      elements: filtered,
+    })
+  }
+
+  if (path === '/api/automation/scene/calibration' && method === 'GET') {
+    const frameIdRaw = requestUrl.searchParams.get('frame_id')
+    const frameId = frameIdRaw == null ? undefined : Number(frameIdRaw)
+    const scene = makeDefaultAutomationScene(
+      requestUrl.searchParams.get('app_name') ?? undefined,
+      requestUrl.searchParams.get('screen_id') ?? undefined,
+      Number.isFinite(frameId) ? frameId : undefined
+    )
+    const cfg = state.settings.ai_provider.scene_intelligence
+    if (!cfg.enabled) {
+      return jsonResponse({ error: 'Scene intelligence is disabled' }, 400)
+    }
+    const filtered = scene.elements
+      .filter((item) => Number.isFinite(item.confidence) && item.confidence >= cfg.min_confidence)
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, cfg.max_elements)
+    const considered = filtered.filter((item) => Number.isFinite(item.confidence))
+    const avgConfidence =
+      considered.length > 0
+        ? considered.reduce((sum, item) => sum + item.confidence, 0) / considered.length
+        : 0
+    const reasons: string[] = []
+    if (!cfg.calibration_enabled) {
+      reasons.push('calibration disabled by configuration')
+    } else {
+      if (considered.length < cfg.calibration_min_elements) {
+        reasons.push(
+          `insufficient elements: ${considered.length} < ${cfg.calibration_min_elements}`
+        )
+      }
+      if (avgConfidence < cfg.calibration_min_avg_confidence) {
+        reasons.push(
+          `low average confidence: ${avgConfidence.toFixed(3)} < ${cfg.calibration_min_avg_confidence.toFixed(3)}`
+        )
+      }
+    }
+    return jsonResponse({
+      schema_version: 'automation.scene_calibration.v1',
+      scene_id: scene.scene_id,
+      total_elements: filtered.length,
+      considered_elements: considered.length,
+      avg_confidence: avgConfidence,
+      min_confidence: cfg.min_confidence,
+      min_required_elements: cfg.calibration_min_elements,
+      min_required_avg_confidence: cfg.calibration_min_avg_confidence,
+      passed: cfg.calibration_enabled && reasons.length === 0,
+      reasons,
+    })
   }
   if (path === '/api/automation/presets' && method === 'GET') {
     return jsonResponse({ presets: state.presets })
@@ -803,6 +873,13 @@ export async function handleStandaloneRequest(
 
   if (path === '/api/automation/execute-scene-action' && method === 'POST') {
     const payload = body as ExecuteSceneActionRequest | null
+    const sceneCfg = state.settings.ai_provider.scene_intelligence
+    if (!sceneCfg.enabled) {
+      return jsonResponse({ error: 'Scene intelligence is disabled' }, 400)
+    }
+    if (!sceneCfg.allow_action_execution) {
+      return jsonResponse({ error: 'Scene action execution is disabled' }, 400)
+    }
     const now = Date.now()
     const commandId = payload?.command_id?.trim() || `scene-action-${now}`
     const sessionId = payload?.session_id?.trim() || 'standalone-session'

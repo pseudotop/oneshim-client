@@ -25,6 +25,7 @@ import {
   type AiProviderSettings,
   type OcrValidationSettings as OcrValidationSettingsType,
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
+  type SceneIntelligenceSettings as SceneIntelligenceSettingsType,
   type ExternalApiSettings,
   type ExportFormat,
   type ExportDataType,
@@ -223,7 +224,13 @@ export default function Settings() {
 
   const handleAiProviderChange = (
     field: keyof AiProviderSettings,
-    value: string | boolean | ExternalApiSettings | OcrValidationSettingsType | null
+    value:
+      | string
+      | boolean
+      | ExternalApiSettings
+      | OcrValidationSettingsType
+      | SceneIntelligenceSettingsType
+      | null
   ) => {
     if (formData) {
       setFormData({
@@ -262,6 +269,24 @@ export default function Settings() {
           ...formData.ai_provider,
           scene_action_override: {
             ...formData.ai_provider.scene_action_override,
+            [field]: value,
+          },
+        },
+      })
+    }
+  }
+
+  const handleSceneIntelligenceChange = (
+    field: keyof SceneIntelligenceSettingsType,
+    value: boolean | number
+  ) => {
+    if (formData) {
+      setFormData({
+        ...formData,
+        ai_provider: {
+          ...formData.ai_provider,
+          scene_intelligence: {
+            ...formData.ai_provider.scene_intelligence,
             [field]: value,
           },
         },
@@ -884,6 +909,142 @@ export default function Settings() {
                         )
                       }
                     />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {t('settingsAutomation.sceneIntelligenceTitle', 'Scene Intelligence')}
+                </h4>
+                <ToggleRow
+                  label={t('settingsAutomation.sceneIntelligenceEnabled', 'Enable Scene Intelligence')}
+                  description={t(
+                    'settingsAutomation.sceneIntelligenceEnabledDescription',
+                    'Enable OCR-based UI structure detection and assistant recommendations.'
+                  )}
+                  checked={formData.ai_provider.scene_intelligence.enabled}
+                  onChange={(v) => handleSceneIntelligenceChange('enabled', v)}
+                />
+                <div className={`space-y-3 ${!formData.ai_provider.scene_intelligence.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <ToggleRow
+                    label={t('settingsAutomation.sceneOverlayEnabled', 'Show Overlay')}
+                    description={t(
+                      'settingsAutomation.sceneOverlayEnabledDescription',
+                      'Render detected UI element boxes on session replay screenshots.'
+                    )}
+                    checked={formData.ai_provider.scene_intelligence.overlay_enabled}
+                    onChange={(v) => handleSceneIntelligenceChange('overlay_enabled', v)}
+                  />
+                  <ToggleRow
+                    label={t(
+                      'settingsAutomation.sceneAllowExecution',
+                      'Allow Scene Action Execution'
+                    )}
+                    description={t(
+                      'settingsAutomation.sceneAllowExecutionDescription',
+                      'Permit direct click/type execution from scene coordinates (RPA gate).'
+                    )}
+                    checked={formData.ai_provider.scene_intelligence.allow_action_execution}
+                    onChange={(v) => handleSceneIntelligenceChange('allow_action_execution', v)}
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                        {t('settingsAutomation.sceneMinConfidence', 'Scene Min Confidence')}
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={formData.ai_provider.scene_intelligence.min_confidence}
+                        onChange={(e) =>
+                          handleSceneIntelligenceChange(
+                            'min_confidence',
+                            Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                        {t('settingsAutomation.sceneMaxElements', 'Scene Max Elements')}
+                      </label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        step={1}
+                        value={formData.ai_provider.scene_intelligence.max_elements}
+                        onChange={(e) =>
+                          handleSceneIntelligenceChange(
+                            'max_elements',
+                            Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-md bg-slate-100/70 dark:bg-slate-800/70 space-y-3">
+                    <ToggleRow
+                      label={t(
+                        'settingsAutomation.sceneCalibrationEnabled',
+                        'Enable Calibration Validation'
+                      )}
+                      description={t(
+                        'settingsAutomation.sceneCalibrationEnabledDescription',
+                        'Validate whether current scene quality is sufficient before assistant usage.'
+                      )}
+                      checked={formData.ai_provider.scene_intelligence.calibration_enabled}
+                      onChange={(v) => handleSceneIntelligenceChange('calibration_enabled', v)}
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                          {t(
+                            'settingsAutomation.sceneCalibrationMinElements',
+                            'Calibration Min Elements'
+                          )}
+                        </label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={1000}
+                          step={1}
+                          value={formData.ai_provider.scene_intelligence.calibration_min_elements}
+                          onChange={(e) =>
+                            handleSceneIntelligenceChange(
+                              'calibration_min_elements',
+                              Number(e.target.value)
+                            )
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                          {t(
+                            'settingsAutomation.sceneCalibrationMinAvgConfidence',
+                            'Calibration Min Avg Confidence'
+                          )}
+                        </label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={
+                            formData.ai_provider.scene_intelligence.calibration_min_avg_confidence
+                          }
+                          onChange={(e) =>
+                            handleSceneIntelligenceChange(
+                              'calibration_min_avg_confidence',
+                              Number(e.target.value)
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

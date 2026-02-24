@@ -12,7 +12,14 @@ import { Badge } from '../components/ui/Badge'
 import { Spinner } from '../components/ui/Spinner'
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui'
-import { executeSceneAction, fetchTimeline, fetchFrameTags, fetchAutomationScene } from '../api/client'
+import {
+  executeSceneAction,
+  fetchTimeline,
+  fetchFrameTags,
+  fetchAutomationScene,
+  fetchSceneCalibration,
+  fetchSettings,
+} from '../api/client'
 import type { TimelineItem } from '../api/client'
 
 export default function SessionReplay() {
@@ -109,6 +116,12 @@ export default function SessionReplay() {
     enabled: !!currentFrame,
   })
 
+  const { data: appSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: fetchSettings,
+    staleTime: 30000,
+  })
+
   const {
     data: currentScene,
     isFetching: sceneFetching,
@@ -124,12 +137,41 @@ export default function SessionReplay() {
     retry: false,
   })
 
+  const {
+    data: sceneCalibration,
+    isFetching: calibrationFetching,
+  } = useQuery({
+    queryKey: ['sceneCalibration', currentFrame?.id, currentFrame?.app_name],
+    queryFn: () =>
+      fetchSceneCalibration({
+        appName: currentFrame?.app_name,
+        frameId: currentFrame?.id,
+      }),
+    enabled: !!currentFrame,
+    retry: false,
+  })
+
+  const sceneIntelligenceEnabled = appSettings?.ai_provider.scene_intelligence.enabled ?? true
+  const overlayAllowed = appSettings?.ai_provider.scene_intelligence.overlay_enabled ?? true
+  const sceneExecutionAllowed =
+    appSettings?.ai_provider.scene_intelligence.allow_action_execution ?? false
+  const sceneCalibrationPassed = sceneCalibration?.passed === true
+  const sceneCalibrationReasons = Array.isArray(sceneCalibration?.reasons)
+    ? sceneCalibration.reasons
+    : []
+
   useEffect(() => {
     setSelectedSceneElementId(null)
     setSceneTypeText('')
     setAllowSensitiveInput(false)
     setSceneActionFeedback(null)
   }, [currentFrame?.id, currentScene?.scene_id])
+
+  useEffect(() => {
+    if (!overlayAllowed) {
+      setShowSceneOverlay(false)
+    }
+  }, [overlayAllowed, currentFrame?.id])
 
   useEffect(() => {
     const target = sceneViewportRef.current
@@ -491,12 +533,30 @@ export default function SessionReplay() {
                               {t('replay.sceneUnavailable')}
                             </span>
                           )}
+                          {!sceneError && sceneCalibration && (
+                            <span
+                              className={`ml-2 ${
+                                sceneCalibrationPassed
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : 'text-amber-600 dark:text-amber-400'
+                              }`}
+                            >
+                              {sceneCalibrationPassed
+                                ? t('replay.calibrationPassed', 'Calibration passed')
+                                : t('replay.calibrationFailed', 'Calibration failed')}
+                            </span>
+                          )}
+                          {calibrationFetching && (
+                            <span className="ml-2 text-slate-400 dark:text-slate-500">
+                              {t('replay.calibrating', 'Calibrating...')}
+                            </span>
+                          )}
                         </div>
                         <Button
                           variant="secondary"
                           size="sm"
                           onClick={() => setShowSceneOverlay((prev) => !prev)}
-                          disabled={!currentScene || imageLoadFailed}
+                          disabled={!currentScene || imageLoadFailed || !overlayAllowed}
                         >
                           {showSceneOverlay ? (
                             <>
@@ -560,6 +620,23 @@ export default function SessionReplay() {
                         {suggestedActionText}
                       </div>
 
+                      {!sceneIntelligenceEnabled && (
+                        <div className="rounded-lg px-3 py-2 text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                          {t(
+                            'replay.sceneIntelligenceDisabled',
+                            'Scene intelligence is disabled in settings.'
+                          )}
+                        </div>
+                      )}
+                      {sceneCalibration && !sceneCalibrationPassed && sceneCalibrationReasons.length > 0 && (
+                        <div className="rounded-lg px-3 py-2 text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                          {t(
+                            'replay.calibrationReasons',
+                            'Calibration notes'
+                          )}: {sceneCalibrationReasons.join('; ')}
+                        </div>
+                      )}
+
                       {selectedActionType === 'type_text' && (
                         <div className="space-y-2">
                           <label className="text-xs text-slate-600 dark:text-slate-300">
@@ -608,7 +685,10 @@ export default function SessionReplay() {
                                   : undefined,
                             })
                           }}
-                          disabled={selectedActionType === 'type_text' && sceneTypeText.trim().length === 0}
+                          disabled={
+                            !sceneExecutionAllowed ||
+                            (selectedActionType === 'type_text' && sceneTypeText.trim().length === 0)
+                          }
                         >
                           {t('replay.runSuggestedAction', 'Run Suggested Action')}
                         </Button>
@@ -623,6 +703,15 @@ export default function SessionReplay() {
                           {t('replay.clearSelection', 'Clear Selection')}
                         </Button>
                       </div>
+
+                      {!sceneExecutionAllowed && (
+                        <div className="rounded-lg px-3 py-2 text-xs bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          {t(
+                            'replay.sceneExecutionDisabled',
+                            'Scene action execution is disabled in Settings > Automation.'
+                          )}
+                        </div>
+                      )}
 
                       {sceneActionFeedback && (
                         <div
