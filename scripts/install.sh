@@ -5,6 +5,7 @@ set -euo pipefail
 REPO="${ONESHIM_REPOSITORY:-pseudotop/oneshim-client}"
 VERSION="${ONESHIM_VERSION:-latest}"
 INSTALL_DIR="${ONESHIM_INSTALL_DIR:-$HOME/.local/bin}"
+BASE_URL="${ONESHIM_RELEASE_BASE_URL:-}"
 REQUIRE_SIGNATURE="${ONESHIM_REQUIRE_SIGNATURE:-0}"
 UPDATE_SIGNATURE_PUBLIC_KEY="${ONESHIM_UPDATE_PUBLIC_KEY:-GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=}"
 BINARY_NAME="oneshim"
@@ -20,6 +21,7 @@ Options:
   --version <tag>          Release tag (e.g. v0.0.4). Default: latest
   --install-dir <path>     Installation directory. Default: ~/.local/bin
   --repo <owner/name>      GitHub repository. Default: pseudotop/oneshim-client
+  --base-url <url>         Release asset base URL override (for local/rehearsal mirrors)
   --require-signature      Fail if Ed25519 signature verification cannot be completed
   -h, --help               Show help
 
@@ -27,6 +29,7 @@ Environment:
   ONESHIM_VERSION
   ONESHIM_INSTALL_DIR
   ONESHIM_REPOSITORY
+  ONESHIM_RELEASE_BASE_URL
   ONESHIM_REQUIRE_SIGNATURE=1
   ONESHIM_UPDATE_PUBLIC_KEY=<base64 ed25519 public key>
 EOF
@@ -182,6 +185,11 @@ while [[ $# -gt 0 ]]; do
       REPO="$2"
       shift 2
       ;;
+    --base-url)
+      [[ $# -ge 2 ]] || fatal "--base-url requires a value"
+      BASE_URL="$2"
+      shift 2
+      ;;
     --require-signature)
       REQUIRE_SIGNATURE=1
       shift
@@ -202,10 +210,15 @@ ASSET_NAME="$(detect_asset_name "$OS_NAME" "$ARCH_NAME")"
 TAG_NAME="$(normalize_tag "$VERSION")"
 
 if [[ "$TAG_NAME" == "latest" ]]; then
-  BASE_URL="https://github.com/$REPO/releases/latest/download"
+  DEFAULT_BASE_URL="https://github.com/$REPO/releases/latest/download"
 else
-  BASE_URL="https://github.com/$REPO/releases/download/$TAG_NAME"
+  DEFAULT_BASE_URL="https://github.com/$REPO/releases/download/$TAG_NAME"
 fi
+
+if [[ -z "${BASE_URL}" ]]; then
+  BASE_URL="$DEFAULT_BASE_URL"
+fi
+BASE_URL="${BASE_URL%/}"
 
 ARTIFACT_URL="$BASE_URL/$ASSET_NAME"
 CHECKSUM_URL="$ARTIFACT_URL.sha256"
@@ -223,6 +236,7 @@ info "Repository: $REPO"
 info "Version: $TAG_NAME"
 info "Asset: $ASSET_NAME"
 info "Install dir: $INSTALL_DIR"
+info "Base URL: $BASE_URL"
 
 info "Downloading artifact"
 download_file "$ARTIFACT_URL" "$ARTIFACT_PATH"

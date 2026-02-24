@@ -3,6 +3,7 @@ param(
     [string]$Version = $(if ($env:ONESHIM_VERSION) { $env:ONESHIM_VERSION } else { "latest" }),
     [string]$Repository = $(if ($env:ONESHIM_REPOSITORY) { $env:ONESHIM_REPOSITORY } else { "pseudotop/oneshim-client" }),
     [string]$InstallDir = $(if ($env:ONESHIM_INSTALL_DIR) { $env:ONESHIM_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "ONESHIM\bin" }),
+    [string]$BaseUrl = $(if ($env:ONESHIM_RELEASE_BASE_URL) { $env:ONESHIM_RELEASE_BASE_URL } else { "" }),
     [switch]$RequireSignature
 )
 
@@ -170,10 +171,14 @@ function Add-InstallDirToUserPath {
 }
 
 $tag = Get-NormalizedTag -InputVersion $Version
-$baseUrl = if ($tag -eq "latest") {
-    "https://github.com/$Repository/releases/latest/download"
+$baseUrl = if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
+    if ($tag -eq "latest") {
+        "https://github.com/$Repository/releases/latest/download"
+    } else {
+        "https://github.com/$Repository/releases/download/$tag"
+    }
 } else {
-    "https://github.com/$Repository/releases/download/$tag"
+    $BaseUrl.TrimEnd("/")
 }
 
 $tempDir = Join-Path $env:TEMP ("oneshim-install-" + [Guid]::NewGuid().ToString("N"))
@@ -189,6 +194,7 @@ try {
     Write-Info "Version: $tag"
     Write-Info "Asset: $AssetName"
     Write-Info "Install dir: $InstallDir"
+    Write-Info "Base URL: $baseUrl"
 
     Invoke-Download -Url "$baseUrl/$AssetName" -OutFile $archivePath
     Invoke-Download -Url "$baseUrl/$AssetName.sha256" -OutFile $checksumPath

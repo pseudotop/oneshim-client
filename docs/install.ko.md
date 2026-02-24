@@ -63,6 +63,7 @@ bash /tmp/oneshim-install.sh --help
 - `--version <tag>` (기본값: `latest`)
 - `--install-dir <path>` (기본값: `~/.local/bin`)
 - `--repo <owner/name>` (기본값: `pseudotop/oneshim-client`)
+- `--base-url <url>` (릴리즈 에셋 소스 오버라이드; 로컬 smoke/rehearsal에 유용)
 - `--require-signature`
 
 ### Windows (`scripts/install.ps1`)
@@ -76,6 +77,7 @@ powershell -ExecutionPolicy Bypass -File $tmp -?
 - `-Version <tag>` (기본값: `latest`)
 - `-InstallDir <path>` (기본값: `%LOCALAPPDATA%\ONESHIM\bin`)
 - `-Repository <owner/name>` (기본값: `pseudotop/oneshim-client`)
+- `-BaseUrl <url>` (릴리즈 에셋 소스 오버라이드; 로컬 smoke/rehearsal에 유용)
 - `-RequireSignature`
 
 ## 제거

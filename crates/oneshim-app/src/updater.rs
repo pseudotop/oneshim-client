@@ -520,24 +520,31 @@ impl Updater {
         let parsed = reqwest::Url::parse(url)
             .map_err(|e| UpdateError::Download(format!("Failed to parse download URL: {}", e)))?;
 
-        if parsed.scheme() != "https" {
-            return Err(UpdateError::Download(format!(
-                "Only HTTPS download URLs are allowed: {}",
-                parsed
-            )));
-        }
-
         let Some(host) = parsed.host_str() else {
             return Err(UpdateError::Download(
                 "Download URL host is missing".to_string(),
             ));
         };
 
-        let allowed = Self::ALLOWED_DOWNLOAD_HOSTS.iter().any(|allowed_host| {
-            host == *allowed_host || host.ends_with(&format!(".{}", allowed_host))
-        });
+        if parsed.scheme() != "https" {
+            #[cfg(test)]
+            if parsed.scheme() == "http" && matches!(host, "localhost" | "127.0.0.1") {
+                // Local test server is allowed for deterministic updater tests.
+            } else {
+                return Err(UpdateError::Download(format!(
+                    "Only HTTPS download URLs are allowed: {}",
+                    parsed
+                )));
+            }
 
-        if !allowed {
+            #[cfg(not(test))]
+            return Err(UpdateError::Download(format!(
+                "Only HTTPS download URLs are allowed: {}",
+                parsed
+            )));
+        }
+
+        if !Self::is_allowed_download_host(host) {
             return Err(UpdateError::Download(format!(
                 "Disallowed download host: {}",
                 host
@@ -545,6 +552,25 @@ impl Updater {
         }
 
         Ok(parsed)
+    }
+
+    fn is_allowed_download_host(host: &str) -> bool {
+        let allowlisted = Self::ALLOWED_DOWNLOAD_HOSTS.iter().any(|allowed_host| {
+            host == *allowed_host || host.ends_with(&format!(".{}", allowed_host))
+        });
+        if allowlisted {
+            return true;
+        }
+
+        #[cfg(test)]
+        {
+            return matches!(host, "localhost" | "127.0.0.1");
+        }
+
+        #[cfg(not(test))]
+        {
+            false
+        }
     }
 
     fn is_safe_archive_path(path: &Path) -> bool {
@@ -568,20 +594,22 @@ impl Updater {
         Ok(parent.join(format!("{}.rollback.{}", file_name, ts)))
     }
 
-    /// 업데이트 설치 및 재시작
-    ///
-    /// # Safety
-    /// 이 함수는 현재 실행 중인 바이너리를 교체하고 프로세스를 재시작한다.
-    pub fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
-        use self_update::self_replace;
-
+    fn install_and_restart_with_ops<FReplace, FRestart>(
+        &self,
+        downloaded_path: &Path,
+        current_exe: &Path,
+        mut replace_binary: FReplace,
+        mut restart_app: FRestart,
+    ) -> Result<(), UpdateError>
+    where
+        FReplace: FnMut(&Path) -> Result<(), UpdateError>,
+        FRestart: FnMut() -> Result<(), UpdateError>,
+    {
         tracing::info!("Starting update installation: {:?}", downloaded_path);
 
-        let current_exe = std::env::current_exe()?;
-        let backup_path = Self::backup_path_for(&current_exe)?;
-        std::fs::copy(&current_exe, &backup_path)?;
+        let backup_path = Self::backup_path_for(current_exe)?;
+        std::fs::copy(current_exe, &backup_path)?;
 
-        // 아카이브 확장자 확인
         let file_name = downloaded_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -592,18 +620,14 @@ impl Updater {
         } else if file_name.ends_with(".zip") {
             self.extract_zip(downloaded_path)?
         } else {
-            // 압축되지 않은 바이너리로 가정
             downloaded_path.to_path_buf()
         };
 
-        // 바이너리 교체
-        self_replace::self_replace(&binary_path)
-            .map_err(|e| UpdateError::Install(format!("Failed to replace binary: {}", e)))?;
+        replace_binary(&binary_path)?;
 
         tracing::info!("Update installation completed, restarting application...");
 
-        // 재시작
-        match self.restart_app() {
+        match restart_app() {
             Ok(()) => Ok(()),
             Err(restart_err) => {
                 tracing::error!(
@@ -612,7 +636,7 @@ impl Updater {
                     restart_err
                 );
 
-                match self_replace::self_replace(&backup_path) {
+                match replace_binary(&backup_path) {
                     Ok(()) => Err(UpdateError::Install(format!(
                         "Rollback completed after restart failure: {}",
                         restart_err
@@ -624,6 +648,25 @@ impl Updater {
                 }
             }
         }
+    }
+
+    /// 업데이트 설치 및 재시작
+    ///
+    /// # Safety
+    /// 이 함수는 현재 실행 중인 바이너리를 교체하고 프로세스를 재시작한다.
+    pub fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
+        use self_update::self_replace;
+
+        let current_exe = std::env::current_exe()?;
+        self.install_and_restart_with_ops(
+            downloaded_path,
+            &current_exe,
+            |candidate| {
+                self_replace::self_replace(candidate)
+                    .map_err(|e| UpdateError::Install(format!("Failed to replace binary: {}", e)))
+            },
+            || self.restart_app(),
+        )
     }
 
     /// tar.gz 아카이브에서 바이너리 추출
@@ -1285,5 +1328,158 @@ mod tests {
 
         let result = updater.verify_signature(b"artifact-B", signature.to_bytes().as_slice());
         assert!(matches!(result, Err(UpdateError::Integrity(_))));
+    }
+
+    #[test]
+    fn release_reliability_validate_download_url_allows_localhost_in_tests() {
+        let updater = Updater::new(test_config());
+        assert!(updater
+            .validate_download_url("https://localhost/oneshim-update.tar.gz")
+            .is_ok());
+        assert!(updater
+            .validate_download_url("https://127.0.0.1/oneshim-update.tar.gz")
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn release_reliability_download_update_accepts_localhost_with_integrity() {
+        let mut server = mockito::Server::new_async().await;
+        let asset_name = "oneshim-test-update.tar.gz";
+        let payload = b"release-artifact-v1".to_vec();
+        let expected_hash = Updater::sha256_hex(&payload);
+
+        let artifact_mock = server
+            .mock("GET", format!("/{asset_name}").as_str())
+            .with_status(200)
+            .with_body(payload.clone())
+            .create_async()
+            .await;
+        let checksum_mock = server
+            .mock("GET", format!("/{asset_name}.sha256").as_str())
+            .with_status(200)
+            .with_body(format!("{expected_hash}  {asset_name}\n"))
+            .create_async()
+            .await;
+
+        let config = test_config();
+        let client = reqwest::Client::builder().build().unwrap();
+        let updater = Updater::with_client(config, client);
+        let download_url = format!("{}/{}", server.url(), asset_name);
+
+        let downloaded_path = updater.download_update(&download_url).await.unwrap();
+        let downloaded_bytes = std::fs::read(&downloaded_path).unwrap();
+        assert_eq!(downloaded_bytes, payload);
+
+        std::fs::remove_file(&downloaded_path).unwrap();
+        artifact_mock.assert_async().await;
+        checksum_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn release_reliability_download_update_rejects_checksum_mismatch() {
+        let mut server = mockito::Server::new_async().await;
+        let asset_name = "oneshim-test-update.tar.gz";
+
+        let artifact_mock = server
+            .mock("GET", format!("/{asset_name}").as_str())
+            .with_status(200)
+            .with_body("release-artifact-v1")
+            .create_async()
+            .await;
+        let checksum_mock = server
+            .mock("GET", format!("/{asset_name}.sha256").as_str())
+            .with_status(200)
+            .with_body(format!("{}  {asset_name}\n", "0".repeat(64)))
+            .create_async()
+            .await;
+
+        let config = test_config();
+        let client = reqwest::Client::builder().build().unwrap();
+        let updater = Updater::with_client(config, client);
+        let download_url = format!("{}/{}", server.url(), asset_name);
+
+        let err = updater.download_update(&download_url).await.unwrap_err();
+        assert!(matches!(err, UpdateError::Integrity(msg) if msg.contains("Checksum mismatch")));
+
+        artifact_mock.assert_async().await;
+        checksum_mock.assert_async().await;
+    }
+
+    #[test]
+    fn release_reliability_install_and_restart_rolls_back_after_restart_failure() {
+        let updater = Updater::new(test_config());
+        let dir = tempdir().unwrap();
+        let current_exe = dir.path().join("oneshim-current");
+        let downloaded = dir.path().join("oneshim-new");
+        std::fs::write(&current_exe, b"current-binary").unwrap();
+        std::fs::write(&downloaded, b"new-binary").unwrap();
+
+        let mut replaced = Vec::new();
+        let result = updater.install_and_restart_with_ops(
+            &downloaded,
+            &current_exe,
+            |candidate| {
+                replaced.push(candidate.to_path_buf());
+                Ok(())
+            },
+            || {
+                Err(UpdateError::Install(
+                    "simulated restart failure".to_string(),
+                ))
+            },
+        );
+
+        assert!(matches!(
+            result,
+            Err(UpdateError::Install(msg)) if msg.contains("Rollback completed after restart failure")
+        ));
+        assert_eq!(replaced.len(), 2);
+        assert_eq!(replaced[0], downloaded);
+        assert!(replaced[1]
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains(".rollback."));
+    }
+
+    #[test]
+    fn release_reliability_install_and_restart_reports_rollback_failure() {
+        let updater = Updater::new(test_config());
+        let dir = tempdir().unwrap();
+        let current_exe = dir.path().join("oneshim-current");
+        let downloaded = dir.path().join("oneshim-new");
+        std::fs::write(&current_exe, b"current-binary").unwrap();
+        std::fs::write(&downloaded, b"new-binary").unwrap();
+
+        let mut replace_calls = 0usize;
+        let result = updater.install_and_restart_with_ops(
+            &downloaded,
+            &current_exe,
+            |_candidate| {
+                replace_calls += 1;
+                if replace_calls == 1 {
+                    Ok(())
+                } else {
+                    Err(UpdateError::Install(
+                        "simulated rollback replace failure".to_string(),
+                    ))
+                }
+            },
+            || {
+                Err(UpdateError::Install(
+                    "simulated restart failure".to_string(),
+                ))
+            },
+        );
+
+        match result {
+            Err(UpdateError::Install(msg)) => {
+                assert!(msg.contains("Restart failed and rollback failed"));
+                assert!(msg.contains("simulated restart failure"));
+                assert!(msg.contains("simulated rollback replace failure"));
+            }
+            other => panic!("unexpected result: {:?}", other),
+        }
+        assert_eq!(replace_calls, 2);
     }
 }

@@ -63,6 +63,7 @@ Common options:
 - `--version <tag>` (default: `latest`)
 - `--install-dir <path>` (default: `~/.local/bin`)
 - `--repo <owner/name>` (default: `pseudotop/oneshim-client`)
+- `--base-url <url>` (override release asset source; useful for local smoke/rehearsal)
 - `--require-signature`
 
 ### Windows (`scripts/install.ps1`)
@@ -76,6 +77,7 @@ Common parameters:
 - `-Version <tag>` (default: `latest`)
 - `-InstallDir <path>` (default: `%LOCALAPPDATA%\ONESHIM\bin`)
 - `-Repository <owner/name>` (default: `pseudotop/oneshim-client`)
+- `-BaseUrl <url>` (override release asset source; useful for local smoke/rehearsal)
 - `-RequireSignature`
 
 ## Uninstall
