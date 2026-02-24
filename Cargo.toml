@@ -80,7 +80,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # 설정
 config = "0.14"
-directories = "5"
+directories = "6"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
