@@ -3,11 +3,11 @@
 //! `SseClient` 포트 구현. 자동 재연결 + exponential backoff.
 
 use async_trait::async_trait;
+use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::api_client::{SseClient, SseEvent};
-use reqwest_eventsource::{Event, EventSource};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -97,42 +97,64 @@ impl SseClient for SseStreamClient {
         loop {
             let token = self.token_manager.get_token().await?;
 
-            // reqwest-eventsource로 SSE 연결 생성
+            // reqwest 응답 바디를 SSE 이벤트 스트림으로 파싱
             let request = self
                 .http_client
                 .get(&url)
                 .header("Authorization", format!("Bearer {token}"));
 
-            let mut es = EventSource::new(request)
-                .map_err(|e| CoreError::Internal(format!("SSE 연결 생성 실패: {e}")))?;
+            let response = match request.send().await {
+                Ok(response) => response,
+                Err(e) => {
+                    warn!("SSE 연결 요청 실패: {e}");
+
+                    if tx.is_closed() {
+                        return Ok(());
+                    }
+
+                    warn!("SSE 재연결 대기: {retry_delay}초");
+                    tokio::time::sleep(Duration::from_secs(retry_delay)).await;
+                    retry_delay = (retry_delay * 2).min(max_retry);
+                    continue;
+                }
+            };
+
+            if !response.status().is_success() {
+                warn!("SSE 연결 실패 (status={}): {}", response.status(), url);
+
+                if tx.is_closed() {
+                    return Ok(());
+                }
+
+                warn!("SSE 재연결 대기: {retry_delay}초");
+                tokio::time::sleep(Duration::from_secs(retry_delay)).await;
+                retry_delay = (retry_delay * 2).min(max_retry);
+                continue;
+            }
+
+            let mut stream = response.bytes_stream().eventsource();
+            debug!("SSE 연결 수립됨");
+            // 연결 성공 시 재시도 지연 리셋
+            retry_delay = 1;
 
             loop {
-                match es.next().await {
-                    Some(Ok(event)) => match event {
-                        Event::Open => {
-                            debug!("SSE 연결 수립됨");
-                            // 연결 성공 시 재시도 지연 리셋
-                            retry_delay = 1;
-                        }
-                        Event::Message(msg) => {
-                            let event_type = if msg.event.is_empty() {
-                                "message"
-                            } else {
-                                &msg.event
-                            };
+                match stream.next().await {
+                    Some(Ok(msg)) => {
+                        let event_type = if msg.event.is_empty() {
+                            "message"
+                        } else {
+                            &msg.event
+                        };
 
-                            if let Some(sse_event) = Self::parse_event(event_type, &msg.data) {
-                                if tx.send(sse_event).await.is_err() {
-                                    info!("SSE 이벤트 채널 닫힘, 연결 종료");
-                                    es.close();
-                                    return Ok(());
-                                }
+                        if let Some(sse_event) = Self::parse_event(event_type, &msg.data) {
+                            if tx.send(sse_event).await.is_err() {
+                                info!("SSE 이벤트 채널 닫힘, 연결 종료");
+                                return Ok(());
                             }
                         }
-                    },
+                    }
                     Some(Err(e)) => {
                         warn!("SSE 스트림 에러: {e}");
-                        es.close();
                         break;
                     }
                     None => {
