@@ -564,7 +564,7 @@ impl Updater {
 
         #[cfg(test)]
         {
-            return matches!(host, "localhost" | "127.0.0.1");
+            matches!(host, "localhost" | "127.0.0.1")
         }
 
         #[cfg(not(test))]

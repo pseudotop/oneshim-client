@@ -16,7 +16,7 @@ grpc = ["tonic", "prost", "prost-types", "tonic-health", "tonic/tls-native-roots
 [dependencies]
 oneshim-core = { workspace = true }
 reqwest = { workspace = true }
-reqwest-eventsource = { workspace = true }
+eventsource-stream = { workspace = true }
 tokio-tungstenite = { workspace = true }
 tokio = { workspace = true }
 flate2 = { workspace = true }
