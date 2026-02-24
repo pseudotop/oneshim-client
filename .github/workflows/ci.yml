@@ -113,9 +113,53 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  perf-gates:
+    name: Performance Gates
+    needs: [check]
+    runs-on: ubuntu-latest
+    env:
+      ONESHIM_ENABLE_PERF_GATES: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libnotify-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libclang-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-perf-gates
+
+      - name: Run automation perf gate tests
+        run: cargo test --release -p oneshim-automation perf_budget_ -- --nocapture
+
+      - name: Run vision perf gate tests
+        run: cargo test --release -p oneshim-vision perf_budget_ -- --nocapture
+
   test:
     name: Test
-    needs: [check, frontend]
+    needs: [check, frontend, perf-gates]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

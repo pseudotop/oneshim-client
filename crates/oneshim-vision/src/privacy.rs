@@ -515,6 +515,20 @@ fn mask_user_paths(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
+
+    fn perf_gates_enabled() -> bool {
+        std::env::var("ONESHIM_ENABLE_PERF_GATES")
+            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    }
+
+    fn perf_budget_ms(env_key: &str, default_ms: u128) -> u128 {
+        std::env::var(env_key)
+            .ok()
+            .and_then(|value| value.parse::<u128>().ok())
+            .unwrap_or(default_ms)
+    }
 
     // --- 기존 테스트 (하위 호환) ---
 
@@ -688,5 +702,47 @@ mod tests {
             "contact: user@example.com",
             PiiFilterLevel::Off
         ));
+    }
+
+    #[test]
+    fn perf_budget_privacy_marker_scan() {
+        if !perf_gates_enabled() {
+            return;
+        }
+
+        let samples = [
+            "contact user@example.com for access",
+            "call +82-10-1234-5678 for approval",
+            "server 10.0.0.24 has alert",
+            "token sk-abc123def456ghi789jkl0 detected",
+            "normal productivity dashboard event",
+            "file path /Users/alice/Documents/client-plan.md",
+        ];
+
+        let iterations = 3_000usize;
+        let budget_ms = perf_budget_ms("ONESHIM_PERF_BUDGET_PRIVACY_SCAN_MS", 1_200);
+        let started = Instant::now();
+        let mut hits = 0usize;
+        for _ in 0..iterations {
+            for sample in samples {
+                if is_sensitive_segment_with_level(sample, PiiFilterLevel::Strict) {
+                    hits += 1;
+                }
+            }
+        }
+        let elapsed_ms = started.elapsed().as_millis();
+
+        assert!(
+            hits >= iterations * 5,
+            "unexpected marker scan hit ratio: hits={} iterations={}",
+            hits,
+            iterations
+        );
+        assert!(
+            elapsed_ms <= budget_ms,
+            "privacy marker scan perf budget exceeded: elapsed={}ms budget={}ms",
+            elapsed_ms,
+            budget_ms
+        );
     }
 }
