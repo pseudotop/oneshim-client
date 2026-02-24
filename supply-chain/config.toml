@@ -2308,6 +2308,10 @@ criteria = "safe-to-deploy"
 version = "0.12.28"
 criteria = "safe-to-deploy"
 
+[[exemptions.reqwest]]
+version = "0.13.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.reqwest-eventsource]]
 version = "0.6.0"
 criteria = "safe-to-deploy"
@@ -3014,6 +3018,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.wasm-streams]]
 version = "0.4.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.wasm-streams]]
+version = "0.5.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.wasm-timer]]
