@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tracing::{debug, warn};
 
+use oneshim_core::ai_model_lifecycle_policy::{self, ModelLifecycleDecision};
 use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
@@ -144,6 +145,34 @@ impl RemoteOcrProvider {
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
             .build()
             .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+
+        if let Some(model) = config
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(
+                config.provider_type,
+                model,
+            )? {
+                ModelLifecycleDecision::Allowed => {}
+                ModelLifecycleDecision::Warn {
+                    message,
+                    replacement,
+                } => {
+                    warn!(
+                        provider = ?config.provider_type,
+                        model = %model,
+                        replacement = ?replacement,
+                        "{}", message
+                    );
+                }
+                ModelLifecycleDecision::Block { message, .. } => {
+                    return Err(CoreError::PolicyDenied(message));
+                }
+            }
+        }
 
         debug!(
             endpoint = %config.endpoint,
@@ -508,6 +537,22 @@ mod tests {
         };
         let result = RemoteOcrProvider::new(&config);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn new_remote_ocr_rejects_retired_model_by_policy() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            api_key: "test-api-key-placeholder".to_string(),
+            model: Some("gpt-3.5-turbo".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+        };
+
+        let result = RemoteOcrProvider::new(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("retired as of"));
     }
 
     #[test]

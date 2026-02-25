@@ -3,6 +3,7 @@
 //!
 //!
 
+pub mod ai_model_lifecycle_policy;
 pub mod config;
 pub mod config_manager;
 pub mod consent;
