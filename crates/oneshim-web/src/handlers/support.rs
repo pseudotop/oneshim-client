@@ -1,36 +1,11 @@
+use crate::{services::settings_service, AppState};
 use axum::{extract::State, Json};
 use chrono::Utc;
-use oneshim_api_contracts::settings::{AppSettings, StorageStats};
-use serde::Serialize;
-
-use crate::handlers::automation::AuditEntryDto;
-use crate::{services::settings_service, AppState};
+use oneshim_api_contracts::automation::AuditEntryDto;
+use oneshim_api_contracts::support::{DiagnosticsBundleDto, DiagnosticsHealthDto};
 
 const SUPPORT_DIAGNOSTICS_SCHEMA_VERSION: &str = "support.diagnostics.v1";
 const SUPPORT_AUDIT_SCHEMA_VERSION: &str = "automation.audit.v1";
-
-#[derive(Debug, Serialize)]
-pub struct DiagnosticsHealthDto {
-    pub storage_ok: bool,
-    pub storage_error: Option<String>,
-    pub frames_dir_configured: bool,
-    pub frames_dir_path: Option<String>,
-    pub frames_dir_exists: Option<bool>,
-    pub config_manager_configured: bool,
-    pub automation_controller_configured: bool,
-    pub update_control_configured: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct DiagnosticsBundleDto {
-    pub schema_version: String,
-    pub generated_at: String,
-    pub health: DiagnosticsHealthDto,
-    pub settings_snapshot: AppSettings,
-    pub storage_stats: Option<StorageStats>,
-    pub recent_audit_entries: Vec<AuditEntryDto>,
-    pub recent_policy_events: Vec<AuditEntryDto>,
-}
 
 fn to_audit_entry_dto(entry: oneshim_automation::audit::AuditEntry) -> AuditEntryDto {
     AuditEntryDto {

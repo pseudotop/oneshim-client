@@ -1,52 +1,13 @@
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::stream::Stream;
-use serde::Serialize;
+use oneshim_api_contracts::stream::{AiRuntimeStatus, RealtimeEvent};
 use std::convert::Infallible;
 use std::time::Duration;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
-use crate::{AiRuntimeStatus, AppState};
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", content = "data")]
-pub enum RealtimeEvent {
-    #[serde(rename = "metrics")]
-    Metrics(MetricsUpdate),
-    #[serde(rename = "frame")]
-    Frame(FrameUpdate),
-    #[serde(rename = "idle")]
-    Idle(IdleUpdate),
-    #[serde(rename = "ai_runtime_status")]
-    AiRuntimeStatus(AiRuntimeStatus),
-    #[serde(rename = "ping")]
-    Ping,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct MetricsUpdate {
-    pub timestamp: String,
-    pub cpu_usage: f32,
-    pub memory_percent: f32,
-    pub memory_used: u64,
-    pub memory_total: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct FrameUpdate {
-    pub id: i64,
-    pub timestamp: String,
-    pub app_name: String,
-    pub window_title: String,
-    pub importance: f32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct IdleUpdate {
-    pub is_idle: bool,
-    pub idle_secs: u64,
-}
+use crate::AppState;
 
 ///
 /// GET /api/stream
@@ -100,6 +61,7 @@ fn event_type_name(event: &RealtimeEvent) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_api_contracts::stream::{FrameUpdate, IdleUpdate, MetricsUpdate};
 
     #[test]
     fn serialize_metrics_event() {

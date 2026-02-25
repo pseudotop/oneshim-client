@@ -1,29 +1,9 @@
 use axum::extract::{Path, State};
 use axum::Json;
-use serde::{Deserialize, Serialize};
+use oneshim_api_contracts::tags::{CreateTagRequest, TagResponse, UpdateTagRequest};
 
 use crate::error::ApiError;
 use crate::AppState;
-
-#[derive(Debug, Serialize)]
-pub struct TagResponse {
-    pub id: i64,
-    pub name: String,
-    pub color: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreateTagRequest {
-    pub name: String,
-    pub color: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateTagRequest {
-    pub name: String,
-    pub color: String,
-}
 
 ///
 /// GET /api/tags

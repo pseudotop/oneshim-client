@@ -1,25 +1,11 @@
 use axum::extract::{Query, State};
 use axum::Json;
-use serde::Serialize;
+use oneshim_api_contracts::processes::{ProcessEntryResponse, ProcessSnapshotResponse};
 
 use crate::error::ApiError;
 use crate::AppState;
 
 use super::TimeRangeQuery;
-
-#[derive(Debug, Serialize)]
-pub struct ProcessEntryResponse {
-    pub pid: u32,
-    pub name: String,
-    pub cpu_usage: f64,
-    pub memory_bytes: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ProcessSnapshotResponse {
-    pub timestamp: String,
-    pub processes: Vec<ProcessEntryResponse>,
-}
 
 ///
 /// GET /api/processes?from=&to=&limit=

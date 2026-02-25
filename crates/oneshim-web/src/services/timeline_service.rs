@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
+use oneshim_api_contracts::timeline::{AppSegment, SessionInfo, TimelineItem, TimelineResponse};
 use oneshim_core::models::event::Event;
 
 use crate::error::ApiError;
-use crate::handlers::timeline::{AppSegment, SessionInfo, TimelineItem, TimelineResponse};
 use crate::AppState;
 
 const APP_COLORS: &[&str] = &[

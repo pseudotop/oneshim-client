@@ -1,5 +1,5 @@
 use axum::{extract::State, Json};
-use oneshim_api_contracts::settings::{AppSettings, ExternalApiSettings, StorageStats};
+use oneshim_api_contracts::settings::{AppSettings, StorageStats};
 
 use crate::{error::ApiError, services::settings_service, AppState};
 
@@ -25,6 +25,7 @@ pub async fn update_settings(
 mod tests {
     use super::*;
     use crate::services::settings_service;
+    use oneshim_api_contracts::settings::ExternalApiSettings;
     use oneshim_core::config::AppConfig;
 
     #[test]

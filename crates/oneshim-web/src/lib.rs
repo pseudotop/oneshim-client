@@ -16,7 +16,6 @@ use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
 use oneshim_core::config::WebConfig;
 use oneshim_core::config_manager::ConfigManager;
-use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -25,21 +24,15 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
 
-pub use handlers::stream::{FrameUpdate, IdleUpdate, MetricsUpdate, RealtimeEvent};
+pub use oneshim_api_contracts::stream::{
+    AiRuntimeStatus, FrameUpdate, IdleUpdate, MetricsUpdate, RealtimeEvent,
+};
 
 pub use oneshim_core::config::WebConfig as CoreWebConfig;
 
 const EVENT_CHANNEL_CAPACITY: usize = 256;
 
 const MAX_PORT_ATTEMPTS: u16 = 10;
-
-#[derive(Debug, Clone, Serialize)]
-pub struct AiRuntimeStatus {
-    pub ocr_source: String,
-    pub llm_source: String,
-    pub ocr_fallback_reason: Option<String>,
-    pub llm_fallback_reason: Option<String>,
-}
 
 #[derive(Clone)]
 pub struct AppState {

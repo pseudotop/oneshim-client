@@ -1,26 +1,14 @@
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::{extract::State, Json};
 use futures::stream::Stream;
-use serde::{Deserialize, Serialize};
+use oneshim_api_contracts::update::{UpdateActionRequest, UpdateActionResponse, UpdateStatus};
 use std::convert::Infallible;
 use std::time::Duration;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
 use crate::error::ApiError;
-use crate::update_control::{UpdateAction, UpdateStatus};
 use crate::AppState;
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateActionRequest {
-    pub action: UpdateAction,
-}
-
-#[derive(Debug, Serialize)]
-pub struct UpdateActionResponse {
-    pub accepted: bool,
-    pub status: UpdateStatus,
-}
 
 pub async fn get_update_status(
     State(state): State<AppState>,
@@ -85,7 +73,7 @@ pub async fn get_update_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update_control::{UpdateControl, UpdatePhase};
+    use crate::update_control::{UpdateAction, UpdateControl, UpdatePhase};
     use crate::AppState;
     use oneshim_storage::sqlite::SqliteStorage;
     use std::sync::Arc;

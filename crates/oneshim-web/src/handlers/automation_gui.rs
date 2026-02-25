@@ -3,7 +3,11 @@ use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
 use futures::stream::Stream;
-use serde::{Deserialize, Serialize};
+use oneshim_api_contracts::automation_gui::{
+    GuiConfirmRequest, GuiConfirmResponse, GuiCreateSessionRequest, GuiCreateSessionResponse,
+    GuiExecuteResponse, GuiExecutionOutcome, GuiExecutionRequest, GuiHighlightRequest,
+    GuiSessionPath, GuiSessionResponse,
+};
 use std::convert::Infallible;
 use std::time::Duration;
 use tokio_stream::wrappers::BroadcastStream;
@@ -11,11 +15,11 @@ use tokio_stream::StreamExt;
 
 use oneshim_automation::controller::GuiExecutionResult;
 use oneshim_automation::gui_interaction::{
-    GuiConfirmRequest, GuiCreateSessionRequest, GuiExecutionRequest, GuiHighlightRequest,
-    GuiInteractionError,
+    GuiConfirmRequest as AutomationGuiConfirmRequest,
+    GuiCreateSessionRequest as AutomationGuiCreateSessionRequest,
+    GuiExecutionRequest as AutomationGuiExecutionRequest,
+    GuiHighlightRequest as AutomationGuiHighlightRequest, GuiInteractionError,
 };
-use oneshim_core::models::gui::{GuiExecutionTicket, GuiInteractionSession};
-use oneshim_core::models::intent::IntentResult;
 
 use crate::error::ApiError;
 use crate::AppState;
@@ -23,44 +27,18 @@ use crate::AppState;
 const GUI_SESSION_HEADER: &str = "x-gui-session-token";
 const GUI_SCHEMA_VERSION: &str = "automation.gui.v2";
 
-#[derive(Debug, Deserialize)]
-pub struct GuiSessionPath {
-    pub id: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct GuiCreateSessionResponse {
-    pub schema_version: String,
-    pub session: GuiInteractionSession,
-    pub capability_token: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct GuiSessionResponse {
-    pub schema_version: String,
-    pub session: GuiInteractionSession,
-}
-
-#[derive(Debug, Serialize)]
-pub struct GuiConfirmResponse {
-    pub schema_version: String,
-    pub ticket: GuiExecutionTicket,
-}
-
-#[derive(Debug, Serialize)]
-pub struct GuiExecuteResponse {
-    pub schema_version: String,
-    pub command_id: String,
-    pub ticket: GuiExecutionTicket,
-    pub result: IntentResult,
-    pub outcome: oneshim_automation::gui_interaction::GuiExecutionOutcome,
-}
-
 pub async fn create_gui_session(
     State(state): State<AppState>,
     Json(req): Json<GuiCreateSessionRequest>,
 ) -> Result<Json<GuiCreateSessionResponse>, ApiError> {
     let controller = require_controller(&state)?;
+    let req = AutomationGuiCreateSessionRequest {
+        app_name: req.app_name,
+        screen_id: req.screen_id,
+        min_confidence: req.min_confidence,
+        max_candidates: req.max_candidates,
+        session_ttl_secs: req.session_ttl_secs,
+    };
     let created = controller
         .gui_create_session(req)
         .await
@@ -100,6 +78,9 @@ pub async fn highlight_gui_session(
 ) -> Result<Json<GuiSessionResponse>, ApiError> {
     let controller = require_controller(&state)?;
     let capability_token = read_capability_token(&headers)?;
+    let req = AutomationGuiHighlightRequest {
+        candidate_ids: req.candidate_ids,
+    };
 
     let session = controller
         .gui_highlight_session(&path.id, &capability_token, req)
@@ -120,6 +101,11 @@ pub async fn confirm_gui_session(
 ) -> Result<Json<GuiConfirmResponse>, ApiError> {
     let controller = require_controller(&state)?;
     let capability_token = read_capability_token(&headers)?;
+    let req = AutomationGuiConfirmRequest {
+        candidate_id: req.candidate_id,
+        action: req.action,
+        ticket_ttl_secs: req.ticket_ttl_secs,
+    };
 
     let ticket = controller
         .gui_confirm_candidate(&path.id, &capability_token, req)
@@ -140,6 +126,7 @@ pub async fn execute_gui_session(
 ) -> Result<Json<GuiExecuteResponse>, ApiError> {
     let controller = require_controller(&state)?;
     let capability_token = read_capability_token(&headers)?;
+    let req = AutomationGuiExecutionRequest { ticket: req.ticket };
 
     let result: GuiExecutionResult = controller
         .gui_execute(&path.id, &capability_token, req)
@@ -151,7 +138,11 @@ pub async fn execute_gui_session(
         command_id: result.command_id,
         ticket: result.ticket,
         result: result.result,
-        outcome: result.outcome,
+        outcome: GuiExecutionOutcome {
+            session: result.outcome.session,
+            succeeded: result.outcome.succeeded,
+            detail: result.outcome.detail,
+        },
     }))
 }
 

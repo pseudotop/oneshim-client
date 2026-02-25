@@ -1,6 +1,6 @@
 use crate::error::ApiError;
-use crate::handlers::data::{DeleteRangeRequest, DeleteResult};
 use crate::AppState;
+use oneshim_api_contracts::data::{DeleteRangeRequest, DeleteResult};
 
 pub fn delete_data_range(
     state: &AppState,
