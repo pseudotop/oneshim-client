@@ -131,7 +131,7 @@ async fn run_ocr_smoke() {
 
 fn build_endpoint(prefix: &str) -> ExternalApiEndpoint {
     let endpoint = required_env(format!("{prefix}_ENDPOINT").as_str());
-    let api_key = required_env(format!("{prefix}_KEY").as_str());
+    let api_key = required_api_key_env(prefix);
     let model = optional_env(format!("{prefix}_MODEL").as_str());
     let timeout_secs = env::var(format!("{prefix}_TIMEOUT_SECS"))
         .ok()
@@ -185,4 +185,22 @@ fn required_env(key: &str) -> String {
 
 fn optional_env(key: &str) -> Option<String> {
     env::var(key).ok().filter(|value| !value.trim().is_empty())
+}
+
+fn required_api_key_env(prefix: &str) -> String {
+    let api_key_key = format!("{prefix}_API_KEY");
+    if let Some(value) = optional_env(&api_key_key) {
+        return value;
+    }
+
+    let legacy_key = format!("{prefix}_KEY");
+    if let Some(value) = optional_env(&legacy_key) {
+        eprintln!(
+            "Using deprecated env {}. Prefer {}.",
+            legacy_key, api_key_key
+        );
+        return value;
+    }
+
+    panic!("Missing required env: {} or {}", api_key_key, legacy_key);
 }

@@ -1,6 +1,7 @@
 //!
 
 use async_trait::async_trait;
+use serde_json::Value;
 use tracing::{debug, warn};
 
 use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
@@ -97,7 +98,7 @@ Return JSON only."#
     }
 
     fn parse_claude_response(body: &str) -> Result<InterpretedAction, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+        let response: Value = serde_json::from_str(body).map_err(|e| {
             CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e))
         })?;
 
@@ -109,57 +110,22 @@ Return JSON only."#
             .and_then(|t| t.as_str())
             .ok_or_else(|| CoreError::Internal("No text found in LLM response".to_string()))?;
 
-        let json_str = if let Some(start) = text.find('{') {
-            if let Some(end) = text.rfind('}') {
-                &text[start..=end]
-            } else {
-                text
-            }
-        } else {
-            text
-        };
-
-        let action: InterpretedAction = serde_json::from_str(json_str).map_err(|e| {
-            CoreError::Internal(format!(
-                "Failed to parse InterpretedAction from LLM response: {} (raw: {})",
-                e,
-                json_str.chars().take(200).collect::<String>()
-            ))
-        })?;
-
-        Ok(action)
+        Self::parse_action_json(text)
     }
 
     fn parse_openai_response(body: &str) -> Result<InterpretedAction, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+        let response: Value = serde_json::from_str(body).map_err(|e| {
             CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e))
         })?;
 
-        let text = response
-            .get("choices")
-            .and_then(|c| c.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|choice| choice.get("message"))
-            .and_then(|msg| msg.get("content"))
-            .and_then(|t| t.as_str())
+        let text = Self::extract_openai_text(&response)
             .ok_or_else(|| CoreError::Internal("No text found in OpenAI response".to_string()))?;
 
-        let json_str = if let Some(start) = text.find('{') {
-            if let Some(end) = text.rfind('}') {
-                &text[start..=end]
-            } else {
-                text
-            }
-        } else {
-            text
-        };
-
-        serde_json::from_str(json_str)
-            .map_err(|e| CoreError::Internal(format!("Failed to parse OpenAI response: {}", e)))
+        Self::parse_action_json(&text)
     }
 
     fn parse_google_response(body: &str) -> Result<InterpretedAction, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+        let response: Value = serde_json::from_str(body).map_err(|e| {
             CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e))
         })?;
 
@@ -175,6 +141,10 @@ Return JSON only."#
             .and_then(|t| t.as_str())
             .ok_or_else(|| CoreError::Internal("No text found in Google response".to_string()))?;
 
+        Self::parse_action_json(text)
+    }
+
+    fn parse_action_json(text: &str) -> Result<InterpretedAction, CoreError> {
         let json_str = if let Some(start) = text.find('{') {
             if let Some(end) = text.rfind('}') {
                 &text[start..=end]
@@ -185,8 +155,87 @@ Return JSON only."#
             text
         };
 
-        serde_json::from_str(json_str)
-            .map_err(|e| CoreError::Internal(format!("Failed to parse Google response: {}", e)))
+        serde_json::from_str(json_str).map_err(|e| {
+            CoreError::Internal(format!(
+                "Failed to parse InterpretedAction from LLM response: {} (raw: {})",
+                e,
+                json_str.chars().take(200).collect::<String>()
+            ))
+        })
+    }
+
+    fn extract_openai_text(response: &Value) -> Option<String> {
+        if let Some(content) = response
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|choice| choice.get("message"))
+            .and_then(|msg| msg.get("content"))
+        {
+            if let Some(text) = Self::value_to_text(content) {
+                return Some(text);
+            }
+        }
+
+        if let Some(text) = response.get("output_text").and_then(|value| value.as_str()) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+
+        let mut chunks = Vec::new();
+        if let Some(outputs) = response.get("output").and_then(|value| value.as_array()) {
+            for output in outputs {
+                if let Some(content) = output.get("content").and_then(|value| value.as_array()) {
+                    for part in content {
+                        if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
+                            let trimmed = text.trim();
+                            if !trimmed.is_empty() {
+                                chunks.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if chunks.is_empty() {
+            None
+        } else {
+            Some(chunks.join("\n"))
+        }
+    }
+
+    fn value_to_text(value: &Value) -> Option<String> {
+        match value {
+            Value::String(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            }
+            Value::Array(items) => {
+                let mut chunks = Vec::new();
+                for item in items {
+                    if let Some(text) = item.get("text").and_then(|value| value.as_str()) {
+                        let trimmed = text.trim();
+                        if !trimmed.is_empty() {
+                            chunks.push(trimmed.to_string());
+                        }
+                    }
+                }
+
+                if chunks.is_empty() {
+                    None
+                } else {
+                    Some(chunks.join("\n"))
+                }
+            }
+            _ => None,
+        }
     }
 }
 
@@ -388,6 +437,37 @@ mod tests {
         let action = RemoteLlmProvider::parse_openai_response(body).unwrap();
         assert_eq!(action.target_text.unwrap(), "Submit");
         assert_eq!(action.target_role.unwrap(), "button");
+    }
+
+    #[test]
+    fn parse_openai_response_with_content_array() {
+        let body = r#"{
+            "choices": [{
+                "message": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "{\"target_text\": \"Apply\", \"target_role\": \"button\", \"action_type\": \"click\", \"confidence\": 0.74}"
+                        }
+                    ]
+                }
+            }]
+        }"#;
+
+        let action = RemoteLlmProvider::parse_openai_response(body).unwrap();
+        assert_eq!(action.target_text.unwrap(), "Apply");
+        assert_eq!(action.action_type, "click");
+    }
+
+    #[test]
+    fn parse_openai_response_with_output_text() {
+        let body = r#"{
+            "output_text": "{\"target_text\": \"Save\", \"target_role\": \"button\", \"action_type\": \"click\", \"confidence\": 0.91}"
+        }"#;
+
+        let action = RemoteLlmProvider::parse_openai_response(body).unwrap();
+        assert_eq!(action.target_text.unwrap(), "Save");
+        assert_eq!(action.action_type, "click");
     }
 
     #[test]
