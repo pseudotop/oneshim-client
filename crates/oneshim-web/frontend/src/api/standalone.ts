@@ -17,6 +17,7 @@ import type {
   Tag,
   TimelineResponse,
   UiScene,
+  ProviderPresetCatalog,
   UpdateStatus,
   WorkflowPreset,
 } from './client'
@@ -24,6 +25,50 @@ import type {
 const API_BASE = '/api'
 const STANDALONE_STORAGE_KEY = 'oneshim-web-standalone-mode'
 const STANDALONE_QUERY_KEY = 'standalone'
+const DEFAULT_PROVIDER_PRESETS: ProviderPresetCatalog = {
+  version: 1,
+  providers: [
+    {
+      provider_type: 'Anthropic',
+      aliases: ['anthropic'],
+      display_name: 'Anthropic',
+      llm_endpoint: 'https://api.anthropic.com/v1/messages',
+      ocr_endpoint: 'https://api.anthropic.com/v1/messages',
+      model_catalog_endpoint: 'https://api.anthropic.com/v1/models',
+      ocr_model_catalog_supported: true,
+    },
+    {
+      provider_type: 'OpenAi',
+      aliases: ['openai', 'open_ai', 'open-ai', 'openai-compatible'],
+      display_name: 'OpenAI',
+      llm_endpoint: 'https://api.openai.com/v1/chat/completions',
+      ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
+      model_catalog_endpoint: 'https://api.openai.com/v1/models',
+      ocr_model_catalog_supported: true,
+    },
+    {
+      provider_type: 'Google',
+      aliases: ['google', 'gemini'],
+      display_name: 'Google',
+      llm_endpoint:
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      ocr_endpoint: 'https://vision.googleapis.com/v1/images:annotate',
+      model_catalog_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
+      ocr_model_catalog_supported: false,
+      ocr_model_catalog_notice:
+        'Google Vision OCR endpoint does not expose a selectable model catalog.',
+    },
+    {
+      provider_type: 'Generic',
+      aliases: ['generic'],
+      display_name: 'Generic',
+      llm_endpoint: 'https://api.openai.com/v1/chat/completions',
+      ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
+      model_catalog_endpoint: 'https://api.openai.com/v1/models',
+      ocr_model_catalog_supported: true,
+    },
+  ],
+}
 
 function hasWindow(): boolean {
   return typeof window !== 'undefined'
@@ -561,6 +606,9 @@ export async function handleStandaloneRequest(
       state.settings = body as AppSettings
     }
     return jsonResponse(state.settings)
+  }
+  if (path === '/api/ai/providers/presets' && method === 'GET') {
+    return jsonResponse(DEFAULT_PROVIDER_PRESETS)
   }
   if (path === '/api/ai/providers/models' && method === 'POST') {
     const payload = body as { provider_type?: string } | null

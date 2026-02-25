@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::ApiError;
+use crate::services::ai_provider_preset_service;
 use crate::services::settings_service::is_masked_key;
 
 const MODEL_DISCOVERY_TIMEOUT_SECS: u64 = 20;
@@ -27,7 +28,7 @@ pub struct ProviderModelsResponse {
 pub async fn fetch_provider_models(
     request: &ProviderModelsRequest,
 ) -> Result<ProviderModelsResponse, ApiError> {
-    let provider_type = parse_provider_type(&request.provider_type)?;
+    let provider_type = ai_provider_preset_service::resolve_provider_type(&request.provider_type)?;
     let api_key = request.api_key.trim();
     if api_key.is_empty() || is_masked_key(api_key) {
         return Err(ApiError::BadRequest(
@@ -36,13 +37,12 @@ pub async fn fetch_provider_models(
     }
 
     let endpoint = resolve_models_endpoint(provider_type, request.endpoint.as_deref());
-    if provider_type == AiProviderType::Google && is_google_vision_endpoint(&endpoint) {
+    if let Some(notice) =
+        ai_provider_preset_service::ocr_model_catalog_notice_for_endpoint(provider_type, &endpoint)
+    {
         return Ok(ProviderModelsResponse {
             models: Vec::new(),
-            notice: Some(
-                "Google Vision OCR endpoint does not expose a selectable model catalog."
-                    .to_string(),
-            ),
+            notice: Some(notice),
         });
     }
 
@@ -187,20 +187,24 @@ fn resolve_models_endpoint(provider_type: AiProviderType, endpoint: Option<&str>
         AiProviderType::Anthropic => endpoint
             .as_deref()
             .and_then(derive_anthropic_models_endpoint)
+            .or_else(|| ai_provider_preset_service::default_model_catalog_endpoint(provider_type))
             .unwrap_or_else(|| "https://api.anthropic.com/v1/models".to_string()),
         AiProviderType::OpenAi => endpoint
             .as_deref()
             .and_then(derive_openai_models_endpoint)
+            .or_else(|| ai_provider_preset_service::default_model_catalog_endpoint(provider_type))
             .unwrap_or_else(|| "https://api.openai.com/v1/models".to_string()),
         AiProviderType::Google => endpoint
             .as_deref()
             .and_then(derive_google_models_endpoint)
+            .or_else(|| ai_provider_preset_service::default_model_catalog_endpoint(provider_type))
             .unwrap_or_else(|| {
                 "https://generativelanguage.googleapis.com/v1beta/models".to_string()
             }),
         AiProviderType::Generic => endpoint
             .as_deref()
             .map(ToString::to_string)
+            .or_else(|| ai_provider_preset_service::default_model_catalog_endpoint(provider_type))
             .unwrap_or_else(|| "https://api.openai.com/v1/models".to_string()),
     }
 }
@@ -286,23 +290,6 @@ fn derive_google_models_endpoint(endpoint: &str) -> Option<String> {
         return Some(format!("{base}/{version}/models"));
     }
     Some(endpoint.to_string())
-}
-
-fn is_google_vision_endpoint(endpoint: &str) -> bool {
-    endpoint.contains("vision.googleapis.com")
-}
-
-fn parse_provider_type(raw: &str) -> Result<AiProviderType, ApiError> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "anthropic" => Ok(AiProviderType::Anthropic),
-        "openai" | "open_ai" | "open-ai" | "openai-compatible" => Ok(AiProviderType::OpenAi),
-        "google" | "gemini" => Ok(AiProviderType::Google),
-        "generic" => Ok(AiProviderType::Generic),
-        _ => Err(ApiError::BadRequest(format!(
-            "Unsupported provider_type: {}",
-            raw
-        ))),
-    }
 }
 
 fn truncate_error(raw: &str) -> String {

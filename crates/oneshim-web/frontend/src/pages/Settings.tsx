@@ -10,6 +10,7 @@ import {
   fetchStorageStats,
   fetchUpdateStatus,
   postUpdateAction,
+  fetchProviderPresets,
   discoverProviderModels,
   exportData,
   downloadBlob,
@@ -26,6 +27,7 @@ import {
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
   type SceneIntelligenceSettings as SceneIntelligenceSettingsType,
   type ExternalApiSettings,
+  type ProviderPreset,
   type ProviderModelsResponse,
   type ExportFormat,
   type ExportDataType,
@@ -42,6 +44,48 @@ import {
   ScheduleSettings,
   ToggleRow,
 } from './settingSections'
+
+const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    provider_type: 'Anthropic',
+    aliases: ['anthropic'],
+    display_name: 'Anthropic',
+    llm_endpoint: 'https://api.anthropic.com/v1/messages',
+    ocr_endpoint: 'https://api.anthropic.com/v1/messages',
+    model_catalog_endpoint: 'https://api.anthropic.com/v1/models',
+    ocr_model_catalog_supported: true,
+  },
+  {
+    provider_type: 'OpenAi',
+    aliases: ['openai', 'open_ai', 'open-ai', 'openai-compatible'],
+    display_name: 'OpenAI',
+    llm_endpoint: 'https://api.openai.com/v1/chat/completions',
+    ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
+    model_catalog_endpoint: 'https://api.openai.com/v1/models',
+    ocr_model_catalog_supported: true,
+  },
+  {
+    provider_type: 'Google',
+    aliases: ['google', 'gemini'],
+    display_name: 'Google',
+    llm_endpoint:
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+    ocr_endpoint: 'https://vision.googleapis.com/v1/images:annotate',
+    model_catalog_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
+    ocr_model_catalog_supported: false,
+    ocr_model_catalog_notice:
+      'Google Vision OCR endpoint does not expose a selectable model catalog.',
+  },
+  {
+    provider_type: 'Generic',
+    aliases: ['generic'],
+    display_name: 'Generic',
+    llm_endpoint: 'https://api.openai.com/v1/chat/completions',
+    ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
+    model_catalog_endpoint: 'https://api.openai.com/v1/models',
+    ocr_model_catalog_supported: true,
+  },
+]
 
 export default function Settings() {
   const { t } = useTranslation()
@@ -90,6 +134,17 @@ export default function Settings() {
     refetchInterval: 15000,
     retry: 1,
   })
+
+  const { data: providerPresetCatalog } = useQuery({
+    queryKey: ['ai-provider-presets'],
+    queryFn: fetchProviderPresets,
+    retry: 1,
+  })
+
+  const providerPresets =
+    providerPresetCatalog?.providers && providerPresetCatalog.providers.length > 0
+      ? providerPresetCatalog.providers
+      : DEFAULT_PROVIDER_PRESETS
 
   const [formData, setFormData] = useState<AppSettings | null>(null)
 
@@ -301,40 +356,73 @@ export default function Settings() {
     }
   }
 
-  const handleExternalApiChange = (which: 'ocr_api' | 'llm_api', field: keyof ExternalApiSettings, value: string | number | null) => {
-    if (formData) {
-      const current = formData.ai_provider[which] ?? {
-        endpoint: '',
-        api_key_masked: '',
-        model: null,
-        provider_type: 'Generic',
-        timeout_secs: 30
-      }
-      setFormData({
-        ...formData,
+  const defaultExternalApiSettings = (): ExternalApiSettings => ({
+    endpoint: '',
+    api_key_masked: '',
+    model: null,
+    provider_type: 'Generic',
+    timeout_secs: 30,
+  })
+
+  const handleExternalApiChange = (
+    which: 'ocr_api' | 'llm_api',
+    field: keyof ExternalApiSettings,
+    value: string | number | null
+  ) => {
+    setFormData((prev) => {
+      if (!prev) return prev
+      const current = prev.ai_provider[which] ?? defaultExternalApiSettings()
+      return {
+        ...prev,
         ai_provider: {
-          ...formData.ai_provider,
-          [which]: { ...current, [field]: value }
-        }
-      })
+          ...prev.ai_provider,
+          [which]: { ...current, [field]: value },
+        },
+      }
+    })
+  }
+
+  const findProviderPreset = (raw: string | null | undefined): ProviderPreset | undefined => {
+    const normalized = (raw ?? '').trim().toLowerCase()
+    if (!normalized) {
+      return providerPresets.find((preset) => preset.provider_type === 'Generic')
     }
+    return providerPresets.find(
+      (preset) =>
+        preset.provider_type.toLowerCase() === normalized ||
+        preset.aliases.some((alias) => alias.toLowerCase() === normalized)
+    )
   }
 
   const resolveProviderType = (raw: string | null | undefined): string => {
-    const normalized = (raw ?? 'Generic').trim().toLowerCase()
-    switch (normalized) {
-      case 'anthropic':
-        return 'Anthropic'
-      case 'openai':
-      case 'open_ai':
-      case 'openai-compatible':
-        return 'OpenAi'
-      case 'google':
-      case 'gemini':
-        return 'Google'
-      default:
-        return 'Generic'
-    }
+    return findProviderPreset(raw)?.provider_type ?? 'Generic'
+  }
+
+  const handleProviderTypeChange = (which: 'ocr_api' | 'llm_api', rawProviderType: string) => {
+    const providerType = resolveProviderType(rawProviderType)
+    const preset = findProviderPreset(providerType)
+    const presetEndpoint =
+      which === 'ocr_api' ? preset?.ocr_endpoint ?? '' : preset?.llm_endpoint ?? ''
+
+    setFormData((prev) => {
+      if (!prev) return prev
+      const current = prev.ai_provider[which] ?? defaultExternalApiSettings()
+      const endpoint =
+        current.endpoint && current.endpoint.trim().length > 0
+          ? current.endpoint
+          : presetEndpoint
+      return {
+        ...prev,
+        ai_provider: {
+          ...prev.ai_provider,
+          [which]: {
+            ...current,
+            provider_type: providerType,
+            endpoint,
+          },
+        },
+      }
+    })
   }
 
   const handleModelDiscoveryResult = (
@@ -1199,14 +1287,13 @@ export default function Settings() {
                       </label>
                       <Select
                         value={resolveProviderType(formData.ai_provider.ocr_api?.provider_type)}
-                        onChange={(e) =>
-                          handleExternalApiChange('ocr_api', 'provider_type', e.target.value)
-                        }
+                        onChange={(e) => handleProviderTypeChange('ocr_api', e.target.value)}
                       >
-                        <option value="Anthropic">Anthropic</option>
-                        <option value="OpenAi">OpenAI</option>
-                        <option value="Google">Google</option>
-                        <option value="Generic">Generic</option>
+                        {providerPresets.map((preset) => (
+                          <option key={preset.provider_type} value={preset.provider_type}>
+                            {preset.display_name}
+                          </option>
+                        ))}
                       </Select>
                     </div>
                     <div className="flex items-end">
@@ -1286,14 +1373,13 @@ export default function Settings() {
                       </label>
                       <Select
                         value={resolveProviderType(formData.ai_provider.llm_api?.provider_type)}
-                        onChange={(e) =>
-                          handleExternalApiChange('llm_api', 'provider_type', e.target.value)
-                        }
+                        onChange={(e) => handleProviderTypeChange('llm_api', e.target.value)}
                       >
-                        <option value="Anthropic">Anthropic</option>
-                        <option value="OpenAi">OpenAI</option>
-                        <option value="Google">Google</option>
-                        <option value="Generic">Generic</option>
+                        {providerPresets.map((preset) => (
+                          <option key={preset.provider_type} value={preset.provider_type}>
+                            {preset.display_name}
+                          </option>
+                        ))}
                       </Select>
                     </div>
                     <div className="flex items-end">

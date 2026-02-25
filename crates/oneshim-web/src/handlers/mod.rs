@@ -1,4 +1,5 @@
 pub mod ai_models;
+pub mod ai_provider_presets;
 pub mod automation;
 pub mod automation_gui;
 pub mod backup;
