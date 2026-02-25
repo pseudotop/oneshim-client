@@ -89,7 +89,7 @@ test.describe('Replay Scene Overlay', () => {
     ).toBeVisible()
 
     await page.getByRole('button', { name: runSuggestedActionLabel }).click()
-    await expect(page.getByText(/policy:|정책:/i)).toBeVisible()
+    await expect(page.getByText(/policy:|policy:/i)).toBeVisible()
   })
 
   test('shows failure feedback when scene action endpoint rejects', async ({ page }) => {

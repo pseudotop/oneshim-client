@@ -1,6 +1,4 @@
-//! 입력 드라이버 구현.
 //!
-//! `NoOpInputDriver` (테스트용)와 향후 `EnigoInputDriver` (실제 입력)을 제공한다.
 
 use async_trait::async_trait;
 use tracing::debug;
@@ -10,44 +8,38 @@ use oneshim_core::models::intent::{ElementBounds, UiElement};
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
 
-// ============================================================
-// NoOpInputDriver — 테스트/디버깅용
-// ============================================================
-
-/// No-Op 입력 드라이버 — 모든 입력을 로깅만 하고 실행하지 않음
 ///
-/// 테스트, 시뮬레이션, 로깅 전용 모드에서 사용.
 pub struct NoOpInputDriver;
 
 #[async_trait]
 impl InputDriver for NoOpInputDriver {
     async fn mouse_move(&self, x: i32, y: i32) -> Result<(), CoreError> {
-        debug!(x, y, "[NoOp] 마우스 이동");
+        debug!(x, y, "[NoOp] mouse");
         Ok(())
     }
 
     async fn mouse_click(&self, button: &str, x: i32, y: i32) -> Result<(), CoreError> {
-        debug!(button, x, y, "[NoOp] 마우스 클릭");
+        debug!(button, x, y, "[NoOp] mouse click");
         Ok(())
     }
 
     async fn type_text(&self, text: &str) -> Result<(), CoreError> {
-        debug!(text_len = text.len(), "[NoOp] 텍스트 입력");
+        debug!(text_len = text.len(), "[NoOp] text");
         Ok(())
     }
 
     async fn key_press(&self, key: &str) -> Result<(), CoreError> {
-        debug!(key, "[NoOp] 키 누름");
+        debug!(key, "[NoOp] key");
         Ok(())
     }
 
     async fn key_release(&self, key: &str) -> Result<(), CoreError> {
-        debug!(key, "[NoOp] 키 놓음");
+        debug!(key, "[NoOp] key");
         Ok(())
     }
 
     async fn hotkey(&self, keys: &[String]) -> Result<(), CoreError> {
-        debug!(?keys, "[NoOp] 단축키 실행");
+        debug!(?keys, "[NoOp] key execution");
         Ok(())
     }
 
@@ -56,13 +48,7 @@ impl InputDriver for NoOpInputDriver {
     }
 }
 
-// ============================================================
-// NoOpElementFinder — 테스트/디버깅용
-// ============================================================
-
-/// No-Op 요소 탐색기 — 항상 빈 결과 반환
 ///
-/// 테스트, 시뮬레이션, 로깅 전용 모드에서 사용.
 pub struct NoOpElementFinder;
 
 #[async_trait]
@@ -73,7 +59,7 @@ impl ElementFinder for NoOpElementFinder {
         _role: Option<&str>,
         _region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError> {
-        debug!("[NoOp] 요소 탐색 (항상 빈 결과)");
+        debug!("[NoOp] element lookup ( )");
         Ok(vec![])
     }
 
@@ -82,34 +68,23 @@ impl ElementFinder for NoOpElementFinder {
     }
 }
 
-// ============================================================
-// EnigoInputDriver — 실제 마우스/키보드 입력
-// ============================================================
-
-/// 실제 마우스/키보드 입력 드라이버 (enigo 기반)
 ///
-/// macOS: Accessibility 권한 필요
-/// Windows: UIAccess 또는 관리자 권한 필요
-/// Linux: X11 또는 Wayland + uinput 권한 필요
 #[cfg(feature = "enigo")]
 pub struct EnigoInputDriver {
-    /// enigo 인스턴스 (Send지만 !Sync → tokio::sync::Mutex 사용)
     enigo: tokio::sync::Mutex<enigo::Enigo>,
 }
 
 #[cfg(feature = "enigo")]
 impl EnigoInputDriver {
-    /// 새 EnigoInputDriver 생성
     pub fn new() -> Result<Self, CoreError> {
         let settings = enigo::Settings::default();
         let enigo = enigo::Enigo::new(&settings)
-            .map_err(|e| CoreError::Internal(format!("입력 드라이버 초기화 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to initialize input driver: {e}")))?;
         Ok(Self {
             enigo: tokio::sync::Mutex::new(enigo),
         })
     }
 
-    /// 문자열 → enigo 키 매핑
     fn parse_key(key: &str) -> enigo::Key {
         match key.to_lowercase().as_str() {
             "enter" | "return" => enigo::Key::Return,
@@ -144,13 +119,12 @@ impl EnigoInputDriver {
             "f11" => enigo::Key::F11,
             "f12" => enigo::Key::F12,
             other => {
-                // 단일 문자 → Unicode 키
                 if let Some(ch) = other.chars().next() {
                     if other.chars().count() == 1 {
                         return enigo::Key::Unicode(ch);
                     }
                 }
-                debug!("알 수 없는 키: {other}, Unicode 'a' 폴백");
+                debug!("unknown key: {other}, Unicode 'a'");
                 enigo::Key::Unicode('a')
             }
         }
@@ -162,21 +136,21 @@ impl EnigoInputDriver {
 impl InputDriver for EnigoInputDriver {
     async fn mouse_move(&self, x: i32, y: i32) -> Result<(), CoreError> {
         use enigo::Mouse;
-        debug!(x, y, "[Enigo] 마우스 이동");
+        debug!(x, y, "[Enigo] mouse");
         let mut enigo = self.enigo.lock().await;
         enigo
             .move_mouse(x, y, enigo::Coordinate::Abs)
-            .map_err(|e| CoreError::Internal(format!("마우스 이동 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Mouse move failed: {e}")))?;
         Ok(())
     }
 
     async fn mouse_click(&self, button: &str, x: i32, y: i32) -> Result<(), CoreError> {
         use enigo::Mouse;
-        debug!(button, x, y, "[Enigo] 마우스 클릭");
+        debug!(button, x, y, "[Enigo] mouse click");
         let mut enigo = self.enigo.lock().await;
         enigo
             .move_mouse(x, y, enigo::Coordinate::Abs)
-            .map_err(|e| CoreError::Internal(format!("마우스 이동 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Mouse move failed: {e}")))?;
         let btn = match parse_mouse_button(button) {
             "right" => enigo::Button::Right,
             "middle" => enigo::Button::Middle,
@@ -184,54 +158,53 @@ impl InputDriver for EnigoInputDriver {
         };
         enigo
             .button(btn, enigo::Direction::Click)
-            .map_err(|e| CoreError::Internal(format!("마우스 클릭 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Mouse click failed: {e}")))?;
         Ok(())
     }
 
     async fn type_text(&self, text: &str) -> Result<(), CoreError> {
         use enigo::Keyboard;
-        debug!(text_len = text.len(), "[Enigo] 텍스트 입력");
+        debug!(text_len = text.len(), "[Enigo] text");
         let mut enigo = self.enigo.lock().await;
         enigo
             .text(text)
-            .map_err(|e| CoreError::Internal(format!("텍스트 입력 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Text input failed: {e}")))?;
         Ok(())
     }
 
     async fn key_press(&self, key: &str) -> Result<(), CoreError> {
         use enigo::Keyboard;
-        debug!(key, "[Enigo] 키 누름");
+        debug!(key, "[Enigo] key");
         let mut enigo = self.enigo.lock().await;
         enigo
             .key(Self::parse_key(key), enigo::Direction::Press)
-            .map_err(|e| CoreError::Internal(format!("키 누름 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Key press failed: {e}")))?;
         Ok(())
     }
 
     async fn key_release(&self, key: &str) -> Result<(), CoreError> {
         use enigo::Keyboard;
-        debug!(key, "[Enigo] 키 놓음");
+        debug!(key, "[Enigo] key");
         let mut enigo = self.enigo.lock().await;
         enigo
             .key(Self::parse_key(key), enigo::Direction::Release)
-            .map_err(|e| CoreError::Internal(format!("키 놓음 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Key release failed: {e}")))?;
         Ok(())
     }
 
     async fn hotkey(&self, keys: &[String]) -> Result<(), CoreError> {
         use enigo::Keyboard;
-        debug!(?keys, "[Enigo] 단축키 실행");
+        debug!(?keys, "[Enigo] key execution");
         let mut enigo = self.enigo.lock().await;
-        // 모든 키 순서대로 Press → 역순 Release
         for key_str in keys {
             enigo
                 .key(Self::parse_key(key_str), enigo::Direction::Press)
-                .map_err(|e| CoreError::Internal(format!("단축키 Press 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Hotkey press failed: {e}")))?;
         }
         for key_str in keys.iter().rev() {
             enigo
                 .key(Self::parse_key(key_str), enigo::Direction::Release)
-                .map_err(|e| CoreError::Internal(format!("단축키 Release 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Hotkey release failed: {e}")))?;
         }
         Ok(())
     }
@@ -256,46 +229,32 @@ impl InputDriver for EnigoInputDriver {
     }
 }
 
-// ============================================================
-// 마우스 버튼 매핑 유틸
-// ============================================================
-
-/// 문자열 → 마우스 버튼 매핑
 ///
-/// enigo 통합 시 사용할 유틸리티.
-/// 인식 가능한 값: "left", "right", "middle"
 pub fn parse_mouse_button(button: &str) -> &str {
     match button.to_lowercase().as_str() {
         "left" | "l" => "left",
         "right" | "r" => "right",
         "middle" | "m" => "middle",
-        _ => "left", // 기본값
+        _ => "left", // default value
     }
 }
 
-/// 플랫폼별 입력 드라이버 생성 팩토리
 ///
-/// `enigo` feature 활성화 시 실제 입력 드라이버 반환,
-/// 비활성화 시 NoOp 드라이버 반환.
 pub fn create_platform_input_driver() -> Box<dyn InputDriver> {
     #[cfg(feature = "enigo")]
     {
         match EnigoInputDriver::new() {
             Ok(driver) => {
-                tracing::info!("실제 입력 드라이버 (enigo) 초기화 완료");
+                tracing::info!("(enigo) initialize completed");
                 return Box::new(driver);
             }
             Err(e) => {
-                tracing::warn!("enigo 초기화 실패, NoOp 폴백: {e}");
+                tracing::warn!("enigo initialize failure, NoOp: {e}");
             }
         }
     }
     Box::new(NoOpInputDriver)
 }
-
-// ============================================================
-// 테스트
-// ============================================================
 
 #[cfg(test)]
 mod tests {
@@ -342,7 +301,6 @@ mod tests {
     #[test]
     fn factory_creates_driver() {
         let driver = create_platform_input_driver();
-        // enigo feature 비활성화 시 noop, 활성화 시 플랫폼별
         let platform = driver.platform();
         assert!(!platform.is_empty());
     }

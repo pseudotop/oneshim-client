@@ -1,4 +1,3 @@
-// 키보드 단축키 도움말 모달
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getShortcutsList } from '../hooks/useKeyboardShortcuts'
@@ -34,7 +33,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
         className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-md w-full mx-4"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 헤더 */}
+        {/* UI note */}
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
             {t('shortcuts.title')}
@@ -50,7 +49,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
           </button>
         </div>
 
-        {/* 단축키 목록 */}
+        {/* UI note */}
         <div className="p-4 space-y-2">
           {shortcuts.map(({ key, description }) => (
             <div key={key} className="flex items-center justify-between py-1">
@@ -62,7 +61,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
           ))}
         </div>
 
-        {/* 푸터 */}
+        {/* UI note */}
         <div className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 rounded-b-lg text-center">
           <span className="text-sm text-slate-500 dark:text-slate-400">
             {t('shortcuts.closeHint')}

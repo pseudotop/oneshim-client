@@ -1,6 +1,4 @@
-//! 프레임 메타데이터 스토리지 메서드.
 //!
-//! 스크린샷 프레임의 메타데이터 저장 및 조회.
 
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
@@ -15,7 +13,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let count: i64 = conn
             .query_row(
@@ -23,7 +21,7 @@ impl SqliteStorage {
                 rusqlite::params![from, to],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("프레임 개수 조회 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to count frames: {e}")))?;
 
         Ok(count as u64)
     }
@@ -32,7 +30,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let result: Result<Option<String>, rusqlite::Error> = conn.query_row(
             "SELECT file_path FROM frames WHERE id = ?1",
@@ -44,17 +42,13 @@ impl SqliteStorage {
             Ok(path) => Ok(path),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(CoreError::Internal(format!(
-                "프레임 파일 경로 조회 실패: {e}"
+                "frame file path query failure: {e}"
             ))),
         }
     }
 
-    /// 프레임 메타데이터 저장
     ///
     /// # Arguments
-    /// * `metadata` - 프레임 메타데이터
-    /// * `file_path` - 저장된 이미지 파일의 상대 경로 (None이면 이미지 없음)
-    /// * `ocr_text` - OCR 추출 텍스트 (있는 경우)
     pub fn save_frame_metadata(
         &self,
         metadata: &FrameMetadata,
@@ -64,13 +58,8 @@ impl SqliteStorage {
         self.save_frame_metadata_with_bounds(metadata, file_path, ocr_text, None)
     }
 
-    /// 프레임 메타데이터 저장 (창 위치 포함)
     ///
     /// # Arguments
-    /// * `metadata` - 프레임 메타데이터
-    /// * `file_path` - 저장된 이미지 파일의 상대 경로
-    /// * `ocr_text` - OCR 추출 텍스트
-    /// * `bounds` - 창 위치/크기
     pub fn save_frame_metadata_with_bounds(
         &self,
         metadata: &FrameMetadata,
@@ -81,7 +70,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT INTO frames (timestamp, trigger_type, app_name, window_title, importance, resolution_w, resolution_h, has_image, file_path, ocr_text, window_x, window_y, window_width, window_height)
@@ -103,11 +92,11 @@ impl SqliteStorage {
                 bounds.map(|b| b.height as i32),
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("프레임 메타데이터 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to save frame metadata: {e}")))?;
 
         let frame_id = conn.last_insert_rowid();
         debug!(
-            "프레임 메타데이터 저장: id={}, app={}, file={}",
+            "frame 메타데이터 save: id={}, app={}, file={}",
             frame_id,
             metadata.app_name,
             file_path.unwrap_or("-")
@@ -116,12 +105,8 @@ impl SqliteStorage {
         Ok(frame_id)
     }
 
-    /// 프레임 메타데이터 목록 조회
     ///
     /// # Arguments
-    /// * `from` - 시작 시각
-    /// * `to` - 종료 시각
-    /// * `limit` - 최대 조회 개수
     pub fn get_frames(
         &self,
         from: DateTime<Utc>,
@@ -134,7 +119,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -144,7 +129,7 @@ impl SqliteStorage {
                  ORDER BY timestamp DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let frames = stmt
             .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
@@ -161,7 +146,7 @@ impl SqliteStorage {
                     ocr_text: row.get(9)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 

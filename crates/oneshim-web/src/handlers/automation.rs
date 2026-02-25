@@ -1,5 +1,3 @@
-//! 자동화 API 핸들러.
-
 use axum::{
     extract::{Path, Query, State},
     Json,
@@ -29,11 +27,8 @@ const AUTOMATION_AUDIT_SCHEMA_VERSION: &str = "automation.audit.v1";
 const AUTOMATION_SCENE_ACTION_SCHEMA_VERSION: &str = "automation.scene_action.v1";
 const AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION: &str = "automation.scene_calibration.v1";
 
-// ============================================================
 // DTO
-// ============================================================
 
-/// 자동화 시스템 상태
 #[derive(Debug, Serialize)]
 pub struct AutomationStatusDto {
     pub enabled: bool,
@@ -45,7 +40,6 @@ pub struct AutomationStatusDto {
     pub pending_audit_entries: usize,
 }
 
-/// 감사 로그 항목
 #[derive(Debug, Serialize)]
 pub struct AuditEntryDto {
     pub schema_version: String,
@@ -59,7 +53,6 @@ pub struct AuditEntryDto {
     pub elapsed_ms: Option<u64>,
 }
 
-/// 감사 로그 쿼리
 #[derive(Debug, Deserialize)]
 pub struct AuditQuery {
     #[serde(default = "default_audit_limit")]
@@ -71,7 +64,6 @@ fn default_audit_limit() -> usize {
     50
 }
 
-/// 정책 이벤트 쿼리
 #[derive(Debug, Deserialize)]
 pub struct PolicyEventQuery {
     #[serde(default = "default_policy_event_limit")]
@@ -86,7 +78,7 @@ fn require_config_manager(state: &AppState) -> Result<&ConfigManager, ApiError> 
     state
         .config_manager
         .as_ref()
-        .ok_or_else(|| ApiError::Internal("설정 관리자 미설정".into()))
+        .ok_or_else(|| ApiError::Internal("Config manager is not set".into()))
 }
 
 fn default_automation_status(pending: usize) -> AutomationStatusDto {
@@ -125,13 +117,12 @@ fn parse_audit_status(status_filter: &str) -> Result<AuditStatus, ApiError> {
         "Denied" => Ok(AuditStatus::Denied),
         "Timeout" => Ok(AuditStatus::Timeout),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 상태 필터: {}",
+            "유효하지 않은 state 필터: {}",
             status_filter
         ))),
     }
 }
 
-/// 실행 통계
 #[derive(Debug, Serialize)]
 pub struct AutomationStatsDto {
     pub total_executions: usize,
@@ -146,7 +137,6 @@ pub struct AutomationStatsDto {
     pub timing_samples: usize,
 }
 
-/// 정책 정보
 #[derive(Debug, Serialize)]
 pub struct PoliciesDto {
     pub automation_enabled: bool,
@@ -162,13 +152,11 @@ pub struct PoliciesDto {
     pub scene_action_override_issue: Option<String>,
 }
 
-/// 프리셋 목록 응답
 #[derive(Debug, Serialize)]
 pub struct PresetListDto {
     pub presets: Vec<WorkflowPreset>,
 }
 
-/// 프리셋 실행 결과
 #[derive(Debug, Serialize)]
 pub struct PresetRunResult {
     pub preset_id: String,
@@ -182,7 +170,6 @@ pub struct PresetRunResult {
     pub total_elapsed_ms: Option<u64>,
 }
 
-/// 자연어 의도 실행 요청
 #[derive(Debug, Deserialize)]
 pub struct ExecuteIntentHintRequest {
     pub command_id: Option<String>,
@@ -190,7 +177,6 @@ pub struct ExecuteIntentHintRequest {
     pub intent_hint: String,
 }
 
-/// 자연어 의도 실행 응답
 #[derive(Debug, Serialize)]
 pub struct ExecuteIntentHintResponse {
     pub command_id: String,
@@ -206,7 +192,6 @@ pub enum SceneActionType {
     TypeText,
 }
 
-/// Scene 좌표 기반 실행 요청 (결정적 실행 경로)
 #[derive(Debug, Deserialize)]
 pub struct ExecuteSceneActionRequest {
     pub command_id: Option<String>,
@@ -222,7 +207,6 @@ pub struct ExecuteSceneActionRequest {
     pub allow_sensitive_input: Option<bool>,
 }
 
-/// Scene 좌표 기반 실행 응답
 #[derive(Debug, Serialize)]
 pub struct ExecuteSceneActionResponse {
     pub schema_version: String,
@@ -238,7 +222,6 @@ pub struct ExecuteSceneActionResponse {
     pub result: IntentResult,
 }
 
-/// 자동화 계약 버전 정보
 #[derive(Debug, Serialize)]
 pub struct AutomationContractsDto {
     pub audit_schema_version: String,
@@ -258,7 +241,6 @@ struct SceneActionPolicyContext {
     override_issue: Option<String>,
 }
 
-/// Scene 분석 쿼리
 #[derive(Debug, Deserialize)]
 pub struct SceneQuery {
     pub app_name: Option<String>,
@@ -266,7 +248,6 @@ pub struct SceneQuery {
     pub frame_id: Option<i64>,
 }
 
-/// Scene calibration 쿼리
 #[derive(Debug, Deserialize)]
 pub struct SceneCalibrationQuery {
     pub app_name: Option<String>,
@@ -274,7 +255,6 @@ pub struct SceneCalibrationQuery {
     pub frame_id: Option<i64>,
 }
 
-/// Scene calibration 결과
 #[derive(Debug, Serialize)]
 pub struct SceneCalibrationDto {
     pub schema_version: String,
@@ -293,10 +273,10 @@ fn build_scene_action_intents(
     req: &ExecuteSceneActionRequest,
 ) -> Result<Vec<AutomationIntent>, ApiError> {
     if req.session_id.trim().is_empty() {
-        return Err(ApiError::BadRequest("session_id는 필수입니다".to_string()));
+        return Err(ApiError::BadRequest("session_id is required".to_string()));
     }
     if req.element_id.trim().is_empty() {
-        return Err(ApiError::BadRequest("element_id는 필수입니다".to_string()));
+        return Err(ApiError::BadRequest("element_id is required".to_string()));
     }
     if req.bbox_abs.width == 0 || req.bbox_abs.height == 0 {
         return Err(ApiError::BadRequest(
@@ -319,7 +299,7 @@ fn build_scene_action_intents(
                 .map(|v| v.trim().to_string())
                 .filter(|v| !v.is_empty())
                 .ok_or_else(|| {
-                    ApiError::BadRequest("type_text 액션은 text가 필요합니다".to_string())
+                    ApiError::BadRequest("type_text action requires text".to_string())
                 })?;
 
             Ok(vec![
@@ -348,7 +328,7 @@ fn apply_scene_intelligence_filter(
 ) -> Result<UiScene, ApiError> {
     if !cfg.enabled {
         return Err(ApiError::BadRequest(
-            "Scene intelligence가 비활성화되어 있습니다.".to_string(),
+            "Scene intelligence가 비active화되어 있습니다.".to_string(),
         ));
     }
 
@@ -504,21 +484,21 @@ fn enforce_scene_action_privacy(
     let override_hint = context
         .override_issue
         .as_ref()
-        .map(|issue| format!(" 현재 오버라이드 상태: {issue}"))
+        .map(|issue| format!(" current override state: {issue}"))
         .unwrap_or_default();
 
     match (context.policy, req.action_type) {
         (ExternalDataPolicy::PiiFilterStrict, SceneActionType::TypeText) => {
             if !allow_sensitive && !override_active {
                 return Err(ApiError::BadRequest(format!(
-                    "PiiFilterStrict 정책에서는 type_text 액션이 차단됩니다. allow_sensitive_input=true를 전달하거나 유효한 오버라이드를 설정하세요.{override_hint}"
+                    "PiiFilterStrict policy에서는 type_text 액션이 차단됩니다. allow_sensitive_input=true를 전달하거나 유효한 오버라이드를 설정하세요.{override_hint}"
                 )));
             }
         }
         (ExternalDataPolicy::PiiFilterStandard, SceneActionType::TypeText) => {
             if !allow_sensitive && !override_active {
                 return Err(ApiError::BadRequest(format!(
-                    "PiiFilterStandard 정책에서는 type_text 액션에 allow_sensitive_input=true 또는 유효한 오버라이드가 필요합니다.{override_hint}"
+                    "PiiFilterStandard policy에서는 type_text 액션에 allow_sensitive_input=true 또는 유효한 오버라이드가 필요합니다.{override_hint}"
                 )));
             }
         }
@@ -569,7 +549,7 @@ fn resolve_frame_image_path(state: &AppState, stored_path: &str) -> Result<PathB
 
     let Some(base) = state.frames_dir.as_ref() else {
         return Err(ApiError::Internal(
-            "프레임 경로 루트가 설정되지 않아 frame_id 조회를 처리할 수 없습니다".to_string(),
+            "frame path 루트가 설정되지 않아 frame_id query를 처리할 수 없습니다".to_string(),
         ));
     };
 
@@ -597,12 +577,12 @@ async fn analyze_scene_by_query(
         let stored_path = state
             .storage
             .get_frame_file_path(frame_id)
-            .map_err(|e| ApiError::Internal(format!("프레임 경로 조회 실패: {e}")))?
-            .ok_or_else(|| ApiError::NotFound(format!("프레임 {frame_id}에 이미지가 없습니다")))?;
+            .map_err(|e| ApiError::Internal(format!("frame path query failure: {e}")))?
+            .ok_or_else(|| ApiError::NotFound(format!("frame {frame_id} has no image")))?;
 
         let image_path = resolve_frame_image_path(state, &stored_path)?;
         let image_data = std::fs::read(&image_path)
-            .map_err(|e| ApiError::Internal(format!("프레임 이미지 읽기 실패: {e}")))?;
+            .map_err(|e| ApiError::Internal(format!("Failed to read frame image: {e}")))?;
 
         controller
             .analyze_scene_from_image(
@@ -630,15 +610,10 @@ async fn analyze_scene_by_query(
         {
             Err(ApiError::BadRequest(msg))
         }
-        Err(e) => Err(ApiError::Internal(format!("scene 분석 실패: {e}"))),
+        Err(e) => Err(ApiError::Internal(format!("Scene analysis failed: {e}"))),
     }
 }
 
-// ============================================================
-// 핸들러
-// ============================================================
-
-/// GET /api/automation/contracts — 자동화 계약 버전 조회
 pub async fn get_contract_versions() -> Result<Json<AutomationContractsDto>, ApiError> {
     Ok(Json(AutomationContractsDto {
         audit_schema_version: AUTOMATION_AUDIT_SCHEMA_VERSION.to_string(),
@@ -647,7 +622,6 @@ pub async fn get_contract_versions() -> Result<Json<AutomationContractsDto>, Api
     }))
 }
 
-/// GET /api/automation/status — 자동화 시스템 상태
 pub async fn get_automation_status(
     State(state): State<AppState>,
 ) -> Result<Json<AutomationStatusDto>, ApiError> {
@@ -674,7 +648,6 @@ pub async fn get_automation_status(
     }
 }
 
-/// GET /api/automation/audit — 감사 로그 조회
 pub async fn get_audit_logs(
     State(state): State<AppState>,
     Query(query): Query<AuditQuery>,
@@ -710,7 +683,6 @@ pub async fn get_audit_logs(
     Ok(Json(dtos))
 }
 
-/// GET /api/automation/policy-events — 정책 이벤트 감사 로그 조회
 pub async fn get_policy_events(
     State(state): State<AppState>,
     Query(query): Query<PolicyEventQuery>,
@@ -743,7 +715,6 @@ pub async fn get_policy_events(
     Ok(Json(entries))
 }
 
-/// GET /api/automation/policies — 활성 정책 목록
 pub async fn get_policies(State(state): State<AppState>) -> Result<Json<PoliciesDto>, ApiError> {
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
@@ -775,7 +746,6 @@ pub async fn get_policies(State(state): State<AppState>) -> Result<Json<Policies
     }
 }
 
-/// GET /api/automation/stats — 실행 통계
 pub async fn get_automation_stats(
     State(state): State<AppState>,
 ) -> Result<Json<AutomationStatsDto>, ApiError> {
@@ -797,7 +767,6 @@ pub async fn get_automation_stats(
     let guard = logger.read().await;
     let (total, success, failed, denied, timeout) = guard.stats();
 
-    // 평균 실행 시간 계산
     let all_entries = guard.recent_entries(1000);
     let elapsed_values: Vec<u64> = all_entries
         .iter()
@@ -842,11 +811,9 @@ pub async fn get_automation_stats(
     }))
 }
 
-/// GET /api/automation/presets — 전체 프리셋 목록 (내장 + 사용자)
 pub async fn list_presets(State(state): State<AppState>) -> Result<Json<PresetListDto>, ApiError> {
     let mut presets = builtin_presets();
 
-    // 사용자 정의 프리셋 추가
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
         presets.extend(config.automation.custom_presets.clone());
@@ -855,23 +822,23 @@ pub async fn list_presets(State(state): State<AppState>) -> Result<Json<PresetLi
     Ok(Json(PresetListDto { presets }))
 }
 
-/// POST /api/automation/presets — 사용자 프리셋 생성
 pub async fn create_preset(
     State(state): State<AppState>,
     Json(preset): Json<WorkflowPreset>,
 ) -> Result<Json<WorkflowPreset>, ApiError> {
     if preset.id.is_empty() || preset.name.is_empty() {
-        return Err(ApiError::BadRequest("프리셋 ID와 이름은 필수입니다".into()));
+        return Err(ApiError::BadRequest(
+            "Preset ID and name are required".into(),
+        ));
     }
     if preset.steps.is_empty() {
-        return Err(ApiError::BadRequest("최소 1개 단계가 필요합니다".into()));
+        return Err(ApiError::BadRequest("At least one step is required".into()));
     }
 
     let config_manager = require_config_manager(&state)?;
 
     config_manager
         .update_with(|config| {
-            // 중복 ID 확인
             if config
                 .automation
                 .custom_presets
@@ -884,12 +851,11 @@ pub async fn create_preset(
             new_preset.builtin = false;
             config.automation.custom_presets.push(new_preset);
         })
-        .map_err(|e| ApiError::Internal(format!("프리셋 저장 실패: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to save preset: {e}")))?;
 
     Ok(Json(preset))
 }
 
-/// PUT /api/automation/presets/:id — 사용자 프리셋 수정
 pub async fn update_preset(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -914,16 +880,15 @@ pub async fn update_preset(
                 found = true;
             }
         })
-        .map_err(|e| ApiError::Internal(format!("프리셋 수정 실패: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to update preset: {e}")))?;
 
     if !found {
-        return Err(ApiError::NotFound(format!("프리셋 '{}' 미발견", id)));
+        return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
     }
 
     Ok(Json(preset))
 }
 
-/// DELETE /api/automation/presets/:id — 사용자 프리셋 삭제
 pub async fn delete_preset(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -937,21 +902,19 @@ pub async fn delete_preset(
             config.automation.custom_presets.retain(|p| p.id != id);
             found = config.automation.custom_presets.len() < before_len;
         })
-        .map_err(|e| ApiError::Internal(format!("프리셋 삭제 실패: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to delete preset: {e}")))?;
 
     if !found {
-        return Err(ApiError::NotFound(format!("프리셋 '{}' 미발견", id)));
+        return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
     }
 
     Ok(Json(serde_json::json!({ "deleted": id })))
 }
 
-/// POST /api/automation/presets/:id/run — 프리셋 실행
 pub async fn run_preset(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<PresetRunResult>, ApiError> {
-    // 프리셋 찾기 (내장 + 사용자)
     let all_presets = builtin_presets();
     let mut preset = all_presets.iter().find(|p| p.id == id).cloned();
 
@@ -968,20 +931,18 @@ pub async fn run_preset(
     }
 
     let Some(preset) = preset else {
-        return Err(ApiError::NotFound(format!("프리셋 '{}' 미발견", id)));
+        return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
     };
 
-    // 자동화 활성화 확인
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
         if !config.automation.enabled {
             return Err(ApiError::BadRequest(
-                "자동화가 비활성화 상태입니다".to_string(),
+                "자동화가 비active화 state입니다".to_string(),
             ));
         }
     }
 
-    // 자동화 컨트롤러가 설정된 경우 실제 실행
     if let Some(ref controller) = state.automation_controller {
         match controller.run_workflow(&preset).await {
             Ok(result) => {
@@ -998,21 +959,20 @@ pub async fn run_preset(
                     total_elapsed_ms: Some(result.total_elapsed_ms),
                 }))
             }
-            Err(e) => Err(ApiError::Internal(format!("실행 실패: {}", e))),
+            Err(e) => Err(ApiError::Internal(format!("execution failure: {}", e))),
         }
     } else {
-        // 폴백: 컨트롤러 미설정 → 로깅 전용
         tracing::info!(
             preset_id = %preset.id,
             steps = preset.steps.len(),
-            "워크플로우 프리셋 실행 요청 (컨트롤러 미설정, 로깅 전용)"
+            "워크플로우 프리셋 execution request (컨트롤러 미설정, 로깅 전용)"
         );
 
         Ok(Json(PresetRunResult {
             preset_id: id,
             success: true,
             message: format!(
-                "프리셋 '{}' 실행 요청됨 ({}단계, 로깅 전용)",
+                "프리셋 '{}' execution request됨 ({}단계, 로깅 전용)",
                 preset.name,
                 preset.steps.len()
             ),
@@ -1023,21 +983,20 @@ pub async fn run_preset(
     }
 }
 
-/// POST /api/automation/execute-hint — 자연어 의도 실행
 pub async fn execute_intent_hint(
     State(state): State<AppState>,
     Json(req): Json<ExecuteIntentHintRequest>,
 ) -> Result<Json<ExecuteIntentHintResponse>, ApiError> {
     if req.session_id.trim().is_empty() {
-        return Err(ApiError::BadRequest("session_id는 필수입니다".to_string()));
+        return Err(ApiError::BadRequest("session_id is required".to_string()));
     }
     if req.intent_hint.trim().is_empty() {
-        return Err(ApiError::BadRequest("intent_hint는 필수입니다".to_string()));
+        return Err(ApiError::BadRequest("intent_hint is required".to_string()));
     }
 
     let Some(ref controller) = state.automation_controller else {
         return Err(ApiError::BadRequest(
-            "자동화 컨트롤러가 활성화되지 않았습니다".to_string(),
+            "자동화 컨트롤러가 active화되지 않았습니다".to_string(),
         ));
     };
 
@@ -1071,30 +1030,31 @@ pub async fn execute_intent_hint(
         {
             Err(ApiError::BadRequest(msg))
         }
-        Err(e) => Err(ApiError::Internal(format!("자연어 의도 실행 실패: {e}"))),
+        Err(e) => Err(ApiError::Internal(format!(
+            "Natural language intent execution failed: {e}"
+        ))),
     }
 }
 
-/// POST /api/automation/execute-scene-action — Scene 좌표 기반 결정적 액션 실행
 pub async fn execute_scene_action(
     State(state): State<AppState>,
     Json(req): Json<ExecuteSceneActionRequest>,
 ) -> Result<Json<ExecuteSceneActionResponse>, ApiError> {
     let Some(ref controller) = state.automation_controller else {
         return Err(ApiError::BadRequest(
-            "자동화 컨트롤러가 활성화되지 않았습니다".to_string(),
+            "자동화 컨트롤러가 active화되지 않았습니다".to_string(),
         ));
     };
 
     let scene_cfg = read_scene_intelligence_config(&state);
     if !scene_cfg.enabled {
         return Err(ApiError::BadRequest(
-            "Scene intelligence가 비활성화되어 있습니다.".to_string(),
+            "Scene intelligence가 비active화되어 있습니다.".to_string(),
         ));
     }
     if !scene_cfg.allow_action_execution {
         return Err(ApiError::BadRequest(
-            "Scene action 실행이 설정에서 비활성화되어 있습니다.".to_string(),
+            "Scene action execution이 설정에서 비active화되어 있습니다.".to_string(),
         ));
     }
 
@@ -1239,7 +1199,11 @@ pub async fn execute_scene_action(
             {
                 return Err(ApiError::BadRequest(msg));
             }
-            Err(e) => return Err(ApiError::Internal(format!("scene 액션 실행 실패: {e}"))),
+            Err(e) => {
+                return Err(ApiError::Internal(format!(
+                    "Scene action execution failed: {e}"
+                )))
+            }
         }
     }
 
@@ -1249,7 +1213,7 @@ pub async fn execute_scene_action(
         verification: None,
         retry_count: 0,
         elapsed_ms: 0,
-        error: Some("실행 가능한 액션이 없습니다".to_string()),
+        error: Some("execution 가능한 액션이 없습니다".to_string()),
     });
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
 
@@ -1290,14 +1254,13 @@ pub async fn execute_scene_action(
     }))
 }
 
-/// GET /api/automation/scene — 현재 화면의 구조화된 UI Scene 조회
 pub async fn get_automation_scene(
     State(state): State<AppState>,
     Query(query): Query<SceneQuery>,
 ) -> Result<Json<UiScene>, ApiError> {
     let Some(ref controller) = state.automation_controller else {
         return Err(ApiError::BadRequest(
-            "자동화 컨트롤러가 활성화되지 않았습니다".to_string(),
+            "자동화 컨트롤러가 active화되지 않았습니다".to_string(),
         ));
     };
 
@@ -1315,14 +1278,13 @@ pub async fn get_automation_scene(
     Ok(Json(filtered))
 }
 
-/// GET /api/automation/scene/calibration — 현재 scene 캘리브레이션 검증 결과
 pub async fn get_automation_scene_calibration(
     State(state): State<AppState>,
     Query(query): Query<SceneCalibrationQuery>,
 ) -> Result<Json<SceneCalibrationDto>, ApiError> {
     let Some(ref controller) = state.automation_controller else {
         return Err(ApiError::BadRequest(
-            "자동화 컨트롤러가 활성화되지 않았습니다".to_string(),
+            "자동화 컨트롤러가 active화되지 않았습니다".to_string(),
         ));
     };
 
@@ -1339,10 +1301,6 @@ pub async fn get_automation_scene_calibration(
     let report = build_scene_calibration(&filtered, &scene_cfg);
     Ok(Json(report))
 }
-
-// ============================================================
-// 테스트
-// ============================================================
 
 #[cfg(test)]
 mod tests {
@@ -1428,7 +1386,7 @@ mod tests {
         let dto = PresetRunResult {
             preset_id: "save-file".to_string(),
             success: true,
-            message: "실행됨".to_string(),
+            message: "execution됨".to_string(),
             steps_executed: Some(2),
             total_steps: Some(3),
             total_elapsed_ms: Some(150),
@@ -1443,7 +1401,7 @@ mod tests {
         let dto = PresetRunResult {
             preset_id: "test".to_string(),
             success: false,
-            message: "실패".to_string(),
+            message: "failure".to_string(),
             steps_executed: None,
             total_steps: None,
             total_elapsed_ms: None,
@@ -1473,12 +1431,12 @@ mod tests {
     fn execute_intent_hint_request_deserializes_optional_command_id() {
         let payload = r#"{
             "session_id": "sess-1",
-            "intent_hint": "저장 버튼 클릭"
+            "intent_hint": "save 버튼 클릭"
         }"#;
         let request: ExecuteIntentHintRequest = serde_json::from_str(payload).unwrap();
         assert!(request.command_id.is_none());
         assert_eq!(request.session_id, "sess-1");
-        assert_eq!(request.intent_hint, "저장 버튼 클릭");
+        assert_eq!(request.intent_hint, "click the save button");
     }
 
     #[test]
@@ -1579,7 +1537,7 @@ mod tests {
         };
         let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
         assert!(!active);
-        assert!(issue.unwrap_or_default().contains("사유"));
+        assert!(issue.unwrap_or_default().contains("reason"));
     }
 
     #[test]
@@ -1592,7 +1550,7 @@ mod tests {
         };
         let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
         assert!(!active);
-        assert!(issue.unwrap_or_default().contains("만료"));
+        assert!(issue.unwrap_or_default().contains("expired"));
     }
 
     #[test]

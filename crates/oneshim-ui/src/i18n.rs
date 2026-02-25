@@ -1,19 +1,13 @@
-//! 국제화 (i18n) 모듈.
 //!
-//! 한국어(ko), 영어(en) 지원.
 
-/// 지원 언어
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Locale {
-    /// 한국어 (기본값)
     #[default]
     Ko,
-    /// 영어
     En,
 }
 
 impl Locale {
-    /// 언어 코드 반환
     pub fn code(&self) -> &'static str {
         match self {
             Locale::Ko => "ko",
@@ -21,7 +15,6 @@ impl Locale {
         }
     }
 
-    /// 언어 이름 (해당 언어로)
     pub fn name(&self) -> &'static str {
         match self {
             Locale::Ko => "한국어",
@@ -29,9 +22,7 @@ impl Locale {
         }
     }
 
-    /// 시스템 로케일 감지
     pub fn detect_system() -> Self {
-        // 환경 변수에서 언어 감지
         if let Ok(lang) = std::env::var("LANG") {
             if lang.starts_with("ko") {
                 return Locale::Ko;
@@ -42,24 +33,19 @@ impl Locale {
                 return Locale::Ko;
             }
         }
-        // 기본값: 영어
         Locale::En
     }
 }
 
-/// UI 문자열 (로컬라이즈)
 #[derive(Debug, Clone)]
 pub struct Strings {
-    // 앱 제목
     pub app_title: &'static str,
     pub app_title_settings: &'static str,
 
-    // 네비게이션
     pub settings: &'static str,
     pub back: &'static str,
     pub quit: &'static str,
 
-    // 대시보드
     pub connection_offline: &'static str,
     pub connection_disconnected: &'static str,
     pub connection_connected: &'static str,
@@ -80,14 +66,12 @@ pub struct Strings {
     pub update_deferred: &'static str,
     pub update_error: &'static str,
 
-    // 설정 섹션
     pub general: &'static str,
     pub startup: &'static str,
     pub appearance: &'static str,
     pub connection: &'static str,
     pub language: &'static str,
 
-    // 설정 항목
     pub system_monitoring: &'static str,
     pub screenshot_capture: &'static str,
     pub desktop_notifications: &'static str,
@@ -101,54 +85,52 @@ pub struct Strings {
 }
 
 impl Strings {
-    /// 한국어 문자열
     pub const KO: Strings = Strings {
         app_title: "ONESHIM",
         app_title_settings: "ONESHIM - 설정",
 
         settings: "[설정]",
         back: "← 뒤로",
-        quit: "종료",
+        quit: "ended",
 
-        connection_offline: "오프라인 모드",
-        connection_disconnected: "연결 안됨",
-        connection_connected: "연결됨",
-        active_app: "활성 앱",
-        system_metrics: "# 클라이언트 리소스",
+        connection_offline: "오프라인 mode",
+        connection_disconnected: "connection 안됨",
+        connection_connected: "connection됨",
+        active_app: "active 앱",
+        system_metrics: "# client 리소스",
         cpu: "CPU",
         memory: "메모리",
         agent: "에이전트",
         system: "시스템",
         simple_view: "[간단히]",
         detail_view: "[상세]",
-        recent_suggestions: "# 최근 제안",
-        no_suggestions: "제안 없음",
-        update_status: "업데이트",
+        recent_suggestions: "# 최근 suggestion",
+        no_suggestions: "suggestion none",
+        update_status: "update",
         update_pending: "승인 대기",
         update_installing: "설치 중",
-        update_updated: "업데이트 완료",
+        update_updated: "update completed",
         update_deferred: "연기됨",
-        update_error: "오류",
+        update_error: "error",
 
         general: "일반",
-        startup: "시작",
+        startup: "started",
         appearance: "외관",
-        connection: "연결",
+        connection: "connection",
         language: "언어",
 
         system_monitoring: "시스템 모니터링",
         screenshot_capture: "스크린샷 캡처",
-        desktop_notifications: "데스크톱 알림",
-        auto_start: "로그인 시 자동 시작",
+        desktop_notifications: "데스크톱 notification",
+        auto_start: "login 시 자동 started",
         theme: "테마",
         theme_dark: "다크",
         theme_light: "라이트",
-        server_url: "서버 URL",
-        data_path: "데이터 경로",
+        server_url: "server URL",
+        data_path: "데이터 path",
         version: "버전",
     };
 
-    /// 영어 문자열
     pub const EN: Strings = Strings {
         app_title: "ONESHIM",
         app_title_settings: "ONESHIM - Settings",
@@ -195,7 +177,6 @@ impl Strings {
         version: "Version",
     };
 
-    /// 로케일에 따른 문자열 반환
     pub fn for_locale(locale: Locale) -> &'static Strings {
         match locale {
             Locale::Ko => &Self::KO,
@@ -223,7 +204,7 @@ mod tests {
     #[test]
     fn strings_for_locale() {
         let ko = Strings::for_locale(Locale::Ko);
-        assert_eq!(ko.quit, "종료");
+        assert_eq!(ko.quit, "ended");
 
         let en = Strings::for_locale(Locale::En);
         assert_eq!(en.quit, "Quit");

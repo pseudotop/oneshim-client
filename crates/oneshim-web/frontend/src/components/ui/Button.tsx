@@ -1,7 +1,5 @@
 /**
- * 버튼 컴포넌트
  *
- * variant와 size props로 일관된 스타일 적용
  */
 import { forwardRef } from 'react'
 import { cn } from '../../utils/cn'

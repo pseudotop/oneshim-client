@@ -1,5 +1,3 @@
-//! 세션 API 핸들러.
-
 use axum::extract::{Path, State};
 use axum::Json;
 use serde::Serialize;
@@ -7,26 +5,17 @@ use serde::Serialize;
 use crate::error::ApiError;
 use crate::AppState;
 
-/// 세션 응답 DTO
 #[derive(Debug, Serialize)]
 pub struct SessionResponse {
-    /// 세션 ID
     pub session_id: String,
-    /// 시작 시각 (RFC3339)
     pub started_at: String,
-    /// 종료 시각 (RFC3339, null이면 진행 중)
     pub ended_at: Option<String>,
-    /// 총 이벤트 수
     pub total_events: u64,
-    /// 총 프레임 수
     pub total_frames: u64,
-    /// 총 유휴 시간 (초)
     pub total_idle_secs: u64,
-    /// 활동 시간 (초, 시작~종료 - 유휴)
     pub active_duration_secs: Option<u64>,
 }
 
-/// 세션 목록 조회
 ///
 /// GET /api/sessions
 pub async fn list_sessions(
@@ -58,7 +47,6 @@ pub async fn list_sessions(
     Ok(Json(sessions))
 }
 
-/// 세션 상세 조회
 ///
 /// GET /api/sessions/:id
 pub async fn get_session(
@@ -69,9 +57,8 @@ pub async fn get_session(
         .storage
         .get_session(&session_id)
         .await?
-        .ok_or_else(|| ApiError::NotFound(format!("세션 '{session_id}'")))?;
+        .ok_or_else(|| ApiError::NotFound(format!("session '{session_id}'")))?;
 
-    // 활동 시간 계산
     let active_duration_secs = session.ended_at.map(|end| {
         let total_secs = (end - session.started_at).num_seconds() as u64;
         total_secs.saturating_sub(session.total_idle_secs)

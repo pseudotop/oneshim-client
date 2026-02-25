@@ -1,7 +1,12 @@
-// 언어 선택기 컴포넌트
+// Language selector component
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { changeLanguage, getCurrentLanguage, supportedLanguages } from '../i18n'
+import {
+  changeLanguage,
+  getCurrentLanguage,
+  supportedLanguages,
+  type SupportedLanguageCode,
+} from '../i18n'
 
 export default function LanguageSelector() {
   const { t } = useTranslation()
@@ -9,7 +14,7 @@ export default function LanguageSelector() {
   const [currentLang, setCurrentLang] = useState(getCurrentLanguage())
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // 외부 클릭 시 드롭다운 닫기
+  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -21,7 +26,7 @@ export default function LanguageSelector() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleLanguageChange = (lng: 'ko' | 'en') => {
+  const handleLanguageChange = (lng: SupportedLanguageCode) => {
     changeLanguage(lng)
     setCurrentLang(lng)
     setIsOpen(false)
@@ -53,7 +58,7 @@ export default function LanguageSelector() {
           {supportedLanguages.map((lang) => (
             <button
               key={lang.code}
-              onClick={() => handleLanguageChange(lang.code as 'ko' | 'en')}
+              onClick={() => handleLanguageChange(lang.code as SupportedLanguageCode)}
               className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
                 currentLang === lang.code
                   ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400'

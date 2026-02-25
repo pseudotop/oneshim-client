@@ -1,7 +1,5 @@
 /**
- * 리포트 페이지
  *
- * 주간/월간 활동 리포트 및 생산성 지표 표시
  */
 import { useState, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -25,10 +23,8 @@ import { Card, CardTitle, Button, Spinner, Badge, Input, EmptyState } from '../c
 import { formatDuration } from '../utils/formatters'
 import { useTheme } from '../contexts/ThemeContext'
 
-// 차트 색상
 const COLORS = ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899']
 
-// 생산성 점수 색상
 function getScoreColor(score: number): string {
   if (score >= 80) return 'text-green-500'
   if (score >= 60) return 'text-teal-500'
@@ -36,7 +32,6 @@ function getScoreColor(score: number): string {
   return 'text-red-500'
 }
 
-// 추세 아이콘
 function TrendIndicator({ trend }: { trend: number }) {
   if (trend > 5) {
     return <span className="text-green-500">↑ {trend.toFixed(1)}%</span>
@@ -54,7 +49,6 @@ export default function Reports() {
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
 
-  // 차트 툴팁 스타일 (테마 대응)
   const tooltipStyle = {
     backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
     border: theme === 'dark' ? 'none' : '1px solid #e2e8f0',
@@ -94,11 +88,11 @@ export default function Reports() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
+      {/* UI note */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('reports.title')}</h1>
 
-        {/* 기간 선택 */}
+        {/* UI note */}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant={period === 'week' ? 'primary' : 'secondary'}
@@ -176,7 +170,7 @@ interface ReportContentProps {
 function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
   return (
     <>
-      {/* 리포트 제목 및 기간 */}
+      {/* UI note */}
       <Card padding="md">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -186,14 +180,14 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            {/* 생산성 점수 */}
+            {/* UI note */}
             <div className="text-center">
               <p className={`text-4xl font-bold ${getScoreColor(report.productivity.score)}`}>
                 {report.productivity.score.toFixed(0)}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">{t('reports.productivityScore')}</p>
             </div>
-            {/* 추세 */}
+            {/* UI note */}
             <div className="text-center">
               <p className="text-xl font-semibold">
                 <TrendIndicator trend={report.productivity.trend} />
@@ -204,7 +198,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         </div>
       </Card>
 
-      {/* 요약 통계 카드 */}
+      {/* UI note */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card padding="md">
           <p className="text-sm text-slate-500 dark:text-slate-400">{t('reports.activeTime')}</p>
@@ -232,7 +226,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         </Card>
       </div>
 
-      {/* 생산성 지표 */}
+      {/* UI note */}
       <Card padding="md">
         <CardTitle>{t('reports.productivityMetrics')}</CardTitle>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
@@ -263,7 +257,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         </div>
       </Card>
 
-      {/* 일별 활동 차트 */}
+      {/* UI note */}
       <Card padding="md">
         <CardTitle>{t('reports.dailyActivity')}</CardTitle>
         <div className="h-64 mt-4">
@@ -287,7 +281,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         </div>
       </Card>
 
-      {/* 시간대별 활동 차트 */}
+      {/* UI note */}
       <Card padding="md">
         <CardTitle>{t('reports.hourlyActivity')}</CardTitle>
         <div className="h-48 mt-4">
@@ -309,9 +303,9 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         </div>
       </Card>
 
-      {/* 앱 사용량 (테이블 + 파이 차트) */}
+      {/* UI note */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 앱 테이블 */}
+        {/* UI note */}
         <Card padding="md">
           <CardTitle>{t('reports.appUsage')}</CardTitle>
           <div className="mt-4 space-y-2">
@@ -345,7 +339,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
           </div>
         </Card>
 
-        {/* 파이 차트 */}
+        {/* UI note */}
         <Card padding="md">
           <CardTitle>{t('reports.appDistribution')}</CardTitle>
           <div className="h-64 mt-4">
@@ -381,7 +375,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         </Card>
       </div>
 
-      {/* CPU/메모리 일별 추이 */}
+      {/* UI note */}
       <Card padding="md">
         <CardTitle>{t('reports.systemMetrics')}</CardTitle>
         <div className="h-48 mt-4">

@@ -1,7 +1,5 @@
 /**
- * 통계 카드 컴포넌트
  *
- * Dashboard에서 주요 지표 표시에 사용
  */
 import { ReactNode } from 'react'
 import { cn } from '../utils/cn'

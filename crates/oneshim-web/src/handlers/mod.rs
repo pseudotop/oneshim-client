@@ -1,5 +1,3 @@
-//! API 핸들러 모듈.
-
 pub mod automation;
 pub mod backup;
 pub mod data;
@@ -25,43 +23,29 @@ pub mod update;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
-/// 시간 범위 쿼리 파라미터
 #[derive(Debug, Deserialize)]
 pub struct TimeRangeQuery {
-    /// 시작 시각 (RFC3339, 기본: 24시간 전)
     pub from: Option<String>,
-    /// 종료 시각 (RFC3339, 기본: 현재)
     pub to: Option<String>,
-    /// 최대 조회 개수 (기본: 100)
     pub limit: Option<usize>,
-    /// 건너뛸 개수 (기본: 0)
     pub offset: Option<usize>,
 }
 
-/// 페이지네이션 메타데이터
 #[derive(Debug, Serialize)]
 pub struct PaginationMeta {
-    /// 전체 항목 수
     pub total: u64,
-    /// 현재 오프셋
     pub offset: usize,
-    /// 요청한 limit
     pub limit: usize,
-    /// 다음 페이지 존재 여부
     pub has_more: bool,
 }
 
-/// 페이지네이션된 응답 구조
 #[derive(Debug, Serialize)]
 pub struct PaginatedResponse<T: Serialize> {
-    /// 데이터 목록
     pub data: Vec<T>,
-    /// 페이지네이션 메타데이터
     pub pagination: PaginationMeta,
 }
 
 impl TimeRangeQuery {
-    /// 기본값이 적용된 시작 시각
     pub fn from_datetime(&self) -> DateTime<Utc> {
         self.from
             .as_ref()
@@ -70,7 +54,6 @@ impl TimeRangeQuery {
             .unwrap_or_else(|| Utc::now() - Duration::hours(24))
     }
 
-    /// 기본값이 적용된 종료 시각
     pub fn to_datetime(&self) -> DateTime<Utc> {
         self.to
             .as_ref()
@@ -79,12 +62,10 @@ impl TimeRangeQuery {
             .unwrap_or_else(Utc::now)
     }
 
-    /// 기본값이 적용된 제한 개수
     pub fn limit_or_default(&self) -> usize {
         self.limit.unwrap_or(100)
     }
 
-    /// 기본값이 적용된 오프셋
     pub fn offset_or_default(&self) -> usize {
         self.offset.unwrap_or(0)
     }

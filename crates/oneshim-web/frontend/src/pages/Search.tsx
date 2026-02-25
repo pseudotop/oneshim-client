@@ -1,7 +1,5 @@
 /**
- * 검색 페이지
  *
- * 프레임 및 이벤트 통합 검색 + 태그 필터
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -47,13 +45,11 @@ export default function Search() {
   const [page, setPage] = useState(0)
   const pageSize = 20
 
-  // 태그 목록 조회
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: fetchTags,
   })
 
-  // 검색 쿼리 실행 여부
   const hasSearchCriteria = searchQuery.length > 0 || selectedTagIds.length > 0
 
   const { data: response, isLoading, error } = useQuery({
@@ -72,7 +68,6 @@ export default function Search() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = inputValue.trim()
-    // 검색어나 태그 중 하나라도 있으면 검색 실행
     if (trimmed || selectedTagIds.length > 0) {
       setSearchQuery(trimmed)
       const params: Record<string, string> = {}
@@ -102,10 +97,10 @@ export default function Search() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
+      {/* UI note */}
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('search.title')}</h1>
 
-      {/* 검색 폼 */}
+      {/* UI note */}
       <form onSubmit={handleSearch} className="flex gap-2">
         <Input
           type="text"
@@ -119,9 +114,9 @@ export default function Search() {
         </Button>
       </form>
 
-      {/* 필터 영역 */}
+      {/* UI note */}
       <div className="flex flex-wrap items-center gap-4">
-        {/* 검색 타입 필터 */}
+        {/* UI note */}
         <div className="flex space-x-2">
           {(['all', 'frames', 'events'] as SearchType[]).map((type) => (
             <Button
@@ -135,10 +130,10 @@ export default function Search() {
           ))}
         </div>
 
-        {/* 구분선 */}
+        {/* UI note */}
         <div className="w-px h-8 bg-slate-300 dark:bg-slate-700" />
 
-        {/* 태그 필터 */}
+        {/* UI note */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-slate-600 dark:text-slate-400">{t('search.filterByTags')}:</span>
           {allTags.map((tag) => (
@@ -159,7 +154,7 @@ export default function Search() {
         </div>
       </div>
 
-      {/* 선택된 태그 표시 */}
+      {/* UI note */}
       {selectedTagIds.length > 0 && (
         <div className="text-sm text-slate-600 dark:text-slate-400">
           {t('search.selectedTags')}:{' '}
@@ -170,7 +165,7 @@ export default function Search() {
         </div>
       )}
 
-      {/* 검색 결과 */}
+      {/* UI note */}
       {isLoading && (
         <div className="flex items-center justify-center h-32">
           <Spinner size="lg" className="text-teal-500" />
@@ -186,7 +181,7 @@ export default function Search() {
 
       {response && (
         <>
-          {/* 결과 요약 */}
+          {/* UI note */}
           <div className="text-slate-600 dark:text-slate-400">
             {response.query && (
               <>
@@ -197,7 +192,7 @@ export default function Search() {
             <span className="text-teal-600 dark:text-teal-400">{response.total}</span>{t('search.resultCount')}
           </div>
 
-          {/* 결과 목록 */}
+          {/* UI note */}
           {response.results.length > 0 ? (
             <div className="space-y-3">
               {response.results.map((result) => (
@@ -216,7 +211,7 @@ export default function Search() {
             </div>
           )}
 
-          {/* 페이지네이션 */}
+          {/* UI note */}
           {response.total > pageSize && (
             <div className="flex items-center justify-center space-x-4">
               <Button
@@ -243,7 +238,7 @@ export default function Search() {
         </>
       )}
 
-      {/* 검색어/태그 없을 때 */}
+      {/* UI note */}
       {!hasSearchCriteria && (
         <div className="text-center py-12">
           <SearchIcon className="w-16 h-16 mx-auto mb-4 text-slate-400 dark:text-slate-500" />
@@ -270,7 +265,7 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
 
   return (
     <Card padding="md" className="flex gap-4">
-      {/* 썸네일 (프레임인 경우) */}
+      {/* UI note */}
       {isFrame && result.image_url && (
         <div className="w-24 h-16 flex-shrink-0 bg-slate-200 dark:bg-slate-700 rounded overflow-hidden">
           <img
@@ -281,14 +276,14 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
         </div>
       )}
 
-      {/* 아이콘 (이벤트인 경우) */}
+      {/* UI note */}
       {!isFrame && (
         <div className="w-16 h-16 flex-shrink-0 bg-slate-200 dark:bg-slate-700 rounded flex items-center justify-center">
           <FileText className="w-8 h-8 text-slate-500 dark:text-slate-400" />
         </div>
       )}
 
-      {/* 콘텐츠 */}
+      {/* UI note */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <Badge color={isFrame ? 'info' : 'primary'} size="sm">
@@ -314,7 +309,7 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
           </div>
         )}
 
-        {/* 태그 표시 */}
+        {/* UI note */}
         {result.tags && result.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-2">
             {result.tags.map((tag) => (

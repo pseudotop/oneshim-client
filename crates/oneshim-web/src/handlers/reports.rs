@@ -1,6 +1,4 @@
-//! 리포트 API 핸들러.
 //!
-//! 주간/월간 활동 리포트 생성 기능 제공.
 
 use axum::extract::{Query, State};
 use axum::Json;
@@ -11,7 +9,6 @@ use std::collections::HashMap;
 use crate::error::ApiError;
 use crate::AppState;
 
-/// 리포트 기간 타입
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ReportPeriod {
@@ -21,168 +18,121 @@ pub enum ReportPeriod {
     Custom,
 }
 
-/// 리포트 쿼리 파라미터
 #[derive(Debug, Deserialize)]
 pub struct ReportQuery {
-    /// 리포트 기간 (week, month, custom)
     #[serde(default)]
     pub period: ReportPeriod,
-    /// 시작 날짜 (YYYY-MM-DD, custom 기간용)
     pub from: Option<String>,
-    /// 종료 날짜 (YYYY-MM-DD, custom 기간용)
     pub to: Option<String>,
 }
 
-/// 일별 통계
 #[derive(Debug, Serialize, Clone)]
 pub struct DailyStat {
-    /// 날짜 (YYYY-MM-DD)
     pub date: String,
-    /// 활동 시간 (초)
     pub active_secs: u64,
-    /// 유휴 시간 (초)
     pub idle_secs: u64,
-    /// 캡처 수
     pub captures: u64,
-    /// 이벤트 수
     pub events: u64,
-    /// 평균 CPU (%)
     pub cpu_avg: f64,
-    /// 평균 메모리 (%)
     pub memory_avg: f64,
 }
 
-/// 앱별 사용 통계
 #[derive(Debug, Serialize, Clone)]
 pub struct AppStat {
-    /// 앱 이름
     pub name: String,
-    /// 총 사용 시간 (초)
     pub duration_secs: u64,
-    /// 이벤트 수
     pub events: u64,
-    /// 캡처 수
     pub captures: u64,
-    /// 비율 (%)
     pub percentage: f64,
 }
 
-/// 시간대별 활동 통계
 #[derive(Debug, Serialize, Clone)]
 pub struct HourlyActivity {
-    /// 시간 (0-23)
     pub hour: u8,
-    /// 활동량
     pub activity: u64,
 }
 
-/// 생산성 지표
 #[derive(Debug, Serialize, Clone)]
 pub struct ProductivityMetrics {
-    /// 생산성 점수 (0-100)
     pub score: f64,
-    /// 활동/전체 비율 (%)
     pub active_ratio: f64,
-    /// 가장 생산적인 시간대 (시작 시간)
     pub peak_hour: u8,
-    /// 가장 많이 사용한 앱
     pub top_app: String,
-    /// 전주 대비 변화 (%)
     pub trend: f64,
 }
 
-/// 리포트 응답
 #[derive(Debug, Serialize)]
 pub struct ReportResponse {
-    /// 리포트 제목
     pub title: String,
-    /// 시작 날짜
     pub from_date: String,
-    /// 종료 날짜
     pub to_date: String,
-    /// 기간 (일수)
     pub days: u32,
-    /// 총 활동 시간 (초)
     pub total_active_secs: u64,
-    /// 총 유휴 시간 (초)
     pub total_idle_secs: u64,
-    /// 총 캡처 수
     pub total_captures: u64,
-    /// 총 이벤트 수
     pub total_events: u64,
-    /// 평균 CPU (%)
     pub avg_cpu: f64,
-    /// 평균 메모리 (%)
     pub avg_memory: f64,
-    /// 일별 통계
     pub daily_stats: Vec<DailyStat>,
-    /// 앱별 사용 통계 (상위 10개)
     pub app_stats: Vec<AppStat>,
-    /// 시간대별 활동
     pub hourly_activity: Vec<HourlyActivity>,
-    /// 생산성 지표
     pub productivity: ProductivityMetrics,
 }
 
-/// GET /api/reports - 활동 리포트 생성
 pub async fn generate_report(
     State(state): State<AppState>,
     Query(params): Query<ReportQuery>,
 ) -> Result<Json<ReportResponse>, ApiError> {
     let now = Utc::now();
 
-    // 날짜 범위 계산
     let (from, to, title) = match params.period {
         ReportPeriod::Week => {
             let to = now;
             let from = to - Duration::days(7);
-            (from, to, "주간 활동 리포트".to_string())
+            (from, to, "주간 Activity Report".to_string())
         }
         ReportPeriod::Month => {
             let to = now;
             let from = to - Duration::days(30);
-            (from, to, "월간 활동 리포트".to_string())
+            (from, to, "월간 Activity Report".to_string())
         }
         ReportPeriod::Custom => {
             let from_str = params
                 .from
-                .ok_or_else(|| ApiError::BadRequest("from 날짜가 필요합니다".to_string()))?;
+                .ok_or_else(|| ApiError::BadRequest("from date is required".to_string()))?;
             let to_str = params
                 .to
-                .ok_or_else(|| ApiError::BadRequest("to 날짜가 필요합니다".to_string()))?;
+                .ok_or_else(|| ApiError::BadRequest("to date is required".to_string()))?;
 
             let from_date = NaiveDate::parse_from_str(&from_str, "%Y-%m-%d")
-                .map_err(|_| ApiError::BadRequest(format!("잘못된 시작 날짜: {from_str}")))?;
+                .map_err(|_| ApiError::BadRequest(format!("Invalid from date: {from_str}")))?;
             let to_date = NaiveDate::parse_from_str(&to_str, "%Y-%m-%d")
-                .map_err(|_| ApiError::BadRequest(format!("잘못된 종료 날짜: {to_str}")))?;
+                .map_err(|_| ApiError::BadRequest(format!("Invalid to date: {to_str}")))?;
 
             let from = from_date
                 .and_hms_opt(0, 0, 0)
-                .ok_or_else(|| ApiError::Internal("시간 변환 실패: 00:00:00".to_string()))?
+                .ok_or_else(|| ApiError::Internal("Time conversion failed: 00:00:00".to_string()))?
                 .and_utc();
             let to = to_date
                 .and_hms_opt(23, 59, 59)
-                .ok_or_else(|| ApiError::Internal("시간 변환 실패: 23:59:59".to_string()))?
+                .ok_or_else(|| ApiError::Internal("Time conversion failed: 23:59:59".to_string()))?
                 .and_utc();
 
-            (from, to, format!("활동 리포트 ({from_str} ~ {to_str})"))
+            (from, to, format!("Activity Report ({from_str} ~ {to_str})"))
         }
     };
 
     let days = ((to - from).num_days() as u32).max(1);
 
-    // 데이터 조회
     let metrics = state.storage.get_metrics(from, to, 100000).await?;
     let events = state.storage.get_events(from, to, 100000).await?;
     let frames = state.storage.get_frames(from, to, 100000)?;
     let idle_periods = state.storage.get_idle_periods(from, to).await?;
 
-    // 총계 계산
     let total_captures = frames.len() as u64;
     let total_events = events.len() as u64;
     let total_idle_secs: u64 = idle_periods.iter().filter_map(|p| p.duration_secs).sum();
 
-    // CPU/메모리 평균
     let (cpu_sum, mem_sum, met_count) = metrics.iter().fold((0.0f64, 0.0f64, 0u64), |acc, m| {
         let mem_pct = if m.memory_total > 0 {
             (m.memory_used as f64 / m.memory_total as f64) * 100.0
@@ -202,7 +152,6 @@ pub async fn generate_report(
         0.0
     };
 
-    // 일별 통계 집계
     let mut daily_map: HashMap<String, DailyStat> = HashMap::new();
     let mut current = from;
     while current < to {
@@ -222,7 +171,6 @@ pub async fn generate_report(
         current += Duration::days(1);
     }
 
-    // 이벤트별 일별 집계
     for event in &events {
         let ts = match event {
             oneshim_core::models::event::Event::User(e) => e.timestamp,
@@ -238,7 +186,6 @@ pub async fn generate_report(
         }
     }
 
-    // work_sessions 기반 일별 실제 활동시간 적용 (Fallback: events * 5)
     {
         let from_rfc = from.to_rfc3339();
         let to_rfc = to.to_rfc3339();
@@ -249,7 +196,6 @@ pub async fn generate_report(
                 }
             }
         }
-        // Fallback: work_sessions 데이터가 없는 날은 events * 5
         for stat in daily_map.values_mut() {
             if stat.active_secs == 0 && stat.events > 0 {
                 stat.active_secs = stat.events * 5;
@@ -257,7 +203,6 @@ pub async fn generate_report(
         }
     }
 
-    // 프레임별 일별 집계
     for frame in &frames {
         if let Ok(ts) = DateTime::parse_from_rfc3339(&frame.timestamp) {
             let date_str = ts.format("%Y-%m-%d").to_string();
@@ -267,7 +212,6 @@ pub async fn generate_report(
         }
     }
 
-    // 유휴 기간 일별 집계
     for idle in &idle_periods {
         let date_str = idle.start_time.format("%Y-%m-%d").to_string();
         if let Some(stat) = daily_map.get_mut(&date_str) {
@@ -275,7 +219,6 @@ pub async fn generate_report(
         }
     }
 
-    // 메트릭 일별 집계
     let mut daily_metrics: HashMap<String, (f64, f64, u64)> = HashMap::new();
     for m in &metrics {
         let date_str = m.timestamp.format("%Y-%m-%d").to_string();
@@ -302,7 +245,6 @@ pub async fn generate_report(
     let mut daily_stats: Vec<DailyStat> = daily_map.into_values().collect();
     daily_stats.sort_by(|a, b| a.date.cmp(&b.date));
 
-    // 앱별 사용 통계
     let mut app_map: HashMap<String, (u64, u64)> = HashMap::new(); // (events, captures)
 
     for event in &events {
@@ -321,7 +263,6 @@ pub async fn generate_report(
         entry.1 += 1;
     }
 
-    // work_sessions 기반 앱별 실제 사용시간 (Fallback: event_count * 5)
     let session_app_durations: HashMap<String, i64> = {
         let from_rfc = from.to_rfc3339();
         let to_rfc = to.to_rfc3339();
@@ -343,7 +284,7 @@ pub async fn generate_report(
                 duration_secs,
                 events,
                 captures,
-                percentage: 0.0, // 아래에서 재계산
+                percentage: 0.0, // recalculated below
             }
         })
         .collect();
@@ -359,7 +300,6 @@ pub async fn generate_report(
     app_stats.sort_by(|a, b| b.duration_secs.cmp(&a.duration_secs));
     app_stats.truncate(10);
 
-    // 시간대별 활동
     let mut hourly: [u64; 24] = [0; 24];
     for event in &events {
         let ts = match event {
@@ -389,7 +329,6 @@ pub async fn generate_report(
         })
         .collect();
 
-    // 생산성 지표 계산 — work_sessions 기반 총 활동 시간 (Fallback: events * 5)
     let total_active_secs: u64 = {
         let sum: u64 = daily_stats.iter().map(|s| s.active_secs).sum();
         if sum > 0 {
@@ -417,7 +356,6 @@ pub async fn generate_report(
         .map(|a| a.name.clone())
         .unwrap_or_default();
 
-    // 전주 대비 변화 (간단히 일별 이벤트 추세로 계산)
     let trend = if daily_stats.len() >= 2 {
         let first_half: u64 = daily_stats
             .iter()
@@ -438,7 +376,6 @@ pub async fn generate_report(
         0.0
     };
 
-    // 생산성 점수 (활동 비율 기반 + 규칙적인 활동 보너스)
     let regularity_bonus =
         if daily_stats.iter().filter(|s| s.events > 0).count() >= (days as usize * 7 / 10) {
             10.0
@@ -491,7 +428,7 @@ mod tests {
     #[test]
     fn report_response_serializes() {
         let response = ReportResponse {
-            title: "주간 리포트".to_string(),
+            title: "Weekly Report".to_string(),
             from_date: "2024-01-23".to_string(),
             to_date: "2024-01-30".to_string(),
             days: 7,
@@ -513,7 +450,7 @@ mod tests {
             },
         };
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("주간 리포트"));
+        assert!(json.contains("Weekly Report"));
         assert!(json.contains("productivity"));
     }
 

@@ -1,14 +1,6 @@
-//! oneshim-storage 성능 벤치마크
 //!
-//! 실행: cargo bench -p oneshim-storage
 //!
-//! 벤치마크 대상:
-//! - 이벤트 배치 저장
-//! - 프레임 메타데이터 저장
-//! - Focus 메트릭 조회/업데이트
-//! - 태그 CRUD 연산
 
-// 벤치마크 코드에서 criterion 패턴 관련 clippy 경고 허용
 #![allow(clippy::redundant_closure, clippy::unit_arg)]
 
 use std::hint::black_box;
@@ -20,7 +12,6 @@ use oneshim_storage::sqlite::SqliteStorage;
 use tempfile::TempDir;
 use uuid::Uuid;
 
-/// 테스트용 UserEvent 생성
 fn create_test_user_event(i: usize) -> Event {
     Event::User(UserEvent {
         event_id: Uuid::new_v4(),
@@ -31,7 +22,6 @@ fn create_test_user_event(i: usize) -> Event {
     })
 }
 
-/// 테스트용 ContextEvent 생성
 fn create_test_context_event(i: usize) -> Event {
     Event::Context(ContextEvent {
         app_name: format!("App{}", i % 5),
@@ -41,15 +31,13 @@ fn create_test_context_event(i: usize) -> Event {
     })
 }
 
-/// 임시 SQLite 스토리지 생성
 fn create_temp_storage() -> (SqliteStorage, TempDir) {
-    let temp_dir = TempDir::new().expect("임시 디렉토리 생성 실패");
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let db_path = temp_dir.path().join("test.db");
-    let storage = SqliteStorage::open(&db_path, 30).expect("스토리지 생성 실패");
+    let storage = SqliteStorage::open(&db_path, 30).expect("Failed to create storage");
     (storage, temp_dir)
 }
 
-/// 이벤트 배치 저장 벤치마크
 fn bench_event_batch_save(c: &mut Criterion) {
     let mut group = c.benchmark_group("event_batch_save");
 
@@ -92,7 +80,6 @@ fn bench_event_batch_save(c: &mut Criterion) {
     group.finish();
 }
 
-/// 프레임 메타데이터 저장 벤치마크
 fn bench_frame_metadata_save(c: &mut Criterion) {
     let mut group = c.benchmark_group("frame_metadata_save");
 
@@ -141,11 +128,9 @@ fn bench_frame_metadata_save(c: &mut Criterion) {
     group.finish();
 }
 
-/// Focus 메트릭 조회/업데이트 벤치마크
 fn bench_focus_metrics(c: &mut Criterion) {
     let mut group = c.benchmark_group("focus_metrics");
 
-    // get_or_create 벤치마크
     group.bench_function("get_or_create", |b| {
         b.iter_with_setup(
             || create_temp_storage(),
@@ -155,7 +140,6 @@ fn bench_focus_metrics(c: &mut Criterion) {
         );
     });
 
-    // increment 벤치마크 (연속 업데이트)
     group.bench_function("increment_100x", |b| {
         b.iter_with_setup(
             || {
@@ -182,12 +166,10 @@ fn bench_focus_metrics(c: &mut Criterion) {
         );
     });
 
-    // 최근 메트릭 조회 벤치마크
     group.bench_function("get_recent_7days", |b| {
         b.iter_with_setup(
             || {
                 let (storage, temp) = create_temp_storage();
-                // 7일치 데이터 생성
                 for i in 0..7 {
                     let date = (chrono::Utc::now() - chrono::Duration::days(i))
                         .format("%Y-%m-%d")
@@ -205,11 +187,9 @@ fn bench_focus_metrics(c: &mut Criterion) {
     group.finish();
 }
 
-/// 태그 CRUD 벤치마크
 fn bench_tags(c: &mut Criterion) {
     let mut group = c.benchmark_group("tags");
 
-    // 태그 생성
     group.bench_function("create_10", |b| {
         b.iter_with_setup(
             || create_temp_storage(),
@@ -221,7 +201,6 @@ fn bench_tags(c: &mut Criterion) {
         );
     });
 
-    // 모든 태그 조회
     group.bench_function("get_all_50tags", |b| {
         b.iter_with_setup(
             || {
@@ -237,12 +216,10 @@ fn bench_tags(c: &mut Criterion) {
         );
     });
 
-    // 프레임에 태그 추가
     group.bench_function("add_tag_to_frame", |b| {
         b.iter_with_setup(
             || {
                 let (storage, temp) = create_temp_storage();
-                // 프레임 생성
                 let metadata = FrameMetadata {
                     timestamp: chrono::Utc::now(),
                     trigger_type: "AppSwitch".to_string(),
@@ -254,12 +231,10 @@ fn bench_tags(c: &mut Criterion) {
                 let frame_id = storage
                     .save_frame_metadata(&metadata, Some("frames/test.webp"), None)
                     .unwrap();
-                // 태그 생성
                 let tag = storage.create_tag("TestTag", "#FF5733").unwrap();
                 (storage, temp, frame_id, tag.id)
             },
             |(storage, _temp, frame_id, tag_id): (SqliteStorage, TempDir, i64, i64)| {
-                // 태그 제거 후 다시 추가 (중복 방지)
                 let _ = storage.remove_tag_from_frame(frame_id, tag_id);
                 black_box(storage.add_tag_to_frame(frame_id, tag_id).unwrap());
             },

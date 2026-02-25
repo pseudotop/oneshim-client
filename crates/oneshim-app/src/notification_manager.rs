@@ -1,6 +1,4 @@
-//! 알림 관리자.
 //!
-//! 설정에 따라 조건부로 데스크톱 알림을 발송한다.
 
 use chrono::{DateTime, Utc};
 use oneshim_core::config::NotificationConfig;
@@ -9,22 +7,15 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
-/// 알림 상태 (중복 방지용)
 #[derive(Debug, Default)]
 struct NotificationState {
-    /// 마지막 유휴 알림 시간
     last_idle_notification: Option<DateTime<Utc>>,
-    /// 마지막 장시간 작업 알림 시간
     last_long_session_notification: Option<DateTime<Utc>>,
-    /// 마지막 고사용량 알림 시간
     last_high_usage_notification: Option<DateTime<Utc>>,
-    /// 현재 세션 시작 시간
     session_start: Option<DateTime<Utc>>,
-    /// 마지막 활동 시간
     last_activity: Option<DateTime<Utc>>,
 }
 
-/// 알림 관리자
 pub struct NotificationManager {
     config: RwLock<NotificationConfig>,
     notifier: Arc<dyn DesktopNotifier>,
@@ -33,7 +24,6 @@ pub struct NotificationManager {
 
 #[allow(dead_code)]
 impl NotificationManager {
-    /// 새 알림 관리자 생성
     pub fn new(config: NotificationConfig, notifier: Arc<dyn DesktopNotifier>) -> Self {
         Self {
             config: RwLock::new(config),
@@ -46,23 +36,18 @@ impl NotificationManager {
         }
     }
 
-    /// 설정 업데이트
     pub async fn update_config(&self, config: NotificationConfig) {
         let mut current = self.config.write().await;
         *current = config;
-        info!("알림 설정 업데이트됨");
+        info!("notification settings updated");
     }
 
-    /// 활동 기록 (유휴 상태 해제)
     pub async fn record_activity(&self) {
         let mut state = self.state.write().await;
         state.last_activity = Some(Utc::now());
     }
 
-    /// 유휴 상태 확인 및 알림
     ///
-    /// 유휴 시간이 임계값을 초과하면 알림 발송.
-    /// 알림 쿨다운: 10분
     pub async fn check_idle(&self, idle_secs: u64) {
         let config = self.config.read().await;
 
@@ -75,7 +60,6 @@ impl NotificationManager {
             return;
         }
 
-        // 쿨다운 확인 (10분)
         let mut state = self.state.write().await;
         let now = Utc::now();
         if let Some(last) = state.last_idle_notification {
@@ -85,21 +69,18 @@ impl NotificationManager {
         }
 
         let mins = idle_secs / 60;
-        let title = "💤 유휴 상태 알림";
-        let body = format!("{}분 동안 활동이 없습니다. 휴식 중이신가요?", mins);
+        let title = "💤 idle state notification";
+        let body = format!("No activity for {} minutes. Are you taking a break?", mins);
 
         if let Err(e) = self.notifier.show_notification(title, &body).await {
-            debug!("유휴 알림 실패: {e}");
+            debug!("idle notification failure: {e}");
         } else {
             state.last_idle_notification = Some(now);
-            info!("유휴 알림 발송: {}분", mins);
+            info!("idle notification sent: {}min", mins);
         }
     }
 
-    /// 장시간 작업 확인 및 알림
     ///
-    /// 연속 작업 시간이 임계값을 초과하면 휴식 권고 알림.
-    /// 알림 쿨다운: 30분
     pub async fn check_long_session(&self) {
         let config = self.config.read().await;
 
@@ -110,7 +91,6 @@ impl NotificationManager {
         let mut state = self.state.write().await;
         let now = Utc::now();
 
-        // 세션 시작 시간이 없으면 현재로 설정
         let session_start = state.session_start.get_or_insert(now);
         let session_mins = (now - *session_start).num_minutes() as u64;
 
@@ -118,7 +98,6 @@ impl NotificationManager {
             return;
         }
 
-        // 쿨다운 확인 (30분)
         if let Some(last) = state.last_long_session_notification {
             if (now - last).num_seconds() < 1800 {
                 return;
@@ -127,28 +106,28 @@ impl NotificationManager {
 
         let hours = session_mins / 60;
         let mins = session_mins % 60;
-        let title = "⏰ 휴식 시간 알림";
+        let title = "⏰ 휴식 시간 notification";
         let body = if hours > 0 {
             format!(
-                "{}시간 {}분 동안 작업 중입니다. 잠시 휴식을 취해보세요!",
+                "{}시간 Working for {} minutes. Consider taking a short break!",
                 hours, mins
             )
         } else {
-            format!("{}분 동안 작업 중입니다. 잠시 휴식을 취해보세요!", mins)
+            format!(
+                "Working for {} minutes. Consider taking a short break!",
+                mins
+            )
         };
 
         if let Err(e) = self.notifier.show_notification(title, &body).await {
-            debug!("장시간 작업 알림 실패: {e}");
+            debug!("hour notification failure: {e}");
         } else {
             state.last_long_session_notification = Some(now);
-            info!("장시간 작업 알림 발송: {}분", session_mins);
+            info!("hour notification sent: {}min", session_mins);
         }
     }
 
-    /// 고사용량 확인 및 알림
     ///
-    /// CPU 또는 메모리 사용률이 임계값을 초과하면 알림.
-    /// 알림 쿨다운: 5분
     pub async fn check_high_usage(&self, cpu_percent: f32, memory_percent: f32) {
         let config = self.config.read().await;
 
@@ -161,7 +140,6 @@ impl NotificationManager {
             return;
         }
 
-        // 쿨다운 확인 (5분)
         let mut state = self.state.write().await;
         let now = Utc::now();
         if let Some(last) = state.last_high_usage_notification {
@@ -177,31 +155,29 @@ impl NotificationManager {
                 cpu_percent, memory_percent
             )
         } else if cpu_percent >= threshold {
-            format!("CPU 사용률이 {:.1}%입니다.", cpu_percent)
+            format!("CPU usage is {:.1}%.", cpu_percent)
         } else {
-            format!("메모리 사용률이 {:.1}%입니다.", memory_percent)
+            format!("Memory usage is {:.1}%.", memory_percent)
         };
 
         if let Err(e) = self.notifier.show_notification(title, &body).await {
-            debug!("고사용량 알림 실패: {e}");
+            debug!("notification failure: {e}");
         } else {
             state.last_high_usage_notification = Some(now);
             info!(
-                "고사용량 알림 발송: CPU {:.1}%, Memory {:.1}%",
+                "고사용량 notification 발송: CPU {:.1}%, Memory {:.1}%",
                 cpu_percent, memory_percent
             );
         }
     }
 
-    /// 세션 리셋 (유휴 복귀 시)
     pub async fn reset_session(&self) {
         let mut state = self.state.write().await;
         state.session_start = Some(Utc::now());
         state.last_activity = Some(Utc::now());
-        debug!("세션 리셋됨");
+        debug!("session reset");
     }
 
-    /// 일반 알림 발송
     pub async fn notify(&self, title: &str, body: &str) {
         let config = self.config.read().await;
         if !config.enabled {
@@ -209,7 +185,7 @@ impl NotificationManager {
         }
 
         if let Err(e) = self.notifier.show_notification(title, body).await {
-            debug!("알림 발송 실패: {e}");
+            debug!("notification sent failure: {e}");
         }
     }
 }
@@ -221,7 +197,6 @@ mod tests {
     use oneshim_core::models::suggestion::Suggestion;
     use std::sync::atomic::{AtomicU32, Ordering};
 
-    /// 테스트용 목 알림기
     struct MockNotifier {
         call_count: AtomicU32,
     }
@@ -268,21 +243,18 @@ mod tests {
         let config = NotificationConfig {
             enabled: true,
             idle_notification: true,
-            idle_notification_mins: 1, // 1분
+            idle_notification_mins: 1, // 1 min
             ..Default::default()
         };
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        // 60초 미만 - 알림 없음
         manager.check_idle(30).await;
         assert_eq!(notifier.calls(), 0);
 
-        // 60초 이상 - 알림 발송
         manager.check_idle(60).await;
         assert_eq!(notifier.calls(), 1);
 
-        // 쿨다운 중 - 알림 없음
         manager.check_idle(120).await;
         assert_eq!(notifier.calls(), 1);
     }
@@ -313,16 +285,12 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        // 임계값 미만 - 알림 없음
         manager.check_high_usage(50.0, 60.0).await;
         assert_eq!(notifier.calls(), 0);
 
-        // CPU 임계값 초과 - 알림 발송
         manager.check_high_usage(85.0, 60.0).await;
         assert_eq!(notifier.calls(), 1);
     }
-
-    // --- 추가 테스트 ---
 
     #[tokio::test]
     async fn memory_high_usage_triggers() {
@@ -335,7 +303,6 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        // 메모리만 임계값 초과 - 알림 발송
         manager.check_high_usage(50.0, 90.0).await;
         assert_eq!(notifier.calls(), 1);
     }
@@ -351,7 +318,6 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        // CPU와 메모리 모두 임계값 초과 - 알림 1회만
         manager.check_high_usage(85.0, 90.0).await;
         assert_eq!(notifier.calls(), 1);
     }
@@ -360,7 +326,7 @@ mod tests {
     async fn long_session_disabled_no_trigger() {
         let config = NotificationConfig {
             enabled: true,
-            long_session_notification: false, // 비활성
+            long_session_notification: false, // disabled
             ..Default::default()
         };
         let notifier = Arc::new(MockNotifier::new());
@@ -379,7 +345,7 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        manager.notify("테스트", "알림 본문").await;
+        manager.notify("test", "notification body").await;
         assert_eq!(notifier.calls(), 0);
     }
 
@@ -392,7 +358,7 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        manager.notify("테스트", "알림 본문").await;
+        manager.notify("test", "notification body").await;
         assert_eq!(notifier.calls(), 1);
     }
 
@@ -405,10 +371,8 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        // 세션 리셋
         manager.reset_session().await;
-        // 리셋 후에도 정상 동작 확인
-        manager.notify("테스트", "리셋 후").await;
+        manager.notify("test", "after reset").await;
         assert_eq!(notifier.calls(), 1);
     }
 
@@ -423,11 +387,9 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        // 비활성 → 알림 없음
         manager.check_idle(120).await;
         assert_eq!(notifier.calls(), 0);
 
-        // 설정 업데이트: 활성화
         manager
             .update_config(NotificationConfig {
                 enabled: true,
@@ -437,7 +399,6 @@ mod tests {
             })
             .await;
 
-        // 활성 → 알림 발송
         manager.check_idle(120).await;
         assert_eq!(notifier.calls(), 1);
     }

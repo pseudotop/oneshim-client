@@ -1,6 +1,4 @@
-//! 적응적 압축 어댑터.
 //!
-//! `Compressor` 포트 구현. gzip, zstd, lz4 알고리즘 지원.
 
 use flate2::read::{GzDecoder, GzEncoder};
 use flate2::Compression;
@@ -8,20 +6,14 @@ use oneshim_core::error::CoreError;
 use oneshim_core::ports::compressor::{CompressionAlgorithm, Compressor};
 use std::io::Read;
 
-/// 적응적 압축기 — `Compressor` 포트 구현
 pub struct AdaptiveCompressor;
 
 impl AdaptiveCompressor {
-    /// 새 적응적 압축기 생성
     pub fn new() -> Self {
         Self
     }
 
-    /// 데이터 크기에 따라 최적 알고리즘 자동 선택
     ///
-    /// - < 1KB: LZ4 (가장 빠름)
-    /// - 1KB ~ 100KB: Zstd (균형)
-    /// - > 100KB: Gzip (최고 압축)
     pub fn select_algorithm(data_size: usize) -> CompressionAlgorithm {
         if data_size < 1024 {
             CompressionAlgorithm::Lz4
@@ -32,7 +24,6 @@ impl AdaptiveCompressor {
         }
     }
 
-    /// 자동 알고리즘 선택 후 압축
     pub fn compress_auto(&self, data: &[u8]) -> Result<(Vec<u8>, CompressionAlgorithm), CoreError> {
         let algo = Self::select_algorithm(data.len());
         let compressed = self.compress(data, algo)?;
@@ -54,11 +45,11 @@ impl Compressor for AdaptiveCompressor {
                 let mut compressed = Vec::new();
                 encoder
                     .read_to_end(&mut compressed)
-                    .map_err(|e| CoreError::Internal(format!("gzip 압축 실패: {e}")))?;
+                    .map_err(|e| CoreError::Internal(format!("Gzip compression failed: {e}")))?;
                 Ok(compressed)
             }
             CompressionAlgorithm::Zstd => zstd::encode_all(data, 3)
-                .map_err(|e| CoreError::Internal(format!("zstd 압축 실패: {e}"))),
+                .map_err(|e| CoreError::Internal(format!("Zstd compression failed: {e}"))),
             CompressionAlgorithm::Lz4 => Ok(lz4_flex::compress_prepend_size(data)),
         }
     }
@@ -74,13 +65,13 @@ impl Compressor for AdaptiveCompressor {
                 let mut decompressed = Vec::new();
                 decoder
                     .read_to_end(&mut decompressed)
-                    .map_err(|e| CoreError::Internal(format!("gzip 해제 실패: {e}")))?;
+                    .map_err(|e| CoreError::Internal(format!("Gzip decompression failed: {e}")))?;
                 Ok(decompressed)
             }
             CompressionAlgorithm::Zstd => zstd::decode_all(data)
-                .map_err(|e| CoreError::Internal(format!("zstd 해제 실패: {e}"))),
+                .map_err(|e| CoreError::Internal(format!("Zstd decompression failed: {e}"))),
             CompressionAlgorithm::Lz4 => lz4_flex::decompress_size_prepended(data)
-                .map_err(|e| CoreError::Internal(format!("lz4 해제 실패: {e}"))),
+                .map_err(|e| CoreError::Internal(format!("Lz4 decompression failed: {e}"))),
         }
     }
 }
@@ -130,17 +121,14 @@ mod tests {
 
     #[test]
     fn algorithm_auto_selection() {
-        // 작은 데이터 → LZ4
         assert_eq!(
             AdaptiveCompressor::select_algorithm(500),
             CompressionAlgorithm::Lz4
         );
-        // 중간 데이터 → Zstd
         assert_eq!(
             AdaptiveCompressor::select_algorithm(50_000),
             CompressionAlgorithm::Zstd
         );
-        // 큰 데이터 → Gzip
         assert_eq!(
             AdaptiveCompressor::select_algorithm(200_000),
             CompressionAlgorithm::Gzip
@@ -150,7 +138,7 @@ mod tests {
     #[test]
     fn compress_auto() {
         let compressor = AdaptiveCompressor::new();
-        let data = vec![0u8; 50_000]; // 중간 크기 → Zstd
+        let data = vec![0u8; 50_000]; // medium size -> Zstd
         let (compressed, algo) = compressor.compress_auto(&data).unwrap();
         assert_eq!(algo, CompressionAlgorithm::Zstd);
         let decompressed = compressor.decompress(&compressed, algo).unwrap();
@@ -179,7 +167,6 @@ mod tests {
         let compressed = compressor
             .compress(data, CompressionAlgorithm::Gzip)
             .unwrap();
-        // gzip 데이터를 zstd로 해제 시도 → 에러
         let result = compressor.decompress(&compressed, CompressionAlgorithm::Zstd);
         assert!(result.is_err());
     }
@@ -191,7 +178,6 @@ mod tests {
         let compressed = compressor
             .compress(data, CompressionAlgorithm::Lz4)
             .unwrap();
-        // lz4 데이터를 gzip으로 해제 시도 → 에러
         let result = compressor.decompress(&compressed, CompressionAlgorithm::Gzip);
         assert!(result.is_err());
     }
@@ -215,12 +201,10 @@ mod tests {
     #[test]
     fn corrupted_data_lz4() {
         let compressor = AdaptiveCompressor::new();
-        // 유효한 데이터를 압축한 후 바이트를 뒤집어 손상시킴
         let data = b"valid test data for lz4 corruption test";
         let mut compressed = compressor
             .compress(data, CompressionAlgorithm::Lz4)
             .unwrap();
-        // 압축 데이터 부분(크기 헤더 이후)을 손상
         for byte in compressed.iter_mut().skip(4) {
             *byte ^= 0xFF;
         }

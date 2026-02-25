@@ -24,7 +24,6 @@ import {
 
 type PresetTab = 'Productivity' | 'AppManagement' | 'Workflow' | 'Custom'
 
-/** 프리셋 실행 결과 (UI 표시용) */
 interface RunFeedback {
   presetId: string
   result: PresetRunResult
@@ -91,7 +90,6 @@ function Automation() {
 
   const handleRunPreset = async (id: string) => {
     setRunningPreset(id)
-    // 이전 피드백 제거
     setRunFeedbacks((prev) => prev.filter((f) => f.presetId !== id))
     try {
       const result = await runPresetMutation.mutateAsync(id)
@@ -99,7 +97,6 @@ function Automation() {
         ...prev.filter((f) => f.presetId !== id),
         { presetId: id, result, timestamp: Date.now() },
       ])
-      // 5초 후 피드백 자동 제거
       setTimeout(() => {
         setRunFeedbacks((prev) => prev.filter((f) => f.presetId !== id))
       }, 8000)
@@ -159,7 +156,7 @@ function Automation() {
         {t('automation.title')}
       </h1>
 
-      {/* 상태 카드 */}
+      {/* UI note */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent>
@@ -199,7 +196,7 @@ function Automation() {
         </Card>
       </div>
 
-      {/* 워크플로우 프리셋 */}
+      {/* UI note */}
       <Card>
         <CardHeader>
           <CardTitle>{t('automation.presets')}</CardTitle>
@@ -248,7 +245,7 @@ function Automation() {
                     </div>
                   </div>
 
-                  {/* 단계 수 + 확장 토글 */}
+                  {/* UI note */}
                   <button
                     onClick={() => setExpandedPreset(isExpanded ? null : preset.id)}
                     className="mt-2 flex items-center text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
@@ -261,7 +258,7 @@ function Automation() {
                     )}
                   </button>
 
-                  {/* 단계 상세 (확장 시) */}
+                  {/* UI note */}
                   {isExpanded && preset.steps.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {preset.steps.map((step, idx) => (
@@ -283,7 +280,7 @@ function Automation() {
                     </div>
                   )}
 
-                  {/* 실행 결과 피드백 */}
+                  {/* UI note */}
                   {feedback && (
                     <div className={`mt-3 p-2 rounded-md text-xs ${
                       feedback.result.success
@@ -346,7 +343,7 @@ function Automation() {
         </CardContent>
       </Card>
 
-      {/* 실행 통계 */}
+      {/* UI note */}
       <Card>
         <CardHeader>
           <CardTitle>{t('automation.statsTitle')}</CardTitle>
@@ -405,7 +402,7 @@ function Automation() {
         </CardContent>
       </Card>
 
-      {/* 감사 로그 */}
+      {/* UI note */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -462,7 +459,7 @@ function Automation() {
         </CardContent>
       </Card>
 
-      {/* 정책 정보 */}
+      {/* UI note */}
       <Card>
         <CardHeader>
           <CardTitle>{t('automation.policies')}</CardTitle>

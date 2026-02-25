@@ -1,6 +1,4 @@
-//! 사용자 활동 모니터링.
 //!
-//! `ActivityMonitor` 포트 구현. 컨텍스트 수집 오케스트레이터.
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -10,15 +8,12 @@ use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
 use std::sync::Arc;
 use tracing::debug;
 
-/// 활동 추적기 — `ActivityMonitor` 포트 구현
 ///
-/// SystemMonitor + ProcessMonitor를 조합하여 전체 사용자 컨텍스트를 수집.
 pub struct ActivityTracker {
     process_monitor: Arc<dyn ProcessMonitor>,
 }
 
 impl ActivityTracker {
-    /// 새 활동 추적기 생성
     pub fn new(process_monitor: Arc<dyn ProcessMonitor>) -> Self {
         Self { process_monitor }
     }
@@ -38,11 +33,11 @@ impl ActivityMonitor for ActivityTracker {
         };
 
         debug!(
-            "컨텍스트 수집: 앱={}, 프로세스={}개",
+            "context collect: 앱={}, 프로세스={}개",
             context
                 .active_window
                 .as_ref()
-                .map_or("없음", |w| &w.app_name),
+                .map_or("none", |w| &w.app_name),
             context.processes.len()
         );
 
@@ -50,7 +45,6 @@ impl ActivityMonitor for ActivityTracker {
     }
 }
 
-/// 마우스 위치 가져오기 (플랫폼별)
 ///
 /// - macOS: Core Graphics API
 /// - Windows: Win32 GetCursorPos

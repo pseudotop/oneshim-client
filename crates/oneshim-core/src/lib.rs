@@ -1,15 +1,7 @@
 //! # oneshim-core
 //!
-//! ONESHIM 도메인 모델, 포트(trait) 정의, 에러 타입.
-//! 모든 크레이트가 공유하는 핵심 타입과 인터페이스를 제공한다.
 //!
-//! ## 구조
 //!
-//! - [`models`] — 도메인 데이터 구조체 (serde Serialize/Deserialize)
-//! - [`ports`] — Hexagonal Architecture 포트 인터페이스 (async_trait)
-//! - [`error`] — 핵심 에러 타입 (thiserror)
-//! - [`config`] — 애플리케이션 설정 구조체
-//! - [`config_manager`] — 설정 파일 관리 (로드/저장)
 
 pub mod config;
 pub mod config_manager;
@@ -27,7 +19,7 @@ mod tests {
         let suggestion = Suggestion {
             suggestion_id: "sug_001".to_string(),
             suggestion_type: SuggestionType::WorkGuidance,
-            content: "커밋하세요".to_string(),
+            content: "Commit your changes.".to_string(),
             priority: Priority::High,
             confidence_score: 0.95,
             relevance_score: 0.88,

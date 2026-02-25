@@ -5016,6 +5016,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "oneshim-lint"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "oneshim-monitor"
 version = "0.0.1"
 dependencies = [

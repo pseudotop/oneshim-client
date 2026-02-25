@@ -1,5 +1,3 @@
-//! 유휴 기간 API 핸들러.
-
 use axum::extract::{Query, State};
 use axum::Json;
 use serde::Serialize;
@@ -9,18 +7,13 @@ use crate::AppState;
 
 use super::TimeRangeQuery;
 
-/// 유휴 기간 응답 DTO
 #[derive(Debug, Serialize)]
 pub struct IdlePeriodResponse {
-    /// 시작 시각 (RFC3339)
     pub start_time: String,
-    /// 종료 시각 (RFC3339, null이면 진행 중)
     pub end_time: Option<String>,
-    /// 지속 시간 (초, null이면 진행 중)
     pub duration_secs: Option<u64>,
 }
 
-/// 유휴 기간 조회
 ///
 /// GET /api/idle?from=&to=
 pub async fn get_idle_periods(

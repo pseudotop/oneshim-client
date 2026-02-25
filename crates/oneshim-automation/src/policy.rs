@@ -1,7 +1,4 @@
-//! 정책 클라이언트.
 //!
-//! 서버에서 실행 정책을 동기화하고, 자동화 명령의 정책 토큰을 검증한다.
-//! 허가된 프로세스만 실행하며, 바이너리 해시 검증도 지원.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -17,64 +14,39 @@ use oneshim_core::error::CoreError;
 const POLICY_TOKEN_SIGNING_SECRET_ENV: &str = "ONESHIM_POLICY_TOKEN_SIGNING_SECRET";
 const COMMAND_HASH_SEGMENT_PREFIX: char = 'h';
 
-// ============================================================
-// 정책 모델
-// ============================================================
-
-/// 감사 로그 레벨
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AuditLevel {
-    /// 감사 안 함
     None,
-    /// 실행 여부만 기록
     #[default]
     Basic,
-    /// 인자, 결과 포함
     Detailed,
-    /// 전체 (stdout/stderr 포함)
     Full,
 }
 
-/// 실행 정책 — 서버에서 발급
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionPolicy {
-    /// 정책 ID
     pub policy_id: String,
-    /// 허가된 프로세스 이름
     pub process_name: String,
-    /// 바이너리 해시 (선택 — 변조 감지)
     pub process_hash: Option<String>,
-    /// 허용된 인자 패턴
     pub allowed_args: Vec<String>,
-    /// sudo 필요 여부
     pub requires_sudo: bool,
-    /// 최대 실행 시간 (밀리초)
     pub max_execution_time_ms: u64,
-    /// 감사 로그 레벨
     #[serde(default)]
     pub audit_level: AuditLevel,
-    /// 샌드박스 프로필 오버라이드 (서버 지정, 없으면 자동 결정)
     #[serde(default)]
     pub sandbox_profile: Option<SandboxProfile>,
-    /// 추가 허용 읽기 경로 (서버 지정)
     #[serde(default)]
     pub allowed_paths: Vec<String>,
-    /// 네트워크 접근 명시 (없으면 프로필 기반 자동 결정)
     #[serde(default)]
     pub allow_network: Option<bool>,
-    /// 정책 토큰 서명 검증 강제 여부
     #[serde(default)]
     pub require_signed_token: bool,
 }
 
-/// 정책 캐시
 #[derive(Debug, Clone)]
 pub struct PolicyCache {
-    /// 정책 목록
     pub policies: Vec<ExecutionPolicy>,
-    /// 마지막 동기화 시각
     pub last_updated: DateTime<Utc>,
-    /// 캐시 TTL (초)
     pub ttl_seconds: u64,
 }
 
@@ -83,38 +55,27 @@ impl Default for PolicyCache {
         Self {
             policies: Vec::new(),
             last_updated: Utc::now(),
-            ttl_seconds: 300, // 5분
+            ttl_seconds: 300, // 5 min
         }
     }
 }
 
-/// 프로세스 실행 결과
 #[derive(Debug, Clone)]
 pub struct ProcessOutput {
-    /// 프로세스 종료 코드
     pub exit_code: i32,
-    /// 표준 출력
     pub stdout: String,
-    /// 표준 에러
     pub stderr: String,
 }
 
-// ============================================================
 // PolicyClient
-// ============================================================
 
-/// 정책 클라이언트 — 서버 정책 동기화 + 명령 검증 + 프로세스 실행
 pub struct PolicyClient {
-    /// 정책 캐시
     policy_cache: RwLock<PolicyCache>,
-    /// 허가된 프로세스 이름 목록 (빠른 조회)
     allowed_processes: RwLock<HashSet<String>>,
-    /// 재사용 방지용 검증 완료 토큰 캐시 (policy_token -> validated_at)
     validated_tokens: RwLock<HashMap<String, DateTime<Utc>>>,
 }
 
 impl PolicyClient {
-    /// 새 정책 클라이언트 생성
     pub fn new() -> Self {
         Self {
             policy_cache: RwLock::new(PolicyCache::default()),
@@ -123,7 +84,6 @@ impl PolicyClient {
         }
     }
 
-    /// 정책 목록 설정 (서버 동기화 후 호출)
     pub async fn update_policies(&self, policies: Vec<ExecutionPolicy>) {
         let mut cache = self.policy_cache.write().await;
         let mut allowed = self.allowed_processes.write().await;
@@ -139,7 +99,6 @@ impl PolicyClient {
         validated.clear();
     }
 
-    /// 캐시 만료 확인
     pub async fn is_cache_valid(&self) -> bool {
         let cache = self.policy_cache.read().await;
         let elapsed = Utc::now()
@@ -148,7 +107,6 @@ impl PolicyClient {
         elapsed < cache.ttl_seconds
     }
 
-    /// 자동화 명령의 정책 토큰 검증
     pub async fn validate_command(&self, cmd: &AutomationCommand) -> Result<bool, CoreError> {
         let now = Utc::now();
         let token = cmd.policy_token.trim();
@@ -157,11 +115,11 @@ impl PolicyClient {
         }
 
         let Some(parsed_token) = parse_policy_token(token) else {
-            tracing::warn!(policy_token = token, "정책 토큰 형식 오류");
+            tracing::warn!(policy_token = token, "policy token error");
             return Ok(false);
         };
         if !is_valid_nonce(parsed_token.nonce) {
-            tracing::warn!(policy_token = token, "정책 토큰 nonce 형식 오류");
+            tracing::warn!(policy_token = token, "policy token nonce error");
             return Ok(false);
         }
 
@@ -176,15 +134,14 @@ impl PolicyClient {
         };
 
         if ttl_seconds == 0 {
-            tracing::warn!("정책 캐시 만료 — 서버 동기화 필요");
+            tracing::warn!("policy cache expired: server refresh required");
             return Ok(false);
         }
 
-        // 토큰의 policy_id가 현재 캐시에 존재해야 유효
         let Some(policy) = self.get_policy_for_token(token).await else {
             tracing::warn!(
                 policy_id = parsed_token.policy_id,
-                "정책 토큰에 매칭되는 정책이 없음"
+                "no matching policy found for policy token"
             );
             return Ok(false);
         };
@@ -193,7 +150,7 @@ impl PolicyClient {
             let Some(signature) = parsed_token.signature else {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
-                    "서명 정책인데 정책 토큰 서명이 누락됨"
+                    "policy requires signature but policy token has no signature"
                 );
                 return Ok(false);
             };
@@ -201,7 +158,7 @@ impl PolicyClient {
             if !is_valid_signature(signature) {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
-                    "정책 토큰 서명 형식 오류"
+                    "invalid policy token signature format"
                 );
                 return Ok(false);
             }
@@ -214,7 +171,7 @@ impl PolicyClient {
             ) {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
-                    "정책 토큰 서명 검증 실패"
+                    "policy token signature validation failed"
                 );
                 return Ok(false);
             }
@@ -225,19 +182,18 @@ impl PolicyClient {
             if !token_command_hash.eq_ignore_ascii_case(&expected_hash) {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
-                    "정책 토큰 command hash 불일치"
+                    "policy token command hash mismatch"
                 );
                 return Ok(false);
             }
         }
 
-        // nonce 재사용 방지 (캐시 TTL 범위 내에서 토큰 1회성 보장)
         let mut validated = self.validated_tokens.write().await;
         validated.retain(|_, validated_at| {
             now.signed_duration_since(*validated_at).num_seconds() < ttl_seconds as i64
         });
         if validated.contains_key(token) {
-            tracing::warn!(policy_token = token, "정책 토큰 재사용 감지");
+            tracing::warn!(policy_token = token, "policy token detection");
             return Ok(false);
         }
         validated.insert(token.to_string(), now);
@@ -245,9 +201,7 @@ impl PolicyClient {
         Ok(true)
     }
 
-    /// 정책 ID로 실행용 정책 토큰 발급.
     ///
-    /// 토큰 형식:
     /// - unsigned: `{policy_id}:{nonce}`
     /// - signed: `{policy_id}:{nonce}:{sha256(policy_id:nonce:secret)}`
     pub async fn issue_command_token(&self, policy_id: &str) -> Result<String, CoreError> {
@@ -259,15 +213,13 @@ impl PolicyClient {
                 .find(|p| p.policy_id == policy_id)
                 .cloned()
         }
-        .ok_or_else(|| CoreError::PolicyDenied(format!("알 수 없는 정책 ID: {policy_id}")))?;
+        .ok_or_else(|| CoreError::PolicyDenied(format!("Unknown policy ID: {policy_id}")))?;
 
         let nonce = issue_policy_nonce();
         issue_command_token_for_policy(&policy, &nonce, None)
     }
 
-    /// 정책 ID + 명령 컨텍스트 기반 실행용 정책 토큰 발급.
     ///
-    /// 토큰에 command hash를 포함해 다른 명령으로의 재사용을 방지한다.
     pub async fn issue_command_token_for_command(
         &self,
         policy_id: &str,
@@ -281,14 +233,13 @@ impl PolicyClient {
                 .find(|p| p.policy_id == policy_id)
                 .cloned()
         }
-        .ok_or_else(|| CoreError::PolicyDenied(format!("알 수 없는 정책 ID: {policy_id}")))?;
+        .ok_or_else(|| CoreError::PolicyDenied(format!("Unknown policy ID: {policy_id}")))?;
 
         let nonce = issue_policy_nonce();
         let command_hash = compute_command_scope_hash(cmd)?;
         issue_command_token_for_policy(&policy, &nonce, Some(command_hash.as_str()))
     }
 
-    /// 특정 프로세스의 정책 조회
     pub async fn get_policy_for_process(&self, process_name: &str) -> Option<ExecutionPolicy> {
         let cache = self.policy_cache.read().await;
         cache
@@ -298,16 +249,13 @@ impl PolicyClient {
             .cloned()
     }
 
-    /// 프로세스가 허가되었는지 확인
     pub async fn is_process_allowed(&self, process_name: &str) -> bool {
         let allowed = self.allowed_processes.read().await;
         allowed.contains(process_name)
     }
 
-    /// 정책 토큰으로 정책 조회
     pub async fn get_policy_for_token(&self, policy_token: &str) -> Option<ExecutionPolicy> {
         let cache = self.policy_cache.read().await;
-        // 토큰 형식: "{policy_id}:{nonce}[:signature]" — 정책 ID로 매칭
         let policy_id = parse_policy_token(policy_token)
             .map(|token| token.policy_id)
             .unwrap_or(policy_token);
@@ -318,17 +266,14 @@ impl PolicyClient {
             .cloned()
     }
 
-    /// 인자 패턴 검증
     pub fn validate_args(policy: &ExecutionPolicy, args: &[String]) -> bool {
         if policy.allowed_args.is_empty() {
-            return true; // 제한 없음
+            return true; // unrestricted
         }
 
-        // 모든 인자가 허용 패턴에 매칭되어야 함
         args.iter().all(|arg| {
             policy.allowed_args.iter().any(|pattern| {
                 if pattern.contains('*') {
-                    // 간단한 glob 매칭
                     let parts: Vec<&str> = pattern.split('*').collect();
                     if parts.len() == 2 {
                         arg.starts_with(parts[0]) && arg.ends_with(parts[1])
@@ -414,12 +359,12 @@ fn issue_command_token_for_policy(
 ) -> Result<String, CoreError> {
     if !is_valid_nonce(nonce) {
         return Err(CoreError::InvalidArguments(
-            "정책 토큰 nonce 형식이 유효하지 않습니다".to_string(),
+            "policy token nonce 형식이 유효하지 않습니다".to_string(),
         ));
     }
     if command_hash.is_some_and(|hash| !is_valid_hash(hash)) {
         return Err(CoreError::InvalidArguments(
-            "정책 토큰 command hash 형식이 유효하지 않습니다".to_string(),
+            "policy token command hash 형식이 유효하지 않습니다".to_string(),
         ));
     }
 
@@ -433,7 +378,7 @@ fn issue_command_token_for_policy(
     if policy.require_signed_token {
         let secret = load_signing_secret().ok_or_else(|| {
             CoreError::Config(format!(
-                "서명 정책이 활성화되어 있지만 {} 환경 변수가 비어 있습니다.",
+                "서명 policy이 active화되어 있지만 {} 환경 변수가 비어 있습니다.",
                 POLICY_TOKEN_SIGNING_SECRET_ENV
             ))
         })?;
@@ -477,8 +422,11 @@ fn compute_command_scope_hash(cmd: &AutomationCommand) -> Result<String, CoreErr
         action: &cmd.action,
         timeout_ms: cmd.timeout_ms,
     };
-    let serialized = serde_json::to_vec(&scope)
-        .map_err(|e| CoreError::Internal(format!("정책 토큰 command scope 직렬화 실패: {e}")))?;
+    let serialized = serde_json::to_vec(&scope).map_err(|e| {
+        CoreError::Internal(format!(
+            "Failed to serialize policy token command scope: {e}"
+        ))
+    })?;
     let digest = Sha256::digest(serialized);
     Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
@@ -492,7 +440,7 @@ fn verify_policy_token_signature(
     let Some(secret) = load_signing_secret() else {
         tracing::warn!(
             env = POLICY_TOKEN_SIGNING_SECRET_ENV,
-            "서명 정책 활성화됐지만 토큰 서명 시크릿이 설정되지 않음"
+            "서명 policy active화됐지만 token 서명 시크릿이 설정되지 않음"
         );
         return false;
     };
@@ -642,7 +590,6 @@ mod tests {
         }];
         client.update_policies(policies).await;
 
-        // 토큰 형식 "policy_id:nonce"에서 policy_id 추출
         let found = client.get_policy_for_token("pol-42:abc123").await;
         assert!(found.is_some());
         assert_eq!(found.unwrap().process_name, "git");
@@ -779,8 +726,8 @@ mod tests {
         let token = client
             .issue_command_token("pol-1")
             .await
-            .expect("토큰 발급 실패");
-        let parsed = parse_policy_token(&token).expect("발급 토큰 파싱 실패");
+            .expect("Failed to issue token");
+        let parsed = parse_policy_token(&token).expect("Failed to parse issued token");
         assert_eq!(parsed.policy_id, "pol-1");
         assert!(parsed.command_hash.is_none());
         assert!(parsed.signature.is_none());
@@ -816,11 +763,11 @@ mod tests {
         let token = client
             .issue_command_token("pol-1")
             .await
-            .expect("토큰 발급 실패");
+            .expect("Failed to issue token");
 
-        let parsed = parse_policy_token(&token).expect("발급 토큰 파싱 실패");
+        let parsed = parse_policy_token(&token).expect("Failed to parse issued token");
         assert!(parsed.command_hash.is_none());
-        let signature = parsed.signature.expect("서명 누락");
+        let signature = parsed.signature.expect("Missing signature");
         assert!(is_valid_signature(signature));
         assert!(verify_policy_token_signature(
             parsed.policy_id,
@@ -847,7 +794,7 @@ mod tests {
         let token = client
             .issue_command_token_for_command("pol-1", &cmd)
             .await
-            .expect("토큰 발급 실패");
+            .expect("Failed to issue token");
         cmd.policy_token = token;
         assert!(client.validate_command(&cmd).await.unwrap());
     }
@@ -863,7 +810,7 @@ mod tests {
         let token = client
             .issue_command_token_for_command("pol-1", &source_cmd)
             .await
-            .expect("토큰 발급 실패");
+            .expect("Failed to issue token");
 
         let mut different_cmd = make_command(&token);
         different_cmd.command_id = "cmd-other".to_string();

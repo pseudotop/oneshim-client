@@ -1,6 +1,4 @@
-//! 자연어 의도 플래너.
 //!
-//! LLM 제공자를 통해 자연어 힌트를 `AutomationIntent`로 변환한다.
 
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
@@ -9,13 +7,11 @@ use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::llm_provider::{InterpretedAction, LlmProvider, ScreenContext};
 use std::sync::Arc;
 
-/// 자연어 힌트 → 실행 가능한 Intent 변환 인터페이스.
 #[async_trait]
 pub trait IntentPlanner: Send + Sync {
     async fn plan(&self, intent_hint: &str) -> Result<AutomationIntent, CoreError>;
 }
 
-/// LLM 제공자를 활용한 Intent 플래너.
 pub struct LlmIntentPlanner {
     llm_provider: Arc<dyn LlmProvider>,
     element_finder: Arc<dyn ElementFinder>,
@@ -189,7 +185,7 @@ mod tests {
             _region: Option<&ElementBounds>,
         ) -> Result<Vec<UiElement>, CoreError> {
             Ok(vec![UiElement {
-                text: "저장".to_string(),
+                text: "save".to_string(),
                 bounds: ElementBounds {
                     x: 0,
                     y: 0,
@@ -235,7 +231,7 @@ mod tests {
         let planner = LlmIntentPlanner::new(
             Arc::new(StubLlmProvider {
                 action: InterpretedAction {
-                    target_text: Some("저장".to_string()),
+                    target_text: Some("save".to_string()),
                     target_role: Some("button".to_string()),
                     action_type: "click".to_string(),
                     confidence: 0.95,
@@ -244,7 +240,7 @@ mod tests {
             Arc::new(StubElementFinder),
         );
 
-        let intent = planner.plan("저장 버튼 클릭").await.unwrap();
+        let intent = planner.plan("save 버튼 클릭").await.unwrap();
         assert!(matches!(intent, AutomationIntent::ClickElement { .. }));
     }
 
@@ -262,12 +258,12 @@ mod tests {
             Arc::new(StubElementFinder),
         );
 
-        let intent = planner.plan("Ctrl+Shift+S 실행").await.unwrap();
+        let intent = planner.plan("Ctrl+Shift+S execution").await.unwrap();
         match intent {
             AutomationIntent::ExecuteHotkey { keys } => {
                 assert_eq!(keys, vec!["Ctrl", "Shift", "S"]);
             }
-            other => panic!("예상치 못한 Intent: {other:?}"),
+            other => panic!("Unexpected intent: {other:?}"),
         }
     }
 
@@ -277,6 +273,6 @@ mod tests {
             extract_quoted_text("입력창에 \"hello world\" 입력"),
             Some("hello world".to_string())
         );
-        assert_eq!(extract_quoted_text("인용부호 없음"), None);
+        assert_eq!(extract_quoted_text("no quoted text"), None);
     }
 }

@@ -42,7 +42,7 @@ export default function MetricsChart({ data }: MetricsChartProps) {
     hour: formatHour(m.hour),
     cpu: m.cpu_avg,
     cpuMax: m.cpu_max,
-    memory: m.memory_avg / (1024 * 1024 * 1024), // GB로 변환
+    memory: m.memory_avg / (1024 * 1024 * 1024), // GB
     memoryMax: m.memory_max / (1024 * 1024 * 1024),
   }))
 

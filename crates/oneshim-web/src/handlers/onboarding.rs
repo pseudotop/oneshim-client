@@ -1,5 +1,3 @@
-//! 온보딩/첫 가치 달성 가이드 핸들러.
-
 use axum::{extract::State, Json};
 use chrono::Utc;
 use serde::Serialize;
@@ -11,7 +9,6 @@ use crate::AppState;
 
 const ONBOARDING_QUICKSTART_SCHEMA_VERSION: &str = "onboarding.quickstart.v1";
 
-/// 5분 온보딩 체크리스트 단계
 #[derive(Debug, Serialize)]
 pub struct QuickstartStepDto {
     pub order: u8,
@@ -20,7 +17,6 @@ pub struct QuickstartStepDto {
     pub expected_outcome: String,
 }
 
-/// 온보딩 응답
 #[derive(Debug, Serialize)]
 pub struct OnboardingQuickstartDto {
     pub schema_version: String,
@@ -57,7 +53,6 @@ fn dashboard_url_from_state(state: &AppState) -> String {
     "http://127.0.0.1:9090".to_string()
 }
 
-/// GET /api/onboarding/quickstart — 첫 5분 온보딩 가이드
 pub async fn get_quickstart(State(state): State<AppState>) -> Json<OnboardingQuickstartDto> {
     let checklist = vec![
         QuickstartStepDto {

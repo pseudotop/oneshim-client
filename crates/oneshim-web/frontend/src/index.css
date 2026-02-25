@@ -19,7 +19,7 @@ body {
   color: var(--text-primary);
 }
 
-/* 스크롤바 스타일 */
+/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

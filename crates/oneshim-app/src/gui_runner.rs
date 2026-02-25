@@ -1,7 +1,4 @@
-//! GUI 런너 모듈.
 //!
-//! iced 애플리케이션 실행 및 백그라운드 Agent 통합.
-//! 단일 프로세스: GUI (main thread) + Agent (tokio task)
 
 use anyhow::Result;
 use directories::ProjectDirs;
@@ -43,13 +40,10 @@ use crate::notification_manager::NotificationManager;
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
 use crate::update_coordinator;
 
-/// 한글 지원 폰트 (Pretendard - 오픈소스 한글 폰트)
 const KOREAN_FONT: &[u8] = include_bytes!("../../oneshim-ui/assets/fonts/Pretendard-Regular.otf");
 
-/// 한글 폰트 정의
 const KOREAN_FONT_NAME: Font = Font::with_name("Pretendard");
 
-/// 데이터베이스 경로 결정 (플랫폼별 기본 경로)
 fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
     data_dir
         .map(|d| PathBuf::from(d).join("oneshim.db"))
@@ -59,7 +53,6 @@ fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("./oneshim.db"))
 }
 
-/// 세션 ID 생성
 fn generate_session_id() -> String {
     use std::hash::{Hash, Hasher};
     let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
@@ -76,7 +69,7 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
 
     if !should_autoinstall_bridge_files() {
         info!(
-            "ProviderSubscriptionCli 모드 감지: CLI 브리지 자동 설치 비활성화 (ONESHIM_CLI_BRIDGE_AUTOINSTALL=1로 활성화)"
+            "ProviderSubscriptionCli mode detection: CLI 브리지 자동 설치 비active화 (ONESHIM_CLI_BRIDGE_AUTOINSTALL=1로 active화)"
         );
         return;
     }
@@ -93,25 +86,21 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
         written_files = report.written_files.len(),
         unchanged_files = report.unchanged_files.len(),
         errors = report.errors.len(),
-        "CLI 구독 브리지 파일 동기화 완료"
+        "CLI subscribe 브리지 file 동기화 completed"
     );
 
     if !report.is_successful() {
         for err in report.errors {
-            warn!(error = %err, "CLI 구독 브리지 파일 동기화 실패");
+            warn!(error = %err, "CLI subscribe file failure");
         }
     }
 }
 
-/// GUI + Agent 실행
 ///
-/// 단일 프로세스에서 GUI와 Agent를 함께 실행합니다.
 /// - Main thread: iced GUI
-/// - Tokio task: Agent (모니터링, 스크린샷, 저장)
 pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
-    info!("GUI + Agent 모드 시작");
+    info!("GUI + Agent mode started");
 
-    // 1. 데이터베이스 경로 및 디렉토리 설정
     let db_path = resolve_db_path(data_dir);
     let data_dir_path = db_path
         .parent()
@@ -119,42 +108,38 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         .unwrap_or_else(|| PathBuf::from("."));
 
     std::fs::create_dir_all(&data_dir_path)?;
-    info!("데이터 저장 경로: {}", data_dir_path.display());
+    info!("data save path: {}", data_dir_path.display());
 
-    // 2. 시스템 트레이 초기화 (메인 스레드 필수 - macOS)
     let tray_rx = match TrayManager::new() {
         Ok((manager, rx)) => {
             Box::leak(Box::new(manager));
-            info!("시스템 트레이 초기화 완료");
+            info!("system tray initialize completed");
             Some(rx)
         }
         Err(e) => {
-            warn!("시스템 트레이 초기화 실패: {e}");
+            warn!("system tray initialize failure: {e}");
             None
         }
     };
 
-    // 3. tokio 런타임 panic hook
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         let panic_msg = info.to_string();
         if panic_msg.contains("Cannot drop a runtime")
             || panic_msg.contains("cannot drop a runtime")
         {
-            info!("tokio 런타임 panic 무시 (트레이 모드)");
+            info!("tokio panic (tray mode)");
             return;
         }
         default_hook(info);
     }));
 
-    // 4. 설정 관리자 초기화 (파일에서 로드 또는 기본값 생성)
     let config_manager = ConfigManager::new().unwrap_or_else(|e| {
-        warn!("설정 관리자 초기화 실패, 기본 설정 사용: {e}");
-        // 기본 경로로 재시도
+        warn!("settings initialize failure, default settings: {e}");
         let fallback_path = data_dir_path.join("config.json");
-        ConfigManager::with_path(fallback_path).expect("설정 관리자 생성 실패")
+        ConfigManager::with_path(fallback_path).expect("Failed to create config manager")
     });
-    info!("설정 파일: {:?}", config_manager.config_path());
+    info!("settings file: {:?}", config_manager.config_path());
 
     let config = config_manager.get();
     maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
@@ -171,9 +156,8 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         &db_path,
         config.storage.retention_days,
     )?);
-    info!("SQLite 저장소 초기화: {}", db_path.display());
+    info!("SQLite save initialize: {}", db_path.display());
 
-    // 5. tokio 런타임 생성 (Agent 백그라운드 실행용)
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -195,10 +179,8 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         });
     }
 
-    // 6. 실시간 이벤트 브로드캐스트 채널 생성 (웹 대시보드용)
     let (event_tx, _event_rx) = broadcast::channel::<RealtimeEvent>(256);
 
-    // 7. Agent 백그라운드 태스크 시작
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let agent_storage: Arc<dyn StorageService> = sqlite_storage.clone();
     let agent_scheduler_storage: Arc<dyn SchedulerStorage> = sqlite_storage.clone();
@@ -224,13 +206,12 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         )
         .await
         {
-            error!("Agent 오류: {e}");
+            error!("Agent error: {e}");
         }
     });
 
-    info!("Agent 백그라운드 태스크 시작");
+    info!("Agent started");
 
-    // 8. 자동화 컨트롤러 + 웹 대시보드 서버 시작
     if config.web.enabled {
         let web_storage = sqlite_storage.clone();
         let web_config = config.web.clone();
@@ -252,13 +233,12 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
             Err(err) => {
                 warn!(
                     error = %err,
-                    "자동화 전용 프레임 저장소 초기화 실패: NoOp 요소 탐색기로 폴백"
+                    "자동화 전용 frame save소 initialize failure: NoOp 요소 탐색기로 폴백"
                 );
                 None
             }
         };
 
-        // 자동화 컨트롤러 (config.automation.enabled일 때만)
         let automation_controller = if config.automation.enabled {
             let runtime = build_automation_runtime(
                 &config.ai_provider,
@@ -273,7 +253,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                         ocr_source = runtime.ocr_source.as_str(),
                         llm_provider = runtime.llm_provider_name,
                         llm_source = runtime.llm_source.as_str(),
-                        "AI 제공자 어댑터 해석 완료"
+                        "AI 제공자 어댑터 해석 completed"
                     );
 
                     let policy_client = Arc::new(PolicyClient::new());
@@ -295,7 +275,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                         warn!(
                             error = %err,
                             fallback_enabled = true,
-                            "AI 제공자 어댑터 해석 실패; NoOp 자동화 실행기로 폴백"
+                            "AI 제공자 어댑터 해석 failure; NoOp 자동화 execution기로 폴백"
                         );
 
                         let policy_client = Arc::new(PolicyClient::new());
@@ -313,7 +293,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                         error!(
                             error = %err,
                             fallback_enabled = false,
-                            "AI 제공자 어댑터 해석 실패; fallback_to_local=false 이므로 자동화 컨트롤러를 비활성화합니다"
+                            "AI 제공자 어댑터 해석 failure; fallback_to_local=false 이므로 자동화 컨트롤러를 비active화합니다"
                         );
                         None
                     }
@@ -334,13 +314,12 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                 web_server = web_server.with_automation_controller(ctrl);
             }
             if let Err(e) = web_server.run(web_shutdown_rx).await {
-                error!("웹 서버 오류: {e}");
+                error!("server error: {e}");
             }
         });
-        info!("웹 대시보드: http://localhost:{}", web_port);
+        info!(": http://localhost:{}", web_port);
     }
 
-    // 7. OneshimApp 생성 (Storage 참조 전달)
     let (ui_update_tx, ui_update_rx) = std::sync::mpsc::channel::<UpdateUserAction>();
     let update_bridge_tx = update_action_tx.clone();
     std::thread::spawn(move || {
@@ -390,7 +369,6 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         app = app.with_tray_receiver(rx);
     }
 
-    // 8. iced 애플리케이션 실행
     let result = iced::application(OneshimApp::title, OneshimApp::update, OneshimApp::view)
         .theme(OneshimApp::theme)
         .subscription(OneshimApp::subscription)
@@ -410,19 +388,16 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         })
         .run_with(move || (app, Task::none()));
 
-    // 9. 종료 시 Agent 정리
-    info!("GUI 종료, Agent 정리 중...");
+    info!("GUI ended, Agent in progress...");
     let _ = shutdown_tx.send(true);
 
-    // Agent 종료 대기 (최대 3초)
     runtime.block_on(async {
         tokio::time::sleep(Duration::from_secs(1)).await;
     });
 
-    result.map_err(|e| anyhow::anyhow!("GUI 실행 오류: {e}"))
+    result.map_err(|e| anyhow::anyhow!("GUI execution error: {e}"))
 }
 
-/// Agent 백그라운드 실행
 #[allow(clippy::too_many_arguments)]
 async fn run_agent(
     storage: Arc<dyn StorageService>,
@@ -434,7 +409,7 @@ async fn run_agent(
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
     event_tx: Option<broadcast::Sender<RealtimeEvent>>,
 ) -> Result<()> {
-    info!("Agent 초기화 시작");
+    info!("Agent initialize started");
 
     // Frame storage
     let frame_storage = FrameFileStorage::new(
@@ -460,7 +435,6 @@ async fn run_agent(
         ocr_tessdata,
     ));
 
-    // Network (오프라인 모드에서도 생성하지만 사용 안 함)
     let token_manager = Arc::new(TokenManager::new(&config.server.base_url));
     let api_client = Arc::new(HttpApiClient::new(
         &config.server.base_url,
@@ -475,7 +449,6 @@ async fn run_agent(
         3,   // max_retries
     ));
 
-    // 알림 관리자
     let notifier: Arc<dyn oneshim_core::ports::notifier::DesktopNotifier> =
         Arc::new(DesktopNotifierImpl::new());
     let notification_manager = Arc::new(NotificationManager::new(
@@ -520,19 +493,16 @@ async fn run_agent(
     .with_notification_manager(notification_manager)
     .with_focus_analyzer(focus_analyzer);
 
-    // 실시간 이벤트 브로드캐스트 채널 연결
     if let Some(tx) = event_tx {
         scheduler = scheduler.with_event_tx(tx);
     }
 
-    info!("Agent 스케줄러 시작 (offline={})", offline_mode);
+    info!("Agent started (offline={})", offline_mode);
     scheduler.run(shutdown_rx).await;
 
-    info!("Agent 종료");
+    info!("Agent ended");
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    // GUI 테스트는 headless 환경에서 실행 불가
-}
+mod tests {}

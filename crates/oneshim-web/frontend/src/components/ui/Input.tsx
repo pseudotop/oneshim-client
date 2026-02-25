@@ -1,7 +1,5 @@
 /**
- * 입력 컴포넌트
  *
- * variant와 size props로 스타일 적용, error 상태 지원
  */
 import { forwardRef } from 'react'
 import { cn } from '../../utils/cn'

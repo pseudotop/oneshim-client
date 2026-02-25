@@ -1,6 +1,4 @@
-//! SSE(Server-Sent Events) 스트림 클라이언트.
 //!
-//! `SseClient` 포트 구현. 자동 재연결 + exponential backoff.
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
@@ -15,7 +13,6 @@ use tracing::{debug, info, warn};
 
 use crate::auth::TokenManager;
 
-/// SSE 스트림 클라이언트 — `SseClient` 포트 구현
 pub struct SseStreamClient {
     base_url: String,
     token_manager: Arc<TokenManager>,
@@ -24,7 +21,6 @@ pub struct SseStreamClient {
 }
 
 impl SseStreamClient {
-    /// 새 SSE 클라이언트 생성
     pub fn new(base_url: &str, token_manager: Arc<TokenManager>, max_retry_secs: u64) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -34,7 +30,6 @@ impl SseStreamClient {
         }
     }
 
-    /// SSE 이벤트 데이터를 SseEvent로 파싱
     fn parse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         match event_type {
             "connection" => {
@@ -63,18 +58,16 @@ impl SseStreamClient {
                 Some(SseEvent::Error(msg))
             }
             "close" => Some(SseEvent::Close),
-            // 기본 이벤트 타입 "message" 처리
             "message" => {
-                // 일반 메시지는 JSON으로 파싱 시도
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
                     Some(SseEvent::Update(val))
                 } else {
-                    debug!("일반 메시지 수신: {data}");
+                    debug!("message received: {data}");
                     None
                 }
             }
             _ => {
-                debug!("알 수 없는 SSE 이벤트 타입: {event_type}");
+                debug!("unknown SSE event: {event_type}");
                 None
             }
         }
@@ -90,14 +83,13 @@ impl SseClient for SseStreamClient {
         );
         let max_retry = self.max_retry_secs;
 
-        info!("SSE 연결 시작: {url}");
+        info!("SSE connection started: {url}");
 
         let mut retry_delay = 1u64;
 
         loop {
             let token = self.token_manager.get_token().await?;
 
-            // reqwest 응답 바디를 SSE 이벤트 스트림으로 파싱
             let request = self
                 .http_client
                 .get(&url)
@@ -106,13 +98,13 @@ impl SseClient for SseStreamClient {
             let response = match request.send().await {
                 Ok(response) => response,
                 Err(e) => {
-                    warn!("SSE 연결 요청 실패: {e}");
+                    warn!("SSE connection request failure: {e}");
 
                     if tx.is_closed() {
                         return Ok(());
                     }
 
-                    warn!("SSE 재연결 대기: {retry_delay}초");
+                    warn!("SSE reconnect waiting: {retry_delay}s");
                     tokio::time::sleep(Duration::from_secs(retry_delay)).await;
                     retry_delay = (retry_delay * 2).min(max_retry);
                     continue;
@@ -120,21 +112,24 @@ impl SseClient for SseStreamClient {
             };
 
             if !response.status().is_success() {
-                warn!("SSE 연결 실패 (status={}): {}", response.status(), url);
+                warn!(
+                    "SSE connection failure (status={}): {}",
+                    response.status(),
+                    url
+                );
 
                 if tx.is_closed() {
                     return Ok(());
                 }
 
-                warn!("SSE 재연결 대기: {retry_delay}초");
+                warn!("SSE reconnect waiting: {retry_delay}s");
                 tokio::time::sleep(Duration::from_secs(retry_delay)).await;
                 retry_delay = (retry_delay * 2).min(max_retry);
                 continue;
             }
 
             let mut stream = response.bytes_stream().eventsource();
-            debug!("SSE 연결 수립됨");
-            // 연결 성공 시 재시도 지연 리셋
+            debug!("SSE connection established");
             retry_delay = 1;
 
             loop {
@@ -148,29 +143,27 @@ impl SseClient for SseStreamClient {
 
                         if let Some(sse_event) = Self::parse_event(event_type, &msg.data) {
                             if tx.send(sse_event).await.is_err() {
-                                info!("SSE 이벤트 채널 닫힘, 연결 종료");
+                                info!("SSE event channel closed, connection closed");
                                 return Ok(());
                             }
                         }
                     }
                     Some(Err(e)) => {
-                        warn!("SSE 스트림 에러: {e}");
+                        warn!("SSE stream error: {e}");
                         break;
                     }
                     None => {
-                        info!("SSE 스트림 종료");
+                        info!("SSE stream ended");
                         break;
                     }
                 }
             }
 
-            // 채널이 닫혔으면 종료
             if tx.is_closed() {
                 return Ok(());
             }
 
-            // exponential backoff 재연결
-            warn!("SSE 재연결 대기: {retry_delay}초");
+            warn!("SSE reconnect waiting: {retry_delay}s");
             tokio::time::sleep(Duration::from_secs(retry_delay)).await;
             retry_delay = (retry_delay * 2).min(max_retry);
         }
@@ -195,7 +188,7 @@ mod tests {
         let data = r#"{
             "suggestion_id": "sug_001",
             "suggestion_type": "WORK_GUIDANCE",
-            "content": "테스트 제안",
+            "content": "test suggestion",
             "priority": "HIGH",
             "confidence_score": 0.95,
             "relevance_score": 0.88,
@@ -215,7 +208,7 @@ mod tests {
 
     #[test]
     fn parse_error_event() {
-        let event = SseStreamClient::parse_event("error", "서버 에러");
+        let event = SseStreamClient::parse_event("error", "server error");
         assert!(matches!(event, Some(SseEvent::Error(_))));
     }
 

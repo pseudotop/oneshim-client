@@ -1,6 +1,4 @@
-//! 제안 피드백 전송.
 //!
-//! 수락/거절/나중에 → 서버 HTTP POST.
 
 use chrono::Utc;
 use oneshim_core::error::CoreError;
@@ -9,18 +7,15 @@ use oneshim_core::ports::api_client::ApiClient;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-/// 피드백 전송기 — 사용자 피드백을 서버에 전송
 pub struct FeedbackSender {
     api_client: Arc<dyn ApiClient>,
 }
 
 impl FeedbackSender {
-    /// 새 피드백 전송기 생성
     pub fn new(api_client: Arc<dyn ApiClient>) -> Self {
         Self { api_client }
     }
 
-    /// 제안 수락
     pub async fn accept(
         &self,
         suggestion_id: &str,
@@ -30,7 +25,6 @@ impl FeedbackSender {
             .await
     }
 
-    /// 제안 거절
     pub async fn reject(
         &self,
         suggestion_id: &str,
@@ -40,7 +34,6 @@ impl FeedbackSender {
             .await
     }
 
-    /// 나중에 보기
     pub async fn defer(
         &self,
         suggestion_id: &str,
@@ -50,7 +43,6 @@ impl FeedbackSender {
             .await
     }
 
-    /// 피드백 전송 공통 로직
     async fn send_feedback(
         &self,
         suggestion_id: &str,
@@ -64,15 +56,15 @@ impl FeedbackSender {
             comment,
         };
 
-        debug!("피드백 전송: {suggestion_id} → {feedback_type:?}");
+        debug!("feedback sent: {suggestion_id} -> {feedback_type:?}");
 
         match self.api_client.send_feedback(&feedback).await {
             Ok(()) => {
-                debug!("피드백 전송 성공");
+                debug!("feedback sent success");
                 Ok(())
             }
             Err(e) => {
-                warn!("피드백 전송 실패: {e}");
+                warn!("feedback sent failure: {e}");
                 Err(e)
             }
         }
@@ -128,7 +120,7 @@ mod tests {
     async fn reject_feedback_with_comment() {
         let sender = FeedbackSender::new(Arc::new(MockApiClient));
         sender
-            .reject("sug_002", Some("관련 없음".to_string()))
+            .reject("sug_002", Some("관련 none".to_string()))
             .await
             .unwrap();
     }

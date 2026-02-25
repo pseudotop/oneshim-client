@@ -1,13 +1,10 @@
-//! 창 레이아웃 변경 추적기.
 //!
-//! 포커스, 크기 변경, 이동, 최대화/최소화 감지.
 
 use chrono::Utc;
 use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::event::{WindowInfo, WindowLayoutEvent, WindowLayoutEventType};
 use std::sync::Mutex;
 
-/// 이전 창 상태
 #[derive(Debug, Clone)]
 struct PreviousWindowState {
     app_name: String,
@@ -17,36 +14,29 @@ struct PreviousWindowState {
     is_fullscreen: bool,
 }
 
-/// 창 레이아웃 변경 추적기
 pub struct WindowLayoutTracker {
-    /// 이전 창 상태
     prev_state: Mutex<Option<PreviousWindowState>>,
-    /// 화면 해상도 (캐시)
     screen_resolution: Mutex<(u32, u32)>,
-    /// 변경 감지 임계값 (픽셀) — 작은 변화는 무시
     position_threshold: i32,
     size_threshold: u32,
 }
 
 impl WindowLayoutTracker {
-    /// 새 추적기 생성
     pub fn new() -> Self {
         Self {
             prev_state: Mutex::new(None),
-            screen_resolution: Mutex::new((1920, 1080)), // 기본값
-            position_threshold: 5,                       // 5픽셀 이하 변화 무시
-            size_threshold: 10,                          // 10픽셀 이하 변화 무시
+            screen_resolution: Mutex::new((1920, 1080)), // default value
+            position_threshold: 5,                       // ignore <= 5 px moves
+            size_threshold: 10,                          // ignore <= 10 px resizes
         }
     }
 
-    /// 화면 해상도 업데이트
     pub fn set_screen_resolution(&self, width: u32, height: u32) {
         if let Ok(mut res) = self.screen_resolution.lock() {
             *res = (width, height);
         }
     }
 
-    /// 현재 화면 해상도 조회
     fn get_screen_resolution(&self) -> (u32, u32) {
         self.screen_resolution
             .lock()
@@ -54,9 +44,7 @@ impl WindowLayoutTracker {
             .unwrap_or((1920, 1080))
     }
 
-    /// 창 상태 업데이트 및 변경 이벤트 반환
     ///
-    /// 창 상태가 변경되면 해당 이벤트를 반환, 변경 없으면 None.
     pub fn update(
         &self,
         app_name: &str,
@@ -77,14 +65,11 @@ impl WindowLayoutTracker {
         let mut prev_guard = self.prev_state.lock().ok()?;
         let event_type = self.detect_change(&prev_guard, &current);
 
-        // 상태 업데이트
         let _prev = prev_guard.replace(current.clone());
         drop(prev_guard);
 
-        // 변경이 없으면 None
         let event_type = event_type?;
 
-        // 이벤트 생성
         let screen_res = self.get_screen_resolution();
         let screen_ratio = self.calculate_screen_ratio(&current, screen_res);
 
@@ -98,14 +83,13 @@ impl WindowLayoutTracker {
                 size: current.size,
                 screen_ratio,
                 is_fullscreen: current.is_fullscreen,
-                z_order: 0, // 항상 최상위 (활성 창)
+                z_order: 0, // top-most active window
             },
             screen_resolution: screen_res,
-            monitor_index: 0, // 기본 모니터
+            monitor_index: 0, // default monitor
         })
     }
 
-    /// 변경 유형 감지
     fn detect_change(
         &self,
         prev: &Option<PreviousWindowState>,
@@ -113,15 +97,13 @@ impl WindowLayoutTracker {
     ) -> Option<WindowLayoutEventType> {
         let prev = match prev {
             Some(p) => p,
-            None => return Some(WindowLayoutEventType::Focus), // 첫 번째 창
+            None => return Some(WindowLayoutEventType::Focus), // first window
         };
 
-        // 앱/창 변경 = 포커스 변경
         if prev.app_name != current.app_name || prev.window_title != current.window_title {
             return Some(WindowLayoutEventType::Focus);
         }
 
-        // 전체화면 전환
         if !prev.is_fullscreen && current.is_fullscreen {
             return Some(WindowLayoutEventType::Maximize);
         }
@@ -129,36 +111,30 @@ impl WindowLayoutTracker {
             return Some(WindowLayoutEventType::Restore);
         }
 
-        // 크기 변경 감지 (임계값 이상)
         let width_diff = (current.size.0 as i32 - prev.size.0 as i32).unsigned_abs();
         let height_diff = (current.size.1 as i32 - prev.size.1 as i32).unsigned_abs();
         if width_diff > self.size_threshold || height_diff > self.size_threshold {
             return Some(WindowLayoutEventType::Resize);
         }
 
-        // 위치 변경 감지 (임계값 이상)
         let x_diff = (current.position.0 - prev.position.0).abs();
         let y_diff = (current.position.1 - prev.position.1).abs();
         if x_diff > self.position_threshold || y_diff > self.position_threshold {
             return Some(WindowLayoutEventType::Move);
         }
 
-        // 변경 없음
         None
     }
 
-    /// 전체화면 여부 판단
     fn is_fullscreen(&self, bounds: &WindowBounds) -> bool {
         let screen_res = self.get_screen_resolution();
-        // 화면 크기와 거의 일치하면 전체화면으로 판단
         let width_match = (bounds.width as i32 - screen_res.0 as i32).abs() < 50;
-        let height_match = (bounds.height as i32 - screen_res.1 as i32).abs() < 100; // 메뉴바/독 고려
+        let height_match = (bounds.height as i32 - screen_res.1 as i32).abs() < 100; // allow menu bar / dock
         let pos_match = bounds.x.abs() < 50 && bounds.y.abs() < 100;
 
         width_match && height_match && pos_match
     }
 
-    /// 화면 대비 창 비율 계산
     fn calculate_screen_ratio(&self, state: &PreviousWindowState, screen_res: (u32, u32)) -> f32 {
         let window_area = state.size.0 as f64 * state.size.1 as f64;
         let screen_area = screen_res.0 as f64 * screen_res.1 as f64;
@@ -169,7 +145,6 @@ impl WindowLayoutTracker {
         }
     }
 
-    /// 최소화 감지 (창 크기가 매우 작아짐)
     #[allow(dead_code)]
     pub fn detect_minimize(&self, bounds: Option<WindowBounds>) -> bool {
         match bounds {
@@ -253,7 +228,6 @@ mod tests {
     fn small_changes_ignored() {
         let tracker = WindowLayoutTracker::new();
         tracker.update("Code", "main.rs", Some(make_bounds(0, 0, 800, 600)));
-        // 3픽셀 이동 (임계값 5 미만)
         let event = tracker.update("Code", "main.rs", Some(make_bounds(3, 3, 800, 600)));
 
         assert!(event.is_none());

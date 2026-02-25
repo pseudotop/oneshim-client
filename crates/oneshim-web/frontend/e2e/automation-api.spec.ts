@@ -10,7 +10,7 @@ test.describe('Automation API fallback', () => {
 
     const payload = {
       session_id: 'sess-e2e',
-      intent_hint: '저장 버튼 클릭',
+      intent_hint: 'click the save button',
     }
 
     const response = await page.evaluate(async (body) => {

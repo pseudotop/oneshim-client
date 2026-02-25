@@ -1,13 +1,9 @@
-//! 워크플로우 프리셋 — 내장 프리셋 정의.
 //!
-//! 생산성, 앱 관리, 워크플로우 카테고리의 내장 프리셋을 제공한다.
-//! 플랫폼에 따라 modifier 키가 자동 매핑된다 (macOS: Cmd, 기타: Ctrl).
 
 use oneshim_core::models::intent::{
     AutomationIntent, PresetCategory, WorkflowPreset, WorkflowStep,
 };
 
-/// 플랫폼에 맞는 modifier 키 반환 (macOS: "Cmd", 기타: "Ctrl")
 fn platform_modifier() -> &'static str {
     if cfg!(target_os = "macos") {
         "Cmd"
@@ -16,7 +12,6 @@ fn platform_modifier() -> &'static str {
     }
 }
 
-/// 앱 전환용 키 (macOS: "Cmd", 기타: "Alt")
 fn platform_alt_modifier() -> &'static str {
     if cfg!(target_os = "macos") {
         "Cmd"
@@ -25,19 +20,16 @@ fn platform_alt_modifier() -> &'static str {
     }
 }
 
-/// 내장 프리셋 목록 반환
 pub fn builtin_presets() -> Vec<WorkflowPreset> {
     let m = platform_modifier();
     let alt = platform_alt_modifier();
 
     let mut presets = Vec::new();
 
-    // ── 생산성 프리셋 (4개) ──
-
     presets.push(WorkflowPreset {
         id: "save-file".to_string(),
-        name: "파일 저장".to_string(),
-        description: "현재 파일을 저장합니다".to_string(),
+        name: "file save".to_string(),
+        description: "current file을 save합니다".to_string(),
         category: PresetCategory::Productivity,
         steps: vec![WorkflowStep {
             name: format!("{}+S", m),
@@ -53,8 +45,8 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
 
     presets.push(WorkflowPreset {
         id: "undo".to_string(),
-        name: "실행 취소".to_string(),
-        description: "마지막 작업을 실행 취소합니다".to_string(),
+        name: "execution 취소".to_string(),
+        description: "마지막 작업을 execution 취소합니다".to_string(),
         category: PresetCategory::Productivity,
         steps: vec![WorkflowStep {
             name: format!("{}+Z", m),
@@ -71,7 +63,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
     presets.push(WorkflowPreset {
         id: "select-all-copy".to_string(),
         name: "전체 선택 후 복사".to_string(),
-        description: "전체 선택(Ctrl+A) 후 복사(Ctrl+C)를 실행합니다".to_string(),
+        description: "전체 선택(Ctrl+A) 후 복사(Ctrl+C)를 execution합니다".to_string(),
         category: PresetCategory::Productivity,
         steps: vec![
             WorkflowStep {
@@ -112,12 +104,10 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         platform: None,
     });
 
-    // ── 앱 관리 프리셋 (3개) ──
-
     presets.push(WorkflowPreset {
         id: "switch-next-app".to_string(),
-        name: "다음 앱 전환".to_string(),
-        description: "다음 애플리케이션으로 전환합니다".to_string(),
+        name: "next 앱 전환".to_string(),
+        description: "next 애플리케이션으로 전환합니다".to_string(),
         category: PresetCategory::AppManagement,
         steps: vec![WorkflowStep {
             name: format!("{}+Tab", alt),
@@ -133,8 +123,8 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
 
     presets.push(WorkflowPreset {
         id: "close-window".to_string(),
-        name: "현재 창 닫기".to_string(),
-        description: "현재 활성 창을 닫습니다".to_string(),
+        name: "current 창 닫기".to_string(),
+        description: "current active 창을 닫습니다".to_string(),
         category: PresetCategory::AppManagement,
         steps: vec![WorkflowStep {
             name: format!("{}+W", m),
@@ -152,7 +142,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         presets.push(WorkflowPreset {
             id: "minimize-all".to_string(),
             name: "전체 최소화".to_string(),
-            description: "모든 창을 최소화합니다".to_string(),
+            description: "all 창을 최소화합니다".to_string(),
             category: PresetCategory::AppManagement,
             steps: vec![WorkflowStep {
                 name: "Cmd+Option+H+M".to_string(),
@@ -174,7 +164,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         presets.push(WorkflowPreset {
             id: "minimize-all".to_string(),
             name: "전체 최소화".to_string(),
-            description: "모든 창을 최소화합니다".to_string(),
+            description: "all 창을 최소화합니다".to_string(),
             category: PresetCategory::AppManagement,
             steps: vec![WorkflowStep {
                 name: "Win+D".to_string(),
@@ -189,12 +179,10 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         });
     }
 
-    // ── 워크플로우 프리셋 (8개) ──
-
     presets.push(WorkflowPreset {
         id: "morning-routine".to_string(),
-        name: "업무 시작".to_string(),
-        description: "Mail → Calendar → VSCode 순으로 앱을 활성화합니다".to_string(),
+        name: "업무 started".to_string(),
+        description: "Mail → Calendar → VSCode 순으로 앱을 active화합니다".to_string(),
         category: PresetCategory::Workflow,
         steps: vec![
             WorkflowStep {
@@ -255,12 +243,12 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
 
     presets.push(WorkflowPreset {
         id: "end-of-day".to_string(),
-        name: "업무 종료".to_string(),
-        description: "파일 저장 후 앱을 종료합니다".to_string(),
+        name: "업무 ended".to_string(),
+        description: "file save 후 앱을 ended합니다".to_string(),
         category: PresetCategory::Workflow,
         steps: vec![
             WorkflowStep {
-                name: "파일 저장".to_string(),
+                name: "file save".to_string(),
                 intent: AutomationIntent::ExecuteHotkey {
                     keys: vec![m.to_string(), "S".to_string()],
                 },
@@ -268,7 +256,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
                 stop_on_failure: false,
             },
             WorkflowStep {
-                name: "앱 종료".to_string(),
+                name: "앱 ended".to_string(),
                 intent: AutomationIntent::ExecuteHotkey {
                     keys: vec![m.to_string(), "Q".to_string()],
                 },
@@ -354,7 +342,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
     presets.push(WorkflowPreset {
         id: "customer-followup".to_string(),
         name: "고객 팔로업".to_string(),
-        description: "고객 피드백 확인 후 문서와 메일을 열어 후속 조치를 준비합니다".to_string(),
+        description: "고객 feedback 확인 후 문서와 메일을 열어 후속 조치를 준비합니다".to_string(),
         category: PresetCategory::Workflow,
         steps: vec![
             WorkflowStep {
@@ -389,11 +377,12 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
     presets.push(WorkflowPreset {
         id: "release-readiness".to_string(),
         name: "릴리스 준비".to_string(),
-        description: "코드 저장 후 터미널과 브라우저를 열어 릴리스 체크를 시작합니다".to_string(),
+        description: "코드 save 후 터미널과 브라우저를 열어 릴리스 체크를 started합니다"
+            .to_string(),
         category: PresetCategory::Workflow,
         steps: vec![
             WorkflowStep {
-                name: "파일 저장".to_string(),
+                name: "file save".to_string(),
                 intent: AutomationIntent::ExecuteHotkey {
                     keys: vec![m.to_string(), "S".to_string()],
                 },
@@ -423,8 +412,8 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
 
     presets.push(WorkflowPreset {
         id: "deep-work-start".to_string(),
-        name: "집중 세션 시작".to_string(),
-        description: "IDE를 열고 메신저를 뒤로 보내 집중 세션을 시작합니다".to_string(),
+        name: "집중 session started".to_string(),
+        description: "IDE를 열고 메신저를 뒤로 보within 집중 session을 started합니다".to_string(),
         category: PresetCategory::Workflow,
         steps: vec![
             WorkflowStep {
@@ -436,7 +425,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
                 stop_on_failure: false,
             },
             WorkflowStep {
-                name: "다음 앱 전환".to_string(),
+                name: "next 앱 전환".to_string(),
                 intent: AutomationIntent::ExecuteHotkey {
                     keys: vec![alt.to_string(), "Tab".to_string()],
                 },
@@ -444,7 +433,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
                 stop_on_failure: false,
             },
             WorkflowStep {
-                name: "현재 창 닫기".to_string(),
+                name: "current 창 닫기".to_string(),
                 intent: AutomationIntent::ExecuteHotkey {
                     keys: vec![m.to_string(), "W".to_string()],
                 },
@@ -486,7 +475,7 @@ mod tests {
         for preset in &presets {
             assert!(
                 !preset.steps.is_empty(),
-                "프리셋 '{}'에 단계 없음",
+                "프리셋 '{}'에 단계 none",
                 preset.id
             );
         }
@@ -499,7 +488,7 @@ mod tests {
         let mut unique_ids = ids.clone();
         unique_ids.sort();
         unique_ids.dedup();
-        assert_eq!(ids.len(), unique_ids.len(), "중복 프리셋 ID 발견");
+        assert_eq!(ids.len(), unique_ids.len(), "Duplicate preset ID found");
     }
 
     #[test]

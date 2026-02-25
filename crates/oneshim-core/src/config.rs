@@ -1,7 +1,4 @@
-//! 애플리케이션 설정 구조체.
 //!
-//! 서버 URL, 모니터링 주기, 저장소 경로, 프라이버시/텔레메트리/스케줄 설정 등
-//! 런타임 설정을 정의한다. `config` crate를 통해 파일/환경변수에서 로드.
 
 use crate::error::CoreError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -10,47 +7,32 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// 최상위 애플리케이션 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    /// 서버 연결 설정
     pub server: ServerConfig,
-    /// 모니터링 설정
     pub monitor: MonitorConfig,
-    /// 로컬 저장소 설정
     pub storage: StorageConfig,
-    /// 비전(이미지 처리) 설정
     pub vision: VisionConfig,
-    /// 자동 업데이트 설정
     #[serde(default)]
     pub update: UpdateConfig,
     #[serde(default)]
     pub integrity: IntegrityConfig,
-    /// 웹 대시보드 설정
     #[serde(default)]
     pub web: WebConfig,
-    /// 알림 설정
     #[serde(default)]
     pub notification: NotificationConfig,
-    /// gRPC 설정
     #[serde(default)]
     pub grpc: GrpcConfig,
-    /// 텔레메트리 설정
     #[serde(default)]
     pub telemetry: TelemetryConfig,
-    /// 프라이버시 설정
     #[serde(default)]
     pub privacy: PrivacyConfig,
-    /// 스케줄 설정 (활동 시간대)
     #[serde(default)]
     pub schedule: ScheduleConfig,
-    /// 파일 접근 모니터링 설정
     #[serde(default)]
     pub file_access: FileAccessConfig,
-    /// 자동화 설정
     #[serde(default)]
     pub automation: AutomationConfig,
-    /// AI 제공자 설정 (OCR/LLM)
     #[serde(default)]
     pub ai_provider: AiProviderConfig,
 }
@@ -81,63 +63,37 @@ impl Default for IntegrityConfig {
     }
 }
 
-// ============================================================
-// 텔레메트리 설정
-// ============================================================
-
-/// 텔레메트리 설정 — 서버로 전송되는 원격 측정 데이터 제어
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TelemetryConfig {
-    /// 텔레메트리 전체 활성화 여부
     #[serde(default)]
     pub enabled: bool,
-    /// 크래시 리포트 전송
     #[serde(default)]
     pub crash_reports: bool,
-    /// 사용 통계 전송 (기능 사용 빈도 등)
     #[serde(default)]
     pub usage_analytics: bool,
-    /// 성능 메트릭 전송 (CPU/메모리 사용량 등)
     #[serde(default)]
     pub performance_metrics: bool,
 }
 
-// Default: 모든 필드 false (derive로 자동 생성)
-
-// ============================================================
-// 프라이버시 설정
-// ============================================================
-
-/// PII 필터 레벨
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PiiFilterLevel {
-    /// 필터 없음
     Off,
-    /// 이메일, 전화번호만 필터
     Basic,
-    /// + 신용카드, 주민번호
     #[default]
     Standard,
-    /// + API 키, IP 주소, 사용자 경로
     Strict,
 }
 
-/// 프라이버시 설정 — 앱 블랙리스트, 창 제목 필터, PII 보호
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrivacyConfig {
-    /// 제외할 앱 이름 목록 (정확한 이름)
     #[serde(default)]
     pub excluded_apps: Vec<String>,
-    /// 제외할 앱 이름 패턴 (glob: "*bank*", "*wallet*")
     #[serde(default)]
     pub excluded_app_patterns: Vec<String>,
-    /// 제외할 창 제목 패턴
     #[serde(default)]
     pub excluded_title_patterns: Vec<String>,
-    /// 민감 앱 자동 감지 (은행, 비밀번호 관리자 등)
     #[serde(default = "default_true")]
     pub auto_exclude_sensitive: bool,
-    /// PII 필터 레벨
     #[serde(default)]
     pub pii_filter_level: PiiFilterLevel,
 }
@@ -154,11 +110,6 @@ impl Default for PrivacyConfig {
     }
 }
 
-// ============================================================
-// 스케줄 설정
-// ============================================================
-
-/// 요일
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Weekday {
     Mon,
@@ -170,25 +121,18 @@ pub enum Weekday {
     Sun,
 }
 
-/// 스케줄 설정 — 활동 시간대 제한
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduleConfig {
-    /// 활동 시간대 제한 활성화
     #[serde(default)]
     pub active_hours_enabled: bool,
-    /// 활동 시작 시간 (0-23)
     #[serde(default = "default_active_start_hour")]
     pub active_start_hour: u8,
-    /// 활동 종료 시간 (0-23)
     #[serde(default = "default_active_end_hour")]
     pub active_end_hour: u8,
-    /// 활동 요일 목록
     #[serde(default = "default_active_days")]
     pub active_days: Vec<Weekday>,
-    /// 화면 잠금 시 일시정지
     #[serde(default = "default_true")]
     pub pause_on_screen_lock: bool,
-    /// 배터리 세이버 시 일시정지
     #[serde(default)]
     pub pause_on_battery_saver: bool,
 }
@@ -224,23 +168,14 @@ fn default_active_days() -> Vec<Weekday> {
     ]
 }
 
-// ============================================================
-// 파일 접근 모니터링 설정
-// ============================================================
-
-/// 파일 접근 모니터링 설정 — 화이트리스트 기반 폴더 모니터링
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileAccessConfig {
-    /// 파일 접근 모니터링 활성화
     #[serde(default)]
     pub enabled: bool,
-    /// 모니터링 대상 폴더 (화이트리스트)
     #[serde(default)]
     pub monitored_folders: Vec<PathBuf>,
-    /// 제외할 파일 확장자
     #[serde(default = "default_excluded_extensions")]
     pub excluded_extensions: Vec<String>,
-    /// 분당 최대 이벤트 수 (레이트 리밋)
     #[serde(default = "default_max_events_per_minute")]
     pub max_events_per_minute: u32,
 }
@@ -256,58 +191,38 @@ impl Default for FileAccessConfig {
     }
 }
 
-// ============================================================
-// 자동화 설정
-// ============================================================
-
-/// 자동화 설정 — 샌드박스 포함
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AutomationConfig {
-    /// 자동화 기능 활성화 여부
     #[serde(default)]
     pub enabled: bool,
-    /// 샌드박스 설정
     #[serde(default)]
     pub sandbox: SandboxConfig,
-    /// 사용자 정의 워크플로우 프리셋
     #[serde(default)]
     pub custom_presets: Vec<crate::models::intent::WorkflowPreset>,
 }
 
-/// 샌드박스 프로필
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SandboxProfile {
-    /// 최소 제한: 파일시스템 읽기 허용, 네트워크 허용
     Permissive,
-    /// 표준: 지정 경로만 읽기, 네트워크 차단
     #[default]
     Standard,
-    /// 엄격: 최소 경로만, 네트워크 차단, 리소스 제한
     Strict,
 }
 
-/// 샌드박스 설정 — OS 네이티브 커널 격리
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxConfig {
-    /// 샌드박스 활성화 여부
     #[serde(default)]
     pub enabled: bool,
-    /// 샌드박스 프로필 (Permissive / Standard / Strict)
     #[serde(default)]
     pub profile: SandboxProfile,
-    /// 파일시스템 허용 경로 (읽기 전용)
     #[serde(default)]
     pub allowed_read_paths: Vec<String>,
-    /// 파일시스템 허용 경로 (읽기/쓰기)
     #[serde(default)]
     pub allowed_write_paths: Vec<String>,
-    /// 네트워크 접근 허용 여부
     #[serde(default)]
     pub allow_network: bool,
-    /// 최대 메모리 (bytes, 0 = 무제한)
     #[serde(default)]
     pub max_memory_bytes: u64,
-    /// 최대 CPU 시간 (ms, 0 = 무제한)
     #[serde(default)]
     pub max_cpu_time_ms: u64,
 }
@@ -326,46 +241,29 @@ impl Default for SandboxConfig {
     }
 }
 
-// ============================================================
-// AI 제공자 설정
-// ============================================================
-
-/// AI 제공자 설정 — OCR/LLM 제공자 타입 및 외부 API 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderConfig {
-    /// AI 접근 모드 (로컬/Provider API/CLI 구독/플랫폼 연동)
     #[serde(default)]
     pub access_mode: AiAccessMode,
-    /// OCR 제공자 타입
     #[serde(default)]
     pub ocr_provider: OcrProviderType,
-    /// LLM 제공자 타입
     #[serde(default)]
     pub llm_provider: LlmProviderType,
-    /// 외부 OCR API 설정 (ocr_provider=Remote일 때)
     #[serde(default)]
     pub ocr_api: Option<ExternalApiEndpoint>,
-    /// 외부 LLM API 설정 (llm_provider=Remote일 때)
     #[serde(default)]
     pub llm_api: Option<ExternalApiEndpoint>,
-    /// 외부 API 전송 전 데이터 정책
     #[serde(default)]
     pub external_data_policy: ExternalDataPolicy,
-    /// 외부 OCR 요청에서 원본 이미지를 그대로 전송할지 여부 (opt-out)
     ///
-    /// 기본값은 false이며, true로 설정하면 전송 전 PII 블러를 생략한다.
     #[serde(default)]
     pub allow_unredacted_external_ocr: bool,
-    /// OCR calibration/validation 설정
     #[serde(default)]
     pub ocr_validation: OcrValidationConfig,
-    /// Scene action 민감 입력 오버라이드 설정 (사유/승인/TTL 기반)
     #[serde(default)]
     pub scene_action_override: SceneActionOverrideConfig,
-    /// OCR 기반 Scene 인텔리전스 설정 (오버레이/추천/캘리브레이션)
     #[serde(default)]
     pub scene_intelligence: SceneIntelligenceConfig,
-    /// 외부 API 실패 시 로컬 폴백
     #[serde(default = "default_true")]
     pub fallback_to_local: bool,
 }
@@ -389,9 +287,7 @@ impl Default for AiProviderConfig {
 }
 
 impl AiProviderConfig {
-    /// 선택된 원격 제공자 설정 유효성 검증.
     ///
-    /// Remote 제공자가 선택된 경우 `endpoint`와 `api_key`가 모두 필요하다.
     pub fn validate_selected_remote_endpoints(&self) -> Result<(), CoreError> {
         self.ocr_validation.validate()?;
         self.scene_action_override.validate()?;
@@ -412,7 +308,7 @@ impl AiProviderConfig {
                     || self.llm_provider == LlmProviderType::Remote
                 {
                     return Err(CoreError::Config(
-                        "Provider 구독 계정(CLI) 모드에서는 Remote OCR/LLM 대신 Local 제공자를 선택하세요."
+                        "Provider subscription (CLI) mode requires local OCR/LLM providers instead of remote providers."
                             .to_string(),
                     ));
                 }
@@ -422,27 +318,20 @@ impl AiProviderConfig {
     }
 }
 
-/// Scene action 민감 입력 오버라이드 설정.
 ///
-/// `enabled=true`일 때는 사유, 승인자, 만료 시각이 모두 필요하다.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SceneActionOverrideConfig {
-    /// 오버라이드 활성화 여부
     #[serde(default)]
     pub enabled: bool,
-    /// 오버라이드 사유 (감사용)
     #[serde(default)]
     pub reason: Option<String>,
-    /// 승인자 식별자 (감사용)
     #[serde(default)]
     pub approved_by: Option<String>,
-    /// 오버라이드 만료 시각 (UTC)
     #[serde(default)]
     pub expires_at: Option<DateTime<Utc>>,
 }
 
 impl SceneActionOverrideConfig {
-    /// 현재 시점에서 오버라이드가 유효한지 평가한다.
     pub fn is_active_at(&self, now: DateTime<Utc>) -> bool {
         if !self.enabled {
             return false;
@@ -461,7 +350,6 @@ impl SceneActionOverrideConfig {
         !reason.is_empty() && !approved_by.is_empty() && expires_at > now
     }
 
-    /// 설정 저장 시점 유효성 검증.
     pub fn validate(&self) -> Result<(), CoreError> {
         if !self.enabled {
             return Ok(());
@@ -470,7 +358,7 @@ impl SceneActionOverrideConfig {
         let reason = self.reason.as_deref().map(str::trim).unwrap_or_default();
         if reason.is_empty() {
             return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.reason` 값이 필요합니다.".to_string(),
+                "`ai_provider.scene_action_override.reason` is required.".to_string(),
             ));
         }
 
@@ -481,20 +369,19 @@ impl SceneActionOverrideConfig {
             .unwrap_or_default();
         if approved_by.is_empty() {
             return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.approved_by` 값이 필요합니다.".to_string(),
+                "`ai_provider.scene_action_override.approved_by` is required.".to_string(),
             ));
         }
 
         let expires_at = self.expires_at.ok_or_else(|| {
             CoreError::Config(
-                "`ai_provider.scene_action_override.expires_at` 값이 필요합니다.".to_string(),
+                "`ai_provider.scene_action_override.expires_at` is required.".to_string(),
             )
         })?;
 
         if expires_at <= Utc::now() {
             return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.expires_at` 값은 미래 시각이어야 합니다."
-                    .to_string(),
+                "`ai_provider.scene_action_override.expires_at` must be in the future.".to_string(),
             ));
         }
 
@@ -502,33 +389,23 @@ impl SceneActionOverrideConfig {
     }
 }
 
-/// OCR 기반 Scene 인텔리전스 설정.
 ///
-/// 웹 리플레이 오버레이/추천/캘리브레이션 및 결정적 실행 허용 여부를 제어한다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneIntelligenceConfig {
-    /// Scene 분석 기능 전체 활성화 여부
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// 리플레이 화면에서 bbox 오버레이 표시 허용
     #[serde(default = "default_true")]
     pub overlay_enabled: bool,
-    /// Scene 기반 결정적 액션 실행 허용 여부 (RPA 실행 게이트)
     #[serde(default = "default_false")]
     pub allow_action_execution: bool,
-    /// 오버레이/추천에 포함할 최소 confidence (0.0 ~ 1.0)
     #[serde(default = "default_scene_min_confidence")]
     pub min_confidence: f64,
-    /// 오버레이/추천 최대 요소 수
     #[serde(default = "default_scene_max_elements")]
     pub max_elements: usize,
-    /// 캘리브레이션/검증 단계 활성화
     #[serde(default = "default_true")]
     pub calibration_enabled: bool,
-    /// 캘리브레이션 통과를 위한 최소 요소 수
     #[serde(default = "default_scene_calibration_min_elements")]
     pub calibration_min_elements: usize,
-    /// 캘리브레이션 통과를 위한 최소 평균 confidence (0.0 ~ 1.0)
     #[serde(default = "default_scene_calibration_min_avg_confidence")]
     pub calibration_min_avg_confidence: f64,
 }
@@ -552,19 +429,19 @@ impl SceneIntelligenceConfig {
     pub fn validate(&self) -> Result<(), CoreError> {
         if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
             return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.min_confidence`는 0.0~1.0 범위여야 합니다."
+                "`ai_provider.scene_intelligence.min_confidence` must be within 0.0..=1.0."
                     .to_string(),
             ));
         }
         if self.max_elements == 0 || self.max_elements > 1000 {
             return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.max_elements`는 1~1000 범위여야 합니다."
+                "`ai_provider.scene_intelligence.max_elements` must be within 1..=1000."
                     .to_string(),
             ));
         }
         if self.calibration_min_elements == 0 || self.calibration_min_elements > 1000 {
             return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.calibration_min_elements`는 1~1000 범위여야 합니다."
+                "`ai_provider.scene_intelligence.calibration_min_elements` must be within 1..=1000."
                     .to_string(),
             ));
         }
@@ -572,7 +449,7 @@ impl SceneIntelligenceConfig {
             || !(0.0..=1.0).contains(&self.calibration_min_avg_confidence)
         {
             return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.calibration_min_avg_confidence`는 0.0~1.0 범위여야 합니다."
+                "`ai_provider.scene_intelligence.calibration_min_avg_confidence` must be within 0.0..=1.0."
                     .to_string(),
             ));
         }
@@ -586,141 +463,101 @@ fn validate_remote_endpoint(
 ) -> Result<(), CoreError> {
     let endpoint = endpoint.ok_or_else(|| {
         CoreError::Config(format!(
-            "원격 제공자를 사용하려면 `{field_name}` 설정이 필요합니다."
+            "`{field_name}` is required when a remote provider is selected."
         ))
     })?;
 
     let endpoint_url = endpoint.endpoint.trim();
     if endpoint_url.is_empty() {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint` 값이 비어 있습니다."
+            "`{field_name}.endpoint` must not be empty."
         )));
     }
     if !(endpoint_url.starts_with("http://") || endpoint_url.starts_with("https://")) {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint`는 http:// 또는 https:// URL이어야 합니다."
+            "`{field_name}.endpoint` must be an http:// or https:// URL."
         )));
     }
 
     if endpoint.api_key.trim().is_empty() {
         return Err(CoreError::Config(format!(
-            "`{field_name}.api_key` 값이 비어 있습니다."
+            "`{field_name}.api_key` must not be empty."
         )));
     }
 
     if endpoint.timeout_secs == 0 {
         return Err(CoreError::Config(format!(
-            "`{field_name}.timeout_secs`는 1 이상이어야 합니다."
+            "`{field_name}.timeout_secs` must be >= 1."
         )));
     }
 
     Ok(())
 }
 
-/// OCR 제공자 타입
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum OcrProviderType {
-    /// 로컬 Tesseract (기본값)
     #[default]
     Local,
-    /// 외부 AI OCR API (Claude Vision, Google Vision 등)
     Remote,
 }
 
-/// LLM 제공자 타입
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum LlmProviderType {
-    /// 로컬 LLM / 규칙 기반 매칭 (기본값)
     #[default]
     Local,
-    /// 외부 AI API (Claude, GPT 등)
     Remote,
 }
 
-/// AI 접근 모드.
 ///
-/// 수집된 데이터를 어떤 채널로 활용할지 명시한다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AiAccessMode {
-    /// API Key를 사용하는 Provider API 연동 (기본값)
     #[default]
     ProviderApiKey,
-    /// 로컬 모델/룰 기반 모드 (예: Ollama, 로컬 추론)
     LocalModel,
-    /// Provider 구독 계정 기반 CLI 확장 연동
     ProviderSubscriptionCli,
-    /// 플랫폼 서버 연동 모드 (가공/암묵지 기반 인사이트)
     PlatformConnected,
 }
 
-// ============================================================
-// AI API 제공자 타입
-// ============================================================
-
-/// AI API 제공자 타입 — URL 문자열 매칭 대신 명시적 enum으로 제공자 구분
 ///
-/// OSS 아키텍처에서 특정 벤더가 특권을 갖지 않도록 config 주도 방식으로 설계.
-/// 새 제공자 추가 시 이 enum에 variant를 추가하고 클라이언트에서 분기하면 된다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AiProviderType {
-    /// Anthropic Claude API — `x-api-key` 헤더 + `/v1/messages` 형식
     Anthropic,
-    /// OpenAI 호환 API — `Authorization: Bearer` 헤더 + `/v1/chat/completions` 형식
     OpenAi,
-    /// Google API (Gemini/Vision 등)
     Google,
-    /// 기타 제공자 — 커스텀 헤더 없음, 범용 응답 파싱 사용
     #[default]
     Generic,
 }
 
-/// 외부 AI API 엔드포인트 설정
 ///
-/// **Standalone 앱**: API 키를 config.json에 직접 저장 → Settings UI에서 입력
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalApiEndpoint {
-    /// API URL (예: "https://api.example.com/v1/messages")
     pub endpoint: String,
-    /// API 키 (로컬 config.json에 직접 저장)
     #[serde(default)]
     pub api_key: String,
-    /// 모델 이름 (예: "claude-sonnet-4-5-20250929")
     pub model: Option<String>,
-    /// 요청 타임아웃 (초)
     #[serde(default = "default_api_timeout_secs")]
     pub timeout_secs: u64,
-    /// AI 제공자 타입 — 요청/응답 형식 및 인증 헤더 결정에 사용
-    /// 기본값: Generic (범용 파싱, Bearer 토큰 인증)
     #[serde(default)]
     pub provider_type: AiProviderType,
 }
 
-/// 외부 API 전송 시 데이터 보호 정책
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ExternalDataPolicy {
-    /// PII 필터 Strict 강제 + 민감 앱 이미지 차단
     #[default]
     PiiFilterStrict,
-    /// PII 필터 Standard 적용
     PiiFilterStandard,
-    /// 사용자 설정 PiiFilterLevel 그대로 적용
     AllowFiltered,
 }
 
-/// 외부 OCR 결과 calibration/validation 설정.
 ///
-/// 원격 OCR 결과를 후처리해 빈 텍스트/비정상 confidence/기하 오류를 걸러낸다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OcrValidationConfig {
-    /// calibration/validation 단계 활성화
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// 허용 최소 confidence (0.0 ~ 1.0)
     #[serde(default = "default_ocr_min_confidence")]
     pub min_confidence: f64,
-    /// 전체 결과 중 유효하지 않은 항목 비율 상한 (0.0 ~ 1.0)
     #[serde(default = "default_ocr_max_invalid_ratio")]
     pub max_invalid_ratio: f64,
 }
@@ -743,14 +580,13 @@ impl OcrValidationConfig {
 
         if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
             return Err(CoreError::Config(
-                "`ai_provider.ocr_validation.min_confidence`는 0.0~1.0 범위여야 합니다."
-                    .to_string(),
+                "`ai_provider.ocr_validation.min_confidence` must be within 0.0..=1.0.".to_string(),
             ));
         }
 
         if !self.max_invalid_ratio.is_finite() || !(0.0..=1.0).contains(&self.max_invalid_ratio) {
             return Err(CoreError::Config(
-                "`ai_provider.ocr_validation.max_invalid_ratio`는 0.0~1.0 범위여야 합니다."
+                "`ai_provider.ocr_validation.max_invalid_ratio` must be within 0.0..=1.0."
                     .to_string(),
             ));
         }
@@ -800,32 +636,20 @@ fn default_max_events_per_minute() -> u32 {
     100
 }
 
-// ============================================================
-// gRPC 설정
-// ============================================================
-
-/// gRPC 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrpcConfig {
-    /// gRPC 인증 사용 여부
     #[serde(default)]
     pub use_grpc_auth: bool,
-    /// gRPC 컨텍스트 전송 사용 여부
     #[serde(default)]
     pub use_grpc_context: bool,
-    /// gRPC 서버 엔드포인트 (기본 포트)
     #[serde(default = "default_grpc_endpoint")]
     pub grpc_endpoint: String,
-    /// gRPC fallback 포트 목록 (기본 포트 연결 실패 시 순차 시도)
     #[serde(default = "default_grpc_fallback_ports")]
     pub grpc_fallback_ports: Vec<u16>,
-    /// 연결 타임아웃 (초)
     #[serde(default = "default_grpc_connect_timeout")]
     pub connect_timeout_secs: u64,
-    /// 요청 타임아웃 (초)
     #[serde(default = "default_grpc_request_timeout")]
     pub request_timeout_secs: u64,
-    /// TLS 사용 여부
     #[serde(default)]
     pub use_tls: bool,
 
@@ -864,9 +688,6 @@ fn default_grpc_endpoint() -> String {
     "http://localhost:50051".to_string()
 }
 
-/// gRPC fallback 포트 목록 (서버가 다른 포트에서 실행될 수 있음)
-/// 50051: gRPC 표준 포트 (tonic 기본값)
-/// 50052: Python betterproto/grpclib 서버 포트
 fn default_grpc_fallback_ports() -> Vec<u16> {
     vec![50052, 50053]
 }
@@ -879,35 +700,22 @@ fn default_grpc_request_timeout() -> u64 {
     30
 }
 
-// ============================================================
-// 알림 설정
-// ============================================================
-
-/// 알림 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationConfig {
-    /// 알림 전체 활성화 여부
     #[serde(default = "default_notification_enabled")]
     pub enabled: bool,
-    /// 유휴 감지 알림 (N분 유휴 후 알림)
     #[serde(default = "default_idle_notification")]
     pub idle_notification: bool,
-    /// 유휴 알림 임계값 (분)
     #[serde(default = "default_idle_notification_mins")]
     pub idle_notification_mins: u32,
-    /// 장시간 작업 알림 (N분 연속 작업 후 휴식 권고)
     #[serde(default = "default_long_session_notification")]
     pub long_session_notification: bool,
-    /// 장시간 작업 임계값 (분)
     #[serde(default = "default_long_session_mins")]
     pub long_session_mins: u32,
-    /// 고사용량 경고 (CPU/메모리 N% 이상)
     #[serde(default = "default_high_usage_notification")]
     pub high_usage_notification: bool,
-    /// 고사용량 임계값 (%)
     #[serde(default = "default_high_usage_threshold")]
     pub high_usage_threshold: u32,
-    /// 일일 요약 알림
     #[serde(default)]
     pub daily_summary_notification: bool,
 }
@@ -927,20 +735,12 @@ impl Default for NotificationConfig {
     }
 }
 
-// ============================================================
-// 웹 대시보드 설정
-// ============================================================
-
-/// 웹 대시보드 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebConfig {
-    /// 웹 대시보드 활성화 여부
     #[serde(default = "default_web_enabled")]
     pub enabled: bool,
-    /// 웹 서버 포트 (기본: 9090)
     #[serde(default = "default_web_port")]
     pub port: u16,
-    /// 외부 접근 허용 여부 (false: 127.0.0.1 only)
     #[serde(default)]
     pub allow_external: bool,
 }
@@ -955,26 +755,16 @@ impl Default for WebConfig {
     }
 }
 
-// ============================================================
-// 자동 업데이트 설정
-// ============================================================
-
-/// 자동 업데이트 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateConfig {
-    /// 자동 업데이트 활성화 여부
     #[serde(default = "default_update_enabled")]
     pub enabled: bool,
-    /// GitHub 저장소 소유자 — 포크 시 변경 필요 (설정 파일에서 오버라이드 가능)
     #[serde(default = "default_repo_owner")]
     pub repo_owner: String,
-    /// GitHub 저장소 이름 (예: "oneshim-client")
     #[serde(default = "default_repo_name")]
     pub repo_name: String,
-    /// 업데이트 확인 주기 (시간)
     #[serde(default = "default_check_interval_hours")]
     pub check_interval_hours: u32,
-    /// 사전 릴리즈 포함 여부
     #[serde(default)]
     pub include_prerelease: bool,
     #[serde(default)]
@@ -1066,91 +856,61 @@ fn default_update_signature_public_key() -> String {
     "GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=".to_string()
 }
 
-// ============================================================
-// 서버/모니터/저장소/비전 설정
-// ============================================================
-
-/// 서버 연결 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
-    /// API 서버 기본 URL (예: "https://api.example.com")
     pub base_url: String,
-    /// 요청 타임아웃 (밀리초)
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
-    /// SSE 재연결 최대 지연 (초)
     #[serde(default = "default_sse_max_retry_secs")]
     pub sse_max_retry_secs: u64,
 }
 
-/// 시스템 모니터링 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorConfig {
-    /// 컨텍스트 수집 주기 (밀리초)
     #[serde(default = "default_poll_interval_ms")]
     pub poll_interval_ms: u64,
-    /// 서버 동기화 주기 (밀리초)
     #[serde(default = "default_sync_interval_ms")]
     pub sync_interval_ms: u64,
-    /// 하트비트 주기 (밀리초)
     #[serde(default = "default_heartbeat_interval_ms")]
     pub heartbeat_interval_ms: u64,
-    /// 유휴 감지 임계값 (초)
     #[serde(default = "default_idle_threshold_secs")]
     pub idle_threshold_secs: u64,
-    /// 프로세스 스냅샷 주기 (초)
     #[serde(default = "default_process_interval_secs")]
     pub process_interval_secs: u64,
-    /// 프로세스 목록 수집 활성화
     #[serde(default = "default_true")]
     pub process_monitoring: bool,
-    /// 키보드/마우스 활동 수집 활성화
     #[serde(default = "default_true")]
     pub input_activity: bool,
 }
 
-/// 로컬 저장소 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConfig {
-    /// SQLite DB 파일 경로 (None이면 플랫폼 기본 경로)
     pub db_path: Option<PathBuf>,
-    /// 데이터 보존 기간 (일)
     #[serde(default = "default_retention_days")]
     pub retention_days: u32,
-    /// 최대 저장소 크기 (MB)
     #[serde(default = "default_max_storage_mb")]
     pub max_storage_mb: u64,
 }
 
-/// 비전(이미지 처리) 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisionConfig {
-    /// 스크린샷 캡처 활성화 여부
     #[serde(default = "default_capture_enabled")]
     pub capture_enabled: bool,
-    /// 캡처 쓰로틀 간격 (밀리초)
     #[serde(default = "default_capture_throttle_ms")]
     pub capture_throttle_ms: u64,
-    /// 썸네일 너비 (픽셀)
     #[serde(default = "default_thumbnail_width")]
     pub thumbnail_width: u32,
-    /// 썸네일 높이 (픽셀)
     #[serde(default = "default_thumbnail_height")]
     pub thumbnail_height: u32,
-    /// OCR 활성화 여부
     #[serde(default)]
     pub ocr_enabled: bool,
-    /// 프라이버시 모드 (전체 캡처 일시정지)
     #[serde(default)]
     pub privacy_mode: bool,
 }
 
-// ============================================================
 // AppConfig impl
-// ============================================================
 
 impl AppConfig {
-    /// 기본 설정값 반환
     pub fn default_config() -> Self {
         Self {
             server: ServerConfig {
@@ -1194,25 +954,18 @@ impl AppConfig {
         }
     }
 
-    /// 서버 요청 타임아웃을 Duration으로 반환
     pub fn request_timeout(&self) -> Duration {
         Duration::from_millis(self.server.request_timeout_ms)
     }
 
-    /// 모니터링 폴링 주기를 Duration으로 반환
     pub fn poll_interval(&self) -> Duration {
         Duration::from_millis(self.monitor.poll_interval_ms)
     }
 
-    /// 서버 동기화 주기를 Duration으로 반환
     pub fn sync_interval(&self) -> Duration {
         Duration::from_millis(self.monitor.sync_interval_ms)
     }
 }
-
-// ============================================================
-// 기본값 함수
-// ============================================================
 
 fn default_true() -> bool {
     true
@@ -1296,7 +1049,7 @@ fn default_high_usage_threshold() -> u32 {
     90
 }
 fn default_idle_threshold_secs() -> u64 {
-    300 // 5분
+    300 // 5 min
 }
 fn default_process_interval_secs() -> u64 {
     10
@@ -1576,7 +1329,10 @@ mod tests {
 
         let result = config.validate_selected_remote_endpoints();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("미래 시각"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must be in the future"));
     }
 
     #[test]

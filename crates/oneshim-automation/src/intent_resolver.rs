@@ -1,8 +1,4 @@
-//! 의도 해석기 + 검증기 + 실행기.
 //!
-//! `IntentResolver` — 의도 → 액션 변환
-//! `ActionVerifier` — 실행 후 화면 변화 검증
-//! `IntentExecutor` — 전체 파이프라인 오케스트레이터
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -16,22 +12,13 @@ use oneshim_core::models::intent::{
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
 
-// ============================================================
-// IntentResolver — 의도 → 액션 변환 + 실행
-// ============================================================
-
-/// 의도 해석기 — AutomationIntent를 해석하여 InputDriver로 실행
 pub struct IntentResolver {
-    /// UI 요소 탐색기 (전략 체인)
     element_finder: Arc<dyn ElementFinder>,
-    /// 입력 드라이버
     input_driver: Arc<dyn InputDriver>,
-    /// 실행 설정
     config: IntentConfig,
 }
 
 impl IntentResolver {
-    /// 새 IntentResolver 생성
     pub fn new(
         element_finder: Arc<dyn ElementFinder>,
         input_driver: Arc<dyn InputDriver>,
@@ -44,7 +31,6 @@ impl IntentResolver {
         }
     }
 
-    /// 의도를 해석하여 실행하고 결과를 반환
     pub async fn resolve_and_execute(
         &self,
         intent: &AutomationIntent,
@@ -74,7 +60,7 @@ impl IntentResolver {
                     })?;
 
                 let (cx, cy) = best.bounds.center();
-                debug!(text = %best.text, x = cx, y = cy, confidence = best.confidence, "요소 클릭");
+                debug!(text = %best.text, x = cx, y = cy, confidence = best.confidence, "element click");
                 self.input_driver.mouse_click(button, cx, cy).await?;
 
                 Ok((true, Some(best)))
@@ -85,7 +71,6 @@ impl IntentResolver {
                 role,
                 text,
             } => {
-                // 1. 요소 찾기 + 클릭하여 포커스
                 let elements = self
                     .element_finder
                     .find_element(element_text.as_deref(), role.as_deref(), None)
@@ -97,30 +82,28 @@ impl IntentResolver {
 
                 if let Some(elem) = &best {
                     let (cx, cy) = elem.bounds.center();
-                    debug!(text = %elem.text, x = cx, y = cy, "포커스 클릭");
+                    debug!(text = %elem.text, x = cx, y = cy, "click");
                     self.input_driver.mouse_click("left", cx, cy).await?;
                 }
 
-                // 2. 텍스트 입력
-                debug!(text_len = text.len(), "텍스트 입력");
+                debug!(text_len = text.len(), "text");
                 self.input_driver.type_text(text).await?;
 
                 Ok((true, best))
             }
 
             AutomationIntent::ExecuteHotkey { keys } => {
-                debug!(?keys, "단축키 실행");
+                debug!(?keys, "key execution");
                 self.input_driver.hotkey(keys).await?;
                 Ok((true, None))
             }
 
             AutomationIntent::WaitForText { text, timeout_ms } => {
-                debug!(text, timeout_ms, "텍스트 대기");
+                debug!(text, timeout_ms, "text waiting");
                 let start = Instant::now();
                 let timeout = std::time::Duration::from_millis(*timeout_ms);
 
                 loop {
-                    // OCR 폴링으로 텍스트 확인
                     let elements = self
                         .element_finder
                         .find_element(Some(text), None, None)
@@ -138,7 +121,7 @@ impl IntentResolver {
                     }
 
                     if start.elapsed() >= timeout {
-                        warn!(text, timeout_ms, "텍스트 대기 타임아웃");
+                        warn!(text, timeout_ms, "text waiting timeout");
                         return Err(CoreError::ExecutionTimeout {
                             timeout_ms: *timeout_ms,
                         });
@@ -152,16 +135,15 @@ impl IntentResolver {
             }
 
             AutomationIntent::ActivateApp { app_name } => {
-                debug!(app_name, "앱 활성화");
-                // 플랫폼별 앱 활성화 — 향후 구현
+                debug!(app_name, "app enabled");
                 // macOS: osascript -e 'activate application "..."'
                 // Windows: Win32 SetForegroundWindow
-                info!(app_name, "앱 활성화 요청 (플랫폼 구현 필요)");
+                info!(app_name, "app enabled request ( required)");
                 Ok((true, None))
             }
 
             AutomationIntent::Raw(action) => {
-                debug!(?action, "저수준 액션 직접 실행");
+                debug!(?action, "execution");
                 match action {
                     oneshim_core::models::automation::AutomationAction::MouseMove { x, y } => {
                         self.input_driver.mouse_move(*x, *y).await?;
@@ -192,37 +174,25 @@ impl IntentResolver {
     }
 }
 
-// ============================================================
-// IntentExecutor — 전체 파이프라인 오케스트레이터
-// ============================================================
-
-/// 전체 의도 실행 파이프라인
 ///
-/// 1. 재시도 포함 resolve_and_execute
-/// 2. (선택) 실행 후 검증
 pub struct IntentExecutor {
-    /// 의도 해석기
     resolver: IntentResolver,
-    /// 실행 설정
     config: IntentConfig,
 }
 
 impl IntentExecutor {
-    /// 새 IntentExecutor 생성
     pub fn new(resolver: IntentResolver, config: IntentConfig) -> Self {
         Self { resolver, config }
     }
 
-    /// 의도 실행 (재시도 + 검증 포함)
     pub async fn execute(&self, intent: &AutomationIntent) -> Result<IntentResult, CoreError> {
         let start = Instant::now();
         let mut retry_count = 0u32;
         let mut last_error: Option<String> = None;
 
-        // 재시도 루프
         for attempt in 0..=self.config.max_retries {
             if attempt > 0 {
-                debug!(attempt, max = self.config.max_retries, "재시도");
+                debug!(attempt, max = self.config.max_retries, "attempt");
                 tokio::time::sleep(std::time::Duration::from_millis(
                     self.config.retry_interval_ms,
                 ))
@@ -233,15 +203,12 @@ impl IntentExecutor {
                 Ok((success, element)) => {
                     let elapsed_ms = start.elapsed().as_millis() as u64;
 
-                    // 검증 (활성화 시)
                     let verification = if self.config.verify_after_action {
-                        // 검증 대기
                         tokio::time::sleep(std::time::Duration::from_millis(
                             self.config.verify_delay_ms,
                         ))
                         .await;
 
-                        // 간단한 검증: 실행 성공 = 화면 변화 가정
                         Some(VerificationResult {
                             screen_changed: success,
                             changed_regions: if success { 1 } else { 0 },
@@ -261,14 +228,13 @@ impl IntentExecutor {
                     });
                 }
                 Err(e) => {
-                    warn!(attempt, error = %e, "의도 실행 실패");
+                    warn!(attempt, error = %e, "execution failure");
                     last_error = Some(e.to_string());
                     retry_count = attempt;
                 }
             }
         }
 
-        // 모든 재시도 소진
         let elapsed_ms = start.elapsed().as_millis() as u64;
         Ok(IntentResult {
             success: false,
@@ -280,10 +246,6 @@ impl IntentExecutor {
         })
     }
 }
-
-// ============================================================
-// 테스트
-// ============================================================
 
 #[cfg(test)]
 mod tests {
@@ -381,23 +343,23 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_click_element_success() {
-        let resolver = make_resolver_with_elements(vec![make_element("저장", 0.95)]);
+        let resolver = make_resolver_with_elements(vec![make_element("save", 0.95)]);
         let intent = AutomationIntent::ClickElement {
-            text: Some("저장".to_string()),
+            text: Some("save".to_string()),
             role: None,
             app_name: None,
             button: "left".to_string(),
         };
         let (success, element) = resolver.resolve_and_execute(&intent).await.unwrap();
         assert!(success);
-        assert_eq!(element.unwrap().text, "저장");
+        assert_eq!(element.unwrap().text, "save");
     }
 
     #[tokio::test]
     async fn resolve_click_element_low_confidence() {
-        let resolver = make_resolver_with_elements(vec![make_element("저장", 0.3)]);
+        let resolver = make_resolver_with_elements(vec![make_element("save", 0.3)]);
         let intent = AutomationIntent::ClickElement {
-            text: Some("저장".to_string()),
+            text: Some("save".to_string()),
             role: None,
             app_name: None,
             button: "left".to_string(),
@@ -481,7 +443,7 @@ mod tests {
         let resolver = make_resolver_with_elements(vec![make_element("확인", 0.9)]);
         let config = IntentConfig {
             verify_after_action: true,
-            verify_delay_ms: 10, // 테스트에서 빠르게
+            verify_delay_ms: 10, // fast verification in test
             ..IntentConfig::default()
         };
         let executor = IntentExecutor::new(resolver, config);
@@ -518,8 +480,6 @@ mod tests {
         assert!(result.success);
     }
 
-    // --- 추가 테스트: WaitForText 타임아웃 ---
-
     #[tokio::test]
     async fn wait_for_text_timeout_returns_error() {
         let resolver = IntentResolver::new(
@@ -544,17 +504,15 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_text_found_immediately() {
-        let resolver = make_resolver_with_elements(vec![make_element("완료", 0.9)]);
+        let resolver = make_resolver_with_elements(vec![make_element("completed", 0.9)]);
         let intent = AutomationIntent::WaitForText {
-            text: "완료".to_string(),
+            text: "completed".to_string(),
             timeout_ms: 1000,
         };
         let (success, element) = resolver.resolve_and_execute(&intent).await.unwrap();
         assert!(success);
         assert!(element.is_some());
     }
-
-    // --- 추가 테스트: 요소 탐색 실패 ---
 
     #[tokio::test]
     async fn click_element_not_found_returns_error() {
@@ -564,7 +522,7 @@ mod tests {
             IntentConfig::default(),
         );
         let intent = AutomationIntent::ClickElement {
-            text: Some("없는버튼".to_string()),
+            text: Some("without버튼".to_string()),
             role: None,
             app_name: None,
             button: "left".to_string(),
@@ -573,8 +531,6 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CoreError::ElementNotFound(_)));
     }
-
-    // --- 추가 테스트: Raw 액션 변형 ---
 
     #[tokio::test]
     async fn resolve_raw_key_type_action() {
@@ -593,8 +549,6 @@ mod tests {
         let (success, _) = resolver.resolve_and_execute(&intent).await.unwrap();
         assert!(success);
     }
-
-    // --- 추가 테스트: Executor 검증 없이 성공 ---
 
     #[tokio::test]
     async fn executor_no_verification_success() {

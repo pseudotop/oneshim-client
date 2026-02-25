@@ -1,94 +1,58 @@
-//! 설정 API 핸들러.
-
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::{error::ApiError, services::settings_service, AppState};
 
-/// 저장소 통계 응답
 #[derive(Debug, Serialize)]
 pub struct StorageStats {
-    /// 데이터베이스 파일 크기 (bytes)
     pub db_size_bytes: u64,
-    /// 프레임 이미지 총 크기 (bytes)
     pub frames_size_bytes: u64,
-    /// 총 사용 용량 (bytes)
     pub total_size_bytes: u64,
-    /// 총 프레임 수
     pub frame_count: u64,
-    /// 총 이벤트 수
     pub event_count: u64,
-    /// 총 메트릭 수
     pub metric_count: u64,
-    /// 가장 오래된 데이터 날짜
     pub oldest_data_date: Option<String>,
-    /// 최신 데이터 날짜
     pub newest_data_date: Option<String>,
 }
 
-/// 앱 설정 응답/요청
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppSettings {
-    /// 데이터 보존 기간 (일)
     pub retention_days: u32,
-    /// 최대 저장소 용량 (MB)
     pub max_storage_mb: u32,
-    /// 웹 대시보드 포트
     pub web_port: u16,
-    /// 외부 접근 허용
     pub allow_external: bool,
-    /// 스크린샷 캡처 활성화
     pub capture_enabled: bool,
-    /// 유휴 감지 임계값 (초)
     pub idle_threshold_secs: u32,
-    /// 메트릭 수집 간격 (초)
     pub metrics_interval_secs: u32,
-    /// 프로세스 스냅샷 간격 (초)
     pub process_interval_secs: u32,
-    /// 알림 설정
     #[serde(default)]
     pub notification: NotificationSettings,
     #[serde(default)]
     pub update: UpdateSettings,
-    /// 텔레메트리 설정
     #[serde(default)]
     pub telemetry: TelemetrySettings,
-    /// 모니터링 제어 설정
     #[serde(default)]
     pub monitor: MonitorControlSettings,
-    /// 프라이버시 설정
     #[serde(default)]
     pub privacy: PrivacySettings,
-    /// 스케줄 설정
     #[serde(default)]
     pub schedule: ScheduleSettings,
-    /// 자동화 설정
     #[serde(default)]
     pub automation: AutomationSettings,
-    /// 샌드박스 설정
     #[serde(default)]
     pub sandbox: SandboxSettings,
-    /// AI 제공자 설정
     #[serde(default)]
     pub ai_provider: AiProviderSettings,
 }
 
-/// 알림 설정
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct NotificationSettings {
-    /// 알림 전체 활성화
     pub enabled: bool,
-    /// 유휴 알림 활성화
     pub idle_notification: bool,
-    /// 유휴 알림 임계값 (분)
     pub idle_notification_mins: u32,
-    /// 장시간 작업 알림 활성화
     pub long_session_notification: bool,
-    /// 장시간 작업 임계값 (분)
     pub long_session_mins: u32,
-    /// 고사용량 알림 활성화
     pub high_usage_notification: bool,
-    /// 고사용량 임계값 (%)
     pub high_usage_threshold: u32,
 }
 
@@ -111,27 +75,18 @@ impl Default for UpdateSettings {
     }
 }
 
-/// 텔레메트리 설정
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct TelemetrySettings {
-    /// 텔레메트리 전체 활성화
     pub enabled: bool,
-    /// 크래시 리포트 전송
     pub crash_reports: bool,
-    /// 사용 통계 전송
     pub usage_analytics: bool,
-    /// 성능 메트릭 전송
     pub performance_metrics: bool,
 }
 
-/// 모니터링 제어 설정
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MonitorControlSettings {
-    /// 프로세스 목록 수집 활성화
     pub process_monitoring: bool,
-    /// 키보드/마우스 활동 수집 활성화
     pub input_activity: bool,
-    /// 프라이버시 모드 (전체 캡처 일시정지)
     pub privacy_mode: bool,
 }
 
@@ -145,35 +100,22 @@ impl Default for MonitorControlSettings {
     }
 }
 
-/// 프라이버시 설정
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct PrivacySettings {
-    /// 제외할 앱 이름 목록
     pub excluded_apps: Vec<String>,
-    /// 제외할 앱 이름 패턴
     pub excluded_app_patterns: Vec<String>,
-    /// 제외할 창 제목 패턴
     pub excluded_title_patterns: Vec<String>,
-    /// 민감 앱 자동 감지
     pub auto_exclude_sensitive: bool,
-    /// PII 필터 레벨
     pub pii_filter_level: String,
 }
 
-/// 스케줄 설정
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScheduleSettings {
-    /// 활동 시간대 제한 활성화
     pub active_hours_enabled: bool,
-    /// 활동 시작 시간 (0-23)
     pub active_start_hour: u8,
-    /// 활동 종료 시간 (0-23)
     pub active_end_hour: u8,
-    /// 활동 요일 (Mon, Tue, Wed, Thu, Fri, Sat, Sun)
     pub active_days: Vec<String>,
-    /// 화면 잠금 시 일시정지
     pub pause_on_screen_lock: bool,
-    /// 배터리 세이버 시 일시정지
     pub pause_on_battery_saver: bool,
 }
 
@@ -196,29 +138,19 @@ impl Default for ScheduleSettings {
     }
 }
 
-/// 자동화 설정
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AutomationSettings {
-    /// 자동화 활성화
     pub enabled: bool,
 }
 
-/// 샌드박스 설정
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SandboxSettings {
-    /// 샌드박스 활성화
     pub enabled: bool,
-    /// 프로필 ("Permissive" | "Standard" | "Strict")
     pub profile: String,
-    /// 읽기 허용 경로
     pub allowed_read_paths: Vec<String>,
-    /// 쓰기 허용 경로
     pub allowed_write_paths: Vec<String>,
-    /// 네트워크 허용
     pub allow_network: bool,
-    /// 최대 메모리 (bytes)
     pub max_memory_bytes: u64,
-    /// 최대 CPU 시간 (ms)
     pub max_cpu_time_ms: u64,
 }
 
@@ -236,34 +168,22 @@ impl Default for SandboxSettings {
     }
 }
 
-/// AI 제공자 설정
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AiProviderSettings {
-    /// AI 접근 모드
     pub access_mode: String,
-    /// OCR 제공자 ("Local" | "Remote")
     pub ocr_provider: String,
-    /// LLM 제공자 ("Local" | "Remote")
     pub llm_provider: String,
-    /// 외부 데이터 정책 ("PiiFilterStrict" | "PiiFilterStandard" | "AllowFiltered")
     pub external_data_policy: String,
-    /// 원격 OCR 전송 시 원본 이미지 전송 허용 (opt-out)
     #[serde(default)]
     pub allow_unredacted_external_ocr: bool,
-    /// OCR calibration/validation 설정
     #[serde(default)]
     pub ocr_validation: OcrValidationSettings,
-    /// Scene action 민감 입력 오버라이드 설정
     #[serde(default)]
     pub scene_action_override: SceneActionOverrideSettings,
-    /// Scene 인텔리전스 설정 (오버레이/추천/캘리브레이션/실행 게이트)
     #[serde(default)]
     pub scene_intelligence: SceneIntelligenceSettings,
-    /// 로컬 폴백 활성화
     pub fallback_to_local: bool,
-    /// OCR API 설정 (Remote 선택 시)
     pub ocr_api: Option<ExternalApiSettings>,
-    /// LLM API 설정 (Remote 선택 시)
     pub llm_api: Option<ExternalApiSettings>,
 }
 
@@ -337,19 +257,13 @@ impl Default for AiProviderSettings {
     }
 }
 
-/// 외부 API 설정
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ExternalApiSettings {
-    /// API 엔드포인트 URL
     pub endpoint: String,
-    /// API 키 (GET: 마스킹 / POST: 전체 키)
     pub api_key_masked: String,
-    /// 모델 이름
     pub model: Option<String>,
-    /// Provider 타입 ("Anthropic" | "OpenAi" | "Google" | "Generic")
     #[serde(default = "default_provider_type")]
     pub provider_type: String,
-    /// 타임아웃 (초)
     #[serde(default = "default_external_timeout")]
     pub timeout_secs: u64,
 }
@@ -398,19 +312,16 @@ impl Default for AppSettings {
     }
 }
 
-/// GET /api/storage/stats - 저장소 통계 조회
 pub async fn get_storage_stats(
     State(state): State<AppState>,
 ) -> Result<Json<StorageStats>, ApiError> {
     Ok(Json(settings_service::get_storage_stats(&state)?))
 }
 
-/// GET /api/settings - 현재 설정 조회
 pub async fn get_settings(State(state): State<AppState>) -> Result<Json<AppSettings>, ApiError> {
     Ok(Json(settings_service::get_settings(&state)))
 }
 
-/// POST /api/settings - 설정 저장
 pub async fn update_settings(
     State(state): State<AppState>,
     Json(settings): Json<AppSettings>,

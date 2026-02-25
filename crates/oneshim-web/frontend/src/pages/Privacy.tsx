@@ -1,7 +1,5 @@
 /**
- * 개인정보 관리 페이지
  *
- * 데이터 확인, 삭제, 백업/복원 기능
  */
 import { useState, useRef, ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -77,12 +75,10 @@ export default function Privacy() {
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false)
   const [deleteResult, setDeleteResult] = useState<DeleteResult | null>(null)
 
-  // 날짜 범위 삭제 폼 상태
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [selectedDataTypes, setSelectedDataTypes] = useState<DataType[]>([])
 
-  // 백업/복원 상태
   const [backupOptions, setBackupOptions] = useState<BackupParams>({
     include_settings: true,
     include_tags: true,
@@ -119,7 +115,6 @@ export default function Privacy() {
     },
   })
 
-  // 백업 다운로드 mutation
   const backupMutation = useMutation({
     mutationFn: downloadBackup,
     onSuccess: (blob) => {
@@ -128,7 +123,6 @@ export default function Privacy() {
     },
   })
 
-  // 복원 mutation
   const restoreMutation = useMutation({
     mutationFn: restoreBackup,
     onSuccess: (result) => {
@@ -171,7 +165,6 @@ export default function Privacy() {
       const text = await file.text()
       const archive: BackupArchive = JSON.parse(text)
 
-      // 버전 확인
       if (!archive.metadata?.version) {
         alert(t('backup.restoreFailed'))
         return
@@ -182,7 +175,6 @@ export default function Privacy() {
       alert(t('backup.restoreFailed'))
     }
 
-    // 파일 입력 초기화
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -206,13 +198,13 @@ export default function Privacy() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
+      {/* UI note */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('privacy.title')}</h1>
         <p className="mt-1 text-slate-600 dark:text-slate-400">{t('privacy.subtitle')}</p>
       </div>
 
-      {/* 삭제 결과 메시지 */}
+      {/* UI note */}
       {deleteResult && (
         <div className="bg-green-500/20 border border-green-500 text-green-600 dark:text-green-400 p-4 rounded-lg">
           <div className="font-medium">{deleteResult.message}</div>
@@ -232,7 +224,7 @@ export default function Privacy() {
         </div>
       )}
 
-      {/* 현재 저장된 데이터 */}
+      {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('privacy.currentData')}</CardTitle>
         {storageStats && (
@@ -255,7 +247,7 @@ export default function Privacy() {
         )}
       </Card>
 
-      {/* 날짜 범위로 삭제 */}
+      {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('privacy.deleteByRangeTitle')}</CardTitle>
         <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">{t('privacy.deleteByRangeDesc')}</p>
@@ -305,7 +297,7 @@ export default function Privacy() {
         </Button>
       </Card>
 
-      {/* 전체 데이터 삭제 */}
+      {/* UI note */}
       <Card variant="danger" padding="lg">
         <CardTitle className="mb-2 text-red-600 dark:text-red-400">{t('privacy.deleteAllTitle')}</CardTitle>
         <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
@@ -320,14 +312,14 @@ export default function Privacy() {
         </Button>
       </Card>
 
-      {/* 백업/복원 */}
+      {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('backup.title')}</CardTitle>
         <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
           {t('backup.description')}
         </p>
 
-        {/* 복원 결과 메시지 */}
+        {/* UI note */}
         {restoreResult && (
           <div className={`mb-4 p-4 rounded-lg ${
             restoreResult.success
@@ -366,7 +358,7 @@ export default function Privacy() {
           </div>
         )}
 
-        {/* 백업 옵션 */}
+        {/* UI note */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
             {t('backup.includeData')}
@@ -406,7 +398,7 @@ export default function Privacy() {
           </p>
         </div>
 
-        {/* 백업/복원 버튼 */}
+        {/* UI note */}
         <div className="flex flex-wrap gap-3">
           <Button
             variant="primary"
@@ -434,7 +426,7 @@ export default function Privacy() {
           </div>
         </div>
 
-        {/* 백업 실패 메시지 */}
+        {/* UI note */}
         {backupMutation.isError && (
           <div className="mt-3 text-sm text-red-600 dark:text-red-400">
             {t('backup.downloadFailed')}: {(backupMutation.error as Error).message}
@@ -447,7 +439,7 @@ export default function Privacy() {
         )}
       </Card>
 
-      {/* 개인정보 안내 */}
+      {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('privacy.dataInfoTitle')}</CardTitle>
         <div className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
@@ -470,14 +462,14 @@ export default function Privacy() {
         </div>
       </Card>
 
-      {/* 날짜 범위 삭제 확인 모달 */}
+      {/* UI note */}
       <ConfirmModal
         isOpen={showDeleteRangeModal}
         title={t('privacy.confirmDeleteRange')}
-        message={`${fromDate} ~ ${toDate} 기간의 데이터를 삭제합니다.\n\n삭제 대상: ${
+        message={`${fromDate} ~ ${toDate} period의 데이터를 delete합니다.\n\ndelete 대상: ${
           selectedDataTypes.length > 0
             ? selectedDataTypes.map((dt) => DATA_TYPE_LABELS[dt]).join(', ')
-            : '모든 데이터 유형'
+            : 'all 데이터 type'
         }\n\n이 작업은 되돌릴 수 없습니다.`}
         confirmText={t('privacy.deleteRange')}
         isDangerous={false}
@@ -485,7 +477,7 @@ export default function Privacy() {
         onCancel={() => setShowDeleteRangeModal(false)}
       />
 
-      {/* 전체 삭제 확인 모달 */}
+      {/* UI note */}
       <ConfirmModal
         isOpen={showDeleteAllModal}
         title={t('privacy.confirmDeleteAll')}

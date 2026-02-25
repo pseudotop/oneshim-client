@@ -1,6 +1,4 @@
-//! 데스크톱 알림 어댑터.
 //!
-//! `DesktopNotifier` 포트 구현. notify-rust 기반.
 
 use async_trait::async_trait;
 use notify_rust::Notification;
@@ -9,11 +7,9 @@ use oneshim_core::models::suggestion::{Priority, Suggestion};
 use oneshim_core::ports::notifier::DesktopNotifier;
 use tracing::{debug, warn};
 
-/// 데스크톱 알림 어댑터 — `DesktopNotifier` 포트 구현
 pub struct DesktopNotifierImpl;
 
 impl DesktopNotifierImpl {
-    /// 새 알림 어댑터 생성
     pub fn new() -> Self {
         Self
     }
@@ -29,9 +25,9 @@ impl Default for DesktopNotifierImpl {
 impl DesktopNotifier for DesktopNotifierImpl {
     async fn show_suggestion(&self, suggestion: &Suggestion) -> Result<(), CoreError> {
         let title = match &suggestion.priority {
-            Priority::Critical => "🔴 긴급 제안",
-            Priority::High => "🟠 중요 제안",
-            Priority::Medium => "🔵 제안",
+            Priority::Critical => "🔴 긴급 suggestion",
+            Priority::High => "🟠 중요 suggestion",
+            Priority::Medium => "🔵 suggestion",
             Priority::Low => "⚪ 참고",
         };
 
@@ -42,7 +38,7 @@ impl DesktopNotifier for DesktopNotifierImpl {
         };
 
         debug!(
-            "제안 알림: {} ({:?})",
+            "suggestion notification: {} ({:?})",
             suggestion.suggestion_id, suggestion.priority
         );
 
@@ -51,33 +47,33 @@ impl DesktopNotifier for DesktopNotifierImpl {
             .body(&body)
             .appname("ONESHIM")
             .show()
-            .map_err(|e| CoreError::Internal(format!("알림 표시 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("notification display failure: {e}")))?;
 
         Ok(())
     }
 
     async fn show_notification(&self, title: &str, body: &str) -> Result<(), CoreError> {
-        debug!("알림: {title}");
+        debug!("notification: {title}");
 
         Notification::new()
             .summary(title)
             .body(body)
             .appname("ONESHIM")
             .show()
-            .map_err(|e| CoreError::Internal(format!("알림 표시 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("notification display failure: {e}")))?;
 
         Ok(())
     }
 
     async fn show_error(&self, message: &str) -> Result<(), CoreError> {
-        warn!("에러 알림: {message}");
+        warn!("error notification: {message}");
 
         Notification::new()
-            .summary("ONESHIM 에러")
+            .summary("ONESHIM error")
             .body(message)
             .appname("ONESHIM")
             .show()
-            .map_err(|e| CoreError::Internal(format!("에러 알림 표시 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("error notification display failure: {e}")))?;
 
         Ok(())
     }

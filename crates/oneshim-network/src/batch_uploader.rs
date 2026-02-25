@@ -1,7 +1,4 @@
-//! 배치 업로더.
 //!
-//! 이벤트를 배치로 모아 서버에 업로드. 재시도 + exponential backoff.
-//! Phase 32 최적화: Lock-free 큐 + 스트림 압축.
 
 use crossbeam::queue::SegQueue;
 use oneshim_core::error::CoreError;
@@ -12,27 +9,18 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, warn};
 
-/// 배치 업로더 — Lock-free 이벤트 큐 → 배치 전송
 ///
-/// Phase 32 최적화:
-/// - crossbeam::SegQueue: Lock-free MPSC 큐로 enqueue 무경합
-/// - AtomicUsize: 락 없이 큐 크기 추적
-/// - 동적 배치 크기: 큐 크기에 따라 배치 크기 조절
 pub struct BatchUploader {
     api_client: Arc<dyn ApiClient>,
-    /// Lock-free 큐 — 여러 producer에서 동시 push 가능
     queue: Arc<SegQueue<Event>>,
-    /// 큐 크기 (lock-free 카운터)
     queue_size: AtomicUsize,
     session_id: String,
     max_batch_size: usize,
     max_retries: u32,
-    /// 동적 배치 크기 활성화
     dynamic_batch: bool,
 }
 
 impl BatchUploader {
-    /// 새 배치 업로더 생성
     pub fn new(
         api_client: Arc<dyn ApiClient>,
         session_id: String,
@@ -50,52 +38,42 @@ impl BatchUploader {
         }
     }
 
-    /// 동적 배치 크기 설정
     pub fn with_dynamic_batch(mut self, enabled: bool) -> Self {
         self.dynamic_batch = enabled;
         self
     }
 
-    /// 이벤트를 큐에 추가 (Lock-free)
     ///
-    /// Phase 32: SegQueue.push()는 CAS 기반으로 락 없이 동작
     pub fn enqueue(&self, event: Event) {
         self.queue.push(event);
         let size = self.queue_size.fetch_add(1, Ordering::Relaxed) + 1;
-        debug!("이벤트 큐 추가 (lock-free), 현재 크기: {size}");
+        debug!("event add (lock-free), current size: {size}");
     }
 
-    /// 여러 이벤트를 한번에 큐에 추가 (Lock-free)
     pub fn enqueue_many(&self, events: Vec<Event>) {
         let count = events.len();
         for event in events {
             self.queue.push(event);
         }
         let size = self.queue_size.fetch_add(count, Ordering::Relaxed) + count;
-        debug!("이벤트 {count}개 큐 추가 (lock-free), 현재 크기: {size}");
+        debug!("event {count}items add (lock-free), current size: {size}");
     }
 
-    /// 동적 배치 크기 계산
     ///
-    /// 큐 크기에 따라 배치 크기 조절:
-    /// - 큐 크기 < 10: 즉시 전송 (min_batch = 1)
-    /// - 큐 크기 10-50: 기본 배치 크기
-    /// - 큐 크기 > 50: 2배 배치 (빠른 처리)
     fn compute_batch_size(&self, queue_len: usize) -> usize {
         if !self.dynamic_batch {
             return self.max_batch_size;
         }
 
         if queue_len < 10 {
-            queue_len // 즉시 전송
+            queue_len // send all when queue is small
         } else if queue_len > 50 {
-            (self.max_batch_size * 2).min(queue_len) // 2배 배치
+            (self.max_batch_size * 2).min(queue_len) // 2x batch when queue is large
         } else {
             self.max_batch_size
         }
     }
 
-    /// 큐에서 배치를 가져와 서버에 업로드
     pub async fn flush(&self) -> Result<usize, CoreError> {
         let current_size = self.queue_size.load(Ordering::Relaxed);
 
@@ -103,11 +81,9 @@ impl BatchUploader {
             return Ok(0);
         }
 
-        // 동적 배치 크기 계산
         let batch_size = self.compute_batch_size(current_size);
         let drain_count = current_size.min(batch_size);
 
-        // Lock-free 큐에서 이벤트 추출
         let mut events = Vec::with_capacity(drain_count);
         for _ in 0..drain_count {
             if let Some(event) = self.queue.pop() {
@@ -122,7 +98,6 @@ impl BatchUploader {
             return Ok(0);
         }
 
-        // 카운터 갱신
         self.queue_size.fetch_sub(actual_count, Ordering::Relaxed);
 
         let batch = EventBatch {
@@ -131,26 +106,24 @@ impl BatchUploader {
             created_at: chrono::Utc::now(),
         };
 
-        // exponential backoff 재시도
         let mut retry_delay = Duration::from_secs(1);
         for attempt in 0..=self.max_retries {
             match self.api_client.upload_batch(&batch).await {
                 Ok(()) => {
-                    debug!("배치 업로드 성공: {actual_count}개 이벤트");
+                    debug!("batch upload success: {actual_count}items event");
                     return Ok(actual_count);
                 }
                 Err(e) => {
                     if attempt < self.max_retries {
                         warn!(
-                            "배치 업로드 실패 (시도 {}/{}): {e}",
+                            "batch upload failure (attempt {}/{}): {e}",
                             attempt + 1,
                             self.max_retries + 1
                         );
                         tokio::time::sleep(retry_delay).await;
                         retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
                     } else {
-                        error!("배치 업로드 최종 실패: {e}");
-                        // 실패한 이벤트를 다시 큐에 넣기
+                        error!("batch upload final failure: {e}");
                         self.requeue_failed_events(batch.events);
                         return Err(e);
                     }
@@ -161,22 +134,19 @@ impl BatchUploader {
         Ok(0)
     }
 
-    /// 실패한 이벤트를 다시 큐에 추가
     fn requeue_failed_events(&self, events: Vec<Event>) {
         let count = events.len();
         for event in events {
             self.queue.push(event);
         }
         self.queue_size.fetch_add(count, Ordering::Relaxed);
-        warn!("실패한 이벤트 {count}개 재큐잉");
+        warn!("failure event {count}items");
     }
 
-    /// 현재 큐 크기 (Lock-free)
     pub fn queue_size(&self) -> usize {
         self.queue_size.load(Ordering::Relaxed)
     }
 
-    /// 배치 통계
     pub fn stats(&self) -> BatchStats {
         BatchStats {
             queue_size: self.queue_size(),
@@ -186,14 +156,10 @@ impl BatchUploader {
     }
 }
 
-/// 배치 업로더 통계
 #[derive(Debug, Clone)]
 pub struct BatchStats {
-    /// 현재 큐 크기
     pub queue_size: usize,
-    /// 최대 배치 크기
     pub max_batch_size: usize,
-    /// 동적 배치 활성화 여부
     pub dynamic_batch_enabled: bool,
 }
 
@@ -224,7 +190,7 @@ mod tests {
         }
         async fn upload_batch(&self, _batch: &EventBatch) -> Result<(), CoreError> {
             if self.should_fail {
-                Err(CoreError::Internal("mock 실패".to_string()))
+                Err(CoreError::Internal("mock failure".to_string()))
             } else {
                 Ok(())
             }
@@ -281,8 +247,7 @@ mod tests {
     async fn max_batch_size_limit() {
         let client = Arc::new(MockApiClient { should_fail: false });
         let uploader =
-            BatchUploader::new(client, "sess_1".to_string(), 2, 3).with_dynamic_batch(false); // 동적 배치 비활성화
-
+            BatchUploader::new(client, "sess_1".to_string(), 2, 3).with_dynamic_batch(false); // batch disabled
         for _ in 0..5 {
             uploader.enqueue(make_test_event());
         }
@@ -298,13 +263,12 @@ mod tests {
         let client = Arc::new(MockApiClient { should_fail: false });
         let uploader = BatchUploader::new(client, "sess_1".to_string(), 100, 3);
 
-        // 작은 큐 — 즉시 전송
         for _ in 0..5 {
             uploader.enqueue(make_test_event());
         }
 
         let sent = uploader.flush().await.unwrap();
-        assert_eq!(sent, 5); // 전부 전송
+        assert_eq!(sent, 5); // all sent
     }
 
     #[tokio::test]
@@ -312,7 +276,6 @@ mod tests {
         let client = Arc::new(MockApiClient { should_fail: false });
         let uploader = BatchUploader::new(client, "sess_1".to_string(), 20, 3);
 
-        // 큰 큐 — 2배 배치
         for _ in 0..60 {
             uploader.enqueue(make_test_event());
         }
@@ -321,7 +284,6 @@ mod tests {
         assert_eq!(sent, 40); // 20 * 2 = 40
     }
 
-    /// 1회 실패 후 성공하는 FlakeyApiClient
     struct FlakeyApiClient {
         call_count: std::sync::atomic::AtomicU32,
         fail_until: u32,
@@ -349,7 +311,7 @@ mod tests {
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                 + 1;
             if count <= self.fail_until {
-                Err(CoreError::Internal("일시적 실패".to_string()))
+                Err(CoreError::Internal("Temporary failure".to_string()))
             } else {
                 Ok(())
             }
@@ -373,7 +335,6 @@ mod tests {
 
     #[tokio::test]
     async fn retry_on_transient_failure() {
-        // 1회 실패 후 성공
         let client = Arc::new(FlakeyApiClient {
             call_count: std::sync::atomic::AtomicU32::new(0),
             fail_until: 1,
@@ -388,7 +349,6 @@ mod tests {
 
     #[tokio::test]
     async fn max_retries_exhaustion() {
-        // 항상 실패 → max_retries 초과 후 Err
         let client = Arc::new(MockApiClient { should_fail: true });
         let uploader = BatchUploader::new(client, "sess_fail".to_string(), 100, 0); // 0 retries
 
@@ -399,7 +359,6 @@ mod tests {
 
     #[tokio::test]
     async fn failed_events_requeued() {
-        // 실패 시 이벤트가 큐에 복원되는지 확인
         let client = Arc::new(MockApiClient { should_fail: true });
         let uploader = BatchUploader::new(client, "sess_requeue".to_string(), 100, 0);
 
@@ -409,7 +368,6 @@ mod tests {
 
         let result = uploader.flush().await;
         assert!(result.is_err());
-        // 실패한 이벤트가 다시 큐에 들어감
         assert_eq!(uploader.queue_size(), 2);
     }
 
@@ -425,7 +383,6 @@ mod tests {
             3,
         ));
 
-        // 10개 스레드에서 동시에 100개씩 enqueue
         let mut handles = vec![];
         for _ in 0..10 {
             let uploader = Arc::clone(&uploader);
@@ -440,7 +397,6 @@ mod tests {
             h.join().unwrap();
         }
 
-        // 1000개 이벤트가 모두 큐에 들어가야 함
         assert_eq!(uploader.queue_size(), 1000);
     }
 

@@ -1,15 +1,10 @@
-// 빈 상태 안내 컴포넌트
 
 import type { ReactNode } from 'react'
 
 export interface EmptyStateProps {
-  /** 중앙 아이콘 */
   icon: ReactNode
-  /** 제목 */
   title: string
-  /** 설명 */
   description: string
-  /** 선택적 행동 버튼 */
   action?: {
     label: string
     onClick: () => void

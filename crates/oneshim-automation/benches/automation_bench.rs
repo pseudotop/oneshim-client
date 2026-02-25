@@ -1,10 +1,5 @@
-//! oneshim-automation 성능 벤치마크
 //!
-//! 실행: cargo bench -p oneshim-automation
 //!
-//! 벤치마크 대상:
-//! - AuditLogger: 로그 삽입, 배치 드레인, 상태별 필터, 통계 집계
-//! - PolicyClient: 토큰 검증, 프로세스 허용 확인, 인자 패턴 매칭
 
 use std::hint::black_box;
 
@@ -12,7 +7,6 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Through
 use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::policy::{AuditLevel, ExecutionPolicy, PolicyClient};
 
-/// AuditLogger에 N개 로그 채우기
 fn fill_logger(n: usize) -> AuditLogger {
     let mut logger = AuditLogger::new(10_000, 50);
     for i in 0..n {
@@ -21,7 +15,6 @@ fn fill_logger(n: usize) -> AuditLogger {
     logger
 }
 
-/// 정책 목록 생성
 fn create_policies(n: usize) -> Vec<ExecutionPolicy> {
     (0..n)
         .map(|i| ExecutionPolicy {
@@ -40,7 +33,6 @@ fn create_policies(n: usize) -> Vec<ExecutionPolicy> {
         .collect()
 }
 
-/// 로그 삽입 벤치마크
 fn bench_audit_log_insert(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_log_insert");
 
@@ -91,7 +83,6 @@ fn bench_audit_log_insert(c: &mut Criterion) {
     group.finish();
 }
 
-/// 배치 드레인 벤치마크
 fn bench_audit_drain(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_drain");
 
@@ -100,7 +91,6 @@ fn bench_audit_drain(c: &mut Criterion) {
     for buffer_size in buffer_sizes {
         group.throughput(Throughput::Elements(buffer_size as u64));
 
-        // drain_batch (50개씩)
         group.bench_with_input(
             BenchmarkId::new("drain_batch", buffer_size),
             &buffer_size,
@@ -116,7 +106,6 @@ fn bench_audit_drain(c: &mut Criterion) {
             },
         );
 
-        // drain_all (한 번에)
         group.bench_with_input(
             BenchmarkId::new("drain_all", buffer_size),
             &buffer_size,
@@ -134,7 +123,6 @@ fn bench_audit_drain(c: &mut Criterion) {
     group.finish();
 }
 
-/// 조회/필터/통계 벤치마크
 fn bench_audit_query(c: &mut Criterion) {
     let mut group = c.benchmark_group("audit_query");
 
@@ -159,11 +147,9 @@ fn bench_audit_query(c: &mut Criterion) {
     group.finish();
 }
 
-/// 정책 인자 검증 벤치마크
 fn bench_policy_validate_args(c: &mut Criterion) {
     let mut group = c.benchmark_group("policy_validate_args");
 
-    // 글로브 패턴 매칭 (와일드카드 *) 성능
     let policy = ExecutionPolicy {
         policy_id: "test-policy".to_string(),
         process_name: "test".to_string(),
@@ -183,7 +169,6 @@ fn bench_policy_validate_args(c: &mut Criterion) {
         require_signed_token: false,
     };
 
-    // 매칭 성공 케이스
     let matching_args = vec![
         "--config=production.yaml".to_string(),
         "--output=/tmp/result.json".to_string(),
@@ -193,17 +178,15 @@ fn bench_policy_validate_args(c: &mut Criterion) {
         b.iter(|| black_box(PolicyClient::validate_args(&policy, &matching_args)));
     });
 
-    // 매칭 실패 케이스
     let non_matching_args = vec![
         "--config=production.yaml".to_string(),
-        "--delete-all".to_string(), // 불허 인자
+        "--delete-all".to_string(),
     ];
 
     group.bench_function("non_matching_args", |b| {
         b.iter(|| black_box(PolicyClient::validate_args(&policy, &non_matching_args)));
     });
 
-    // 빈 인자 (빈 배열은 항상 허용)
     let empty_args: Vec<String> = vec![];
 
     group.bench_function("empty_args", |b| {
@@ -213,7 +196,6 @@ fn bench_policy_validate_args(c: &mut Criterion) {
     group.finish();
 }
 
-/// 정책 캐시 조회 벤치마크
 fn bench_policy_cache(c: &mut Criterion) {
     let mut group = c.benchmark_group("policy_cache");
 
@@ -228,7 +210,6 @@ fn bench_policy_cache(c: &mut Criterion) {
         let client = PolicyClient::new();
         rt.block_on(client.update_policies(policies));
 
-        // 프로세스 허용 확인 (HashSet O(1))
         group.bench_with_input(
             BenchmarkId::new("is_process_allowed", count),
             &client,
@@ -239,7 +220,6 @@ fn bench_policy_cache(c: &mut Criterion) {
             },
         );
 
-        // 프로세스별 정책 조회 (선형 탐색)
         group.bench_with_input(
             BenchmarkId::new("get_policy_for_process", count),
             &client,
@@ -252,7 +232,6 @@ fn bench_policy_cache(c: &mut Criterion) {
             },
         );
 
-        // 캐시 유효성 확인
         group.bench_with_input(
             BenchmarkId::new("is_cache_valid", count),
             &client,

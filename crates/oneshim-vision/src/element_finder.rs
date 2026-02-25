@@ -1,7 +1,4 @@
-//! UI 요소 탐색기 구현.
 //!
-//! OCR 기반 요소 탐색 + 전략 체인(ChainedElementFinder)을 제공한다.
-//! Phase 2 구현: `OcrElementFinder`, `ChainedElementFinder`
 
 use std::sync::Arc;
 
@@ -18,23 +15,13 @@ use oneshim_core::models::ui_scene::{
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
-// ============================================================
-// OcrElementFinder — OCR 기반 UI 요소 탐색
-// ============================================================
-
-/// OCR 기반 UI 요소 탐색기
 ///
-/// 화면 캡처 → OCR 추출 → 텍스트 매칭 → UiElement 변환
 pub struct OcrElementFinder {
-    /// OCR 제공자 (로컬 또는 원격)
     ocr_provider: Arc<dyn OcrProvider>,
-    /// 화면 캡처 데이터 (이미지 바이트 + 형식)
-    /// 실제 사용 시 ScreenCapture와 연동하여 최신 이미지를 제공받음
     last_image: tokio::sync::RwLock<Option<(Vec<u8>, String)>>,
 }
 
 impl OcrElementFinder {
-    /// 새 OCR 기반 탐색기 생성
     pub fn new(ocr_provider: Arc<dyn OcrProvider>) -> Self {
         Self {
             ocr_provider,
@@ -42,13 +29,11 @@ impl OcrElementFinder {
         }
     }
 
-    /// 최신 캡처 이미지 설정 (외부에서 주입)
     pub async fn set_image(&self, image_data: Vec<u8>, format: String) {
         let mut img = self.last_image.write().await;
         *img = Some((image_data, format));
     }
 
-    /// OCR 결과 → UiElement 변환 (텍스트 매칭 + 영역 필터)
     fn ocr_to_elements(
         results: &[OcrResult],
         text_query: Option<&str>,
@@ -58,7 +43,6 @@ impl OcrElementFinder {
         results
             .iter()
             .filter(|r| {
-                // 영역 필터
                 if let Some(bounds) = region {
                     let in_region = r.x >= bounds.x
                         && r.y >= bounds.y
@@ -71,7 +55,6 @@ impl OcrElementFinder {
                 true
             })
             .filter(|r| {
-                // 텍스트 매칭 (부분 문자열)
                 if let Some(query) = text_query {
                     let query_lower = query.to_lowercase();
                     let text_lower = r.text.to_lowercase();
@@ -81,7 +64,6 @@ impl OcrElementFinder {
                 }
             })
             .map(|r| {
-                // 텍스트 유사도 기반 신뢰도 조정
                 let text_confidence = if let Some(query) = text_query {
                     text_similarity(&r.text, query)
                 } else {
@@ -105,19 +87,16 @@ impl OcrElementFinder {
             .collect()
     }
 
-    /// 현재 이미지 기준 구조화된 UI Scene 생성.
     ///
-    /// 좌표 중심 데이터(`bbox_abs`, `bbox_norm`)와 라벨을 포함해
-    /// 향후 오버레이/GUI 구조 추론 파이프라인에서 재사용한다.
     pub async fn analyze_scene(
         &self,
         app_name: Option<&str>,
         screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
         let image_guard = self.last_image.read().await;
-        let (image_data, image_format) = image_guard
-            .as_ref()
-            .ok_or_else(|| CoreError::Internal("OCR 탐색기: 캡처 이미지가 없습니다".to_string()))?;
+        let (image_data, image_format) = image_guard.as_ref().ok_or_else(|| {
+            CoreError::Internal("OCR finder: captured image is missing".to_string())
+        })?;
 
         self.analyze_scene_from_image_data(
             image_data.clone(),
@@ -137,7 +116,7 @@ impl OcrElementFinder {
     ) -> Result<UiScene, CoreError> {
         let (screen_width, screen_height) = image::load_from_memory(&image_data)
             .map(|img| (img.width().max(1), img.height().max(1)))
-            .map_err(|e| CoreError::OcrError(format!("이미지 크기 파싱 실패: {e}")))?;
+            .map_err(|e| CoreError::OcrError(format!("Failed to parse image size: {e}")))?;
 
         let ocr_results = self
             .ocr_provider
@@ -227,15 +206,15 @@ impl ElementFinder for OcrElementFinder {
         region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError> {
         let image_guard = self.last_image.read().await;
-        let (image_data, image_format) = image_guard
-            .as_ref()
-            .ok_or_else(|| CoreError::Internal("OCR 탐색기: 캡처 이미지가 없습니다".to_string()))?;
+        let (image_data, image_format) = image_guard.as_ref().ok_or_else(|| {
+            CoreError::Internal("OCR finder: captured image is missing".to_string())
+        })?;
 
         debug!(
             provider = self.ocr_provider.provider_name(),
             text = ?text,
             role = ?role,
-            "OCR 요소 탐색 시작"
+            "OCR element search started"
         );
 
         let ocr_results = self
@@ -245,14 +224,13 @@ impl ElementFinder for OcrElementFinder {
 
         let mut elements = Self::ocr_to_elements(&ocr_results, text, role, region);
 
-        // 신뢰도 내림차순 정렬
         elements.sort_by(|a, b| {
             b.confidence
                 .partial_cmp(&a.confidence)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        debug!(count = elements.len(), "OCR 요소 탐색 완료");
+        debug!(count = elements.len(), "OCR element lookup completed");
 
         Ok(elements)
     }
@@ -281,20 +259,12 @@ impl ElementFinder for OcrElementFinder {
     }
 }
 
-// ============================================================
-// ChainedElementFinder — 전략 체인
-// ============================================================
-
-/// 전략 체인 요소 탐색기
 ///
-/// 여러 탐색기를 순차적으로 시도하여 첫 번째 성공 결과를 반환한다.
-/// 예: OCR → 접근성 API → 템플릿 매칭
 pub struct ChainedElementFinder {
     finders: Vec<Box<dyn ElementFinder>>,
 }
 
 impl ChainedElementFinder {
-    /// 전략 체인 생성
     pub fn new(finders: Vec<Box<dyn ElementFinder>>) -> Self {
         Self { finders }
     }
@@ -309,26 +279,26 @@ impl ElementFinder for ChainedElementFinder {
         region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError> {
         for finder in &self.finders {
-            debug!(finder = finder.name(), "체인 탐색기 시도");
+            debug!(finder = finder.name(), "lookup attempt");
             match finder.find_element(text, role, region).await {
                 Ok(elements) if !elements.is_empty() => {
                     debug!(
                         finder = finder.name(),
                         count = elements.len(),
-                        "체인 탐색기 성공"
+                        "Chain finder succeeded"
                     );
                     return Ok(elements);
                 }
                 Ok(_) => {
-                    debug!(finder = finder.name(), "결과 없음, 다음 탐색기 시도");
+                    debug!(finder = finder.name(), "none, next lookup attempt");
                 }
                 Err(e) => {
-                    debug!(finder = finder.name(), error = %e, "탐색 실패, 다음 탐색기 시도");
+                    debug!(finder = finder.name(), error = %e, "lookup failure, next lookup attempt");
                 }
             }
         }
         Err(CoreError::ElementNotFound(format!(
-            "모든 탐색기에서 요소를 찾지 못함 (text={:?}, role={:?})",
+            "No element found in all finders (text={:?}, role={:?})",
             text, role
         )))
     }
@@ -341,14 +311,14 @@ impl ElementFinder for ChainedElementFinder {
         let mut last_err: Option<CoreError> = None;
 
         for finder in &self.finders {
-            debug!(finder = finder.name(), "체인 scene 분석기 시도");
+            debug!(finder = finder.name(), "scene min attempt");
             match finder.analyze_scene(app_name, screen_id).await {
                 Ok(scene) => return Ok(scene),
                 Err(err) => {
                     debug!(
                         finder = finder.name(),
                         error = %err,
-                        "scene 분석 실패, 다음 탐색기 시도"
+                        "Scene analysis failed, trying next finder"
                     );
                     last_err = Some(err);
                 }
@@ -356,7 +326,7 @@ impl ElementFinder for ChainedElementFinder {
         }
 
         Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound("scene 분석을 지원하는 탐색기를 찾지 못함".to_string())
+            CoreError::ElementNotFound("No finder supports scene analysis".to_string())
         }))
     }
 
@@ -370,7 +340,7 @@ impl ElementFinder for ChainedElementFinder {
         let mut last_err: Option<CoreError> = None;
 
         for finder in &self.finders {
-            debug!(finder = finder.name(), "체인 이미지 scene 분석기 시도");
+            debug!(finder = finder.name(), "image scene min attempt");
             match finder
                 .analyze_scene_from_image(
                     image_data.clone(),
@@ -385,7 +355,7 @@ impl ElementFinder for ChainedElementFinder {
                     debug!(
                         finder = finder.name(),
                         error = %err,
-                        "이미지 scene 분석 실패, 다음 탐색기 시도"
+                        "이미지 Scene analysis failed, trying next finder"
                     );
                     last_err = Some(err);
                 }
@@ -393,9 +363,7 @@ impl ElementFinder for ChainedElementFinder {
         }
 
         Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound(
-                "이미지 scene 분석을 지원하는 탐색기를 찾지 못함".to_string(),
-            )
+            CoreError::ElementNotFound("No finder supports image scene analysis".to_string())
         }))
     }
 
@@ -404,13 +372,7 @@ impl ElementFinder for ChainedElementFinder {
     }
 }
 
-// ============================================================
-// 유틸리티 — 텍스트 유사도
-// ============================================================
-
-/// 간단한 텍스트 유사도 (0.0 ~ 1.0)
 ///
-/// 정확히 일치하면 1.0, 부분 일치하면 길이 비율, 불일치면 0.0
 fn text_similarity(text: &str, query: &str) -> f64 {
     let text_lower = text.to_lowercase();
     let query_lower = query.to_lowercase();
@@ -424,29 +386,25 @@ fn text_similarity(text: &str, query: &str) -> f64 {
     }
 }
 
-// ============================================================
-// 테스트
-// ============================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn text_similarity_exact_match() {
-        assert!((text_similarity("저장", "저장") - 1.0).abs() < f64::EPSILON);
+        assert!((text_similarity("save", "save") - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn text_similarity_partial_match() {
-        let sim = text_similarity("파일 저장", "저장");
+        let sim = text_similarity("file save", "save");
         assert!(sim > 0.0);
         assert!(sim < 1.0);
     }
 
     #[test]
     fn text_similarity_no_match() {
-        assert!((text_similarity("저장", "열기")).abs() < f64::EPSILON);
+        assert!((text_similarity("save", "open")).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -484,7 +442,7 @@ mod tests {
     fn ocr_to_elements_text_filter() {
         let results = vec![
             OcrResult {
-                text: "파일".to_string(),
+                text: "file".to_string(),
                 x: 0,
                 y: 0,
                 width: 40,
@@ -492,7 +450,7 @@ mod tests {
                 confidence: 0.9,
             },
             OcrResult {
-                text: "저장".to_string(),
+                text: "save".to_string(),
                 x: 50,
                 y: 0,
                 width: 40,
@@ -500,7 +458,7 @@ mod tests {
                 confidence: 0.85,
             },
             OcrResult {
-                text: "편집".to_string(),
+                text: "edit".to_string(),
                 x: 100,
                 y: 0,
                 width: 40,
@@ -509,16 +467,16 @@ mod tests {
             },
         ];
 
-        let elements = OcrElementFinder::ocr_to_elements(&results, Some("저장"), None, None);
+        let elements = OcrElementFinder::ocr_to_elements(&results, Some("save"), None, None);
         assert_eq!(elements.len(), 1);
-        assert_eq!(elements[0].text, "저장");
+        assert_eq!(elements[0].text, "save");
     }
 
     #[test]
     fn ocr_to_elements_region_filter() {
         let results = vec![
             OcrResult {
-                text: "파일".to_string(),
+                text: "file".to_string(),
                 x: 0,
                 y: 0,
                 width: 40,
@@ -526,7 +484,7 @@ mod tests {
                 confidence: 0.9,
             },
             OcrResult {
-                text: "저장".to_string(),
+                text: "save".to_string(),
                 x: 200,
                 y: 200,
                 width: 40,
@@ -543,13 +501,13 @@ mod tests {
         };
         let elements = OcrElementFinder::ocr_to_elements(&results, None, None, Some(&region));
         assert_eq!(elements.len(), 1);
-        assert_eq!(elements[0].text, "파일");
+        assert_eq!(elements[0].text, "file");
     }
 
     #[test]
     fn ocr_to_elements_all_filtered() {
         let results = vec![OcrResult {
-            text: "파일".to_string(),
+            text: "file".to_string(),
             x: 0,
             y: 0,
             width: 40,
@@ -557,7 +515,7 @@ mod tests {
             confidence: 0.9,
         }];
 
-        let elements = OcrElementFinder::ocr_to_elements(&results, Some("없는텍스트"), None, None);
+        let elements = OcrElementFinder::ocr_to_elements(&results, Some("no-text"), None, None);
         assert!(elements.is_empty());
     }
 
@@ -586,7 +544,6 @@ mod tests {
         assert_eq!(elements.len(), 2);
     }
 
-    /// ChainedElementFinder 테스트용 Mock
     struct MockFinder {
         name: String,
         results: Vec<UiElement>,
@@ -617,7 +574,7 @@ mod tests {
             _role: Option<&str>,
             _region: Option<&ElementBounds>,
         ) -> Result<Vec<UiElement>, CoreError> {
-            Err(CoreError::Internal("탐색 실패".to_string()))
+            Err(CoreError::Internal("Search failed".to_string()))
         }
         fn name(&self) -> &str {
             "failing"
@@ -633,7 +590,7 @@ mod tests {
         let success_finder = MockFinder {
             name: "success".to_string(),
             results: vec![UiElement {
-                text: "저장".to_string(),
+                text: "save".to_string(),
                 bounds: ElementBounds {
                     x: 0,
                     y: 0,
@@ -650,11 +607,11 @@ mod tests {
             ChainedElementFinder::new(vec![Box::new(empty_finder), Box::new(success_finder)]);
 
         let result = chained
-            .find_element(Some("저장"), None, None)
+            .find_element(Some("save"), None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].text, "저장");
+        assert_eq!(result[0].text, "save");
     }
 
     #[tokio::test]
@@ -662,7 +619,7 @@ mod tests {
         let success_finder = MockFinder {
             name: "success".to_string(),
             results: vec![UiElement {
-                text: "확인".to_string(),
+                text: "confirm".to_string(),
                 bounds: ElementBounds {
                     x: 10,
                     y: 10,
@@ -679,7 +636,7 @@ mod tests {
             ChainedElementFinder::new(vec![Box::new(FailingFinder), Box::new(success_finder)]);
 
         let result = chained
-            .find_element(Some("확인"), None, None)
+            .find_element(Some("confirm"), None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 1);
@@ -689,7 +646,7 @@ mod tests {
     async fn chained_finder_all_fail_returns_error() {
         let chained = ChainedElementFinder::new(vec![Box::new(FailingFinder)]);
 
-        let result = chained.find_element(Some("없음"), None, None).await;
+        let result = chained.find_element(Some("none"), None, None).await;
         assert!(result.is_err());
     }
 }

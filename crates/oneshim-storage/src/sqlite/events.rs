@@ -1,6 +1,4 @@
-//! 이벤트 스토리지 (StorageService 포트 구현).
 //!
-//! 이벤트 저장, 조회, 전송 마킹, 보존 정책 적용.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -16,7 +14,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let count: i64 = conn
             .query_row(
@@ -24,12 +22,11 @@ impl SqliteStorage {
                 rusqlite::params![from, to],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("이벤트 개수 조회 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to count events: {e}")))?;
 
         Ok(count as u64)
     }
 
-    /// 이벤트에서 ID 추출
     pub(super) fn extract_event_id(event: &Event) -> String {
         match event {
             Event::User(user_event) => user_event.event_id.to_string(),
@@ -66,7 +63,6 @@ impl SqliteStorage {
         }
     }
 
-    /// 이벤트 타입 추출
     pub(super) fn extract_event_type(event: &Event) -> String {
         match event {
             Event::User(user_event) => format!("{:?}", user_event.event_type),
@@ -78,7 +74,6 @@ impl SqliteStorage {
         }
     }
 
-    /// 이벤트 타임스탬프 추출
     pub(super) fn extract_timestamp(event: &Event) -> DateTime<Utc> {
         match event {
             Event::User(user_event) => user_event.timestamp,
@@ -90,16 +85,11 @@ impl SqliteStorage {
         }
     }
 
-    /// 여러 이벤트를 한 트랜잭션으로 배치 저장 (성능 최적화)
     ///
-    /// 단일 save_event() 호출을 여러 번 하는 것보다 훨씬 빠름.
-    /// 모든 이벤트가 성공하거나 모두 롤백됨.
     ///
     /// # Arguments
-    /// * `events` - 저장할 이벤트 슬라이스
     ///
     /// # Returns
-    /// 저장된 이벤트 수 (INSERT OR IGNORE로 중복 제외됨)
     pub fn save_events_batch(&self, events: &[Event]) -> Result<usize, CoreError> {
         if events.is_empty() {
             return Ok(0);
@@ -108,18 +98,18 @@ impl SqliteStorage {
         let mut conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let tx = conn
             .transaction()
-            .map_err(|e| CoreError::Internal(format!("트랜잭션 시작 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to start transaction: {e}")))?;
 
         {
             let mut stmt = tx
                 .prepare_cached(
                     "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
                 )
-                .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
             for event in events {
                 let event_id = Self::extract_event_id(event);
@@ -128,14 +118,14 @@ impl SqliteStorage {
                 let data = serde_json::to_string(event)?;
 
                 stmt.execute(rusqlite::params![event_id, event_type, timestamp, data])
-                    .map_err(|e| CoreError::Internal(format!("배치 저장 실패: {e}")))?;
+                    .map_err(|e| CoreError::Internal(format!("batch save failure: {e}")))?;
             }
         }
 
         tx.commit()
-            .map_err(|e| CoreError::Internal(format!("트랜잭션 커밋 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to commit transaction: {e}")))?;
 
-        debug!("이벤트 배치 저장: {}개", events.len());
+        debug!("event batch save: {}items", events.len());
         Ok(events.len())
     }
 }
@@ -151,15 +141,15 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![event_id, event_type, timestamp, data],
         )
-        .map_err(|e| CoreError::Internal(format!("이벤트 저장 실패: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("event save failure: {e}")))?;
 
-        debug!("이벤트 저장: {event_id}");
+        debug!("event save: {event_id}");
         Ok(())
     }
 
@@ -175,20 +165,20 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT data FROM events WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp DESC LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let events = stmt
             .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
                 let data: String = row.get(0)?;
                 Ok(data)
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
             .collect();
@@ -200,18 +190,18 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare("SELECT data FROM events WHERE is_sent = 0 ORDER BY timestamp ASC LIMIT ?1")
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let events = stmt
             .query_map(rusqlite::params![limit as i64], |row| {
                 let data: String = row.get(0)?;
                 Ok(data)
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 실행 실패: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
             .collect();
@@ -227,7 +217,7 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let placeholders: Vec<String> = event_ids
             .iter()
@@ -245,9 +235,9 @@ impl StorageService for SqliteStorage {
             .collect();
 
         conn.execute(&sql, params.as_slice())
-            .map_err(|e| CoreError::Internal(format!("전송 완료 마킹 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to mark as sent: {e}")))?;
 
-        debug!("{}개 이벤트 전송 완료 마킹", event_ids.len());
+        debug!("{}items event sent completed", event_ids.len());
         Ok(())
     }
 
@@ -257,18 +247,18 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let deleted = conn
             .execute(
                 "DELETE FROM events WHERE timestamp < ?1 AND is_sent = 1",
                 rusqlite::params![cutoff],
             )
-            .map_err(|e| CoreError::Internal(format!("보존 정책 적용 실패: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to apply retention policy: {e}")))?;
 
         if deleted > 0 {
             info!(
-                "보존 정책: {deleted}개 이벤트 삭제 (>{} 일)",
+                "보존 policy: {deleted}개 event delete (>{} 일)",
                 self.retention_days
             );
         }

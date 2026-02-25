@@ -4,7 +4,6 @@ import { X, Focus, Coffee, RotateCcw, Brain, MessageSquare, Play } from 'lucide-
 import { Button } from './ui/Button'
 import { fetchLocalSuggestions, submitSuggestionFeedback, LocalSuggestion } from '../api/client'
 
-/** 제안 타입별 아이콘과 색상 */
 const SUGGESTION_ICONS: Record<string, { icon: typeof Focus; color: string; bgColor: string }> = {
   NeedFocusTime: {
     icon: Focus,
@@ -33,7 +32,6 @@ const SUGGESTION_ICONS: Record<string, { icon: typeof Focus; color: string; bgCo
   },
 }
 
-/** 제안 메시지 생성 */
 function getSuggestionMessage(suggestion: LocalSuggestion, t: (key: string) => string): string {
   const payload = suggestion.payload as Record<string, unknown>
 
@@ -75,26 +73,22 @@ export default function SuggestionBanner() {
   useEffect(() => {
     fetchLocalSuggestions()
       .then((data) => {
-        // 미확인 제안만 필터링 (shown_at이 없거나, acted_at/dismissed_at이 없는 것)
         const pending = data.filter(
           (s) => !s.acted_at && !s.dismissed_at
         )
         setSuggestions(pending)
       })
       .catch(() => {
-        // 에러 시 조용히 무시
       })
       .finally(() => setLoading(false))
   }, [])
 
-  // 미확인 제안 목록
   const pendingSuggestions = suggestions.filter(
     (s) => !dismissed.has(s.id)
   )
 
   const currentSuggestion = pendingSuggestions[currentIndex]
 
-  // 표시 시 shown 마킹
   useEffect(() => {
     if (currentSuggestion && !currentSuggestion.shown_at) {
       submitSuggestionFeedback(currentSuggestion.id, 'shown').catch(() => {})
@@ -112,7 +106,6 @@ export default function SuggestionBanner() {
     try {
       await submitSuggestionFeedback(currentSuggestion.id, 'dismissed')
     } catch {
-      // 에러 시 무시
     }
     setDismissed(new Set(dismissed).add(currentSuggestion.id))
     if (currentIndex >= pendingSuggestions.length - 1) {
@@ -124,7 +117,6 @@ export default function SuggestionBanner() {
     try {
       await submitSuggestionFeedback(currentSuggestion.id, 'acted')
     } catch {
-      // 에러 시 무시
     }
     setDismissed(new Set(dismissed).add(currentSuggestion.id))
     if (currentIndex >= pendingSuggestions.length - 1) {
@@ -138,12 +130,12 @@ export default function SuggestionBanner() {
 
   return (
     <div className={`${suggestionConfig.bgColor} border-l-4 ${suggestionConfig.color.replace('text-', 'border-')} rounded-r-lg px-4 py-3 mb-4 flex items-center gap-4`}>
-      {/* 아이콘 */}
+      {/* UI note */}
       <div className={`flex-shrink-0 ${suggestionConfig.color}`}>
         <Icon className="w-6 h-6" />
       </div>
 
-      {/* 메시지 */}
+      {/* UI note */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
           {getSuggestionMessage(currentSuggestion, t)}
@@ -155,9 +147,9 @@ export default function SuggestionBanner() {
         )}
       </div>
 
-      {/* 액션 버튼 */}
+      {/* UI note */}
       <div className="flex-shrink-0 flex items-center gap-2">
-        {/* 실행 버튼 */}
+        {/* UI note */}
         <Button
           variant="primary"
           size="sm"
@@ -168,7 +160,7 @@ export default function SuggestionBanner() {
           {t('focus.suggestions.act')}
         </Button>
 
-        {/* 다음 버튼 (여러 제안이 있을 때만) */}
+        {/* UI note */}
         {pendingSuggestions.length > 1 && (
           <Button
             variant="ghost"
@@ -179,7 +171,7 @@ export default function SuggestionBanner() {
           </Button>
         )}
 
-        {/* 닫기 버튼 */}
+        {/* UI note */}
         <button
           onClick={handleDismiss}
           className="p-1 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"

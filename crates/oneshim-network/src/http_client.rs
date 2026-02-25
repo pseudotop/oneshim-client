@@ -1,6 +1,4 @@
-//! HTTP REST API 클라이언트.
 //!
-//! `ApiClient` 포트 구현. JWT 인증 헤더 자동 주입 + 재시도 로직.
 
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
@@ -14,10 +12,8 @@ use tracing::{debug, warn};
 
 use crate::auth::TokenManager;
 
-/// 기본 재시도 횟수
 const DEFAULT_MAX_RETRIES: u32 = 3;
 
-/// 재시도 가능한 에러인지 판별
 fn is_retryable(error: &CoreError) -> bool {
     matches!(
         error,
@@ -25,9 +21,7 @@ fn is_retryable(error: &CoreError) -> bool {
     )
 }
 
-/// REST API 클라이언트 — `ApiClient` 포트 구현
 ///
-/// Phase 34: 재시도 로직 + 에러 세분화 + 세션 관리
 pub struct HttpApiClient {
     client: reqwest::Client,
     base_url: String,
@@ -36,7 +30,6 @@ pub struct HttpApiClient {
 }
 
 impl HttpApiClient {
-    /// 새 HTTP API 클라이언트 생성
     pub fn new(
         base_url: &str,
         token_manager: Arc<TokenManager>,
@@ -45,7 +38,7 @@ impl HttpApiClient {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
-            .map_err(|e| CoreError::Network(format!("HTTP 클라이언트 빌드 실패: {}", e)))?;
+            .map_err(|e| CoreError::Network(format!("Failed to build HTTP client: {}", e)))?;
 
         Ok(Self {
             client,
@@ -55,13 +48,11 @@ impl HttpApiClient {
         })
     }
 
-    /// 재시도 횟수 설정
     pub fn with_max_retries(mut self, max_retries: u32) -> Self {
         self.max_retries = max_retries;
         self
     }
 
-    /// Authorization 헤더가 포함된 요청 빌더 반환
     async fn authorized_request(
         &self,
         method: reqwest::Method,
@@ -72,9 +63,7 @@ impl HttpApiClient {
         Ok(self.client.request(method, &url).bearer_auth(token))
     }
 
-    /// 응답 상태 코드 확인 및 에러 매핑
     ///
-    /// Phase 34: 429, 503 등 상태 코드별 에러 타입 반환
     async fn check_response(
         &self,
         resp: reqwest::Response,
@@ -87,37 +76,34 @@ impl HttpApiClient {
 
         let status_code = status.as_u16();
         let text = resp.text().await.unwrap_or_else(|e| {
-            tracing::warn!("응답 본문 읽기 실패: {e}");
+            tracing::warn!("response read failure: {e}");
             String::new()
         });
 
         match status_code {
-            401 => Err(CoreError::Auth(format!("인증 실패: {text}"))),
+            401 => Err(CoreError::Auth(format!("Authentication failed: {text}"))),
             404 => Err(CoreError::NotFound {
                 resource_type: "API".to_string(),
                 id: text,
             }),
             429 => {
-                // Rate Limit — Retry-After 헤더 파싱 (기본 60초)
                 let retry_after = 60;
                 Err(CoreError::RateLimit {
                     retry_after_secs: retry_after,
                 })
             }
             503 => Err(CoreError::ServiceUnavailable(text)),
-            _ => Err(CoreError::Internal(format!("API 에러 ({status}): {text}"))),
+            _ => Err(CoreError::Internal(format!("API error ({status}): {text}"))),
         }
     }
 
-    /// 재시도가 포함된 요청 실행
     ///
-    /// exponential backoff: 1s → 2s → 4s
     async fn execute_with_retry<F, Fut, T>(&self, operation: F) -> Result<T, CoreError>
     where
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = Result<T, CoreError>>,
     {
-        let mut last_error = CoreError::Internal("요청 실패".to_string());
+        let mut last_error = CoreError::Internal("request failure".to_string());
         let mut delay = Duration::from_secs(1);
 
         for attempt in 0..=self.max_retries {
@@ -129,12 +115,11 @@ impl HttpApiClient {
                     }
 
                     warn!(
-                        "요청 실패 (시도 {}/{}): {e}, {delay:?} 후 재시도",
+                        "request failed (attempt {}/{}): {e}, retrying in {delay:?}",
                         attempt + 1,
                         self.max_retries + 1
                     );
 
-                    // RateLimit의 경우 서버 지정 대기 시간 사용
                     if let CoreError::RateLimit { retry_after_secs } = &e {
                         delay = Duration::from_secs(*retry_after_secs);
                     }
@@ -153,7 +138,7 @@ impl HttpApiClient {
 #[async_trait]
 impl ApiClient for HttpApiClient {
     async fn create_session(&self, client_id: &str) -> Result<SessionCreateResponse, CoreError> {
-        debug!("세션 생성 요청: client_id={client_id}");
+        debug!("session create request: client_id={client_id}");
 
         self.execute_with_retry(|| async {
             let req = self
@@ -161,26 +146,24 @@ impl ApiClient for HttpApiClient {
                 .await?;
 
             let body = serde_json::json!({ "client_id": client_id });
-            let resp = req
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| CoreError::Network(format!("세션 생성 요청 실패: {e}")))?;
+            let resp =
+                req.json(&body).send().await.map_err(|e| {
+                    CoreError::Network(format!("session create request failure: {e}"))
+                })?;
 
             let resp = self.check_response(resp).await?;
-            let session: SessionCreateResponse = resp
-                .json()
-                .await
-                .map_err(|e| CoreError::Internal(format!("세션 응답 파싱 실패: {e}")))?;
+            let session: SessionCreateResponse = resp.json().await.map_err(|e| {
+                CoreError::Internal(format!("Failed to parse session response: {e}"))
+            })?;
 
-            debug!("세션 생성 성공: session_id={}", session.session_id);
+            debug!("session create success: session_id={}", session.session_id);
             Ok(session)
         })
         .await
     }
 
     async fn end_session(&self, session_id: &str) -> Result<(), CoreError> {
-        debug!("세션 종료 요청: session_id={session_id}");
+        debug!("session ended request: session_id={session_id}");
 
         self.execute_with_retry(|| async {
             let path = format!("/user_context/sessions/{session_id}");
@@ -191,42 +174,39 @@ impl ApiClient for HttpApiClient {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| CoreError::Network(format!("세션 종료 요청 실패: {e}")))?;
+                .map_err(|e| CoreError::Network(format!("session ended request failure: {e}")))?;
 
             self.check_response(resp).await?;
-            debug!("세션 종료 성공");
+            debug!("session ended success");
             Ok(())
         })
         .await
     }
 
     async fn upload_batch(&self, batch: &EventBatch) -> Result<(), CoreError> {
-        debug!("배치 업로드: {} 이벤트", batch.events.len());
+        debug!("batch upload: {} event", batch.events.len());
 
         self.execute_with_retry(|| async {
-            // 업계 표준 경로: POST /user_context/batches
             let req = self
                 .authorized_request(reqwest::Method::POST, "/user_context/batches")
                 .await?;
 
-            let resp = req
-                .json(batch)
-                .send()
-                .await
-                .map_err(|e| CoreError::Network(format!("배치 업로드 요청 실패: {e}")))?;
+            let resp =
+                req.json(batch).send().await.map_err(|e| {
+                    CoreError::Network(format!("batch upload request failure: {e}"))
+                })?;
 
             self.check_response(resp).await?;
-            debug!("배치 업로드 성공");
+            debug!("batch upload success");
             Ok(())
         })
         .await
     }
 
     async fn upload_context(&self, upload: &ContextUpload) -> Result<(), CoreError> {
-        debug!("컨텍스트 업로드: {}", upload.metadata.app_name);
+        debug!("context upload: {}", upload.metadata.app_name);
 
         self.execute_with_retry(|| async {
-            // 업계 표준 경로: POST /user_context/contexts
             let req = self
                 .authorized_request(reqwest::Method::POST, "/user_context/contexts")
                 .await?;
@@ -235,7 +215,7 @@ impl ApiClient for HttpApiClient {
                 .json(upload)
                 .send()
                 .await
-                .map_err(|e| CoreError::Network(format!("컨텍스트 업로드 실패: {e}")))?;
+                .map_err(|e| CoreError::Network(format!("context upload failure: {e}")))?;
 
             self.check_response(resp).await?;
             Ok(())
@@ -245,7 +225,7 @@ impl ApiClient for HttpApiClient {
 
     async fn send_feedback(&self, feedback: &SuggestionFeedback) -> Result<(), CoreError> {
         debug!(
-            "피드백 전송: {} → {:?}",
+            "feedback sent: {} → {:?}",
             feedback.suggestion_id, feedback.feedback_type
         );
 
@@ -258,7 +238,7 @@ impl ApiClient for HttpApiClient {
                 .json(feedback)
                 .send()
                 .await
-                .map_err(|e| CoreError::Network(format!("피드백 전송 실패: {e}")))?;
+                .map_err(|e| CoreError::Network(format!("feedback sent failure: {e}")))?;
 
             self.check_response(resp).await?;
             Ok(())
@@ -267,10 +247,9 @@ impl ApiClient for HttpApiClient {
     }
 
     async fn send_heartbeat(&self, session_id: &str) -> Result<(), CoreError> {
-        debug!("하트비트 전송: {session_id}");
+        debug!("heartbeat sent: {session_id}");
 
         self.execute_with_retry(|| async {
-            // 업계 표준 경로: POST /user_context/sessions/{session_id}/heartbeat
             let path = format!("/user_context/sessions/{}/heartbeat", session_id);
             let req = self
                 .authorized_request(reqwest::Method::POST, &path)
@@ -279,7 +258,7 @@ impl ApiClient for HttpApiClient {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| CoreError::Network(format!("하트비트 전송 실패: {e}")))?;
+                .map_err(|e| CoreError::Network(format!("heartbeat sent failure: {e}")))?;
 
             self.check_response(resp).await?;
             Ok(())
@@ -323,7 +302,6 @@ mod tests {
         assert!(!is_retryable(&CoreError::Internal("test".to_string())));
     }
 
-    /// 로그인된 TokenManager를 생성하는 헬퍼
     async fn setup_authed_client(
         server: &mut mockito::ServerGuard,
     ) -> (HttpApiClient, mockito::Mock) {
@@ -384,7 +362,6 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let (client, _login_mock) = setup_authed_client(&mut server).await;
 
-        // 업계 표준 경로: POST /user_context/contexts
         let mock = server
             .mock("POST", "/user_context/contexts")
             .with_status(200)
@@ -416,7 +393,6 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let (client, _login_mock) = setup_authed_client(&mut server).await;
 
-        // 업계 표준 경로: POST /user_context/contexts
         let mock = server
             .mock("POST", "/user_context/contexts")
             .with_status(500)
@@ -449,7 +425,6 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let (client, _login_mock) = setup_authed_client(&mut server).await;
 
-        // 업계 표준 경로: POST /user_context/batches
         let mock = server
             .mock("POST", "/user_context/batches")
             .with_status(401)
@@ -466,7 +441,7 @@ mod tests {
         let result = client.upload_batch(&batch).await;
         assert!(result.is_err());
         let err = format!("{}", result.unwrap_err());
-        assert!(err.contains("인증"));
+        assert!(err.contains("Authentication"));
         mock.assert_async().await;
     }
 
@@ -474,9 +449,7 @@ mod tests {
     async fn rate_limit_429() {
         let mut server = mockito::Server::new_async().await;
         let (client, _login_mock) = setup_authed_client(&mut server).await;
-        let client = client.with_max_retries(0); // 재시도 없이 즉시 실패
-
-        // 업계 표준 경로: POST /user_context/contexts
+        let client = client.with_max_retries(0); // attempt failure
         let mock = server
             .mock("POST", "/user_context/contexts")
             .with_status(429)
@@ -512,7 +485,6 @@ mod tests {
         let (client, _login_mock) = setup_authed_client(&mut server).await;
         let client = client.with_max_retries(0);
 
-        // 업계 표준 경로: POST /user_context/sessions/{session_id}/heartbeat
         let mock = server
             .mock("POST", "/user_context/sessions/sess_1/heartbeat")
             .with_status(503)
@@ -532,7 +504,6 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let (client, _login_mock) = setup_authed_client(&mut server).await;
 
-        // 업계 표준 경로: POST /user_context/sessions/{session_id}/heartbeat
         let mock = server
             .mock("POST", "/user_context/sessions/sess_test/heartbeat")
             .with_status(200)

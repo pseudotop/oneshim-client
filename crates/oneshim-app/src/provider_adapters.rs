@@ -1,7 +1,4 @@
-//! AI 제공자 어댑터 해석기.
 //!
-//! 앱 구성(`AiProviderConfig`)을 기준으로 OCR/LLM 제공자를 일관되게 선택한다.
-//! 원격 제공자 초기화 실패 시 `fallback_to_local` 정책을 공통 처리한다.
 
 use std::sync::Arc;
 
@@ -20,18 +17,12 @@ use oneshim_vision::local_ocr_provider::LocalOcrProvider;
 use oneshim_vision::privacy_gateway::PrivacyGateway;
 use tracing::{debug, warn};
 
-/// 제공자 선택 출처.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderSource {
-    /// 설정에서 Local 명시 또는 기본값
     Local,
-    /// 설정에서 Remote 명시 + 원격 초기화 성공
     Remote,
-    /// 설정은 Remote였지만 오류로 Local 폴백
     LocalFallback,
-    /// Provider 구독 계정(CLI) 기반 모드
     CliSubscription,
-    /// 자체 플랫폼 연동 모드
     Platform,
 }
 
@@ -47,7 +38,6 @@ impl ProviderSource {
     }
 }
 
-/// 런타임에서 사용할 AI 제공자 묶음.
 pub struct AiProviderAdapters {
     pub ocr: Arc<dyn OcrProvider>,
     pub llm: Arc<dyn LlmProvider>,
@@ -55,11 +45,7 @@ pub struct AiProviderAdapters {
     pub llm_source: ProviderSource,
 }
 
-/// 외부 OCR용 전처리 + calibration validation 데코레이터.
 ///
-/// 위치:
-/// - 전송 직전(pre-flight): 이미지 세정 (opt-out 가능)
-/// - 응답 직후(post-parse): 결과 validation/calibration
 struct GuardedOcrProvider {
     inner: Arc<dyn OcrProvider>,
     pii_filter_level: PiiFilterLevel,
@@ -117,7 +103,7 @@ impl GuardedOcrProvider {
         let invalid_ratio = invalid as f64 / total as f64;
         if invalid_ratio > self.ocr_validation.max_invalid_ratio {
             return Err(CoreError::OcrError(format!(
-                "OCR calibration validation 실패: invalid_ratio={invalid_ratio:.2}, max_invalid_ratio={:.2}",
+                "OCR calibration validation failure: invalid_ratio={invalid_ratio:.2}, max_invalid_ratio={:.2}",
                 self.ocr_validation.max_invalid_ratio
             )));
         }
@@ -148,7 +134,7 @@ impl OcrProvider for GuardedOcrProvider {
         debug!(
             redacted_regions = sanitized.redacted_regions,
             allow_unredacted_external_ocr = self.allow_unredacted_external_ocr,
-            "외부 OCR 전송 전 이미지 세정 완료"
+            "외부 OCR sent 전 이미지 세정 completed"
         );
 
         let results = self
@@ -167,7 +153,6 @@ impl OcrProvider for GuardedOcrProvider {
     }
 }
 
-/// 앱 설정 기준으로 OCR/LLM 제공자 어댑터를 해석한다.
 pub fn resolve_ai_provider_adapters(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
@@ -180,8 +165,6 @@ pub fn resolve_ai_provider_adapters(
             llm_source: ProviderSource::Local,
         }),
         AiAccessMode::ProviderSubscriptionCli => Ok(AiProviderAdapters {
-            // CLI 확장 모듈 연동은 후속 구현 예정.
-            // 현 단계에서는 로컬 어댑터를 사용하고 출처를 명시한다.
             ocr: Arc::new(LocalOcrProvider::new()),
             llm: Arc::new(LocalLlmProvider::new()),
             ocr_source: ProviderSource::CliSubscription,
@@ -276,7 +259,7 @@ fn require_endpoint_config<'a>(
     }
     if !(endpoint.endpoint.starts_with("http://") || endpoint.endpoint.starts_with("https://")) {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint`는 http:// 또는 https:// URL이어야 합니다."
+            "`{field_name}.endpoint`는 http:// https:// URL."
         )));
     }
     if endpoint.timeout_secs == 0 {
@@ -300,7 +283,7 @@ fn resolve_remote_with_optional_fallback<T: ?Sized>(
             warn!(
                 provider = provider_kind,
                 error = %err,
-                "원격 제공자 초기화 실패, 로컬 제공자로 폴백"
+                "원격 제공자 initialize failure, 로컬 제공자로 폴백"
             );
             Ok((local_builder(), ProviderSource::LocalFallback))
         }
@@ -330,7 +313,7 @@ mod tests {
     fn resolves_local_providers_by_default() {
         let config = AiProviderConfig::default();
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("기본 설정 해석 실패");
+            .expect("Failed to resolve default configuration");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
@@ -352,7 +335,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("원격 설정 해석 실패");
+            .expect("Failed to resolve remote configuration");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Remote);
         assert_eq!(adapters.llm_source, ProviderSource::Remote);
@@ -372,7 +355,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("폴백 설정에서 해석 실패하면 안됨");
+            .expect("Fallback configuration resolution should not fail");
 
         assert_eq!(adapters.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(adapters.llm_source, ProviderSource::LocalFallback);
@@ -392,9 +375,9 @@ mod tests {
         };
 
         match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard) {
-            Ok(_) => panic!("오류가 발생해야 함"),
+            Ok(_) => panic!("Expected an error"),
             Err(CoreError::Config(msg)) => assert!(msg.contains("ocr_api")),
-            Err(other) => panic!("예상치 못한 에러 타입: {other}"),
+            Err(other) => panic!("Unexpected error type: {other}"),
         }
     }
 
@@ -411,7 +394,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("로컬 모드 해석 실패");
+            .expect("Failed to resolve local mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
         assert!(!adapters.ocr.is_external());
@@ -426,7 +409,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("CLI 모드 해석 실패");
+            .expect("Failed to resolve CLI mode");
         assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
         assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
         assert!(!adapters.ocr.is_external());
@@ -446,7 +429,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("플랫폼 모드 해석 실패");
+            .expect("Failed to resolve platform mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Platform);
         assert_eq!(adapters.llm_source, ProviderSource::Platform);
         assert!(adapters.ocr.is_external());

@@ -1,7 +1,5 @@
 /**
- * 토글 행 공용 컴포넌트
  *
- * 설정 섹션 내 체크박스 토글 행 (라벨 + 설명 + 체크박스)
  */
 import { colors, form } from '../../styles/tokens'
 

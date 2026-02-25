@@ -11,7 +11,7 @@ export default function ProcessList({ snapshot }: ProcessListProps) {
   if (processes.length === 0) {
     return (
       <div className="text-center py-8 text-slate-400">
-        프로세스 데이터 없음
+        프로세스 데이터 none
       </div>
     )
   }

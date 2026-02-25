@@ -1,12 +1,9 @@
-//! 압축 통합 테스트.
 //!
-//! 다중 알고리즘 라운드트립 + 자동 선택 검증.
 
 use oneshim_core::ports::compressor::{CompressionAlgorithm, Compressor};
 use oneshim_network::compression::AdaptiveCompressor;
 
 fn make_test_data(size: usize) -> Vec<u8> {
-    // 반복 패턴 데이터 (압축 가능)
     let pattern = b"ONESHIM context data payload with repetitive content for testing. ";
     pattern.iter().cycle().take(size).cloned().collect()
 }
@@ -24,7 +21,10 @@ fn gzip_roundtrip_integration() {
         .unwrap();
 
     assert_eq!(data, decompressed);
-    assert!(compressed.len() < data.len(), "gzip이 데이터를 압축해야 함");
+    assert!(
+        compressed.len() < data.len(),
+        "gzip should compress the data"
+    );
 }
 
 #[test]
@@ -40,7 +40,10 @@ fn zstd_roundtrip_integration() {
         .unwrap();
 
     assert_eq!(data, decompressed);
-    assert!(compressed.len() < data.len(), "zstd가 데이터를 압축해야 함");
+    assert!(
+        compressed.len() < data.len(),
+        "zstd should compress the data"
+    );
 }
 
 #[test]
@@ -62,21 +65,18 @@ fn lz4_roundtrip_integration() {
 fn auto_selection_by_size() {
     let compressor = AdaptiveCompressor::new();
 
-    // 작은 데이터 → LZ4
     let small = make_test_data(100);
     let (compressed, algo) = compressor.compress_auto(&small).unwrap();
     assert_eq!(algo, CompressionAlgorithm::Lz4);
     let decompressed = compressor.decompress(&compressed, algo).unwrap();
     assert_eq!(small, decompressed);
 
-    // 중간 데이터 → Zstd
     let medium = make_test_data(10_000);
     let (compressed, algo) = compressor.compress_auto(&medium).unwrap();
     assert_eq!(algo, CompressionAlgorithm::Zstd);
     let decompressed = compressor.decompress(&compressed, algo).unwrap();
     assert_eq!(medium, decompressed);
 
-    // 큰 데이터 → Gzip
     let large = make_test_data(200_000);
     let (compressed, algo) = compressor.compress_auto(&large).unwrap();
     assert_eq!(algo, CompressionAlgorithm::Gzip);
@@ -97,7 +97,7 @@ fn all_algorithms_handle_empty_data() {
         let decompressed = compressor.decompress(&compressed, algo).unwrap();
         assert!(
             decompressed.is_empty(),
-            "{algo:?} 빈 데이터 라운드트립 실패"
+            "{algo:?} empty-data roundtrip failed"
         );
     }
 }
@@ -117,12 +117,10 @@ fn compression_ratios_vary_by_algorithm() {
         .compress(&data, CompressionAlgorithm::Lz4)
         .unwrap();
 
-    // 모든 알고리즘이 압축 성공
     assert!(!gzip.is_empty());
     assert!(!zstd.is_empty());
     assert!(!lz4.is_empty());
 
-    // 모두 원본보다 작아야 함 (반복 패턴이므로)
     assert!(gzip.len() < data.len());
     assert!(zstd.len() < data.len());
     assert!(lz4.len() < data.len());

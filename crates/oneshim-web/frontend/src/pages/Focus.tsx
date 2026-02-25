@@ -35,7 +35,6 @@ import {
 } from '../api/client'
 import { formatDuration } from '../utils/formatters'
 
-/** 카테고리별 색상 */
 const CATEGORY_COLORS: Record<string, string> = {
   Development: 'bg-blue-500',
   Communication: 'bg-purple-500',
@@ -47,7 +46,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   Other: 'bg-gray-500',
 }
 
-/** 원형 게이지 컴포넌트 */
 function CircularGauge({ value, size = 120 }: { value: number; size?: number }) {
   const { t } = useTranslation()
   const percentage = Math.min(value / 100, 1)
@@ -151,7 +149,6 @@ export default function Focus() {
 
   const today = metrics.today
 
-  // 데이터가 없는 경우 빈 상태 표시
   if (today.focus_score === 0 && sessions.length === 0) {
     return (
       <EmptyState
@@ -169,7 +166,6 @@ export default function Focus() {
     communication: Math.round(m.communication_secs / 60),
   }))
 
-  // 트렌드 계산
   const avgScore =
     metrics.history.length > 0
       ? metrics.history.reduce((a, b) => a + b.focus_score, 0) / metrics.history.length
@@ -178,7 +174,7 @@ export default function Focus() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
+      {/* UI note */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <FocusIcon className="w-7 h-7" />
@@ -193,7 +189,7 @@ export default function Focus() {
         />
       </div>
 
-      {/* 메트릭 카드 */}
+      {/* UI note */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card variant="elevated" className="flex flex-col items-center justify-center p-6">
           <CircularGauge value={today.focus_score} />
@@ -234,7 +230,7 @@ export default function Focus() {
         />
       </div>
 
-      {/* 주간 트렌드 차트 */}
+      {/* UI note */}
       <Card>
         <CardHeader>
           <CardTitle>{t('focus.weeklyTrend')}</CardTitle>
@@ -276,9 +272,9 @@ export default function Focus() {
         </CardContent>
       </Card>
 
-      {/* 작업 세션 + 인터럽션 */}
+      {/* UI note */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 작업 세션 목록 */}
+        {/* UI note */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -326,7 +322,7 @@ export default function Focus() {
           </CardContent>
         </Card>
 
-        {/* 인터럽션 목록 */}
+        {/* UI note */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

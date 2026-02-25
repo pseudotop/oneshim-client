@@ -1,7 +1,5 @@
 /**
- * 대시보드 페이지
  *
- * 시스템 요약, 실시간 메트릭, 활동 차트 표시
  */
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -35,7 +33,6 @@ function toApiDate(dateInput?: string): string {
   return parsed.toISOString().split('T')[0]
 }
 
-// 연결 상태 표시 컴포넌트
 function ConnectionIndicator({ status, t }: { status: ConnectionStatus; t: (key: string) => string }) {
   const statusConfig = {
     connecting: { color: colors.status.connecting, textKey: 'dashboard.connecting' },
@@ -57,7 +54,6 @@ export default function Dashboard() {
   const { t } = useTranslation()
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({})
 
-  // 실시간 이벤트 훅
   const { status, latestMetrics, idleState, metricsHistory } = useSSE()
 
   const handleRangeChange = useCallback((from: string | undefined, to: string | undefined) => {
@@ -102,7 +98,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
+      {/* UI note */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <h1 className={cn(typography.h1, colors.text.primary)}>{t('dashboard.title')}</h1>
@@ -111,7 +107,7 @@ export default function Dashboard() {
         <DateRangePicker onRangeChange={handleRangeChange} />
       </div>
 
-      {/* 실시간 메트릭 (SSE 연결 시) */}
+      {/* UI note */}
       {latestMetrics && (
         <Card variant="highlight" padding="md">
           <div className="flex items-center justify-between">
@@ -157,12 +153,12 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* 집중도 위젯 */}
+      {/* UI note */}
       <FocusWidget />
 
       <UpdatePanel compact />
 
-      {/* 통계 카드 */}
+      {/* UI note */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           title={t('dashboard.activeTime')}
@@ -190,21 +186,21 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* 메트릭 차트 */}
+      {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('dashboard.cpuMemory24h')}</CardTitle>
         <MetricsChart data={hourlyMetrics ?? []} />
       </Card>
 
-      {/* 하단 그리드 */}
+      {/* UI note */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 앱 사용 시간 */}
+        {/* UI note */}
         <Card variant="default" padding="lg">
           <CardTitle className="mb-4">{t('dashboard.appUsageTime')}</CardTitle>
           <AppUsageChart apps={summary?.top_apps ?? []} />
         </Card>
 
-        {/* 프로세스 Top 5 */}
+        {/* UI note */}
         <Card variant="default" padding="lg">
           <CardTitle className="mb-4">{t('dashboard.recentProcesses')}</CardTitle>
           {processes && processes.length > 0 ? (
@@ -215,10 +211,10 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* 활동 히트맵 */}
+      {/* UI note */}
       <ActivityHeatmap days={7} className={colors.surface.elevated} />
 
-      {/* 시스템 상태 */}
+      {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('dashboard.systemStatus')}</CardTitle>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

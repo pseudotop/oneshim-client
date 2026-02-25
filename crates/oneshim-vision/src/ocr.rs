@@ -1,60 +1,39 @@
-//! OCR 텍스트 추출 모듈.
 //!
-//! `leptess` 기반 Tesseract OCR 래퍼.
-//! `ocr` feature flag 활성화 시에만 빌드된다.
 //!
-//! Phase 31 최적화:
-//! - Lazy initialization: 첫 호출 시에만 Tesseract 초기화
-//! - Async wrapper: spawn_blocking으로 메인 스레드 블로킹 제거
-//! - ROI 추출: 고해상도 이미지에서 중앙 영역만 처리
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use thiserror::Error;
 use tracing::debug;
 
-/// OCR 에러 타입
 #[derive(Debug, Error)]
 pub enum OcrError {
-    /// Tesseract 초기화 실패
-    #[error("OCR 초기화 실패: {0}")]
+    #[error("OCR initialize failure: {0}")]
     Init(String),
 
-    /// 이미지 설정 실패
-    #[error("OCR 이미지 설정 실패: {0}")]
+    #[error("OCR image setup failed: {0}")]
     ImageSetup(String),
 
-    /// 텍스트 추출 실패
-    #[error("OCR 텍스트 추출 실패: {0}")]
+    #[error("OCR text extraction failed: {0}")]
     Extraction(String),
 
-    /// 빈 이미지 입력
-    #[error("빈 이미지: 너비 또는 높이가 0")]
+    #[error("Empty image: width or height is 0")]
     EmptyImage,
 
-    /// 비동기 작업 실패
-    #[error("OCR 비동기 작업 실패: {0}")]
+    #[error("OCR async task failed: {0}")]
     Async(String),
 }
 
-/// Lazy-initialized Tesseract 인스턴스 보관
-/// OnceLock으로 첫 호출 시에만 초기화
 static TESSDATA_PATH: OnceLock<Option<String>> = OnceLock::new();
 
-/// OCR 텍스트 추출기
 ///
-/// Phase 31 최적화: Lazy initialization으로 첫 호출 시에만 Tesseract 초기화
 pub struct OcrExtractor {
-    /// Tesseract 데이터 경로 (None이면 시스템 기본값)
     tessdata_path: Option<PathBuf>,
-    /// 최대 추출 문자 수 (0이면 무제한)
     max_chars: usize,
 }
 
 impl OcrExtractor {
-    /// 새 OCR 추출기 생성
     pub fn new(tessdata_path: Option<PathBuf>) -> Self {
-        // 경로를 전역 OnceLock에 저장 (lazy init용)
         let path_str = tessdata_path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string());
@@ -66,13 +45,11 @@ impl OcrExtractor {
         }
     }
 
-    /// 최대 문자 수 제한 설정
     pub fn with_max_chars(mut self, max_chars: usize) -> Self {
         self.max_chars = max_chars;
         self
     }
 
-    /// 이미지에서 텍스트 추출 (동기)
     pub fn extract(&self, image: &image::DynamicImage) -> Result<String, OcrError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
@@ -92,7 +69,7 @@ impl OcrExtractor {
             .map_err(|e| OcrError::Init(format!("{e}")))?;
 
         lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
-            .map_err(|_| OcrError::ImageSetup("이미지 메모리 설정 실패".to_string()))?;
+            .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
         let text = lt
             .get_utf8_text()
@@ -100,7 +77,6 @@ impl OcrExtractor {
 
         let result = text.trim().to_string();
 
-        // 최대 문자 수 제한
         if self.max_chars > 0 && result.len() > self.max_chars {
             Ok(result.chars().take(self.max_chars).collect())
         } else {
@@ -108,9 +84,7 @@ impl OcrExtractor {
         }
     }
 
-    /// 이미지에서 텍스트 추출 (비동기)
     ///
-    /// Phase 31 최적화: spawn_blocking으로 메인 스레드 블로킹 제거
     pub async fn extract_async(&self, image: &image::DynamicImage) -> Result<String, OcrError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
@@ -127,7 +101,6 @@ impl OcrExtractor {
         let max_chars = self.max_chars;
         let raw_data = rgba.into_raw();
 
-        // 별도 스레드에서 OCR 실행
         let result = tokio::task::spawn_blocking(move || {
             let tessdata_ref = tessdata.as_deref();
 
@@ -135,7 +108,7 @@ impl OcrExtractor {
                 .map_err(|e| OcrError::Init(format!("{e}")))?;
 
             lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("이미지 메모리 설정 실패".to_string()))?;
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
             let text = lt
                 .get_utf8_text()
@@ -150,14 +123,12 @@ impl OcrExtractor {
             }
         })
         .await
-        .map_err(|e| OcrError::Async(format!("작업 조인 실패: {e}")))?;
+        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?;
 
         result
     }
 
-    /// ROI(Region of Interest) 추출 후 OCR 수행
     ///
-    /// Phase 31 최적화: 고해상도 이미지에서 중앙 영역만 추출하여 처리 시간 단축
     pub async fn extract_roi_async(
         &self,
         image: &image::DynamicImage,
@@ -171,7 +142,6 @@ impl OcrExtractor {
             return Err(OcrError::EmptyImage);
         }
 
-        // ROI 크기 계산 (중앙 영역)
         let roi_ratio = roi_ratio.clamp(0.1, 1.0);
         let roi_w = ((w as f32) * roi_ratio) as u32;
         let roi_h = ((h as f32) * roi_ratio) as u32;
@@ -179,41 +149,31 @@ impl OcrExtractor {
         let roi_y = (h - roi_h) / 2;
 
         debug!(
-            "OCR ROI: 원본 {}x{} → ROI {}x{} at ({}, {})",
+            "OCR ROI: source {}x{} -> ROI {}x{} at ({}, {})",
             w, h, roi_w, roi_h, roi_x, roi_y
         );
 
-        // ROI 추출
         let roi_image = image.crop_imm(roi_x, roi_y, roi_w, roi_h);
 
         self.extract_async(&roi_image).await
     }
 
-    /// tessdata 경로 반환
     pub fn tessdata_path(&self) -> Option<&PathBuf> {
         self.tessdata_path.as_ref()
     }
 }
 
-/// OCR 워드 + 바운딩 박스 결과
 #[derive(Debug, Clone)]
 pub struct OcrWordBox {
-    /// 추출된 텍스트
     pub text: String,
-    /// X 좌표
     pub x: i32,
-    /// Y 좌표
     pub y: i32,
-    /// 너비
     pub w: i32,
-    /// 높이
     pub h: i32,
 }
 
 impl OcrExtractor {
-    /// 워드 단위 텍스트 + 바운딩 박스 추출 (비동기)
     ///
-    /// 각 단어의 위치 정보를 함께 반환하여 PII 블러 처리에 활용한다.
     pub async fn extract_words_with_boxes(
         &self,
         image: &image::DynamicImage,
@@ -239,14 +199,12 @@ impl OcrExtractor {
                 .map_err(|e| OcrError::Init(format!("{e}")))?;
 
             lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("이미지 메모리 설정 실패".to_string()))?;
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
-            // 워드 레벨 바운딩 박스 추출
             let boxes = lt
                 .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
-                .ok_or_else(|| OcrError::Extraction("워드 박스 추출 실패".to_string()))?;
+                .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
 
-            // 전체 텍스트에서 워드 단위로 매핑
             let full_text = lt
                 .get_utf8_text()
                 .map_err(|e| OcrError::Extraction(format!("{e}")))?;
@@ -270,17 +228,15 @@ impl OcrExtractor {
             Ok(result)
         })
         .await
-        .map_err(|e| OcrError::Async(format!("작업 조인 실패: {e}")))?
+        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?
     }
 }
 
-/// 간편 OCR 함수 (동기)
 pub fn extract_text(image: &image::DynamicImage) -> Result<String, OcrError> {
     let extractor = OcrExtractor::new(None);
     extractor.extract(image)
 }
 
-/// 간편 OCR 함수 (비동기)
 pub async fn extract_text_async(image: &image::DynamicImage) -> Result<String, OcrError> {
     let extractor = OcrExtractor::new(None);
     extractor.extract_async(image).await
@@ -301,20 +257,20 @@ mod tests {
 
     #[test]
     fn error_display_messages() {
-        let e1 = OcrError::Init("테스트".to_string());
-        assert!(e1.to_string().contains("초기화"));
+        let e1 = OcrError::Init("test".to_string());
+        assert!(e1.to_string().contains("initialize"));
 
-        let e2 = OcrError::ImageSetup("테스트".to_string());
-        assert!(e2.to_string().contains("이미지"));
+        let e2 = OcrError::ImageSetup("test".to_string());
+        assert!(e2.to_string().contains("image"));
 
-        let e3 = OcrError::Extraction("테스트".to_string());
-        assert!(e3.to_string().contains("추출"));
+        let e3 = OcrError::Extraction("test".to_string());
+        assert!(e3.to_string().contains("extraction"));
 
         let e4 = OcrError::EmptyImage;
-        assert!(e4.to_string().contains("빈 이미지"));
+        assert!(e4.to_string().contains("Empty image"));
 
-        let e5 = OcrError::Async("테스트".to_string());
-        assert!(e5.to_string().contains("비동기"));
+        let e5 = OcrError::Async("test".to_string());
+        assert!(e5.to_string().contains("async"));
     }
 
     #[test]
@@ -372,7 +328,6 @@ mod tests {
         let extractor = OcrExtractor::new(None);
         let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
 
-        // 빈 이미지에서 ROI 추출 시 에러
         let result = extractor.extract_roi_async(&img, 0.5).await;
         assert!(result.is_err());
     }

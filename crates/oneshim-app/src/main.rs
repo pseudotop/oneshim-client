@@ -1,7 +1,5 @@
 //! # oneshim-app
 //!
-//! ONESHIM 클라이언트 바이너리 진입점.
-//! DI 컨테이너 역할, 라이프사이클 관리, 스케줄러 오케스트레이션.
 
 mod automation_runtime;
 mod autostart;
@@ -61,46 +59,35 @@ use crate::lifecycle::LifecycleManager;
 use crate::notification_manager::NotificationManager;
 use crate::scheduler::{Scheduler, SchedulerConfig};
 
-/// ONESHIM 데스크톱 클라이언트
 ///
-/// AI 기반 자율 사무 업무 지원 에이전트
 #[derive(Parser, Debug)]
 #[command(name = "oneshim")]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// 오프라인 모드로 실행 (서버 연결 없이 로컬 기능만 사용)
     #[arg(long, short = 'o')]
     offline: bool,
 
-    /// 서버 URL 지정 (기본: http://localhost:8000)
     #[arg(long, short = 's')]
     server: Option<String>,
 
-    /// 로그 레벨 (trace, debug, info, warn, error)
     #[arg(long, short = 'l', default_value = "info")]
     log_level: String,
 
-    /// 모니터링 간격 (밀리초)
     #[arg(long, default_value = "1000")]
     poll_interval: u64,
 
-    /// 데이터 저장 경로 (기본: 인메모리)
     #[arg(long)]
     data_dir: Option<String>,
 
-    /// 로그인 시 자동 시작 활성화 (macOS/Windows)
     #[arg(long)]
     enable_autostart: bool,
 
-    /// 로그인 시 자동 시작 비활성화
     #[arg(long)]
     disable_autostart: bool,
 
-    /// 자동 시작 상태 확인
     #[arg(long)]
     autostart_status: bool,
 
-    /// GUI 모드로 실행 (iced 윈도우)
     #[arg(long, short = 'g')]
     gui: bool,
 
@@ -111,7 +98,6 @@ struct Args {
     approve_update: bool,
 }
 
-/// 세션 ID 생성 -- 타임스탬프 기반
 fn generate_session_id() -> String {
     use std::hash::{Hash, Hasher};
 
@@ -122,9 +108,7 @@ fn generate_session_id() -> String {
     format!("sess_{ts}_{rand_part:08x}")
 }
 
-/// 데이터베이스 경로 결정 (CLI 인자 또는 플랫폼별 기본 경로)
 ///
-/// # 플랫폼별 기본 경로:
 /// - macOS: `~/Library/Application Support/com.oneshim.agent/oneshim.db`
 /// - Windows: `%APPDATA%\oneshim\agent\oneshim.db`
 /// - Linux: `~/.local/share/oneshim/agent/oneshim.db`
@@ -144,7 +128,7 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
 
     if !should_autoinstall_bridge_files() {
         info!(
-            "ProviderSubscriptionCli 모드 감지: CLI 브리지 자동 설치 비활성화 (ONESHIM_CLI_BRIDGE_AUTOINSTALL=1로 활성화)"
+            "ProviderSubscriptionCli mode detected: bridge auto-install disabled (set ONESHIM_CLI_BRIDGE_AUTOINSTALL=1 to enable)"
         );
         return;
     }
@@ -161,110 +145,92 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
         written_files = report.written_files.len(),
         unchanged_files = report.unchanged_files.len(),
         errors = report.errors.len(),
-        "CLI 구독 브리지 파일 동기화 완료"
+        "CLI subscription bridge file sync complete"
     );
 
     if !report.is_successful() {
         for err in report.errors {
-            warn!(error = %err, "CLI 구독 브리지 파일 동기화 실패");
+            warn!(error = %err, "CLI subscribe file failure");
         }
     }
 }
 
-/// 배너 출력
 fn print_banner(offline: bool) {
     println!();
-    println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║                                                              ║");
-    println!("║   ██████╗ ███╗   ██╗███████╗███████╗██╗  ██╗██╗███╗   ███╗  ║");
-    println!("║  ██╔═══██╗████╗  ██║██╔════╝██╔════╝██║  ██║██║████╗ ████║  ║");
-    println!("║  ██║   ██║██╔██╗ ██║█████╗  ███████╗███████║██║██╔████╔██║  ║");
-    println!("║  ██║   ██║██║╚██╗██║██╔══╝  ╚════██║██╔══██║██║██║╚██╔╝██║  ║");
-    println!("║  ╚██████╔╝██║ ╚████║███████╗███████║██║  ██║██║██║ ╚═╝ ██║  ║");
-    println!("║   ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝  ║");
-    println!("║                                                              ║");
+    println!("==============================================================");
+    println!("ONESHIM");
     if offline {
-        println!("║           🔌 오프라인 모드 (로컬 전용)                        ║");
+        println!("Mode: offline (local-only)");
     } else {
-        println!("║           AI 기반 자율 사무 업무 지원 에이전트                  ║");
+        println!("Mode: connected (platform integration)");
     }
-    println!("║                                                              ║");
-    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!("==============================================================");
     println!();
 }
 
-/// 오프라인 모드 안내 출력
 fn print_offline_features() {
-    println!("┌─────────────────────────────────────────────────────────────────┐");
-    println!("│ 📊 오프라인 모드에서 사용 가능한 기능:                            │");
-    println!("├─────────────────────────────────────────────────────────────────┤");
-    println!("│ ✅ 시스템 모니터링     - CPU, 메모리, 디스크 사용량 수집         │");
-    println!("│ ✅ 활성 창 추적        - 현재 작업 중인 애플리케이션 감지         │");
-    println!("│ ✅ 스크린샷 캡처       - 화면 캡처 및 델타 인코딩                │");
-    println!("│ ✅ 로컬 데이터 저장    - SQLite에 이벤트/프레임 저장             │");
-    println!("│ ✅ PII 필터링          - 민감 정보 자동 마스킹                   │");
-    println!("├─────────────────────────────────────────────────────────────────┤");
-    println!("│ ❌ 서버 업로드         - 오프라인에서는 비활성화                 │");
-    println!("│ ❌ AI 제안 수신        - 서버 연결 필요                         │");
-    println!("│ ❌ 실시간 동기화       - 서버 연결 필요                         │");
-    println!("└─────────────────────────────────────────────────────────────────┘");
+    println!("Offline mode capabilities:");
+    println!("- system monitoring: CPU, memory, and disk usage");
+    println!("- active window tracking");
+    println!("- screenshot capture and delta encoding");
+    println!("- local data persistence (SQLite)");
+    println!("- automatic PII filtering");
+    println!("- server upload: disabled");
+    println!("- AI suggestion stream: requires server connection");
+    println!("- real-time sync: requires server connection");
     println!();
-    println!("💡 서버 연결: oneshim --server http://your-server:8000");
+    println!("Tip: connect to a server with:");
+    println!("  oneshim --server http://your-server:8000");
     println!();
 }
 
-/// 자동 시작 명령 처리 (활성화/비활성화/상태 확인)
-/// 명령 처리 후 true 반환 (프로그램 종료), 명령 없으면 false 반환 (계속 실행)
 fn handle_autostart_commands(args: &Args) -> bool {
-    // 자동 시작 상태 확인
     if args.autostart_status {
         match autostart::is_autostart_enabled() {
             Ok(enabled) => {
                 if enabled {
-                    println!("✅ 자동 시작: 활성화됨");
-                    println!("   로그인 시 ONESHIM이 자동으로 시작됩니다.");
+                    println!("[OK] auto-start: enabled");
+                    println!("ONESHIM will start on login.");
                 } else {
-                    println!("❌ 자동 시작: 비활성화됨");
-                    println!("   활성화하려면: oneshim --enable-autostart");
+                    println!("[INFO] auto-start: disabled");
+                    println!("Enable with: oneshim --enable-autostart");
                 }
             }
             Err(e) => {
-                eprintln!("⚠️  자동 시작 상태 확인 실패: {e}");
+                eprintln!("[WARN] failed to check auto-start state: {e}");
             }
         }
         return true;
     }
 
-    // 자동 시작 활성화
     if args.enable_autostart {
-        println!("🔧 자동 시작 설정 중...");
+        println!("[INFO] enabling auto-start...");
         match autostart::enable_autostart() {
             Ok(()) => {
-                println!("✅ 자동 시작이 활성화되었습니다.");
-                println!("   다음 로그인 시 ONESHIM이 자동으로 시작됩니다.");
+                println!("[OK] auto-start enabled.");
+                println!("ONESHIM will start on next login.");
                 #[cfg(target_os = "macos")]
-                println!("   위치: ~/Library/LaunchAgents/com.oneshim.agent.plist");
+                println!("Path: ~/Library/LaunchAgents/com.oneshim.agent.plist");
                 #[cfg(target_os = "windows")]
-                println!("   위치: HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+                println!("Path: HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
             }
             Err(e) => {
-                eprintln!("❌ 자동 시작 활성화 실패: {e}");
+                eprintln!("[ERROR] failed to enable auto-start: {e}");
                 std::process::exit(1);
             }
         }
         return true;
     }
 
-    // 자동 시작 비활성화
     if args.disable_autostart {
-        println!("🔧 자동 시작 해제 중...");
+        println!("[INFO] disabling auto-start...");
         match autostart::disable_autostart() {
             Ok(()) => {
-                println!("✅ 자동 시작이 비활성화되었습니다.");
-                println!("   로그인 시 ONESHIM이 더 이상 자동 시작되지 않습니다.");
+                println!("[OK] auto-start disabled.");
+                println!("ONESHIM will no longer auto-start on login.");
             }
             Err(e) => {
-                eprintln!("❌ 자동 시작 비활성화 실패: {e}");
+                eprintln!("[ERROR] failed to disable auto-start: {e}");
                 std::process::exit(1);
             }
         }
@@ -278,12 +244,10 @@ fn handle_autostart_commands(args: &Args) -> bool {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // 자동 시작 명령 처리 (즉시 종료)
     if handle_autostart_commands(&args) {
         return Ok(());
     }
 
-    // tracing 초기화 (GUI 모드 포함 모든 모드에서 필요)
     let log_filter = format!(
         "oneshim={},oneshim_app={},oneshim_ui={},oneshim_core={},oneshim_monitor={},oneshim_vision={},oneshim_storage={},oneshim_network={},oneshim_suggestion={}",
         args.log_level, args.log_level, args.log_level, args.log_level, args.log_level, args.log_level, args.log_level, args.log_level, args.log_level
@@ -294,33 +258,29 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    // GUI 모드 실행 (별도 이벤트 루프)
     if args.gui {
         return gui_runner::run_gui(args.offline, args.data_dir.as_deref());
     }
 
-    // 배너 출력
     print_banner(args.offline);
 
     if args.offline {
         print_offline_features();
     }
 
-    info!("ONESHIM 클라이언트 시작");
+    info!("ONESHIM client started");
 
-    // 설정 로드
     let mut config = AppConfig::default_config();
 
-    // CLI 인자로 설정 오버라이드
     if let Some(ref server_url) = args.server {
         config.server.base_url = server_url.clone();
     }
     config.monitor.poll_interval_ms = args.poll_interval;
 
     if args.offline {
-        info!("오프라인 모드: 로컬 기능만 활성화");
+        info!("offline mode: enabled");
     } else {
-        info!("서버: {}", config.server.base_url);
+        info!("server: {}", config.server.base_url);
     }
 
     let platform_connected_mode =
@@ -328,7 +288,7 @@ async fn main() -> Result<()> {
     info!(
         access_mode = ?config.ai_provider.access_mode,
         platform_sync_enabled = platform_connected_mode,
-        "플랫폼 연동 모드 평가"
+        "evaluated platform-connected mode"
     );
 
     integrity_guard::run_preflight(&config, args.offline)?;
@@ -360,77 +320,65 @@ async fn main() -> Result<()> {
         }
     }
 
-    // ── 어댑터 생성 (DI 와이어링) ──
-
-    // 1. 인증 (온라인 모드에서만 사용)
     let token_manager = Arc::new(TokenManager::new(&config.server.base_url));
 
-    // gRPC 설정 로깅
     info!(
-        "네트워크 설정: gRPC Auth={}, gRPC Context={}, Endpoint={}",
+        "network configuration: grpc_auth={}, grpc_context={}, endpoint={}",
         config.grpc.use_grpc_auth, config.grpc.use_grpc_context, config.grpc.grpc_endpoint
     );
 
-    // gRPC 통합 클라이언트 생성
     let grpc_config = GrpcConfig::from_core_with_rest(&config.grpc, &config.server.base_url);
     let unified_client = Arc::new(UnifiedClient::new(
         grpc_config.clone(),
         token_manager.clone(),
     )?);
 
-    // 로그인 (플랫폼 연동 모드에서만 수행)
     if platform_connected_mode {
         let email =
             std::env::var("ONESHIM_EMAIL").unwrap_or_else(|_| "user@example.com".to_string());
         let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
         let org_id = std::env::var("ONESHIM_ORG_ID").unwrap_or_else(|_| "default".to_string());
 
-        info!("서버 로그인 시도: {email}");
+        info!("server login attempt: {email}");
 
-        // Feature flag에 따라 gRPC 또는 REST 로그인 사용
         if config.grpc.use_grpc_auth {
             match unified_client.login(&email, &password, &org_id).await {
                 Ok(auth_response) => {
-                    info!("gRPC 로그인 성공: user_id={:?}", auth_response.user_id);
+                    info!("gRPC login success: user_id={:?}", auth_response.user_id);
                 }
                 Err(e) => {
-                    warn!("gRPC 로그인 실패: {e}");
-                    warn!("REST fallback 또는 --offline 모드를 사용하세요.");
+                    warn!("gRPC login failure: {e}");
+                    warn!("REST fallback --offline mode.");
                 }
             }
         } else if let Err(e) = token_manager.login(&email, &password).await {
-            warn!("로그인 실패: {e}");
-            warn!("환경변수 ONESHIM_EMAIL, ONESHIM_PASSWORD를 설정하거나 --offline 모드를 사용하세요.");
+            warn!("login failure: {e}");
+            warn!("ONESHIM_EMAIL, ONESHIM_PASSWORD settings --offline mode.");
         }
     } else {
-        info!("플랫폼 로그인 생략: standalone/비연동 모드");
+        info!("login: standalone/ mode");
     }
 
-    // 2. HTTP API 클라이언트 (REST fallback)
     let api_client = Arc::new(HttpApiClient::new(
         &config.server.base_url,
         token_manager.clone(),
         config.request_timeout(),
     )?);
 
-    // 3. SSE 클라이언트
     let sse_client = Arc::new(SseStreamClient::new(
         &config.server.base_url,
         token_manager.clone(),
         config.server.sse_max_retry_secs,
     ));
 
-    // 4. 데스크톱 알림
     let notifier: Arc<dyn oneshim_core::ports::notifier::DesktopNotifier> =
         Arc::new(DesktopNotifierImpl::new());
 
-    // 5. 모니터링
     let system_monitor = Arc::new(SysInfoMonitor::new());
     let process_monitor: Arc<dyn oneshim_core::ports::monitor::ProcessMonitor> =
         Arc::new(ProcessTracker::new());
     let activity_monitor = Arc::new(ActivityTracker::new(process_monitor.clone()));
 
-    // 6. 비전 파이프라인
     let capture_trigger: Box<dyn oneshim_core::ports::vision::CaptureTrigger> =
         Box::new(SmartCaptureTrigger::new(config.vision.capture_throttle_ms));
     let ocr_tessdata = std::env::var("ONESHIM_TESSDATA")
@@ -443,7 +391,6 @@ async fn main() -> Result<()> {
             ocr_tessdata,
         ));
 
-    // 7. 스토리지 (파일 기반 SQLite)
     let db_path = resolve_db_path(args.data_dir.as_deref());
     let data_dir = db_path
         .parent()
@@ -457,9 +404,8 @@ async fn main() -> Result<()> {
         config.storage.retention_days,
     )?);
     let storage: Arc<dyn oneshim_core::ports::storage::StorageService> = sqlite_storage.clone();
-    info!("SQLite 저장소: {}", db_path.display());
+    info!("SQLite save: {}", db_path.display());
 
-    // 8. 프레임 파일 저장소
     let frame_storage = oneshim_storage::frame_storage::FrameFileStorage::new(
         data_dir.clone(),
         config.storage.max_storage_mb,
@@ -467,9 +413,8 @@ async fn main() -> Result<()> {
     )
     .await?;
     let frame_storage = Arc::new(frame_storage);
-    info!("프레임 저장소: {}", frame_storage.frames_dir().display());
+    info!("frame save: {}", frame_storage.frames_dir().display());
 
-    // 9. 배치 업로더 (오프라인 모드에서는 noop)
     let session_id = generate_session_id();
     let batch_uploader = Arc::new(BatchUploader::new(
         api_client.clone(),
@@ -478,7 +423,6 @@ async fn main() -> Result<()> {
         3,
     ));
 
-    // 10. 제안 수신기
     let suggestion_queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
     let (suggestion_tx, mut suggestion_rx) = mpsc::channel(32);
 
@@ -489,27 +433,20 @@ async fn main() -> Result<()> {
         suggestion_tx,
     );
 
-    // 11. 이벤트 버스
     let event_bus = Arc::new(EventBus::new(128));
 
-    // 12. 라이프사이클
     let lifecycle = Arc::new(LifecycleManager::new());
 
-    // 13. 알림 관리자
     let notification_manager = Arc::new(NotificationManager::new(
         config.notification.clone(),
         notifier.clone(),
     ));
 
-    // 14. 집중도 분석기 (Edge Intelligence)
     let focus_analyzer = Arc::new(FocusAnalyzer::with_defaults(
         sqlite_storage.clone(),
         notifier.clone(),
     ));
 
-    // ── 태스크 시작 ──
-
-    // 스케줄러 (로컬 모니터링은 항상 실행)
     let offline_mode = args.offline;
     let app_config = Arc::new(tokio::sync::RwLock::new(config.clone()));
     let sched = Scheduler::new(
@@ -549,17 +486,15 @@ async fn main() -> Result<()> {
         sched.run(shutdown_rx).await;
     });
 
-    // ── 설정 관리자 + 감사 로거 (웹 대시보드 DI용) ──
     let config_manager = ConfigManager::new().unwrap_or_else(|e| {
-        warn!("설정 관리자 초기화 실패, 기본 설정 사용: {e}");
+        warn!("settings initialize failure, default settings: {e}");
         let fallback_path = data_dir.join("config.json");
-        ConfigManager::with_path(fallback_path).expect("설정 관리자 생성 실패")
+        ConfigManager::with_path(fallback_path).expect("failed to create config manager")
     });
-    info!("설정 파일: {:?}", config_manager.config_path());
+    info!("settings file: {:?}", config_manager.config_path());
 
     let audit_logger = Arc::new(RwLock::new(AuditLogger::default()));
 
-    // ── 자동화 컨트롤러 (config.automation.enabled일 때만) ──
     let automation_controller = if config.automation.enabled {
         let runtime = build_automation_runtime(
             &config.ai_provider,
@@ -574,7 +509,7 @@ async fn main() -> Result<()> {
                     ocr_source = runtime.ocr_source.as_str(),
                     llm_provider = runtime.llm_provider_name,
                     llm_source = runtime.llm_source.as_str(),
-                    "AI 제공자 어댑터 해석 완료"
+                    "resolved AI provider adapters"
                 );
 
                 let policy_client = Arc::new(PolicyClient::new());
@@ -596,7 +531,7 @@ async fn main() -> Result<()> {
                     warn!(
                         error = %err,
                         fallback_enabled = true,
-                        "AI 제공자 어댑터 해석 실패; NoOp 자동화 실행기로 폴백"
+                        "failed to resolve AI provider adapters; falling back to NoOp automation executor"
                     );
 
                     let policy_client = Arc::new(PolicyClient::new());
@@ -614,7 +549,7 @@ async fn main() -> Result<()> {
                     error!(
                         error = %err,
                         fallback_enabled = false,
-                        "AI 제공자 어댑터 해석 실패; fallback_to_local=false 이므로 자동화 컨트롤러를 비활성화합니다"
+                        "failed to resolve AI provider adapters; disabling automation controller because fallback_to_local=false"
                     );
                     None
                 }
@@ -624,7 +559,6 @@ async fn main() -> Result<()> {
         None
     };
 
-    // ── 웹 대시보드 서버 (config.web.enabled일 때만) ──
     if config.web.enabled {
         let mut web_server = WebServer::new(sqlite_storage.clone(), config.web.clone())
             .with_frames_dir(data_dir.clone())
@@ -638,27 +572,25 @@ async fn main() -> Result<()> {
         let web_port = config.web.port;
         tokio::spawn(async move {
             if let Err(e) = web_server.run(web_shutdown_rx).await {
-                error!("웹 서버 오류: {e}");
+                error!("server error: {e}");
             }
         });
-        info!("웹 대시보드: http://localhost:{}", web_port);
+        info!(": http://localhost:{}", web_port);
     }
 
-    // SSE 제안 수신 (플랫폼 연동 모드에서만)
     if platform_connected_mode {
         let sid = session_id.clone();
         tokio::spawn(async move {
             if let Err(e) = receiver.run(&sid).await {
-                error!("제안 수신 에러: {e}");
+                error!("suggestion received error: {e}");
             }
         });
 
-        // 제안 로깅 (터미널 출력)
         let bus = event_bus.clone();
         tokio::spawn(async move {
             while let Some(suggestion) = suggestion_rx.recv().await {
                 info!(
-                    "새 제안: [{:?}] {} (신뢰도 {:.0}%)",
+                    "new suggestion: [{:?}] {} (confidence {:.0}%)",
                     suggestion.priority,
                     suggestion.content,
                     suggestion.confidence_score * 100.0
@@ -669,17 +601,16 @@ async fn main() -> Result<()> {
     }
 
     if args.offline {
-        info!("ONESHIM 오프라인 모드 실행 중 (Ctrl+C로 종료)");
-        info!("로컬 모니터링 간격: {}ms", args.poll_interval);
+        info!("ONESHIM offline mode execution in progress (Ctrl+C ended)");
+        info!("monitoring: {}ms", args.poll_interval);
     } else if platform_connected_mode {
-        info!("ONESHIM 클라이언트 실행 중 (플랫폼 연동, Ctrl+C로 종료)");
+        info!("ONESHIM client execution in progress (, Ctrl+C ended)");
     } else {
-        info!("ONESHIM 클라이언트 실행 중 (standalone 모드, Ctrl+C로 종료)");
+        info!("ONESHIM client execution in progress (standalone mode, Ctrl+C ended)");
     }
 
-    // OS 시그널 대기
     lifecycle.wait_for_signal().await;
 
-    info!("ONESHIM 클라이언트 종료");
+    info!("ONESHIM client ended");
     Ok(())
 }

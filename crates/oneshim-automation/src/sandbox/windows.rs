@@ -1,17 +1,7 @@
-//! Windows 샌드박스 — Job Objects + Restricted Tokens.
 //!
-//! Windows의 세 가지 보안 기능을 조합한다:
-//! - **Job Objects**: 프로세스 그룹 리소스 제한 (메모리, CPU, 프로세스 수)
-//! - **Restricted Tokens**: 권한 축소 (SID 비활성, 특권 제거)
-//! - **Desktop Isolation** (선택): 별도 데스크톱에서 UI 격리
 //!
-//! ## 실행 흐름
-//! 1. CreateJobObject + SetInformationJobObject (리소스 제한)
-//! 2. CreateRestrictedToken (SID 비활성, 권한 제거)
 //! 3. CreateProcessAsUser with restricted token
 //! 4. AssignProcessToJobObject
-//! 5. WaitForSingleObject (타임아웃)
-//! 6. 종료 코드 기반 결과 반환
 
 use async_trait::async_trait;
 
@@ -20,9 +10,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::automation::AutomationAction;
 use oneshim_core::ports::sandbox::{Sandbox, SandboxCapabilities};
 
-/// Windows Job Object + Restricted Token 샌드박스
 pub struct WindowsSandbox {
-    /// Windows 보안 API 사용 가능 여부
     is_available: bool,
 }
 
@@ -33,19 +21,17 @@ impl Default for WindowsSandbox {
 }
 
 impl WindowsSandbox {
-    /// 새 Windows 샌드박스 생성
     pub fn new() -> Self {
         Self {
             is_available: check_windows_sandbox_support(),
         }
     }
 
-    /// 프로필별 Job Object 설정 생성
     fn build_job_limits(config: &SandboxConfig) -> JobObjectLimits {
         let (default_memory, default_cpu_ms, default_max_processes) = match config.profile {
-            SandboxProfile::Permissive => (0, 0, 0), // 메모리만 제한
-            SandboxProfile::Standard => (512 * 1024 * 1024, 30_000, 10), // 512MB, 30s, 10 프로세스
-            SandboxProfile::Strict => (256 * 1024 * 1024, 10_000, 3), // 256MB, 10s, 3 프로세스
+            SandboxProfile::Permissive => (0, 0, 0),
+            SandboxProfile::Standard => (512 * 1024 * 1024, 30_000, 10), // 512MB, 30s, 10 processes
+            SandboxProfile::Strict => (256 * 1024 * 1024, 10_000, 3),    // 256MB, 10s, 3 processes
         };
 
         JobObjectLimits {
@@ -63,7 +49,6 @@ impl WindowsSandbox {
         }
     }
 
-    /// 프로필별 Restricted Token 설정
     fn build_token_restrictions(config: &SandboxConfig) -> TokenRestrictions {
         match config.profile {
             SandboxProfile::Permissive => TokenRestrictions {
@@ -102,7 +87,7 @@ impl Sandbox for WindowsSandbox {
     ) -> Result<(), CoreError> {
         if !self.is_available {
             return Err(CoreError::SandboxUnsupported(
-                "Windows 샌드박스 API 사용 불가".to_string(),
+                "Windows 샌드박스 API 사용 not-available".to_string(),
             ));
         }
 
@@ -115,32 +100,28 @@ impl Sandbox for WindowsSandbox {
             max_processes = job_limits.max_processes,
             disable_admin = token_restrictions.disable_admin_sid,
             action = ?action,
-            "Windows 샌드박스 실행"
+            "Windows 샌드박스 execution"
         );
 
-        // 전용 스레드에서 Windows API 호출
         let result = tokio::task::spawn_blocking(move || {
-            // 1. Job Object 생성 + 리소스 제한 설정
             create_job_object(&job_limits)?;
 
-            // 2. Restricted Token 생성
             create_restricted_token(&token_restrictions)?;
 
-            // 3. 액션 실행 (현재는 로깅만)
             Ok::<(), CoreError>(())
         })
         .await
-        .map_err(|e| CoreError::SandboxExecution(format!("스레드 조인 실패: {}", e)))?;
+        .map_err(|e| CoreError::SandboxExecution(format!("Thread join failed: {}", e)))?;
 
         result?;
 
-        tracing::info!(action = ?action, "Windows 샌드박스 내 액션 실행 완료");
+        tracing::info!(action = ?action, "Windows sandbox within execution completed");
         Ok(())
     }
 
     fn capabilities(&self) -> SandboxCapabilities {
         SandboxCapabilities {
-            filesystem_isolation: false, // Windows Job Object는 FS 격리 미지원
+            filesystem_isolation: false, // Windows Job Object does not isolate filesystem
             syscall_filtering: false,
             network_isolation: false,
             resource_limits: self.is_available,
@@ -149,11 +130,6 @@ impl Sandbox for WindowsSandbox {
     }
 }
 
-// ============================================================
-// 내부 구조체 및 헬퍼 함수
-// ============================================================
-
-/// Job Object 리소스 제한
 #[derive(Debug)]
 struct JobObjectLimits {
     max_memory_bytes: u64,
@@ -161,7 +137,6 @@ struct JobObjectLimits {
     max_processes: u32,
 }
 
-/// Restricted Token 설정
 #[derive(Debug)]
 struct TokenRestrictions {
     disable_admin_sid: bool,
@@ -169,34 +144,27 @@ struct TokenRestrictions {
     remove_privileges: bool,
 }
 
-/// Windows 샌드박스 API 지원 확인
 fn check_windows_sandbox_support() -> bool {
-    // Windows에서는 항상 Job Object 사용 가능 (Windows Vista+)
     cfg!(target_os = "windows")
 }
 
-/// Job Object 생성 + 리소스 제한 설정
 fn create_job_object(limits: &JobObjectLimits) -> Result<(), CoreError> {
     tracing::debug!(
         memory = limits.max_memory_bytes,
         cpu_ms = limits.max_cpu_time_ms,
         processes = limits.max_processes,
-        "Job Object 생성"
+        "Job Object create"
     );
-    // 실제 구현: windows-sys CreateJobObjectW + SetInformationJobObject
-    // JOBOBJECT_EXTENDED_LIMIT_INFORMATION 구조체 설정
     Ok(())
 }
 
-/// Restricted Token 생성
 fn create_restricted_token(restrictions: &TokenRestrictions) -> Result<(), CoreError> {
     tracing::debug!(
         disable_admin = restrictions.disable_admin_sid,
         disable_most = restrictions.disable_most_sids,
         remove_privs = restrictions.remove_privileges,
-        "Restricted Token 생성"
+        "Restricted Token create"
     );
-    // 실제 구현: windows-sys CreateRestrictedToken
     Ok(())
 }
 
@@ -255,7 +223,6 @@ mod tests {
     fn windows_sandbox_capabilities() {
         let sandbox = WindowsSandbox::new();
         let caps = sandbox.capabilities();
-        // Windows가 아닌 환경에서는 is_available = false
         if cfg!(target_os = "windows") {
             assert!(caps.resource_limits);
             assert!(caps.process_isolation);
@@ -263,7 +230,6 @@ mod tests {
             assert!(!caps.resource_limits);
             assert!(!caps.process_isolation);
         }
-        // Windows Job Object는 FS 격리 미지원
         assert!(!caps.filesystem_isolation);
         assert!(!caps.syscall_filtering);
     }

@@ -1,5 +1,3 @@
-//! SSE 실시간 스트림 핸들러.
-
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::stream::Stream;
@@ -11,25 +9,19 @@ use tokio_stream::StreamExt;
 
 use crate::AppState;
 
-/// 실시간 이벤트 타입
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", content = "data")]
 pub enum RealtimeEvent {
-    /// 시스템 메트릭 업데이트
     #[serde(rename = "metrics")]
     Metrics(MetricsUpdate),
-    /// 새 프레임 캡처
     #[serde(rename = "frame")]
     Frame(FrameUpdate),
-    /// 유휴 상태 변경
     #[serde(rename = "idle")]
     Idle(IdleUpdate),
-    /// 연결 확인 (heartbeat)
     #[serde(rename = "ping")]
     Ping,
 }
 
-/// 메트릭 업데이트 데이터
 #[derive(Debug, Clone, Serialize)]
 pub struct MetricsUpdate {
     pub timestamp: String,
@@ -39,7 +31,6 @@ pub struct MetricsUpdate {
     pub memory_total: u64,
 }
 
-/// 프레임 업데이트 데이터
 #[derive(Debug, Clone, Serialize)]
 pub struct FrameUpdate {
     pub id: i64,
@@ -49,27 +40,21 @@ pub struct FrameUpdate {
     pub importance: f32,
 }
 
-/// 유휴 상태 업데이트
 #[derive(Debug, Clone, Serialize)]
 pub struct IdleUpdate {
     pub is_idle: bool,
     pub idle_secs: u64,
 }
 
-/// SSE 스트림 엔드포인트
 ///
 /// GET /api/stream
 ///
-/// 실시간 이벤트를 Server-Sent Events로 전송.
-/// 클라이언트는 EventSource API로 수신.
 pub async fn event_stream(
     State(state): State<AppState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    // broadcast 채널 구독
     let rx = state.event_tx.subscribe();
     let stream = BroadcastStream::new(rx);
 
-    // 스트림 변환: RealtimeEvent → SSE Event
     let sse_stream = stream.filter_map(|result| {
         match result {
             Ok(event) => {
@@ -77,7 +62,7 @@ pub async fn event_stream(
                 let sse_event = Event::default().event(event_type_name(&event)).data(json);
                 Some(Ok(sse_event))
             }
-            Err(_) => None, // 채널 지연 시 스킵
+            Err(_) => None, // skip on channel lag
         }
     });
 
@@ -88,7 +73,6 @@ pub async fn event_stream(
     )
 }
 
-/// 이벤트 타입 이름 반환
 fn event_type_name(event: &RealtimeEvent) -> &'static str {
     match event {
         RealtimeEvent::Metrics(_) => "metrics",

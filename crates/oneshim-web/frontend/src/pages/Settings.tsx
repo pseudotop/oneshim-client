@@ -1,7 +1,5 @@
 /**
- * 설정 페이지
  *
- * 앱 설정 조회/수정, 저장소 현황, 데이터 내보내기
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -84,7 +82,6 @@ export default function Settings() {
 
   const [formData, setFormData] = useState<AppSettings | null>(null)
 
-  // 설정이 로드되면 폼 데이터 초기화
   if (settings && !formData) {
     setFormData(settings)
   }
@@ -131,7 +128,6 @@ export default function Settings() {
   const handleExport = async (dataType: ExportDataType) => {
     setExportLoading(dataType)
     try {
-      // 지난 7일 데이터 내보내기
       const to = new Date().toISOString()
       const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -337,10 +333,10 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
+      {/* UI note */}
       <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
 
-      {/* 저장 메시지 */}
+      {/* UI note */}
       {saveMessage && (
         <div
           className={`p-4 rounded-lg ${
@@ -353,7 +349,7 @@ export default function Settings() {
         </div>
       )}
 
-      {/* 저장소 현황 */}
+      {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('settings.storageStats')}</CardTitle>
         {storageStats && (
@@ -387,12 +383,12 @@ export default function Settings() {
         )}
       </Card>
 
-      {/* 데이터 내보내기 */}
+      {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('settings.exportTitle')}</CardTitle>
         <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{t('settings.exportDescription')}</p>
 
-        {/* 형식 선택 */}
+        {/* UI note */}
         <div className="flex items-center gap-4 mb-4">
           <span className="text-slate-700 dark:text-slate-300 text-sm">{t('settings.exportFormatLabel')}:</span>
           <label className="flex items-center cursor-pointer">
@@ -419,7 +415,7 @@ export default function Settings() {
           </label>
         </div>
 
-        {/* 내보내기 버튼 */}
+        {/* UI note */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <ExportButton
             label={t('settings.exportMetricsLabel')}
@@ -442,10 +438,10 @@ export default function Settings() {
         </div>
       </Card>
 
-      {/* 설정 폼 */}
+      {/* UI note */}
       {formData && (
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* 데이터 보관 설정 */}
+          {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.retentionTitle')}</CardTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -479,7 +475,7 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* 수집 설정 */}
+          {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.collectionTitle')}</CardTitle>
             <div className="space-y-4">
@@ -538,7 +534,7 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* 웹 대시보드 설정 */}
+          {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.webTitle')}</CardTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -683,13 +679,13 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* 알림 설정 */}
+          {/* UI note */}
           <NotificationSettings
             notification={formData.notification}
             onChange={handleNotificationChange}
           />
 
-          {/* 모니터링 제어 */}
+          {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.monitorTitle')}</CardTitle>
             <div className="space-y-4">
@@ -714,19 +710,19 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* 프라이버시 설정 */}
+          {/* UI note */}
           <PrivacySettings
             privacy={formData.privacy}
             onChange={handlePrivacyChange}
           />
 
-          {/* 스케줄 설정 */}
+          {/* UI note */}
           <ScheduleSettings
             schedule={formData.schedule}
             onChange={handleScheduleChange}
           />
 
-          {/* 텔레메트리 설정 */}
+          {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.telemetryTitle')}</CardTitle>
             <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{t('settings.telemetryDesc')}</p>
@@ -761,7 +757,7 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* 자동화 설정 */}
+          {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settingsAutomation.title')}</CardTitle>
             <div className="space-y-4">
@@ -774,7 +770,7 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* 샌드박스 설정 */}
+          {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settingsAutomation.sandboxTitle')}</CardTitle>
             <div className="space-y-4">
@@ -810,7 +806,7 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* AI 제공자 설정 */}
+          {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settingsAutomation.aiTitle')}</CardTitle>
             <div className="space-y-4">
@@ -1096,7 +1092,7 @@ export default function Settings() {
                 onChange={(v) => handleAiProviderChange('fallback_to_local', v)}
               />
 
-              {/* OCR 외부 API 설정 (Remote 선택 시만 표시) */}
+              {/* UI note */}
               {formData.ai_provider.ocr_provider === 'Remote' && (
                 <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
                   <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -1143,7 +1139,7 @@ export default function Settings() {
                 </div>
               )}
 
-              {/* LLM 외부 API 설정 (Remote 선택 시만 표시) */}
+              {/* UI note */}
               {formData.ai_provider.llm_provider === 'Remote' && (
                 <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
                   <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -1192,7 +1188,7 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* 저장 버튼 */}
+          {/* UI note */}
           <div className="flex justify-end">
             <Button
               type="submit"

@@ -1,6 +1,4 @@
-//! 설정 및 DI 와이어링 통합 테스트.
 //!
-//! AppConfig → 어댑터 생성 검증.
 
 use oneshim_core::config::AppConfig;
 use oneshim_monitor::system::SysInfoMonitor;
@@ -15,21 +13,17 @@ use std::sync::Arc;
 fn config_defaults_are_valid() {
     let config = AppConfig::default_config();
 
-    // 서버 설정
     assert!(!config.server.base_url.is_empty());
     assert!(config.server.request_timeout_ms > 0);
     assert!(config.server.sse_max_retry_secs > 0);
 
-    // 모니터링 설정
     assert!(config.monitor.poll_interval_ms > 0);
     assert!(config.monitor.sync_interval_ms > config.monitor.poll_interval_ms);
     assert!(config.monitor.heartbeat_interval_ms > config.monitor.sync_interval_ms);
 
-    // 스토리지 설정
     assert!(config.storage.retention_days > 0);
     assert!(config.storage.max_storage_mb > 0);
 
-    // 비전 설정
     assert!(config.vision.capture_throttle_ms > 0);
     assert!(config.vision.thumbnail_width > 0);
     assert!(config.vision.thumbnail_height > 0);
@@ -53,22 +47,16 @@ fn config_duration_conversions() {
 fn all_adapters_instantiate_from_config() {
     let config = AppConfig::default_config();
 
-    // 인증 — URL 기반 생성
     let _token_manager = Arc::new(TokenManager::new(&config.server.base_url));
 
-    // 모니터링
     let _sys_monitor = SysInfoMonitor::new();
 
-    // 비전 트리거
     let _trigger = SmartCaptureTrigger::new(config.vision.capture_throttle_ms);
 
-    // 스토리지
     let _storage = SqliteStorage::open_in_memory(config.storage.retention_days).unwrap();
 
-    // 압축
     let _compressor = AdaptiveCompressor::new();
 
-    // 제안 큐
     let _queue = SuggestionQueue::new(50);
 }
 
@@ -101,7 +89,6 @@ async fn storage_adapter_implements_port() {
     let storage = SqliteStorage::open_in_memory(30).unwrap();
     let storage: Arc<dyn StorageService> = Arc::new(storage);
 
-    // trait object로 사용 가능한지 확인
     let result = storage.enforce_retention().await;
     assert!(result.is_ok());
 }
