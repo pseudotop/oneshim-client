@@ -574,7 +574,12 @@
     "apiKey": "API Key",
     "apiKeyPlaceholder": "Enter API key...",
     "model": "Model",
-    "timeoutSecs": "Timeout (sec)"
+    "timeoutSecs": "Timeout (sec)",
+    "providerType": "Provider Type",
+    "loadModels": "Load Models",
+    "modelDiscoveryNoModels": "No models were returned for this provider configuration.",
+    "modelDiscoveryMissingConfig": "Configure remote endpoint, provider, and API key first.",
+    "modelDiscoveryMissingKey": "Enter full API key to discover models."
   },
   "focus": {
     "title": "Focus",

@@ -10,6 +10,7 @@ import {
   fetchStorageStats,
   fetchUpdateStatus,
   postUpdateAction,
+  discoverProviderModels,
   exportData,
   downloadBlob,
   type AppSettings,
@@ -25,6 +26,7 @@ import {
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
   type SceneIntelligenceSettings as SceneIntelligenceSettingsType,
   type ExternalApiSettings,
+  type ProviderModelsResponse,
   type ExportFormat,
   type ExportDataType,
   type UpdateStatus,
@@ -47,6 +49,15 @@ export default function Settings() {
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
   const [exportLoading, setExportLoading] = useState<ExportDataType | null>(null)
+  const [modelCatalog, setModelCatalog] = useState<Record<'ocr_api' | 'llm_api', string[]>>({
+    ocr_api: [],
+    llm_api: [],
+  })
+  const [modelCatalogNotice, setModelCatalogNotice] = useState<Record<'ocr_api' | 'llm_api', string | null>>({
+    ocr_api: null,
+    llm_api: null,
+  })
+  const [modelCatalogLoading, setModelCatalogLoading] = useState<'ocr_api' | 'llm_api' | null>(null)
 
   const toDateTimeLocalValue = (value: string | null | undefined): string => {
     if (!value) return ''
@@ -292,7 +303,13 @@ export default function Settings() {
 
   const handleExternalApiChange = (which: 'ocr_api' | 'llm_api', field: keyof ExternalApiSettings, value: string | number | null) => {
     if (formData) {
-      const current = formData.ai_provider[which] ?? { endpoint: '', api_key_masked: '', model: null, timeout_secs: 30 }
+      const current = formData.ai_provider[which] ?? {
+        endpoint: '',
+        api_key_masked: '',
+        model: null,
+        provider_type: 'Generic',
+        timeout_secs: 30
+      }
       setFormData({
         ...formData,
         ai_provider: {
@@ -300,6 +317,83 @@ export default function Settings() {
           [which]: { ...current, [field]: value }
         }
       })
+    }
+  }
+
+  const resolveProviderType = (raw: string | null | undefined): string => {
+    const normalized = (raw ?? 'Generic').trim().toLowerCase()
+    switch (normalized) {
+      case 'anthropic':
+        return 'Anthropic'
+      case 'openai':
+      case 'open_ai':
+      case 'openai-compatible':
+        return 'OpenAi'
+      case 'google':
+      case 'gemini':
+        return 'Google'
+      default:
+        return 'Generic'
+    }
+  }
+
+  const handleModelDiscoveryResult = (
+    which: 'ocr_api' | 'llm_api',
+    currentModel: string | null | undefined,
+    result: ProviderModelsResponse
+  ) => {
+    setModelCatalog((prev) => ({
+      ...prev,
+      [which]: result.models,
+    }))
+    setModelCatalogNotice((prev) => ({
+      ...prev,
+      [which]:
+        result.notice ??
+        (result.models.length === 0
+          ? t('settingsAutomation.modelDiscoveryNoModels')
+          : null),
+    }))
+
+    if ((!currentModel || !currentModel.trim()) && result.models.length > 0) {
+      handleExternalApiChange(which, 'model', result.models[0])
+    }
+  }
+
+  const discoverModels = async (which: 'ocr_api' | 'llm_api') => {
+    if (!formData) return
+    const current = formData.ai_provider[which]
+    if (!current) {
+      setSaveMessage({ type: 'error', text: t('settingsAutomation.modelDiscoveryMissingConfig') })
+      return
+    }
+    if (!current.api_key_masked?.trim()) {
+      setSaveMessage({ type: 'error', text: t('settingsAutomation.modelDiscoveryMissingKey') })
+      return
+    }
+
+    setModelCatalogLoading(which)
+    try {
+      const result = await discoverProviderModels({
+        provider_type: current.provider_type ?? 'Generic',
+        api_key: current.api_key_masked,
+        endpoint: current.endpoint || null,
+      })
+      handleModelDiscoveryResult(which, current.model, result)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setModelCatalog((prev) => ({
+        ...prev,
+        [which]: [],
+      }))
+      setModelCatalogNotice((prev) => ({
+        ...prev,
+        [which]: message,
+      }))
+      setSaveMessage({ type: 'error', text: message })
+      setTimeout(() => setSaveMessage(null), 5000)
+    } finally {
+      setModelCatalogLoading(null)
     }
   }
 
@@ -1100,6 +1194,33 @@ export default function Settings() {
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
+                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                        {t('settingsAutomation.providerType')}
+                      </label>
+                      <Select
+                        value={resolveProviderType(formData.ai_provider.ocr_api?.provider_type)}
+                        onChange={(e) =>
+                          handleExternalApiChange('ocr_api', 'provider_type', e.target.value)
+                        }
+                      >
+                        <option value="Anthropic">Anthropic</option>
+                        <option value="OpenAi">OpenAI</option>
+                        <option value="Google">Google</option>
+                        <option value="Generic">Generic</option>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        isLoading={modelCatalogLoading === 'ocr_api'}
+                        onClick={() => void discoverModels('ocr_api')}
+                      >
+                        {t('settingsAutomation.loadModels')}
+                      </Button>
+                    </div>
+                    <div>
                       <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.endpoint')}</label>
                       <Input
                         type="text"
@@ -1121,9 +1242,17 @@ export default function Settings() {
                       <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.model')}</label>
                       <Input
                         type="text"
+                        list="ocr-model-catalog"
                         value={formData.ai_provider.ocr_api?.model ?? ''}
                         onChange={(e) => handleExternalApiChange('ocr_api', 'model', e.target.value || null)}
                       />
+                      {modelCatalog.ocr_api.length > 0 && (
+                        <datalist id="ocr-model-catalog">
+                          {modelCatalog.ocr_api.map((modelName) => (
+                            <option key={modelName} value={modelName} />
+                          ))}
+                        </datalist>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.timeoutSecs')}</label>
@@ -1136,6 +1265,11 @@ export default function Settings() {
                       />
                     </div>
                   </div>
+                  {modelCatalogNotice.ocr_api && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {modelCatalogNotice.ocr_api}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1146,6 +1280,33 @@ export default function Settings() {
                     LLM {t('settingsAutomation.externalApi')}
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                        {t('settingsAutomation.providerType')}
+                      </label>
+                      <Select
+                        value={resolveProviderType(formData.ai_provider.llm_api?.provider_type)}
+                        onChange={(e) =>
+                          handleExternalApiChange('llm_api', 'provider_type', e.target.value)
+                        }
+                      >
+                        <option value="Anthropic">Anthropic</option>
+                        <option value="OpenAi">OpenAI</option>
+                        <option value="Google">Google</option>
+                        <option value="Generic">Generic</option>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        isLoading={modelCatalogLoading === 'llm_api'}
+                        onClick={() => void discoverModels('llm_api')}
+                      >
+                        {t('settingsAutomation.loadModels')}
+                      </Button>
+                    </div>
                     <div>
                       <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.endpoint')}</label>
                       <Input
@@ -1168,9 +1329,17 @@ export default function Settings() {
                       <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.model')}</label>
                       <Input
                         type="text"
+                        list="llm-model-catalog"
                         value={formData.ai_provider.llm_api?.model ?? ''}
                         onChange={(e) => handleExternalApiChange('llm_api', 'model', e.target.value || null)}
                       />
+                      {modelCatalog.llm_api.length > 0 && (
+                        <datalist id="llm-model-catalog">
+                          {modelCatalog.llm_api.map((modelName) => (
+                            <option key={modelName} value={modelName} />
+                          ))}
+                        </datalist>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.timeoutSecs')}</label>
@@ -1183,6 +1352,11 @@ export default function Settings() {
                       />
                     </div>
                   </div>
+                  {modelCatalogNotice.llm_api && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {modelCatalogNotice.llm_api}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

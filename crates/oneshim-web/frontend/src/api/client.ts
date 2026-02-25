@@ -381,6 +381,32 @@ export async function updateSettings(settings: AppSettings): Promise<AppSettings
   return res.json()
 }
 
+export interface ProviderModelsRequest {
+  provider_type: string
+  api_key: string
+  endpoint?: string | null
+}
+
+export interface ProviderModelsResponse {
+  models: string[]
+  notice?: string | null
+}
+
+export async function discoverProviderModels(
+  request: ProviderModelsRequest
+): Promise<ProviderModelsResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/ai/providers/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Model discovery failed' }))
+    throw new Error(err.error || 'Model discovery failed')
+  }
+  return res.json()
+}
+
 export async function fetchUpdateStatus(): Promise<UpdateStatus> {
   const res = await fetchWithRetry(`${BASE_URL}/update/status`)
   if (!res.ok) throw new Error('update state query failure')
@@ -1063,6 +1089,7 @@ export interface ExternalApiSettings {
   endpoint: string
   api_key_masked: string
   model: string | null
+  provider_type: string
   timeout_secs: number
 }
 

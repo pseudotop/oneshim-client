@@ -562,6 +562,23 @@ export async function handleStandaloneRequest(
     }
     return jsonResponse(state.settings)
   }
+  if (path === '/api/ai/providers/models' && method === 'POST') {
+    const payload = body as { provider_type?: string } | null
+    const provider = String(payload?.provider_type ?? 'generic').trim().toLowerCase()
+    if (provider === 'google' || provider === 'gemini') {
+      return jsonResponse({
+        models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+      })
+    }
+    if (provider === 'anthropic') {
+      return jsonResponse({
+        models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
+      })
+    }
+    return jsonResponse({
+      models: ['gpt-4.1-mini', 'o3-mini'],
+    })
+  }
   if (path === '/api/update/status' && method === 'GET') {
     return jsonResponse(state.updateStatus)
   }
