@@ -278,7 +278,9 @@ mod tests {
     fn idle_time_returns_option() {
         let result = get_idle_time_linux();
         if let Some(secs) = result {
-            assert!(secs < 86400 * 365); // 1        }
+            // sanity bound: less than one year in seconds
+            assert!(secs < 86400 * 365);
+        }
     }
 
     #[test]
