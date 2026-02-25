@@ -116,5 +116,4 @@ pub fn get_mouse_position_windows() -> Option<MousePosition> {
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

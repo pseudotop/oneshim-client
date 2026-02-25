@@ -9,7 +9,9 @@ use oneshim_core::ports::element_finder::ElementFinder;
 use std::process::Command;
 use std::sync::Arc;
 
+#[cfg_attr(not(test), allow(dead_code))]
 const ACCESSIBILITY_MAX_ELEMENTS: usize = 300;
+#[cfg_attr(not(test), allow(dead_code))]
 const FIELD_DELIMITER: &str = "|||";
 
 #[derive(Debug, Clone)]
@@ -403,6 +405,7 @@ fn read_proc_name(pid: u32) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn parse_accessibility_lines(raw: &str) -> Result<Vec<AccessibilityNode>, CoreError> {
     let mut nodes = Vec::new();
 
@@ -473,6 +476,7 @@ fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
     haystack.to_lowercase().contains(&needle.to_lowercase())
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn trim_to_option(input: &str) -> Option<String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
