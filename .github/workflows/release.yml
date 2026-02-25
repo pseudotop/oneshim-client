@@ -411,7 +411,8 @@ jobs:
       - name: Notarize and staple macOS app bundle
         shell: bash
         run: |
-          xcrun notarytool submit dist/ONESHIM.app \
+          ditto -c -k --keepParent dist/ONESHIM.app dist/ONESHIM.app.zip
+          xcrun notarytool submit dist/ONESHIM.app.zip \
             --keychain "$KEYCHAIN_PATH" \
             --keychain-profile "oneshim-notary" \
             --wait
