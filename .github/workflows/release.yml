@@ -407,7 +407,6 @@ jobs:
             --sign "$MACOS_APP_SIGNING_IDENTITY" \
             dist/ONESHIM.app
           codesign --verify --deep --strict --verbose=2 dist/ONESHIM.app
-          spctl --assess --type exec --verbose=4 dist/ONESHIM.app
 
       - name: Notarize and staple macOS app bundle
         shell: bash
@@ -417,6 +416,7 @@ jobs:
             --keychain-profile "oneshim-notary" \
             --wait
           xcrun stapler staple dist/ONESHIM.app
+          spctl --assess --type exec --verbose=4 dist/ONESHIM.app
 
       - name: Create DMG installer
         shell: bash
