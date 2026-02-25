@@ -26,7 +26,8 @@ const API_BASE = '/api'
 const STANDALONE_STORAGE_KEY = 'oneshim-web-standalone-mode'
 const STANDALONE_QUERY_KEY = 'standalone'
 const DEFAULT_PROVIDER_PRESETS: ProviderPresetCatalog = {
-  version: 1,
+  version: 2,
+  updated_at: '2026-02-25T09:20:00Z',
   providers: [
     {
       provider_type: 'Anthropic',
@@ -36,6 +37,8 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPresetCatalog = {
       ocr_endpoint: 'https://api.anthropic.com/v1/messages',
       model_catalog_endpoint: 'https://api.anthropic.com/v1/models',
       ocr_model_catalog_supported: true,
+      llm_models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
+      ocr_models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
     },
     {
       provider_type: 'OpenAi',
@@ -45,6 +48,8 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPresetCatalog = {
       ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
       model_catalog_endpoint: 'https://api.openai.com/v1/models',
       ocr_model_catalog_supported: true,
+      llm_models: ['gpt-4.1', 'gpt-4.1-mini', 'o3-mini'],
+      ocr_models: ['gpt-4.1', 'gpt-4.1-mini'],
     },
     {
       provider_type: 'Google',
@@ -57,6 +62,8 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPresetCatalog = {
       ocr_model_catalog_supported: false,
       ocr_model_catalog_notice:
         'Google Vision OCR endpoint does not expose a selectable model catalog.',
+      llm_models: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+      ocr_models: [],
     },
     {
       provider_type: 'Generic',
@@ -66,6 +73,8 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPresetCatalog = {
       ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
       model_catalog_endpoint: 'https://api.openai.com/v1/models',
       ocr_model_catalog_supported: true,
+      llm_models: ['gpt-4.1-mini', 'o3-mini'],
+      ocr_models: ['gpt-4.1-mini'],
     },
   ],
 }

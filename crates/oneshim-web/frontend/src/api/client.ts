@@ -401,10 +401,13 @@ export interface ProviderPreset {
   model_catalog_endpoint: string
   ocr_model_catalog_supported: boolean
   ocr_model_catalog_notice?: string | null
+  llm_models: string[]
+  ocr_models: string[]
 }
 
 export interface ProviderPresetCatalog {
   version: number
+  updated_at: string
   providers: ProviderPreset[]
 }
 

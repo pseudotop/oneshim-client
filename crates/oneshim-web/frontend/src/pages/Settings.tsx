@@ -54,6 +54,8 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
     ocr_endpoint: 'https://api.anthropic.com/v1/messages',
     model_catalog_endpoint: 'https://api.anthropic.com/v1/models',
     ocr_model_catalog_supported: true,
+    llm_models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
+    ocr_models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
   },
   {
     provider_type: 'OpenAi',
@@ -63,6 +65,8 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
     ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
     model_catalog_endpoint: 'https://api.openai.com/v1/models',
     ocr_model_catalog_supported: true,
+    llm_models: ['gpt-4.1', 'gpt-4.1-mini', 'o3-mini'],
+    ocr_models: ['gpt-4.1', 'gpt-4.1-mini'],
   },
   {
     provider_type: 'Google',
@@ -75,6 +79,8 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
     ocr_model_catalog_supported: false,
     ocr_model_catalog_notice:
       'Google Vision OCR endpoint does not expose a selectable model catalog.',
+    llm_models: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+    ocr_models: [],
   },
   {
     provider_type: 'Generic',
@@ -84,6 +90,8 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
     ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
     model_catalog_endpoint: 'https://api.openai.com/v1/models',
     ocr_model_catalog_supported: true,
+    llm_models: ['gpt-4.1-mini', 'o3-mini'],
+    ocr_models: ['gpt-4.1-mini'],
   },
 ]
 
@@ -398,11 +406,25 @@ export default function Settings() {
     return findProviderPreset(raw)?.provider_type ?? 'Generic'
   }
 
+  const getPresetModels = (which: 'ocr_api' | 'llm_api', rawProviderType: string | null | undefined): string[] => {
+    const preset = findProviderPreset(rawProviderType)
+    return which === 'ocr_api' ? (preset?.ocr_models ?? []) : (preset?.llm_models ?? [])
+  }
+
+  const getModelOptions = (which: 'ocr_api' | 'llm_api'): string[] => {
+    const providerType = resolveProviderType(formData?.ai_provider[which]?.provider_type)
+    const presetModels = getPresetModels(which, providerType)
+    const discoveredModels = modelCatalog[which]
+    return Array.from(new Set([...discoveredModels, ...presetModels]))
+  }
+
   const handleProviderTypeChange = (which: 'ocr_api' | 'llm_api', rawProviderType: string) => {
     const providerType = resolveProviderType(rawProviderType)
     const preset = findProviderPreset(providerType)
     const presetEndpoint =
       which === 'ocr_api' ? preset?.ocr_endpoint ?? '' : preset?.llm_endpoint ?? ''
+    const presetModel =
+      which === 'ocr_api' ? preset?.ocr_models?.[0] ?? null : preset?.llm_models?.[0] ?? null
 
     setFormData((prev) => {
       if (!prev) return prev
@@ -411,6 +433,8 @@ export default function Settings() {
         current.endpoint && current.endpoint.trim().length > 0
           ? current.endpoint
           : presetEndpoint
+      const model =
+        current.model && current.model.trim().length > 0 ? current.model : presetModel
       return {
         ...prev,
         ai_provider: {
@@ -419,6 +443,7 @@ export default function Settings() {
             ...current,
             provider_type: providerType,
             endpoint,
+            model,
           },
         },
       }
@@ -1333,9 +1358,9 @@ export default function Settings() {
                         value={formData.ai_provider.ocr_api?.model ?? ''}
                         onChange={(e) => handleExternalApiChange('ocr_api', 'model', e.target.value || null)}
                       />
-                      {modelCatalog.ocr_api.length > 0 && (
+                      {getModelOptions('ocr_api').length > 0 && (
                         <datalist id="ocr-model-catalog">
-                          {modelCatalog.ocr_api.map((modelName) => (
+                          {getModelOptions('ocr_api').map((modelName) => (
                             <option key={modelName} value={modelName} />
                           ))}
                         </datalist>
@@ -1419,9 +1444,9 @@ export default function Settings() {
                         value={formData.ai_provider.llm_api?.model ?? ''}
                         onChange={(e) => handleExternalApiChange('llm_api', 'model', e.target.value || null)}
                       />
-                      {modelCatalog.llm_api.length > 0 && (
+                      {getModelOptions('llm_api').length > 0 && (
                         <datalist id="llm-model-catalog">
-                          {modelCatalog.llm_api.map((modelName) => (
+                          {getModelOptions('llm_api').map((modelName) => (
                             <option key={modelName} value={modelName} />
                           ))}
                         </datalist>

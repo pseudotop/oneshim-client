@@ -18,6 +18,8 @@ static PRESET_CATALOG: LazyLock<Result<ProviderPresetCatalog, String>> = LazyLoc
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProviderPresetCatalog {
     pub version: u32,
+    #[serde(default)]
+    pub updated_at: String,
     pub providers: Vec<ProviderPreset>,
 }
 
@@ -34,6 +36,10 @@ pub struct ProviderPreset {
     pub ocr_model_catalog_supported: bool,
     #[serde(default)]
     pub ocr_model_catalog_notice: Option<String>,
+    #[serde(default)]
+    pub llm_models: Vec<String>,
+    #[serde(default)]
+    pub ocr_models: Vec<String>,
 }
 
 fn default_true() -> bool {
@@ -159,6 +165,7 @@ mod tests {
     fn presets_load_from_json() {
         let catalog = list_provider_presets().expect("provider preset catalog should load");
         assert!(catalog.providers.len() >= 4);
+        assert!(!catalog.updated_at.is_empty());
     }
 
     #[test]
@@ -175,6 +182,17 @@ mod tests {
             endpoint,
             "https://generativelanguage.googleapis.com/v1beta/models"
         );
+    }
+
+    #[test]
+    fn provider_models_are_available_in_preset() {
+        let catalog = list_provider_presets().expect("provider preset catalog should load");
+        let google = catalog
+            .providers
+            .iter()
+            .find(|provider| provider.provider_type == "Google")
+            .expect("google preset should exist");
+        assert!(!google.llm_models.is_empty());
     }
 
     #[test]
