@@ -387,13 +387,9 @@ fn apply_scene_intelligence_filter(
         ));
     }
 
-    scene.elements = scene
-        .elements
-        .into_iter()
-        .filter(|element| {
-            element.confidence.is_finite() && element.confidence >= cfg.min_confidence
-        })
-        .collect();
+    scene.elements.retain(|element| {
+        element.confidence.is_finite() && element.confidence >= cfg.min_confidence
+    });
 
     scene.elements.sort_by(|a, b| {
         b.confidence

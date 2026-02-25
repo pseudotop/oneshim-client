@@ -191,11 +191,7 @@ impl UnifiedClient {
     }
 
     pub async fn refresh_token(&self) -> Result<AuthResponse, CoreError> {
-        if self.config.should_use_grpc_for_auth() {
-            self.refresh_token_rest().await
-        } else {
-            self.refresh_token_rest().await
-        }
+        self.refresh_token_rest().await
     }
 
     async fn refresh_token_rest(&self) -> Result<AuthResponse, CoreError> {
