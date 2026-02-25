@@ -166,12 +166,14 @@ pub struct BatchUploader {
 ### AI Clients
 
 Two clients that call external AI APIs. Both branch by provider using the `AiProviderType` enum from `oneshim-core`.
+Versioned contract reference: `docs/contracts/ai-provider-contract.md`.
 
 ```rust
 // oneshim-core/config.rs
 pub enum AiProviderType {
     Anthropic,  // Claude API
     OpenAi,     // OpenAI-compatible API
+    Google,     // Google Gemini/Vision API
     Generic,    // Generic JSON endpoint
 }
 ```
@@ -204,6 +206,7 @@ impl LlmProvider for RemoteLlmProvider {
 **Provider-specific branching**:
 - `AiProviderType::Anthropic` → `POST /v1/messages`, `x-api-key` header, parses `content[0].text`
 - `AiProviderType::OpenAi` / `Generic` → `POST /v1/chat/completions`, `Bearer` token, parses `choices[0].message.content`
+- `AiProviderType::Google` → parses `candidates[0].content.parts[0].text`
 
 #### RemoteOcrProvider (ai_ocr_client.rs)
 
@@ -232,7 +235,9 @@ impl OcrProvider for RemoteOcrProvider {
 
 **Provider-specific branching**:
 - `AiProviderType::Anthropic` → Claude Vision format (line-by-line parsing of `content[].text`)
-- `AiProviderType::OpenAi` / `Generic` → Generic JSON format (`{ "results": [...] }`)
+- `AiProviderType::Google` → Google Vision `textAnnotations` parsing with bounding poly conversion
+- `AiProviderType::OpenAi` → OpenAI content parsing with JSON-object preference (`{ "results": [...] }`) and line-text fallback
+- `AiProviderType::Generic` → `{ "results": [...] }` parsing with provider-format fallback
 
 ## gRPC Client (`#[cfg(feature = "grpc")]`)
 

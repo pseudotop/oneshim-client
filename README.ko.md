@@ -80,6 +80,7 @@ Connected 모드는 opt-in 프리뷰 경로로만 제공됩니다.
 - Standalone 도입 런북: [docs/guides/standalone-adoption-runbook.ko.md](./docs/guides/standalone-adoption-runbook.ko.md)
 - 첫 5분 가이드: [docs/guides/first-5-minutes.ko.md](./docs/guides/first-5-minutes.ko.md)
 - 자동화 이벤트 계약: [docs/contracts/automation-event-contract.ko.md](./docs/contracts/automation-event-contract.ko.md)
+- AI 제공자 계약: [docs/contracts/ai-provider-contract.ko.md](./docs/contracts/ai-provider-contract.ko.md)
 
 ## 기능
 

@@ -80,6 +80,7 @@ Standalone mode remains the production-ready default path for release use.
 - Standalone adoption runbook: [docs/guides/standalone-adoption-runbook.md](./docs/guides/standalone-adoption-runbook.md)
 - First 5 minutes guide: [docs/guides/first-5-minutes.md](./docs/guides/first-5-minutes.md)
 - Automation event contract: [docs/contracts/automation-event-contract.md](./docs/contracts/automation-event-contract.md)
+- AI provider contract: [docs/contracts/ai-provider-contract.md](./docs/contracts/ai-provider-contract.md)
 
 ## Features
 

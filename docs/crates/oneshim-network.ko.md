@@ -166,12 +166,14 @@ pub struct BatchUploader {
 ### AI 클라이언트
 
 외부 AI API를 호출하는 두 클라이언트. 모두 `oneshim-core`의 `AiProviderType` enum으로 제공자를 분기한다.
+버전드 계약 문서 참조: `docs/contracts/ai-provider-contract.ko.md`.
 
 ```rust
 // oneshim-core/config.rs
 pub enum AiProviderType {
     Anthropic,  // Claude API
     OpenAi,     // OpenAI 호환 API
+    Google,     // Google Gemini/Vision API
     Generic,    // 범용 JSON 엔드포인트
 }
 ```
@@ -204,6 +206,7 @@ impl LlmProvider for RemoteLlmProvider {
 **제공자별 분기**:
 - `AiProviderType::Anthropic` → `POST /v1/messages`, `x-api-key` 헤더, `content[0].text` 파싱
 - `AiProviderType::OpenAi` / `Generic` → `POST /v1/chat/completions`, `Bearer` 토큰, `choices[0].message.content` 파싱
+- `AiProviderType::Google` → `candidates[0].content.parts[0].text` 파싱
 
 #### RemoteOcrProvider (ai_ocr_client.rs)
 
@@ -232,7 +235,9 @@ impl OcrProvider for RemoteOcrProvider {
 
 **제공자별 분기**:
 - `AiProviderType::Anthropic` → Claude Vision 형식 (`content[].text` 줄 단위 파싱)
-- `AiProviderType::OpenAi` / `Generic` → 범용 JSON 형식 (`{ "results": [...] }`)
+- `AiProviderType::Google` → Google Vision `textAnnotations` + bounding poly 변환
+- `AiProviderType::OpenAi` → OpenAI content 파싱 후 JSON 객체(`{ "results": [...] }`) 우선, 줄 텍스트 파싱 폴백
+- `AiProviderType::Generic` → `{ "results": [...] }` 우선 파싱 + 제공자 형식 폴백
 
 ## gRPC 클라이언트 (`#[cfg(feature = "grpc")]`)
 
