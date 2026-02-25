@@ -43,6 +43,8 @@ pub struct AiProviderAdapters {
     pub llm: Arc<dyn LlmProvider>,
     pub ocr_source: ProviderSource,
     pub llm_source: ProviderSource,
+    pub ocr_fallback_reason: Option<String>,
+    pub llm_fallback_reason: Option<String>,
 }
 
 ///
@@ -163,31 +165,41 @@ pub fn resolve_ai_provider_adapters(
             llm: Arc::new(LocalLlmProvider::new()),
             ocr_source: ProviderSource::Local,
             llm_source: ProviderSource::Local,
+            ocr_fallback_reason: None,
+            llm_fallback_reason: None,
         }),
         AiAccessMode::ProviderSubscriptionCli => Ok(AiProviderAdapters {
             ocr: Arc::new(LocalOcrProvider::new()),
             llm: Arc::new(LocalLlmProvider::new()),
             ocr_source: ProviderSource::CliSubscription,
             llm_source: ProviderSource::CliSubscription,
+            ocr_fallback_reason: None,
+            llm_fallback_reason: None,
         }),
         AiAccessMode::ProviderApiKey => {
-            let (ocr, ocr_source) = resolve_ocr_provider(config, pii_filter_level)?;
-            let (llm, llm_source) = resolve_llm_provider(config)?;
+            let (ocr, ocr_source, ocr_fallback_reason) =
+                resolve_ocr_provider(config, pii_filter_level)?;
+            let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
             Ok(AiProviderAdapters {
                 ocr,
                 llm,
                 ocr_source,
                 llm_source,
+                ocr_fallback_reason,
+                llm_fallback_reason,
             })
         }
         AiAccessMode::PlatformConnected => {
-            let (ocr, ocr_source) = resolve_ocr_provider(config, pii_filter_level)?;
-            let (llm, llm_source) = resolve_llm_provider(config)?;
+            let (ocr, ocr_source, ocr_fallback_reason) =
+                resolve_ocr_provider(config, pii_filter_level)?;
+            let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
             Ok(AiProviderAdapters {
                 ocr,
                 llm,
                 ocr_source: to_platform_source(ocr_source),
                 llm_source: to_platform_source(llm_source),
+                ocr_fallback_reason,
+                llm_fallback_reason,
             })
         }
     }
@@ -203,9 +215,13 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
 fn resolve_ocr_provider(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
-) -> Result<(Arc<dyn OcrProvider>, ProviderSource), CoreError> {
+) -> Result<(Arc<dyn OcrProvider>, ProviderSource, Option<String>), CoreError> {
     match config.ocr_provider {
-        OcrProviderType::Local => Ok((Arc::new(LocalOcrProvider::new()), ProviderSource::Local)),
+        OcrProviderType::Local => Ok((
+            Arc::new(LocalOcrProvider::new()),
+            ProviderSource::Local,
+            None,
+        )),
         OcrProviderType::Remote => resolve_remote_with_optional_fallback(
             "ocr",
             config.fallback_to_local,
@@ -227,9 +243,13 @@ fn resolve_ocr_provider(
 
 fn resolve_llm_provider(
     config: &AiProviderConfig,
-) -> Result<(Arc<dyn LlmProvider>, ProviderSource), CoreError> {
+) -> Result<(Arc<dyn LlmProvider>, ProviderSource, Option<String>), CoreError> {
     match config.llm_provider {
-        LlmProviderType::Local => Ok((Arc::new(LocalLlmProvider::new()), ProviderSource::Local)),
+        LlmProviderType::Local => Ok((
+            Arc::new(LocalLlmProvider::new()),
+            ProviderSource::Local,
+            None,
+        )),
         LlmProviderType::Remote => resolve_remote_with_optional_fallback(
             "llm",
             config.fallback_to_local,
@@ -276,19 +296,38 @@ fn resolve_remote_with_optional_fallback<T: ?Sized>(
     fallback_to_local: bool,
     remote_builder: impl FnOnce() -> Result<Arc<T>, CoreError>,
     local_builder: impl FnOnce() -> Arc<T>,
-) -> Result<(Arc<T>, ProviderSource), CoreError> {
+) -> Result<(Arc<T>, ProviderSource, Option<String>), CoreError> {
     match remote_builder() {
-        Ok(provider) => Ok((provider, ProviderSource::Remote)),
+        Ok(provider) => Ok((provider, ProviderSource::Remote, None)),
         Err(err) if fallback_to_local => {
+            let fallback_reason = format_fallback_reason(&err);
             warn!(
                 provider = provider_kind,
                 error = %err,
+                fallback_reason = %fallback_reason,
                 "원격 제공자 initialize failure, 로컬 제공자로 폴백"
             );
-            Ok((local_builder(), ProviderSource::LocalFallback))
+            Ok((
+                local_builder(),
+                ProviderSource::LocalFallback,
+                Some(fallback_reason),
+            ))
         }
         Err(err) => Err(err),
     }
+}
+
+const MAX_FALLBACK_REASON_CHARS: usize = 240;
+
+fn format_fallback_reason(err: &CoreError) -> String {
+    let raw = err.to_string().replace(['\n', '\r'], " ");
+    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= MAX_FALLBACK_REASON_CHARS {
+        return normalized;
+    }
+
+    let truncated: String = normalized.chars().take(MAX_FALLBACK_REASON_CHARS).collect();
+    format!("{truncated}...")
 }
 
 #[cfg(test)]
@@ -317,6 +356,8 @@ mod tests {
 
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
+        assert!(adapters.ocr_fallback_reason.is_none());
+        assert!(adapters.llm_fallback_reason.is_none());
         assert!(!adapters.ocr.is_external());
         assert!(!adapters.llm.is_external());
         assert_eq!(adapters.ocr.provider_name(), "local-tesseract");
@@ -339,6 +380,8 @@ mod tests {
 
         assert_eq!(adapters.ocr_source, ProviderSource::Remote);
         assert_eq!(adapters.llm_source, ProviderSource::Remote);
+        assert!(adapters.ocr_fallback_reason.is_none());
+        assert!(adapters.llm_fallback_reason.is_none());
         assert!(adapters.ocr.is_external());
         assert!(adapters.llm.is_external());
     }
@@ -359,6 +402,14 @@ mod tests {
 
         assert_eq!(adapters.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(adapters.llm_source, ProviderSource::LocalFallback);
+        assert!(adapters
+            .ocr_fallback_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("ocr_api")));
+        assert!(adapters
+            .llm_fallback_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("llm_api")));
         assert!(!adapters.ocr.is_external());
         assert!(!adapters.llm.is_external());
     }
@@ -397,6 +448,8 @@ mod tests {
             .expect("Failed to resolve local mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
+        assert!(adapters.ocr_fallback_reason.is_none());
+        assert!(adapters.llm_fallback_reason.is_none());
         assert!(!adapters.ocr.is_external());
         assert!(!adapters.llm.is_external());
     }
@@ -412,6 +465,8 @@ mod tests {
             .expect("Failed to resolve CLI mode");
         assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
         assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
+        assert!(adapters.ocr_fallback_reason.is_none());
+        assert!(adapters.llm_fallback_reason.is_none());
         assert!(!adapters.ocr.is_external());
         assert!(!adapters.llm.is_external());
     }
@@ -432,6 +487,8 @@ mod tests {
             .expect("Failed to resolve platform mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Platform);
         assert_eq!(adapters.llm_source, ProviderSource::Platform);
+        assert!(adapters.ocr_fallback_reason.is_none());
+        assert!(adapters.llm_fallback_reason.is_none());
         assert!(adapters.ocr.is_external());
         assert!(adapters.llm.is_external());
     }

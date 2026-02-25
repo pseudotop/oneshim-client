@@ -109,6 +109,17 @@
 3. `fallback_to_local=true`면 로컬 제공자로 폴백될 수 있습니다.
 4. 폴백 비활성 시 원격 설정/초기화 오류는 fail-closed로 처리해야 합니다.
 
+## 런타임 폴백 가시성
+
+원격 어댑터 해석이 로컬로 폴백될 때, 런타임 상태는 API/SSE로 노출됩니다.
+
+1. `GET /api/automation/status`
+   - `ocr_source`, `llm_source` (`local|remote|local-fallback|cli-subscription|platform`)
+   - `ocr_fallback_reason`, `llm_fallback_reason` (폴백이 없으면 `null`)
+2. `GET /api/stream` 초기 이벤트
+   - SSE 이벤트 타입: `ai_runtime_status`
+   - 페이로드는 위 4개 런타임 필드와 동일
+
 ## CI live smoke 계약
 
 수동 스모크 워크플로:

@@ -27,6 +27,8 @@ pub struct AutomationRuntime {
     pub llm_provider_name: String,
     pub ocr_source: ProviderSource,
     pub llm_source: ProviderSource,
+    pub ocr_fallback_reason: Option<String>,
+    pub llm_fallback_reason: Option<String>,
 }
 
 pub struct CompositeElementFinder {
@@ -166,6 +168,8 @@ pub fn build_automation_runtime(
         llm_provider_name,
         ocr_source: adapters.ocr_source,
         llm_source: adapters.llm_source,
+        ocr_fallback_reason: adapters.ocr_fallback_reason,
+        llm_fallback_reason: adapters.llm_fallback_reason,
     })
 }
 
@@ -352,6 +356,14 @@ mod tests {
         assert_eq!(runtime.access_mode, AiAccessMode::ProviderApiKey);
         assert_eq!(runtime.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(runtime.llm_source, ProviderSource::LocalFallback);
+        assert!(runtime
+            .ocr_fallback_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("ocr_api")));
+        assert!(runtime
+            .llm_fallback_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("llm_api")));
     }
 
     #[test]
@@ -392,6 +404,8 @@ mod tests {
         let runtime = build_automation_runtime(&config, PiiFilterLevel::Standard, None).unwrap();
         assert_eq!(runtime.ocr_source, ProviderSource::Remote);
         assert_eq!(runtime.llm_source, ProviderSource::Remote);
+        assert!(runtime.ocr_fallback_reason.is_none());
+        assert!(runtime.llm_fallback_reason.is_none());
         assert_eq!(runtime.ocr_provider_name, "remote-ocr");
     }
 }

@@ -109,6 +109,17 @@ Provider-specific parsing path:
 3. When fallback is enabled (`fallback_to_local=true`), adapter resolution MAY switch to local providers.
 4. When fallback is disabled, invalid remote config or adapter init errors MUST fail closed.
 
+## Runtime fallback visibility
+
+When remote adapter resolution falls back to local, runtime status is surfaced through API and stream payloads:
+
+1. `GET /api/automation/status`
+   - `ocr_source`, `llm_source` (`local|remote|local-fallback|cli-subscription|platform`)
+   - `ocr_fallback_reason`, `llm_fallback_reason` (`null` when no fallback happened)
+2. `GET /api/stream` bootstrap event
+   - SSE event type: `ai_runtime_status`
+   - payload mirrors the same four runtime fields
+
 ## CI live smoke contract
 
 Manual smoke workflow:

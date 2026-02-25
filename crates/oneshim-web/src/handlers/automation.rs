@@ -9,7 +9,8 @@ use oneshim_automation::audit::AuditStatus;
 use oneshim_automation::policy::AuditLevel;
 use oneshim_automation::presets::builtin_presets;
 use oneshim_core::config::{
-    ExternalDataPolicy, PiiFilterLevel, SceneActionOverrideConfig, SceneIntelligenceConfig,
+    AiAccessMode, ExternalDataPolicy, LlmProviderType, OcrProviderType, PiiFilterLevel,
+    SceneActionOverrideConfig, SceneIntelligenceConfig,
 };
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
@@ -36,6 +37,10 @@ pub struct AutomationStatusDto {
     pub sandbox_profile: String,
     pub ocr_provider: String,
     pub llm_provider: String,
+    pub ocr_source: String,
+    pub llm_source: String,
+    pub ocr_fallback_reason: Option<String>,
+    pub llm_fallback_reason: Option<String>,
     pub external_data_policy: String,
     pub pending_audit_entries: usize,
 }
@@ -88,9 +93,59 @@ fn default_automation_status(pending: usize) -> AutomationStatusDto {
         sandbox_profile: "Standard".to_string(),
         ocr_provider: "Local".to_string(),
         llm_provider: "Local".to_string(),
+        ocr_source: "local".to_string(),
+        llm_source: "local".to_string(),
+        ocr_fallback_reason: None,
+        llm_fallback_reason: None,
         external_data_policy: "PiiFilterStrict".to_string(),
         pending_audit_entries: pending,
     }
+}
+
+fn infer_runtime_source(access_mode: AiAccessMode, provider_is_remote: bool) -> &'static str {
+    match access_mode {
+        AiAccessMode::LocalModel => "local",
+        AiAccessMode::ProviderSubscriptionCli => "cli-subscription",
+        AiAccessMode::ProviderApiKey => {
+            if provider_is_remote {
+                "remote"
+            } else {
+                "local"
+            }
+        }
+        AiAccessMode::PlatformConnected => {
+            if provider_is_remote {
+                "platform"
+            } else {
+                "local"
+            }
+        }
+    }
+}
+
+fn resolve_ai_runtime_status(
+    state: &AppState,
+    access_mode: AiAccessMode,
+    ocr_provider: OcrProviderType,
+    llm_provider: LlmProviderType,
+) -> crate::AiRuntimeStatus {
+    state
+        .ai_runtime_status
+        .clone()
+        .unwrap_or_else(|| crate::AiRuntimeStatus {
+            ocr_source: infer_runtime_source(
+                access_mode,
+                matches!(ocr_provider, OcrProviderType::Remote),
+            )
+            .to_string(),
+            llm_source: infer_runtime_source(
+                access_mode,
+                matches!(llm_provider, LlmProviderType::Remote),
+            )
+            .to_string(),
+            ocr_fallback_reason: None,
+            llm_fallback_reason: None,
+        })
 }
 
 fn default_policies() -> PoliciesDto {
@@ -634,12 +689,22 @@ pub async fn get_automation_status(
 
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
+        let runtime_status = resolve_ai_runtime_status(
+            &state,
+            config.ai_provider.access_mode,
+            config.ai_provider.ocr_provider,
+            config.ai_provider.llm_provider,
+        );
         Ok(Json(AutomationStatusDto {
             enabled: config.automation.enabled,
             sandbox_enabled: config.automation.sandbox.enabled,
             sandbox_profile: format!("{:?}", config.automation.sandbox.profile),
             ocr_provider: format!("{:?}", config.ai_provider.ocr_provider),
             llm_provider: format!("{:?}", config.ai_provider.llm_provider),
+            ocr_source: runtime_status.ocr_source,
+            llm_source: runtime_status.llm_source,
+            ocr_fallback_reason: runtime_status.ocr_fallback_reason,
+            llm_fallback_reason: runtime_status.llm_fallback_reason,
             external_data_policy: format!("{:?}", config.ai_provider.external_data_policy),
             pending_audit_entries: pending,
         }))
@@ -1314,11 +1379,16 @@ mod tests {
             sandbox_profile: "Standard".to_string(),
             ocr_provider: "Local".to_string(),
             llm_provider: "Remote".to_string(),
+            ocr_source: "local".to_string(),
+            llm_source: "local-fallback".to_string(),
+            ocr_fallback_reason: None,
+            llm_fallback_reason: Some("llm endpoint timeout".to_string()),
             external_data_policy: "PiiFilterStrict".to_string(),
             pending_audit_entries: 5,
         };
         let json = serde_json::to_string(&dto).unwrap();
         assert!(json.contains("sandbox_profile"));
+        assert!(json.contains("ocr_source"));
         assert!(json.contains("pending_audit_entries"));
     }
 
@@ -1425,6 +1495,30 @@ mod tests {
         let json = "{}";
         let query: PolicyEventQuery = serde_json::from_str(json).unwrap();
         assert_eq!(query.limit, 100);
+    }
+
+    #[test]
+    fn infer_runtime_source_respects_access_mode() {
+        assert_eq!(
+            infer_runtime_source(AiAccessMode::ProviderSubscriptionCli, true),
+            "cli-subscription"
+        );
+        assert_eq!(
+            infer_runtime_source(AiAccessMode::LocalModel, true),
+            "local"
+        );
+        assert_eq!(
+            infer_runtime_source(AiAccessMode::ProviderApiKey, true),
+            "remote"
+        );
+        assert_eq!(
+            infer_runtime_source(AiAccessMode::PlatformConnected, true),
+            "platform"
+        );
+        assert_eq!(
+            infer_runtime_source(AiAccessMode::PlatformConnected, false),
+            "local"
+        );
     }
 
     #[test]

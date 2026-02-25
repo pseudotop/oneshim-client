@@ -298,6 +298,10 @@ function makeDefaultAutomationStatus(): AutomationStatus {
     sandbox_profile: 'balanced',
     ocr_provider: 'local',
     llm_provider: 'local',
+    ocr_source: 'local',
+    llm_source: 'local',
+    ocr_fallback_reason: null,
+    llm_fallback_reason: null,
     external_data_policy: 'disabled',
     pending_audit_entries: 0,
   }

@@ -30,6 +30,25 @@ interface RunFeedback {
   timestamp: number
 }
 
+const sourceLabelByValue: Record<string, string> = {
+  local: 'automation.sourceLocal',
+  remote: 'automation.sourceRemote',
+  'local-fallback': 'automation.sourceLocalFallback',
+  'cli-subscription': 'automation.sourceCliSubscription',
+  platform: 'automation.sourcePlatform',
+}
+
+const sourceBadgeColorByValue: Record<
+  string,
+  'default' | 'info' | 'warning' | 'success' | 'primary'
+> = {
+  local: 'default',
+  remote: 'info',
+  'local-fallback': 'warning',
+  'cli-subscription': 'success',
+  platform: 'primary',
+}
+
 function Automation() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -130,6 +149,17 @@ function Automation() {
   }
 
   const filteredPresets = (presetsData?.presets ?? []).filter((p: WorkflowPreset) => p.category === presetTab)
+  const ocrFallbackActive =
+    status?.ocr_source === 'local-fallback' || Boolean(status?.ocr_fallback_reason)
+  const llmFallbackActive =
+    status?.llm_source === 'local-fallback' || Boolean(status?.llm_fallback_reason)
+  const hasFallbackDetails = ocrFallbackActive || llmFallbackActive
+
+  const sourceLabel = (source?: string | null) =>
+    t(sourceLabelByValue[source ?? ''] ?? 'automation.sourceUnknown')
+
+  const sourceBadgeColor = (source?: string | null) =>
+    sourceBadgeColorByValue[source ?? ''] ?? 'default'
 
   if (statusLoading) {
     return (
@@ -157,7 +187,7 @@ function Automation() {
       </h1>
 
       {/* UI note */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         <Card>
           <CardContent>
             <div className="text-sm text-slate-500 dark:text-slate-400">{t('automation.status')}</div>
@@ -184,6 +214,26 @@ function Automation() {
             <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
               {status?.ocr_provider ?? '-'}
             </div>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400">{t('automation.providerSource')}</span>
+              <Badge color={sourceBadgeColor(status?.ocr_source)} size="sm">
+                {sourceLabel(status?.ocr_source)}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent>
+            <div className="text-sm text-slate-500 dark:text-slate-400">{t('automation.llmProvider')}</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
+              {status?.llm_provider ?? '-'}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400">{t('automation.providerSource')}</span>
+              <Badge color={sourceBadgeColor(status?.llm_source)} size="sm">
+                {sourceLabel(status?.llm_source)}
+              </Badge>
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -195,6 +245,44 @@ function Automation() {
           </CardContent>
         </Card>
       </div>
+
+      {hasFallbackDetails && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('automation.fallbackDetails')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 text-sm">
+              {ocrFallbackActive && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-slate-900 dark:text-white">{t('automation.ocrProvider')}</span>
+                    <Badge color={sourceBadgeColor(status?.ocr_source)} size="sm">
+                      {sourceLabel(status?.ocr_source)}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-slate-600 dark:text-slate-300">
+                    {t('automation.fallbackReason')}: {status?.ocr_fallback_reason ?? t('automation.fallbackReasonUnavailable')}
+                  </div>
+                </div>
+              )}
+              {llmFallbackActive && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-slate-900 dark:text-white">{t('automation.llmProvider')}</span>
+                    <Badge color={sourceBadgeColor(status?.llm_source)} size="sm">
+                      {sourceLabel(status?.llm_source)}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-slate-600 dark:text-slate-300">
+                    {t('automation.fallbackReason')}: {status?.llm_fallback_reason ?? t('automation.fallbackReasonUnavailable')}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* UI note */}
       <Card>

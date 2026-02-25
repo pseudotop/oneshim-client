@@ -16,6 +16,7 @@ use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
 use oneshim_core::config::WebConfig;
 use oneshim_core::config_manager::ConfigManager;
+use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -32,6 +33,14 @@ const EVENT_CHANNEL_CAPACITY: usize = 256;
 
 const MAX_PORT_ATTEMPTS: u16 = 10;
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AiRuntimeStatus {
+    pub ocr_source: String,
+    pub llm_source: String,
+    pub ocr_fallback_reason: Option<String>,
+    pub llm_fallback_reason: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub storage: Arc<dyn WebStorage>,
@@ -40,6 +49,7 @@ pub struct AppState {
     pub config_manager: Option<ConfigManager>,
     pub audit_logger: Option<Arc<RwLock<AuditLogger>>>,
     pub automation_controller: Option<Arc<AutomationController>>,
+    pub ai_runtime_status: Option<AiRuntimeStatus>,
     pub update_control: Option<update_control::UpdateControl>,
 }
 
@@ -60,6 +70,7 @@ impl WebServer {
                 config_manager: None,
                 audit_logger: None,
                 automation_controller: None,
+                ai_runtime_status: None,
                 update_control: None,
             },
         }
@@ -82,6 +93,11 @@ impl WebServer {
 
     pub fn with_automation_controller(mut self, controller: Arc<AutomationController>) -> Self {
         self.state.automation_controller = Some(controller);
+        self
+    }
+
+    pub fn with_ai_runtime_status(mut self, status: AiRuntimeStatus) -> Self {
+        self.state.ai_runtime_status = Some(status);
         self
     }
 

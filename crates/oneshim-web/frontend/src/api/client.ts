@@ -1072,6 +1072,10 @@ export interface AutomationStatus {
   sandbox_profile: string
   ocr_provider: string
   llm_provider: string
+  ocr_source: string
+  llm_source: string
+  ocr_fallback_reason: string | null
+  llm_fallback_reason: string | null
   external_data_policy: string
   pending_audit_entries: number
 }

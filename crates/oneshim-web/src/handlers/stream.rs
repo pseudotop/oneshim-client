@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
-use crate::AppState;
+use crate::{AiRuntimeStatus, AppState};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", content = "data")]
@@ -18,6 +18,8 @@ pub enum RealtimeEvent {
     Frame(FrameUpdate),
     #[serde(rename = "idle")]
     Idle(IdleUpdate),
+    #[serde(rename = "ai_runtime_status")]
+    AiRuntimeStatus(AiRuntimeStatus),
     #[serde(rename = "ping")]
     Ping,
 }
@@ -52,19 +54,23 @@ pub struct IdleUpdate {
 pub async fn event_stream(
     State(state): State<AppState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let initial_event = state
+        .ai_runtime_status
+        .clone()
+        .and_then(build_ai_runtime_status_event);
     let rx = state.event_tx.subscribe();
     let stream = BroadcastStream::new(rx);
 
-    let sse_stream = stream.filter_map(|result| {
-        match result {
-            Ok(event) => {
-                let json = serde_json::to_string(&event).ok()?;
-                let sse_event = Event::default().event(event_type_name(&event)).data(json);
-                Some(Ok(sse_event))
-            }
-            Err(_) => None, // skip on channel lag
+    let live_stream = stream.filter_map(|result| match result {
+        Ok(event) => {
+            let json = serde_json::to_string(&event).ok()?;
+            let sse_event = Event::default().event(event_type_name(&event)).data(json);
+            Some(Ok(sse_event))
         }
+        Err(_) => None, // skip on channel lag
     });
+
+    let sse_stream = tokio_stream::iter(initial_event.into_iter()).chain(live_stream);
 
     Sse::new(sse_stream).keep_alive(
         KeepAlive::new()
@@ -73,11 +79,20 @@ pub async fn event_stream(
     )
 }
 
+fn build_ai_runtime_status_event(status: AiRuntimeStatus) -> Option<Result<Event, Infallible>> {
+    let event = RealtimeEvent::AiRuntimeStatus(status);
+    let json = serde_json::to_string(&event).ok()?;
+    Some(Ok(Event::default()
+        .event(event_type_name(&event))
+        .data(json)))
+}
+
 fn event_type_name(event: &RealtimeEvent) -> &'static str {
     match event {
         RealtimeEvent::Metrics(_) => "metrics",
         RealtimeEvent::Frame(_) => "frame",
         RealtimeEvent::Idle(_) => "idle",
+        RealtimeEvent::AiRuntimeStatus(_) => "ai_runtime_status",
         RealtimeEvent::Ping => "ping",
     }
 }
@@ -126,6 +141,19 @@ mod tests {
     }
 
     #[test]
+    fn serialize_ai_runtime_status_event() {
+        let event = RealtimeEvent::AiRuntimeStatus(AiRuntimeStatus {
+            ocr_source: "local-fallback".to_string(),
+            llm_source: "remote".to_string(),
+            ocr_fallback_reason: Some("`ocr_api` config is missing".to_string()),
+            llm_fallback_reason: None,
+        });
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"type\":\"ai_runtime_status\""));
+        assert!(json.contains("\"ocr_source\":\"local-fallback\""));
+    }
+
+    #[test]
     fn event_type_names() {
         assert_eq!(
             event_type_name(&RealtimeEvent::Metrics(MetricsUpdate {
@@ -136,6 +164,15 @@ mod tests {
                 memory_total: 0,
             })),
             "metrics"
+        );
+        assert_eq!(
+            event_type_name(&RealtimeEvent::AiRuntimeStatus(AiRuntimeStatus {
+                ocr_source: "remote".to_string(),
+                llm_source: "remote".to_string(),
+                ocr_fallback_reason: None,
+                llm_fallback_reason: None,
+            })),
+            "ai_runtime_status"
         );
         assert_eq!(event_type_name(&RealtimeEvent::Ping), "ping");
     }

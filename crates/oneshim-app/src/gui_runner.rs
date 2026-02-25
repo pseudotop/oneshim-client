@@ -22,7 +22,7 @@ use oneshim_ui::{OneshimApp, UpdateStatusSnapshot, UpdateUserAction};
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
-use oneshim_web::{RealtimeEvent, WebServer};
+use oneshim_web::{AiRuntimeStatus, RealtimeEvent, WebServer};
 use std::panic;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -239,6 +239,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
             }
         };
 
+        let mut ai_runtime_status: Option<AiRuntimeStatus> = None;
         let automation_controller = if config.automation.enabled {
             let runtime = build_automation_runtime(
                 &config.ai_provider,
@@ -247,12 +248,20 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
             );
             match runtime {
                 Ok(runtime) => {
+                    ai_runtime_status = Some(AiRuntimeStatus {
+                        ocr_source: runtime.ocr_source.as_str().to_string(),
+                        llm_source: runtime.llm_source.as_str().to_string(),
+                        ocr_fallback_reason: runtime.ocr_fallback_reason.clone(),
+                        llm_fallback_reason: runtime.llm_fallback_reason.clone(),
+                    });
                     info!(
                         access_mode = ?runtime.access_mode,
                         ocr_provider = runtime.ocr_provider_name,
                         ocr_source = runtime.ocr_source.as_str(),
+                        ocr_fallback_reason = ?runtime.ocr_fallback_reason,
                         llm_provider = runtime.llm_provider_name,
                         llm_source = runtime.llm_source.as_str(),
+                        llm_fallback_reason = ?runtime.llm_fallback_reason,
                         "AI 제공자 어댑터 해석 completed"
                     );
 
@@ -272,6 +281,13 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                 }
                 Err(err) => {
                     if config.ai_provider.fallback_to_local {
+                        let fallback_reason = err.to_string();
+                        ai_runtime_status = Some(AiRuntimeStatus {
+                            ocr_source: "local-fallback".to_string(),
+                            llm_source: "local-fallback".to_string(),
+                            ocr_fallback_reason: Some(fallback_reason.clone()),
+                            llm_fallback_reason: Some(fallback_reason.clone()),
+                        });
                         warn!(
                             error = %err,
                             fallback_enabled = true,
@@ -310,6 +326,9 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                 .with_config_manager(web_config_manager)
                 .with_audit_logger(web_audit_logger)
                 .with_update_control(web_update_control.clone());
+            if let Some(status) = ai_runtime_status {
+                web_server = web_server.with_ai_runtime_status(status);
+            }
             if let Some(ctrl) = automation_controller {
                 web_server = web_server.with_automation_controller(ctrl);
             }

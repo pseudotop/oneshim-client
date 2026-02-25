@@ -105,6 +105,7 @@ mod tests {
             config_manager: None,
             audit_logger: None,
             automation_controller: None,
+            ai_runtime_status: None,
             update_control: Some(control),
         }
     }

@@ -44,7 +44,7 @@ use oneshim_ui::notifier::DesktopNotifierImpl;
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
-use oneshim_web::WebServer;
+use oneshim_web::{AiRuntimeStatus, WebServer};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -512,6 +512,7 @@ async fn main() -> Result<()> {
         warn!("ONESHIM_GUI_TICKET_HMAC_SECRET is missing; GUI V2 endpoints will fail closed");
     }
 
+    let mut ai_runtime_status: Option<AiRuntimeStatus> = None;
     let automation_controller = if config.automation.enabled {
         let runtime = build_automation_runtime(
             &config.ai_provider,
@@ -520,12 +521,20 @@ async fn main() -> Result<()> {
         );
         match runtime {
             Ok(runtime) => {
+                ai_runtime_status = Some(AiRuntimeStatus {
+                    ocr_source: runtime.ocr_source.as_str().to_string(),
+                    llm_source: runtime.llm_source.as_str().to_string(),
+                    ocr_fallback_reason: runtime.ocr_fallback_reason.clone(),
+                    llm_fallback_reason: runtime.llm_fallback_reason.clone(),
+                });
                 info!(
                     access_mode = ?runtime.access_mode,
                     ocr_provider = runtime.ocr_provider_name,
                     ocr_source = runtime.ocr_source.as_str(),
+                    ocr_fallback_reason = ?runtime.ocr_fallback_reason,
                     llm_provider = runtime.llm_provider_name,
                     llm_source = runtime.llm_source.as_str(),
+                    llm_fallback_reason = ?runtime.llm_fallback_reason,
                     "resolved AI provider adapters"
                 );
 
@@ -552,6 +561,13 @@ async fn main() -> Result<()> {
             }
             Err(err) => {
                 if config.ai_provider.fallback_to_local {
+                    let fallback_reason = err.to_string();
+                    ai_runtime_status = Some(AiRuntimeStatus {
+                        ocr_source: "local-fallback".to_string(),
+                        llm_source: "local-fallback".to_string(),
+                        ocr_fallback_reason: Some(fallback_reason.clone()),
+                        llm_fallback_reason: Some(fallback_reason.clone()),
+                    });
                     warn!(
                         error = %err,
                         fallback_enabled = true,
@@ -597,6 +613,9 @@ async fn main() -> Result<()> {
             .with_config_manager(config_manager)
             .with_audit_logger(audit_logger.clone())
             .with_update_control(update_control.clone());
+        if let Some(status) = ai_runtime_status.clone() {
+            web_server = web_server.with_ai_runtime_status(status);
+        }
         if let Some(ref ctrl) = automation_controller {
             web_server = web_server.with_automation_controller(ctrl.clone());
         }
