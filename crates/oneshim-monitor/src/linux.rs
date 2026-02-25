@@ -204,12 +204,10 @@ pub fn get_mouse_position_linux() -> Option<MousePosition> {
 
     match display_server {
         DisplayServer::X11 => get_mouse_position_x11(),
-        DisplayServer::Wayland => {
-            get_mouse_position_x11().or_else(|| {
-                debug!("Wayland mouse detection");
-                None
-            })
-        }
+        DisplayServer::Wayland => get_mouse_position_x11().or_else(|| {
+            debug!("Wayland mouse detection");
+            None
+        }),
         DisplayServer::Unknown => None,
     }
 }

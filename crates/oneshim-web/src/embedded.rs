@@ -2,9 +2,11 @@
 
 use axum::http::{header, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Response};
+#[cfg(oneshim_web_embedded_dist)]
 use rust_embed::Embed;
 
 ///
+#[cfg(oneshim_web_embedded_dist)]
 #[derive(Embed)]
 #[folder = "frontend/dist"]
 #[include = "*.html"]
@@ -18,6 +20,16 @@ use rust_embed::Embed;
 #[include = "*.woff2"]
 #[include = "assets/**/*"]
 struct Assets;
+
+#[cfg(not(oneshim_web_embedded_dist))]
+struct Assets;
+
+#[cfg(not(oneshim_web_embedded_dist))]
+impl Assets {
+    fn get(_path: &str) -> Option<rust_embed::EmbeddedFile> {
+        None
+    }
+}
 
 pub async fn serve_static(uri: Uri) -> Response {
     serve_static_impl(uri)

@@ -4,7 +4,6 @@ use chrono::{DateTime, Utc};
 use oneshim_core::config::PiiFilterLevel;
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputCollectionConfig {
     #[serde(default)]
@@ -37,7 +36,6 @@ impl Default for InputCollectionConfig {
 fn default_trajectory_sample_rate() -> u64 {
     50
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum KeyEventType {
@@ -82,7 +80,6 @@ pub enum DetailedInputEvent {
     Click(ClickEvent),
     Scroll(ScrollEvent),
 }
-
 
 ///
 pub fn sanitize_key_name(key_name: &str, level: PiiFilterLevel) -> String {
@@ -142,7 +139,6 @@ pub fn sanitize_key_name(key_name: &str, level: PiiFilterLevel) -> String {
         }
     }
 }
-
 
 pub struct InputEventBuffer {
     config: InputCollectionConfig,
