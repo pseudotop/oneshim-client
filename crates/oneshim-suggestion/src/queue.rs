@@ -29,9 +29,7 @@ impl Ord for PrioritizedSuggestion {
             .suggestion
             .priority
             .cmp(&self.suggestion.priority)
-            .then_with(|| {
-                other.suggestion.created_at.cmp(&self.suggestion.created_at)
-            })
+            .then_with(|| other.suggestion.created_at.cmp(&self.suggestion.created_at))
             .then_with(|| {
                 self.suggestion
                     .suggestion_id

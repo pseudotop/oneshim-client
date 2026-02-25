@@ -116,7 +116,6 @@ impl Sandbox for MacOsSandbox {
             "macOS Seatbelt 샌드박스 execution"
         );
 
-
         apply_resource_limits(config)?;
 
         tracing::info!(

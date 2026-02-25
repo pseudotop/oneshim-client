@@ -14,7 +14,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let count: i64 = conn
             .query_row(
@@ -22,7 +22,7 @@ impl SqliteStorage {
                 rusqlite::params![from, to],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("event 개수 query failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to count events: {e}")))?;
 
         Ok(count as u64)
     }
@@ -98,18 +98,18 @@ impl SqliteStorage {
         let mut conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let tx = conn
             .transaction()
-            .map_err(|e| CoreError::Internal(format!("트랜잭션 started failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to start transaction: {e}")))?;
 
         {
             let mut stmt = tx
                 .prepare_cached(
                     "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
                 )
-                .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
             for event in events {
                 let event_id = Self::extract_event_id(event);
@@ -123,7 +123,7 @@ impl SqliteStorage {
         }
 
         tx.commit()
-            .map_err(|e| CoreError::Internal(format!("트랜잭션 커밋 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to commit transaction: {e}")))?;
 
         debug!("event batch save: {}items", events.len());
         Ok(events.len())
@@ -141,7 +141,7 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
@@ -165,20 +165,20 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT data FROM events WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp DESC LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let events = stmt
             .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
                 let data: String = row.get(0)?;
                 Ok(data)
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
             .collect();
@@ -190,18 +190,18 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare("SELECT data FROM events WHERE is_sent = 0 ORDER BY timestamp ASC LIMIT ?1")
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let events = stmt
             .query_map(rusqlite::params![limit as i64], |row| {
                 let data: String = row.get(0)?;
                 Ok(data)
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
             .collect();
@@ -217,7 +217,7 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let placeholders: Vec<String> = event_ids
             .iter()
@@ -235,7 +235,7 @@ impl StorageService for SqliteStorage {
             .collect();
 
         conn.execute(&sql, params.as_slice())
-            .map_err(|e| CoreError::Internal(format!("sent completed 마킹 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to mark as sent: {e}")))?;
 
         debug!("{}items event sent completed", event_ids.len());
         Ok(())
@@ -247,14 +247,14 @@ impl StorageService for SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let deleted = conn
             .execute(
                 "DELETE FROM events WHERE timestamp < ?1 AND is_sent = 1",
                 rusqlite::params![cutoff],
             )
-            .map_err(|e| CoreError::Internal(format!("보존 policy 적용 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to apply retention policy: {e}")))?;
 
         if deleted > 0 {
             info!(

@@ -35,7 +35,7 @@ impl AutomationActionDispatcher for SandboxActionDispatcher {
 
         if let Err(e) = self.sandbox.execute_sandboxed(action, config).await {
             tracing::error!(error = %e, "sandbox execution failure");
-            return CommandResult::Failed(format!("샌드박스 execution failure: {}", e));
+            return CommandResult::Failed(format!("Sandbox execution failed: {}", e));
         }
 
         match action {

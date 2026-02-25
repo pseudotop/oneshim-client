@@ -149,9 +149,9 @@ impl UnifiedClient {
         self.ensure_grpc_auth().await?;
 
         let mut guard = self.grpc_auth.write().await;
-        let client = guard
-            .as_mut()
-            .ok_or_else(|| CoreError::Network("gRPC 인증 client initialize failure".to_string()))?;
+        let client = guard.as_mut().ok_or_else(|| {
+            CoreError::Network("Failed to initialize gRPC auth client".to_string())
+        })?;
 
         let device_info = HashMap::new();
         let response = client
@@ -236,15 +236,15 @@ impl UnifiedClient {
         self.ensure_grpc_session().await?;
 
         let mut guard = self.grpc_session.write().await;
-        let client = guard
-            .as_mut()
-            .ok_or_else(|| CoreError::Network("gRPC session client initialize failure".to_string()))?;
+        let client = guard.as_mut().ok_or_else(|| {
+            CoreError::Network("gRPC session client initialize failure".to_string())
+        })?;
 
         let response = client.create_session(client_id, device_info).await?;
 
         let session = response
             .session
-            .ok_or_else(|| CoreError::Network("session response이 비어있음".to_string()))?;
+            .ok_or_else(|| CoreError::Network("Session response is empty".to_string()))?;
 
         Ok(SessionResponse {
             session_id: session.session_id,
@@ -274,9 +274,9 @@ impl UnifiedClient {
         self.ensure_grpc_session().await?;
 
         let mut guard = self.grpc_session.write().await;
-        let client = guard
-            .as_mut()
-            .ok_or_else(|| CoreError::Network("gRPC session client initialize failure".to_string()))?;
+        let client = guard.as_mut().ok_or_else(|| {
+            CoreError::Network("gRPC session client initialize failure".to_string())
+        })?;
 
         let response = client
             .heartbeat(session_id, client_id, HashMap::new())
@@ -304,13 +304,13 @@ impl UnifiedClient {
     ) -> Result<Streaming<Suggestion>, CoreError> {
         if !self.config.should_use_grpc_for_context() {
             return Err(CoreError::Network(
-                "suggestion 스트리밍은 gRPC mode에서만 사용 가능합니다. use_grpc_context=true 설정 필요"
+                "Suggestion streaming is available only in gRPC mode. Set use_grpc_context=true."
                     .to_string(),
             ));
         }
 
         debug!(
-            "gRPC suggestion 스트림 subscribe started: session_id={}, client_id={}",
+            "gRPC suggestion stream subscribe started: session_id={}, client_id={}",
             session_id, client_id
         );
         self.ensure_grpc_context().await?;
@@ -435,7 +435,10 @@ impl UnifiedClient {
                 })
             })
             .await?;
-            info!("gRPC feedback sent completed: suggestion_id={}", suggestion_id);
+            info!(
+                "gRPC feedback sent completed: suggestion_id={}",
+                suggestion_id
+            );
 
             Ok(())
         } else {
@@ -459,7 +462,10 @@ impl UnifiedClient {
             };
 
             self.http_client.send_feedback(&feedback).await?;
-            info!("REST feedback sent completed: suggestion_id={}", suggestion_id);
+            info!(
+                "REST feedback sent completed: suggestion_id={}",
+                suggestion_id
+            );
 
             Ok(())
         }
@@ -487,7 +493,10 @@ impl UnifiedClient {
         limit: i32,
     ) -> Result<ListSuggestionsResponse, CoreError> {
         if self.config.should_use_grpc_for_context() {
-            debug!("gRPC suggestion list query: types={:?}, limit={}", types, limit);
+            debug!(
+                "gRPC suggestion list query: types={:?}, limit={}",
+                types, limit
+            );
             let response = self
                 .with_grpc_context_client("list_suggestions", |client| {
                     Box::pin(async move { client.list_suggestions(types, limit).await })
@@ -501,8 +510,8 @@ impl UnifiedClient {
             Ok(response)
         } else {
             warn!(
-                "REST mode에서는 suggestion list query가 제한적입니다. \
-                 전체 기능을 사용하려면 use_grpc_context=true를 설정하세요."
+                "Suggestion list queries are limited in REST mode. \
+                 Set use_grpc_context=true for full functionality."
             );
 
             Ok(ListSuggestionsResponse {

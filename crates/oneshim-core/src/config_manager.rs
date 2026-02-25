@@ -30,7 +30,7 @@ impl ConfigManager {
             if !parent.exists() {
                 fs::create_dir_all(parent).map_err(|e| {
                     CoreError::Config(format!(
-                        "설정 디렉토리 create failure: {}: {}",
+                        "Failed to create config directory: {}: {}",
                         parent.display(),
                         e
                     ))
@@ -101,8 +101,9 @@ impl ConfigManager {
         #[cfg(target_os = "macos")]
         {
             // macOS: ~/Library/Application Support/oneshim/
-            let home = std::env::var("HOME")
-                .map_err(|_| CoreError::Config("HOME 환경 변수를 찾을 수 없습니다".to_string()))?;
+            let home = std::env::var("HOME").map_err(|_| {
+                CoreError::Config("HOME environment variable not found".to_string())
+            })?;
             Ok(PathBuf::from(home)
                 .join("Library")
                 .join("Application Support")
@@ -113,7 +114,7 @@ impl ConfigManager {
         {
             // Windows: %APPDATA%\oneshim\
             let appdata = std::env::var("APPDATA").map_err(|_| {
-                CoreError::Config("APPDATA 환경 변수를 찾을 수 없습니다".to_string())
+                CoreError::Config("APPDATA environment variable not found".to_string())
             })?;
             Ok(PathBuf::from(appdata).join(APP_DIR_NAME))
         }
@@ -121,8 +122,9 @@ impl ConfigManager {
         #[cfg(target_os = "linux")]
         {
             // Linux: ~/.config/oneshim/
-            let home = std::env::var("HOME")
-                .map_err(|_| CoreError::Config("HOME 환경 변수를 찾을 수 없습니다".to_string()))?;
+            let home = std::env::var("HOME").map_err(|_| {
+                CoreError::Config("HOME environment variable not found".to_string())
+            })?;
             Ok(PathBuf::from(home).join(".config").join(APP_DIR_NAME))
         }
 
@@ -144,7 +146,7 @@ impl ConfigManager {
         {
             // Windows: %LOCALAPPDATA%\oneshim\data\
             let local_appdata = std::env::var("LOCALAPPDATA").map_err(|_| {
-                CoreError::Config("LOCALAPPDATA 환경 변수를 찾을 수 없습니다".to_string())
+                CoreError::Config("LOCALAPPDATA environment variable not found".to_string())
             })?;
             Ok(PathBuf::from(local_appdata).join(APP_DIR_NAME).join("data"))
         }
@@ -152,8 +154,9 @@ impl ConfigManager {
         #[cfg(target_os = "linux")]
         {
             // Linux: ~/.local/share/oneshim/
-            let home = std::env::var("HOME")
-                .map_err(|_| CoreError::Config("HOME 환경 변수를 찾을 수 없습니다".to_string()))?;
+            let home = std::env::var("HOME").map_err(|_| {
+                CoreError::Config("HOME environment variable not found".to_string())
+            })?;
             Ok(PathBuf::from(home)
                 .join(".local")
                 .join("share")
@@ -168,11 +171,19 @@ impl ConfigManager {
 
     fn load_from_file(path: &PathBuf) -> Result<AppConfig, CoreError> {
         let content = fs::read_to_string(path).map_err(|e| {
-            CoreError::Config(format!("설정 file read failure: {}: {}", path.display(), e))
+            CoreError::Config(format!(
+                "Failed to read config file: {}: {}",
+                path.display(),
+                e
+            ))
         })?;
 
         let config: AppConfig = serde_json::from_str(&content).map_err(|e| {
-            CoreError::Config(format!("설정 file 파싱 failure: {}: {}", path.display(), e))
+            CoreError::Config(format!(
+                "Failed to parse config file: {}: {}",
+                path.display(),
+                e
+            ))
         })?;
 
         debug!("settings file load complete: {}", path.display());
@@ -181,10 +192,14 @@ impl ConfigManager {
 
     fn save_to_file(path: &PathBuf, config: &AppConfig) -> Result<(), CoreError> {
         let content = serde_json::to_string_pretty(config)
-            .map_err(|e| CoreError::Config(format!("설정 직렬화 failure: {}", e)))?;
+            .map_err(|e| CoreError::Config(format!("Failed to serialize config: {}", e)))?;
 
         fs::write(path, content).map_err(|e| {
-            CoreError::Config(format!("설정 file save failure: {}: {}", path.display(), e))
+            CoreError::Config(format!(
+                "Failed to write config file: {}: {}",
+                path.display(),
+                e
+            ))
         })?;
 
         Ok(())
@@ -193,7 +208,7 @@ impl ConfigManager {
 
 impl Default for ConfigManager {
     fn default() -> Self {
-        Self::new().expect("default 설정 관리자 create failure")
+        Self::new().expect("Failed to create default config manager")
     }
 }
 

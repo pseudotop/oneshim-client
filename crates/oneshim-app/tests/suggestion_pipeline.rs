@@ -23,9 +23,13 @@ fn make_suggestion(id: &str, priority: Priority, content: &str) -> Suggestion {
 #[test]
 fn queue_to_presenter_flow() {
     let mut queue = SuggestionQueue::new(10);
-    queue.push(make_suggestion("s1", Priority::Low, "낮은 우선순위"));
-    queue.push(make_suggestion("s2", Priority::Critical, "긴급 suggestion"));
-    queue.push(make_suggestion("s3", Priority::Medium, "중간 suggestion"));
+    queue.push(make_suggestion("s1", Priority::Low, "low priority"));
+    queue.push(make_suggestion(
+        "s2",
+        Priority::Critical,
+        "critical suggestion",
+    ));
+    queue.push(make_suggestion("s3", Priority::Medium, "medium suggestion"));
 
     assert_eq!(queue.len(), 3);
 
@@ -66,9 +70,9 @@ fn history_tracks_presented_suggestions() {
 #[test]
 fn queue_overflow_evicts_lowest() {
     let mut queue = SuggestionQueue::new(2); // 2items
-    queue.push(make_suggestion("a", Priority::High, "높음"));
-    queue.push(make_suggestion("b", Priority::Critical, "긴급"));
-    queue.push(make_suggestion("c", Priority::Medium, "중간")); // s →
+    queue.push(make_suggestion("a", Priority::High, "high"));
+    queue.push(make_suggestion("b", Priority::Critical, "critical"));
+    queue.push(make_suggestion("c", Priority::Medium, "medium")); // medium should be evicted
     assert_eq!(queue.len(), 2);
 
     let first = queue.pop().unwrap();
@@ -94,11 +98,11 @@ fn presenter_all_priorities() {
         Priority::High,
         Priority::Critical,
     ] {
-        let s = make_suggestion("p", priority.clone(), "within용");
+        let s = make_suggestion("p", priority.clone(), "for display");
         let view = presenter::present(&s);
         assert!(
             !view.priority_color.is_empty(),
-            "우선순위 {:?}에 색상이 none",
+            "No color for priority {:?}",
             priority
         );
     }

@@ -918,7 +918,6 @@ impl Scheduler {
     }
 }
 
-
 ///
 #[allow(dead_code)]
 pub fn should_run_now(config: &AppConfig) -> bool {

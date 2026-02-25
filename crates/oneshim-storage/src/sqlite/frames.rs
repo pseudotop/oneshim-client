@@ -13,7 +13,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let count: i64 = conn
             .query_row(
@@ -21,7 +21,7 @@ impl SqliteStorage {
                 rusqlite::params![from, to],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("frame 개수 query failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to count frames: {e}")))?;
 
         Ok(count as u64)
     }
@@ -30,7 +30,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let result: Result<Option<String>, rusqlite::Error> = conn.query_row(
             "SELECT file_path FROM frames WHERE id = ?1",
@@ -70,7 +70,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT INTO frames (timestamp, trigger_type, app_name, window_title, importance, resolution_w, resolution_h, has_image, file_path, ocr_text, window_x, window_y, window_width, window_height)
@@ -92,7 +92,7 @@ impl SqliteStorage {
                 bounds.map(|b| b.height as i32),
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("frame 메타데이터 save failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to save frame metadata: {e}")))?;
 
         let frame_id = conn.last_insert_rowid();
         debug!(
@@ -119,7 +119,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -129,7 +129,7 @@ impl SqliteStorage {
                  ORDER BY timestamp DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let frames = stmt
             .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
@@ -146,7 +146,7 @@ impl SqliteStorage {
                     ocr_text: row.get(9)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 

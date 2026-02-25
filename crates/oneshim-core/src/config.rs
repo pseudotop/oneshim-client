@@ -63,7 +63,6 @@ impl Default for IntegrityConfig {
     }
 }
 
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TelemetryConfig {
     #[serde(default)]
@@ -75,8 +74,6 @@ pub struct TelemetryConfig {
     #[serde(default)]
     pub performance_metrics: bool,
 }
-
-
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PiiFilterLevel {
@@ -112,7 +109,6 @@ impl Default for PrivacyConfig {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Weekday {
@@ -172,7 +168,6 @@ fn default_active_days() -> Vec<Weekday> {
     ]
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileAccessConfig {
     #[serde(default)]
@@ -195,7 +190,6 @@ impl Default for FileAccessConfig {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AutomationConfig {
@@ -246,7 +240,6 @@ impl Default for SandboxConfig {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderConfig {
@@ -315,7 +308,7 @@ impl AiProviderConfig {
                     || self.llm_provider == LlmProviderType::Remote
                 {
                     return Err(CoreError::Config(
-                        "Provider subscribe 계정(CLI) mode에서는 Remote OCR/LLM 대신 Local 제공자를 선택하세요."
+                        "Provider subscription (CLI) mode requires local OCR/LLM providers instead of remote providers."
                             .to_string(),
                     ));
                 }
@@ -365,7 +358,7 @@ impl SceneActionOverrideConfig {
         let reason = self.reason.as_deref().map(str::trim).unwrap_or_default();
         if reason.is_empty() {
             return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.reason` 값이 필요합니다.".to_string(),
+                "`ai_provider.scene_action_override.reason` is required.".to_string(),
             ));
         }
 
@@ -376,20 +369,19 @@ impl SceneActionOverrideConfig {
             .unwrap_or_default();
         if approved_by.is_empty() {
             return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.approved_by` 값이 필요합니다.".to_string(),
+                "`ai_provider.scene_action_override.approved_by` is required.".to_string(),
             ));
         }
 
         let expires_at = self.expires_at.ok_or_else(|| {
             CoreError::Config(
-                "`ai_provider.scene_action_override.expires_at` 값이 필요합니다.".to_string(),
+                "`ai_provider.scene_action_override.expires_at` is required.".to_string(),
             )
         })?;
 
         if expires_at <= Utc::now() {
             return Err(CoreError::Config(
-                "`ai_provider.scene_action_override.expires_at` 값은 미래 시각이어야 합니다."
-                    .to_string(),
+                "`ai_provider.scene_action_override.expires_at` must be in the future.".to_string(),
             ));
         }
 
@@ -437,19 +429,19 @@ impl SceneIntelligenceConfig {
     pub fn validate(&self) -> Result<(), CoreError> {
         if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
             return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.min_confidence`는 0.0~1.0 범위여야 합니다."
+                "`ai_provider.scene_intelligence.min_confidence` must be within 0.0..=1.0."
                     .to_string(),
             ));
         }
         if self.max_elements == 0 || self.max_elements > 1000 {
             return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.max_elements`는 1~1000 범위여야 합니다."
+                "`ai_provider.scene_intelligence.max_elements` must be within 1..=1000."
                     .to_string(),
             ));
         }
         if self.calibration_min_elements == 0 || self.calibration_min_elements > 1000 {
             return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.calibration_min_elements`는 1~1000 범위여야 합니다."
+                "`ai_provider.scene_intelligence.calibration_min_elements` must be within 1..=1000."
                     .to_string(),
             ));
         }
@@ -457,7 +449,7 @@ impl SceneIntelligenceConfig {
             || !(0.0..=1.0).contains(&self.calibration_min_avg_confidence)
         {
             return Err(CoreError::Config(
-                "`ai_provider.scene_intelligence.calibration_min_avg_confidence`는 0.0~1.0 범위여야 합니다."
+                "`ai_provider.scene_intelligence.calibration_min_avg_confidence` must be within 0.0..=1.0."
                     .to_string(),
             ));
         }
@@ -471,30 +463,31 @@ fn validate_remote_endpoint(
 ) -> Result<(), CoreError> {
     let endpoint = endpoint.ok_or_else(|| {
         CoreError::Config(format!(
-            "원격 제공자를 사용하려면 `{field_name}` 설정이 필요합니다."
+            "`{field_name}` is required when a remote provider is selected."
         ))
     })?;
 
     let endpoint_url = endpoint.endpoint.trim();
     if endpoint_url.is_empty() {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint` 값이 비어 있습니다."
+            "`{field_name}.endpoint` must not be empty."
         )));
     }
     if !(endpoint_url.starts_with("http://") || endpoint_url.starts_with("https://")) {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint`는 http:// https:// URL."        )));
+            "`{field_name}.endpoint` must be an http:// or https:// URL."
+        )));
     }
 
     if endpoint.api_key.trim().is_empty() {
         return Err(CoreError::Config(format!(
-            "`{field_name}.api_key` 값이 비어 있습니다."
+            "`{field_name}.api_key` must not be empty."
         )));
     }
 
     if endpoint.timeout_secs == 0 {
         return Err(CoreError::Config(format!(
-            "`{field_name}.timeout_secs`는 1 이상이어야 합니다."
+            "`{field_name}.timeout_secs` must be >= 1."
         )));
     }
 
@@ -525,7 +518,6 @@ pub enum AiAccessMode {
     ProviderSubscriptionCli,
     PlatformConnected,
 }
-
 
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -588,14 +580,13 @@ impl OcrValidationConfig {
 
         if !self.min_confidence.is_finite() || !(0.0..=1.0).contains(&self.min_confidence) {
             return Err(CoreError::Config(
-                "`ai_provider.ocr_validation.min_confidence`는 0.0~1.0 범위여야 합니다."
-                    .to_string(),
+                "`ai_provider.ocr_validation.min_confidence` must be within 0.0..=1.0.".to_string(),
             ));
         }
 
         if !self.max_invalid_ratio.is_finite() || !(0.0..=1.0).contains(&self.max_invalid_ratio) {
             return Err(CoreError::Config(
-                "`ai_provider.ocr_validation.max_invalid_ratio`는 0.0~1.0 범위여야 합니다."
+                "`ai_provider.ocr_validation.max_invalid_ratio` must be within 0.0..=1.0."
                     .to_string(),
             ));
         }
@@ -644,7 +635,6 @@ fn default_excluded_extensions() -> Vec<String> {
 fn default_max_events_per_minute() -> u32 {
     100
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrpcConfig {
@@ -710,7 +700,6 @@ fn default_grpc_request_timeout() -> u64 {
     30
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationConfig {
     #[serde(default = "default_notification_enabled")]
@@ -746,7 +735,6 @@ impl Default for NotificationConfig {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebConfig {
     #[serde(default = "default_web_enabled")]
@@ -766,7 +754,6 @@ impl Default for WebConfig {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateConfig {
@@ -868,7 +855,6 @@ fn default_update_require_signature() -> bool {
 fn default_update_signature_public_key() -> String {
     "GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=".to_string()
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -980,7 +966,6 @@ impl AppConfig {
         Duration::from_millis(self.monitor.sync_interval_ms)
     }
 }
-
 
 fn default_true() -> bool {
     true
@@ -1344,7 +1329,10 @@ mod tests {
 
         let result = config.validate_selected_remote_endpoints();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("미래 시각"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must be in the future"));
     }
 
     #[test]

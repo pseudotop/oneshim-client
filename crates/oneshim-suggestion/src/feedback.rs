@@ -56,7 +56,7 @@ impl FeedbackSender {
             comment,
         };
 
-        debug!("feedback sent: {suggestion_id} → {feedback_type:?}");
+        debug!("feedback sent: {suggestion_id} -> {feedback_type:?}");
 
         match self.api_client.send_feedback(&feedback).await {
             Ok(()) => {

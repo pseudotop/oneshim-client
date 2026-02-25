@@ -30,8 +30,10 @@ impl LifecycleManager {
         #[cfg(unix)]
         {
             use tokio::signal::unix::{signal, SignalKind};
-            let mut sigint = signal(SignalKind::interrupt()).expect("SIGINT 핸들러 등록 failure");
-            let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM 핸들러 등록 failure");
+            let mut sigint =
+                signal(SignalKind::interrupt()).expect("Failed to register SIGINT handler");
+            let mut sigterm =
+                signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
 
             tokio::select! {
                 _ = sigint.recv() => {
@@ -47,7 +49,7 @@ impl LifecycleManager {
         {
             tokio::signal::ctrl_c()
                 .await
-                .expect("Ctrl+C 핸들러 등록 failure");
+                .expect("Failed to register Ctrl+C handler");
             info!("Ctrl+C received");
         }
 

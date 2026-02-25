@@ -311,7 +311,7 @@ mod tests {
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                 + 1;
             if count <= self.fail_until {
-                Err(CoreError::Internal("일시적 failure".to_string()))
+                Err(CoreError::Internal("Temporary failure".to_string()))
             } else {
                 Ok(())
             }

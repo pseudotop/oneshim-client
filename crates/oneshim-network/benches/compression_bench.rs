@@ -50,7 +50,7 @@ fn bench_compress_auto(c: &mut Criterion) {
     let mut group = c.benchmark_group("compress_auto");
     let compressor = AdaptiveCompressor::new();
 
-    let sizes = [512, 2048, 16_384, 65_536]; // size →
+    let sizes = [512, 2048, 16_384, 65_536]; // bytes
     for size in sizes {
         let data = create_compressible_data(size);
         group.throughput(Throughput::Bytes(size as u64));

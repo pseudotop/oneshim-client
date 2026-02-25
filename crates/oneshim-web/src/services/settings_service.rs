@@ -1,4 +1,3 @@
-
 use chrono::{DateTime, Utc};
 use oneshim_core::config::{
     AiAccessMode, AiProviderType, AppConfig, ExternalApiEndpoint, ExternalDataPolicy,
@@ -65,7 +64,7 @@ pub fn update_settings(state: &AppState, settings: &AppSettings) -> Result<(), A
 
         config_manager
             .update(next_config.clone())
-            .map_err(|e| ApiError::Internal(format!("설정 save failure: {e}")))?;
+            .map_err(|e| ApiError::Internal(format!("Failed to save settings: {e}")))?;
 
         emit_policy_change_events(state, &previous_config, &next_config);
     }

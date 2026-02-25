@@ -112,7 +112,11 @@ impl SseClient for SseStreamClient {
             };
 
             if !response.status().is_success() {
-                warn!("SSE connection failure (status={}): {}", response.status(), url);
+                warn!(
+                    "SSE connection failure (status={}): {}",
+                    response.status(),
+                    url
+                );
 
                 if tx.is_closed() {
                     return Ok(());

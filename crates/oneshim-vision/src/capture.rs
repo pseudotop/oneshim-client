@@ -14,35 +14,39 @@ impl ScreenCapture {
 
     pub fn capture_primary(&self) -> Result<DynamicImage, CoreError> {
         let monitors = Monitor::all()
-            .map_err(|e| CoreError::Internal(format!("모니터 list query failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to query monitor list: {e}")))?;
 
         let monitor = monitors
             .into_iter()
             .find(|m| m.is_primary().unwrap_or(false))
             .or_else(|| Monitor::all().ok()?.into_iter().next())
-            .ok_or_else(|| CoreError::Internal("모니터를 찾을 수 none".to_string()))?;
+            .ok_or_else(|| CoreError::Internal("Monitor not found".to_string()))?;
 
         let image = monitor
             .capture_image()
-            .map_err(|e| CoreError::Internal(format!("스크린 캡처 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Screen capture failed: {e}")))?;
 
-        debug!("screen capture completed: {}x{}", image.width(), image.height());
+        debug!(
+            "screen capture completed: {}x{}",
+            image.width(),
+            image.height()
+        );
 
         Ok(DynamicImage::ImageRgba8(image))
     }
 
     pub fn capture_monitor(&self, index: usize) -> Result<DynamicImage, CoreError> {
         let monitors = Monitor::all()
-            .map_err(|e| CoreError::Internal(format!("모니터 list query failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to query monitor list: {e}")))?;
 
         let monitor = monitors
             .into_iter()
             .nth(index)
-            .ok_or_else(|| CoreError::Internal(format!("모니터 index {index} none")))?;
+            .ok_or_else(|| CoreError::Internal(format!("Monitor index {index} not found")))?;
 
         let image = monitor
             .capture_image()
-            .map_err(|e| CoreError::Internal(format!("스크린 캡처 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Screen capture failed: {e}")))?;
 
         Ok(DynamicImage::ImageRgba8(image))
     }
@@ -50,7 +54,7 @@ impl ScreenCapture {
     pub fn monitor_count() -> Result<usize, CoreError> {
         Monitor::all()
             .map(|m| m.len())
-            .map_err(|e| CoreError::Internal(format!("모니터 list query failure: {e}")))
+            .map_err(|e| CoreError::Internal(format!("Failed to query monitor list: {e}")))
     }
 }
 

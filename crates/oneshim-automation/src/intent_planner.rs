@@ -263,7 +263,7 @@ mod tests {
             AutomationIntent::ExecuteHotkey { keys } => {
                 assert_eq!(keys, vec!["Ctrl", "Shift", "S"]);
             }
-            other => panic!("예상치 못한 Intent: {other:?}"),
+            other => panic!("Unexpected intent: {other:?}"),
         }
     }
 
@@ -273,6 +273,6 @@ mod tests {
             extract_quoted_text("입력창에 \"hello world\" 입력"),
             Some("hello world".to_string())
         );
-        assert_eq!(extract_quoted_text("인용부호 none"), None);
+        assert_eq!(extract_quoted_text("no quoted text"), None);
     }
 }

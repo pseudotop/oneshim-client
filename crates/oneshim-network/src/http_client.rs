@@ -38,7 +38,7 @@ impl HttpApiClient {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()
-            .map_err(|e| CoreError::Network(format!("HTTP client 빌드 failure: {}", e)))?;
+            .map_err(|e| CoreError::Network(format!("Failed to build HTTP client: {}", e)))?;
 
         Ok(Self {
             client,
@@ -81,7 +81,7 @@ impl HttpApiClient {
         });
 
         match status_code {
-            401 => Err(CoreError::Auth(format!("인증 failure: {text}"))),
+            401 => Err(CoreError::Auth(format!("Authentication failed: {text}"))),
             404 => Err(CoreError::NotFound {
                 resource_type: "API".to_string(),
                 id: text,
@@ -115,7 +115,7 @@ impl HttpApiClient {
                     }
 
                     warn!(
-                        "request failure (attempt {}/{}): {e}, {delay:?} 후 재attempt",
+                        "request failed (attempt {}/{}): {e}, retrying in {delay:?}",
                         attempt + 1,
                         self.max_retries + 1
                     );
@@ -146,17 +146,15 @@ impl ApiClient for HttpApiClient {
                 .await?;
 
             let body = serde_json::json!({ "client_id": client_id });
-            let resp = req
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| CoreError::Network(format!("session create request failure: {e}")))?;
+            let resp =
+                req.json(&body).send().await.map_err(|e| {
+                    CoreError::Network(format!("session create request failure: {e}"))
+                })?;
 
             let resp = self.check_response(resp).await?;
-            let session: SessionCreateResponse = resp
-                .json()
-                .await
-                .map_err(|e| CoreError::Internal(format!("session response 파싱 failure: {e}")))?;
+            let session: SessionCreateResponse = resp.json().await.map_err(|e| {
+                CoreError::Internal(format!("Failed to parse session response: {e}"))
+            })?;
 
             debug!("session create success: session_id={}", session.session_id);
             Ok(session)
@@ -193,11 +191,10 @@ impl ApiClient for HttpApiClient {
                 .authorized_request(reqwest::Method::POST, "/user_context/batches")
                 .await?;
 
-            let resp = req
-                .json(batch)
-                .send()
-                .await
-                .map_err(|e| CoreError::Network(format!("batch upload request failure: {e}")))?;
+            let resp =
+                req.json(batch).send().await.map_err(|e| {
+                    CoreError::Network(format!("batch upload request failure: {e}"))
+                })?;
 
             self.check_response(resp).await?;
             debug!("batch upload success");
@@ -444,7 +441,7 @@ mod tests {
         let result = client.upload_batch(&batch).await;
         assert!(result.is_err());
         let err = format!("{}", result.unwrap_err());
-        assert!(err.contains("인증"));
+        assert!(err.contains("Authentication"));
         mock.assert_async().await;
     }
 

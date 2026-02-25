@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone)]
 pub struct SettingsState {
     pub is_visible: bool,

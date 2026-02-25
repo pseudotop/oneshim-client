@@ -46,7 +46,10 @@ impl WsClient {
             .replace("https://", "wss://");
         let url = format!("{ws_url}{path}?token={token}");
 
-        info!("WebSocket connection: {}", url.split('?').next().unwrap_or(&url));
+        info!(
+            "WebSocket connection: {}",
+            url.split('?').next().unwrap_or(&url)
+        );
 
         let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
             .await
@@ -108,7 +111,7 @@ impl WsSender {
 
     pub async fn send_json<T: serde::Serialize>(&self, data: &T) -> Result<(), CoreError> {
         let json = serde_json::to_string(data)
-            .map_err(|e| CoreError::Internal(format!("JSON 직렬화 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("JSON serialization failed: {e}")))?;
         self.send_text(&json).await
     }
 

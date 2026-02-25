@@ -137,7 +137,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     let config_manager = ConfigManager::new().unwrap_or_else(|e| {
         warn!("settings initialize failure, default settings: {e}");
         let fallback_path = data_dir_path.join("config.json");
-        ConfigManager::with_path(fallback_path).expect("설정 관리자 create failure")
+        ConfigManager::with_path(fallback_path).expect("Failed to create config manager")
     });
     info!("settings file: {:?}", config_manager.config_path());
 
@@ -505,5 +505,4 @@ async fn run_agent(
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

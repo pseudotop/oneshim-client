@@ -14,7 +14,6 @@ pub enum PiiMarker {
     UserPath,
 }
 
-
 pub fn sanitize_title_with_level(title: &str, level: PiiFilterLevel) -> String {
     match level {
         PiiFilterLevel::Off => title.to_string(),
@@ -81,7 +80,6 @@ pub fn is_sensitive_segment_with_level(text: &str, level: PiiFilterLevel) -> boo
 fn marker_inserted(original: &str, masked: &str, marker: &str) -> bool {
     masked.contains(marker) && (!original.contains(marker) || masked != original)
 }
-
 
 pub const SENSITIVE_APP_KEYWORDS: &[&str] = &[
     "1password",
@@ -156,7 +154,6 @@ pub fn should_exclude(
 
     false
 }
-
 
 fn mask_emails(text: &str) -> String {
     let mut result = String::new();
@@ -443,7 +440,6 @@ fn mask_user_paths(text: &str) -> String {
     result
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,7 +457,6 @@ mod tests {
             .and_then(|value| value.parse::<u128>().ok())
             .unwrap_or(default_ms)
     }
-
 
     #[test]
     fn sanitize_email() {
@@ -488,7 +483,6 @@ mod tests {
         let title = "Visual Studio Code - main.rs";
         assert_eq!(sanitize_title(title), title);
     }
-
 
     #[test]
     fn level_off_no_filter() {
@@ -520,7 +514,6 @@ mod tests {
         assert!(result.contains("[IP]"));
         assert!(!result.contains("192.168.1.100"));
     }
-
 
     #[test]
     fn detect_sensitive_apps() {
@@ -569,7 +562,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn mask_korean_phone() {
         let result = mask_phone_numbers("call 010-1234-5678 now");
@@ -583,7 +575,6 @@ mod tests {
         assert!(result.contains("[PHONE]"));
     }
 
-
     #[test]
     fn mask_ipv4_basic() {
         let result = mask_ip_addresses("connecting to 10.0.0.1 on port 80");
@@ -596,7 +587,6 @@ mod tests {
         let result = mask_ip_addresses("version 1.2.3");
         assert!(!result.contains("[IP]"));
     }
-
 
     #[test]
     fn mask_linux_home_path() {

@@ -138,7 +138,7 @@ impl WebServer {
             let addr: SocketAddr = match format!("{}:{}", host, port).parse() {
                 Ok(a) => a,
                 Err(e) => {
-                    error!("{}:{} — {}", host, port, e);
+                    error!("{}:{} - {}", host, port, e);
                     continue; // next port attempt
                 }
             };

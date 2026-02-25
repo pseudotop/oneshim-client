@@ -45,11 +45,11 @@ impl Compressor for AdaptiveCompressor {
                 let mut compressed = Vec::new();
                 encoder
                     .read_to_end(&mut compressed)
-                    .map_err(|e| CoreError::Internal(format!("gzip 압축 failure: {e}")))?;
+                    .map_err(|e| CoreError::Internal(format!("Gzip compression failed: {e}")))?;
                 Ok(compressed)
             }
             CompressionAlgorithm::Zstd => zstd::encode_all(data, 3)
-                .map_err(|e| CoreError::Internal(format!("zstd 압축 failure: {e}"))),
+                .map_err(|e| CoreError::Internal(format!("Zstd compression failed: {e}"))),
             CompressionAlgorithm::Lz4 => Ok(lz4_flex::compress_prepend_size(data)),
         }
     }
@@ -65,13 +65,13 @@ impl Compressor for AdaptiveCompressor {
                 let mut decompressed = Vec::new();
                 decoder
                     .read_to_end(&mut decompressed)
-                    .map_err(|e| CoreError::Internal(format!("gzip 해제 failure: {e}")))?;
+                    .map_err(|e| CoreError::Internal(format!("Gzip decompression failed: {e}")))?;
                 Ok(decompressed)
             }
             CompressionAlgorithm::Zstd => zstd::decode_all(data)
-                .map_err(|e| CoreError::Internal(format!("zstd 해제 failure: {e}"))),
+                .map_err(|e| CoreError::Internal(format!("Zstd decompression failed: {e}"))),
             CompressionAlgorithm::Lz4 => lz4_flex::decompress_size_prepended(data)
-                .map_err(|e| CoreError::Internal(format!("lz4 해제 failure: {e}"))),
+                .map_err(|e| CoreError::Internal(format!("Lz4 decompression failed: {e}"))),
         }
     }
 }

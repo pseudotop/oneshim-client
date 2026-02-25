@@ -31,7 +31,7 @@ impl WindowsSandbox {
         let (default_memory, default_cpu_ms, default_max_processes) = match config.profile {
             SandboxProfile::Permissive => (0, 0, 0),
             SandboxProfile::Standard => (512 * 1024 * 1024, 30_000, 10), // 512MB, 30s, 10 processes
-            SandboxProfile::Strict => (256 * 1024 * 1024, 10_000, 3), // 256MB, 10s, 3 processes
+            SandboxProfile::Strict => (256 * 1024 * 1024, 10_000, 3),    // 256MB, 10s, 3 processes
         };
 
         JobObjectLimits {
@@ -111,7 +111,7 @@ impl Sandbox for WindowsSandbox {
             Ok::<(), CoreError>(())
         })
         .await
-        .map_err(|e| CoreError::SandboxExecution(format!("스레드 조인 failure: {}", e)))?;
+        .map_err(|e| CoreError::SandboxExecution(format!("Thread join failed: {}", e)))?;
 
         result?;
 
@@ -129,7 +129,6 @@ impl Sandbox for WindowsSandbox {
         }
     }
 }
-
 
 #[derive(Debug)]
 struct JobObjectLimits {

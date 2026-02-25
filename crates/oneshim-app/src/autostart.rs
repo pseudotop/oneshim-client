@@ -59,7 +59,6 @@ pub fn is_autostart_enabled() -> Result<bool, String> {
     }
 }
 
-
 #[cfg(target_os = "macos")]
 mod macos {
     use super::APP_LABEL;
@@ -78,7 +77,7 @@ mod macos {
     fn binary_path() -> Result<String, String> {
         std::env::current_exe()
             .map(|p| p.to_string_lossy().to_string())
-            .map_err(|e| format!("바이너리 path 확인 failure: {e}"))
+            .map_err(|e| format!("Failed to verify binary path: {e}"))
     }
 
     pub fn generate_plist(program_path: &str) -> String {
@@ -114,10 +113,10 @@ mod macos {
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e| format!("LaunchAgents 디렉토리 create failure: {e}"))?;
+                .map_err(|e| format!("Failed to create LaunchAgents directory: {e}"))?;
         }
 
-        fs::write(&path, plist_content).map_err(|e| format!("plist file 작성 failure: {e}"))?;
+        fs::write(&path, plist_content).map_err(|e| format!("Failed to write plist file: {e}"))?;
 
         // launchctl load
         Command::new("launchctl")
@@ -149,7 +148,6 @@ mod macos {
     }
 }
 
-
 #[cfg(target_os = "windows")]
 mod windows {
     use std::ffi::OsStr;
@@ -171,7 +169,8 @@ mod windows {
     }
 
     pub fn enable() -> Result<(), String> {
-        let exe = std::env::current_exe().map_err(|e| format!("바이너리 path 확인 failure: {e}"))?;
+        let exe =
+            std::env::current_exe().map_err(|e| format!("Failed to verify binary path: {e}"))?;
         let exe_str = exe.to_string_lossy();
         let exe_wide = to_wide(&exe_str);
 
@@ -188,7 +187,7 @@ mod windows {
                 &mut hkey,
             );
             if result != 0 {
-                return Err(format!("레지스트리 열기 failure: 코드 {result}"));
+                return Err(format!("Failed to open registry: code {result}"));
             }
 
             let byte_len = (exe_wide.len() * 2) as u32;
@@ -203,7 +202,7 @@ mod windows {
             RegCloseKey(hkey);
 
             if result != 0 {
-                return Err(format!("레지스트리 값 설정 failure: 코드 {result}"));
+                return Err(format!("Failed to set registry value: code {result}"));
             }
         }
 

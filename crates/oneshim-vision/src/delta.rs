@@ -75,7 +75,7 @@ pub fn compute_delta(prev: &DynamicImage, curr: &DynamicImage) -> Option<DeltaRe
     let changed_ratio = changed_tiles as f32 / total_tiles as f32;
 
     debug!(
-        "델타 detection: {changed_tiles}/{total_tiles} 타일 변경 ({:.1}%)",
+        "Delta detection: {changed_tiles}/{total_tiles} tiles changed ({:.1}%)",
         changed_ratio * 100.0
     );
 

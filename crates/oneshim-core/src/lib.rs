@@ -19,7 +19,7 @@ mod tests {
         let suggestion = Suggestion {
             suggestion_id: "sug_001".to_string(),
             suggestion_type: SuggestionType::WorkGuidance,
-            content: "커밋하세요".to_string(),
+            content: "Commit your changes.".to_string(),
             priority: Priority::High,
             confidence_score: 0.95,
             relevance_score: 0.88,

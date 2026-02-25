@@ -139,7 +139,7 @@ impl AuditLogger {
             session_id,
             "timeout",
             AuditStatus::Timeout,
-            Some(format!("{}ms 초과", timeout_ms)),
+            Some(format!("Exceeded {}ms", timeout_ms)),
             Some(timeout_ms),
         );
     }
@@ -203,7 +203,7 @@ impl AuditLogger {
     ) {
         if self.buffer.len() >= self.max_buffer_size {
             self.buffer.pop_front();
-            tracing::warn!("— delete");
+            tracing::warn!("audit buffer full: dropping oldest entry");
         }
 
         let entry = AuditEntry {
@@ -231,7 +231,7 @@ impl AuditLogger {
     ) {
         if self.buffer.len() >= self.max_buffer_size {
             self.buffer.pop_front();
-            tracing::warn!("— delete");
+            tracing::warn!("audit buffer full: dropping oldest entry");
         }
 
         let entry = AuditEntry {
@@ -400,7 +400,6 @@ mod tests {
         assert_eq!(timeout, 1);
     }
 
-
     #[test]
     fn log_complete_with_time_skips_on_none_level() {
         let mut logger = AuditLogger::new(100, 10);
@@ -424,7 +423,10 @@ mod tests {
         logger.log_failed("cmd-1", "sess-1", "connection failure: timeout");
         let entries = logger.drain_all();
         assert_eq!(entries[0].status, AuditStatus::Failed);
-        assert_eq!(entries[0].details.as_ref().unwrap(), "connection failure: timeout");
+        assert_eq!(
+            entries[0].details.as_ref().unwrap(),
+            "connection failure: timeout"
+        );
     }
 
     #[test]

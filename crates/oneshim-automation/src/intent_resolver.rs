@@ -12,7 +12,6 @@ use oneshim_core::models::intent::{
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
 
-
 pub struct IntentResolver {
     element_finder: Arc<dyn ElementFinder>,
     input_driver: Arc<dyn InputDriver>,
@@ -175,7 +174,6 @@ impl IntentResolver {
     }
 }
 
-
 ///
 pub struct IntentExecutor {
     resolver: IntentResolver,
@@ -248,7 +246,6 @@ impl IntentExecutor {
         })
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -483,7 +480,6 @@ mod tests {
         assert!(result.success);
     }
 
-
     #[tokio::test]
     async fn wait_for_text_timeout_returns_error() {
         let resolver = IntentResolver::new(
@@ -518,7 +514,6 @@ mod tests {
         assert!(element.is_some());
     }
 
-
     #[tokio::test]
     async fn click_element_not_found_returns_error() {
         let resolver = IntentResolver::new(
@@ -537,7 +532,6 @@ mod tests {
         assert!(matches!(result.unwrap_err(), CoreError::ElementNotFound(_)));
     }
 
-
     #[tokio::test]
     async fn resolve_raw_key_type_action() {
         let resolver = make_resolver_with_elements(vec![]);
@@ -555,7 +549,6 @@ mod tests {
         let (success, _) = resolver.resolve_and_execute(&intent).await.unwrap();
         assert!(success);
     }
-
 
     #[tokio::test]
     async fn executor_no_verification_success() {

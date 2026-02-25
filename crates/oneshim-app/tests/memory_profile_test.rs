@@ -31,7 +31,7 @@ fn get_rss() -> u64 {
     let output = Command::new("ps")
         .args(["-o", "rss=", "-p", &pid.to_string()])
         .output()
-        .expect("ps 명령 failure");
+        .expect("failed to run ps command");
 
     let rss_kb: u64 = String::from_utf8_lossy(&output.stdout)
         .trim()
@@ -132,7 +132,7 @@ impl LeakCheckResult {
     fn print_summary(&self, test_name: &str, elapsed: Duration, iterations: u64) {
         println!("\n=== {} ===", test_name);
         println!(
-            "초기 RSS: {:.2} MB",
+            "initial RSS: {:.2} MB",
             self.initial_rss as f64 / 1024.0 / 1024.0
         );
         println!("RSS: {:.2} MB", self.peak_rss as f64 / 1024.0 / 1024.0);
@@ -141,42 +141,42 @@ impl LeakCheckResult {
             self.final_rss as f64 / 1024.0 / 1024.0
         );
         println!(
-            "메모리 증가: {:.2} MB ({:+.1}%)",
+            "memory increase: {:.2} MB ({:+.1}%)",
             (self.final_rss as i64 - self.initial_rss as i64) as f64 / 1024.0 / 1024.0,
             (self.final_rss as f64 - self.initial_rss as f64) / self.initial_rss as f64 * 100.0
         );
         println!(
-            "안정 구간 증가율: {:.2} KB/s (워밍업 30% 제외)",
+            "stable-window growth rate: {:.2} KB/s (excluding first 30% warmup)",
             self.stable_growth_rate / 1024.0
         );
         println!(
-            "마지막 구간 변동폭: {:.2} MB",
+            "last-window variance: {:.2} MB",
             self.memory_variance as f64 / 1024.0 / 1024.0
         );
         println!("execution hour: {:.2}s", elapsed.as_secs_f64());
         println!(
-            "처리량: {:.1} iterations/s",
+            "throughput: {:.1} iterations/s",
             iterations as f64 / elapsed.as_secs_f64()
         );
 
         if self.leak_suspected {
-            println!("\n⚠️ warning:");
+            println!("\n[WARN] potential memory leak:");
             println!(
-                "  - 안정 구간 증가율: {:.2} KB/s",
+                "  - stable-window growth rate: {:.2} KB/s",
                 self.stable_growth_rate / 1024.0
             );
             println!("-");
         } else if self.stable_growth_rate > 10_000.0 {
-            println!("\n🔶:,");
+            println!("\n[WARN] memory growth is elevated but below leak threshold.");
         } else {
-            println!("\n✅ - none");
+            println!("\n[OK] no leak signal detected");
         }
     }
 }
 
 ///
 #[test]
-#[ignore = "장시간 execution test - cargo test --ignored"]
+#[ignore = "long-running test - run with cargo test --ignored"]
 fn test_vision_pipeline_memory() {
     const ITERATIONS: usize = 200;
     const SAMPLE_INTERVAL: usize = 5;
@@ -222,11 +222,11 @@ fn test_vision_pipeline_memory() {
 
     let elapsed = start.elapsed();
     let result = LeakCheckResult::from_snapshots(&snapshots);
-    result.print_summary("Vision 파이프라인", elapsed, ITERATIONS as u64);
+    result.print_summary("Vision pipeline", elapsed, ITERATIONS as u64);
 
     assert!(
         !result.leak_suspected,
-        "메모리 누수 의심: 안정 구간 증가율 {:.2} KB/s, 변동폭 {:.2} MB",
+        "possible memory leak: stable-window growth {:.2} KB/s, variance {:.2} MB",
         result.stable_growth_rate / 1024.0,
         result.memory_variance as f64 / 1024.0 / 1024.0
     );
@@ -234,7 +234,7 @@ fn test_vision_pipeline_memory() {
 
 ///
 #[test]
-#[ignore = "장시간 execution test - cargo test --ignored"]
+#[ignore = "long-running test - run with cargo test --ignored"]
 fn test_storage_memory() {
     const ITERATIONS: usize = 500;
     const BATCH_SIZE: usize = 10;
@@ -302,14 +302,14 @@ fn test_storage_memory() {
     result.print_summary("Storage", elapsed, ITERATIONS as u64);
 
     println!(
-        "save된 데이터: {} event, {} frame",
+        "saved data: {} event(s), {} frame(s)",
         ITERATIONS * BATCH_SIZE,
         ITERATIONS
     );
 
     assert!(
         !result.leak_suspected,
-        "메모리 누수 의심: 안정 구간 증가율 {:.2} KB/s, 변동폭 {:.2} MB",
+        "possible memory leak: stable-window growth {:.2} KB/s, variance {:.2} MB",
         result.stable_growth_rate / 1024.0,
         result.memory_variance as f64 / 1024.0 / 1024.0
     );
@@ -317,7 +317,7 @@ fn test_storage_memory() {
 
 ///
 #[test]
-#[ignore = "장시간 execution test - cargo test --ignored"]
+#[ignore = "long-running test - run with cargo test --ignored"]
 fn test_combined_memory() {
     const DURATION_SECS: u64 = 30;
 
@@ -380,7 +380,7 @@ fn test_combined_memory() {
     let elapsed = start.elapsed();
     let total_iterations = iteration_count.load(Ordering::Relaxed);
     let result = LeakCheckResult::from_snapshots(&snapshots);
-    result.print_summary("composite 시나리오", elapsed, total_iterations);
+    result.print_summary("composite scenario", elapsed, total_iterations);
 
     println!("\n--- (5s ) ---");
     for (i, snap) in snapshots.iter().enumerate() {
@@ -395,7 +395,7 @@ fn test_combined_memory() {
 
     assert!(
         !result.leak_suspected,
-        "메모리 누수 의심: 안정 구간 증가율 {:.2} KB/s, 변동폭 {:.2} MB",
+        "possible memory leak: stable-window growth {:.2} KB/s, variance {:.2} MB",
         result.stable_growth_rate / 1024.0,
         result.memory_variance as f64 / 1024.0 / 1024.0
     );

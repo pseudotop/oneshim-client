@@ -29,16 +29,16 @@ async fn test_token_manager_login() {
     assert!(result.is_ok(), "login failure: {:?}", result.err());
 
     let token = token_manager.get_token().await;
-    assert!(token.is_ok(), "token 획득 failure: {:?}", token.err());
+    assert!(token.is_ok(), "failed to acquire token: {:?}", token.err());
 
     let token_str = token.unwrap();
     assert!(
         token_str.starts_with("mock_access_"),
-        "token 형식 불일치: {}",
+        "unexpected token format: {}",
         token_str
     );
 
-    println!("✅ login success, token: {}...", &token_str[..20]);
+    println!("[OK] login success, token: {}...", &token_str[..20]);
 }
 
 #[tokio::test]
@@ -64,7 +64,7 @@ async fn test_api_client_create_session() {
     assert!(session.session_id.starts_with("session_"));
     assert_eq!(session.client_id, client_id);
 
-    println!("✅ session create success: {}", session.session_id);
+    println!("[OK] session create success: {}", session.session_id);
     println!("   - User ID: {}", session.user_id);
     println!("   - Capabilities: {:?}", session.capabilities);
 }
@@ -94,7 +94,7 @@ async fn test_api_client_upload_context() {
             resolution: (1920, 1080),
             importance: 0.8,
         },
-        ocr_text: Some("test 텍스트".to_string()),
+        ocr_text: Some("test text".to_string()),
         image: None,
     };
 
@@ -103,7 +103,7 @@ async fn test_api_client_upload_context() {
 
     assert_eq!(server.context_count(), 1);
 
-    println!("✅ context upload success");
+    println!("[OK] context upload success");
     println!("   - App: {}", context.metadata.app_name);
     println!("   - Window: {}", context.metadata.window_title);
 }
@@ -143,7 +143,7 @@ async fn test_api_client_upload_batch() {
     let result = api_client.upload_batch(&batch).await;
     assert!(result.is_ok(), "batch upload failure: {:?}", result.err());
 
-    println!("✅ batch event upload success");
+    println!("[OK] batch event upload success");
     println!("   - Session ID: {}", batch.session_id);
     println!("- Events: {} items", batch.events.len());
 }
@@ -168,9 +168,9 @@ async fn test_api_client_health_check() {
         .expect("session create failure");
 
     let result = api_client.send_heartbeat(&session.session_id).await;
-    assert!(result.is_ok(), "헬스체크 failure: {:?}", result.err());
+    assert!(result.is_ok(), "health check failed: {:?}", result.err());
 
-    println!("✅ success");
+    println!("[OK] success");
 }
 
 #[tokio::test]
@@ -185,15 +185,24 @@ async fn test_token_refresh() {
         .await
         .expect("login failure");
 
-    let token1 = token_manager.get_token().await.expect("token 획득 failure");
+    let token1 = token_manager
+        .get_token()
+        .await
+        .expect("failed to acquire token");
 
-    token_manager.refresh().await.expect("token refresh failure");
+    token_manager
+        .refresh()
+        .await
+        .expect("token refresh failure");
 
-    let token2 = token_manager.get_token().await.expect("token 획득 failure");
+    let token2 = token_manager
+        .get_token()
+        .await
+        .expect("failed to acquire token");
 
-    assert_ne!(token1, token2, "token이 refresh되지 않음");
+    assert_ne!(token1, token2, "token was not refreshed");
 
-    println!("✅ token refresh success");
+    println!("[OK] token refresh success");
     println!("   - Old: {}...", &token1[..20]);
     println!("   - New: {}...", &token2[..20]);
 }
@@ -208,7 +217,7 @@ async fn test_full_client_workflow() {
         .login("user@example.com", "test-password-placeholder")
         .await
         .expect("Step 1: login failure");
-    println!("1️⃣ login completed");
+    println!("step 1: login completed");
 
     let api_client =
         HttpApiClient::new(server.url(), token_manager.clone(), Duration::from_secs(30)).unwrap();
@@ -217,7 +226,7 @@ async fn test_full_client_workflow() {
         .create_session("oneshim_client_v1")
         .await
         .expect("Step 3: session create failure");
-    println!("2️⃣ session create: {}", session.session_id);
+    println!("step 2: session created: {}", session.session_id);
 
     for i in 0..3 {
         let context = ContextUpload {
@@ -239,7 +248,7 @@ async fn test_full_client_workflow() {
             .await
             .unwrap_or_else(|_| panic!("Step 4-{}: context upload failure", i));
     }
-    println!("3️⃣ context upload 3 completed");
+    println!("step 3: uploaded 3 context entries");
 
     let events: Vec<Event> = (0..10)
         .map(|i| {
@@ -263,19 +272,19 @@ async fn test_full_client_workflow() {
         .upload_batch(&batch)
         .await
         .expect("Step 5: batch upload failure");
-    println!("4️⃣ event batch upload completed (10items)");
+    println!("step 4: event batch upload completed (10 items)");
 
     api_client
         .send_heartbeat(&session.session_id)
         .await
-        .expect("Step 6: 헬스체크 failure");
-    println!("5️⃣ completed");
+        .expect("Step 6: health check failed");
+    println!("step 5: completed");
 
-    assert!(server.request_count() >= 7, "request 수 부족");
-    assert_eq!(server.context_count(), 3, "context 수 불일치");
-    assert_eq!(server.session_count(), 1, "session 수 불일치");
+    assert!(server.request_count() >= 7, "insufficient request count");
+    assert_eq!(server.context_count(), 3, "unexpected context count");
+    assert_eq!(server.session_count(), 1, "unexpected session count");
 
-    println!("\n✅ success!");
+    println!("\n[OK] success!");
     println!("- request: {}", server.request_count());
     println!("- context: {} items", server.context_count());
     println!("- session: {} items", server.session_count());
@@ -290,8 +299,8 @@ async fn test_invalid_credentials() {
 
     let result = token_manager.login("", "").await;
 
-    assert!(result.is_err(), "빈 인증 정보로 login success하면 안됨");
-    println!("✅ deny check");
+    assert!(result.is_err(), "login should fail with empty credentials");
+    println!("[OK] deny check");
 }
 
 #[tokio::test]
@@ -329,8 +338,8 @@ async fn test_concurrent_requests() {
         .iter()
         .filter(|r| r.is_ok() && r.as_ref().unwrap().is_ok())
         .count();
-    assert_eq!(success_count, 10, "일부 동시 request failure");
+    assert_eq!(success_count, 10, "some concurrent requests failed");
 
-    println!("✅ request 10items success");
+    println!("[OK] 10 concurrent requests succeeded");
     println!("- request: {}", server.request_count());
 }

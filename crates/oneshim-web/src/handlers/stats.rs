@@ -1,4 +1,3 @@
-
 use axum::extract::{Query, State};
 use axum::Json;
 use chrono::{Datelike, Duration, Timelike, Utc};
@@ -70,7 +69,7 @@ pub async fn get_summary(
         .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
 
     let from = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-        .map_err(|_| ApiError::BadRequest(format!("잘못된 날짜 형식: {date_str}")))?
+        .map_err(|_| ApiError::BadRequest(format!("Invalid date format: {date_str}")))?
         .and_hms_opt(0, 0, 0)
         .unwrap()
         .and_utc();
@@ -186,7 +185,7 @@ pub async fn get_app_usage(
         .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
 
     let from = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-        .map_err(|_| ApiError::BadRequest(format!("잘못된 날짜 형식: {date_str}")))?
+        .map_err(|_| ApiError::BadRequest(format!("Invalid date format: {date_str}")))?
         .and_hms_opt(0, 0, 0)
         .unwrap()
         .and_utc();

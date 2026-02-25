@@ -118,7 +118,7 @@ impl ConnectivityManager {
             let was_online = self.is_online.swap(false, Ordering::Relaxed);
             if was_online {
                 warn!(
-                    "consecutive {}회 failure - 오프라인 mode 전환 (대기 event 로컬 save)",
+                    "Consecutive {} failures - switching to offline mode (queued events are saved locally)",
                     count
                 );
                 let _ = self.status_tx.send(ConnectionStatus::Disconnected);

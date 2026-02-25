@@ -79,7 +79,9 @@ pub enum UpdateCheckResult {
         release: Box<ReleaseInfo>,
         download_url: String,
     },
-    UpToDate { current: semver::Version },
+    UpToDate {
+        current: semver::Version,
+    },
 }
 
 pub struct Updater {

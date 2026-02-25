@@ -77,5 +77,4 @@ pub fn is_app_hidden() -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

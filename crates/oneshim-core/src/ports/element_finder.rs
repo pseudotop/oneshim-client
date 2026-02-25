@@ -24,7 +24,7 @@ pub trait ElementFinder: Send + Sync {
         _screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
         Err(CoreError::Internal(format!(
-            "ElementFinder '{}'는 scene 분석을 지원하지 않습니다",
+            "ElementFinder '{}' does not support scene analysis",
             self.name()
         )))
     }
@@ -38,7 +38,7 @@ pub trait ElementFinder: Send + Sync {
         _screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
         Err(CoreError::Internal(format!(
-            "ElementFinder '{}'는 이미지 직접 scene 분석을 지원하지 않습니다",
+            "ElementFinder '{}' does not support direct image scene analysis",
             self.name()
         )))
     }

@@ -63,7 +63,7 @@ impl FrameFileStorage {
         let frames_dir = base_dir.join("frames");
         fs::create_dir_all(&frames_dir)
             .await
-            .map_err(|e| CoreError::Internal(format!("frame 디렉토리 create failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to create frame directory: {e}")))?;
 
         info!(
             "frame save소 initialize: {} (최대 {}MB, {}일 보존, 버퍼풀 {}개)",
@@ -96,7 +96,7 @@ impl FrameFileStorage {
         let day_dir = self.base_dir.join("frames").join(&date_str);
         fs::create_dir_all(&day_dir)
             .await
-            .map_err(|e| CoreError::Internal(format!("일자 folder create failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to create dated folder: {e}")))?;
 
         let counter = self.frame_counter.fetch_add(1, Ordering::SeqCst) % 1000;
         let time_str = timestamp.format("%H-%M-%S").to_string();
@@ -137,9 +137,9 @@ impl FrameFileStorage {
                 let date_str = timestamp.format("%Y-%m-%d").to_string();
                 let day_dir = base_dir.join("frames").join(&date_str);
 
-                fs::create_dir_all(&day_dir)
-                    .await
-                    .map_err(|e| CoreError::Internal(format!("일자 folder create failure: {e}")))?;
+                fs::create_dir_all(&day_dir).await.map_err(|e| {
+                    CoreError::Internal(format!("Failed to create dated folder: {e}"))
+                })?;
 
                 let time_str = timestamp.format("%H-%M-%S").to_string();
                 let filename = format!("{time_str}-{counter:03}.webp");
@@ -159,7 +159,7 @@ impl FrameFileStorage {
         for handle in handles {
             match handle.await {
                 Ok(result) => results.push(result),
-                Err(e) => results.push(Err(CoreError::Internal(format!("태스크 failure: {e}")))),
+                Err(e) => results.push(Err(CoreError::Internal(format!("Task failed: {e}")))),
             }
         }
 
@@ -217,7 +217,7 @@ impl FrameFileStorage {
             while let Some(entry) = entries
                 .next_entry()
                 .await
-                .map_err(|e| CoreError::Internal(format!("frame 항목 read failure: {e}")))?
+                .map_err(|e| CoreError::Internal(format!("Failed to read frame entry: {e}")))?
             {
                 let path = entry.path();
                 if path.is_file() {
@@ -289,7 +289,7 @@ impl FrameFileStorage {
         for handle in handles {
             match handle.await {
                 Ok(result) => results.push(result),
-                Err(e) => results.push(Err(CoreError::Internal(format!("태스크 failure: {e}")))),
+                Err(e) => results.push(Err(CoreError::Internal(format!("Task failed: {e}")))),
             }
         }
 
@@ -312,13 +312,13 @@ impl FrameFileStorage {
 
         let mut entries = fs::read_dir(&frames_dir)
             .await
-            .map_err(|e| CoreError::Internal(format!("frames 디렉토리 read failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to read frames directory: {e}")))?;
 
         let mut dirs_to_delete = Vec::new();
         while let Some(entry) = entries
             .next_entry()
             .await
-            .map_err(|e| CoreError::Internal(format!("디렉토리 항목 read failure: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to read directory entry: {e}")))?
         {
             let path = entry.path();
 
@@ -447,17 +447,17 @@ async fn calculate_dir_size(path: &Path) -> Result<u64, CoreError> {
 
     let mut entries = fs::read_dir(path)
         .await
-        .map_err(|e| CoreError::Internal(format!("디렉토리 read failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to read directory: {e}")))?;
 
     while let Some(entry) = entries
         .next_entry()
         .await
-        .map_err(|e| CoreError::Internal(format!("항목 read failure: {e}")))?
+        .map_err(|e| CoreError::Internal(format!("Failed to read entry: {e}")))?
     {
         let path = entry.path();
         let metadata = fs::metadata(&path)
             .await
-            .map_err(|e| CoreError::Internal(format!("메타데이터 read failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to read metadata: {e}")))?;
 
         if metadata.is_file() {
             total += metadata.len();
@@ -478,12 +478,12 @@ async fn list_date_dirs(frames_dir: &Path) -> Result<Vec<String>, CoreError> {
 
     let mut entries = fs::read_dir(frames_dir)
         .await
-        .map_err(|e| CoreError::Internal(format!("frames 디렉토리 read failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to read frames directory: {e}")))?;
 
     while let Some(entry) = entries
         .next_entry()
         .await
-        .map_err(|e| CoreError::Internal(format!("항목 read failure: {e}")))?
+        .map_err(|e| CoreError::Internal(format!("Failed to read entry: {e}")))?
     {
         let path = entry.path();
         if path.is_dir() {

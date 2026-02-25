@@ -37,7 +37,7 @@ impl SystemMonitor for SysInfoMonitor {
             let mut sys = self
                 .sys
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("시스템 잠금 failure: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
             sys.refresh_cpu_usage();
             sys.refresh_memory();
         }
@@ -46,7 +46,7 @@ impl SystemMonitor for SysInfoMonitor {
             let mut disks = self
                 .disks
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("디스크 잠금 failure: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Failed to acquire disk lock: {e}")))?;
             disks.refresh(true);
         }
 
@@ -54,14 +54,14 @@ impl SystemMonitor for SysInfoMonitor {
             let mut networks = self
                 .networks
                 .lock()
-                .map_err(|e| CoreError::Internal(format!("네트워크 잠금 failure: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Failed to acquire network lock: {e}")))?;
             networks.refresh(true);
         }
 
         let sys = self
             .sys
             .lock()
-            .map_err(|e| CoreError::Internal(format!("시스템 잠금 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
 
         let cpu_usage = sys.global_cpu_usage();
         let memory_used = sys.used_memory();
@@ -70,7 +70,7 @@ impl SystemMonitor for SysInfoMonitor {
         let disks = self
             .disks
             .lock()
-            .map_err(|e| CoreError::Internal(format!("디스크 잠금 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire disk lock: {e}")))?;
         let (disk_used, disk_total) = disks.list().iter().fold((0u64, 0u64), |(used, total), d| {
             (
                 used + d.total_space() - d.available_space(),
@@ -81,7 +81,7 @@ impl SystemMonitor for SysInfoMonitor {
         let networks = self
             .networks
             .lock()
-            .map_err(|e| CoreError::Internal(format!("네트워크 잠금 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire network lock: {e}")))?;
         let (upload_speed, download_speed) = networks
             .list()
             .iter()

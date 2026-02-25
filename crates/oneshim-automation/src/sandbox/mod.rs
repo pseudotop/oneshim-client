@@ -39,7 +39,7 @@ fn create_native_sandbox() -> Arc<dyn Sandbox> {
         if sandbox.is_available() {
             return Arc::new(sandbox);
         }
-        tracing::warn!("Linux sandbox not-available — NoOp");
+        tracing::warn!("Linux sandbox not available; using NoOp sandbox");
     }
 
     #[cfg(target_os = "macos")]
@@ -48,7 +48,7 @@ fn create_native_sandbox() -> Arc<dyn Sandbox> {
         if sandbox.is_available() {
             return Arc::new(sandbox);
         }
-        tracing::warn!("macOS sandbox not-available — NoOp");
+        tracing::warn!("macOS sandbox not available; using NoOp sandbox");
     }
 
     #[cfg(target_os = "windows")]
@@ -57,12 +57,12 @@ fn create_native_sandbox() -> Arc<dyn Sandbox> {
         if sandbox.is_available() {
             return Arc::new(sandbox);
         }
-        tracing::warn!("Windows sandbox not-available — NoOp");
+        tracing::warn!("Windows sandbox not available; using NoOp sandbox");
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
-        tracing::warn!("— NoOp");
+        tracing::warn!("sandbox unsupported on this platform; using NoOp sandbox");
     }
 
     Arc::new(NoOpSandbox)

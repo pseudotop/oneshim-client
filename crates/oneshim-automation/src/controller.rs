@@ -133,19 +133,19 @@ impl AutomationController {
     fn require_intent_executor(&self) -> Result<&Arc<IntentExecutor>, CoreError> {
         self.intent_executor
             .as_ref()
-            .ok_or_else(|| CoreError::Internal("IntentExecutor가 설정되지 않았습니다".to_string()))
+            .ok_or_else(|| CoreError::Internal("IntentExecutor is not configured".to_string()))
     }
 
     fn require_intent_planner(&self) -> Result<&Arc<dyn IntentPlanner>, CoreError> {
         self.intent_planner
             .as_ref()
-            .ok_or_else(|| CoreError::Internal("IntentPlanner가 설정되지 않았습니다".to_string()))
+            .ok_or_else(|| CoreError::Internal("IntentPlanner is not configured".to_string()))
     }
 
     fn require_scene_finder(&self) -> Result<&Arc<dyn ElementFinder>, CoreError> {
         self.scene_finder
             .as_ref()
-            .ok_or_else(|| CoreError::Internal("Scene 분석기가 설정되지 않았습니다".to_string()))
+            .ok_or_else(|| CoreError::Internal("Scene analyzer is not configured".to_string()))
     }
 
     ///
@@ -658,7 +658,6 @@ mod tests {
         assert!(result.is_ok());
     }
 
-
     #[tokio::test]
     async fn resolve_uses_policy_config() {
         let policy = make_policy(AuditLevel::Detailed, 5000);
@@ -744,7 +743,6 @@ mod tests {
         let logger = audit_logger.read().await;
         assert_eq!(logger.pending_count(), 0);
     }
-
 
     #[test]
     fn workflow_result_serde_roundtrip() {
@@ -855,7 +853,6 @@ mod tests {
         assert_eq!(result.step_results.len(), 1);
         assert!(result.step_results[0].success);
     }
-
 
     #[tokio::test]
     async fn execute_intent_disabled_returns_policy_denied() {
@@ -1027,7 +1024,6 @@ mod tests {
         assert_eq!(scene.elements.len(), 1);
     }
 
-
     #[tokio::test]
     async fn run_workflow_empty_steps_succeeds() {
         use crate::input_driver::{NoOpElementFinder, NoOpInputDriver};
@@ -1125,7 +1121,6 @@ mod tests {
         assert!(result.total_elapsed_ms >= 20); // includes delay
     }
 
-
     #[tokio::test]
     async fn execute_command_enabled_with_valid_policy() {
         let policy = make_policy(AuditLevel::Basic, 5000);
@@ -1154,13 +1149,13 @@ mod tests {
             step_index: 2,
             success: false,
             elapsed_ms: 50,
-            error: Some("요소를 찾지 못함".to_string()),
+            error: Some("Element not found".to_string()),
         };
         let json = serde_json::to_string(&result).unwrap();
-        assert!(json.contains("요소를 찾지 못함"));
+        assert!(json.contains("Element not found"));
         assert!(json.contains("fail-step"));
         let deser: WorkflowStepResult = serde_json::from_str(&json).unwrap();
         assert!(!deser.success);
-        assert_eq!(deser.error.unwrap(), "요소를 찾지 못함");
+        assert_eq!(deser.error.unwrap(), "Element not found");
     }
 }

@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
-
 ///
 pub struct LocalOcrProvider;
 
@@ -33,13 +32,13 @@ impl OcrProvider for LocalOcrProvider {
             use crate::ocr::OcrExtractor;
 
             let img = image::load_from_memory(image)
-                .map_err(|e| CoreError::OcrError(format!("이미지 디코딩 failure: {e}")))?;
+                .map_err(|e| CoreError::OcrError(format!("Image decoding failed: {e}")))?;
 
             let extractor = OcrExtractor::new(None);
             let word_boxes = extractor
                 .extract_words_with_boxes(&img)
                 .await
-                .map_err(|e| CoreError::OcrError(format!("OCR 추출 failure: {e}")))?;
+                .map_err(|e| CoreError::OcrError(format!("OCR extraction failed: {e}")))?;
 
             let results: Vec<OcrResult> = word_boxes
                 .into_iter()

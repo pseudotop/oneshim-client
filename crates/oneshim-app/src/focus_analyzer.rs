@@ -311,8 +311,7 @@ impl FocusAnalyzer {
                     tracker.continuous_deep_work_secs = 0;
                     debug!("session ended ( switch): id={}", session_id);
                 }
-            }
-            else if new_category.is_deep_work() && tracker.active_session_id.is_none() {
+            } else if new_category.is_deep_work() && tracker.active_session_id.is_none() {
                 match self.storage.start_work_session(new_app, new_category) {
                     Ok(session) => {
                         debug!("session started: id={}, app={}", session.id, new_app);
@@ -498,7 +497,10 @@ impl FocusAnalyzer {
             warn!("in progress hour notification failure: {e}");
         } else {
             let _ = self.storage.mark_suggestion_shown(suggestion_id);
-            info!("in progress hour suggestion sent: {:.1}%", comm_ratio * 100.0);
+            info!(
+                "in progress hour suggestion sent: {:.1}%",
+                comm_ratio * 100.0
+            );
         }
 
         self.update_cooldown("focus_time").await;
@@ -572,7 +574,10 @@ impl FocusAnalyzer {
 
         let title = "🧭 반복 플레이북";
         let confidence_percent = (signal.confidence * 100.0).round() as i32;
-        let body = format!("{} (신뢰도 {}%)", signal.description, confidence_percent);
+        let body = format!(
+            "{} (confidence {}%)",
+            signal.description, confidence_percent
+        );
 
         if let Err(e) = self.notifier.show_notification(title, &body).await {
             warn!("suggestion notification failure: {e}");
@@ -770,7 +775,6 @@ mod tests {
         assert!(tracker.current_app.is_none());
         assert_eq!(tracker.continuous_deep_work_secs, 0);
     }
-
 
     #[tokio::test]
     async fn focus_score_zero_active_secs() {

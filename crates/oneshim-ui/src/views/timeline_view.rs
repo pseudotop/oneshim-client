@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone)]
 pub struct TimelineViewState {
     pub is_visible: bool,

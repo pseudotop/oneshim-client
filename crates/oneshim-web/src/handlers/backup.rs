@@ -221,7 +221,7 @@ pub async fn create_backup(
     }
 
     let json = serde_json::to_string_pretty(&archive)
-        .map_err(|e| ApiError::Internal(format!("JSON 직렬화 failure: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("JSON serialization failed: {e}")))?;
 
     let now = Utc::now().format("%Y%m%d_%H%M%S");
     let filename = format!("oneshim_backup_{now}.json");
@@ -255,7 +255,7 @@ pub async fn restore_backup(
     if let Some(settings) = &archive.settings {
         match restore_settings_to_state(&state, settings) {
             Ok(_) => restored.settings = true,
-            Err(e) => errors.push(format!("설정 복원 failure: {e}")),
+            Err(e) => errors.push(format!("Failed to restore settings: {e}")),
         }
     }
 
@@ -266,7 +266,7 @@ pub async fn restore_backup(
                 .upsert_backup_tag(tag.id, &tag.name, &tag.color, &tag.created_at)
             {
                 Ok(_) => restored.tags += 1,
-                Err(e) => errors.push(format!("태그 '{}' 복원 failure: {e}", tag.name)),
+                Err(e) => errors.push(format!("Failed to restore tag '{}': {e}", tag.name)),
             }
         }
     }
@@ -278,7 +278,7 @@ pub async fn restore_backup(
                 .upsert_backup_frame_tag(ft.frame_id, ft.tag_id, &ft.created_at)
             {
                 Ok(_) => restored.frame_tags += 1,
-                Err(e) => errors.push(format!("frame-태그 connection 복원 failure: {e}")),
+                Err(e) => errors.push(format!("Failed to restore frame-tag relation: {e}")),
             }
         }
     }
@@ -293,7 +293,7 @@ pub async fn restore_backup(
                 event.window_title.as_deref(),
             ) {
                 Ok(_) => restored.events += 1,
-                Err(e) => errors.push(format!("event 복원 failure: {e}")),
+                Err(e) => errors.push(format!("Failed to restore event: {e}")),
             }
         }
     }
@@ -312,7 +312,7 @@ pub async fn restore_backup(
                 frame.ocr_text.as_deref(),
             ) {
                 Ok(_) => restored.frames += 1,
-                Err(e) => errors.push(format!("frame 복원 failure: {e}")),
+                Err(e) => errors.push(format!("Failed to restore frame: {e}")),
             }
         }
     }
@@ -357,7 +357,7 @@ fn restore_settings_to_state(state: &AppState, settings: &SettingsBackup) -> Res
     let config_manager = state
         .config_manager
         .as_ref()
-        .ok_or_else(|| ApiError::Internal("설정 관리자가 없어 복원할 수 없습니다".to_string()))?;
+        .ok_or_else(|| ApiError::Internal("Cannot restore without config manager".to_string()))?;
 
     config_manager
         .update_with(|config| {
@@ -371,7 +371,7 @@ fn restore_settings_to_state(state: &AppState, settings: &SettingsBackup) -> Res
             config.notification.long_session_mins = settings.long_session_notification_mins as u32;
             config.notification.high_usage_threshold = settings.high_usage_threshold_percent as u32;
         })
-        .map_err(|e| ApiError::Internal(format!("설정 save failure: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to save settings: {e}")))?;
 
     Ok(())
 }

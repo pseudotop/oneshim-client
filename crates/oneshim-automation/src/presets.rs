@@ -26,7 +26,6 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
 
     let mut presets = Vec::new();
 
-
     presets.push(WorkflowPreset {
         id: "save-file".to_string(),
         name: "file save".to_string(),
@@ -105,7 +104,6 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         platform: None,
     });
 
-
     presets.push(WorkflowPreset {
         id: "switch-next-app".to_string(),
         name: "next 앱 전환".to_string(),
@@ -180,7 +178,6 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
             platform: Some("windows".to_string()),
         });
     }
-
 
     presets.push(WorkflowPreset {
         id: "morning-routine".to_string(),
@@ -380,7 +377,8 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
     presets.push(WorkflowPreset {
         id: "release-readiness".to_string(),
         name: "릴리스 준비".to_string(),
-        description: "코드 save 후 터미널과 브라우저를 열어 릴리스 체크를 started합니다".to_string(),
+        description: "코드 save 후 터미널과 브라우저를 열어 릴리스 체크를 started합니다"
+            .to_string(),
         category: PresetCategory::Workflow,
         steps: vec![
             WorkflowStep {
@@ -490,7 +488,7 @@ mod tests {
         let mut unique_ids = ids.clone();
         unique_ids.sort();
         unique_ids.dedup();
-        assert_eq!(ids.len(), unique_ids.len(), "중복 프리셋 ID 발견");
+        assert_eq!(ids.len(), unique_ids.len(), "Duplicate preset ID found");
     }
 
     #[test]

@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use super::automation::AutomationAction;
 
-
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AutomationIntent {
@@ -31,7 +30,6 @@ pub enum AutomationIntent {
     },
     Raw(AutomationAction),
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiElement {
@@ -73,7 +71,6 @@ pub enum FinderSource {
     TemplateMatcher,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntentResult {
     pub success: bool,
@@ -91,7 +88,6 @@ pub struct VerificationResult {
     pub text_found: Option<bool>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntentCommand {
     pub command_id: String,
@@ -101,7 +97,6 @@ pub struct IntentCommand {
     pub timeout_ms: Option<u64>,
     pub policy_token: String,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntentConfig {
@@ -145,7 +140,6 @@ fn default_verify_delay_ms() -> u64 {
     1000
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowPreset {
     pub id: String,
@@ -181,7 +175,6 @@ pub enum PresetCategory {
     Custom,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,7 +201,7 @@ mod tests {
     #[test]
     fn intent_type_into_element_serde() {
         let intent = AutomationIntent::TypeIntoElement {
-            element_text: Some("검색".to_string()),
+            element_text: Some("search".to_string()),
             role: None,
             text: "hello world".to_string(),
         };
@@ -420,7 +413,7 @@ mod tests {
         let preset = WorkflowPreset {
             id: "save-file".to_string(),
             name: "file save".to_string(),
-            description: "current file을 save합니다".to_string(),
+            description: "Save the current file.".to_string(),
             category: PresetCategory::Productivity,
             steps: vec![WorkflowStep {
                 name: "Ctrl+S".to_string(),

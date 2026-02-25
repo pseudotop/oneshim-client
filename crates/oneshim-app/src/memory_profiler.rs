@@ -169,7 +169,7 @@ pub fn get_current_rss() -> Option<u64> {
         .parse()
         .ok()?;
 
-    Some(rss_kb * 1024) // KB → bytes
+    Some(rss_kb * 1024) // KB to bytes
 }
 
 #[cfg(target_os = "linux")]
@@ -226,7 +226,7 @@ mod tests {
         let rss = get_current_rss();
         if cfg!(any(target_os = "macos", target_os = "linux")) {
             assert!(rss.is_some(), "RSS query failure");
-            assert!(rss.unwrap() > 0, "RSS가 0");
+            assert!(rss.unwrap() > 0, "RSS is 0");
         }
     }
 

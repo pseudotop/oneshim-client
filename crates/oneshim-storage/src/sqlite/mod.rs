@@ -24,7 +24,7 @@ pub struct SqliteStorage {
 impl SqliteStorage {
     pub fn open(path: &Path, retention_days: u32) -> Result<Self, CoreError> {
         let conn = Connection::open(path)
-            .map_err(|e| CoreError::Internal(format!("SQLite 열기 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to open SQLite database: {e}")))?;
 
         conn.execute_batch(
             "
@@ -36,7 +36,7 @@ impl SqliteStorage {
             PRAGMA page_size=4096;
             ",
         )
-        .map_err(|e| CoreError::Internal(format!("PRAGMA 설정 failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to apply PRAGMA settings: {e}")))?;
 
         migration::run_migrations(&conn)
             .map_err(|e| CoreError::Internal(format!("migration failure: {e}")))?;
@@ -50,8 +50,9 @@ impl SqliteStorage {
     }
 
     pub fn open_in_memory(retention_days: u32) -> Result<Self, CoreError> {
-        let conn = Connection::open_in_memory()
-            .map_err(|e| CoreError::Internal(format!("인메모리 SQLite create failure: {e}")))?;
+        let conn = Connection::open_in_memory().map_err(|e| {
+            CoreError::Internal(format!("Failed to create in-memory SQLite database: {e}"))
+        })?;
 
         migration::run_migrations(&conn)
             .map_err(|e| CoreError::Internal(format!("migration failure: {e}")))?;
@@ -271,7 +272,7 @@ mod tests {
 
     #[tokio::test]
     async fn enforce_retention() {
-        let storage = SqliteStorage::open_in_memory(0).unwrap(); // 0 → delete
+        let storage = SqliteStorage::open_in_memory(0).unwrap(); // 0-day retention triggers immediate cleanup
         storage.save_event(&make_user_event()).await.unwrap();
 
         {
@@ -387,7 +388,6 @@ mod tests {
         let events = storage.get_events(from, to, 200).await.unwrap();
         assert_eq!(events.len(), 100);
     }
-
 
     fn make_system_metrics() -> SystemMetrics {
         SystemMetrics {
@@ -535,7 +535,6 @@ mod tests {
         assert!(result.is_none());
     }
 
-
     #[test]
     fn create_and_get_tags() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
@@ -650,7 +649,6 @@ mod tests {
         let tags = storage.get_tags_for_frame(1).unwrap();
         assert_eq!(tags.len(), 1);
     }
-
 
     #[test]
     fn work_session_lifecycle() {

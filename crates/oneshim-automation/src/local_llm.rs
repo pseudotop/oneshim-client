@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::{InterpretedAction, LlmProvider, ScreenContext};
 
-
 ///
 pub struct LocalLlmProvider;
 
@@ -144,27 +143,25 @@ fn infer_role(action_type: &str, hint: &str) -> Option<String> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn detect_action_type_click() {
-        assert_eq!(detect_action_type("save 버튼 클릭"), "click");
         assert_eq!(detect_action_type("click the save button"), "click");
-        assert_eq!(detect_action_type("확인 누르기"), "click");
+        assert_eq!(detect_action_type("press confirm"), "click");
     }
 
     #[test]
     fn detect_action_type_type() {
-        assert_eq!(detect_action_type("텍스트 입력"), "type");
+        assert_eq!(detect_action_type("type text"), "type");
         assert_eq!(detect_action_type("type some text"), "type");
     }
 
     #[test]
     fn detect_action_type_hotkey() {
-        assert_eq!(detect_action_type("단축키 execution"), "hotkey");
+        assert_eq!(detect_action_type("execute hotkey"), "hotkey");
         assert_eq!(detect_action_type("hotkey Ctrl+S"), "hotkey");
     }
 
@@ -175,7 +172,7 @@ mod tests {
 
     #[test]
     fn find_best_match_exact() {
-        let texts = vec!["save".to_string(), "편집".to_string()];
+        let texts = vec!["save".to_string(), "edit".to_string()];
         let (text, score) = find_best_match(&texts, "save");
         assert_eq!(text.unwrap(), "save");
         assert!((score - 1.0).abs() < f64::EPSILON);
@@ -183,7 +180,7 @@ mod tests {
 
     #[test]
     fn find_best_match_partial() {
-        let texts = vec!["file save".to_string(), "편집".to_string()];
+        let texts = vec!["file save".to_string(), "edit".to_string()];
         let (text, score) = find_best_match(&texts, "file save");
         assert_eq!(text.unwrap(), "file save");
         assert!(score > 0.0);
@@ -199,7 +196,10 @@ mod tests {
 
     #[test]
     fn infer_role_button() {
-        assert_eq!(infer_role("click", "버튼 클릭"), Some("button".to_string()));
+        assert_eq!(
+            infer_role("click", "click button"),
+            Some("button".to_string())
+        );
         assert_eq!(
             infer_role("click", "click button"),
             Some("button".to_string())
@@ -208,28 +208,31 @@ mod tests {
 
     #[test]
     fn infer_role_input() {
-        assert_eq!(infer_role("type", "입력"), Some("input".to_string()));
-        assert_eq!(infer_role("type", "검색 입력"), Some("search".to_string()));
+        assert_eq!(infer_role("type", "input"), Some("input".to_string()));
+        assert_eq!(
+            infer_role("type", "search input"),
+            Some("search".to_string())
+        );
     }
 
     #[test]
     fn infer_role_none() {
-        assert_eq!(infer_role("click", "아무거나"), None);
-        assert_eq!(infer_role("hotkey", "단축키"), None);
+        assert_eq!(infer_role("click", "anything"), None);
+        assert_eq!(infer_role("hotkey", "shortcut"), None);
     }
 
     #[tokio::test]
     async fn local_llm_interpret_intent() {
         let provider = LocalLlmProvider::new();
         let ctx = ScreenContext {
-            visible_texts: vec!["file".to_string(), "save".to_string(), "편집".to_string()],
+            visible_texts: vec!["file".to_string(), "save".to_string(), "edit".to_string()],
             active_app: "VSCode".to_string(),
             active_window_title: "main.rs".to_string(),
             layout_description: None,
         };
 
         let result = provider
-            .interpret_intent(&ctx, "save 버튼 클릭")
+            .interpret_intent(&ctx, "click the save button")
             .await
             .unwrap();
         assert_eq!(result.action_type, "click");

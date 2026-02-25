@@ -18,7 +18,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let placeholders: Vec<String> = frame_ids.iter().map(|_| "?".to_string()).collect();
         let sql = format!(
@@ -28,7 +28,7 @@ impl SqliteStorage {
 
         let mut stmt = conn
             .prepare(&sql)
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let params: Vec<Box<dyn rusqlite::types::ToSql>> = frame_ids
             .iter()
@@ -41,12 +41,12 @@ impl SqliteStorage {
             .query_map(param_refs.as_slice(), |row| {
                 Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut map: HashMap<i64, Vec<i64>> = HashMap::new();
         for row in rows {
             let (frame_id, tag_id) =
-                row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?;
+                row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?;
             map.entry(frame_id).or_default().push(tag_id);
         }
 
@@ -59,13 +59,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT INTO tags (name, color) VALUES (?1, ?2)",
             rusqlite::params![name, color],
         )
-        .map_err(|e| CoreError::Internal(format!("태그 create failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to create tag: {e}")))?;
 
         let tag_id = conn.last_insert_rowid();
         let created_at: String = conn
@@ -74,7 +74,7 @@ impl SqliteStorage {
                 rusqlite::params![tag_id],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("태그 query failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to query tag: {e}")))?;
 
         debug!("create: id={}, name={}", tag_id, name);
 
@@ -90,11 +90,11 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare("SELECT id, name, color, created_at FROM tags ORDER BY name")
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let tags = stmt
             .query_map([], |row| {
@@ -105,7 +105,7 @@ impl SqliteStorage {
                     created_at: row.get(3)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -116,7 +116,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let result = conn.query_row(
             "SELECT id, name, color, created_at FROM tags WHERE id = ?1",
@@ -134,7 +134,7 @@ impl SqliteStorage {
         match result {
             Ok(tag) => Ok(Some(tag)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::Internal(format!("태그 query failure: {e}"))),
+            Err(e) => Err(CoreError::Internal(format!("Failed to query tag: {e}"))),
         }
     }
 
@@ -142,11 +142,11 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let deleted = conn
             .execute("DELETE FROM tags WHERE id = ?1", rusqlite::params![tag_id])
-            .map_err(|e| CoreError::Internal(format!("태그 delete failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to delete tag: {e}")))?;
 
         debug!("delete: id={}, affected={}", tag_id, deleted);
         Ok(deleted > 0)
@@ -156,13 +156,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT OR IGNORE INTO frame_tags (frame_id, tag_id) VALUES (?1, ?2)",
             rusqlite::params![frame_id, tag_id],
         )
-        .map_err(|e| CoreError::Internal(format!("frame 태그 add failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to add frame tag: {e}")))?;
 
         debug!("frame add: frame_id={}, tag_id={}", frame_id, tag_id);
         Ok(())
@@ -172,14 +172,14 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let deleted = conn
             .execute(
                 "DELETE FROM frame_tags WHERE frame_id = ?1 AND tag_id = ?2",
                 rusqlite::params![frame_id, tag_id],
             )
-            .map_err(|e| CoreError::Internal(format!("frame 태그 제거 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to remove frame tag: {e}")))?;
 
         debug!(
             "frame 태그 제거: frame_id={}, tag_id={}, affected={}",
@@ -192,7 +192,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -202,7 +202,7 @@ impl SqliteStorage {
                  WHERE ft.frame_id = ?1
                  ORDER BY t.name",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let tags = stmt
             .query_map(rusqlite::params![frame_id], |row| {
@@ -213,7 +213,7 @@ impl SqliteStorage {
                     created_at: row.get(3)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -228,7 +228,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -240,7 +240,7 @@ impl SqliteStorage {
                  ORDER BY f.timestamp DESC
                  LIMIT ?2",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let frames = stmt
             .query_map(rusqlite::params![tag_id, limit as i64], |row| {
@@ -257,7 +257,7 @@ impl SqliteStorage {
                     ocr_text: row.get(9)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -268,14 +268,14 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let updated = conn
             .execute(
                 "UPDATE tags SET name = ?1, color = ?2 WHERE id = ?3",
                 rusqlite::params![name, color, tag_id],
             )
-            .map_err(|e| CoreError::Internal(format!("태그 update failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to update tag: {e}")))?;
 
         debug!("update: id={}, affected={}", tag_id, updated);
         Ok(updated > 0)

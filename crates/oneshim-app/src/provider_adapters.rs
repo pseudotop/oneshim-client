@@ -259,7 +259,8 @@ fn require_endpoint_config<'a>(
     }
     if !(endpoint.endpoint.starts_with("http://") || endpoint.endpoint.starts_with("https://")) {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint`는 http:// https:// URL."        )));
+            "`{field_name}.endpoint`는 http:// https:// URL."
+        )));
     }
     if endpoint.timeout_secs == 0 {
         return Err(CoreError::Config(format!(
@@ -312,7 +313,7 @@ mod tests {
     fn resolves_local_providers_by_default() {
         let config = AiProviderConfig::default();
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("default 설정 해석 failure");
+            .expect("Failed to resolve default configuration");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
@@ -334,7 +335,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("원격 설정 해석 failure");
+            .expect("Failed to resolve remote configuration");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Remote);
         assert_eq!(adapters.llm_source, ProviderSource::Remote);
@@ -354,7 +355,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("폴백 설정에서 해석 failure하면 안됨");
+            .expect("Fallback configuration resolution should not fail");
 
         assert_eq!(adapters.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(adapters.llm_source, ProviderSource::LocalFallback);
@@ -374,9 +375,9 @@ mod tests {
         };
 
         match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard) {
-            Ok(_) => panic!("error가 발생해야 함"),
+            Ok(_) => panic!("Expected an error"),
             Err(CoreError::Config(msg)) => assert!(msg.contains("ocr_api")),
-            Err(other) => panic!("예상치 못한 error 타입: {other}"),
+            Err(other) => panic!("Unexpected error type: {other}"),
         }
     }
 
@@ -393,7 +394,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("로컬 mode 해석 failure");
+            .expect("Failed to resolve local mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
         assert!(!adapters.ocr.is_external());
@@ -408,7 +409,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("CLI mode 해석 failure");
+            .expect("Failed to resolve CLI mode");
         assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
         assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
         assert!(!adapters.ocr.is_external());
@@ -428,7 +429,7 @@ mod tests {
         };
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("플랫폼 mode 해석 failure");
+            .expect("Failed to resolve platform mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Platform);
         assert_eq!(adapters.llm_source, ProviderSource::Platform);
         assert!(adapters.ocr.is_external());

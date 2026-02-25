@@ -8,7 +8,6 @@ use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
-
 ///
 /// - Claude Vision (Anthropic): `POST /v1/messages` + image content block
 /// - Google Cloud Vision: `POST /v1/images:annotate` + TEXT_DETECTION
@@ -29,7 +28,7 @@ impl RemoteOcrProvider {
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
         if config.api_key.is_empty() {
             return Err(CoreError::Config(
-                "AI OCR API 키 미설정. Settings에서 입력하세요.".into(),
+                "AI OCR API key is not configured. Set it in Settings.".into(),
             ));
         }
         let api_key = config.api_key.clone();
@@ -58,7 +57,7 @@ impl RemoteOcrProvider {
 
     fn parse_claude_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
         let response: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| CoreError::OcrError(format!("response JSON 파싱 failure: {}", e)))?;
+            .map_err(|e| CoreError::OcrError(format!("Failed to parse response JSON: {}", e)))?;
 
         let mut results = Vec::new();
 
@@ -71,7 +70,7 @@ impl RemoteOcrProvider {
                             results.push(OcrResult {
                                 text: trimmed.to_string(),
                                 x: 0,
-                                y: (i as i32) * 20,                // temporary line height
+                                y: (i as i32) * 20, // temporary line height
                                 width: (trimmed.len() as u32) * 8, // temporary char width
                                 height: 20,
                                 confidence: 0.8, // API default confidence
@@ -93,14 +92,15 @@ impl RemoteOcrProvider {
         }
 
         let response: GenericResponse = serde_json::from_str(body)
-            .map_err(|e| CoreError::OcrError(format!("범용 response 파싱 failure: {}", e)))?;
+            .map_err(|e| CoreError::OcrError(format!("Failed to parse generic response: {}", e)))?;
 
         Ok(response.results)
     }
 
     fn parse_google_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| CoreError::OcrError(format!("Google Vision response 파싱 failure: {}", e)))?;
+        let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+            CoreError::OcrError(format!("Failed to parse Google Vision response: {}", e))
+        })?;
 
         let mut results = Vec::new();
         let annotations = response
@@ -191,7 +191,7 @@ impl OcrProvider for RemoteOcrProvider {
                             },
                             {
                                 "type": "text",
-                                "text": "이미지에서 보이는 all 텍스트를 줄별로 나열해주세요. 각 줄에 하나의 텍스트만 출력하세요."
+                                "text": "List all visible text from the image line by line. Output exactly one text item per line."
                             }
                         ]
                     }]
@@ -203,7 +203,7 @@ impl OcrProvider for RemoteOcrProvider {
             endpoint = %self.endpoint,
             model = model,
             image_size = image.len(),
-            "외부 OCR API 호출"
+            "Calling external OCR API"
         );
 
         let mut builder = self
@@ -229,7 +229,7 @@ impl OcrProvider for RemoteOcrProvider {
         let response = builder
             .send()
             .await
-            .map_err(|e| CoreError::Network(format!("OCR API 호출 failure: {}", e)))?;
+            .map_err(|e| CoreError::Network(format!("OCR API request failed: {}", e)))?;
 
         let status = response.status();
         let body = response
@@ -298,7 +298,6 @@ fn parse_bounding_vertices(vertices: Option<&Vec<serde_json::Value>>) -> (i32, i
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,7 +314,7 @@ mod tests {
         let result = RemoteOcrProvider::new(&config);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("미설정"));
+        assert!(err.contains("not configured"));
     }
 
     #[test]
@@ -337,7 +336,7 @@ mod tests {
             "content": [
                 {
                     "type": "text",
-                    "text": "file\n편집\n보기\nsave"
+                    "text": "file\nedit\nview\nsave"
                 }
             ]
         }"#;

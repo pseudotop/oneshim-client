@@ -32,9 +32,9 @@ fn create_test_context_event(i: usize) -> Event {
 }
 
 fn create_temp_storage() -> (SqliteStorage, TempDir) {
-    let temp_dir = TempDir::new().expect("임시 디렉토리 create failure");
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let db_path = temp_dir.path().join("test.db");
-    let storage = SqliteStorage::open(&db_path, 30).expect("스토리지 create failure");
+    let storage = SqliteStorage::open(&db_path, 30).expect("Failed to create storage");
     (storage, temp_dir)
 }
 

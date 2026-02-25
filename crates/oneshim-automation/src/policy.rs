@@ -14,7 +14,6 @@ use oneshim_core::error::CoreError;
 const POLICY_TOKEN_SIGNING_SECRET_ENV: &str = "ONESHIM_POLICY_TOKEN_SIGNING_SECRET";
 const COMMAND_HASH_SEGMENT_PREFIX: char = 'h';
 
-
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AuditLevel {
     None,
@@ -135,14 +134,14 @@ impl PolicyClient {
         };
 
         if ttl_seconds == 0 {
-            tracing::warn!("policy — server required");
+            tracing::warn!("policy cache expired: server refresh required");
             return Ok(false);
         }
 
         let Some(policy) = self.get_policy_for_token(token).await else {
             tracing::warn!(
                 policy_id = parsed_token.policy_id,
-                "policy token에 매칭되는 policy이 none"
+                "no matching policy found for policy token"
             );
             return Ok(false);
         };
@@ -151,7 +150,7 @@ impl PolicyClient {
             let Some(signature) = parsed_token.signature else {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
-                    "서명 policy인데 policy token 서명이 누락됨"
+                    "policy requires signature but policy token has no signature"
                 );
                 return Ok(false);
             };
@@ -159,7 +158,7 @@ impl PolicyClient {
             if !is_valid_signature(signature) {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
-                    "policy token 서명 형식 error"
+                    "invalid policy token signature format"
                 );
                 return Ok(false);
             }
@@ -172,7 +171,7 @@ impl PolicyClient {
             ) {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
-                    "policy token 서명 validation failure"
+                    "policy token signature validation failed"
                 );
                 return Ok(false);
             }
@@ -183,7 +182,7 @@ impl PolicyClient {
             if !token_command_hash.eq_ignore_ascii_case(&expected_hash) {
                 tracing::warn!(
                     policy_id = parsed_token.policy_id,
-                    "policy token command hash 불일치"
+                    "policy token command hash mismatch"
                 );
                 return Ok(false);
             }
@@ -214,7 +213,7 @@ impl PolicyClient {
                 .find(|p| p.policy_id == policy_id)
                 .cloned()
         }
-        .ok_or_else(|| CoreError::PolicyDenied(format!("알 수 without policy ID: {policy_id}")))?;
+        .ok_or_else(|| CoreError::PolicyDenied(format!("Unknown policy ID: {policy_id}")))?;
 
         let nonce = issue_policy_nonce();
         issue_command_token_for_policy(&policy, &nonce, None)
@@ -234,7 +233,7 @@ impl PolicyClient {
                 .find(|p| p.policy_id == policy_id)
                 .cloned()
         }
-        .ok_or_else(|| CoreError::PolicyDenied(format!("알 수 without policy ID: {policy_id}")))?;
+        .ok_or_else(|| CoreError::PolicyDenied(format!("Unknown policy ID: {policy_id}")))?;
 
         let nonce = issue_policy_nonce();
         let command_hash = compute_command_scope_hash(cmd)?;
@@ -423,8 +422,11 @@ fn compute_command_scope_hash(cmd: &AutomationCommand) -> Result<String, CoreErr
         action: &cmd.action,
         timeout_ms: cmd.timeout_ms,
     };
-    let serialized = serde_json::to_vec(&scope)
-        .map_err(|e| CoreError::Internal(format!("policy token command scope 직렬화 failure: {e}")))?;
+    let serialized = serde_json::to_vec(&scope).map_err(|e| {
+        CoreError::Internal(format!(
+            "Failed to serialize policy token command scope: {e}"
+        ))
+    })?;
     let digest = Sha256::digest(serialized);
     Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
@@ -724,8 +726,8 @@ mod tests {
         let token = client
             .issue_command_token("pol-1")
             .await
-            .expect("token 발급 failure");
-        let parsed = parse_policy_token(&token).expect("발급 token 파싱 failure");
+            .expect("Failed to issue token");
+        let parsed = parse_policy_token(&token).expect("Failed to parse issued token");
         assert_eq!(parsed.policy_id, "pol-1");
         assert!(parsed.command_hash.is_none());
         assert!(parsed.signature.is_none());
@@ -761,11 +763,11 @@ mod tests {
         let token = client
             .issue_command_token("pol-1")
             .await
-            .expect("token 발급 failure");
+            .expect("Failed to issue token");
 
-        let parsed = parse_policy_token(&token).expect("발급 token 파싱 failure");
+        let parsed = parse_policy_token(&token).expect("Failed to parse issued token");
         assert!(parsed.command_hash.is_none());
-        let signature = parsed.signature.expect("서명 누락");
+        let signature = parsed.signature.expect("Missing signature");
         assert!(is_valid_signature(signature));
         assert!(verify_policy_token_signature(
             parsed.policy_id,
@@ -792,7 +794,7 @@ mod tests {
         let token = client
             .issue_command_token_for_command("pol-1", &cmd)
             .await
-            .expect("token 발급 failure");
+            .expect("Failed to issue token");
         cmd.policy_token = token;
         assert!(client.validate_command(&cmd).await.unwrap());
     }
@@ -808,7 +810,7 @@ mod tests {
         let token = client
             .issue_command_token_for_command("pol-1", &source_cmd)
             .await
-            .expect("token 발급 failure");
+            .expect("Failed to issue token");
 
         let mut different_cmd = make_command(&token);
         different_cmd.command_id = "cmd-other".to_string();

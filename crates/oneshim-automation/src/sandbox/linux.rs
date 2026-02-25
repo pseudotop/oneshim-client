@@ -81,7 +81,7 @@ impl LinuxSandbox {
         let (default_memory, default_cpu_ms) = match config.profile {
             SandboxProfile::Permissive => (0, 0),
             SandboxProfile::Standard => (512 * 1024 * 1024, 30_000), // 512MB, 30s
-            SandboxProfile::Strict => (256 * 1024 * 1024, 10_000), // 256MB, 10s
+            SandboxProfile::Strict => (256 * 1024 * 1024, 10_000),   // 256MB, 10s
         };
 
         ResourceLimits {
@@ -141,7 +141,7 @@ impl Sandbox for LinuxSandbox {
             Ok::<(), CoreError>(())
         })
         .await
-        .map_err(|e| CoreError::SandboxExecution(format!("스레드 조인 failure: {}", e)))?;
+        .map_err(|e| CoreError::SandboxExecution(format!("Thread join failed: {}", e)))?;
 
         result?;
 
@@ -159,7 +159,6 @@ impl Sandbox for LinuxSandbox {
         }
     }
 }
-
 
 #[derive(Debug, Default)]
 struct LandlockRules {

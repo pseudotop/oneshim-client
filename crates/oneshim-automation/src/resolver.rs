@@ -90,7 +90,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn audit_none_maps_to_permissive() {
         let policy = make_policy(AuditLevel::None, false);
@@ -127,7 +126,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn sudo_escalates_permissive_to_standard() {
         let policy = make_policy(AuditLevel::None, true);
@@ -146,7 +144,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn server_override_takes_priority() {
         let mut policy = make_policy(AuditLevel::Full, true);
@@ -156,7 +153,6 @@ mod tests {
             SandboxProfile::Permissive
         ));
     }
-
 
     #[test]
     fn config_merges_allowed_paths() {
@@ -195,7 +191,6 @@ mod tests {
         let resolved = resolve_sandbox_config(&policy, &SandboxConfig::default());
         assert_eq!(resolved.max_cpu_time_ms, 3000);
     }
-
 
     #[test]
     fn default_strict_blocks_write_and_network() {

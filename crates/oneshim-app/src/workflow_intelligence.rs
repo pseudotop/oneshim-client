@@ -448,8 +448,17 @@ fn infer_gui_intent(
     if contains_any(
         &context,
         &[
-            "run", "build", "deploy", "submit", "publish", "commit", "merge", "release", "execution",
-            "배포", "제출",
+            "run",
+            "build",
+            "deploy",
+            "submit",
+            "publish",
+            "commit",
+            "merge",
+            "release",
+            "execution",
+            "배포",
+            "제출",
         ],
     ) {
         return GuiIntent::Execute;

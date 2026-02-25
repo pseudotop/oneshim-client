@@ -89,36 +89,36 @@ pub async fn generate_report(
         ReportPeriod::Week => {
             let to = now;
             let from = to - Duration::days(7);
-            (from, to, "주간 활동 리port".to_string())
+            (from, to, "주간 Activity Report".to_string())
         }
         ReportPeriod::Month => {
             let to = now;
             let from = to - Duration::days(30);
-            (from, to, "월간 활동 리port".to_string())
+            (from, to, "월간 Activity Report".to_string())
         }
         ReportPeriod::Custom => {
             let from_str = params
                 .from
-                .ok_or_else(|| ApiError::BadRequest("from 날짜가 필요합니다".to_string()))?;
+                .ok_or_else(|| ApiError::BadRequest("from date is required".to_string()))?;
             let to_str = params
                 .to
-                .ok_or_else(|| ApiError::BadRequest("to 날짜가 필요합니다".to_string()))?;
+                .ok_or_else(|| ApiError::BadRequest("to date is required".to_string()))?;
 
             let from_date = NaiveDate::parse_from_str(&from_str, "%Y-%m-%d")
-                .map_err(|_| ApiError::BadRequest(format!("잘못된 started 날짜: {from_str}")))?;
+                .map_err(|_| ApiError::BadRequest(format!("Invalid from date: {from_str}")))?;
             let to_date = NaiveDate::parse_from_str(&to_str, "%Y-%m-%d")
-                .map_err(|_| ApiError::BadRequest(format!("잘못된 ended 날짜: {to_str}")))?;
+                .map_err(|_| ApiError::BadRequest(format!("Invalid to date: {to_str}")))?;
 
             let from = from_date
                 .and_hms_opt(0, 0, 0)
-                .ok_or_else(|| ApiError::Internal("시간 변환 failure: 00:00:00".to_string()))?
+                .ok_or_else(|| ApiError::Internal("Time conversion failed: 00:00:00".to_string()))?
                 .and_utc();
             let to = to_date
                 .and_hms_opt(23, 59, 59)
-                .ok_or_else(|| ApiError::Internal("시간 변환 failure: 23:59:59".to_string()))?
+                .ok_or_else(|| ApiError::Internal("Time conversion failed: 23:59:59".to_string()))?
                 .and_utc();
 
-            (from, to, format!("활동 리port ({from_str} ~ {to_str})"))
+            (from, to, format!("Activity Report ({from_str} ~ {to_str})"))
         }
     };
 
@@ -428,7 +428,7 @@ mod tests {
     #[test]
     fn report_response_serializes() {
         let response = ReportResponse {
-            title: "주간 리port".to_string(),
+            title: "Weekly Report".to_string(),
             from_date: "2024-01-23".to_string(),
             to_date: "2024-01-30".to_string(),
             days: 7,
@@ -450,7 +450,7 @@ mod tests {
             },
         };
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("주간 리port"));
+        assert!(json.contains("Weekly Report"));
         assert!(json.contains("productivity"));
     }
 

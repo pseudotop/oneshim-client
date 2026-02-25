@@ -162,6 +162,15 @@ cargo clippy --workspace
 
 # Format check
 cargo fmt --check
+
+# Language / i18n quality checks
+./scripts/check-language.sh
+# i18n-only check
+./scripts/check-language.sh i18n
+# scope-limited scan (example)
+./scripts/check-language.sh non-english --path crates/oneshim-web/frontend/src
+# Optional: strict mode (fails on hardcoded UI copy warnings too)
+./scripts/check-language.sh --strict-i18n
 ```
 
 ## Installation

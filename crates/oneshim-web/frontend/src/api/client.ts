@@ -271,7 +271,7 @@ export async function fetchSummary(date?: string): Promise<DailySummary> {
   const params = new URLSearchParams()
   if (date) params.set('date', date)
   const res = await fetchWithRetry(`${BASE_URL}/stats/summary?${params}`)
-  if (!res.ok) throw new Error('요약 query failure')
+  if (!res.ok) throw new Error('Summary query failed')
   return res.json()
 }
 
@@ -281,13 +281,13 @@ export async function fetchMetrics(from?: string, to?: string, limit = 100): Pro
   if (to) params.set('to', to)
   params.set('limit', String(limit))
   const res = await fetchWithRetry(`${BASE_URL}/metrics?${params}`)
-  if (!res.ok) throw new Error('메트릭 query failure')
+  if (!res.ok) throw new Error('Metrics query failed')
   return res.json()
 }
 
 export async function fetchHourlyMetrics(hours = 24): Promise<HourlyMetrics[]> {
   const res = await fetchWithRetry(`${BASE_URL}/metrics/hourly?hours=${hours}`)
-  if (!res.ok) throw new Error('시간별 메트릭 query failure')
+  if (!res.ok) throw new Error('Hourly metrics query failed')
   return res.json()
 }
 
@@ -297,7 +297,7 @@ export async function fetchProcesses(from?: string, to?: string, limit = 20): Pr
   if (to) params.set('to', to)
   params.set('limit', String(limit))
   const res = await fetchWithRetry(`${BASE_URL}/processes?${params}`)
-  if (!res.ok) throw new Error('프로세스 query failure')
+  if (!res.ok) throw new Error('Process query failed')
   return res.json()
 }
 
@@ -352,19 +352,19 @@ export async function fetchAppUsage(date?: string): Promise<{ date: string; apps
   const params = new URLSearchParams()
   if (date) params.set('date', date)
   const res = await fetchWithRetry(`${BASE_URL}/stats/apps?${params}`)
-  if (!res.ok) throw new Error('앱 사용량 query failure')
+  if (!res.ok) throw new Error('App usage query failed')
   return res.json()
 }
 
 export async function fetchStorageStats(): Promise<StorageStats> {
   const res = await fetchWithRetry(`${BASE_URL}/storage/stats`)
-  if (!res.ok) throw new Error('save소 통계 query failure')
+  if (!res.ok) throw new Error('Storage stats query failed')
   return res.json()
 }
 
 export async function fetchSettings(): Promise<AppSettings> {
   const res = await fetchWithRetry(`${BASE_URL}/settings`)
-  if (!res.ok) throw new Error('설정 query failure')
+  if (!res.ok) throw new Error('Settings query failed')
   return res.json()
 }
 
@@ -375,8 +375,8 @@ export async function updateSettings(settings: AppSettings): Promise<AppSettings
     body: JSON.stringify(settings),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '설정 save failure' }))
-    throw new Error(err.error || '설정 save failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to save settings' }))
+    throw new Error(err.error || 'Failed to save settings')
   }
   return res.json()
 }
@@ -394,8 +394,8 @@ export async function postUpdateAction(action: UpdateAction): Promise<UpdateActi
     body: JSON.stringify({ action }),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'update 작업 execution failure' }))
-    throw new Error(err.error || 'update 작업 execution failure')
+    const err = await res.json().catch(() => ({ error: 'Update operation failed' }))
+    throw new Error(err.error || 'Update operation failed')
   }
   return res.json()
 }
@@ -423,8 +423,8 @@ export async function deleteDataRange(request: DeleteRangeRequest): Promise<Dele
     body: JSON.stringify(request),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '데이터 delete failure' }))
-    throw new Error(err.error || '데이터 delete failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to delete data' }))
+    throw new Error(err.error || 'Failed to delete data')
   }
   return res.json()
 }
@@ -434,8 +434,8 @@ export async function deleteAllData(): Promise<DeleteResult> {
     method: 'DELETE',
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '전체 데이터 delete failure' }))
-    throw new Error(err.error || '전체 데이터 delete failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to delete all data' }))
+    throw new Error(err.error || 'Failed to delete all data')
   }
   return res.json()
 }
@@ -519,8 +519,8 @@ export async function search(
   }
   const res = await fetchWithRetry(`${BASE_URL}/search?${params}`)
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '검색 failure' }))
-    throw new Error(err.error || '검색 failure')
+    const err = await res.json().catch(() => ({ error: 'Search failed' }))
+    throw new Error(err.error || 'Search failed')
   }
   return res.json()
 }
@@ -540,7 +540,7 @@ export interface HeatmapResponse {
 
 export async function fetchHeatmap(days = 7): Promise<HeatmapResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/stats/heatmap?days=${days}`)
-  if (!res.ok) throw new Error('히트맵 query failure')
+  if (!res.ok) throw new Error('Heatmap query failed')
   return res.json()
 }
 
@@ -560,8 +560,8 @@ export async function exportData(
 
   const res = await fetchWithRetry(`${BASE_URL}/export/${dataType}?${params}`)
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'within보within기 failure' }))
-    throw new Error(err.error || 'within보within기 failure')
+    const err = await res.json().catch(() => ({ error: 'Viewer request failed' }))
+    throw new Error(err.error || 'Viewer request failed')
   }
   return res.blob()
 }
@@ -597,7 +597,7 @@ export interface UpdateTagRequest {
 
 export async function fetchTags(): Promise<Tag[]> {
   const res = await fetchWithRetry(`${BASE_URL}/tags`)
-  if (!res.ok) throw new Error('태그 query failure')
+  if (!res.ok) throw new Error('Tag query failed')
   return res.json()
 }
 
@@ -608,8 +608,8 @@ export async function createTag(request: CreateTagRequest): Promise<Tag> {
     body: JSON.stringify(request),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '태그 create failure' }))
-    throw new Error(err.error || '태그 create failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to create tag' }))
+    throw new Error(err.error || 'Failed to create tag')
   }
   return res.json()
 }
@@ -621,8 +621,8 @@ export async function updateTag(tagId: number, request: UpdateTagRequest): Promi
     body: JSON.stringify(request),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '태그 수정 failure' }))
-    throw new Error(err.error || '태그 수정 failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to update tag' }))
+    throw new Error(err.error || 'Failed to update tag')
   }
   return res.json()
 }
@@ -632,14 +632,14 @@ export async function deleteTag(tagId: number): Promise<void> {
     method: 'DELETE',
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '태그 delete failure' }))
-    throw new Error(err.error || '태그 delete failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to delete tag' }))
+    throw new Error(err.error || 'Failed to delete tag')
   }
 }
 
 export async function fetchFrameTags(frameId: number): Promise<Tag[]> {
   const res = await fetchWithRetry(`${BASE_URL}/frames/${frameId}/tags`)
-  if (!res.ok) throw new Error('frame 태그 query failure')
+  if (!res.ok) throw new Error('frame Tag query failed')
   return res.json()
 }
 
@@ -648,8 +648,8 @@ export async function addTagToFrame(frameId: number, tagId: number): Promise<voi
     method: 'POST',
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '태그 add failure' }))
-    throw new Error(err.error || '태그 add failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to add tag' }))
+    throw new Error(err.error || 'Failed to add tag')
   }
 }
 
@@ -658,8 +658,8 @@ export async function removeTagFromFrame(frameId: number, tagId: number): Promis
     method: 'DELETE',
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '태그 제거 failure' }))
-    throw new Error(err.error || '태그 제거 failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to remove tag' }))
+    throw new Error(err.error || 'Failed to remove tag')
   }
 }
 
@@ -728,8 +728,8 @@ export async function fetchReport(params: ReportParams): Promise<ReportResponse>
 
   const res = await fetchWithRetry(`${BASE_URL}/reports?${searchParams}`)
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '리port query failure' }))
-    throw new Error(err.error || '리port query failure')
+    const err = await res.json().catch(() => ({ error: 'Report query failed' }))
+    throw new Error(err.error || 'Report query failed')
   }
   return res.json()
 }
@@ -837,8 +837,8 @@ export async function downloadBackup(params: BackupParams = {}): Promise<Blob> {
 
   const res = await fetchWithRetry(`${BASE_URL}/backup?${searchParams}`)
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '백업 create failure' }))
-    throw new Error(err.error || '백업 create failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to create backup' }))
+    throw new Error(err.error || 'Failed to create backup')
   }
   return res.blob()
 }
@@ -850,8 +850,8 @@ export async function restoreBackup(archive: BackupArchive): Promise<RestoreResu
     body: JSON.stringify(archive),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '복원 failure' }))
-    throw new Error(err.error || '복원 failure')
+    const err = await res.json().catch(() => ({ error: 'Restore failed' }))
+    throw new Error(err.error || 'Restore failed')
   }
   return res.json()
 }
@@ -900,8 +900,8 @@ export async function fetchTimeline(params: TimelineParams = {}): Promise<Timeli
 
   const res = await fetchWithRetry(`${BASE_URL}/timeline?${searchParams}`)
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '타임라인 query failure' }))
-    throw new Error(err.error || '타임라인 query failure')
+    const err = await res.json().catch(() => ({ error: 'Timeline query failed' }))
+    throw new Error(err.error || 'Timeline query failed')
   }
   return res.json()
 }
@@ -962,7 +962,7 @@ export type SuggestionFeedbackAction = 'shown' | 'dismissed' | 'acted'
 
 export async function fetchFocusMetrics(): Promise<FocusMetricsResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/focus/metrics`)
-  if (!res.ok) throw new Error('집중도 메트릭 query failure')
+  if (!res.ok) throw new Error('Focus metrics query failed')
   return res.json()
 }
 
@@ -972,7 +972,7 @@ export async function fetchWorkSessions(from?: string, to?: string, limit = 100)
   if (to) params.set('to', to)
   params.set('limit', String(limit))
   const res = await fetchWithRetry(`${BASE_URL}/focus/sessions?${params}`)
-  if (!res.ok) throw new Error('작업 session query failure')
+  if (!res.ok) throw new Error('Work session query failed')
   return res.json()
 }
 
@@ -982,13 +982,13 @@ export async function fetchInterruptions(from?: string, to?: string, limit = 100
   if (to) params.set('to', to)
   params.set('limit', String(limit))
   const res = await fetchWithRetry(`${BASE_URL}/focus/interruptions?${params}`)
-  if (!res.ok) throw new Error('인터럽션 query failure')
+  if (!res.ok) throw new Error('Interruption query failed')
   return res.json()
 }
 
 export async function fetchLocalSuggestions(): Promise<LocalSuggestion[]> {
   const res = await fetchWithRetry(`${BASE_URL}/focus/suggestions`)
-  if (!res.ok) throw new Error('로컬 suggestion query failure')
+  if (!res.ok) throw new Error('Local suggestion query failed')
   return res.json()
 }
 
@@ -1002,8 +1002,8 @@ export async function submitSuggestionFeedback(
     body: JSON.stringify({ action }),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'feedback 제출 failure' }))
-    throw new Error(err.error || 'feedback 제출 failure')
+    const err = await res.json().catch(() => ({ error: 'Feedback submission failed' }))
+    throw new Error(err.error || 'Feedback submission failed')
   }
 }
 
@@ -1252,7 +1252,7 @@ export interface SceneCalibrationReport {
 
 export async function fetchAutomationStatus(): Promise<AutomationStatus> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/status`)
-  if (!res.ok) throw new Error('자동화 state query failure')
+  if (!res.ok) throw new Error('Automation state query failed')
   return res.json()
 }
 
@@ -1261,7 +1261,7 @@ export async function fetchAuditLogs(limit = 50, status?: string): Promise<Audit
   params.set('limit', String(limit))
   if (status) params.set('status', status)
   const res = await fetchWithRetry(`${BASE_URL}/automation/audit?${params}`)
-  if (!res.ok) throw new Error('감사 로그 query failure')
+  if (!res.ok) throw new Error('Audit log query failed')
   return res.json()
 }
 
@@ -1273,19 +1273,19 @@ export async function fetchPolicies(): Promise<PoliciesInfo> {
 
 export async function fetchAutomationContracts(): Promise<AutomationContracts> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/contracts`)
-  if (!res.ok) throw new Error('자동화 계약 버전 query failure')
+  if (!res.ok) throw new Error('Automation contract version query failed')
   return res.json()
 }
 
 export async function fetchAutomationStats(): Promise<AutomationStats> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/stats`)
-  if (!res.ok) throw new Error('execution 통계 query failure')
+  if (!res.ok) throw new Error('Execution stats query failed')
   return res.json()
 }
 
 export async function fetchPresets(): Promise<{ presets: WorkflowPreset[] }> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/presets`)
-  if (!res.ok) throw new Error('프리셋 query failure')
+  if (!res.ok) throw new Error('Preset query failed')
   return res.json()
 }
 
@@ -1296,8 +1296,8 @@ export async function createPreset(preset: WorkflowPreset): Promise<WorkflowPres
     body: JSON.stringify(preset),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '프리셋 create failure' }))
-    throw new Error(err.error || '프리셋 create failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to create preset' }))
+    throw new Error(err.error || 'Failed to create preset')
   }
   return res.json()
 }
@@ -1307,8 +1307,8 @@ export async function deletePreset(id: string): Promise<void> {
     method: 'DELETE',
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '프리셋 delete failure' }))
-    throw new Error(err.error || '프리셋 delete failure')
+    const err = await res.json().catch(() => ({ error: 'Failed to delete preset' }))
+    throw new Error(err.error || 'Failed to delete preset')
   }
 }
 
@@ -1317,8 +1317,8 @@ export async function runPreset(id: string): Promise<PresetRunResult> {
     method: 'POST',
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '프리셋 execution failure' }))
-    throw new Error(err.error || '프리셋 execution failure')
+    const err = await res.json().catch(() => ({ error: 'Preset execution failed' }))
+    throw new Error(err.error || 'Preset execution failed')
   }
   return res.json()
 }
@@ -1332,8 +1332,8 @@ export async function executeIntentHint(
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: '자연어 의도 execution failure' }))
-    throw new Error(err.error || '자연어 의도 execution failure')
+    const err = await res.json().catch(() => ({ error: 'Natural language intent execution failed' }))
+    throw new Error(err.error || 'Natural language intent execution failed')
   }
   return res.json()
 }
@@ -1347,8 +1347,8 @@ export async function executeSceneAction(
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Scene 액션 execution failure' }))
-    throw new Error(err.error || 'Scene 액션 execution failure')
+    const err = await res.json().catch(() => ({ error: 'Scene action execution failed' }))
+    throw new Error(err.error || 'Scene action execution failed')
   }
   return res.json()
 }

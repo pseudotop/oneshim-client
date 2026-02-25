@@ -128,7 +128,7 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
 
     if !should_autoinstall_bridge_files() {
         info!(
-            "ProviderSubscriptionCli mode detection: CLI 브리지 자동 설치 비active화 (ONESHIM_CLI_BRIDGE_AUTOINSTALL=1로 active화)"
+            "ProviderSubscriptionCli mode detected: bridge auto-install disabled (set ONESHIM_CLI_BRIDGE_AUTOINSTALL=1 to enable)"
         );
         return;
     }
@@ -145,7 +145,7 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
         written_files = report.written_files.len(),
         unchanged_files = report.unchanged_files.len(),
         errors = report.errors.len(),
-        "CLI subscribe 브리지 file 동기화 completed"
+        "CLI subscription bridge file sync complete"
     );
 
     if !report.is_successful() {
@@ -157,41 +157,30 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
 
 fn print_banner(offline: bool) {
     println!();
-    println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║                                                              ║");
-    println!("║   ██████╗ ███╗   ██╗███████╗███████╗██╗  ██╗██╗███╗   ███╗  ║");
-    println!("║  ██╔═══██╗████╗  ██║██╔════╝██╔════╝██║  ██║██║████╗ ████║  ║");
-    println!("║  ██║   ██║██╔██╗ ██║█████╗  ███████╗███████║██║██╔████╔██║  ║");
-    println!("║  ██║   ██║██║╚██╗██║██╔══╝  ╚════██║██╔══██║██║██║╚██╔╝██║  ║");
-    println!("║  ╚██████╔╝██║ ╚████║███████╗███████║██║  ██║██║██║ ╚═╝ ██║  ║");
-    println!("║   ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝  ║");
-    println!("║                                                              ║");
+    println!("==============================================================");
+    println!("ONESHIM");
     if offline {
-        println!("║ 🔌 offline mode ( ) ║");
+        println!("Mode: offline (local-only)");
     } else {
-        println!("║ AI ║");
+        println!("Mode: connected (platform integration)");
     }
-    println!("║                                                              ║");
-    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!("==============================================================");
     println!();
 }
 
 fn print_offline_features() {
-    println!("┌─────────────────────────────────────────────────────────────────┐");
-    println!("│ 📊 offline mode: │");
-    println!("├─────────────────────────────────────────────────────────────────┤");
-    println!("│ ✅ system monitoring - CPU,, collect │");
-    println!("│ ✅ active window tracking - current in progress detection │");
-    println!("│ ✅ screenshot capture - capture encoding │");
-    println!("│ ✅ data save - SQLite event/frame save │");
-    println!("│ ✅ PII - sensitive │");
-    println!("├─────────────────────────────────────────────────────────────────┤");
-    println!("│ ❌ server upload - offline disabled │");
-    println!("│ ❌ AI suggestion received - server connection required │");
-    println!("│ ❌ hour - server connection required │");
-    println!("└─────────────────────────────────────────────────────────────────┘");
+    println!("Offline mode capabilities:");
+    println!("- system monitoring: CPU, memory, and disk usage");
+    println!("- active window tracking");
+    println!("- screenshot capture and delta encoding");
+    println!("- local data persistence (SQLite)");
+    println!("- automatic PII filtering");
+    println!("- server upload: disabled");
+    println!("- AI suggestion stream: requires server connection");
+    println!("- real-time sync: requires server connection");
     println!();
-    println!("💡 server connection: oneshim --server http://your-server:8000");
+    println!("Tip: connect to a server with:");
+    println!("  oneshim --server http://your-server:8000");
     println!();
 }
 
@@ -200,33 +189,33 @@ fn handle_autostart_commands(args: &Args) -> bool {
         match autostart::is_autostart_enabled() {
             Ok(enabled) => {
                 if enabled {
-                    println!("✅ auto-start: enabled");
-                    println!("login ONESHIM started.");
+                    println!("[OK] auto-start: enabled");
+                    println!("ONESHIM will start on login.");
                 } else {
-                    println!("❌ auto-start: disabled");
-                    println!("enabled: oneshim --enable-autostart");
+                    println!("[INFO] auto-start: disabled");
+                    println!("Enable with: oneshim --enable-autostart");
                 }
             }
             Err(e) => {
-                eprintln!("⚠️ auto-start state check failure: {e}");
+                eprintln!("[WARN] failed to check auto-start state: {e}");
             }
         }
         return true;
     }
 
     if args.enable_autostart {
-        println!("🔧 auto-start settings in progress...");
+        println!("[INFO] enabling auto-start...");
         match autostart::enable_autostart() {
             Ok(()) => {
-                println!("✅ auto-start enabled.");
-                println!("next login ONESHIM started.");
+                println!("[OK] auto-start enabled.");
+                println!("ONESHIM will start on next login.");
                 #[cfg(target_os = "macos")]
-                println!(": ~/Library/LaunchAgents/com.oneshim.agent.plist");
+                println!("Path: ~/Library/LaunchAgents/com.oneshim.agent.plist");
                 #[cfg(target_os = "windows")]
-                println!(": HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+                println!("Path: HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
             }
             Err(e) => {
-                eprintln!("❌ auto-start enabled failure: {e}");
+                eprintln!("[ERROR] failed to enable auto-start: {e}");
                 std::process::exit(1);
             }
         }
@@ -234,14 +223,14 @@ fn handle_autostart_commands(args: &Args) -> bool {
     }
 
     if args.disable_autostart {
-        println!("🔧 auto-start in progress...");
+        println!("[INFO] disabling auto-start...");
         match autostart::disable_autostart() {
             Ok(()) => {
-                println!("✅ auto-start disabled.");
-                println!("login ONESHIM auto-start.");
+                println!("[OK] auto-start disabled.");
+                println!("ONESHIM will no longer auto-start on login.");
             }
             Err(e) => {
-                eprintln!("❌ auto-start disabled failure: {e}");
+                eprintln!("[ERROR] failed to disable auto-start: {e}");
                 std::process::exit(1);
             }
         }
@@ -299,7 +288,7 @@ async fn main() -> Result<()> {
     info!(
         access_mode = ?config.ai_provider.access_mode,
         platform_sync_enabled = platform_connected_mode,
-        "플랫폼 연동 mode 평가"
+        "evaluated platform-connected mode"
     );
 
     integrity_guard::run_preflight(&config, args.offline)?;
@@ -331,11 +320,10 @@ async fn main() -> Result<()> {
         }
     }
 
-
     let token_manager = Arc::new(TokenManager::new(&config.server.base_url));
 
     info!(
-        "네트워크 설정: gRPC Auth={}, gRPC Context={}, Endpoint={}",
+        "network configuration: grpc_auth={}, grpc_context={}, endpoint={}",
         config.grpc.use_grpc_auth, config.grpc.use_grpc_context, config.grpc.grpc_endpoint
     );
 
@@ -459,7 +447,6 @@ async fn main() -> Result<()> {
         notifier.clone(),
     ));
 
-
     let offline_mode = args.offline;
     let app_config = Arc::new(tokio::sync::RwLock::new(config.clone()));
     let sched = Scheduler::new(
@@ -502,7 +489,7 @@ async fn main() -> Result<()> {
     let config_manager = ConfigManager::new().unwrap_or_else(|e| {
         warn!("settings initialize failure, default settings: {e}");
         let fallback_path = data_dir.join("config.json");
-        ConfigManager::with_path(fallback_path).expect("설정 관리자 create failure")
+        ConfigManager::with_path(fallback_path).expect("failed to create config manager")
     });
     info!("settings file: {:?}", config_manager.config_path());
 
@@ -522,7 +509,7 @@ async fn main() -> Result<()> {
                     ocr_source = runtime.ocr_source.as_str(),
                     llm_provider = runtime.llm_provider_name,
                     llm_source = runtime.llm_source.as_str(),
-                    "AI 제공자 어댑터 해석 completed"
+                    "resolved AI provider adapters"
                 );
 
                 let policy_client = Arc::new(PolicyClient::new());
@@ -544,7 +531,7 @@ async fn main() -> Result<()> {
                     warn!(
                         error = %err,
                         fallback_enabled = true,
-                        "AI 제공자 어댑터 해석 failure; NoOp 자동화 execution기로 폴백"
+                        "failed to resolve AI provider adapters; falling back to NoOp automation executor"
                     );
 
                     let policy_client = Arc::new(PolicyClient::new());
@@ -562,7 +549,7 @@ async fn main() -> Result<()> {
                     error!(
                         error = %err,
                         fallback_enabled = false,
-                        "AI 제공자 어댑터 해석 failure; fallback_to_local=false 이므로 자동화 컨트롤러를 비active화합니다"
+                        "failed to resolve AI provider adapters; disabling automation controller because fallback_to_local=false"
                     );
                     None
                 }
@@ -603,7 +590,7 @@ async fn main() -> Result<()> {
         tokio::spawn(async move {
             while let Some(suggestion) = suggestion_rx.recv().await {
                 info!(
-                    "새 suggestion: [{:?}] {} (신뢰도 {:.0}%)",
+                    "new suggestion: [{:?}] {} (confidence {:.0}%)",
                     suggestion.priority,
                     suggestion.content,
                     suggestion.confidence_score * 100.0

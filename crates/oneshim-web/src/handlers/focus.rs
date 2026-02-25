@@ -11,7 +11,6 @@ use crate::error::ApiError;
 use crate::handlers::TimeRangeQuery;
 use crate::AppState;
 
-
 #[derive(Debug, Serialize)]
 pub struct FocusMetricsDto {
     pub date: String,
@@ -73,7 +72,6 @@ pub struct LocalSuggestionDto {
 pub struct SuggestionFeedbackRequest {
     pub action: String,
 }
-
 
 pub async fn get_focus_metrics(
     State(state): State<AppState>,

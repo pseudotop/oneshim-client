@@ -29,7 +29,6 @@ pub trait StorageService: Send + Sync {
 ///
 #[async_trait]
 pub trait MetricsStorage: Send + Sync {
-
     async fn save_metrics(&self, metrics: &SystemMetrics) -> Result<(), CoreError>;
 
     async fn get_metrics(
@@ -42,7 +41,6 @@ pub trait MetricsStorage: Send + Sync {
     async fn aggregate_hourly_metrics(&self, hour: DateTime<Utc>) -> Result<(), CoreError>;
 
     async fn cleanup_old_metrics(&self, before: DateTime<Utc>) -> Result<usize, CoreError>;
-
 
     async fn save_process_snapshot(&self, snapshot: &ProcessSnapshot) -> Result<(), CoreError>;
 
@@ -58,7 +56,6 @@ pub trait MetricsStorage: Send + Sync {
         before: DateTime<Utc>,
     ) -> Result<usize, CoreError>;
 
-
     async fn start_idle_period(&self, start_time: DateTime<Utc>) -> Result<i64, CoreError>;
 
     async fn end_idle_period(&self, id: i64, end_time: DateTime<Utc>) -> Result<(), CoreError>;
@@ -72,7 +69,6 @@ pub trait MetricsStorage: Send + Sync {
     ) -> Result<Vec<IdlePeriod>, CoreError>;
 
     async fn cleanup_old_idle_periods(&self, before: DateTime<Utc>) -> Result<usize, CoreError>;
-
 
     async fn upsert_session(&self, stats: &SessionStats) -> Result<(), CoreError>;
 

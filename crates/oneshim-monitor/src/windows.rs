@@ -15,7 +15,7 @@ pub fn get_active_window_windows() -> Result<Option<WindowInfo>, CoreError> {
     unsafe {
         let hwnd: HWND = GetForegroundWindow();
         if hwnd.is_null() {
-            debug!("active window none (GetForegroundWindow → null)");
+            debug!("no active window (GetForegroundWindow returned null)");
             return Ok(None);
         }
 

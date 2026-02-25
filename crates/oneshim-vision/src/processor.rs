@@ -93,18 +93,18 @@ impl FrameProcessor for EdgeFrameProcessor {
             })
         } else if importance >= 0.5 {
             debug!("(in progress {:.1})", importance);
-                if let Some(prev) = &self.prev_frame {
-                    if let Some(delta_region) = delta::compute_delta(prev, &current_frame) {
-                        let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::Medium)?;
-                        Some(ImagePayload::Delta {
-                            data: encoded,
-                            region: delta_region.region,
-                            changed_ratio: delta_region.changed_ratio,
-                        })
-                    } else {
-                        None // no meaningful change
-                    }
+            if let Some(prev) = &self.prev_frame {
+                if let Some(delta_region) = delta::compute_delta(prev, &current_frame) {
+                    let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::Medium)?;
+                    Some(ImagePayload::Delta {
+                        data: encoded,
+                        region: delta_region.region,
+                        changed_ratio: delta_region.changed_ratio,
+                    })
                 } else {
+                    None // no meaningful change
+                }
+            } else {
                 let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::Medium)?;
                 Some(ImagePayload::Full {
                     data: encoded,

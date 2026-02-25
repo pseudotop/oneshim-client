@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone)]
 pub struct ContextPanelState {
     pub active_app: Option<String>,

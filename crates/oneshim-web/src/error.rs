@@ -1,4 +1,3 @@
-
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -7,13 +6,13 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
-    #[error("within부 server error: {0}")]
+    #[error("Internal server error: {0}")]
     Internal(String),
 
-    #[error("리소스를 찾을 수 none: {0}")]
+    #[error("Resource not found: {0}")]
     NotFound(String),
 
-    #[error("잘못된 request: {0}")]
+    #[error("Invalid request: {0}")]
     BadRequest(String),
 }
 

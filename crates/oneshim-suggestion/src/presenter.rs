@@ -35,11 +35,11 @@ pub fn present_all(suggestions: &[Suggestion]) -> Vec<SuggestionView> {
 
 fn type_to_title(st: &SuggestionType) -> String {
     match st {
-        SuggestionType::WorkGuidance => "업무 가이던스".to_string(),
-        SuggestionType::EmailDraft => "이메일 초안".to_string(),
-        SuggestionType::ProductivityTip => "생산성 팁".to_string(),
-        SuggestionType::WorkflowOptimization => "워크플로우 최적화".to_string(),
-        SuggestionType::ContextBased => "context 기반 suggestion".to_string(),
+        SuggestionType::WorkGuidance => "Work Guidance".to_string(),
+        SuggestionType::EmailDraft => "Email Draft".to_string(),
+        SuggestionType::ProductivityTip => "Productivity Tip".to_string(),
+        SuggestionType::WorkflowOptimization => "Workflow Optimization".to_string(),
+        SuggestionType::ContextBased => "Context-Based Suggestion".to_string(),
     }
 }
 
@@ -55,10 +55,10 @@ fn type_to_icon(st: &SuggestionType) -> String {
 
 fn priority_to_label(p: &Priority) -> String {
     match p {
-        Priority::Critical => "긴급".to_string(),
-        Priority::High => "높음".to_string(),
-        Priority::Medium => "보통".to_string(),
-        Priority::Low => "낮음".to_string(),
+        Priority::Critical => "Critical".to_string(),
+        Priority::High => "High".to_string(),
+        Priority::Medium => "Medium".to_string(),
+        Priority::Low => "Low".to_string(),
     }
 }
 
@@ -76,13 +76,13 @@ fn format_relative_time(dt: chrono::DateTime<chrono::Utc>) -> String {
     let diff = now - dt;
 
     if diff.num_seconds() < 60 {
-        "방금 전".to_string()
+        "Just now".to_string()
     } else if diff.num_minutes() < 60 {
-        format!("{}분 전", diff.num_minutes())
+        format!("{}m ago", diff.num_minutes())
     } else if diff.num_hours() < 24 {
-        format!("{}시간 전", diff.num_hours())
+        format!("{}h ago", diff.num_hours())
     } else {
-        format!("{}일 전", diff.num_days())
+        format!("{}d ago", diff.num_days())
     }
 }
 
@@ -109,8 +109,8 @@ mod tests {
     fn present_suggestion() {
         let view = present(&make_suggestion());
         assert_eq!(view.id, "sug_001");
-        assert_eq!(view.title, "업무 가이던스");
-        assert_eq!(view.priority_label, "높음");
+        assert_eq!(view.title, "Work Guidance");
+        assert_eq!(view.priority_label, "High");
         assert_eq!(view.priority_color, "#F97316");
         assert_eq!(view.confidence_text, "95%");
         assert!(view.is_actionable);
@@ -133,7 +133,10 @@ mod tests {
 
     #[test]
     fn type_titles() {
-        assert_eq!(type_to_title(&SuggestionType::EmailDraft), "이메일 초안");
-        assert_eq!(type_to_title(&SuggestionType::ProductivityTip), "생산성 팁");
+        assert_eq!(type_to_title(&SuggestionType::EmailDraft), "Email Draft");
+        assert_eq!(
+            type_to_title(&SuggestionType::ProductivityTip),
+            "Productivity Tip"
+        );
     }
 }

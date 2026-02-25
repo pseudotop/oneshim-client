@@ -8,7 +8,6 @@ use crate::error::CoreError;
 
 pub const CURRENT_POLICY_VERSION: &str = "1.0.0";
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsentPermissions {
     // --- Tier 1 ---
@@ -52,7 +51,6 @@ impl Default for ConsentPermissions {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsentRecord {
     pub consent_id: String,
@@ -63,7 +61,6 @@ pub struct ConsentRecord {
     pub data_retention_days: u32,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConsentStatus {
     NotGranted,
@@ -71,7 +68,6 @@ pub enum ConsentStatus {
     Expired,
     UpdateRequired,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDataExport {
@@ -164,7 +160,6 @@ impl ConsentManager {
             .unwrap_or(false)
     }
 
-
     fn load_from_file(path: &PathBuf) -> Option<ConsentRecord> {
         let data = std::fs::read_to_string(path).ok()?;
         serde_json::from_str(&data).ok()
@@ -179,7 +174,6 @@ impl ConsentManager {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -75,5 +75,4 @@ pub fn set_regular_mode() {
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

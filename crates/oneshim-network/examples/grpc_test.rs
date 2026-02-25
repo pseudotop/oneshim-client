@@ -205,7 +205,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("{} stream error: {}", out.warn(), e);
                         }
                         Err(_) => {
-                            println!("{} timeout (5s within suggestion none - normal)", out.timeout());
+                            println!(
+                                "{} timeout (5s within suggestion none - normal)",
+                                out.timeout()
+                            );
                         }
                     }
                 }
@@ -219,7 +222,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .send_feedback(
                     "test-suggestion-001",
                     FeedbackType::Accepted,
-                    Some("test feedback입니다"),
+                    Some("test feedback"),
                 )
                 .await
             {
@@ -252,7 +255,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 Ok(response) => {
                     println!(
-                        "  {} WorkGuidance suggestion query success: {} 개",
+                        "  {} WorkGuidance suggestion query success: {} items",
                         out.ok(),
                         response.suggestions.len()
                     );

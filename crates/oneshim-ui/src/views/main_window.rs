@@ -28,7 +28,7 @@ impl MainWindowState {
     pub fn new() -> Self {
         Self {
             is_visible: false,
-            connection_status: "connection 안됨".to_string(),
+            connection_status: "connection unavailable".to_string(),
             active_app: None,
 
             cpu_usage: 0.0,
@@ -117,7 +117,7 @@ mod tests {
     fn default_state() {
         let state = MainWindowState::new();
         assert!(!state.is_visible);
-        assert_eq!(state.connection_status, "connection 안됨");
+        assert_eq!(state.connection_status, "connection unavailable");
     }
 
     #[test]

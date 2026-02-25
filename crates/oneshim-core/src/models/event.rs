@@ -64,7 +64,6 @@ pub struct EventBatch {
     pub created_at: DateTime<Utc>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputActivityEvent {
     pub timestamp: DateTime<Utc>,
@@ -93,7 +92,6 @@ pub struct KeyboardActivity {
     pub correction_count: u32,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessSnapshotEvent {
     pub timestamp: DateTime<Utc>,
@@ -114,7 +112,6 @@ pub struct ProcessDetail {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub executable_path: Option<String>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowLayoutEvent {

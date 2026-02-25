@@ -53,7 +53,7 @@ impl ProcessMonitor for ProcessTracker {
         let mut sys = self
             .sys
             .lock()
-            .map_err(|e| CoreError::Internal(format!("시스템 잠금 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
         sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
         let mut processes: Vec<ProcessInfo> = sys
@@ -86,7 +86,7 @@ impl ProcessMonitor for ProcessTracker {
         let mut sys = self
             .sys
             .lock()
-            .map_err(|e| CoreError::Internal(format!("시스템 잠금 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire system lock: {e}")))?;
         sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
         let now = std::time::SystemTime::now()

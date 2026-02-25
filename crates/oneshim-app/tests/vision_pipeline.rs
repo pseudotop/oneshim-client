@@ -36,7 +36,7 @@ fn trigger_produces_capture_requests() {
     let req = req.unwrap();
     assert!(
         req.importance >= 0.8,
-        "error event 중요도가 0.8 이상이어야 함"
+        "error event severity should be >= 0.8"
     );
 
     let switch_event = make_event("Firefox", "Google", Some("Code"));

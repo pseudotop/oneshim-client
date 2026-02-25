@@ -1,4 +1,3 @@
-
 use axum::{
     extract::{Query, State},
     http::header,
@@ -196,7 +195,7 @@ fn export_response<T: Serialize>(
         }
         _ => {
             let json = serde_json::to_string_pretty(records)
-                .map_err(|e| ApiError::Internal(format!("JSON 직렬화 failure: {e}")))?;
+                .map_err(|e| ApiError::Internal(format!("JSON serialization failed: {e}")))?;
             let filename = format!("{filename_prefix}_{now}.json");
             Ok((
                 [
@@ -222,7 +221,7 @@ fn records_to_csv<T: Serialize>(records: &[T]) -> Result<String, ApiError> {
         .iter()
         .map(serde_json::to_value)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| ApiError::Internal(format!("JSON 변환 failure: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("JSON conversion failed: {e}")))?;
 
     let headers: Vec<String> = json_values
         .first()
@@ -238,18 +237,16 @@ fn records_to_csv<T: Serialize>(records: &[T]) -> Result<String, ApiError> {
                 .iter()
                 .map(|h| {
                     obj.get(h)
-                        .map(|v| {
-                            match v {
-                                serde_json::Value::String(s) => {
-                                    if s.contains(',') || s.contains('"') || s.contains('\n') {
-                                        format!("\"{}\"", s.replace('"', "\"\""))
-                                    } else {
-                                        s.clone()
-                                    }
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => {
+                                if s.contains(',') || s.contains('"') || s.contains('\n') {
+                                    format!("\"{}\"", s.replace('"', "\"\""))
+                                } else {
+                                    s.clone()
                                 }
-                                serde_json::Value::Null => String::new(),
-                                other => other.to_string(),
                             }
+                            serde_json::Value::Null => String::new(),
+                            other => other.to_string(),
                         })
                         .unwrap_or_default()
                 })

@@ -70,7 +70,7 @@ impl NotificationManager {
 
         let mins = idle_secs / 60;
         let title = "💤 idle state notification";
-        let body = format!("{}분 동안 활동이 없습니다. 휴식 중이신가요?", mins);
+        let body = format!("No activity for {} minutes. Are you taking a break?", mins);
 
         if let Err(e) = self.notifier.show_notification(title, &body).await {
             debug!("idle notification failure: {e}");
@@ -109,11 +109,14 @@ impl NotificationManager {
         let title = "⏰ 휴식 시간 notification";
         let body = if hours > 0 {
             format!(
-                "{}시간 {}분 동안 작업 중입니다. 잠시 휴식을 취해보세요!",
+                "{}시간 Working for {} minutes. Consider taking a short break!",
                 hours, mins
             )
         } else {
-            format!("{}분 동안 작업 중입니다. 잠시 휴식을 취해보세요!", mins)
+            format!(
+                "Working for {} minutes. Consider taking a short break!",
+                mins
+            )
         };
 
         if let Err(e) = self.notifier.show_notification(title, &body).await {
@@ -152,9 +155,9 @@ impl NotificationManager {
                 cpu_percent, memory_percent
             )
         } else if cpu_percent >= threshold {
-            format!("CPU 사용률이 {:.1}%입니다.", cpu_percent)
+            format!("CPU usage is {:.1}%.", cpu_percent)
         } else {
-            format!("메모리 사용률이 {:.1}%입니다.", memory_percent)
+            format!("Memory usage is {:.1}%.", memory_percent)
         };
 
         if let Err(e) = self.notifier.show_notification(title, &body).await {
@@ -289,7 +292,6 @@ mod tests {
         assert_eq!(notifier.calls(), 1);
     }
 
-
     #[tokio::test]
     async fn memory_high_usage_triggers() {
         let config = NotificationConfig {
@@ -343,7 +345,7 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        manager.notify("test", "notification 본문").await;
+        manager.notify("test", "notification body").await;
         assert_eq!(notifier.calls(), 0);
     }
 
@@ -356,7 +358,7 @@ mod tests {
         let notifier = Arc::new(MockNotifier::new());
         let manager = NotificationManager::new(config, notifier.clone());
 
-        manager.notify("test", "notification 본문").await;
+        manager.notify("test", "notification body").await;
         assert_eq!(notifier.calls(), 1);
     }
 
@@ -370,7 +372,7 @@ mod tests {
         let manager = NotificationManager::new(config, notifier.clone());
 
         manager.reset_session().await;
-        manager.notify("test", "리셋 후").await;
+        manager.notify("test", "after reset").await;
         assert_eq!(notifier.calls(), 1);
     }
 

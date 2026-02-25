@@ -35,7 +35,9 @@ pub trait ApiClient: Send + Sync {
 
 #[derive(Debug, Clone)]
 pub enum SseEvent {
-    Connected { session_id: String },
+    Connected {
+        session_id: String,
+    },
     Suggestion(Suggestion),
     Update(serde_json::Value),
     Heartbeat {

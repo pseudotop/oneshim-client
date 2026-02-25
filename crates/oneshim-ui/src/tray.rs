@@ -186,15 +186,14 @@ fn load_icon() -> Result<tray_icon::Icon, String> {
     use tray_icon::Icon;
 
     let image = image::load_from_memory(TRAY_ICON_DATA)
-        .map_err(|e| format!("아이콘 로드 failure: {e}"))?
+        .map_err(|e| format!("Icon load failed: {e}"))?
         .into_rgba8();
 
     let (width, height) = image.dimensions();
     let rgba = image.into_raw();
 
-    Icon::from_rgba(rgba, width, height).map_err(|e| format!("아이콘 create failure: {e}"))
+    Icon::from_rgba(rgba, width, height).map_err(|e| format!("Icon creation failed: {e}"))
 }
-
 
 #[cfg(target_os = "linux")]
 pub struct TrayManager;

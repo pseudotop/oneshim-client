@@ -66,7 +66,7 @@ pub fn encode_webp(image: &DynamicImage, quality: WebPQuality) -> Result<Vec<u8>
     }
 
     debug!(
-        "WebP 인코딩: {}x{} → {} bytes (품질 {}, 압축률 {:.1}%)",
+        "WebP encoding: {}x{} → {} bytes (quality {}, compression ratio {:.1}%)",
         w,
         h,
         encoded_vec.len(),
@@ -248,7 +248,7 @@ mod tests {
         }
 
         let ratio = STATS_HIGH.average_ratio();
-        assert!(ratio > 0.0 && ratio < 1.0, "압축률: {}", ratio);
+        assert!(ratio > 0.0 && ratio < 1.0, "compression ratio: {}", ratio);
     }
 
     #[test]

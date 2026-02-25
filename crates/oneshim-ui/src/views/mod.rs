@@ -1,4 +1,3 @@
-
 pub mod context_panel;
 pub mod main_window;
 pub mod metrics_chart;

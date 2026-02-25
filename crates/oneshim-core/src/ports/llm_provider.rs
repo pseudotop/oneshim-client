@@ -42,7 +42,7 @@ mod tests {
     #[test]
     fn screen_context_serde() {
         let ctx = ScreenContext {
-            visible_texts: vec!["file".to_string(), "편집".to_string()],
+            visible_texts: vec!["file".to_string(), "edit".to_string()],
             active_app: "Visual Studio Code".to_string(),
             active_window_title: "main.rs — VSCode".to_string(),
             layout_description: None,

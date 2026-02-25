@@ -63,7 +63,7 @@ mod tests {
                 confidence: 0.88,
             },
             OcrResult {
-                text: "편집".to_string(),
+                text: "edit".to_string(),
                 x: 50,
                 y: 0,
                 width: 40,
@@ -74,6 +74,6 @@ mod tests {
         let json = serde_json::to_string(&results).unwrap();
         let deser: Vec<OcrResult> = serde_json::from_str(&json).unwrap();
         assert_eq!(deser.len(), 2);
-        assert_eq!(deser[1].text, "편집");
+        assert_eq!(deser[1].text, "edit");
     }
 }

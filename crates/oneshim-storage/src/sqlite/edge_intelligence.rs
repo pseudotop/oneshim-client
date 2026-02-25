@@ -23,7 +23,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let now = Utc::now();
         let category_str = format!("{:?}", category);
@@ -33,7 +33,7 @@ impl SqliteStorage {
              VALUES (?1, ?2, ?3, 'active')",
             rusqlite::params![now.to_rfc3339(), primary_app, category_str],
         )
-        .map_err(|e| CoreError::Internal(format!("작업 session started failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to start work session: {e}")))?;
 
         let id = conn.last_insert_rowid();
         debug!(
@@ -58,7 +58,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let result = conn.query_row(
             "SELECT id, started_at, primary_app, category, interruption_count, deep_work_secs, duration_secs
@@ -106,7 +106,9 @@ impl SqliteStorage {
                 }))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::Internal(format!("작업 session query failure: {e}"))),
+            Err(e) => Err(CoreError::Internal(format!(
+                "Failed to query work session: {e}"
+            ))),
         }
     }
 
@@ -115,7 +117,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let now = Utc::now();
         let now_str = now.to_rfc3339();
@@ -131,7 +133,7 @@ impl SqliteStorage {
                 rusqlite::params![now_str, session_id],
                 |row| row.get(0),
             )
-            .map_err(|e| CoreError::Internal(format!("작업 session ended failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to end work session: {e}")))?;
 
         debug!(
             "작업 session ended: id={}, duration={}초",
@@ -144,13 +146,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE work_sessions SET interruption_count = interruption_count + 1 WHERE id = ?1",
             rusqlite::params![session_id],
         )
-        .map_err(|e| CoreError::Internal(format!("인터럽션 카운트 증가 failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to increment interruption count: {e}")))?;
 
         Ok(())
     }
@@ -159,13 +161,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE work_sessions SET deep_work_secs = deep_work_secs + ?1 WHERE id = ?2",
             rusqlite::params![secs as i64, session_id],
         )
-        .map_err(|e| CoreError::Internal(format!("deep_work_secs 증가 failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to increment deep_work_secs: {e}")))?;
 
         Ok(())
     }
@@ -182,7 +184,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -193,13 +195,13 @@ impl SqliteStorage {
                  GROUP BY primary_app
                  ORDER BY total_secs DESC",
             )
-            .map_err(|e| CoreError::Internal(format!("SQL 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare SQL: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Query failed: {e}")))?;
 
         let result: Vec<_> = rows.flatten().collect();
 
@@ -215,7 +217,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -226,13 +228,13 @@ impl SqliteStorage {
                  GROUP BY day
                  ORDER BY day",
             )
-            .map_err(|e| CoreError::Internal(format!("SQL 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare SQL: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Query failed: {e}")))?;
 
         let result: Vec<_> = rows.flatten().collect();
 
@@ -246,7 +248,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "INSERT INTO interruptions (interrupted_at, from_app, from_category, to_app, to_category, snapshot_frame_id)
@@ -260,7 +262,7 @@ impl SqliteStorage {
                 interruption.snapshot_frame_id,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("인터럽션 record failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to record interruption: {e}")))?;
 
         let id = conn.last_insert_rowid();
         debug!(
@@ -278,13 +280,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE interruptions SET resumed_at = ?1, resumed_to_app = ?2 WHERE id = ?3",
             rusqlite::params![Utc::now().to_rfc3339(), resumed_to_app, interruption_id],
         )
-        .map_err(|e| CoreError::Internal(format!("인터럽션 복귀 record failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to record interruption resume: {e}")))?;
 
         Ok(())
     }
@@ -293,7 +295,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let result = conn.query_row(
             "SELECT id, interrupted_at, from_app, from_category, to_app, to_category, snapshot_frame_id
@@ -340,7 +342,9 @@ impl SqliteStorage {
                 }))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(CoreError::Internal(format!("인터럽션 query failure: {e}"))),
+            Err(e) => Err(CoreError::Internal(format!(
+                "Failed to query interruptions: {e}"
+            ))),
         }
     }
 
@@ -356,7 +360,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let result = conn.query_row(
             "SELECT total_active_secs, deep_work_secs, communication_secs, context_switches,
@@ -406,11 +410,13 @@ impl SqliteStorage {
                     "INSERT INTO focus_metrics (date) VALUES (?1)",
                     rusqlite::params![date],
                 )
-                .map_err(|e| CoreError::Internal(format!("집중도 메트릭 create failure: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Failed to create focus metric: {e}")))?;
 
                 Ok(FocusMetrics::new(period_start, period_end))
             }
-            Err(e) => Err(CoreError::Internal(format!("집중도 메트릭 query failure: {e}"))),
+            Err(e) => Err(CoreError::Internal(format!(
+                "Failed to query focus metric: {e}"
+            ))),
         }
     }
 
@@ -422,7 +428,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE focus_metrics SET
@@ -448,7 +454,7 @@ impl SqliteStorage {
                 date,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("집중도 메트릭 update failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to update focus metric: {e}")))?;
 
         debug!(
             "집중도 메트릭 update: date={}, score={:.2}",
@@ -471,7 +477,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE focus_metrics SET
@@ -491,7 +497,7 @@ impl SqliteStorage {
                 date,
             ],
         )
-        .map_err(|e| CoreError::Internal(format!("집중도 메트릭 증분 update failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to increment focus metric: {e}")))?;
 
         Ok(())
     }
@@ -503,7 +509,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -511,7 +517,7 @@ impl SqliteStorage {
                         interruption_count, avg_focus_duration_secs, max_focus_duration_secs, focus_score
                  FROM focus_metrics ORDER BY date DESC LIMIT ?1",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![days as i64], |row| {
@@ -527,7 +533,7 @@ impl SqliteStorage {
                     row.get::<_, f32>(8)?,
                 ))
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut results = Vec::new();
         for row in rows {
@@ -541,7 +547,7 @@ impl SqliteStorage {
                 avg_focus_duration_secs,
                 max_focus_duration_secs,
                 focus_score,
-            ) = row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?;
+            ) = row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?;
 
             let (period_start, period_end) = Self::date_to_period_range(&date);
 
@@ -574,7 +580,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -585,7 +591,7 @@ impl SqliteStorage {
                  ORDER BY started_at DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to, limit as i64], |row| {
@@ -601,11 +607,11 @@ impl SqliteStorage {
                     duration_secs: row.get(8)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -619,7 +625,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -633,7 +639,7 @@ impl SqliteStorage {
                  ORDER BY interrupted_at DESC
                  LIMIT ?3",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![from, to, limit as i64], |row| {
@@ -649,11 +655,11 @@ impl SqliteStorage {
                     duration_secs: row.get::<_, Option<i64>>(8)?.map(|v| v as u64),
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -666,7 +672,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
             .prepare(
@@ -676,7 +682,7 @@ impl SqliteStorage {
                  ORDER BY created_at DESC
                  LIMIT ?2",
             )
-            .map_err(|e| CoreError::Internal(format!("쿼리 준비 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
             .query_map(rusqlite::params![cutoff, limit as i64], |row| {
@@ -694,11 +700,11 @@ impl SqliteStorage {
                     acted_at: row.get(6)?,
                 })
             })
-            .map_err(|e| CoreError::Internal(format!("쿼리 execution failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| CoreError::Internal(format!("행 read failure: {e}")))?);
+            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
         }
         Ok(records)
     }
@@ -710,7 +716,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let (suggestion_type, payload) = Self::serialize_suggestion(suggestion);
 
@@ -718,7 +724,7 @@ impl SqliteStorage {
             "INSERT INTO local_suggestions (suggestion_type, payload) VALUES (?1, ?2)",
             rusqlite::params![suggestion_type, payload],
         )
-        .map_err(|e| CoreError::Internal(format!("로컬 suggestion save failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to save local suggestion: {e}")))?;
 
         let id = conn.last_insert_rowid();
         debug!("suggestion save: id={}, type={}", id, suggestion_type);
@@ -729,7 +735,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET shown_at = datetime('now') WHERE id = ?1",
@@ -744,13 +750,13 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET dismissed_at = datetime('now') WHERE id = ?1",
             rusqlite::params![suggestion_id],
         )
-        .map_err(|e| CoreError::Internal(format!("suggestion 무시 record failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Failed to record suggestion dismissal: {e}")))?;
 
         Ok(())
     }
@@ -759,7 +765,7 @@ impl SqliteStorage {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| CoreError::Internal(format!("잠금 획득 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         conn.execute(
             "UPDATE local_suggestions SET acted_at = datetime('now') WHERE id = ?1",

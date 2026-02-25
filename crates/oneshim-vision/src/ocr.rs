@@ -11,16 +11,16 @@ pub enum OcrError {
     #[error("OCR initialize failure: {0}")]
     Init(String),
 
-    #[error("OCR 이미지 설정 failure: {0}")]
+    #[error("OCR image setup failed: {0}")]
     ImageSetup(String),
 
-    #[error("OCR 텍스트 추출 failure: {0}")]
+    #[error("OCR text extraction failed: {0}")]
     Extraction(String),
 
-    #[error("빈 이미지: 너비 또는 높이가 0")]
+    #[error("Empty image: width or height is 0")]
     EmptyImage,
 
-    #[error("OCR 비동기 작업 failure: {0}")]
+    #[error("OCR async task failed: {0}")]
     Async(String),
 }
 
@@ -69,7 +69,7 @@ impl OcrExtractor {
             .map_err(|e| OcrError::Init(format!("{e}")))?;
 
         lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
-            .map_err(|_| OcrError::ImageSetup("이미지 메모리 설정 failure".to_string()))?;
+            .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
         let text = lt
             .get_utf8_text()
@@ -108,7 +108,7 @@ impl OcrExtractor {
                 .map_err(|e| OcrError::Init(format!("{e}")))?;
 
             lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("이미지 메모리 설정 failure".to_string()))?;
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
             let text = lt
                 .get_utf8_text()
@@ -123,7 +123,7 @@ impl OcrExtractor {
             }
         })
         .await
-        .map_err(|e| OcrError::Async(format!("작업 조인 failure: {e}")))?;
+        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?;
 
         result
     }
@@ -149,7 +149,7 @@ impl OcrExtractor {
         let roi_y = (h - roi_h) / 2;
 
         debug!(
-            "OCR ROI: 원본 {}x{} → ROI {}x{} at ({}, {})",
+            "OCR ROI: source {}x{} -> ROI {}x{} at ({}, {})",
             w, h, roi_w, roi_h, roi_x, roi_y
         );
 
@@ -199,11 +199,11 @@ impl OcrExtractor {
                 .map_err(|e| OcrError::Init(format!("{e}")))?;
 
             lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
-                .map_err(|_| OcrError::ImageSetup("이미지 메모리 설정 failure".to_string()))?;
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
             let boxes = lt
                 .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
-                .ok_or_else(|| OcrError::Extraction("워드 박스 추출 failure".to_string()))?;
+                .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
 
             let full_text = lt
                 .get_utf8_text()
@@ -228,7 +228,7 @@ impl OcrExtractor {
             Ok(result)
         })
         .await
-        .map_err(|e| OcrError::Async(format!("작업 조인 failure: {e}")))?
+        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?
     }
 }
 
@@ -261,16 +261,16 @@ mod tests {
         assert!(e1.to_string().contains("initialize"));
 
         let e2 = OcrError::ImageSetup("test".to_string());
-        assert!(e2.to_string().contains("이미지"));
+        assert!(e2.to_string().contains("image"));
 
         let e3 = OcrError::Extraction("test".to_string());
-        assert!(e3.to_string().contains("추출"));
+        assert!(e3.to_string().contains("extraction"));
 
         let e4 = OcrError::EmptyImage;
-        assert!(e4.to_string().contains("빈 이미지"));
+        assert!(e4.to_string().contains("Empty image"));
 
         let e5 = OcrError::Async("test".to_string());
-        assert!(e5.to_string().contains("비동기"));
+        assert!(e5.to_string().contains("async"));
     }
 
     #[test]

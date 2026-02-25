@@ -8,7 +8,6 @@ use oneshim_core::models::intent::{ElementBounds, UiElement};
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
 
-
 ///
 pub struct NoOpInputDriver;
 
@@ -49,7 +48,6 @@ impl InputDriver for NoOpInputDriver {
     }
 }
 
-
 ///
 pub struct NoOpElementFinder;
 
@@ -70,7 +68,6 @@ impl ElementFinder for NoOpElementFinder {
     }
 }
 
-
 ///
 #[cfg(feature = "enigo")]
 pub struct EnigoInputDriver {
@@ -82,7 +79,7 @@ impl EnigoInputDriver {
     pub fn new() -> Result<Self, CoreError> {
         let settings = enigo::Settings::default();
         let enigo = enigo::Enigo::new(&settings)
-            .map_err(|e| CoreError::Internal(format!("입력 드라이버 initialize failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Failed to initialize input driver: {e}")))?;
         Ok(Self {
             enigo: tokio::sync::Mutex::new(enigo),
         })
@@ -143,7 +140,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .move_mouse(x, y, enigo::Coordinate::Abs)
-            .map_err(|e| CoreError::Internal(format!("마우스 이동 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Mouse move failed: {e}")))?;
         Ok(())
     }
 
@@ -153,7 +150,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .move_mouse(x, y, enigo::Coordinate::Abs)
-            .map_err(|e| CoreError::Internal(format!("마우스 이동 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Mouse move failed: {e}")))?;
         let btn = match parse_mouse_button(button) {
             "right" => enigo::Button::Right,
             "middle" => enigo::Button::Middle,
@@ -161,7 +158,7 @@ impl InputDriver for EnigoInputDriver {
         };
         enigo
             .button(btn, enigo::Direction::Click)
-            .map_err(|e| CoreError::Internal(format!("마우스 클릭 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Mouse click failed: {e}")))?;
         Ok(())
     }
 
@@ -171,7 +168,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .text(text)
-            .map_err(|e| CoreError::Internal(format!("텍스트 입력 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Text input failed: {e}")))?;
         Ok(())
     }
 
@@ -181,7 +178,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .key(Self::parse_key(key), enigo::Direction::Press)
-            .map_err(|e| CoreError::Internal(format!("키 누름 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Key press failed: {e}")))?;
         Ok(())
     }
 
@@ -191,7 +188,7 @@ impl InputDriver for EnigoInputDriver {
         let mut enigo = self.enigo.lock().await;
         enigo
             .key(Self::parse_key(key), enigo::Direction::Release)
-            .map_err(|e| CoreError::Internal(format!("키 놓음 failure: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Key release failed: {e}")))?;
         Ok(())
     }
 
@@ -202,12 +199,12 @@ impl InputDriver for EnigoInputDriver {
         for key_str in keys {
             enigo
                 .key(Self::parse_key(key_str), enigo::Direction::Press)
-                .map_err(|e| CoreError::Internal(format!("단축키 Press failure: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Hotkey press failed: {e}")))?;
         }
         for key_str in keys.iter().rev() {
             enigo
                 .key(Self::parse_key(key_str), enigo::Direction::Release)
-                .map_err(|e| CoreError::Internal(format!("단축키 Release failure: {e}")))?;
+                .map_err(|e| CoreError::Internal(format!("Hotkey release failed: {e}")))?;
         }
         Ok(())
     }
@@ -231,7 +228,6 @@ impl InputDriver for EnigoInputDriver {
         }
     }
 }
-
 
 ///
 pub fn parse_mouse_button(button: &str) -> &str {
@@ -259,7 +255,6 @@ pub fn create_platform_input_driver() -> Box<dyn InputDriver> {
     }
     Box::new(NoOpInputDriver)
 }
-
 
 #[cfg(test)]
 mod tests {

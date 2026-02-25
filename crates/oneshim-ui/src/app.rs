@@ -791,76 +791,72 @@ impl OneshimApp {
         .align_y(Alignment::Center);
 
         match self.metrics_view_mode {
-            MetricsViewMode::Simple => {
-                column![
-                    header,
-                    row![
-                        text(s.cpu).size(12).width(Length::Fixed(60.0)),
-                        text(format!(
-                            "{}: {:.1}%  /  {}: {:.1}%",
-                            s.agent,
-                            self.main_state.cpu_usage,
-                            s.system,
-                            self.main_state.system_cpu_usage
-                        ))
-                        .size(12),
-                    ]
-                    .spacing(10)
-                    .align_y(Alignment::Center),
-                    row![
-                        text(s.memory).size(12).width(Length::Fixed(60.0)),
-                        text(format!(
-                            "{}: {:.1} MB  /  {}: {} / {}",
-                            s.agent,
-                            self.main_state.memory_usage_mb,
-                            s.system,
-                            format_memory_gb(self.main_state.system_memory_used_mb),
-                            format_memory_gb(self.main_state.system_memory_total_mb)
-                        ))
-                        .size(12),
-                    ]
-                    .spacing(10)
-                    .align_y(Alignment::Center),
+            MetricsViewMode::Simple => column![
+                header,
+                row![
+                    text(s.cpu).size(12).width(Length::Fixed(60.0)),
+                    text(format!(
+                        "{}: {:.1}%  /  {}: {:.1}%",
+                        s.agent,
+                        self.main_state.cpu_usage,
+                        s.system,
+                        self.main_state.system_cpu_usage
+                    ))
+                    .size(12),
                 ]
-                .spacing(8)
-                .into()
-            }
-            MetricsViewMode::Detail => {
-                column![
-                    header,
-                    row![
-                        text(s.cpu).size(12).width(Length::Fixed(60.0)),
-                        text(format!(
-                            "{}: {:.1}%  /  {}: {:.1}%",
-                            s.agent,
-                            self.main_state.cpu_usage,
-                            s.system,
-                            self.main_state.system_cpu_usage
-                        ))
-                        .size(12),
-                    ]
-                    .spacing(10)
-                    .align_y(Alignment::Center),
-                    cpu_chart(self.main_state.cpu_history_slice()),
-                    row![
-                        text(s.memory).size(12).width(Length::Fixed(60.0)),
-                        text(format!(
-                            "{}: {:.1} MB  /  {}: {} / {}",
-                            s.agent,
-                            self.main_state.memory_usage_mb,
-                            s.system,
-                            format_memory_gb(self.main_state.system_memory_used_mb),
-                            format_memory_gb(self.main_state.system_memory_total_mb)
-                        ))
-                        .size(12),
-                    ]
-                    .spacing(10)
-                    .align_y(Alignment::Center),
-                    memory_chart(self.main_state.memory_history_slice()),
+                .spacing(10)
+                .align_y(Alignment::Center),
+                row![
+                    text(s.memory).size(12).width(Length::Fixed(60.0)),
+                    text(format!(
+                        "{}: {:.1} MB  /  {}: {} / {}",
+                        s.agent,
+                        self.main_state.memory_usage_mb,
+                        s.system,
+                        format_memory_gb(self.main_state.system_memory_used_mb),
+                        format_memory_gb(self.main_state.system_memory_total_mb)
+                    ))
+                    .size(12),
                 ]
-                .spacing(8)
-                .into()
-            }
+                .spacing(10)
+                .align_y(Alignment::Center),
+            ]
+            .spacing(8)
+            .into(),
+            MetricsViewMode::Detail => column![
+                header,
+                row![
+                    text(s.cpu).size(12).width(Length::Fixed(60.0)),
+                    text(format!(
+                        "{}: {:.1}%  /  {}: {:.1}%",
+                        s.agent,
+                        self.main_state.cpu_usage,
+                        s.system,
+                        self.main_state.system_cpu_usage
+                    ))
+                    .size(12),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+                cpu_chart(self.main_state.cpu_history_slice()),
+                row![
+                    text(s.memory).size(12).width(Length::Fixed(60.0)),
+                    text(format!(
+                        "{}: {:.1} MB  /  {}: {} / {}",
+                        s.agent,
+                        self.main_state.memory_usage_mb,
+                        s.system,
+                        format_memory_gb(self.main_state.system_memory_used_mb),
+                        format_memory_gb(self.main_state.system_memory_total_mb)
+                    ))
+                    .size(12),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+                memory_chart(self.main_state.memory_history_slice()),
+            ]
+            .spacing(8)
+            .into(),
         }
     }
 
@@ -1089,7 +1085,7 @@ mod tests {
             .with_locale(Locale::Ko)
             .with_offline_mode(true);
         assert!(app.offline_mode);
-        assert_eq!(app.main_state.connection_status, "오프라인 mode");
+        assert_eq!(app.main_state.connection_status, "offline mode");
     }
 
     #[test]
@@ -1179,7 +1175,7 @@ mod tests {
         assert_eq!(app.title(), "ONESHIM");
 
         let _ = app.update(Message::ToggleSettings);
-        assert_eq!(app.title(), "ONESHIM - 설정");
+        assert_eq!(app.title(), "ONESHIM - Settings");
 
         let _ = app.update(Message::ChangeLanguage(Locale::En));
         assert_eq!(app.title(), "ONESHIM - Settings");
@@ -1188,8 +1184,8 @@ mod tests {
     #[test]
     fn update_connection_status() {
         let mut app = OneshimApp::new();
-        let _ = app.update(Message::UpdateConnectionStatus("connection됨".to_string()));
-        assert_eq!(app.main_state.connection_status, "connection됨");
+        let _ = app.update(Message::UpdateConnectionStatus("connected".to_string()));
+        assert_eq!(app.main_state.connection_status, "connected");
     }
 
     #[test]
@@ -1220,7 +1216,7 @@ mod tests {
         let app = OneshimApp::new().with_locale(Locale::Ko);
         let s = app.strings();
         assert_eq!(s.quit, "ended");
-        assert_eq!(s.settings, "[설정]");
+        assert_eq!(s.settings, "[Settings]");
     }
 
     #[test]

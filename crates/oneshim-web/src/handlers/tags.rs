@@ -1,4 +1,3 @@
-
 use axum::extract::{Path, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -71,7 +70,7 @@ pub async fn get_tag(
     let tag = state
         .storage
         .get_tag(tag_id)?
-        .ok_or_else(|| ApiError::NotFound(format!("태그 ID: {tag_id}")))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Tag ID: {tag_id}")))?;
 
     Ok(Json(TagResponse {
         id: tag.id,
@@ -91,13 +90,13 @@ pub async fn update_tag(
     let updated = state.storage.update_tag(tag_id, &req.name, &req.color)?;
 
     if !updated {
-        return Err(ApiError::NotFound(format!("태그 ID: {tag_id}")));
+        return Err(ApiError::NotFound(format!("Tag ID: {tag_id}")));
     }
 
     let tag = state
         .storage
         .get_tag(tag_id)?
-        .ok_or_else(|| ApiError::NotFound(format!("태그 ID: {tag_id}")))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Tag ID: {tag_id}")))?;
 
     Ok(Json(TagResponse {
         id: tag.id,
@@ -116,7 +115,7 @@ pub async fn delete_tag(
     let deleted = state.storage.delete_tag(tag_id)?;
 
     if !deleted {
-        return Err(ApiError::NotFound(format!("태그 ID: {tag_id}")));
+        return Err(ApiError::NotFound(format!("Tag ID: {tag_id}")));
     }
 
     Ok(Json(

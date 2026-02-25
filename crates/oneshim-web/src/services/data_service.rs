@@ -1,4 +1,3 @@
-
 use crate::error::ApiError;
 use crate::handlers::data::{DeleteRangeRequest, DeleteResult};
 use crate::AppState;
@@ -49,7 +48,7 @@ pub fn delete_data_range(
     result.metrics_deleted = deleted.metrics_deleted;
     result.process_snapshots_deleted = deleted.process_snapshots_deleted;
     result.idle_periods_deleted = deleted.idle_periods_deleted;
-    result.message = format!("{}개의 레코드가 delete되었습니다", result.total());
+    result.message = format!("{} records were deleted", result.total());
 
     Ok(result)
 }
@@ -80,7 +79,7 @@ pub fn delete_all_data(state: &AppState) -> Result<DeleteResult, ApiError> {
     result.metrics_deleted = deleted.metrics_deleted;
     result.process_snapshots_deleted = deleted.process_snapshots_deleted;
     result.idle_periods_deleted = deleted.idle_periods_deleted;
-    result.message = format!("all 데이터가 delete되었습니다 ({}개 레코드)", result.total());
+    result.message = format!("All data was deleted ({} records)", result.total());
 
     Ok(result)
 }

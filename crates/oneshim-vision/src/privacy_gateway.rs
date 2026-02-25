@@ -7,7 +7,6 @@ use oneshim_core::consent::ConsentManager;
 
 use crate::privacy::{is_sensitive_app, sanitize_title_with_level, should_exclude};
 
-
 #[derive(Debug, Clone)]
 pub enum PrivacyDenied {
     NoConsent,
@@ -18,13 +17,12 @@ pub enum PrivacyDenied {
 impl std::fmt::Display for PrivacyDenied {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoConsent => write!(f, "OCR 처리 동의 필요"),
-            Self::SensitiveApp(app) => write!(f, "민감 앱 차단: {}", app),
-            Self::ExcludedByPolicy => write!(f, "policy에 의해 제외됨"),
+            Self::NoConsent => write!(f, "OCR consent is required"),
+            Self::SensitiveApp(app) => write!(f, "Blocked sensitive app: {}", app),
+            Self::ExcludedByPolicy => write!(f, "Excluded by policy"),
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct SanitizedImage {
@@ -158,7 +156,7 @@ impl PrivacyGateway {
             let img = match image::load_from_memory(image_data) {
                 Ok(img) => img,
                 Err(e) => {
-                    warn!("PII: image decoding failure — {e}");
+                    warn!("PII: image decoding failure: {e}");
                     return (image_data.to_vec(), 0);
                 }
             };
@@ -167,7 +165,7 @@ impl PrivacyGateway {
             let word_boxes = match extractor.extract_words_with_boxes(&img).await {
                 Ok(boxes) => boxes,
                 Err(e) => {
-                    debug!("PII: OCR failure — {e}, original return");
+                    debug!("PII: OCR failure: {e}, returning original image");
                     return (image_data.to_vec(), 0);
                 }
             };
@@ -183,7 +181,7 @@ impl PrivacyGateway {
             }
 
             debug!(
-                "PII 블러: {}개 영역 detection/병합 (총 {}개 워드)",
+                "PII blur: detected and merged {} region(s) from {} word box(es)",
                 pii_regions.len(),
                 word_boxes.len()
             );
@@ -220,7 +218,7 @@ impl PrivacyGateway {
             if let Err(e) = image::DynamicImage::ImageRgba8(result_img)
                 .write_to(&mut output, image::ImageFormat::Png)
             {
-                warn!("PII: image encoding failure — {e}");
+                warn!("PII: image encoding failure: {e}");
                 return (image_data.to_vec(), 0);
             }
 
@@ -377,7 +375,6 @@ impl PrivacyGateway {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -550,7 +547,7 @@ mod tests {
     #[test]
     fn privacy_denied_display() {
         let d1 = PrivacyDenied::NoConsent;
-        assert!(d1.to_string().contains("동의"));
+        assert!(d1.to_string().contains("consent"));
         let d2 = PrivacyDenied::SensitiveApp("Bank".to_string());
         assert!(d2.to_string().contains("Bank"));
         let d3 = PrivacyDenied::ExcludedByPolicy;

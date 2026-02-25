@@ -21,7 +21,10 @@ fn gzip_roundtrip_integration() {
         .unwrap();
 
     assert_eq!(data, decompressed);
-    assert!(compressed.len() < data.len(), "gzip이 데이터를 압축해야 함");
+    assert!(
+        compressed.len() < data.len(),
+        "gzip should compress the data"
+    );
 }
 
 #[test]
@@ -37,7 +40,10 @@ fn zstd_roundtrip_integration() {
         .unwrap();
 
     assert_eq!(data, decompressed);
-    assert!(compressed.len() < data.len(), "zstd가 데이터를 압축해야 함");
+    assert!(
+        compressed.len() < data.len(),
+        "zstd should compress the data"
+    );
 }
 
 #[test]
@@ -91,7 +97,7 @@ fn all_algorithms_handle_empty_data() {
         let decompressed = compressor.decompress(&compressed, algo).unwrap();
         assert!(
             decompressed.is_empty(),
-            "{algo:?} 빈 데이터 라운드트립 failure"
+            "{algo:?} empty-data roundtrip failed"
         );
     }
 }

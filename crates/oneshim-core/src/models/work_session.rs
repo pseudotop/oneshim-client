@@ -302,7 +302,9 @@ pub enum LocalSuggestion {
         communication_ratio: f32,
         suggested_focus_mins: u32,
     },
-    TakeBreak { continuous_work_mins: u32 },
+    TakeBreak {
+        continuous_work_mins: u32,
+    },
     RestoreContext {
         interrupted_app: String,
         interrupted_at: DateTime<Utc>,

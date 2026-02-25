@@ -15,7 +15,6 @@ use oneshim_core::models::ui_scene::{
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
-
 ///
 pub struct OcrElementFinder {
     ocr_provider: Arc<dyn OcrProvider>,
@@ -95,9 +94,9 @@ impl OcrElementFinder {
         screen_id: Option<&str>,
     ) -> Result<UiScene, CoreError> {
         let image_guard = self.last_image.read().await;
-        let (image_data, image_format) = image_guard
-            .as_ref()
-            .ok_or_else(|| CoreError::Internal("OCR 탐색기: 캡처 이미지가 없습니다".to_string()))?;
+        let (image_data, image_format) = image_guard.as_ref().ok_or_else(|| {
+            CoreError::Internal("OCR finder: captured image is missing".to_string())
+        })?;
 
         self.analyze_scene_from_image_data(
             image_data.clone(),
@@ -117,7 +116,7 @@ impl OcrElementFinder {
     ) -> Result<UiScene, CoreError> {
         let (screen_width, screen_height) = image::load_from_memory(&image_data)
             .map(|img| (img.width().max(1), img.height().max(1)))
-            .map_err(|e| CoreError::OcrError(format!("이미지 size 파싱 failure: {e}")))?;
+            .map_err(|e| CoreError::OcrError(format!("Failed to parse image size: {e}")))?;
 
         let ocr_results = self
             .ocr_provider
@@ -207,15 +206,15 @@ impl ElementFinder for OcrElementFinder {
         region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError> {
         let image_guard = self.last_image.read().await;
-        let (image_data, image_format) = image_guard
-            .as_ref()
-            .ok_or_else(|| CoreError::Internal("OCR 탐색기: 캡처 이미지가 없습니다".to_string()))?;
+        let (image_data, image_format) = image_guard.as_ref().ok_or_else(|| {
+            CoreError::Internal("OCR finder: captured image is missing".to_string())
+        })?;
 
         debug!(
             provider = self.ocr_provider.provider_name(),
             text = ?text,
             role = ?role,
-            "OCR 요소 탐색 started"
+            "OCR element search started"
         );
 
         let ocr_results = self
@@ -260,7 +259,6 @@ impl ElementFinder for OcrElementFinder {
     }
 }
 
-
 ///
 pub struct ChainedElementFinder {
     finders: Vec<Box<dyn ElementFinder>>,
@@ -287,7 +285,7 @@ impl ElementFinder for ChainedElementFinder {
                     debug!(
                         finder = finder.name(),
                         count = elements.len(),
-                        "체인 탐색기 success"
+                        "Chain finder succeeded"
                     );
                     return Ok(elements);
                 }
@@ -300,7 +298,7 @@ impl ElementFinder for ChainedElementFinder {
             }
         }
         Err(CoreError::ElementNotFound(format!(
-            "all 탐색기에서 요소를 찾지 못함 (text={:?}, role={:?})",
+            "No element found in all finders (text={:?}, role={:?})",
             text, role
         )))
     }
@@ -320,7 +318,7 @@ impl ElementFinder for ChainedElementFinder {
                     debug!(
                         finder = finder.name(),
                         error = %err,
-                        "scene 분석 failure, next 탐색기 attempt"
+                        "Scene analysis failed, trying next finder"
                     );
                     last_err = Some(err);
                 }
@@ -328,7 +326,7 @@ impl ElementFinder for ChainedElementFinder {
         }
 
         Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound("scene 분석을 지원하는 탐색기를 찾지 못함".to_string())
+            CoreError::ElementNotFound("No finder supports scene analysis".to_string())
         }))
     }
 
@@ -357,7 +355,7 @@ impl ElementFinder for ChainedElementFinder {
                     debug!(
                         finder = finder.name(),
                         error = %err,
-                        "이미지 scene 분석 failure, next 탐색기 attempt"
+                        "이미지 Scene analysis failed, trying next finder"
                     );
                     last_err = Some(err);
                 }
@@ -365,9 +363,7 @@ impl ElementFinder for ChainedElementFinder {
         }
 
         Err(last_err.unwrap_or_else(|| {
-            CoreError::ElementNotFound(
-                "이미지 scene 분석을 지원하는 탐색기를 찾지 못함".to_string(),
-            )
+            CoreError::ElementNotFound("No finder supports image scene analysis".to_string())
         }))
     }
 
@@ -375,7 +371,6 @@ impl ElementFinder for ChainedElementFinder {
         "chained"
     }
 }
-
 
 ///
 fn text_similarity(text: &str, query: &str) -> f64 {
@@ -390,7 +385,6 @@ fn text_similarity(text: &str, query: &str) -> f64 {
         0.0
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -410,7 +404,7 @@ mod tests {
 
     #[test]
     fn text_similarity_no_match() {
-        assert!((text_similarity("save", "열기")).abs() < f64::EPSILON);
+        assert!((text_similarity("save", "open")).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -464,7 +458,7 @@ mod tests {
                 confidence: 0.85,
             },
             OcrResult {
-                text: "편집".to_string(),
+                text: "edit".to_string(),
                 x: 100,
                 y: 0,
                 width: 40,
@@ -521,7 +515,7 @@ mod tests {
             confidence: 0.9,
         }];
 
-        let elements = OcrElementFinder::ocr_to_elements(&results, Some("without텍스트"), None, None);
+        let elements = OcrElementFinder::ocr_to_elements(&results, Some("no-text"), None, None);
         assert!(elements.is_empty());
     }
 
@@ -580,7 +574,7 @@ mod tests {
             _role: Option<&str>,
             _region: Option<&ElementBounds>,
         ) -> Result<Vec<UiElement>, CoreError> {
-            Err(CoreError::Internal("탐색 failure".to_string()))
+            Err(CoreError::Internal("Search failed".to_string()))
         }
         fn name(&self) -> &str {
             "failing"
@@ -625,7 +619,7 @@ mod tests {
         let success_finder = MockFinder {
             name: "success".to_string(),
             results: vec![UiElement {
-                text: "확인".to_string(),
+                text: "confirm".to_string(),
                 bounds: ElementBounds {
                     x: 10,
                     y: 10,
@@ -642,7 +636,7 @@ mod tests {
             ChainedElementFinder::new(vec![Box::new(FailingFinder), Box::new(success_finder)]);
 
         let result = chained
-            .find_element(Some("확인"), None, None)
+            .find_element(Some("confirm"), None, None)
             .await
             .unwrap();
         assert_eq!(result.len(), 1);

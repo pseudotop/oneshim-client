@@ -10,7 +10,7 @@ async fn auth_get_token_without_login() {
     let result = tm.get_token().await;
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
-    assert!(err_msg.contains("인증"));
+    assert!(err_msg.contains("Authentication"));
 }
 
 #[tokio::test]
@@ -19,7 +19,7 @@ async fn auth_refresh_without_login() {
     let result = tm.refresh().await;
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
-    assert!(err_msg.contains("인증"));
+    assert!(err_msg.contains("Authentication"));
 }
 
 #[tokio::test]

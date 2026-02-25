@@ -133,7 +133,7 @@ impl MockServer {
 
         let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
             .await
-            .expect("port 바인딩 failure");
+            .expect("failed to bind port");
 
         let local_addr = listener.local_addr().unwrap();
         let actual_port = local_addr.port();

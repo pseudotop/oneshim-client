@@ -7,7 +7,6 @@ use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::{InterpretedAction, LlmProvider, ScreenContext};
 
-
 ///
 /// - Claude (Anthropic): `POST /v1/messages`
 ///
@@ -26,7 +25,7 @@ impl RemoteLlmProvider {
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
         if config.api_key.is_empty() {
             return Err(CoreError::Config(
-                "AI LLM API 키 미설정. Settings에서 입력하세요.".into(),
+                "AI LLM API key is not configured. Set it in Settings.".into(),
             ));
         }
         let api_key = config.api_key.clone();
@@ -59,47 +58,48 @@ impl RemoteLlmProvider {
     }
 
     fn system_prompt() -> &'static str {
-        r#"당신은 UI 자동화 에이전트입니다.
-사용자의 의도를 해석하여 어떤 UI 요소를 조작해야 하는지 JSON으로 response하세요.
+        r#"You are a UI automation agent.
+Interpret the user's intent and return which UI element to act on as JSON.
 
-response 형식:
+Response schema:
 {
-  "target_text": "클릭할 텍스트 (없으면 null)",
-  "target_role": "button, input, link, menu 등 (없으면 null)",
-  "action_type": "click, type, hotkey, wait, activate 중 하나",
-  "confidence": 0.0~1.0 사이 신뢰도
+  "target_text": "Text to target (or null)",
+  "target_role": "button, input, link, menu, etc. (or null)",
+  "action_type": "one of click, type, hotkey, wait, activate",
+  "confidence": "confidence between 0.0 and 1.0"
 }
 
-화면에 보이는 텍스트 list과 사용자 의도를 기반으로 판단하세요.
-반드시 JSON만 response하세요."#
+Decide based on visible screen text and the user intent.
+Return JSON only."#
     }
 
     fn build_user_prompt(screen_context: &ScreenContext, intent_hint: &str) -> String {
         let mut prompt = String::new();
-        prompt.push_str(&format!("active 앱: {}\n", screen_context.active_app));
+        prompt.push_str(&format!("Active app: {}\n", screen_context.active_app));
         prompt.push_str(&format!(
-            "창 제목: {}\n",
+            "Window title: {}\n",
             screen_context.active_window_title
         ));
 
         if !screen_context.visible_texts.is_empty() {
-            prompt.push_str("화면 텍스트:\n");
+            prompt.push_str("Visible screen text:\n");
             for text in &screen_context.visible_texts {
                 prompt.push_str(&format!("  - {}\n", text));
             }
         }
 
         if let Some(layout) = &screen_context.layout_description {
-            prompt.push_str(&format!("레이아웃: {}\n", layout));
+            prompt.push_str(&format!("Layout: {}\n", layout));
         }
 
-        prompt.push_str(&format!("\n사용자 의도: {}\n", intent_hint));
+        prompt.push_str(&format!("\nUser intent: {}\n", intent_hint));
         prompt
     }
 
     fn parse_claude_response(body: &str) -> Result<InterpretedAction, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| CoreError::Internal(format!("LLM response JSON 파싱 failure: {}", e)))?;
+        let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+            CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e))
+        })?;
 
         let text = response
             .get("content")
@@ -107,7 +107,7 @@ response 형식:
             .and_then(|arr| arr.first())
             .and_then(|block| block.get("text"))
             .and_then(|t| t.as_str())
-            .ok_or_else(|| CoreError::Internal("LLM response에서 텍스트를 찾을 수 none".to_string()))?;
+            .ok_or_else(|| CoreError::Internal("No text found in LLM response".to_string()))?;
 
         let json_str = if let Some(start) = text.find('{') {
             if let Some(end) = text.rfind('}') {
@@ -121,7 +121,7 @@ response 형식:
 
         let action: InterpretedAction = serde_json::from_str(json_str).map_err(|e| {
             CoreError::Internal(format!(
-                "LLM response InterpretedAction 파싱 failure: {} (raw: {})",
+                "Failed to parse InterpretedAction from LLM response: {} (raw: {})",
                 e,
                 json_str.chars().take(200).collect::<String>()
             ))
@@ -131,8 +131,9 @@ response 형식:
     }
 
     fn parse_openai_response(body: &str) -> Result<InterpretedAction, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| CoreError::Internal(format!("LLM response JSON 파싱 failure: {}", e)))?;
+        let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+            CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e))
+        })?;
 
         let text = response
             .get("choices")
@@ -141,9 +142,7 @@ response 형식:
             .and_then(|choice| choice.get("message"))
             .and_then(|msg| msg.get("content"))
             .and_then(|t| t.as_str())
-            .ok_or_else(|| {
-                CoreError::Internal("OpenAI response에서 텍스트를 찾을 수 none".to_string())
-            })?;
+            .ok_or_else(|| CoreError::Internal("No text found in OpenAI response".to_string()))?;
 
         let json_str = if let Some(start) = text.find('{') {
             if let Some(end) = text.rfind('}') {
@@ -156,12 +155,13 @@ response 형식:
         };
 
         serde_json::from_str(json_str)
-            .map_err(|e| CoreError::Internal(format!("OpenAI response 파싱 failure: {}", e)))
+            .map_err(|e| CoreError::Internal(format!("Failed to parse OpenAI response: {}", e)))
     }
 
     fn parse_google_response(body: &str) -> Result<InterpretedAction, CoreError> {
-        let response: serde_json::Value = serde_json::from_str(body)
-            .map_err(|e| CoreError::Internal(format!("LLM response JSON 파싱 failure: {}", e)))?;
+        let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
+            CoreError::Internal(format!("LLM Failed to parse response JSON: {}", e))
+        })?;
 
         let text = response
             .get("candidates")
@@ -173,9 +173,7 @@ response 형식:
             .and_then(|parts| parts.first())
             .and_then(|part| part.get("text"))
             .and_then(|t| t.as_str())
-            .ok_or_else(|| {
-                CoreError::Internal("Google response에서 텍스트를 찾을 수 none".to_string())
-            })?;
+            .ok_or_else(|| CoreError::Internal("No text found in Google response".to_string()))?;
 
         let json_str = if let Some(start) = text.find('{') {
             if let Some(end) = text.rfind('}') {
@@ -188,7 +186,7 @@ response 형식:
         };
 
         serde_json::from_str(json_str)
-            .map_err(|e| CoreError::Internal(format!("Google response 파싱 failure: {}", e)))
+            .map_err(|e| CoreError::Internal(format!("Failed to parse Google response: {}", e)))
     }
 }
 
@@ -205,7 +203,7 @@ impl LlmProvider for RemoteLlmProvider {
             endpoint = %self.endpoint,
             model = %self.model,
             hint = %intent_hint,
-            "외부 LLM API 호출"
+            "Calling external LLM API"
         );
 
         let request_body = match self.provider_type {
@@ -271,7 +269,7 @@ impl LlmProvider for RemoteLlmProvider {
         let response = builder
             .send()
             .await
-            .map_err(|e| CoreError::Network(format!("LLM API 호출 failure: {}", e)))?;
+            .map_err(|e| CoreError::Network(format!("LLM API request failed: {}", e)))?;
 
         let status = response.status();
         let body = response
@@ -298,7 +296,7 @@ impl LlmProvider for RemoteLlmProvider {
             action_type = %action.action_type,
             target = ?action.target_text,
             confidence = action.confidence,
-            "LLM 의도 해석 completed"
+            "LLM intent interpretation completed"
         );
 
         Ok(action)
@@ -312,7 +310,6 @@ impl LlmProvider for RemoteLlmProvider {
         true
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -333,10 +330,10 @@ mod tests {
             active_window_title: "main.rs".to_string(),
             layout_description: None,
         };
-        let prompt = RemoteLlmProvider::build_user_prompt(&ctx, "save 버튼 클릭");
+        let prompt = RemoteLlmProvider::build_user_prompt(&ctx, "click the save button");
         assert!(prompt.contains("VSCode"));
         assert!(prompt.contains("file"));
-        assert!(prompt.contains("save 버튼 클릭"));
+        assert!(prompt.contains("click the save button"));
     }
 
     #[test]
@@ -345,11 +342,11 @@ mod tests {
             visible_texts: vec![],
             active_app: "Chrome".to_string(),
             active_window_title: "Google".to_string(),
-            layout_description: Some("검색바가 상단 중앙에 위치".to_string()),
+            layout_description: Some("Search bar is centered at the top".to_string()),
         };
-        let prompt = RemoteLlmProvider::build_user_prompt(&ctx, "검색");
-        assert!(prompt.contains("레이아웃"));
-        assert!(prompt.contains("검색바가 상단 중앙에 위치"));
+        let prompt = RemoteLlmProvider::build_user_prompt(&ctx, "search");
+        assert!(prompt.contains("Layout"));
+        assert!(prompt.contains("Search bar is centered at the top"));
     }
 
     #[test]
@@ -371,11 +368,11 @@ mod tests {
         let body = r#"{
             "content": [{
                 "type": "text",
-                "text": "분석 결과:\n```json\n{\"target_text\": \"확인\", \"target_role\": null, \"action_type\": \"click\", \"confidence\": 0.85}\n```"
+                "text": "Analysis result:\n```json\n{\"target_text\": \"Confirm\", \"target_role\": null, \"action_type\": \"click\", \"confidence\": 0.85}\n```"
             }]
         }"#;
         let action = RemoteLlmProvider::parse_claude_response(body).unwrap();
-        assert_eq!(action.target_text.unwrap(), "확인");
+        assert_eq!(action.target_text.unwrap(), "Confirm");
         assert_eq!(action.action_type, "click");
     }
 

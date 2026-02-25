@@ -1,4 +1,3 @@
-
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -109,7 +108,7 @@ pub async fn get_frame_image(State(state): State<AppState>, Path(frame_id): Path
     let file_path = match state.storage.get_frame_file_path(frame_id) {
         Ok(Some(path)) => path,
         Ok(None) => {
-            return ApiError::NotFound(format!("frame {frame_id}에 이미지가 none")).into_response()
+            return ApiError::NotFound(format!("frame {frame_id} has no image")).into_response()
         }
         Err(e) => return ApiError::Internal(e.to_string()).into_response(),
     };
@@ -122,12 +121,12 @@ pub async fn get_frame_image(State(state): State<AppState>, Path(frame_id): Path
                     .canonicalize()
                     .unwrap_or_else(|_| frames_dir.clone());
                 if !canonical.starts_with(&frames_canonical) {
-                    return ApiError::BadRequest("잘못된 file path".to_string()).into_response();
+                    return ApiError::BadRequest("Invalid file path".to_string()).into_response();
                 }
                 canonical
             }
             Err(_) => {
-                return ApiError::NotFound(format!("이미지 file none: {}", file_path))
+                return ApiError::NotFound(format!("Image file not found: {}", file_path))
                     .into_response();
             }
         }

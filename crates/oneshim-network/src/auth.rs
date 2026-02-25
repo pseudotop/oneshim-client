@@ -75,7 +75,7 @@ impl TokenManager {
         let token_resp: TokenResponse = resp
             .json()
             .await
-            .map_err(|e| CoreError::Auth(format!("token 파싱 failure: {e}")))?;
+            .map_err(|e| CoreError::Auth(format!("Token parsing failed: {e}")))?;
 
         let expires_at = Utc::now() + Duration::seconds(token_resp.expires_in.unwrap_or(3600));
 
@@ -96,10 +96,10 @@ impl TokenManager {
             state.clone()
         };
 
-        let current = current.ok_or_else(|| CoreError::Auth("인증되지 않음".to_string()))?;
+        let current = current.ok_or_else(|| CoreError::Auth("Not authenticated".to_string()))?;
         let refresh_token = current
             .refresh_token
-            .ok_or_else(|| CoreError::Auth("리프레시 token none".to_string()))?;
+            .ok_or_else(|| CoreError::Auth("Refresh token is missing".to_string()))?;
 
         let url = format!("{}/api/v1/auth/tokens/refresh", self.base_url);
         let body = serde_json::json!({
@@ -125,7 +125,7 @@ impl TokenManager {
         let token_resp: TokenResponse = resp
             .json()
             .await
-            .map_err(|e| CoreError::Auth(format!("refresh token 파싱 failure: {e}")))?;
+            .map_err(|e| CoreError::Auth(format!("refresh Token parsing failed: {e}")))?;
 
         let expires_at = Utc::now() + Duration::seconds(token_resp.expires_in.unwrap_or(3600));
 
@@ -145,14 +145,14 @@ impl TokenManager {
             let state = self.state.read().await;
             match &*state {
                 Some(s) => Utc::now() + Duration::minutes(5) >= s.expires_at,
-                None => return Err(CoreError::Auth("인증되지 않음".to_string())),
+                None => return Err(CoreError::Auth("Not authenticated".to_string())),
             }
         };
 
         if needs_refresh {
             self.refresh().await.map_err(|e| {
                 warn!("token refresh failure: {e}");
-                CoreError::Auth(format!("자동 token refresh failure: {e}"))
+                CoreError::Auth(format!("Automatic token refresh failed: {e}"))
             })?;
         }
 
@@ -160,7 +160,7 @@ impl TokenManager {
         state
             .as_ref()
             .map(|s| s.access_token.clone())
-            .ok_or_else(|| CoreError::Auth("인증되지 않음".to_string()))
+            .ok_or_else(|| CoreError::Auth("Not authenticated".to_string()))
     }
 
     pub async fn verify(&self) -> Result<bool, CoreError> {
@@ -275,7 +275,7 @@ mod tests {
         let result = tm.refresh().await;
         assert!(result.is_err());
         let err = format!("{}", result.unwrap_err());
-        assert!(err.contains("인증"));
+        assert!(err.contains("Not authenticated"));
     }
 
     #[tokio::test]
@@ -332,7 +332,7 @@ mod tests {
 
         let result = tm.get_token().await;
         assert!(result.is_err());
-        assert!(format!("{}", result.unwrap_err()).contains("자동 token refresh failure"));
+        assert!(format!("{}", result.unwrap_err()).contains("Automatic token refresh failed"));
         refresh_mock.assert_async().await;
     }
 }

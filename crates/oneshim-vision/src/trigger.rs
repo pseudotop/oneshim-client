@@ -83,7 +83,10 @@ impl CaptureTrigger for SmartCaptureTrigger {
         let importance = self.compute_importance(&trigger_type);
 
         if importance < 0.8 && self.is_throttled(now) {
-            debug!("capture: {:?} (in progress {:.1})", trigger_type, importance);
+            debug!(
+                "capture: {:?} (in progress {:.1})",
+                trigger_type, importance
+            );
             return None;
         }
 
@@ -91,7 +94,10 @@ impl CaptureTrigger for SmartCaptureTrigger {
         self.prev_app_name = Some(event.app_name.clone());
 
         let trigger_type_str = format!("{:?}", trigger_type);
-        debug!("capture approval: {} (in progress {:.1})", trigger_type_str, importance);
+        debug!(
+            "capture approval: {} (in progress {:.1})",
+            trigger_type_str, importance
+        );
 
         Some(CaptureRequest {
             trigger_type: trigger_type_str,

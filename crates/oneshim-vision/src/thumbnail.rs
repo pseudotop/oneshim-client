@@ -75,10 +75,10 @@ pub fn fast_resize(
     }
 
     if src_w == 0 || src_h == 0 {
-        return Err(CoreError::Internal("소스 이미지 size 0".to_string()));
+        return Err(CoreError::Internal("Source image size is zero".to_string()));
     }
     if width == 0 || height == 0 {
-        return Err(CoreError::Internal("target 이미지 size 0".to_string()));
+        return Err(CoreError::Internal("Target image size is zero".to_string()));
     }
 
     let hash = compute_image_hash(image);
@@ -88,12 +88,12 @@ pub fn fast_resize(
         let mut cache = THUMBNAIL_CACHE.lock();
         if let Some(cached) = cache.get(&cache_key) {
             debug!(
-                "썸네일 캐시 히트: {}x{} → {}x{} (hash={})",
+                "Thumbnail cache hit: {}x{} → {}x{} (hash={})",
                 src_w, src_h, width, height, hash
             );
 
             let result = RgbaImage::from_raw(width, height, cached.clone())
-                .ok_or_else(|| CoreError::Internal("캐시 이미지 복원 failure".to_string()))?;
+                .ok_or_else(|| CoreError::Internal("Failed to restore cached image".to_string()))?;
 
             return Ok(DynamicImage::ImageRgba8(result));
         }
@@ -107,7 +107,7 @@ pub fn fast_resize(
         src_rgba.into_raw(),
         fast_image_resize::PixelType::U8x4,
     )
-    .map_err(|e| CoreError::Internal(format!("소스 이미지 create failure: {e}")))?;
+    .map_err(|e| CoreError::Internal(format!("Failed to create source image: {e}")))?;
 
     let mut dst_image = FirImage::new(width, height, fast_image_resize::PixelType::U8x4);
 
@@ -118,7 +118,7 @@ pub fn fast_resize(
 
     resizer
         .resize(&src_image, &mut dst_image, &options)
-        .map_err(|e| CoreError::Internal(format!("리사이즈 failure: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("Resize failed: {e}")))?;
 
     let raw_bytes = dst_image.into_vec();
 
@@ -128,10 +128,10 @@ pub fn fast_resize(
     }
 
     let result = RgbaImage::from_raw(width, height, raw_bytes)
-        .ok_or_else(|| CoreError::Internal("결과 이미지 create failure".to_string()))?;
+        .ok_or_else(|| CoreError::Internal("Failed to create result image".to_string()))?;
 
     debug!(
-        "썸네일 create: {}x{} → {}x{} (hash={}, 캐시 save)",
+        "Thumbnail created: {}x{} → {}x{} (hash={}, cache save)",
         src_w, src_h, width, height, hash
     );
 
@@ -197,13 +197,16 @@ mod tests {
 
         let _thumb1 = fast_resize(&img, 200, 150).unwrap();
         let size_after_first = get_cache_stats().size;
-        assert!(size_after_first >= size_before, "캐시 size가 증가하지 않음");
+        assert!(
+            size_after_first >= size_before,
+            "Cache size did not increase"
+        );
 
         let _thumb2 = fast_resize(&img, 200, 150).unwrap();
         let size_after_second = get_cache_stats().size;
         assert_eq!(
             size_after_first, size_after_second,
-            "캐시 히트 시 size 증가 없어야 함"
+            "Cache size should not increase on cache hit"
         );
     }
 
@@ -222,7 +225,7 @@ mod tests {
         let size_after = get_cache_stats().size;
         assert!(
             size_after >= size_before + 3,
-            "다른 size는 별도 캐싱되어야 함"
+            "Different sizes should be cached separately"
         );
     }
 
@@ -240,7 +243,7 @@ mod tests {
         let size_after = get_cache_stats().size;
         assert!(
             size_after >= size_before + 2,
-            "다른 이미지는 별도 캐싱되어야 함"
+            "Different images should be cached separately"
         );
     }
 

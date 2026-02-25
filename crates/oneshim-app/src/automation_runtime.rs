@@ -205,7 +205,7 @@ mod tests {
     async fn create_test_storage(base_dir: PathBuf) -> FrameFileStorage {
         FrameFileStorage::new(base_dir, 100, 7)
             .await
-            .expect("test frame save소 create failure")
+            .expect("Failed to create test frame storage")
     }
 
     #[tokio::test]
@@ -269,7 +269,7 @@ mod tests {
         };
 
         match build_automation_runtime(&config, PiiFilterLevel::Standard, None) {
-            Ok(_) => panic!("error가 발생해야 함"),
+            Ok(_) => panic!("Expected an error"),
             Err(err) => assert!(matches!(err, CoreError::Config(_))),
         }
     }

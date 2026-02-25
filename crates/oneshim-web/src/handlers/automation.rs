@@ -1,4 +1,3 @@
-
 use axum::{
     extract::{Path, Query, State},
     Json,
@@ -79,7 +78,7 @@ fn require_config_manager(state: &AppState) -> Result<&ConfigManager, ApiError> 
     state
         .config_manager
         .as_ref()
-        .ok_or_else(|| ApiError::Internal("설정 관리자 미설정".into()))
+        .ok_or_else(|| ApiError::Internal("Config manager is not set".into()))
 }
 
 fn default_automation_status(pending: usize) -> AutomationStatusDto {
@@ -274,10 +273,10 @@ fn build_scene_action_intents(
     req: &ExecuteSceneActionRequest,
 ) -> Result<Vec<AutomationIntent>, ApiError> {
     if req.session_id.trim().is_empty() {
-        return Err(ApiError::BadRequest("session_id는 필수입니다".to_string()));
+        return Err(ApiError::BadRequest("session_id is required".to_string()));
     }
     if req.element_id.trim().is_empty() {
-        return Err(ApiError::BadRequest("element_id는 필수입니다".to_string()));
+        return Err(ApiError::BadRequest("element_id is required".to_string()));
     }
     if req.bbox_abs.width == 0 || req.bbox_abs.height == 0 {
         return Err(ApiError::BadRequest(
@@ -300,7 +299,7 @@ fn build_scene_action_intents(
                 .map(|v| v.trim().to_string())
                 .filter(|v| !v.is_empty())
                 .ok_or_else(|| {
-                    ApiError::BadRequest("type_text 액션은 text가 필요합니다".to_string())
+                    ApiError::BadRequest("type_text action requires text".to_string())
                 })?;
 
             Ok(vec![
@@ -485,7 +484,7 @@ fn enforce_scene_action_privacy(
     let override_hint = context
         .override_issue
         .as_ref()
-        .map(|issue| format!(" current 오버라이드 state: {issue}"))
+        .map(|issue| format!(" current override state: {issue}"))
         .unwrap_or_default();
 
     match (context.policy, req.action_type) {
@@ -579,11 +578,11 @@ async fn analyze_scene_by_query(
             .storage
             .get_frame_file_path(frame_id)
             .map_err(|e| ApiError::Internal(format!("frame path query failure: {e}")))?
-            .ok_or_else(|| ApiError::NotFound(format!("frame {frame_id}에 이미지가 없습니다")))?;
+            .ok_or_else(|| ApiError::NotFound(format!("frame {frame_id} has no image")))?;
 
         let image_path = resolve_frame_image_path(state, &stored_path)?;
         let image_data = std::fs::read(&image_path)
-            .map_err(|e| ApiError::Internal(format!("frame 이미지 read failure: {e}")))?;
+            .map_err(|e| ApiError::Internal(format!("Failed to read frame image: {e}")))?;
 
         controller
             .analyze_scene_from_image(
@@ -611,10 +610,9 @@ async fn analyze_scene_by_query(
         {
             Err(ApiError::BadRequest(msg))
         }
-        Err(e) => Err(ApiError::Internal(format!("scene 분석 failure: {e}"))),
+        Err(e) => Err(ApiError::Internal(format!("Scene analysis failed: {e}"))),
     }
 }
-
 
 pub async fn get_contract_versions() -> Result<Json<AutomationContractsDto>, ApiError> {
     Ok(Json(AutomationContractsDto {
@@ -829,10 +827,12 @@ pub async fn create_preset(
     Json(preset): Json<WorkflowPreset>,
 ) -> Result<Json<WorkflowPreset>, ApiError> {
     if preset.id.is_empty() || preset.name.is_empty() {
-        return Err(ApiError::BadRequest("프리셋 ID와 이름은 필수입니다".into()));
+        return Err(ApiError::BadRequest(
+            "Preset ID and name are required".into(),
+        ));
     }
     if preset.steps.is_empty() {
-        return Err(ApiError::BadRequest("최소 1개 단계가 필요합니다".into()));
+        return Err(ApiError::BadRequest("At least one step is required".into()));
     }
 
     let config_manager = require_config_manager(&state)?;
@@ -851,7 +851,7 @@ pub async fn create_preset(
             new_preset.builtin = false;
             config.automation.custom_presets.push(new_preset);
         })
-        .map_err(|e| ApiError::Internal(format!("프리셋 save failure: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to save preset: {e}")))?;
 
     Ok(Json(preset))
 }
@@ -880,10 +880,10 @@ pub async fn update_preset(
                 found = true;
             }
         })
-        .map_err(|e| ApiError::Internal(format!("프리셋 수정 failure: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to update preset: {e}")))?;
 
     if !found {
-        return Err(ApiError::NotFound(format!("프리셋 '{}' 미발견", id)));
+        return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
     }
 
     Ok(Json(preset))
@@ -902,10 +902,10 @@ pub async fn delete_preset(
             config.automation.custom_presets.retain(|p| p.id != id);
             found = config.automation.custom_presets.len() < before_len;
         })
-        .map_err(|e| ApiError::Internal(format!("프리셋 delete failure: {e}")))?;
+        .map_err(|e| ApiError::Internal(format!("Failed to delete preset: {e}")))?;
 
     if !found {
-        return Err(ApiError::NotFound(format!("프리셋 '{}' 미발견", id)));
+        return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
     }
 
     Ok(Json(serde_json::json!({ "deleted": id })))
@@ -931,7 +931,7 @@ pub async fn run_preset(
     }
 
     let Some(preset) = preset else {
-        return Err(ApiError::NotFound(format!("프리셋 '{}' 미발견", id)));
+        return Err(ApiError::NotFound(format!("Preset '{}' not found", id)));
     };
 
     if let Some(ref config_manager) = state.config_manager {
@@ -988,10 +988,10 @@ pub async fn execute_intent_hint(
     Json(req): Json<ExecuteIntentHintRequest>,
 ) -> Result<Json<ExecuteIntentHintResponse>, ApiError> {
     if req.session_id.trim().is_empty() {
-        return Err(ApiError::BadRequest("session_id는 필수입니다".to_string()));
+        return Err(ApiError::BadRequest("session_id is required".to_string()));
     }
     if req.intent_hint.trim().is_empty() {
-        return Err(ApiError::BadRequest("intent_hint는 필수입니다".to_string()));
+        return Err(ApiError::BadRequest("intent_hint is required".to_string()));
     }
 
     let Some(ref controller) = state.automation_controller else {
@@ -1030,7 +1030,9 @@ pub async fn execute_intent_hint(
         {
             Err(ApiError::BadRequest(msg))
         }
-        Err(e) => Err(ApiError::Internal(format!("자연어 의도 execution failure: {e}"))),
+        Err(e) => Err(ApiError::Internal(format!(
+            "Natural language intent execution failed: {e}"
+        ))),
     }
 }
 
@@ -1197,7 +1199,11 @@ pub async fn execute_scene_action(
             {
                 return Err(ApiError::BadRequest(msg));
             }
-            Err(e) => return Err(ApiError::Internal(format!("scene 액션 execution failure: {e}"))),
+            Err(e) => {
+                return Err(ApiError::Internal(format!(
+                    "Scene action execution failed: {e}"
+                )))
+            }
         }
     }
 
@@ -1295,7 +1301,6 @@ pub async fn get_automation_scene_calibration(
     let report = build_scene_calibration(&filtered, &scene_cfg);
     Ok(Json(report))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1431,7 +1436,7 @@ mod tests {
         let request: ExecuteIntentHintRequest = serde_json::from_str(payload).unwrap();
         assert!(request.command_id.is_none());
         assert_eq!(request.session_id, "sess-1");
-        assert_eq!(request.intent_hint, "save 버튼 클릭");
+        assert_eq!(request.intent_hint, "click the save button");
     }
 
     #[test]
@@ -1532,7 +1537,7 @@ mod tests {
         };
         let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
         assert!(!active);
-        assert!(issue.unwrap_or_default().contains("사유"));
+        assert!(issue.unwrap_or_default().contains("reason"));
     }
 
     #[test]
@@ -1545,7 +1550,7 @@ mod tests {
         };
         let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
         assert!(!active);
-        assert!(issue.unwrap_or_default().contains("만료"));
+        assert!(issue.unwrap_or_default().contains("expired"));
     }
 
     #[test]
