@@ -381,6 +381,60 @@ export async function updateSettings(settings: AppSettings): Promise<AppSettings
   return res.json()
 }
 
+export interface ProviderModelsRequest {
+  provider_type: string
+  api_key: string
+  endpoint?: string | null
+}
+
+export interface ProviderModelsResponse {
+  models: string[]
+  notice?: string | null
+}
+
+export interface ProviderPreset {
+  provider_type: string
+  aliases: string[]
+  display_name: string
+  llm_endpoint: string
+  ocr_endpoint: string
+  model_catalog_endpoint: string
+  ocr_model_catalog_supported: boolean
+  ocr_model_catalog_notice?: string | null
+  llm_models: string[]
+  ocr_models: string[]
+}
+
+export interface ProviderPresetCatalog {
+  version: number
+  updated_at: string
+  providers: ProviderPreset[]
+}
+
+export async function fetchProviderPresets(): Promise<ProviderPresetCatalog> {
+  const res = await fetchWithRetry(`${BASE_URL}/ai/providers/presets`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Provider preset query failed' }))
+    throw new Error(err.error || 'Provider preset query failed')
+  }
+  return res.json()
+}
+
+export async function discoverProviderModels(
+  request: ProviderModelsRequest
+): Promise<ProviderModelsResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/ai/providers/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Model discovery failed' }))
+    throw new Error(err.error || 'Model discovery failed')
+  }
+  return res.json()
+}
+
 export async function fetchUpdateStatus(): Promise<UpdateStatus> {
   const res = await fetchWithRetry(`${BASE_URL}/update/status`)
   if (!res.ok) throw new Error('update state query failure')
@@ -1063,6 +1117,7 @@ export interface ExternalApiSettings {
   endpoint: string
   api_key_masked: string
   model: string | null
+  provider_type: string
   timeout_secs: number
 }
 

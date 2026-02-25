@@ -24,6 +24,14 @@ pub fn api_routes() -> Router<AppState> {
         .route("/reports", get(handlers::reports::generate_report))
         .route("/settings", get(handlers::settings::get_settings))
         .route("/settings", post(handlers::settings::update_settings))
+        .route(
+            "/ai/providers/presets",
+            get(handlers::ai_provider_presets::list_provider_presets),
+        )
+        .route(
+            "/ai/providers/models",
+            post(handlers::ai_models::discover_provider_models),
+        )
         .route("/storage/stats", get(handlers::settings::get_storage_stats))
         .route("/data/range", delete(handlers::data::delete_data_range))
         .route("/data/all", delete(handlers::data::delete_all_data))

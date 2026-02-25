@@ -132,6 +132,7 @@ Execution mode:
 2. Uses repository secrets for endpoint/key/model
 3. Runs `crates/oneshim-network/tests/ai_provider_live_smoke.rs`
 4. OCR smoke is optional (`run_ocr` input)
+5. Runtime env names stay split (`ONESHIM_AI_SMOKE_LLM_*`, `ONESHIM_AI_SMOKE_OCR_*`) and are backward compatible.
 
 Required secrets:
 
@@ -141,6 +142,14 @@ Required secrets:
 Optional secrets:
 
 - `ONESHIM_AI_SMOKE_LLM_MODEL`
-- `ONESHIM_AI_SMOKE_OCR_ENDPOINT`
-- `ONESHIM_AI_SMOKE_OCR_API_KEY`
+- `ONESHIM_AI_SMOKE_OCR_ENDPOINT` (required when OCR provider type is `google`)
+- `ONESHIM_AI_SMOKE_OCR_API_KEY` (optional; falls back to LLM API key)
 - `ONESHIM_AI_SMOKE_OCR_MODEL`
+
+OCR fallback rules in live smoke:
+
+- OCR provider type defaults to LLM provider type when omitted.
+- OCR timeout defaults to LLM timeout when omitted.
+- OCR endpoint falls back to LLM endpoint for `anthropic` / `openai` / `generic`.
+- OCR endpoint fallback is not allowed for `google` because OCR expects Vision API contract (`/v1/images:annotate`).
+- OCR model may inherit LLM model for non-`google` providers.

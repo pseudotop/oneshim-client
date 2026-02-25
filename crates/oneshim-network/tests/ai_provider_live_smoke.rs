@@ -40,7 +40,7 @@ async fn ai_provider_live_smoke() {
 }
 
 async fn run_llm_smoke() {
-    let endpoint = build_endpoint("ONESHIM_AI_SMOKE_LLM");
+    let endpoint = build_endpoint(SmokeTarget::Llm);
     let provider = RemoteLlmProvider::new(&endpoint).expect("LLM provider setup failed");
 
     let screen_context = ScreenContext {
@@ -92,7 +92,7 @@ async fn run_llm_smoke() {
 }
 
 async fn run_ocr_smoke() {
-    let endpoint = build_endpoint("ONESHIM_AI_SMOKE_OCR");
+    let endpoint = build_endpoint(SmokeTarget::Ocr);
     let provider = RemoteOcrProvider::new(&endpoint).expect("OCR provider setup failed");
 
     let mut last_err = None;
@@ -129,26 +129,158 @@ async fn run_ocr_smoke() {
     );
 }
 
-fn build_endpoint(prefix: &str) -> ExternalApiEndpoint {
-    let endpoint = required_env(format!("{prefix}_ENDPOINT").as_str());
-    let api_key = required_api_key_env(prefix);
-    let model = optional_env(format!("{prefix}_MODEL").as_str());
-    let timeout_secs = env::var(format!("{prefix}_TIMEOUT_SECS"))
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(45);
-    let provider_type = env::var(format!("{prefix}_PROVIDER_TYPE"))
-        .ok()
-        .map(|raw| parse_provider_type(&raw))
-        .unwrap_or(AiProviderType::Generic);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SmokeTarget {
+    Llm,
+    Ocr,
+}
+
+impl SmokeTarget {
+    fn env_prefix(self) -> &'static str {
+        match self {
+            Self::Llm => "ONESHIM_AI_SMOKE_LLM",
+            Self::Ocr => "ONESHIM_AI_SMOKE_OCR",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ProviderCapability {
+    ocr_can_inherit_llm_endpoint: bool,
+    ocr_can_inherit_llm_model: bool,
+}
+
+impl ProviderCapability {
+    fn for_provider(provider_type: AiProviderType) -> Self {
+        match provider_type {
+            AiProviderType::Google => Self {
+                ocr_can_inherit_llm_endpoint: false,
+                ocr_can_inherit_llm_model: false,
+            },
+            AiProviderType::Anthropic | AiProviderType::OpenAi | AiProviderType::Generic => Self {
+                ocr_can_inherit_llm_endpoint: true,
+                ocr_can_inherit_llm_model: true,
+            },
+        }
+    }
+}
+
+fn build_endpoint(target: SmokeTarget) -> ExternalApiEndpoint {
+    match target {
+        SmokeTarget::Llm => build_llm_endpoint(),
+        SmokeTarget::Ocr => build_ocr_endpoint(),
+    }
+}
+
+fn build_llm_endpoint() -> ExternalApiEndpoint {
+    let provider_type = resolve_provider_type(SmokeTarget::Llm);
+    ExternalApiEndpoint {
+        endpoint: required_primary_value(SmokeTarget::Llm, "ENDPOINT"),
+        api_key: required_api_key_value(SmokeTarget::Llm),
+        model: optional_primary_value(SmokeTarget::Llm, "MODEL"),
+        timeout_secs: resolve_timeout_secs(SmokeTarget::Llm),
+        provider_type,
+    }
+}
+
+fn build_ocr_endpoint() -> ExternalApiEndpoint {
+    let provider_type = resolve_provider_type(SmokeTarget::Ocr);
+    let capability = ProviderCapability::for_provider(provider_type);
+
+    let endpoint = if let Some(endpoint) = optional_primary_value(SmokeTarget::Ocr, "ENDPOINT") {
+        endpoint
+    } else if capability.ocr_can_inherit_llm_endpoint {
+        required_primary_value(SmokeTarget::Llm, "ENDPOINT")
+    } else {
+        panic!(
+            "Missing required env: {}. OCR provider type `{}` does not support endpoint inheritance from {}.",
+            env_key(SmokeTarget::Ocr, "ENDPOINT"),
+            provider_label(provider_type),
+            env_key(SmokeTarget::Llm, "ENDPOINT"),
+        );
+    };
+
+    let api_key = if let Some(api_key) = optional_api_key_value(SmokeTarget::Ocr) {
+        api_key
+    } else {
+        required_api_key_value(SmokeTarget::Llm)
+    };
+
+    let model = if let Some(model) = optional_primary_value(SmokeTarget::Ocr, "MODEL") {
+        Some(model)
+    } else if capability.ocr_can_inherit_llm_model {
+        optional_primary_value(SmokeTarget::Llm, "MODEL")
+    } else {
+        None
+    };
 
     ExternalApiEndpoint {
         endpoint,
         api_key,
         model,
-        timeout_secs,
+        timeout_secs: resolve_timeout_secs(SmokeTarget::Ocr),
         provider_type,
+    }
+}
+
+fn resolve_provider_type(target: SmokeTarget) -> AiProviderType {
+    let primary_key = env_key(target, "PROVIDER_TYPE");
+    if let Some(raw) = optional_env(primary_key.as_str()) {
+        return parse_provider_type(&raw);
+    }
+
+    if target == SmokeTarget::Ocr {
+        let llm_key = env_key(SmokeTarget::Llm, "PROVIDER_TYPE");
+        if let Some(raw) = optional_env(llm_key.as_str()) {
+            return parse_provider_type(&raw);
+        }
+    }
+
+    AiProviderType::Generic
+}
+
+fn resolve_timeout_secs(target: SmokeTarget) -> u64 {
+    if let Some(value) = optional_timeout_secs(target) {
+        return value;
+    }
+
+    if target == SmokeTarget::Ocr {
+        if let Some(value) = optional_timeout_secs(SmokeTarget::Llm) {
+            return value;
+        }
+    }
+
+    45
+}
+
+fn optional_timeout_secs(target: SmokeTarget) -> Option<u64> {
+    let key = env_key(target, "TIMEOUT_SECS");
+    env::var(&key)
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+}
+
+fn required_primary_value(target: SmokeTarget, suffix: &str) -> String {
+    let key = env_key(target, suffix);
+    required_env(key.as_str())
+}
+
+fn optional_primary_value(target: SmokeTarget, suffix: &str) -> Option<String> {
+    let key = env_key(target, suffix);
+    optional_env(key.as_str())
+}
+
+fn env_key(target: SmokeTarget, suffix: &str) -> String {
+    format!("{}_{}", target.env_prefix(), suffix)
+}
+
+fn provider_label(provider_type: AiProviderType) -> &'static str {
+    match provider_type {
+        AiProviderType::Anthropic => "anthropic",
+        AiProviderType::OpenAi => "openai",
+        AiProviderType::Google => "google",
+        AiProviderType::Generic => "generic",
     }
 }
 
@@ -187,20 +319,56 @@ fn optional_env(key: &str) -> Option<String> {
     env::var(key).ok().filter(|value| !value.trim().is_empty())
 }
 
-fn required_api_key_env(prefix: &str) -> String {
-    let api_key_key = format!("{prefix}_API_KEY");
-    if let Some(value) = optional_env(&api_key_key) {
-        return value;
+fn optional_api_key_value(target: SmokeTarget) -> Option<String> {
+    let api_key_key = env_key(target, "API_KEY");
+    if let Some(value) = optional_env(api_key_key.as_str()) {
+        return Some(value);
     }
 
-    let legacy_key = format!("{prefix}_KEY");
-    if let Some(value) = optional_env(&legacy_key) {
+    let legacy_key = env_key(target, "KEY");
+    if let Some(value) = optional_env(legacy_key.as_str()) {
         eprintln!(
             "Using deprecated env {}. Prefer {}.",
             legacy_key, api_key_key
         );
+        return Some(value);
+    }
+
+    None
+}
+
+fn required_api_key_value(target: SmokeTarget) -> String {
+    let api_key_key = env_key(target, "API_KEY");
+    let legacy_key = env_key(target, "KEY");
+
+    if let Some(value) = optional_api_key_value(target) {
         return value;
     }
 
     panic!("Missing required env: {} or {}", api_key_key, legacy_key);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn google_capability_disables_ocr_endpoint_and_model_inheritance() {
+        let capability = ProviderCapability::for_provider(AiProviderType::Google);
+        assert!(!capability.ocr_can_inherit_llm_endpoint);
+        assert!(!capability.ocr_can_inherit_llm_model);
+    }
+
+    #[test]
+    fn non_google_capability_allows_ocr_endpoint_and_model_inheritance() {
+        for provider_type in [
+            AiProviderType::Anthropic,
+            AiProviderType::OpenAi,
+            AiProviderType::Generic,
+        ] {
+            let capability = ProviderCapability::for_provider(provider_type);
+            assert!(capability.ocr_can_inherit_llm_endpoint);
+            assert!(capability.ocr_can_inherit_llm_model);
+        }
+    }
 }

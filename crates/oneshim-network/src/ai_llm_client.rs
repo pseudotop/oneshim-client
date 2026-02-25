@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tracing::{debug, warn};
 
+use oneshim_core::ai_model_lifecycle_policy::{self, ModelLifecycleDecision};
 use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::{InterpretedAction, LlmProvider, ScreenContext};
@@ -40,6 +41,25 @@ impl RemoteLlmProvider {
             .model
             .clone()
             .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
+
+        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
+        {
+            ModelLifecycleDecision::Allowed => {}
+            ModelLifecycleDecision::Warn {
+                message,
+                replacement,
+            } => {
+                warn!(
+                    provider = ?config.provider_type,
+                    model = %model,
+                    replacement = ?replacement,
+                    "{}", message
+                );
+            }
+            ModelLifecycleDecision::Block { message, .. } => {
+                return Err(CoreError::PolicyDenied(message));
+            }
+        }
 
         debug!(
             endpoint = %config.endpoint,
@@ -363,12 +383,29 @@ impl LlmProvider for RemoteLlmProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::config::ExternalApiEndpoint;
 
     #[test]
     fn system_prompt_not_empty() {
         let prompt = RemoteLlmProvider::system_prompt();
         assert!(!prompt.is_empty());
         assert!(prompt.contains("JSON"));
+    }
+
+    #[test]
+    fn new_remote_llm_rejects_retired_model_by_policy() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            api_key: "test-api-key".to_string(),
+            model: Some("gpt-3.5-turbo".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+        };
+
+        let result = RemoteLlmProvider::new(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("retired as of"));
     }
 
     #[test]

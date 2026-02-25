@@ -574,7 +574,12 @@
     "apiKey": "API 키",
     "apiKeyPlaceholder": "API 키 입력...",
     "model": "모델",
-    "timeoutSecs": "타임아웃 (초)"
+    "timeoutSecs": "타임아웃 (초)",
+    "providerType": "프로바이더 유형",
+    "loadModels": "모델 불러오기",
+    "modelDiscoveryNoModels": "해당 프로바이더 설정에서 반환된 모델이 없습니다.",
+    "modelDiscoveryMissingConfig": "원격 엔드포인트, 프로바이더, API 키를 먼저 설정하세요.",
+    "modelDiscoveryMissingKey": "모델 조회를 위해 전체 API 키를 입력하세요."
   },
   "focus": {
     "title": "집중도",

@@ -132,6 +132,7 @@
 2. 저장소 시크릿으로 endpoint/key/model 주입
 3. `crates/oneshim-network/tests/ai_provider_live_smoke.rs` 실행
 4. OCR 스모크는 선택 실행 (`run_ocr` 입력)
+5. 런타임 환경변수 이름(`ONESHIM_AI_SMOKE_LLM_*`, `ONESHIM_AI_SMOKE_OCR_*`)은 그대로 유지되며 하위 호환됩니다.
 
 필수 시크릿:
 
@@ -141,6 +142,14 @@
 선택 시크릿:
 
 - `ONESHIM_AI_SMOKE_LLM_MODEL`
-- `ONESHIM_AI_SMOKE_OCR_ENDPOINT`
-- `ONESHIM_AI_SMOKE_OCR_API_KEY`
+- `ONESHIM_AI_SMOKE_OCR_ENDPOINT` (`google` OCR provider 선택 시 필수)
+- `ONESHIM_AI_SMOKE_OCR_API_KEY` (선택, 없으면 LLM API key로 폴백)
 - `ONESHIM_AI_SMOKE_OCR_MODEL`
+
+live smoke OCR 폴백 규칙:
+
+- OCR provider type 미지정 시 LLM provider type을 기본값으로 사용합니다.
+- OCR timeout 미지정 시 LLM timeout을 기본값으로 사용합니다.
+- `anthropic` / `openai` / `generic`는 OCR endpoint 미지정 시 LLM endpoint로 폴백합니다.
+- `google`은 OCR이 Vision API 계약(`/v1/images:annotate`)을 사용하므로 endpoint 폴백을 허용하지 않습니다.
+- `google` 외 provider는 OCR model 미지정 시 LLM model을 상속할 수 있습니다.

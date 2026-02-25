@@ -491,6 +491,23 @@ fn validate_remote_endpoint(
         )));
     }
 
+    if let Some(model) = endpoint
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let decision = crate::ai_model_lifecycle_policy::evaluate_model_lifecycle_now(
+            endpoint.provider_type,
+            model,
+        )?;
+        if let crate::ai_model_lifecycle_policy::ModelLifecycleDecision::Block { message, .. } =
+            decision
+        {
+            return Err(CoreError::PolicyDenied(message));
+        }
+    }
+
     Ok(())
 }
 
@@ -1190,6 +1207,25 @@ mod tests {
 
         let result = config.validate_selected_remote_endpoints();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ai_provider_validation_rejects_retired_model_by_policy() {
+        let config = AiProviderConfig {
+            llm_provider: LlmProviderType::Remote,
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+                api_key: "llm-key".to_string(),
+                model: Some("gpt-3.5-turbo".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("retired as of"));
     }
 
     #[test]

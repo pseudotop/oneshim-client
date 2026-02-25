@@ -5165,6 +5165,7 @@ dependencies = [
  "oneshim-automation",
  "oneshim-core",
  "oneshim-storage",
+ "reqwest 0.13.2",
  "rusqlite",
  "rust-embed",
  "serde",
