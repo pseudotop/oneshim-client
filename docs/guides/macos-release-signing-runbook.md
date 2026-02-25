@@ -25,6 +25,7 @@ If any secret is missing, `build-macos-universal` fails fast.
 
 - `crates/oneshim-app/assets/icon.icns` must be a valid ICNS file.
 - Source-of-truth logo asset is `assets/brand/logo-icon.svg`.
+- Regenerate app icons via `./scripts/generate-app-icons.sh`.
 
 ## Local Preflight (optional)
 

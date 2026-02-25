@@ -6,15 +6,5 @@
 ## 재생성
 
 ```bash
-magick assets/brand/logo-icon.svg -background none -resize 1024x1024 crates/oneshim-app/assets/icon.png
-magick crates/oneshim-app/assets/icon.png -define icon:auto-resize=256,128,64,48,32,16 crates/oneshim-app/assets/icon.ico
-python3 - <<'PY'
-from PIL import Image
-img = Image.open("crates/oneshim-app/assets/icon.png").convert("RGBA")
-img.save(
-    "crates/oneshim-app/assets/icon.icns",
-    format="ICNS",
-    sizes=[(16, 16), (32, 32), (64, 64), (128, 128), (256, 256), (512, 512), (1024, 1024)],
-)
-PY
+./scripts/generate-app-icons.sh
 ```
