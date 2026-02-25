@@ -1,9 +1,8 @@
 use axum::{extract::State, Json};
+use oneshim_api_contracts::ai_providers::{ProviderModelsRequest, ProviderModelsResponse};
 
 use crate::error::ApiError;
-use crate::services::ai_model_catalog_service::{
-    self, ProviderModelsRequest, ProviderModelsResponse,
-};
+use crate::services::ai_model_catalog_service;
 use crate::AppState;
 
 pub async fn discover_provider_models(

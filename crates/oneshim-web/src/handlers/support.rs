@@ -1,9 +1,9 @@
 use axum::{extract::State, Json};
 use chrono::Utc;
+use oneshim_api_contracts::settings::{AppSettings, StorageStats};
 use serde::Serialize;
 
 use crate::handlers::automation::AuditEntryDto;
-use crate::handlers::settings::{AppSettings, StorageStats};
 use crate::{services::settings_service, AppState};
 
 const SUPPORT_DIAGNOSTICS_SCHEMA_VERSION: &str = "support.diagnostics.v1";

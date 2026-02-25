@@ -1,0 +1,13 @@
+[package]
+name = "oneshim-api-contracts"
+description = "ONESHIM web API transport contracts"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }

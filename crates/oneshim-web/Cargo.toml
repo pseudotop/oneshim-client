@@ -12,6 +12,7 @@ authors.workspace = true
 [dependencies]
 # 내부 크레이트
 oneshim-core = { workspace = true }
+oneshim-api-contracts = { workspace = true }
 oneshim-storage = { workspace = true }
 oneshim-automation = { workspace = true }
 

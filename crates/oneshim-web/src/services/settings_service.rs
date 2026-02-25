@@ -4,14 +4,14 @@ use oneshim_core::config::{
     LlmProviderType, OcrProviderType, OcrValidationConfig, PiiFilterLevel, SandboxProfile,
     SceneActionOverrideConfig, SceneIntelligenceConfig, Weekday,
 };
-
-use crate::error::ApiError;
-use crate::handlers::settings::{
+use oneshim_api_contracts::settings::{
     AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
     MonitorControlSettings, NotificationSettings, OcrValidationSettings, PrivacySettings,
     SandboxSettings, SceneActionOverrideSettings, SceneIntelligenceSettings, ScheduleSettings,
     StorageStats, TelemetrySettings, UpdateSettings,
 };
+
+use crate::error::ApiError;
 use crate::AppState;
 use tracing::warn;
 
