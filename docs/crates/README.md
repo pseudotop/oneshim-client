@@ -157,7 +157,9 @@ This file intentionally avoids hard-coded totals for test counts, warning counts
 
 ## References
 
+- [Documentation Index](../README.md)
 - [ADR-001: Rust Client Architecture Patterns](../architecture/ADR-001-rust-client-architecture-patterns.md)
+- [ADR-002: OS GUI Interaction Boundary and Runtime Split](../architecture/ADR-002-os-gui-interaction-boundary.md)
 - [Migration Overview](../migration/README.md)
 - [CLAUDE.md](../../CLAUDE.md) - Development guide
 - [Contributing Guide](../../CONTRIBUTING.md)

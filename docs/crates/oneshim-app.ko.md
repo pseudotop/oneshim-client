@@ -36,7 +36,7 @@ oneshim-app/src/
 - 사용자 스코프 디렉토리(`~/.codex`, `~/.claude`, `~/.gemini`) 포함: `ONESHIM_CLI_BRIDGE_INCLUDE_USER_SCOPE=1`
 - 생성되는 브리지 파일의 기본 컨텍스트 경로: `<data_dir>/exports/oneshim-context.json`
 
-참고: `docs/architecture/cli-subscription-bridge-research.ko.md`
+참고: `docs/research/cli-subscription-bridge-research.ko.md`
 
 ## AI 제공자 어댑터 (`provider_adapters.rs`)
 

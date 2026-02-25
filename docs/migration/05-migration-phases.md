@@ -2,7 +2,7 @@
 
 # 5. Migration Phases + Success Criteria
 
-[← Server API](./04-server-api.md) | [UI Framework →](./06-ui-framework.md)
+[← Server API](./04-server-api.md) | [UI Framework →](./legacy/06-ui-framework.md)
 
 ---
 

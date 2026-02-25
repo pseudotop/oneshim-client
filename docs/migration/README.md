@@ -13,22 +13,45 @@
 
 ---
 
+## Archive Policy (Active vs Legacy)
+
+This migration set is primarily a historical archive.
+
+- **Active docs** (may still be updated for current references):
+  - `README.md`, `README.ko.md`
+  - `04-server-api.md`, `04-server-api.ko.md`
+  - `05-migration-phases.md`, `05-migration-phases.ko.md`
+- **Legacy docs** (historical snapshot, no routine updates):
+  - `01-rationale*`, `02-project-structure*`, `03-module-mapping*`
+  - `06-ui-framework*`, `07-code-sketches*`, `08-edge-vision*`
+  - `09-testing*`, `10-build-deploy*`
+  - Legacy index: [`./legacy/README.md`](./legacy/README.md)
+
+For new operational guidance, prefer:
+
+- `docs/guides/` for runbooks/playbooks/how-to
+- `docs/contracts/` for versioned contracts
+- `docs/crates/` for current implementation references
+- `docs/architecture/` for ADR decisions
+
+---
+
 ## Document Structure
 
 Open only the relevant file when working on a task.
 
 | # | Document | Content | Status |
 |---|----------|---------|--------|
-| 1 | [Rationale](./01-rationale.md) | Why Rust, why Full Native (not Sidecar) | ✅ Done |
-| 2 | [Project Structure + Dependencies](./02-project-structure.md) | 8 crate structure, Cargo.toml, platform deps | ✅ Done |
-| 3 | [Python → Rust Mapping](./03-module-mapping.md) | 180+ Python files → Rust module mapping | ✅ Done |
+| 1 | [Rationale](./legacy/01-rationale.md) | Why Rust, why Full Native (not Sidecar) | ✅ Done (Legacy) |
+| 2 | [Project Structure + Dependencies](./legacy/02-project-structure.md) | 8 crate structure, Cargo.toml, platform deps | ✅ Done (Legacy) |
+| 3 | [Python → Rust Mapping](./legacy/03-module-mapping.md) | 180+ Python files → Rust module mapping | ✅ Done (Legacy) |
 | 4 | [Server API Integration](./04-server-api.md) | 29 endpoints, SSE event types | ✅ Done |
 | 5 | [Migration Phases + Success Criteria](./05-migration-phases.md) | Phase 0-6, checklist, completion criteria | ✅ Done |
-| 6 | [UI Framework](./06-ui-framework.md) | iced (better accessibility, desktop optimized vs egui) | ✅ Done |
-| 7 | [Code Sketches](./07-code-sketches.md) | Core Rust implementation sketches (models, SSE, suggestions) | 📚 Reference |
-| 8 | [Edge Vision Pipeline](./08-edge-vision.md) | Image preprocessing, delta encoding, OCR, timeline | ✅ Done |
-| 9 | [Testing Strategy](./09-testing.md) | Per-crate testing, example code | ✅ Done |
-| 10 | [Build/Deploy + Risks](./10-build-deploy.md) | Cross-compilation, installers, CI/CD | ✅ Done |
+| 6 | [UI Framework](./legacy/06-ui-framework.md) | iced (better accessibility, desktop optimized vs egui) | ✅ Done (Legacy) |
+| 7 | [Code Sketches](./legacy/07-code-sketches.md) | Core Rust implementation sketches (models, SSE, suggestions) | 📚 Reference (Legacy) |
+| 8 | [Edge Vision Pipeline](./legacy/08-edge-vision.md) | Image preprocessing, delta encoding, OCR, timeline | ✅ Done (Legacy) |
+| 9 | [Testing Strategy](./legacy/09-testing.md) | Per-crate testing, example code | ✅ Done (Legacy) |
+| 10 | [Build/Deploy + Risks](./legacy/10-build-deploy.md) | Cross-compilation, installers, CI/CD | ✅ Done (Legacy) |
 
 ---
 

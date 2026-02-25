@@ -2,7 +2,7 @@
 
 # 1. Migration Rationale
 
-[← README](./README.md) | [Project Structure →](./02-project-structure.md)
+[← README](../README.md) | [Project Structure →](./02-project-structure.md)
 
 ---
 

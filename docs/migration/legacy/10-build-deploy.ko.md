@@ -2,7 +2,7 @@
 
 # 10. 빌드/배포 + 리스크
 
-[← 테스트 전략](./09-testing.ko.md) | [README →](./README.ko.md)
+[← 테스트 전략](./09-testing.ko.md) | [README →](../README.ko.md)
 
 ---
 

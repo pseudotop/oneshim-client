@@ -2,7 +2,7 @@
 
 # 6. UI 프레임워크 선택
 
-[← 마이그레이션 단계](./05-migration-phases.ko.md) | [코드 스케치 →](./07-code-sketches.ko.md)
+[← 마이그레이션 단계](../05-migration-phases.ko.md) | [코드 스케치 →](./07-code-sketches.ko.md)
 
 ---
 

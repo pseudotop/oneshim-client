@@ -124,6 +124,31 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::automation::get_automation_scene_calibration),
         )
         .route(
+            "/automation/gui/sessions",
+            post(handlers::automation_gui::create_gui_session),
+        )
+        .route(
+            "/automation/gui/sessions/:id",
+            get(handlers::automation_gui::get_gui_session)
+                .delete(handlers::automation_gui::delete_gui_session),
+        )
+        .route(
+            "/automation/gui/sessions/:id/highlight",
+            post(handlers::automation_gui::highlight_gui_session),
+        )
+        .route(
+            "/automation/gui/sessions/:id/confirm",
+            post(handlers::automation_gui::confirm_gui_session),
+        )
+        .route(
+            "/automation/gui/sessions/:id/execute",
+            post(handlers::automation_gui::execute_gui_session),
+        )
+        .route(
+            "/automation/gui/sessions/:id/events",
+            get(handlers::automation_gui::gui_session_event_stream),
+        )
+        .route(
             "/onboarding/quickstart",
             get(handlers::onboarding::get_quickstart),
         )

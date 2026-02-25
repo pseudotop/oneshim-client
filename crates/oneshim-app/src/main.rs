@@ -6,11 +6,14 @@ mod autostart;
 mod cli_subscription_bridge;
 mod event_bus;
 mod focus_analyzer;
+mod focus_probe_adapter;
 mod gui_runner;
 mod integrity_guard;
 mod lifecycle;
 mod memory_profiler;
 mod notification_manager;
+mod platform_accessibility;
+mod platform_overlay;
 mod provider_adapters;
 mod scheduler;
 mod update_coordinator;
@@ -22,6 +25,7 @@ use clap::Parser;
 use directories::ProjectDirs;
 use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::controller::AutomationController;
+use oneshim_automation::input_driver::NoOpElementFinder;
 use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
 use oneshim_core::config::{AiAccessMode, AppConfig};
@@ -55,8 +59,10 @@ use crate::cli_subscription_bridge::{
 };
 use crate::event_bus::EventBus;
 use crate::focus_analyzer::FocusAnalyzer;
+use crate::focus_probe_adapter::ProcessMonitorFocusProbe;
 use crate::lifecycle::LifecycleManager;
 use crate::notification_manager::NotificationManager;
+use crate::platform_overlay::create_platform_overlay_driver;
 use crate::scheduler::{Scheduler, SchedulerConfig};
 
 ///
@@ -377,6 +383,10 @@ async fn main() -> Result<()> {
     let system_monitor = Arc::new(SysInfoMonitor::new());
     let process_monitor: Arc<dyn oneshim_core::ports::monitor::ProcessMonitor> =
         Arc::new(ProcessTracker::new());
+    let focus_probe: Arc<dyn oneshim_core::ports::focus_probe::FocusProbe> =
+        Arc::new(ProcessMonitorFocusProbe::new(process_monitor.clone()));
+    let overlay_driver: Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver> =
+        create_platform_overlay_driver();
     let activity_monitor = Arc::new(ActivityTracker::new(process_monitor.clone()));
 
     let capture_trigger: Box<dyn oneshim_core::ports::vision::CaptureTrigger> =
@@ -494,6 +504,13 @@ async fn main() -> Result<()> {
     info!("settings file: {:?}", config_manager.config_path());
 
     let audit_logger = Arc::new(RwLock::new(AuditLogger::default()));
+    let gui_ticket_hmac_secret = std::env::var("ONESHIM_GUI_TICKET_HMAC_SECRET")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if gui_ticket_hmac_secret.is_none() {
+        warn!("ONESHIM_GUI_TICKET_HMAC_SECRET is missing; GUI V2 endpoints will fail closed");
+    }
 
     let automation_controller = if config.automation.enabled {
         let runtime = build_automation_runtime(
@@ -524,6 +541,13 @@ async fn main() -> Result<()> {
                 controller.set_scene_finder(runtime.element_finder.clone());
                 controller.set_intent_executor(runtime.intent_executor);
                 controller.set_intent_planner(runtime.intent_planner);
+                if let Err(err) = controller.configure_gui_interaction(
+                    focus_probe.clone(),
+                    overlay_driver.clone(),
+                    gui_ticket_hmac_secret.clone(),
+                ) {
+                    warn!(error = %err, "failed to configure GUI interaction service");
+                }
                 Some(Arc::new(controller))
             }
             Err(err) => {
@@ -543,7 +567,15 @@ async fn main() -> Result<()> {
                         config.automation.sandbox.clone(),
                     );
                     controller.set_enabled(true);
+                    controller.set_scene_finder(Arc::new(NoOpElementFinder));
                     controller.set_intent_executor(build_noop_intent_executor());
+                    if let Err(err) = controller.configure_gui_interaction(
+                        focus_probe.clone(),
+                        overlay_driver.clone(),
+                        gui_ticket_hmac_secret.clone(),
+                    ) {
+                        warn!(error = %err, "failed to configure GUI interaction service");
+                    }
                     Some(Arc::new(controller))
                 } else {
                     error!(

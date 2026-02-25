@@ -4988,6 +4988,7 @@ dependencies = [
  "chrono",
  "criterion",
  "enigo",
+ "hmac",
  "oneshim-core",
  "serde",
  "serde_json",

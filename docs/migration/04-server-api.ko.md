@@ -2,7 +2,7 @@
 
 # 4. Server API 연동 명세
 
-[← 모듈 매핑](./03-module-mapping.ko.md) | [마이그레이션 단계 →](./05-migration-phases.ko.md)
+[← 모듈 매핑](./legacy/03-module-mapping.ko.md) | [마이그레이션 단계 →](./05-migration-phases.ko.md)
 
 ---
 

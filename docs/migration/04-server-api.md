@@ -2,7 +2,7 @@
 
 # 4. Server API Integration Specification
 
-[← Module Mapping](./03-module-mapping.md) | [Migration Phases →](./05-migration-phases.md)
+[← Module Mapping](./legacy/03-module-mapping.md) | [Migration Phases →](./05-migration-phases.md)
 
 ---
 

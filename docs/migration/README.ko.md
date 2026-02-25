@@ -13,22 +13,45 @@
 
 ---
 
+## 아카이브 정책 (Active vs Legacy)
+
+이 마이그레이션 문서 묶음은 기본적으로 이력 아카이브 성격이다.
+
+- **Active 문서** (현재 참조를 위해 업데이트 가능):
+  - `README.md`, `README.ko.md`
+  - `04-server-api.md`, `04-server-api.ko.md`
+  - `05-migration-phases.md`, `05-migration-phases.ko.md`
+- **Legacy 문서** (역사적 스냅샷, 상시 업데이트 대상 아님):
+  - `01-rationale*`, `02-project-structure*`, `03-module-mapping*`
+  - `06-ui-framework*`, `07-code-sketches*`, `08-edge-vision*`
+  - `09-testing*`, `10-build-deploy*`
+  - Legacy 인덱스: [`./legacy/README.ko.md`](./legacy/README.ko.md)
+
+새 운영 가이드는 다음 디렉터리를 우선 사용한다.
+
+- `docs/guides/`: 런북/플레이북/how-to
+- `docs/contracts/`: 버전드 계약 문서
+- `docs/crates/`: 현재 구현 레퍼런스
+- `docs/architecture/`: ADR 의사결정 문서
+
+---
+
 ## 문서 구조
 
 작업 시 해당 파일만 열어서 수정합니다.
 
 | # | 문서 | 내용 | 상태 |
 |---|------|------|------|
-| 1 | [전환 근거](./01-rationale.ko.md) | 왜 Rust, 왜 Full Native (Sidecar 아님) | ✅ 완료 |
-| 2 | [프로젝트 구조 + 의존성](./02-project-structure.ko.md) | 8개 크레이트 구조, Cargo.toml, 플랫폼별 의존성 | ✅ 완료 |
-| 3 | [Python → Rust 매핑](./03-module-mapping.ko.md) | 180+ Python 파일 → Rust 모듈 매핑표 | ✅ 완료 |
+| 1 | [전환 근거](./legacy/01-rationale.ko.md) | 왜 Rust, 왜 Full Native (Sidecar 아님) | ✅ 완료 (Legacy) |
+| 2 | [프로젝트 구조 + 의존성](./legacy/02-project-structure.ko.md) | 8개 크레이트 구조, Cargo.toml, 플랫폼별 의존성 | ✅ 완료 (Legacy) |
+| 3 | [Python → Rust 매핑](./legacy/03-module-mapping.ko.md) | 180+ Python 파일 → Rust 모듈 매핑표 | ✅ 완료 (Legacy) |
 | 4 | [Server API 연동](./04-server-api.ko.md) | 29개 엔드포인트, SSE 이벤트 타입 | ✅ 완료 |
 | 5 | [마이그레이션 단계 + 성공 기준](./05-migration-phases.ko.md) | Phase 0-6, 체크리스트, 완료 기준 | ✅ 완료 |
-| 6 | [UI 프레임워크](./06-ui-framework.ko.md) | iced 선택 (egui 대비 높은 접근성, 데스크톱 최적화) | ✅ 완료 |
-| 7 | [코드 스케치](./07-code-sketches.ko.md) | 핵심 Rust 구현 스케치 (모델, SSE, 제안) | 📚 참조용 |
-| 8 | [Edge Vision 파이프라인](./08-edge-vision.ko.md) | 이미지 전처리, 델타 인코딩, OCR, 타임라인 | ✅ 완료 |
-| 9 | [테스트 전략](./09-testing.ko.md) | 크레이트별 테스트, 예시 코드 | ✅ 완료 |
-| 10 | [빌드/배포 + 리스크](./10-build-deploy.ko.md) | 크로스 컴파일, 인스톨러, CI/CD | ✅ 완료 |
+| 6 | [UI 프레임워크](./legacy/06-ui-framework.ko.md) | iced 선택 (egui 대비 높은 접근성, 데스크톱 최적화) | ✅ 완료 (Legacy) |
+| 7 | [코드 스케치](./legacy/07-code-sketches.ko.md) | 핵심 Rust 구현 스케치 (모델, SSE, 제안) | 📚 참조용 (Legacy) |
+| 8 | [Edge Vision 파이프라인](./legacy/08-edge-vision.ko.md) | 이미지 전처리, 델타 인코딩, OCR, 타임라인 | ✅ 완료 (Legacy) |
+| 9 | [테스트 전략](./legacy/09-testing.ko.md) | 크레이트별 테스트, 예시 코드 | ✅ 완료 (Legacy) |
+| 10 | [빌드/배포 + 리스크](./legacy/10-build-deploy.ko.md) | 크로스 컴파일, 인스톨러, CI/CD | ✅ 완료 (Legacy) |
 
 ---
 

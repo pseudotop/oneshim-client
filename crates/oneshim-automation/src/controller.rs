@@ -3,19 +3,26 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 
 use crate::action_dispatcher::{AutomationActionDispatcher, SandboxActionDispatcher};
 use crate::audit::AuditLogger;
+use crate::gui_interaction::{
+    GuiConfirmRequest, GuiCreateSessionRequest, GuiCreateSessionResponse, GuiExecutionOutcome,
+    GuiExecutionRequest, GuiHighlightRequest, GuiInteractionError, GuiInteractionService,
+};
 use crate::intent_planner::IntentPlanner;
 use crate::intent_resolver::IntentExecutor;
 use crate::policy::{AuditLevel, PolicyClient};
 use crate::resolver;
 use oneshim_core::config::SandboxConfig;
 use oneshim_core::error::CoreError;
+use oneshim_core::models::gui::{GuiExecutionTicket, GuiInteractionSession, GuiSessionEvent};
 use oneshim_core::models::intent::{AutomationIntent, IntentCommand, IntentResult, WorkflowPreset};
 use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::element_finder::ElementFinder;
+use oneshim_core::ports::focus_probe::FocusProbe;
+use oneshim_core::ports::overlay_driver::OverlayDriver;
 use oneshim_core::ports::sandbox::Sandbox;
 
 pub use oneshim_core::models::automation::{AutomationAction, MouseButton};
@@ -63,6 +70,14 @@ pub struct PlannedIntentResult {
     pub result: IntentResult,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiExecutionResult {
+    pub command_id: String,
+    pub ticket: GuiExecutionTicket,
+    pub result: IntentResult,
+    pub outcome: GuiExecutionOutcome,
+}
+
 // AutomationController
 
 pub struct AutomationController {
@@ -74,6 +89,7 @@ pub struct AutomationController {
     intent_executor: Option<Arc<IntentExecutor>>,
     intent_planner: Option<Arc<dyn IntentPlanner>>,
     scene_finder: Option<Arc<dyn ElementFinder>>,
+    gui_service: Option<Arc<GuiInteractionService>>,
 }
 
 impl AutomationController {
@@ -97,6 +113,7 @@ impl AutomationController {
             intent_executor: None,
             intent_planner: None,
             scene_finder: None,
+            gui_service: None,
         }
     }
 
@@ -118,6 +135,29 @@ impl AutomationController {
 
     pub fn set_action_dispatcher(&mut self, dispatcher: Arc<dyn AutomationActionDispatcher>) {
         self.action_dispatcher = dispatcher;
+    }
+
+    pub fn configure_gui_interaction(
+        &mut self,
+        focus_probe: Arc<dyn FocusProbe>,
+        overlay_driver: Arc<dyn OverlayDriver>,
+        hmac_secret: Option<String>,
+    ) -> Result<(), CoreError> {
+        let scene_finder = self
+            .scene_finder
+            .as_ref()
+            .ok_or_else(|| CoreError::Internal("Scene analyzer is not configured".to_string()))?
+            .clone();
+
+        let service = Arc::new(GuiInteractionService::new(
+            scene_finder,
+            focus_probe,
+            overlay_driver,
+            hmac_secret,
+        ));
+        service.ensure_cleanup_task();
+        self.gui_service = Some(service);
+        Ok(())
     }
 
     fn ensure_enabled(&self) -> Result<(), CoreError> {
@@ -146,6 +186,14 @@ impl AutomationController {
         self.scene_finder
             .as_ref()
             .ok_or_else(|| CoreError::Internal("Scene analyzer is not configured".to_string()))
+    }
+
+    fn require_gui_service(&self) -> Result<&Arc<GuiInteractionService>, GuiInteractionError> {
+        self.gui_service.as_ref().ok_or_else(|| {
+            GuiInteractionError::Unavailable(
+                "GUI interaction service is not configured".to_string(),
+            )
+        })
     }
 
     ///
@@ -248,6 +296,154 @@ impl AutomationController {
         let finder = self.require_scene_finder()?;
         finder
             .analyze_scene_from_image(image_data, image_format, app_name, screen_id)
+            .await
+    }
+
+    pub async fn gui_create_session(
+        &self,
+        req: GuiCreateSessionRequest,
+    ) -> Result<GuiCreateSessionResponse, GuiInteractionError> {
+        self.ensure_enabled()
+            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+        let service = self.require_gui_service()?;
+        service.create_session(req).await
+    }
+
+    pub async fn gui_get_session(
+        &self,
+        session_id: &str,
+        capability_token: &str,
+    ) -> Result<GuiInteractionSession, GuiInteractionError> {
+        self.ensure_enabled()
+            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+        let service = self.require_gui_service()?;
+        service.get_session(session_id, capability_token).await
+    }
+
+    pub async fn gui_highlight_session(
+        &self,
+        session_id: &str,
+        capability_token: &str,
+        req: GuiHighlightRequest,
+    ) -> Result<GuiInteractionSession, GuiInteractionError> {
+        self.ensure_enabled()
+            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+        let service = self.require_gui_service()?;
+        service
+            .highlight_session(session_id, capability_token, req)
+            .await
+    }
+
+    pub async fn gui_confirm_candidate(
+        &self,
+        session_id: &str,
+        capability_token: &str,
+        req: GuiConfirmRequest,
+    ) -> Result<GuiExecutionTicket, GuiInteractionError> {
+        self.ensure_enabled()
+            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+        let service = self.require_gui_service()?;
+        service
+            .confirm_candidate(session_id, capability_token, req)
+            .await
+    }
+
+    pub async fn gui_execute(
+        &self,
+        session_id: &str,
+        capability_token: &str,
+        req: GuiExecutionRequest,
+    ) -> Result<GuiExecutionResult, GuiInteractionError> {
+        self.ensure_enabled()
+            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+        let service = self.require_gui_service()?;
+        let plan = service
+            .prepare_execution(session_id, capability_token, req)
+            .await?;
+
+        let mut last_result = IntentResult {
+            success: false,
+            element: None,
+            verification: None,
+            retry_count: 0,
+            elapsed_ms: 0,
+            error: Some("No executable actions in GUI plan".to_string()),
+        };
+        let mut execution_error: Option<String> = None;
+
+        for (index, action) in plan.actions.iter().enumerate() {
+            let command_id = if index == 0 {
+                plan.command_id.clone()
+            } else {
+                format!("{}:stage-{index}", plan.command_id)
+            };
+
+            let intent_command = IntentCommand {
+                command_id,
+                session_id: plan.session_id.clone(),
+                intent: AutomationIntent::Raw(action.clone()),
+                config: None,
+                timeout_ms: None,
+                policy_token: "gui-session".to_string(),
+            };
+
+            match self.execute_intent(&intent_command).await {
+                Ok(result) => {
+                    last_result = result;
+                    if !last_result.success {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    execution_error = Some(err.to_string());
+                    break;
+                }
+            }
+        }
+
+        let succeeded = execution_error.is_none() && last_result.success;
+        let detail = execution_error.clone().or_else(|| {
+            (!last_result.success)
+                .then(|| last_result.error.clone())
+                .flatten()
+        });
+        let outcome = service
+            .complete_execution(session_id, succeeded, detail.clone())
+            .await?;
+
+        if let Some(err) = execution_error {
+            return Err(GuiInteractionError::Internal(err));
+        }
+
+        Ok(GuiExecutionResult {
+            command_id: plan.command_id,
+            ticket: plan.ticket,
+            result: last_result,
+            outcome,
+        })
+    }
+
+    pub async fn gui_cancel_session(
+        &self,
+        session_id: &str,
+        capability_token: &str,
+    ) -> Result<GuiInteractionSession, GuiInteractionError> {
+        self.ensure_enabled()
+            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+        let service = self.require_gui_service()?;
+        service.cancel_session(session_id, capability_token).await
+    }
+
+    pub async fn gui_subscribe_events(
+        &self,
+        session_id: &str,
+        capability_token: &str,
+    ) -> Result<broadcast::Receiver<GuiSessionEvent>, GuiInteractionError> {
+        self.ensure_enabled()
+            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
+        let service = self.require_gui_service()?;
+        service
+            .subscribe_session(session_id, capability_token)
             .await
     }
 

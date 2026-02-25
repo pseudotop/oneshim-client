@@ -28,8 +28,10 @@ cargo test -p oneshim-vision
 client-rust/
 ├── Cargo.toml              # Workspace root (resolver = "2")
 ├── .cargo/config.toml      # Build configuration
-├── docs/architecture/
-│   └── ADR-001-rust-client-architecture-patterns.md
+├── docs/
+│   ├── architecture/   # ADR-only (ADR-001, ADR-002, ...)
+│   ├── guides/         # Playbooks/runbooks/how-to docs
+│   └── research/       # Exploratory notes
 └── crates/
     ├── oneshim-core/       # Domain models + port traits + errors + config
     ├── oneshim-network/    # JWT auth, HTTP/SSE/WebSocket, compression, batch upload
@@ -217,13 +219,15 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ## Reference Documents
 
+- [Docs Index](docs/README.md) — Document map by intent
 - [ADR-001: Rust Client Architecture Patterns](docs/architecture/ADR-001-rust-client-architecture-patterns.md)
+- [ADR-002: OS GUI Interaction Boundary and Runtime Split](docs/architecture/ADR-002-os-gui-interaction-boundary.md)
 - [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history
 - [Server API](docs/migration/04-server-api.md) — 29 REST endpoints + gRPC RPCs
 - [Migration Phases](docs/migration/05-migration-phases.md) — Phase 0-36 plans
-- [Edge Vision](docs/migration/08-edge-vision.md) — Image processing details
+- [Edge Vision](docs/migration/legacy/08-edge-vision.md) — Image processing details
 - [gRPC Client Guide](docs/guides/grpc-client.md) — Rust gRPC client usage
 - [Contributing Guide](CONTRIBUTING.md) — Rust development guide
 - [Code of Conduct](CODE_OF_CONDUCT.md) — Contributor Covenant v2.1

@@ -2,7 +2,7 @@
 
 # 1. 전환 근거
 
-[← README](./README.ko.md) | [프로젝트 구조 →](./02-project-structure.ko.md)
+[← README](../README.ko.md) | [프로젝트 구조 →](./02-project-structure.ko.md)
 
 ---
 

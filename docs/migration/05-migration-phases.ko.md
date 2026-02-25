@@ -2,7 +2,7 @@
 
 # 5. 마이그레이션 단계 + 성공 기준
 
-[← Server API](./04-server-api.ko.md) | [UI 프레임워크 →](./06-ui-framework.ko.md)
+[← Server API](./04-server-api.ko.md) | [UI 프레임워크 →](./legacy/06-ui-framework.ko.md)
 
 ---
 

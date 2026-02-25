@@ -1,4 +1,5 @@
 pub mod automation;
+pub mod automation_gui;
 pub mod backup;
 pub mod data;
 pub mod events;

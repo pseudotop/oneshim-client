@@ -13,8 +13,9 @@ use oneshim_core::ports::input_driver::InputDriver;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::element_finder::OcrElementFinder;
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{debug, warn};
 
+use crate::platform_accessibility::create_platform_accessibility_finder;
 use crate::provider_adapters::{resolve_ai_provider_adapters, ProviderSource};
 
 pub struct AutomationRuntime {
@@ -28,6 +29,96 @@ pub struct AutomationRuntime {
     pub llm_source: ProviderSource,
 }
 
+pub struct CompositeElementFinder {
+    finders: Vec<Arc<dyn ElementFinder>>,
+}
+
+impl CompositeElementFinder {
+    pub fn new(finders: Vec<Arc<dyn ElementFinder>>) -> Self {
+        Self { finders }
+    }
+}
+
+#[async_trait]
+impl ElementFinder for CompositeElementFinder {
+    async fn find_element(
+        &self,
+        text: Option<&str>,
+        role: Option<&str>,
+        region: Option<&ElementBounds>,
+    ) -> Result<Vec<UiElement>, CoreError> {
+        let mut last_err: Option<CoreError> = None;
+        for finder in &self.finders {
+            debug!(finder = finder.name(), "composite finder: find_element");
+            match finder.find_element(text, role, region).await {
+                Ok(elements) if !elements.is_empty() => return Ok(elements),
+                Ok(_) => continue,
+                Err(err) => last_err = Some(err),
+            }
+        }
+        Err(last_err.unwrap_or_else(|| {
+            CoreError::ElementNotFound("No element found by any configured finder".to_string())
+        }))
+    }
+
+    async fn analyze_scene(
+        &self,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        let mut last_err: Option<CoreError> = None;
+        for finder in &self.finders {
+            debug!(finder = finder.name(), "composite finder: analyze_scene");
+            match finder.analyze_scene(app_name, screen_id).await {
+                Ok(scene) => return Ok(scene),
+                Err(err) => last_err = Some(err),
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            CoreError::ElementNotFound("No scene produced by any configured finder".to_string())
+        }))
+    }
+
+    async fn analyze_scene_from_image(
+        &self,
+        image_data: Vec<u8>,
+        image_format: String,
+        app_name: Option<&str>,
+        screen_id: Option<&str>,
+    ) -> Result<UiScene, CoreError> {
+        let mut last_err: Option<CoreError> = None;
+        for finder in &self.finders {
+            debug!(
+                finder = finder.name(),
+                "composite finder: analyze_scene_from_image"
+            );
+            match finder
+                .analyze_scene_from_image(
+                    image_data.clone(),
+                    image_format.clone(),
+                    app_name,
+                    screen_id,
+                )
+                .await
+            {
+                Ok(scene) => return Ok(scene),
+                Err(err) => last_err = Some(err),
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| {
+            CoreError::ElementNotFound(
+                "No image scene produced by any configured finder".to_string(),
+            )
+        }))
+    }
+
+    fn name(&self) -> &str {
+        "composite"
+    }
+}
+
 pub fn build_automation_runtime(
     ai_config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
@@ -38,7 +129,7 @@ pub fn build_automation_runtime(
     let ocr_provider_name = adapters.ocr.provider_name().to_string();
     let llm_provider_name = adapters.llm.provider_name().to_string();
 
-    let element_finder: Arc<dyn ElementFinder> = if let Some(frame_storage) = frame_storage {
+    let ocr_finder: Arc<dyn ElementFinder> = if let Some(frame_storage) = frame_storage {
         Arc::new(LatestFrameOcrElementFinder::new(
             frame_storage,
             adapters.ocr.clone(),
@@ -47,6 +138,12 @@ pub fn build_automation_runtime(
         warn!("frame save settings: NoOpElementFinder");
         Arc::new(NoOpElementFinder)
     };
+
+    let accessibility_finder = create_platform_accessibility_finder();
+    let element_finder: Arc<dyn ElementFinder> = Arc::new(CompositeElementFinder::new(vec![
+        accessibility_finder,
+        ocr_finder,
+    ]));
 
     let input_driver: Arc<dyn InputDriver> = Arc::new(NoOpInputDriver);
     let resolver = IntentResolver::new(

@@ -2,7 +2,7 @@
 
 # 6. UI Framework Selection
 
-[← Migration Phases](./05-migration-phases.md) | [Code Sketches →](./07-code-sketches.md)
+[← Migration Phases](../05-migration-phases.md) | [Code Sketches →](./07-code-sketches.md)
 
 ---
 

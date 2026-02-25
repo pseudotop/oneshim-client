@@ -2,7 +2,7 @@
 
 # 10. Build/Deploy + Risks
 
-[← Testing Strategy](./09-testing.md) | [README →](./README.md)
+[← Testing Strategy](./09-testing.md) | [README →](../README.md)
 
 ---
 

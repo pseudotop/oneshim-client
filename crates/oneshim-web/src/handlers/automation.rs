@@ -1436,7 +1436,7 @@ mod tests {
         let request: ExecuteIntentHintRequest = serde_json::from_str(payload).unwrap();
         assert!(request.command_id.is_none());
         assert_eq!(request.session_id, "sess-1");
-        assert_eq!(request.intent_hint, "click the save button");
+        assert_eq!(request.intent_hint, "save 버튼 클릭");
     }
 
     #[test]
@@ -1550,7 +1550,8 @@ mod tests {
         };
         let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
         assert!(!active);
-        assert!(issue.unwrap_or_default().contains("expired"));
+        let issue_text = issue.unwrap_or_default();
+        assert!(issue_text.contains("만료") || issue_text.contains("expired"));
     }
 
     #[test]
