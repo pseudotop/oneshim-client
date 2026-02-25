@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-02-25
+
+### Added
+- AI smoke provider capability fallback across app/web, including runtime fallback status and reason exposure.
+- Remote AI provider model discovery API for API key based setup in settings.
+- Provider preset catalog JSON support with aliases, endpoint defaults, model lists, and `updated_at` metadata.
+- Core policy enforcement for AI model lifecycle retirement dates.
+- Web-managed scene intelligence controls and calibration flows.
+
+### Changed
+- CI now includes AI integration smoke checks and split PR build/smoke paths for faster feedback.
+- Release pipeline hardening for signed/notarized macOS installers (DMG/PKG) and packaging asset validation.
+- Repository language policy enforcement for English-first logs/comments and i18n checks.
+- GUI v2 OS interaction flow and related documentation structure updates.
+
+### Fixed
+- AI smoke environment variable alignment for provider API key parsing and OpenAI OCR compatibility.
+
 ## [0.0.1] - 2026-02-21
 
 ### Core
@@ -75,5 +93,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.0.7...HEAD
+[0.0.7]: https://github.com/pseudotop/oneshim-client/compare/v0.0.6...v0.0.7
 [0.0.1]: https://github.com/pseudotop/oneshim-client/releases/tag/v0.0.1
