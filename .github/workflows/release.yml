@@ -235,6 +235,42 @@ jobs:
             dist/${{ matrix.artifact_name }}.${{ matrix.asset_ext }}.sha256
           if-no-files-found: error
 
+      - name: Verify MSI version
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAG_REF: ${{ github.ref_name }}
+        run: |
+          $expectedVersion = $env:TAG_REF -replace '^v', ''
+          $msiFile = Get-ChildItem -Path "target/wix","crates/oneshim-app/target/wix" -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $msiFile) { Write-Error "No MSI file found"; exit 1 }
+          $msiName = $msiFile.Name
+          Write-Host "MSI file: $msiName"
+          if ($msiName -notmatch $expectedVersion.Replace('.', '-')) {
+            if ($msiName -match "0\.0\.1" -and $expectedVersion -ne "0.0.1") {
+              Write-Error "MSI version mismatch: file=$msiName expected=$expectedVersion"
+              exit 1
+            }
+          }
+          Write-Host "MSI version check passed"
+
+      - name: Verify DEB version
+        if: runner.os == 'Linux'
+        env:
+          TAG_REF: ${{ github.ref_name }}
+        run: |
+          EXPECTED_VERSION="${TAG_REF#v}"
+          DEB_FILE=$(find target -name "*.deb" -type f | head -1)
+          if [ -z "$DEB_FILE" ]; then echo "No DEB file found"; exit 1; fi
+          DEB_VERSION=$(dpkg-deb -f "$DEB_FILE" Version)
+          echo "DEB file: $(basename $DEB_FILE)"
+          echo "DEB version: $DEB_VERSION"
+          echo "Expected: $EXPECTED_VERSION"
+          if [ "$DEB_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::DEB version mismatch: got $DEB_VERSION, expected $EXPECTED_VERSION"
+            exit 1
+          fi
+
       - name: Upload MSI artifact
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v6
@@ -450,6 +486,18 @@ jobs:
           </dict>
           </plist>
           EOF
+
+      - name: Verify macOS app bundle version
+        shell: bash
+        run: |
+          EXPECTED_VERSION="${GITHUB_REF#refs/tags/v}"
+          BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" dist/ONESHIM.app/Contents/Info.plist)
+          echo "Expected: $EXPECTED_VERSION"
+          echo "Bundle:   $BUNDLE_VERSION"
+          if [ "$BUNDLE_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::macOS bundle version mismatch: got $BUNDLE_VERSION, expected $EXPECTED_VERSION"
+            exit 1
+          fi
 
       - name: Sign and verify macOS app bundle
         shell: bash
@@ -736,87 +784,64 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Extract changelog for this version
+        id: changelog
+        env:
+          TAG_REF: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG_REF#v}"
+          # Extract section between ## [$VERSION] and next ## [
+          CHANGELOG_SECTION=$(sed -n "/^## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '1d;$d' | sed '/^$/d')
+          if [ -z "$CHANGELOG_SECTION" ]; then
+            CHANGELOG_SECTION="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)"
+          fi
+          # Write to file for multi-line output
+          echo "$CHANGELOG_SECTION" > changelog_section.md
+
       - name: Generate release notes
         id: notes
         run: |
-          cat << 'EOF' > release_notes.md
-          ## ONESHIM Client ${{ steps.version.outputs.version }}
+          VERSION="${GITHUB_REF#refs/tags/}"
+          CHANGELOG_CONTENT=$(cat changelog_section.md)
 
-          > Note: Initial macOS installers are published as `*-unsigned.dmg`/`*-unsigned.pkg`.
-          > After Apple notarization completes, the release is updated with notarized `oneshim-macos-universal.dmg` and `oneshim-macos-universal.pkg`.
+          cat > release_notes.md <<NOTES_EOF
+          ## What's Changed
+
+          ${CHANGELOG_CONTENT}
+
+          ---
+
+          > **Note:** Initial macOS installers are published as \`*-unsigned.dmg\`/\`*-unsigned.pkg\`.
+          > After Apple notarization completes, the release is updated with notarized versions.
 
           ### Downloads
 
           | Platform | Architecture | File | Format |
           |----------|-------------|------|--------|
-          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal-unsigned.dmg` | DMG Installer (pre-notarization) |
-          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal-unsigned.pkg` | PKG Installer (pre-notarization) |
-          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.dmg` | DMG Installer (notarized, added later) |
-          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.pkg` | PKG Installer (notarized, added later) |
-          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.tar.gz` | Binary |
-          | macOS | Apple Silicon (arm64) | `oneshim-macos-arm64.tar.gz` | Binary |
-          | macOS | Intel (x64) | `oneshim-macos-x64.tar.gz` | Binary |
-          | Windows | x64 | `oneshim-*.msi` | MSI Installer |
-          | Windows | x64 | `oneshim-windows-x64.zip` | Binary |
-          | Linux | x64 | `oneshim-*.deb` | DEB Package |
-          | Linux | x64 | `oneshim-linux-x64.tar.gz` | Binary |
-          | API | v1 | `oneshim-web.v1.openapi.yaml` | OpenAPI Snapshot |
+          | macOS | Universal (arm64 + x64) | \`oneshim-macos-universal-unsigned.dmg\` | DMG Installer |
+          | macOS | Universal (arm64 + x64) | \`oneshim-macos-universal-unsigned.pkg\` | PKG Installer |
+          | macOS | Universal | \`oneshim-macos-universal.tar.gz\` | Binary |
+          | macOS | Apple Silicon | \`oneshim-macos-arm64.tar.gz\` | Binary |
+          | macOS | Intel | \`oneshim-macos-x64.tar.gz\` | Binary |
+          | Windows | x64 | \`oneshim-*.msi\` | MSI Installer |
+          | Windows | x64 | \`oneshim-windows-x64.zip\` | Binary |
+          | Linux | x64 | \`oneshim-*.deb\` | DEB Package |
+          | Linux | x64 | \`oneshim-linux-x64.tar.gz\` | Binary |
 
-          ### Installation
+          ### Quick Install
 
-          **Quick install (macOS/Linux):**
-          ```bash
-          curl -fsSL -o /tmp/oneshim-install.sh \
-            https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh
-          bash /tmp/oneshim-install.sh
-          ```
+          **macOS / Linux:**
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
+          \`\`\`
 
-          **Quick install (Windows PowerShell):**
-          ```powershell
-          $tmp = Join-Path $env:TEMP "oneshim-install.ps1"
-          Invoke-WebRequest -UseBasicParsing `
-            -Uri "https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.ps1" `
-            -OutFile $tmp
-          powershell -ExecutionPolicy Bypass -File $tmp
-          ```
+          **Windows (PowerShell):**
+          \`\`\`powershell
+          irm https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.ps1 | iex
+          \`\`\`
 
-          **macOS/Linux (manual):**
-          ```bash
-          tar -xzf oneshim-macos-universal.tar.gz
-          chmod +x oneshim
-          ./oneshim
-          ```
-
-          **macOS (PKG):**
-          ```bash
-          sudo installer -pkg oneshim-macos-universal.pkg -target /
-          ```
-
-          **Windows (MSI — Recommended):**
-          Download and run the MSI installer.
-
-          **Windows (zip):**
-          ```powershell
-          Expand-Archive oneshim-windows-x64.zip
-          .\oneshim.exe
-          ```
-
-          **Linux (DEB — Recommended):**
-          ```bash
-          sudo dpkg -i oneshim-*.deb
-          ```
-
-          **Linux (tar.gz):**
-          ```bash
-          tar -xzf oneshim-linux-x64.tar.gz
-          chmod +x oneshim
-          ./oneshim
-          ```
-
-          ### Changes
-
-          See the full changelog at [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
-          EOF
+          **Full changelog:** [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+          NOTES_EOF
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
