@@ -117,6 +117,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Install Linux dependencies
         run: |
@@ -154,6 +156,12 @@ jobs:
 
       - name: Verify web contract boundary
         run: ./scripts/verify-web-contract-boundary.sh
+
+      - name: Verify HTTP interface manifest
+        run: ./scripts/verify-http-interface-manifest.sh
+
+      - name: Verify commit message hygiene
+        run: ./scripts/verify-commit-message-hygiene.sh "${{ github.event.pull_request.base.sha || '' }}" "${{ github.sha }}"
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
