@@ -2,6 +2,7 @@
 //!
 
 pub mod api_client;
+pub mod batch_sink;
 pub mod compressor;
 pub mod element_finder;
 pub mod focus_probe;
