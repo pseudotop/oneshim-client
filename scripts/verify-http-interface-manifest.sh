@@ -42,12 +42,23 @@ if ! jq -e '
 fi
 
 mapfile -t route_paths < <(
-  rg -o '"\/[^"]+"' "$ROUTES_PATH" | tr -d '"' | sort -u
+  {
+    if command -v rg >/dev/null 2>&1; then
+      rg -o '"\/[^"]+"' "$ROUTES_PATH" || true
+    else
+      grep -oE '"\/[^"]+"' "$ROUTES_PATH" || true
+    fi
+  } | tr -d '"' | sort -u
 )
 
 mapfile -t manifest_paths < <(
   jq -r '.groups[].operations[].path' "$MANIFEST_PATH" | sed 's#^/api##' | sort -u
 )
+
+if [[ ${#route_paths[@]} -eq 0 ]]; then
+  echo "[http-interface-manifest] no routes were discovered in $ROUTES_PATH" >&2
+  exit 1
+fi
 
 missing_paths="$(comm -23 <(printf '%s\n' "${route_paths[@]}" | sort -u) <(printf '%s\n' "${manifest_paths[@]}" | sort -u) || true)"
 extra_paths="$(comm -13 <(printf '%s\n' "${route_paths[@]}" | sort -u) <(printf '%s\n' "${manifest_paths[@]}" | sort -u) || true)"
