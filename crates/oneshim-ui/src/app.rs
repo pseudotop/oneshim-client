@@ -1085,7 +1085,7 @@ mod tests {
             .with_locale(Locale::Ko)
             .with_offline_mode(true);
         assert!(app.offline_mode);
-        assert_eq!(app.main_state.connection_status, "offline mode");
+        assert_eq!(app.main_state.connection_status, "오프라인 mode");
     }
 
     #[test]
@@ -1175,7 +1175,7 @@ mod tests {
         assert_eq!(app.title(), "ONESHIM");
 
         let _ = app.update(Message::ToggleSettings);
-        assert_eq!(app.title(), "ONESHIM - Settings");
+        assert_eq!(app.title(), "ONESHIM - 설정");
 
         let _ = app.update(Message::ChangeLanguage(Locale::En));
         assert_eq!(app.title(), "ONESHIM - Settings");
@@ -1216,7 +1216,7 @@ mod tests {
         let app = OneshimApp::new().with_locale(Locale::Ko);
         let s = app.strings();
         assert_eq!(s.quit, "ended");
-        assert_eq!(s.settings, "[Settings]");
+        assert_eq!(s.settings, "[설정]");
     }
 
     #[test]

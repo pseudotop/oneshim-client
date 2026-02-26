@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/oneshim-api-contracts",
     "crates/oneshim-lint",
     "crates/oneshim-core",
     "crates/oneshim-monitor",
@@ -136,6 +137,7 @@ windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "W
 
 # 내부 크레이트
 oneshim-core = { path = "crates/oneshim-core" }
+oneshim-api-contracts = { path = "crates/oneshim-api-contracts" }
 oneshim-monitor = { path = "crates/oneshim-monitor" }
 oneshim-vision = { path = "crates/oneshim-vision" }
 oneshim-network = { path = "crates/oneshim-network" }

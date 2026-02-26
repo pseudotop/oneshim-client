@@ -1,6 +1,6 @@
 # Crate Implementation Docs
 
-Detailed implementation reference for the ONESHIM Rust client's 10-crate workspace.
+Detailed implementation reference for the ONESHIM Rust client's 11-crate workspace.
 
 ## Crate Dependency Graph
 
@@ -39,6 +39,7 @@ Detailed implementation reference for the ONESHIM Rust client's 10-crate workspa
 | Crate | Role | Key Implementations | Docs |
 |-------|------|---------------------|------|
 | **oneshim-core** | Foundation layer | Models, ports, errors, config | [Details](./oneshim-core.md) |
+| **oneshim-api-contracts** | Transport contract SSOT | Shared web API DTOs and serialization defaults for handlers/services | [Details](./oneshim-api-contracts.md) |
 | **oneshim-network** | Network adapter | HTTP, SSE, WebSocket, compression, auth, gRPC, AI OCR/LLM clients | [Details](./oneshim-network.md) |
 | **oneshim-vision** | Edge image processing | Capture, delta, WebP, OCR, privacy filter, Privacy Gateway | [Details](./oneshim-vision.md) |
 | **oneshim-monitor** | System monitoring | CPU/memory/disk, active windows, idle detection, input activity | [Details](./oneshim-monitor.md) |
@@ -54,7 +55,7 @@ Detailed implementation reference for the ONESHIM Rust client's 10-crate workspa
 ### Hexagonal Architecture (Ports & Adapters)
 
 - **Core**: `oneshim-core` defines all ports (traits) and domain models.
-- **Adapters**: The other 9 crates implement those ports.
+- **Adapters**: The other 10 crates implement those ports.
 - **Dependency Rule**: Adapters depend on core; reverse dependencies are disallowed.
 
 ### Cross-Crate Communication Rules

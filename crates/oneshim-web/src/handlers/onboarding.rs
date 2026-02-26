@@ -1,6 +1,6 @@
 use axum::{extract::State, Json};
 use chrono::Utc;
-use serde::Serialize;
+use oneshim_api_contracts::onboarding::{OnboardingQuickstartDto, QuickstartStepDto};
 
 use oneshim_automation::presets::builtin_presets;
 use oneshim_core::models::intent::WorkflowPreset;
@@ -8,25 +8,6 @@ use oneshim_core::models::intent::WorkflowPreset;
 use crate::AppState;
 
 const ONBOARDING_QUICKSTART_SCHEMA_VERSION: &str = "onboarding.quickstart.v1";
-
-#[derive(Debug, Serialize)]
-pub struct QuickstartStepDto {
-    pub order: u8,
-    pub title: String,
-    pub action: String,
-    pub expected_outcome: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct OnboardingQuickstartDto {
-    pub schema_version: String,
-    pub generated_at: String,
-    pub target_mode: String,
-    pub dashboard_url: String,
-    pub checklist: Vec<QuickstartStepDto>,
-    pub recommended_presets: Vec<WorkflowPreset>,
-    pub verification_commands: Vec<String>,
-}
 
 fn recommended_presets() -> Vec<WorkflowPreset> {
     let preferred = [

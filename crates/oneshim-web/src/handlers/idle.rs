@@ -1,18 +1,11 @@
 use axum::extract::{Query, State};
 use axum::Json;
-use serde::Serialize;
+use oneshim_api_contracts::idle::IdlePeriodResponse;
 
 use crate::error::ApiError;
 use crate::AppState;
 
 use super::TimeRangeQuery;
-
-#[derive(Debug, Serialize)]
-pub struct IdlePeriodResponse {
-    pub start_time: String,
-    pub end_time: Option<String>,
-    pub duration_secs: Option<u64>,
-}
 
 ///
 /// GET /api/idle?from=&to=

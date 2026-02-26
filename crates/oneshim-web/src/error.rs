@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde::Serialize;
+use oneshim_api_contracts::error::ErrorResponse;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -29,12 +29,6 @@ pub enum ApiError {
 
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
-}
-
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub status: u16,
 }
 
 impl IntoResponse for ApiError {

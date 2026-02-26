@@ -1,20 +1,9 @@
 use axum::extract::{Path, State};
 use axum::Json;
-use serde::Serialize;
+use oneshim_api_contracts::sessions::SessionResponse;
 
 use crate::error::ApiError;
 use crate::AppState;
-
-#[derive(Debug, Serialize)]
-pub struct SessionResponse {
-    pub session_id: String,
-    pub started_at: String,
-    pub ended_at: Option<String>,
-    pub total_events: u64,
-    pub total_frames: u64,
-    pub total_idle_secs: u64,
-    pub active_duration_secs: Option<u64>,
-}
 
 ///
 /// GET /api/sessions

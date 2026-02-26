@@ -1,7 +1,7 @@
 use std::time::Duration;
 
+use oneshim_api_contracts::ai_providers::{ProviderModelsRequest, ProviderModelsResponse};
 use oneshim_core::config::AiProviderType;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::ApiError;
@@ -10,20 +10,6 @@ use crate::services::settings_service::is_masked_key;
 
 const MODEL_DISCOVERY_TIMEOUT_SECS: u64 = 20;
 const MAX_ERROR_SNIPPET_CHARS: usize = 220;
-
-#[derive(Debug, Deserialize)]
-pub struct ProviderModelsRequest {
-    pub provider_type: String,
-    pub api_key: String,
-    pub endpoint: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ProviderModelsResponse {
-    pub models: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notice: Option<String>,
-}
 
 pub async fn fetch_provider_models(
     request: &ProviderModelsRequest,

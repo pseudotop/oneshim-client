@@ -1,4 +1,10 @@
 use chrono::{DateTime, Utc};
+use oneshim_api_contracts::settings::{
+    AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
+    MonitorControlSettings, NotificationSettings, OcrValidationSettings, PrivacySettings,
+    SandboxSettings, SceneActionOverrideSettings, SceneIntelligenceSettings, ScheduleSettings,
+    StorageStats, TelemetrySettings, UpdateSettings,
+};
 use oneshim_core::config::{
     AiAccessMode, AiProviderType, AppConfig, ExternalApiEndpoint, ExternalDataPolicy,
     LlmProviderType, OcrProviderType, OcrValidationConfig, PiiFilterLevel, SandboxProfile,
@@ -6,12 +12,6 @@ use oneshim_core::config::{
 };
 
 use crate::error::ApiError;
-use crate::handlers::settings::{
-    AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
-    MonitorControlSettings, NotificationSettings, OcrValidationSettings, PrivacySettings,
-    SandboxSettings, SceneActionOverrideSettings, SceneIntelligenceSettings, ScheduleSettings,
-    StorageStats, TelemetrySettings, UpdateSettings,
-};
 use crate::AppState;
 use tracing::warn;
 

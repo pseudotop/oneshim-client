@@ -1,7 +1,7 @@
-use std::sync::LazyLock;
+use std::sync::OnceLock;
 
+use oneshim_api_contracts::ai_providers::{ProviderPreset, ProviderPresetCatalog};
 use oneshim_core::config::AiProviderType;
-use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
 
@@ -10,41 +10,7 @@ const PRESETS_JSON: &str = include_str!(concat!(
     "/config/ai_provider_presets.json"
 ));
 
-static PRESET_CATALOG: LazyLock<Result<ProviderPresetCatalog, String>> = LazyLock::new(|| {
-    serde_json::from_str::<ProviderPresetCatalog>(PRESETS_JSON)
-        .map_err(|e| format!("Failed to parse ai provider preset catalog: {e}"))
-});
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ProviderPresetCatalog {
-    pub version: u32,
-    #[serde(default)]
-    pub updated_at: String,
-    pub providers: Vec<ProviderPreset>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ProviderPreset {
-    pub provider_type: String,
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    pub display_name: String,
-    pub llm_endpoint: String,
-    pub ocr_endpoint: String,
-    pub model_catalog_endpoint: String,
-    #[serde(default = "default_true")]
-    pub ocr_model_catalog_supported: bool,
-    #[serde(default)]
-    pub ocr_model_catalog_notice: Option<String>,
-    #[serde(default)]
-    pub llm_models: Vec<String>,
-    #[serde(default)]
-    pub ocr_models: Vec<String>,
-}
-
-fn default_true() -> bool {
-    true
-}
+static PRESET_CATALOG: OnceLock<Result<ProviderPresetCatalog, String>> = OnceLock::new();
 
 pub fn list_provider_presets() -> Result<ProviderPresetCatalog, ApiError> {
     Ok(catalog()?.clone())
@@ -110,10 +76,15 @@ pub fn ocr_model_catalog_notice_for_endpoint(
 }
 
 fn catalog() -> Result<&'static ProviderPresetCatalog, ApiError> {
-    match &*PRESET_CATALOG {
+    match PRESET_CATALOG.get_or_init(load_preset_catalog) {
         Ok(catalog) => Ok(catalog),
         Err(message) => Err(ApiError::Internal(message.clone())),
     }
+}
+
+fn load_preset_catalog() -> Result<ProviderPresetCatalog, String> {
+    serde_json::from_str::<ProviderPresetCatalog>(PRESETS_JSON)
+        .map_err(|e| format!("Failed to parse ai provider preset catalog: {e}"))
 }
 
 fn find_provider_preset(provider_type_label: &str) -> Result<Option<ProviderPreset>, ApiError> {
