@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::sync::OnceLock;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -11,16 +11,7 @@ const POLICY_JSON: &str = include_str!(concat!(
     "/config/ai_model_lifecycle_policy.json"
 ));
 
-static POLICY_CATALOG: LazyLock<Result<ModelLifecyclePolicyCatalog, String>> =
-    LazyLock::new(|| {
-        let catalog = serde_json::from_str::<ModelLifecyclePolicyCatalog>(POLICY_JSON)
-            .map_err(|e| format!("Failed to parse model lifecycle policy JSON: {e}"))?;
-
-        validate_policy_catalog(&catalog)
-            .map_err(|e| format!("Invalid model lifecycle policy JSON: {e}"))?;
-
-        Ok(catalog)
-    });
+static POLICY_CATALOG: OnceLock<Result<ModelLifecyclePolicyCatalog, String>> = OnceLock::new();
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelLifecyclePolicyCatalog {
@@ -192,10 +183,20 @@ fn validate_policy_catalog(catalog: &ModelLifecyclePolicyCatalog) -> Result<(), 
 }
 
 fn policy_catalog() -> Result<&'static ModelLifecyclePolicyCatalog, CoreError> {
-    match &*POLICY_CATALOG {
+    match POLICY_CATALOG.get_or_init(load_policy_catalog) {
         Ok(catalog) => Ok(catalog),
         Err(message) => Err(CoreError::Internal(message.clone())),
     }
+}
+
+fn load_policy_catalog() -> Result<ModelLifecyclePolicyCatalog, String> {
+    let catalog = serde_json::from_str::<ModelLifecyclePolicyCatalog>(POLICY_JSON)
+        .map_err(|e| format!("Failed to parse model lifecycle policy JSON: {e}"))?;
+
+    validate_policy_catalog(&catalog)
+        .map_err(|e| format!("Invalid model lifecycle policy JSON: {e}"))?;
+
+    Ok(catalog)
 }
 
 fn parse_utc_opt(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, CoreError> {
