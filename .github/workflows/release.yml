@@ -235,9 +235,6 @@ jobs:
       MACOS_INSTALLER_CERT_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERT_PASSWORD }}
       MACOS_APP_SIGNING_IDENTITY: ${{ secrets.MACOS_APP_SIGNING_IDENTITY }}
       MACOS_INSTALLER_SIGNING_IDENTITY: ${{ secrets.MACOS_INSTALLER_SIGNING_IDENTITY }}
-      MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
-      MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
-      MACOS_NOTARY_APP_PASSWORD: ${{ secrets.MACOS_NOTARY_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v6
 
@@ -283,7 +280,7 @@ jobs:
             dist/oneshim-macos-universal.tar.gz
             dist/oneshim-macos-universal.tar.gz.sha256
 
-      - name: Validate macOS signing and notarization secrets
+      - name: Validate macOS signing secrets
         shell: bash
         run: |
           required=(
@@ -293,9 +290,6 @@ jobs:
             MACOS_INSTALLER_CERT_PASSWORD
             MACOS_APP_SIGNING_IDENTITY
             MACOS_INSTALLER_SIGNING_IDENTITY
-            MACOS_NOTARY_APPLE_ID
-            MACOS_NOTARY_TEAM_ID
-            MACOS_NOTARY_APP_PASSWORD
           )
           for key in "${required[@]}"; do
             if [[ -z "${!key:-}" ]]; then
@@ -344,15 +338,6 @@ jobs:
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
           echo "APP_CERT_PATH=$APP_CERT_PATH" >> "$GITHUB_ENV"
           echo "INSTALLER_CERT_PATH=$INSTALLER_CERT_PATH" >> "$GITHUB_ENV"
-
-      - name: Configure notarization credentials
-        shell: bash
-        run: |
-          xcrun notarytool store-credentials "oneshim-notary" \
-            --keychain "$KEYCHAIN_PATH" \
-            --apple-id "$MACOS_NOTARY_APPLE_ID" \
-            --team-id "$MACOS_NOTARY_TEAM_ID" \
-            --password "$MACOS_NOTARY_APP_PASSWORD"
 
       - name: Validate macOS icon asset format
         shell: bash
@@ -409,85 +394,43 @@ jobs:
             dist/ONESHIM.app
           codesign --verify --deep --strict --verbose=2 dist/ONESHIM.app
 
-      - name: Notarize and staple macOS app bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          ditto -c -k --keepParent dist/ONESHIM.app dist/ONESHIM.app.zip
-          bash ./scripts/notary-submit-and-poll.sh \
-            dist/ONESHIM.app.zip \
-            "$KEYCHAIN_PATH" \
-            "oneshim-notary" \
-            "3600" \
-            "30"
-          xcrun stapler staple dist/ONESHIM.app
-          spctl --assess --type exec --verbose=4 dist/ONESHIM.app
-
       - name: Create DMG installer
         shell: bash
         run: |
           mkdir -p dmg-staging
           cp -R dist/ONESHIM.app dmg-staging/
           ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "ONESHIM" -srcfolder dmg-staging -ov -format UDZO dist/oneshim-macos-universal.dmg
+          hdiutil create -volname "ONESHIM" -srcfolder dmg-staging -ov -format UDZO dist/oneshim-macos-universal-unsigned.dmg
 
       - name: Create and sign PKG installer
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
+          UNSIGNED_PKG_TMP="dist/oneshim-macos-universal-pkgbuild-unsigned.pkg"
           pkgbuild \
             --component dist/ONESHIM.app \
             --identifier com.oneshim.client \
             --version "$VERSION" \
             --install-location /Applications \
-            dist/oneshim-macos-universal-unsigned.pkg
+            "$UNSIGNED_PKG_TMP"
           productsign \
             --sign "$MACOS_INSTALLER_SIGNING_IDENTITY" \
-            dist/oneshim-macos-universal-unsigned.pkg \
-            dist/oneshim-macos-universal.pkg
-          pkgutil --check-signature dist/oneshim-macos-universal.pkg
-          rm -f dist/oneshim-macos-universal-unsigned.pkg
-
-      - name: Notarize and staple DMG and PKG
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash ./scripts/notary-submit-and-poll.sh \
-            dist/oneshim-macos-universal.dmg \
-            "$KEYCHAIN_PATH" \
-            "oneshim-notary" \
-            "3600" \
-            "30"
-          bash ./scripts/notary-submit-and-poll.sh \
-            dist/oneshim-macos-universal.pkg \
-            "$KEYCHAIN_PATH" \
-            "oneshim-notary" \
-            "3600" \
-            "30"
-          xcrun stapler staple dist/oneshim-macos-universal.dmg
-          xcrun stapler staple dist/oneshim-macos-universal.pkg
-          spctl --assess --type open --verbose=4 dist/oneshim-macos-universal.dmg
-          spctl --assess --type install --verbose=4 dist/oneshim-macos-universal.pkg
-
-      - name: Upload notarization logs
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: oneshim-macos-notary-logs
-          path: dist/notary-logs/*.json
-          if-no-files-found: ignore
+            "$UNSIGNED_PKG_TMP" \
+            dist/oneshim-macos-universal-unsigned.pkg
+          pkgutil --check-signature dist/oneshim-macos-universal-unsigned.pkg
+          rm -f "$UNSIGNED_PKG_TMP"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v6
         with:
           name: oneshim-macos-universal-dmg
-          path: dist/oneshim-macos-universal.dmg
+          path: dist/oneshim-macos-universal-unsigned.dmg
           if-no-files-found: error
 
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v6
         with:
           name: oneshim-macos-universal-pkg
-          path: dist/oneshim-macos-universal.pkg
+          path: dist/oneshim-macos-universal-unsigned.pkg
           if-no-files-found: error
 
       - name: Cleanup macOS signing keychain
@@ -700,12 +643,17 @@ jobs:
           cat << 'EOF' > release_notes.md
           ## ONESHIM Client ${{ steps.version.outputs.version }}
 
+          > Note: Initial macOS installers are published as `*-unsigned.dmg`/`*-unsigned.pkg`.
+          > After Apple notarization completes, the release is updated with notarized `oneshim-macos-universal.dmg` and `oneshim-macos-universal.pkg`.
+
           ### Downloads
 
           | Platform | Architecture | File | Format |
           |----------|-------------|------|--------|
-          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.dmg` | DMG Installer |
-          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.pkg` | PKG Installer |
+          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal-unsigned.dmg` | DMG Installer (pre-notarization) |
+          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal-unsigned.pkg` | PKG Installer (pre-notarization) |
+          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.dmg` | DMG Installer (notarized, added later) |
+          | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.pkg` | PKG Installer (notarized, added later) |
           | macOS | Universal (arm64 + x64) | `oneshim-macos-universal.tar.gz` | Binary |
           | macOS | Apple Silicon (arm64) | `oneshim-macos-arm64.tar.gz` | Binary |
           | macOS | Intel (x64) | `oneshim-macos-x64.tar.gz` | Binary |
