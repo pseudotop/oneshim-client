@@ -4,7 +4,7 @@ param(
     [string]$InstallScript = $(if ($env:ONESHIM_INSTALL_SCRIPT) { $env:ONESHIM_INSTALL_SCRIPT } else { "scripts/install.ps1" }),
     [string]$AssetName = $(if ($env:ONESHIM_SMOKE_ASSET_NAME) { $env:ONESHIM_SMOKE_ASSET_NAME } else { "oneshim-windows-x64.zip" }),
     [string]$InstallDir = $(if ($env:ONESHIM_SMOKE_INSTALL_DIR) { $env:ONESHIM_SMOKE_INSTALL_DIR } else { "" }),
-    [string]$Host = $(if ($env:ONESHIM_SMOKE_HOST) { $env:ONESHIM_SMOKE_HOST } else { "127.0.0.1" }),
+    [string]$ListenHost = $(if ($env:ONESHIM_SMOKE_HOST) { $env:ONESHIM_SMOKE_HOST } else { "127.0.0.1" }),
     [int]$Port = $(if ($env:ONESHIM_SMOKE_PORT) { [int]$env:ONESHIM_SMOKE_PORT } else { 18091 }),
     [switch]$SkipUpdaterTests
 )
@@ -50,10 +50,10 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
 
 $serverProcess = $null
 try {
-    Write-Info "Serving assets from $AssetsDir on http://$Host`:$Port"
+    Write-Info "Serving assets from $AssetsDir on http://$ListenHost`:$Port"
     $serverProcess = Start-Process `
         -FilePath $pythonCommand.Source `
-        -ArgumentList @("-m", "http.server", "$Port", "--bind", "$Host") `
+        -ArgumentList @("-m", "http.server", "$Port", "--bind", "$ListenHost") `
         -WorkingDirectory $AssetsDir `
         -PassThru `
         -WindowStyle Hidden
@@ -63,7 +63,7 @@ try {
         throw "Failed to start local HTTP server"
     }
 
-    $baseUrl = "http://$Host`:$Port"
+    $baseUrl = "http://$ListenHost`:$Port"
     Write-Info "Running installer against local base URL"
     & powershell `
         -ExecutionPolicy Bypass `
