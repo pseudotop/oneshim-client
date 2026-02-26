@@ -1,0 +1,194 @@
+{
+  "schema_version": "http.interface.manifest.v1",
+  "document_version": 1,
+  "updated_at": "2026-02-26",
+  "source": {
+    "routes_file": "crates/oneshim-web/src/routes.rs",
+    "contracts_crate": "crates/oneshim-api-contracts"
+  },
+  "groups": [
+    {
+      "module": "metrics",
+      "operations": [
+        { "method": "GET", "path": "/api/metrics" },
+        { "method": "GET", "path": "/api/metrics/hourly" }
+      ]
+    },
+    {
+      "module": "processes",
+      "operations": [
+        { "method": "GET", "path": "/api/processes" }
+      ]
+    },
+    {
+      "module": "idle",
+      "operations": [
+        { "method": "GET", "path": "/api/idle" }
+      ]
+    },
+    {
+      "module": "sessions",
+      "operations": [
+        { "method": "GET", "path": "/api/sessions" },
+        { "method": "GET", "path": "/api/sessions/:id" }
+      ]
+    },
+    {
+      "module": "frames",
+      "operations": [
+        { "method": "GET", "path": "/api/frames" },
+        { "method": "GET", "path": "/api/frames/:id/image" }
+      ]
+    },
+    {
+      "module": "events",
+      "operations": [
+        { "method": "GET", "path": "/api/events" }
+      ]
+    },
+    {
+      "module": "stats",
+      "operations": [
+        { "method": "GET", "path": "/api/stats/summary" },
+        { "method": "GET", "path": "/api/stats/apps" },
+        { "method": "GET", "path": "/api/stats/heatmap" }
+      ]
+    },
+    {
+      "module": "reports",
+      "operations": [
+        { "method": "GET", "path": "/api/reports" }
+      ]
+    },
+    {
+      "module": "settings",
+      "operations": [
+        { "method": "GET", "path": "/api/settings" },
+        { "method": "POST", "path": "/api/settings" },
+        { "method": "GET", "path": "/api/storage/stats" }
+      ]
+    },
+    {
+      "module": "ai_providers",
+      "operations": [
+        { "method": "GET", "path": "/api/ai/providers/presets" },
+        { "method": "POST", "path": "/api/ai/providers/models" }
+      ]
+    },
+    {
+      "module": "data",
+      "operations": [
+        { "method": "DELETE", "path": "/api/data/range" },
+        { "method": "DELETE", "path": "/api/data/all" }
+      ]
+    },
+    {
+      "module": "search",
+      "operations": [
+        { "method": "GET", "path": "/api/search" }
+      ]
+    },
+    {
+      "module": "stream",
+      "operations": [
+        { "method": "GET", "path": "/api/stream" }
+      ]
+    },
+    {
+      "module": "export",
+      "operations": [
+        { "method": "GET", "path": "/api/export/metrics" },
+        { "method": "GET", "path": "/api/export/events" },
+        { "method": "GET", "path": "/api/export/frames" }
+      ]
+    },
+    {
+      "module": "backup",
+      "operations": [
+        { "method": "GET", "path": "/api/backup" },
+        { "method": "POST", "path": "/api/backup/restore" }
+      ]
+    },
+    {
+      "module": "tags",
+      "operations": [
+        { "method": "GET", "path": "/api/tags" },
+        { "method": "POST", "path": "/api/tags" },
+        { "method": "GET", "path": "/api/tags/:id" },
+        { "method": "PUT", "path": "/api/tags/:id" },
+        { "method": "DELETE", "path": "/api/tags/:id" },
+        { "method": "GET", "path": "/api/frames/:frame_id/tags" },
+        { "method": "POST", "path": "/api/frames/:frame_id/tags/:tag_id" },
+        { "method": "DELETE", "path": "/api/frames/:frame_id/tags/:tag_id" }
+      ]
+    },
+    {
+      "module": "timeline",
+      "operations": [
+        { "method": "GET", "path": "/api/timeline" }
+      ]
+    },
+    {
+      "module": "focus",
+      "operations": [
+        { "method": "GET", "path": "/api/focus/metrics" },
+        { "method": "GET", "path": "/api/focus/sessions" },
+        { "method": "GET", "path": "/api/focus/interruptions" },
+        { "method": "GET", "path": "/api/focus/suggestions" },
+        { "method": "POST", "path": "/api/focus/suggestions/:id/feedback" }
+      ]
+    },
+    {
+      "module": "automation",
+      "operations": [
+        { "method": "GET", "path": "/api/automation/status" },
+        { "method": "GET", "path": "/api/automation/contracts" },
+        { "method": "GET", "path": "/api/automation/audit" },
+        { "method": "GET", "path": "/api/automation/policy-events" },
+        { "method": "GET", "path": "/api/automation/policies" },
+        { "method": "GET", "path": "/api/automation/stats" },
+        { "method": "GET", "path": "/api/automation/presets" },
+        { "method": "POST", "path": "/api/automation/presets" },
+        { "method": "PUT", "path": "/api/automation/presets/:id" },
+        { "method": "DELETE", "path": "/api/automation/presets/:id" },
+        { "method": "POST", "path": "/api/automation/presets/:id/run" },
+        { "method": "POST", "path": "/api/automation/execute-hint" },
+        { "method": "POST", "path": "/api/automation/execute-scene-action" },
+        { "method": "GET", "path": "/api/automation/scene" },
+        { "method": "GET", "path": "/api/automation/scene/calibration" }
+      ]
+    },
+    {
+      "module": "automation_gui",
+      "operations": [
+        { "method": "POST", "path": "/api/automation/gui/sessions" },
+        { "method": "GET", "path": "/api/automation/gui/sessions/:id" },
+        { "method": "DELETE", "path": "/api/automation/gui/sessions/:id" },
+        { "method": "POST", "path": "/api/automation/gui/sessions/:id/highlight" },
+        { "method": "POST", "path": "/api/automation/gui/sessions/:id/confirm" },
+        { "method": "POST", "path": "/api/automation/gui/sessions/:id/execute" },
+        { "method": "GET", "path": "/api/automation/gui/sessions/:id/events" }
+      ]
+    },
+    {
+      "module": "onboarding",
+      "operations": [
+        { "method": "GET", "path": "/api/onboarding/quickstart" }
+      ]
+    },
+    {
+      "module": "support",
+      "operations": [
+        { "method": "GET", "path": "/api/support/diagnostics" }
+      ]
+    },
+    {
+      "module": "update",
+      "operations": [
+        { "method": "GET", "path": "/api/update/status" },
+        { "method": "POST", "path": "/api/update/action" },
+        { "method": "GET", "path": "/api/update/stream" }
+      ]
+    }
+  ]
+}

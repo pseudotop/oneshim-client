@@ -139,14 +139,14 @@ jobs:
             dist/oneshim-macos-universal-unsigned.dmg \
             "$KEYCHAIN_PATH" \
             "oneshim-notary" \
-            "7200" \
-            "30"
+            "10800" \
+            "60"
           bash ./scripts/notary-submit-and-poll.sh \
             dist/oneshim-macos-universal-unsigned.pkg \
             "$KEYCHAIN_PATH" \
             "oneshim-notary" \
-            "7200" \
-            "30"
+            "10800" \
+            "60"
           xcrun stapler staple dist/oneshim-macos-universal-unsigned.dmg
           xcrun stapler staple dist/oneshim-macos-universal-unsigned.pkg
           cp dist/oneshim-macos-universal-unsigned.dmg dist/oneshim-macos-universal.dmg
