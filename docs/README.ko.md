@@ -16,7 +16,7 @@
 - `research/`: 조사/탐색 문서
 - `guides/`: 운영/개발 플레이북, 런북, how-to 가이드
 - `plan/`: 날짜 기반 구현 계획 및 실행 추적 문서
-- `contracts/`: 버전드 API/payload 계약 문서
+- `contracts/`: 버전드 API/payload 계약 문서와 생성 OpenAPI 스냅샷
 - `crates/`: crate 단위 구현 레퍼런스
 - `migration/`: 마이그레이션 이력 및 단계별 계획(`migration/README.ko.md`의 active/legacy 구분 기준 적용)
 - `security/`: 보안 기준선 및 무결성 운영 문서

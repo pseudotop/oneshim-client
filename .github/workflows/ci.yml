@@ -160,6 +160,19 @@ jobs:
       - name: Verify HTTP interface manifest
         run: ./scripts/verify-http-interface-manifest.sh
 
+      - name: Verify HTTP OpenAPI snapshot sync
+        run: ./scripts/verify-http-openapi-sync.sh
+
+      - name: Generate HTTP OpenAPI snapshot
+        run: ./scripts/generate-http-openapi.sh dist/oneshim-web.v1.openapi.yaml
+
+      - name: Upload HTTP OpenAPI snapshot artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: oneshim-web-v1-openapi
+          path: dist/oneshim-web.v1.openapi.yaml
+          if-no-files-found: error
+
       - name: Verify commit message hygiene
         run: ./scripts/verify-commit-message-hygiene.sh "${{ github.event.pull_request.base.sha || '' }}" "${{ github.sha }}"
 

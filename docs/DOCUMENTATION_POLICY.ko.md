@@ -24,7 +24,7 @@
 - `docs/guides/`는 운영/개발 플레이북과 how-to/런북 문서를 관리합니다.
 - `docs/plan/`은 날짜 기반 구현 계획과 실행 추적 문서를 관리합니다.
   - 파일 이름 규칙: `YYYY-MM-DD-*.md` (핵심 계획은 `YYYY-MM-DD-*.ko.md` companion 포함)
-- `docs/contracts/`는 버전드 payload/API 계약 문서를 관리합니다.
+- `docs/contracts/`는 버전드 payload/API 계약 문서와 생성 OpenAPI 스냅샷을 관리합니다.
 - `docs/crates/`는 crate별 구현 레퍼런스를 관리합니다.
 - `docs/migration/`는 마이그레이션 이력/단계 아카이브 문서를 관리합니다. `README`는 최신 상태로 유지하고, 하위 문서는 migration 인덱스에서 active/legacy로 구분합니다.
 - `docs/security/`는 보안 기준선 및 무결성 운영 문서를 관리합니다.

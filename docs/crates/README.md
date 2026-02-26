@@ -39,7 +39,7 @@ Detailed implementation reference for the ONESHIM Rust client's 11-crate workspa
 | Crate | Role | Key Implementations | Docs |
 |-------|------|---------------------|------|
 | **oneshim-core** | Foundation layer | Models, ports, errors, config | [Details](./oneshim-core.md) |
-| **oneshim-api-contracts** | Transport contract SSOT | Shared web API DTOs and serialization defaults for handlers/services | [Details](./oneshim-api-contracts.md) |
+| **oneshim-api-contracts** | Transport contract SSOT | Shared web API DTOs, serialization defaults, and OpenAPI snapshot bridge inputs | [Details](./oneshim-api-contracts.md) |
 | **oneshim-network** | Network adapter | HTTP, SSE, WebSocket, compression, auth, gRPC, AI OCR/LLM clients | [Details](./oneshim-network.md) |
 | **oneshim-vision** | Edge image processing | Capture, delta, WebP, OCR, privacy filter, Privacy Gateway | [Details](./oneshim-vision.md) |
 | **oneshim-monitor** | System monitoring | CPU/memory/disk, active windows, idle detection, input activity | [Details](./oneshim-monitor.md) |

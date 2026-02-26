@@ -23,7 +23,7 @@
 - `docs/guides/` stores operator/developer playbooks and how-to/runbook style documents.
 - `docs/plan/` stores dated implementation plans and execution tracking notes.
   - File naming: `YYYY-MM-DD-*.md` and `YYYY-MM-DD-*.ko.md` for key plans.
-- `docs/contracts/` stores versioned payload/API contracts.
+- `docs/contracts/` stores versioned payload/API contracts and generated OpenAPI snapshots.
 - `docs/crates/` stores per-crate implementation references.
 - `docs/migration/` stores migration history and archive-oriented phase documents. Keep `README` files current, and classify sub-docs as active vs legacy in the migration index.
 - `docs/security/` stores security baseline and integrity operations docs.

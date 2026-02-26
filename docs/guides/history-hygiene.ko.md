@@ -28,6 +28,7 @@
 
 - `scripts/verify-commit-message-hygiene.sh`로 신규 커밋 제목의 민감 키워드/환경변수 대입 패턴을 검사합니다.
 - `scripts/verify-http-interface-manifest.sh`로 공개 HTTP 인터페이스 변경 이력을 버전드 매니페스트와 동기화합니다.
+- `scripts/verify-http-openapi-sync.sh`로 생성 OpenAPI 스냅샷과 인터페이스 매니페스트의 동기화를 강제합니다.
 
 ## 운영 참고
 

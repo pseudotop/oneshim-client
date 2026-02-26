@@ -633,6 +633,9 @@ jobs:
             echo "No runtime policy bundle found; skipping"
           fi
 
+      - name: Generate HTTP OpenAPI snapshot
+        run: ./scripts/generate-http-openapi.sh dist/oneshim-web.v1.openapi.yaml
+
       - name: Ensure checksums exist for all release files
         run: |
           shopt -s nullglob
@@ -727,6 +730,7 @@ jobs:
           | Windows | x64 | `oneshim-windows-x64.zip` | Binary |
           | Linux | x64 | `oneshim-*.deb` | DEB Package |
           | Linux | x64 | `oneshim-linux-x64.tar.gz` | Binary |
+          | API | v1 | `oneshim-web.v1.openapi.yaml` | OpenAPI Snapshot |
 
           ### Installation
 
