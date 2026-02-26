@@ -227,6 +227,7 @@ jobs:
     name: Build macOS Universal Binary
     needs: build-release
     runs-on: macos-latest
+    timeout-minutes: 120
     env:
       MACOS_APP_CERT_P12_B64: ${{ secrets.MACOS_APP_CERT_P12_B64 }}
       MACOS_APP_CERT_PASSWORD: ${{ secrets.MACOS_APP_CERT_PASSWORD }}
@@ -411,11 +412,14 @@ jobs:
       - name: Notarize and staple macOS app bundle
         shell: bash
         run: |
+          set -euo pipefail
           ditto -c -k --keepParent dist/ONESHIM.app dist/ONESHIM.app.zip
-          xcrun notarytool submit dist/ONESHIM.app.zip \
-            --keychain "$KEYCHAIN_PATH" \
-            --keychain-profile "oneshim-notary" \
-            --wait
+          bash ./scripts/notary-submit-and-poll.sh \
+            dist/ONESHIM.app.zip \
+            "$KEYCHAIN_PATH" \
+            "oneshim-notary" \
+            "3600" \
+            "30"
           xcrun stapler staple dist/ONESHIM.app
           spctl --assess --type exec --verbose=4 dist/ONESHIM.app
 
@@ -446,18 +450,31 @@ jobs:
       - name: Notarize and staple DMG and PKG
         shell: bash
         run: |
-          xcrun notarytool submit dist/oneshim-macos-universal.dmg \
-            --keychain "$KEYCHAIN_PATH" \
-            --keychain-profile "oneshim-notary" \
-            --wait
-          xcrun notarytool submit dist/oneshim-macos-universal.pkg \
-            --keychain "$KEYCHAIN_PATH" \
-            --keychain-profile "oneshim-notary" \
-            --wait
+          set -euo pipefail
+          bash ./scripts/notary-submit-and-poll.sh \
+            dist/oneshim-macos-universal.dmg \
+            "$KEYCHAIN_PATH" \
+            "oneshim-notary" \
+            "3600" \
+            "30"
+          bash ./scripts/notary-submit-and-poll.sh \
+            dist/oneshim-macos-universal.pkg \
+            "$KEYCHAIN_PATH" \
+            "oneshim-notary" \
+            "3600" \
+            "30"
           xcrun stapler staple dist/oneshim-macos-universal.dmg
           xcrun stapler staple dist/oneshim-macos-universal.pkg
           spctl --assess --type open --verbose=4 dist/oneshim-macos-universal.dmg
           spctl --assess --type install --verbose=4 dist/oneshim-macos-universal.pkg
+
+      - name: Upload notarization logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: oneshim-macos-notary-logs
+          path: dist/notary-logs/*.json
+          if-no-files-found: ignore
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v6
