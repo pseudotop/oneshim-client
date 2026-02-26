@@ -1,0 +1,248 @@
+use axum::{
+    extract::{Query, State},
+    http::header,
+    response::{IntoResponse, Response},
+};
+use chrono::{DateTime, Utc};
+use oneshim_api_contracts::export::{
+    EventExportRecord, ExportQuery, FrameExportRecord, MetricExportRecord,
+};
+use serde::Serialize;
+
+use crate::{error::ApiError, AppState};
+
+pub async fn export_metrics(
+    State(state): State<AppState>,
+    Query(params): Query<ExportQuery>,
+) -> Result<Response, ApiError> {
+    let from = params
+        .from
+        .as_ref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|| Utc::now() - chrono::Duration::days(7));
+    let to = params
+        .to
+        .as_ref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    let records: Vec<MetricExportRecord> = state
+        .storage
+        .list_metric_exports(&from.to_rfc3339(), &to.to_rfc3339())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| {
+            let memory_percent = if row.memory_total > 0 {
+                (row.memory_used as f32 / row.memory_total as f32) * 100.0
+            } else {
+                0.0
+            };
+            MetricExportRecord {
+                timestamp: row.timestamp,
+                cpu_usage: row.cpu_usage,
+                memory_used: row.memory_used,
+                memory_total: row.memory_total,
+                memory_percent,
+                disk_used: row.disk_used,
+                disk_total: row.disk_total,
+                network_upload: row.network_upload,
+                network_download: row.network_download,
+            }
+        })
+        .collect();
+
+    export_response(&records, &params.format, "metrics")
+}
+
+pub async fn export_events(
+    State(state): State<AppState>,
+    Query(params): Query<ExportQuery>,
+) -> Result<Response, ApiError> {
+    let from = params
+        .from
+        .as_ref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|| Utc::now() - chrono::Duration::days(7));
+    let to = params
+        .to
+        .as_ref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    let records: Vec<EventExportRecord> = state
+        .storage
+        .list_event_exports(&from.to_rfc3339(), &to.to_rfc3339())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| EventExportRecord {
+            event_id: row.event_id,
+            event_type: row.event_type,
+            timestamp: row.timestamp,
+            app_name: row.app_name,
+            window_title: row.window_title,
+        })
+        .collect();
+
+    export_response(&records, &params.format, "events")
+}
+
+pub async fn export_frames(
+    State(state): State<AppState>,
+    Query(params): Query<ExportQuery>,
+) -> Result<Response, ApiError> {
+    let from = params
+        .from
+        .as_ref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|| Utc::now() - chrono::Duration::days(7));
+    let to = params
+        .to
+        .as_ref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    let records: Vec<FrameExportRecord> = state
+        .storage
+        .list_frame_exports(&from.to_rfc3339(), &to.to_rfc3339())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .into_iter()
+        .map(|row| FrameExportRecord {
+            id: row.id,
+            timestamp: row.timestamp,
+            trigger_type: row.trigger_type,
+            app_name: row.app_name,
+            window_title: row.window_title,
+            importance: row.importance,
+            resolution: format!("{}x{}", row.resolution_w, row.resolution_h),
+            ocr_text: row.ocr_text,
+        })
+        .collect();
+
+    export_response(&records, &params.format, "frames")
+}
+
+fn export_response<T: Serialize>(
+    records: &[T],
+    format: &str,
+    filename_prefix: &str,
+) -> Result<Response, ApiError> {
+    let now = Utc::now().format("%Y%m%d_%H%M%S");
+
+    match format.to_lowercase().as_str() {
+        "csv" => {
+            let csv = records_to_csv(records)?;
+            let filename = format!("{filename_prefix}_{now}.csv");
+            Ok((
+                [
+                    (header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+                    (
+                        header::CONTENT_DISPOSITION,
+                        &format!("attachment; filename=\"{filename}\""),
+                    ),
+                ],
+                csv,
+            )
+                .into_response())
+        }
+        _ => {
+            let json = serde_json::to_string_pretty(records)
+                .map_err(|e| ApiError::Internal(format!("JSON serialization failed: {e}")))?;
+            let filename = format!("{filename_prefix}_{now}.json");
+            Ok((
+                [
+                    (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+                    (
+                        header::CONTENT_DISPOSITION,
+                        &format!("attachment; filename=\"{filename}\""),
+                    ),
+                ],
+                json,
+            )
+                .into_response())
+        }
+    }
+}
+
+fn records_to_csv<T: Serialize>(records: &[T]) -> Result<String, ApiError> {
+    if records.is_empty() {
+        return Ok(String::new());
+    }
+
+    let json_values: Vec<serde_json::Value> = records
+        .iter()
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| ApiError::Internal(format!("JSON conversion failed: {e}")))?;
+
+    let headers: Vec<String> = json_values
+        .first()
+        .and_then(|v| v.as_object())
+        .map(|obj| obj.keys().cloned().collect())
+        .unwrap_or_default();
+
+    let mut csv = headers.join(",") + "\n";
+
+    for value in &json_values {
+        if let Some(obj) = value.as_object() {
+            let row: Vec<String> = headers
+                .iter()
+                .map(|h| {
+                    obj.get(h)
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => {
+                                if s.contains(',') || s.contains('"') || s.contains('\n') {
+                                    format!("\"{}\"", s.replace('"', "\"\""))
+                                } else {
+                                    s.clone()
+                                }
+                            }
+                            serde_json::Value::Null => String::new(),
+                            other => other.to_string(),
+                        })
+                        .unwrap_or_default()
+                })
+                .collect();
+            csv.push_str(&row.join(","));
+            csv.push('\n');
+        }
+    }
+
+    Ok(csv)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn csv_escapes_special_chars() {
+        let records = vec![EventExportRecord {
+            event_id: "1".to_string(),
+            event_type: "context".to_string(),
+            timestamp: "2024-01-30T10:00:00Z".to_string(),
+            app_name: Some("VS Code".to_string()),
+            window_title: Some("file.rs, modified".to_string()), // includes comma
+        }];
+        let csv = records_to_csv(&records).unwrap();
+        assert!(csv.contains("\"file.rs, modified\"")); // quoted field
+    }
+
+    #[test]
+    fn empty_records_returns_empty_csv() {
+        let records: Vec<MetricExportRecord> = vec![];
+        let csv = records_to_csv(&records).unwrap();
+        assert!(csv.is_empty());
+    }
+
+    #[test]
+    fn default_format_is_json() {
+        let query: ExportQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(query.format, "json");
+    }
+}

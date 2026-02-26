@@ -1,0 +1,47 @@
+[English](./STATUS.md) | [한국어](./STATUS.ko.md)
+
+# Project Status (Single Source of Truth)
+
+This document is the canonical source for mutable project quality metrics.
+
+## Scope
+
+The following values must be tracked only in this file:
+
+- Rust test totals and pass/fail status
+- E2E test totals and pass/fail status
+- Lint/build status
+- Known flaky test status
+
+Other documents should link to this file instead of hard-coding mutable counts.
+
+## Update Policy
+
+Update this document whenever CI quality metrics change.
+
+Recommended verification commands:
+
+```bash
+cargo test --workspace
+cd crates/oneshim-web/frontend && pnpm test:e2e
+cargo clippy --workspace
+cargo fmt --check
+```
+
+## Current Snapshot
+
+- Rust tests: See latest CI run artifact/logs for exact count
+- E2E tests: See latest Playwright CI report for exact count
+- Lint status: Enforced in CI (`cargo clippy --workspace`)
+- Format status: Enforced in CI (`cargo fmt --check`)
+- Build status: Enforced in CI (`cargo build --workspace`)
+- Latest CI workflow run: success (`CI`) — [Run 22441091666](https://github.com/pseudotop/oneshim-client/actions/runs/22441091666) (2026-02-26)
+- Latest Release workflow run: success (`Release`, tag `v0.0.15`) — [Run 22439123731](https://github.com/pseudotop/oneshim-client/actions/runs/22439123731) (2026-02-26)
+- Latest Notarization workflow run: in progress (`Notarize macOS Release Assets`) — [Run 22440291739](https://github.com/pseudotop/oneshim-client/actions/runs/22440291739) (started 2026-02-26)
+- UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc3.md` (latest tracked run evidence)
+
+## Notes
+
+- Historical numbers may remain in CHANGELOG entries because they describe past releases.
+- For current status communication, always link this file.
+- `docs/qa/runs/TEMPLATE-uiux-qa-run.md` is a template and is excluded from latest-run references.

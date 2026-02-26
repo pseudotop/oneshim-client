@@ -1,0 +1,10 @@
+# App Icon Assets
+
+이 디렉토리는 플랫폼 패키징용 생성 산출물(`icon.png`, `icon.icns`, `icon.ico`) 위치입니다.
+브랜드 원본 로고는 `assets/brand/logo-icon.svg`를 사용합니다.
+
+## 재생성
+
+```bash
+./scripts/generate-app-icons.sh
+```

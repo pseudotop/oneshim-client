@@ -1,0 +1,31 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+# Cargo.lock is committed for binary applications
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Test coverage
+*.profraw
+*.profdata
+coverage/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Node.js (웹 대시보드 프론트엔드)
+node_modules/

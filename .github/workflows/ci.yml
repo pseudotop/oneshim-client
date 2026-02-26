@@ -1,0 +1,435 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  changes:
+    name: Change Detection
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rust:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'crates/**'
+              - '!crates/oneshim-web/frontend/**'
+              - 'scripts/**'
+              - 'debian/**'
+            frontend:
+              - 'crates/oneshim-web/frontend/**'
+            ci:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+
+  frontend:
+    name: Frontend (build + e2e)
+    needs: [changes]
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.frontend == 'true' ||
+      needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: crates/oneshim-web/frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend bundle
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm build
+
+      - name: Verify frontend build output
+        run: test -f crates/oneshim-web/frontend/dist/index.html
+
+      - name: Install Playwright browser
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run web dashboard E2E tests
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-playwright-artifacts
+          path: |
+            crates/oneshim-web/frontend/playwright-report
+            crates/oneshim-web/frontend/test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Package frontend dist artifact
+        run: tar -czf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend dist
+
+      - name: Upload frontend dist artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-dist-bundle
+          path: crates/oneshim-web/frontend/frontend-dist.tar.gz
+          if-no-files-found: error
+
+  check:
+    name: Check (fmt + clippy)
+    needs: [changes]
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libnotify-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libclang-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-check
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Verify web contract boundary
+        run: ./scripts/verify-web-contract-boundary.sh
+
+      - name: Verify HTTP interface manifest
+        run: ./scripts/verify-http-interface-manifest.sh
+
+      - name: Verify HTTP OpenAPI snapshot sync
+        run: ./scripts/verify-http-openapi-sync.sh
+
+      - name: Generate HTTP OpenAPI snapshot
+        run: ./scripts/generate-http-openapi.sh dist/oneshim-web.v1.openapi.yaml
+
+      - name: Upload HTTP OpenAPI snapshot artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: oneshim-web-v1-openapi
+          path: dist/oneshim-web.v1.openapi.yaml
+          if-no-files-found: error
+
+      - name: Verify commit message hygiene
+        run: ./scripts/verify-commit-message-hygiene.sh "${{ github.event.pull_request.base.sha || '' }}" "${{ github.sha }}"
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
+  perf-gates:
+    name: Performance Gates
+    needs: [changes, check]
+    if: >
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'push') &&
+      (needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+    env:
+      ONESHIM_ENABLE_PERF_GATES: '1'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libnotify-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libclang-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-perf-gates
+
+      - name: Run automation perf gate tests
+        run: cargo test --release -p oneshim-automation perf_budget_ -- --nocapture
+
+      - name: Run vision perf gate tests
+        run: cargo test --release -p oneshim-vision perf_budget_ -- --nocapture
+
+  test:
+    name: Test
+    needs: [changes, check]
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libnotify-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libclang-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-test
+
+      - name: Run tests
+        run: cargo test --workspace
+
+  build-pr-smoke:
+    name: Build PR Smoke (linux)
+    needs: [changes, test]
+    if: >
+      github.event_name == 'pull_request' &&
+      (needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Try to download frontend dist artifact
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: frontend-dist-bundle
+          path: crates/oneshim-web/frontend
+
+      - name: Extract frontend dist artifact if present
+        shell: bash
+        run: |
+          if [ -f crates/oneshim-web/frontend/frontend-dist.tar.gz ]; then
+            tar -xzf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend
+          fi
+          test -f crates/oneshim-web/frontend/dist/index.html
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libnotify-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libclang-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
+
+      - name: Verify DEB metadata assets
+        run: ./scripts/verify-deb-metadata.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-build-pr-linux
+
+      - name: Build release (linux smoke)
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: [changes, test]
+    if: >
+      github.event_name != 'pull_request' &&
+      (github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.ci == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: oneshim-macos-arm64
+          - os: macos-14
+            target: x86_64-apple-darwin
+            artifact_name: oneshim-macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: oneshim-windows-x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: oneshim-linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Try to download frontend dist artifact
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: frontend-dist-bundle
+          path: crates/oneshim-web/frontend
+
+      - name: Extract frontend dist artifact if present
+        shell: bash
+        run: |
+          if [ -f crates/oneshim-web/frontend/frontend-dist.tar.gz ]; then
+            tar -xzf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend
+          fi
+          test -f crates/oneshim-web/frontend/dist/index.html
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libnotify-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev \
+            libclang-dev \
+            libgbm-dev \
+            libegl1-mesa-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
+
+      - name: Verify DEB metadata assets
+        if: runner.os == 'Linux'
+        run: ./scripts/verify-deb-metadata.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-build-${{ matrix.target }}
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czvf ../../../${{ matrix.artifact_name }}.tar.gz oneshim
+
+      - name: Package (Windows zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path target/${{ matrix.target }}/release/oneshim.exe -DestinationPath ${{ matrix.artifact_name }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.artifact_name }}.tar.gz
+            ${{ matrix.artifact_name }}.zip
+          if-no-files-found: ignore
