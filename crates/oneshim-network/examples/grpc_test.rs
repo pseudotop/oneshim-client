@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use oneshim_network::auth::TokenManager;
 use oneshim_network::grpc::{
-    ContextBatchUploadRequest, FeedbackType, GrpcConfig, SuggestionType, UnifiedClient,
+    FeedbackAction, GrpcConfig, UnifiedClient, UploadBatchRequest,
 };
 
 struct Output {
@@ -145,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\n=== 3. heartbeat test ===");
             match client
-                .heartbeat(&response.session_id, "rust-client-001")
+                .heartbeat(&response.session_id)
                 .await
             {
                 Ok(success) => {
@@ -157,24 +157,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             println!("\n=== 3.5. batch upload test ===");
-            let batch_request = ContextBatchUploadRequest {
-                client_id: "rust-client-001".to_string(),
+            let batch_request = UploadBatchRequest {
                 session_id: response.session_id.clone(),
-                upload_trigger: 1, // SCHEDULED
-                upload_timestamp: None,
                 events: vec![], // event upload test
                 frames: vec![], // frame upload test
-                client_stats: HashMap::new(),
-                last_sync_timestamp: None,
-                sync_sequence: 1,
             };
             match client.upload_batch(batch_request).await {
                 Ok(batch_response) => {
                     println!("  {} batch upload success", out.ok());
-                    println!("    status: {}", batch_response.status);
-                    println!("    processed_events: {}", batch_response.processed_events);
-                    println!("    processed_frames: {}", batch_response.processed_frames);
-                    println!("    next_sync_sequence: {}", batch_response.sync_sequence);
+                    println!("    accepted_count: {}", batch_response.accepted_count);
                 }
                 Err(e) => {
                     println!("  {} batch upload failure: {}", out.err(), e);
@@ -183,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\n=== 4. suggestion test ===");
             match client
-                .subscribe_suggestions(&response.session_id, "rust-client-001")
+                .subscribe_suggestions(&response.session_id)
                 .await
             {
                 Ok(mut stream) => {
@@ -221,7 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match client
                 .send_feedback(
                     "test-suggestion-001",
-                    FeedbackType::Accepted,
+                    FeedbackAction::Accepted,
                     Some("test feedback"),
                 )
                 .await
@@ -234,36 +225,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            println!("\n=== 6. suggestion list query test ===");
-            match client.list_suggestions(vec![], 10).await {
-                Ok(response) => {
-                    println!("  {} suggestion list query success", out.ok());
-                    println!("query suggestion: {}", response.suggestions.len());
-                    for suggestion in response.suggestions.iter().take(3) {
-                        println!("    - {}: {}", suggestion.suggestion_id, suggestion.content);
-                    }
-                }
-                Err(e) => {
-                    println!("  {} suggestion list query failure: {}", out.err(), e);
-                }
-            }
-
-            println!("\n=== 6.1. type suggestion query test ===");
-            match client
-                .list_suggestions(vec![SuggestionType::WorkGuidance], 5)
-                .await
-            {
-                Ok(response) => {
-                    println!(
-                        "  {} WorkGuidance suggestion query success: {} items",
-                        out.ok(),
-                        response.suggestions.len()
-                    );
-                }
-                Err(e) => {
-                    println!("{} type suggestion query failure: {}", out.err(), e);
-                }
-            }
         }
         Err(e) => {
             println!("  {} session create failure: {}", out.err(), e);

@@ -1,12 +1,11 @@
-//!
-//!
-//!
+//! gRPC client module — Consumer Contract (oneshim.client.v1).
 //!
 //! ## Health Check
 //!
 //! ```rust,ignore
 //! let mut health = GrpcHealthClient::connect(config).await?;
 //! if health.is_healthy().await {
+//!     // server is reachable
 //! }
 //! ```
 
@@ -34,11 +33,11 @@ pub use context_client::GrpcContextClient;
 #[cfg(feature = "grpc")]
 pub use error_mapping::map_grpc_status_error;
 #[cfg(feature = "grpc")]
-pub use health_client::{GrpcHealthClient, ServiceHealth, ServingStatus};
+pub use health_client::GrpcHealthClient;
 #[cfg(feature = "grpc")]
 pub use session_client::GrpcSessionClient;
 #[cfg(feature = "grpc")]
 pub use unified_client::{
-    AuthResponse, ContextBatchUploadRequest, ContextBatchUploadResponse, FeedbackType,
-    ListSuggestionsResponse, SessionResponse, Streaming, Suggestion, SuggestionType, UnifiedClient,
+    AuthResponse, FeedbackAction, SessionResponse, Streaming, SuggestionEvent, UnifiedClient,
+    UploadBatchRequest, UploadBatchResponse,
 };

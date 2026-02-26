@@ -1,4 +1,4 @@
-//!
+//! Unified gRPC + REST client — Consumer Contract (oneshim.client.v1).
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -20,9 +20,8 @@ use super::session_client::GrpcSessionClient;
 use crate::auth::TokenManager;
 use crate::http_client::HttpApiClient;
 
-pub use crate::proto::user_context::{
-    ContextBatchUploadRequest, ContextBatchUploadResponse, FeedbackType, ListSuggestionsResponse,
-    Suggestion, SuggestionType,
+pub use crate::proto::client_v1::{
+    FeedbackAction, SuggestionEvent, UploadBatchRequest, UploadBatchResponse,
 };
 pub use tonic::Streaming;
 
@@ -38,8 +37,8 @@ pub struct AuthResponse {
 pub struct SessionResponse {
     pub session_id: String,
     pub user_id: String,
-    pub access_token: Option<String>,
-    pub refresh_token: Option<String>,
+    pub client_id: String,
+    pub capabilities: Vec<String>,
 }
 
 ///
@@ -124,7 +123,7 @@ impl UnifiedClient {
         f(client).await
     }
 
-    ///
+    /// Authenticate via gRPC GetToken or REST login.
     pub async fn login(
         &self,
         identifier: &str,
@@ -143,7 +142,7 @@ impl UnifiedClient {
     async fn login_grpc(
         &self,
         identifier: &str,
-        password: &str,
+        credential: &str,
         organization_id: &str,
     ) -> Result<AuthResponse, CoreError> {
         self.ensure_grpc_auth().await?;
@@ -153,15 +152,14 @@ impl UnifiedClient {
             CoreError::Network("Failed to initialize gRPC auth client".to_string())
         })?;
 
-        let device_info = HashMap::new();
         let response = client
-            .login(identifier, password, organization_id, device_info)
+            .get_token(identifier, credential, organization_id)
             .await?;
 
         Ok(AuthResponse {
             access_token: response.access_token,
             refresh_token: response.refresh_token,
-            expires_in: response.expires_in as i64,
+            expires_in: response.expires_in_secs,
             user_id: if response.user_id.is_empty() {
                 None
             } else {
@@ -210,16 +208,16 @@ impl UnifiedClient {
     pub async fn create_session(
         &self,
         client_id: &str,
-        device_info: HashMap<String, String>,
+        metadata: HashMap<String, String>,
     ) -> Result<SessionResponse, CoreError> {
         if self.config.should_use_grpc_for_context() {
-            self.create_session_grpc(client_id, device_info).await
+            self.create_session_grpc(client_id, metadata).await
         } else {
             Ok(SessionResponse {
                 session_id: String::new(),
                 user_id: String::new(),
-                access_token: None,
-                refresh_token: None,
+                client_id: client_id.to_string(),
+                capabilities: vec![],
             })
         }
     }
@@ -227,7 +225,7 @@ impl UnifiedClient {
     async fn create_session_grpc(
         &self,
         client_id: &str,
-        device_info: HashMap<String, String>,
+        metadata: HashMap<String, String>,
     ) -> Result<SessionResponse, CoreError> {
         self.ensure_grpc_session().await?;
 
@@ -236,37 +234,25 @@ impl UnifiedClient {
             CoreError::Network("gRPC session client initialize failure".to_string())
         })?;
 
-        let response = client.create_session(client_id, device_info).await?;
-
-        let session = response
-            .session
-            .ok_or_else(|| CoreError::Network("Session response is empty".to_string()))?;
+        let response = client.create_session(client_id, metadata).await?;
 
         Ok(SessionResponse {
-            session_id: session.session_id,
-            user_id: session.user_id,
-            access_token: if response.access_token.is_empty() {
-                None
-            } else {
-                Some(response.access_token)
-            },
-            refresh_token: if response.refresh_token.is_empty() {
-                None
-            } else {
-                Some(response.refresh_token)
-            },
+            session_id: response.session_id,
+            user_id: response.user_id,
+            client_id: response.client_id,
+            capabilities: response.capabilities,
         })
     }
 
-    pub async fn heartbeat(&self, session_id: &str, client_id: &str) -> Result<bool, CoreError> {
+    pub async fn heartbeat(&self, session_id: &str) -> Result<bool, CoreError> {
         if self.config.should_use_grpc_for_context() {
-            self.heartbeat_grpc(session_id, client_id).await
+            self.heartbeat_grpc(session_id).await
         } else {
             Ok(true)
         }
     }
 
-    async fn heartbeat_grpc(&self, session_id: &str, client_id: &str) -> Result<bool, CoreError> {
+    async fn heartbeat_grpc(&self, session_id: &str) -> Result<bool, CoreError> {
         self.ensure_grpc_session().await?;
 
         let mut guard = self.grpc_session.write().await;
@@ -274,30 +260,24 @@ impl UnifiedClient {
             CoreError::Network("gRPC session client initialize failure".to_string())
         })?;
 
-        let response = client
-            .heartbeat(session_id, client_id, HashMap::new())
-            .await?;
-
-        Ok(response.success)
+        // Heartbeat now returns Empty — success means the server acknowledged.
+        client.heartbeat(session_id).await?;
+        Ok(true)
     }
 
-    ///
-    ///
-    /// # Arguments
-    ///
-    /// # Returns
+    /// Subscribe to server-streamed suggestions.
     ///
     /// # Example
     /// ```ignore
-    /// let mut stream = client.subscribe_suggestions("session-123", "client-456").await?;
-    /// while let Some(suggestion) = stream.message().await? {
+    /// let mut stream = client.subscribe_suggestions("session-123").await?;
+    /// while let Some(event) = stream.message().await? {
+    ///     println!("suggestion: {}", event.content);
     /// }
     /// ```
     pub async fn subscribe_suggestions(
         &self,
         session_id: &str,
-        client_id: &str,
-    ) -> Result<Streaming<Suggestion>, CoreError> {
+    ) -> Result<Streaming<SuggestionEvent>, CoreError> {
         if !self.config.should_use_grpc_for_context() {
             return Err(CoreError::Network(
                 "Suggestion streaming is available only in gRPC mode. Set use_grpc_context=true."
@@ -306,8 +286,8 @@ impl UnifiedClient {
         }
 
         debug!(
-            "gRPC suggestion stream subscribe started: session_id={}, client_id={}",
-            session_id, client_id
+            "gRPC suggestion stream subscribe started: session_id={}",
+            session_id,
         );
         self.ensure_grpc_context().await?;
 
@@ -316,34 +296,27 @@ impl UnifiedClient {
             CoreError::Network("gRPC context client initialize failure".to_string())
         })?;
 
-        let stream = client.subscribe_suggestions(session_id, client_id).await?;
+        let stream = client.subscribe_suggestions(session_id).await?;
         info!("gRPC suggestion stream subscribe success");
 
         Ok(stream)
     }
 
-    ///
-    ///
-    ///
-    /// # Arguments
-    ///
-    /// # Returns
+    /// Upload a batch of events and frame metadata.
     ///
     /// # Example
     /// ```ignore
-    /// let request = ContextBatchUploadRequest {
-    ///     client_id: "client-123".to_string(),
+    /// let request = UploadBatchRequest {
     ///     session_id: "session-456".to_string(),
     ///     events: vec![...],
     ///     frames: vec![...],
-    ///     ..Default::default()
     /// };
     /// let response = client.upload_batch(request).await?;
     /// ```
     pub async fn upload_batch(
         &self,
-        request: ContextBatchUploadRequest,
-    ) -> Result<ContextBatchUploadResponse, CoreError> {
+        request: UploadBatchRequest,
+    ) -> Result<UploadBatchResponse, CoreError> {
         if self.config.should_use_grpc_for_context() {
             debug!(
                 "gRPC batch upload started: session_id={}, events={}, frames={}",
@@ -357,8 +330,8 @@ impl UnifiedClient {
                 })
                 .await?;
             info!(
-                "gRPC batch upload completed: processed_events={}, processed_frames={}, status={}",
-                response.processed_events, response.processed_frames, response.status
+                "gRPC batch upload completed: accepted_count={}",
+                response.accepted_count
             );
 
             Ok(response)
@@ -385,39 +358,32 @@ impl UnifiedClient {
             self.http_client.upload_batch(&batch).await?;
             info!("REST batch upload completed");
 
-            Ok(ContextBatchUploadResponse {
-                status: "success".to_string(),
-                processed_events: 0, // REST endpoint does not return this count
-                processed_frames: 0,
-                sync_sequence: request.sync_sequence,
-                next_sync_time: None,
-                server_instructions: HashMap::new(),
-                errors: vec![],
+            Ok(UploadBatchResponse {
+                accepted_count: 0, // REST endpoint does not return this count
             })
         }
     }
 
-    ///
-    ///
-    /// # Arguments
+    /// Send feedback on a suggestion.
     ///
     /// # Example
     /// ```ignore
     /// client.send_feedback(
     ///     "suggestion-123",
-    ///     FeedbackType::Accepted,
+    ///     FeedbackAction::Accepted,
+    ///     None,
     /// ).await?;
     /// ```
     pub async fn send_feedback(
         &self,
         suggestion_id: &str,
-        feedback_type: FeedbackType,
+        action: FeedbackAction,
         comment: Option<&str>,
     ) -> Result<(), CoreError> {
         if self.config.should_use_grpc_for_context() {
             debug!(
-                "gRPC feedback sent: suggestion_id={}, feedback_type={:?}",
-                suggestion_id, feedback_type
+                "gRPC feedback sent: suggestion_id={}, action={:?}",
+                suggestion_id, action
             );
             let suggestion_id_owned = suggestion_id.to_string();
             let comment_owned = comment.map(String::from);
@@ -426,7 +392,7 @@ impl UnifiedClient {
                 let comment = comment_owned;
                 Box::pin(async move {
                     client
-                        .send_feedback(&suggestion_id, feedback_type, comment.as_deref())
+                        .send_feedback(&suggestion_id, action, comment.as_deref())
                         .await
                 })
             })
@@ -439,14 +405,20 @@ impl UnifiedClient {
             Ok(())
         } else {
             debug!(
-                "REST feedback sent: suggestion_id={}, feedback_type={:?}",
-                suggestion_id, feedback_type
+                "REST feedback sent: suggestion_id={}, action={:?}",
+                suggestion_id, action
             );
 
-            let rest_feedback_type = match feedback_type {
-                FeedbackType::Accepted => oneshim_core::models::suggestion::FeedbackType::Accepted,
-                FeedbackType::Rejected => oneshim_core::models::suggestion::FeedbackType::Rejected,
-                FeedbackType::Deferred => oneshim_core::models::suggestion::FeedbackType::Deferred,
+            let rest_feedback_type = match action {
+                FeedbackAction::Accepted => {
+                    oneshim_core::models::suggestion::FeedbackType::Accepted
+                }
+                FeedbackAction::Rejected => {
+                    oneshim_core::models::suggestion::FeedbackType::Rejected
+                }
+                FeedbackAction::Deferred => {
+                    oneshim_core::models::suggestion::FeedbackType::Deferred
+                }
                 _ => oneshim_core::models::suggestion::FeedbackType::Rejected, // unknown -> rejected
             };
 
@@ -464,56 +436,6 @@ impl UnifiedClient {
             );
 
             Ok(())
-        }
-    }
-
-    ///
-    ///
-    ///
-    /// # Arguments
-    ///
-    /// # Example
-    /// ```ignore
-    /// let response = client.list_suggestions(vec![], 20).await?;
-    /// for suggestion in response.suggestions {
-    /// }
-    ///
-    /// let response = client.list_suggestions(
-    ///     vec![SuggestionType::WorkGuidance, SuggestionType::ProductivityTip],
-    ///     10
-    /// ).await?;
-    /// ```
-    pub async fn list_suggestions(
-        &self,
-        types: Vec<SuggestionType>,
-        limit: i32,
-    ) -> Result<ListSuggestionsResponse, CoreError> {
-        if self.config.should_use_grpc_for_context() {
-            debug!(
-                "gRPC suggestion list query: types={:?}, limit={}",
-                types, limit
-            );
-            let response = self
-                .with_grpc_context_client("list_suggestions", |client| {
-                    Box::pin(async move { client.list_suggestions(types, limit).await })
-                })
-                .await?;
-            info!(
-                "gRPC suggestion list query completed: count={}",
-                response.suggestions.len()
-            );
-
-            Ok(response)
-        } else {
-            warn!(
-                "Suggestion list queries are limited in REST mode. \
-                 Set use_grpc_context=true for full functionality."
-            );
-
-            Ok(ListSuggestionsResponse {
-                suggestions: vec![],
-                total_count: 0,
-            })
         }
     }
 
@@ -551,9 +473,10 @@ mod tests {
         let response = SessionResponse {
             session_id: "session-123".to_string(),
             user_id: "user-456".to_string(),
-            access_token: None,
-            refresh_token: None,
+            client_id: "client-789".to_string(),
+            capabilities: vec!["upload".to_string()],
         };
         assert_eq!(response.session_id, "session-123");
+        assert_eq!(response.client_id, "client-789");
     }
 }

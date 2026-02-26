@@ -1,19 +1,21 @@
-//!
+//! gRPC context + suggestion client — Consumer Contract
+//! (oneshim.client.v1.ClientContext + oneshim.client.v1.ClientSuggestion).
 
 use oneshim_core::error::CoreError;
 use tonic::transport::Channel;
 use tracing::{debug, error, info};
 
 use super::{map_grpc_status_error, GrpcConfig};
-use crate::proto::user_context::{
-    user_context_service_client::UserContextServiceClient, ContextBatchUploadRequest,
-    ContextBatchUploadResponse, FeedbackType, HeartbeatRequest, HeartbeatResponse,
-    ListSuggestionsRequest, ListSuggestionsResponse, SubscribeRequest, Suggestion,
-    SuggestionFeedback, SuggestionType,
+use crate::proto::client_v1::{
+    client_context_client::ClientContextClient,
+    client_suggestion_client::ClientSuggestionClient, FeedbackAction, SendFeedbackRequest,
+    SubscribeRequest, SuggestionEvent, UploadBatchRequest, UploadBatchResponse,
 };
 
+/// Wraps both ClientContext (batch upload) and ClientSuggestion (subscribe/feedback) services.
 pub struct GrpcContextClient {
-    client: UserContextServiceClient<Channel>,
+    context_client: ClientContextClient<Channel>,
+    suggestion_client: ClientSuggestionClient<Channel>,
     config: GrpcConfig,
 }
 
@@ -27,9 +29,14 @@ impl GrpcContextClient {
 
             match config.connect_channel(endpoint_url).await {
                 Ok(channel) => {
-                    let client = UserContextServiceClient::new(channel);
+                    let context_client = ClientContextClient::new(channel.clone());
+                    let suggestion_client = ClientSuggestionClient::new(channel);
                     info!(endpoint = %endpoint_url, "gRPC context client connection completed");
-                    return Ok(Self { client, config });
+                    return Ok(Self {
+                        context_client,
+                        suggestion_client,
+                        config,
+                    });
                 }
                 Err(e) => {
                     debug!(endpoint = %endpoint_url, error = %e, "gRPC connection failure, next port attempt");
@@ -42,15 +49,15 @@ impl GrpcContextClient {
         Err(last_error.unwrap_or_else(|| CoreError::Network("gRPC endpoint none".to_string())))
     }
 
-    ///
+    /// Upload a batch of events and frame metadata.
     pub async fn upload_batch(
         &mut self,
-        request: ContextBatchUploadRequest,
-    ) -> Result<ContextBatchUploadResponse, CoreError> {
+        request: UploadBatchRequest,
+    ) -> Result<UploadBatchResponse, CoreError> {
         debug!("gRPC batch upload request");
 
         let response = self
-            .client
+            .context_client
             .upload_batch(tonic::Request::new(request))
             .await
             .map_err(|status| {
@@ -61,23 +68,20 @@ impl GrpcContextClient {
         Ok(response.into_inner())
     }
 
-    ///
+    /// Subscribe to server-streamed suggestions.
     pub async fn subscribe_suggestions(
         &mut self,
         session_id: &str,
-        client_id: &str,
-    ) -> Result<tonic::Streaming<Suggestion>, CoreError> {
+    ) -> Result<tonic::Streaming<SuggestionEvent>, CoreError> {
         debug!("gRPC suggestion stream subscribe request");
 
         let request = tonic::Request::new(SubscribeRequest {
             session_id: session_id.to_string(),
-            client_id: client_id.to_string(),
-            subscription_types: vec![],
         });
 
         let response = self
-            .client
-            .subscribe_suggestions(request)
+            .suggestion_client
+            .subscribe(request)
             .await
             .map_err(|status| {
                 error!(error = %status, "gRPC suggestion stream subscribe failure");
@@ -87,77 +91,30 @@ impl GrpcContextClient {
         Ok(response.into_inner())
     }
 
+    /// Send feedback on a suggestion.
     pub async fn send_feedback(
         &mut self,
         suggestion_id: &str,
-        feedback_type: FeedbackType,
+        action: FeedbackAction,
         comment: Option<&str>,
     ) -> Result<(), CoreError> {
         debug!(suggestion_id = %suggestion_id, "gRPC feedback sent");
 
-        let request = tonic::Request::new(SuggestionFeedback {
+        let request = tonic::Request::new(SendFeedbackRequest {
             suggestion_id: suggestion_id.to_string(),
-            feedback_type: feedback_type as i32,
-            timestamp: None,
-            comment: comment.map(String::from),
-            reason: None,
+            action: action as i32,
+            comment: comment.unwrap_or_default().to_string(),
         });
 
-        self.client.send_feedback(request).await.map_err(|status| {
-            error!(error = %status, "gRPC feedback sent failure");
-            map_grpc_status_error("grpc feedback submission failed", status)
-        })?;
-
-        Ok(())
-    }
-
-    pub async fn heartbeat(
-        &mut self,
-        session_id: &str,
-        client_id: &str,
-    ) -> Result<HeartbeatResponse, CoreError> {
-        debug!(session_id = %session_id, "gRPC heartbeat sent");
-
-        let request = tonic::Request::new(HeartbeatRequest {
-            session_id: session_id.to_string(),
-            client_id: client_id.to_string(),
-            timestamp: None,
-            client_state: std::collections::HashMap::new(),
-        });
-
-        let response = self.client.heartbeat(request).await.map_err(|status| {
-            error!(error = %status, "gRPC heartbeat failure");
-            map_grpc_status_error("grpc heartbeat failed", status)
-        })?;
-
-        Ok(response.into_inner())
-    }
-
-    ///
-    pub async fn list_suggestions(
-        &mut self,
-        types: Vec<SuggestionType>,
-        limit: i32,
-    ) -> Result<ListSuggestionsResponse, CoreError> {
-        debug!(limit = %limit, "gRPC suggestion list query");
-
-        let request = tonic::Request::new(ListSuggestionsRequest {
-            types: types.into_iter().map(|t| t as i32).collect(),
-            min_priority: 0, // all priorities
-            limit,
-            active_only: true,
-        });
-
-        let response = self
-            .client
-            .list_suggestions(request)
+        self.suggestion_client
+            .send_feedback(request)
             .await
             .map_err(|status| {
-                error!(error = %status, "gRPC suggestion list query failure");
-                map_grpc_status_error("grpc suggestion list failed", status)
+                error!(error = %status, "gRPC feedback sent failure");
+                map_grpc_status_error("grpc feedback submission failed", status)
             })?;
 
-        Ok(response.into_inner())
+        Ok(())
     }
 
     pub fn config(&self) -> &GrpcConfig {
@@ -170,18 +127,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_batch_upload_request() {
-        let request = ContextBatchUploadRequest {
-            client_id: "client-123".to_string(),
+    fn test_upload_batch_request() {
+        let request = UploadBatchRequest {
             session_id: "session-456".to_string(),
-            upload_trigger: 0, // UNSPECIFIED
-            upload_timestamp: None,
             events: vec![],
             frames: vec![],
-            client_stats: std::collections::HashMap::new(),
-            last_sync_timestamp: None,
-            sync_sequence: 1,
         };
-        assert_eq!(request.client_id, "client-123");
+        assert_eq!(request.session_id, "session-456");
     }
 }

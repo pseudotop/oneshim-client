@@ -1,18 +1,16 @@
-//!
+//! gRPC auth client — Consumer Contract (oneshim.client.v1.ClientAuth).
 
 use oneshim_core::error::CoreError;
-use std::collections::HashMap;
 use tonic::transport::Channel;
 use tracing::{debug, error, info};
 
 use super::{map_grpc_status_error, GrpcConfig};
-use crate::proto::auth::{
-    authentication_service_client::AuthenticationServiceClient, LoginRequest, LoginResponse,
-    RefreshTokenRequest, TokenRefreshResponse,
+use crate::proto::client_v1::{
+    client_auth_client::ClientAuthClient, GetTokenRequest, RefreshTokenRequest, TokenResponse,
 };
 
 pub struct GrpcAuthClient {
-    client: AuthenticationServiceClient<Channel>,
+    client: ClientAuthClient<Channel>,
     config: GrpcConfig,
 }
 
@@ -22,12 +20,12 @@ impl GrpcAuthClient {
         let mut last_error = None;
 
         for endpoint_url in &endpoints {
-            info!(endpoint = %endpoint_url, "gRPC client connection attempt");
+            info!(endpoint = %endpoint_url, "gRPC auth client connection attempt");
 
             match config.connect_channel(endpoint_url).await {
                 Ok(channel) => {
-                    let client = AuthenticationServiceClient::new(channel);
-                    info!(endpoint = %endpoint_url, "gRPC client connection completed");
+                    let client = ClientAuthClient::new(channel);
+                    info!(endpoint = %endpoint_url, "gRPC auth client connection completed");
                     return Ok(Self { client, config });
                 }
                 Err(e) => {
@@ -41,27 +39,23 @@ impl GrpcAuthClient {
         Err(last_error.unwrap_or_else(|| CoreError::Network("gRPC endpoint none".to_string())))
     }
 
-    pub async fn login(
+    pub async fn get_token(
         &mut self,
         identifier: &str,
-        password: &str,
+        credential: &str,
         organization_id: &str,
-        device_info: HashMap<String, String>,
-    ) -> Result<LoginResponse, CoreError> {
-        debug!(identifier = %identifier, "gRPC login request");
+    ) -> Result<TokenResponse, CoreError> {
+        debug!(identifier = %identifier, "gRPC get_token request");
 
-        let request = tonic::Request::new(LoginRequest {
+        let request = tonic::Request::new(GetTokenRequest {
             identifier: identifier.to_string(),
-            password: password.to_string(),
+            credential: credential.to_string(),
             organization_id: organization_id.to_string(),
-            device_info,
-            remember_device: false,
-            mfa_token: None,
         });
 
-        let response = self.client.login(request).await.map_err(|status| {
-            error!(error = %status, "gRPC login failure");
-            map_grpc_status_error("grpc login failed", status)
+        let response = self.client.get_token(request).await.map_err(|status| {
+            error!(error = %status, "gRPC get_token failure");
+            map_grpc_status_error("grpc get_token failed", status)
         })?;
 
         Ok(response.into_inner())
@@ -70,15 +64,11 @@ impl GrpcAuthClient {
     pub async fn refresh_token(
         &mut self,
         refresh_token: &str,
-        user_id: &str,
-        session_id: Option<&str>,
-    ) -> Result<TokenRefreshResponse, CoreError> {
-        debug!(user_id = %user_id, "gRPC token refresh request");
+    ) -> Result<TokenResponse, CoreError> {
+        debug!("gRPC token refresh request");
 
         let request = tonic::Request::new(RefreshTokenRequest {
             refresh_token: refresh_token.to_string(),
-            user_id: user_id.to_string(),
-            session_id: session_id.map(String::from),
         });
 
         let response = self.client.refresh_token(request).await.map_err(|status| {
@@ -105,14 +95,11 @@ mod tests {
     }
 
     #[test]
-    fn test_login_request_creation() {
-        let request = LoginRequest {
+    fn test_get_token_request_creation() {
+        let request = GetTokenRequest {
             identifier: "test@example.com".to_string(),
-            password: "test-password-placeholder".to_string(),
+            credential: "test-credential-placeholder".to_string(),
             organization_id: "org-1".to_string(),
-            device_info: HashMap::new(),
-            remember_device: false,
-            mfa_token: None,
         };
         assert_eq!(request.identifier, "test@example.com");
     }
