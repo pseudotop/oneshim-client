@@ -280,7 +280,7 @@ jobs:
             dist/oneshim-macos-universal.tar.gz
             dist/oneshim-macos-universal.tar.gz.sha256
 
-      - name: Validate macOS signing secrets
+      - name: Validate macOS signing secret material
         shell: bash
         run: |
           required=(
@@ -288,8 +288,6 @@ jobs:
             MACOS_APP_CERT_PASSWORD
             MACOS_INSTALLER_CERT_P12_B64
             MACOS_INSTALLER_CERT_PASSWORD
-            MACOS_APP_SIGNING_IDENTITY
-            MACOS_INSTALLER_SIGNING_IDENTITY
           )
           for key in "${required[@]}"; do
             if [[ -z "${!key:-}" ]]; then
@@ -338,6 +336,44 @@ jobs:
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
           echo "APP_CERT_PATH=$APP_CERT_PATH" >> "$GITHUB_ENV"
           echo "INSTALLER_CERT_PATH=$INSTALLER_CERT_PATH" >> "$GITHUB_ENV"
+
+      - name: Resolve macOS signing identities
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ALL_IDENTITIES="$(security find-identity -v "$KEYCHAIN_PATH" || true)"
+          echo "$ALL_IDENTITIES"
+
+          resolve_identity() {
+            local kind="$1"
+            local requested="$2"
+            local resolved=""
+
+            if [[ -n "$requested" ]] && printf '%s\n' "$ALL_IDENTITIES" | grep -F "\"$requested\"" >/dev/null; then
+              resolved="$requested"
+            else
+              resolved="$(printf '%s\n' "$ALL_IDENTITIES" | sed -n "s/.*\"\\($kind: [^\"]*\\)\".*/\\1/p" | head -n1)"
+            fi
+
+            printf '%s' "$resolved"
+          }
+
+          APP_IDENTITY="$(resolve_identity "Developer ID Application" "${MACOS_APP_SIGNING_IDENTITY:-}")"
+          INSTALLER_IDENTITY="$(resolve_identity "Developer ID Installer" "${MACOS_INSTALLER_SIGNING_IDENTITY:-}")"
+
+          if [[ -z "$APP_IDENTITY" ]]; then
+            echo "Unable to resolve Developer ID Application identity from imported certificate." >&2
+            exit 1
+          fi
+          if [[ -z "$INSTALLER_IDENTITY" ]]; then
+            echo "Unable to resolve Developer ID Installer identity from imported certificate." >&2
+            exit 1
+          fi
+
+          echo "MACOS_APP_SIGNING_IDENTITY_RESOLVED=$APP_IDENTITY" >> "$GITHUB_ENV"
+          echo "MACOS_INSTALLER_SIGNING_IDENTITY_RESOLVED=$INSTALLER_IDENTITY" >> "$GITHUB_ENV"
+          echo "Resolved macOS app/installer signing identities."
 
       - name: Validate macOS icon asset format
         shell: bash
@@ -390,7 +426,7 @@ jobs:
         run: |
           codesign --force --deep --options runtime --timestamp \
             --keychain "$KEYCHAIN_PATH" \
-            --sign "$MACOS_APP_SIGNING_IDENTITY" \
+            --sign "$MACOS_APP_SIGNING_IDENTITY_RESOLVED" \
             dist/ONESHIM.app
           codesign --verify --deep --strict --verbose=2 dist/ONESHIM.app
 
@@ -413,7 +449,8 @@ jobs:
             --install-location /Applications \
             "$UNSIGNED_PKG_TMP"
           productsign \
-            --sign "$MACOS_INSTALLER_SIGNING_IDENTITY" \
+            --keychain "$KEYCHAIN_PATH" \
+            --sign "$MACOS_INSTALLER_SIGNING_IDENTITY_RESOLVED" \
             "$UNSIGNED_PKG_TMP" \
             dist/oneshim-macos-universal-unsigned.pkg
           pkgutil --check-signature dist/oneshim-macos-universal-unsigned.pkg
