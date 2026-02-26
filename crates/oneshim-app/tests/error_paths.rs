@@ -1,3 +1,4 @@
+#![cfg(feature = "server")]
 //!
 
 use oneshim_core::ports::storage::StorageService;

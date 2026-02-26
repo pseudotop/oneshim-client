@@ -49,5 +49,9 @@ criterion = { workspace = true }
 name = "compression_bench"
 harness = false
 
+[[example]]
+name = "grpc_test"
+required-features = ["grpc"]
+
 [build-dependencies]
 tonic-prost-build = { workspace = true }

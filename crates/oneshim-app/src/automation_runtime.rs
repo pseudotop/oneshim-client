@@ -342,6 +342,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "server")]
     fn build_runtime_falls_back_when_remote_config_is_missing() {
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
@@ -384,6 +385,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "server")]
     fn build_runtime_uses_remote_sources_when_endpoints_are_valid() {
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.example.com/v1".to_string(),

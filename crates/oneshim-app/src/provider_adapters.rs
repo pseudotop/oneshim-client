@@ -370,7 +370,7 @@ fn format_fallback_reason(err: &CoreError) -> String {
     format!("{truncated}...")
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "server"))]
 mod tests {
     use super::*;
     use oneshim_core::config::{
