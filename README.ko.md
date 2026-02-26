@@ -140,6 +140,19 @@ brew install sccache
 
 `sccache`가 없으면 래퍼는 일반 `cargo`로 자동 폴백합니다.
 
+`cargo-cache.sh`는 로컬 디스크 폭증 방지를 위해 `target` 용량 가드도 적용합니다:
+- 소프트 제한(`ONESHIM_TARGET_SOFT_LIMIT_MB`, 기본값 `8192`): `target/debug/incremental` 정리 후, 여전히 크면 `target/debug/deps` 정리
+- 하드 제한(`ONESHIM_TARGET_HARD_LIMIT_MB`, 기본값 `12288`): 추가로 `target/debug/build` 정리
+- 자동 정리 토글: `ONESHIM_TARGET_AUTO_PRUNE=1` (기본) / `0` (비활성화)
+- 현재 캐시 상태 확인: `./scripts/cargo-cache.sh --status`
+
+제한값 커스텀 예시:
+```bash
+ONESHIM_TARGET_SOFT_LIMIT_MB=4096 \
+ONESHIM_TARGET_HARD_LIMIT_MB=6144 \
+./scripts/cargo-cache.sh test --workspace
+```
+
 ### 실행
 
 ```bash

@@ -140,6 +140,19 @@ brew install sccache
 
 If `sccache` is not installed, the wrapper falls back to normal `cargo`.
 
+`cargo-cache.sh` also enforces target-size guardrails to prevent local disk bloat:
+- Soft limit (`ONESHIM_TARGET_SOFT_LIMIT_MB`, default `8192`): prunes `target/debug/incremental`, then `target/debug/deps` if still large
+- Hard limit (`ONESHIM_TARGET_HARD_LIMIT_MB`, default `12288`): additionally prunes `target/debug/build`
+- Auto prune toggle: `ONESHIM_TARGET_AUTO_PRUNE=1` (default) / `0` (disable)
+- Current cache status: `./scripts/cargo-cache.sh --status`
+
+Example custom limits:
+```bash
+ONESHIM_TARGET_SOFT_LIMIT_MB=4096 \
+ONESHIM_TARGET_HARD_LIMIT_MB=6144 \
+./scripts/cargo-cache.sh test --workspace
+```
+
 ### Run
 
 ```bash

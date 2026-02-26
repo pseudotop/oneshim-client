@@ -2,4 +2,4 @@
 incremental = true
 
 [env]
-SCCACHE_CACHE_SIZE = "10G"
+SCCACHE_CACHE_SIZE = "6G"
