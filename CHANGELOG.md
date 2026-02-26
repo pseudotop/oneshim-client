@@ -7,147 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.0.15] - 2026-02-26
+### Note
+This is the initial codebase after history consolidation.
+Previous development history is preserved in the `legacy/pre-release` branch.
 
-### Added
-- Introduced `oneshim-api-contracts` as a transport-contract single source of truth for web API DTOs.
+## Version Management Rules
 
-### Changed
-- Migrated `oneshim-web` handlers/services and frontend API typings to shared contract modules.
+### Release Workflow
+1. Update `version` in `Cargo.toml` workspace section
+2. Add changelog entry under the new version heading
+3. Commit: `release: v{version}`
+4. Tag: `git tag v{version}` — triggers CI/CD release pipeline
+5. Push: `git push origin main --tags`
 
-### Fixed
-- Replaced `std::sync::LazyLock` with `OnceLock` for MSRV-safe clippy runs.
-- Aligned Korean locale assertions in `oneshim-ui` tests with active i18n strings.
+### Versioning Policy
+- **Patch** (0.0.x): Bug fixes, CI/CD fixes, documentation
+- **Minor** (0.x.0): New features, new crates, API changes
+- **Major** (x.0.0): Breaking changes, architecture redesign
 
-## [0.0.14] - 2026-02-26
-
-### Changed
-- Added macOS unsigned installer smoke test coverage to the release pipeline.
-
-## [0.0.13] - 2026-02-26
-
-### Fixed
-- Avoided PowerShell `$Host` variable collision in Windows smoke scripts.
-
-## [0.0.12] - 2026-02-26
-
-### Fixed
-- Resolved macOS installer signing identity lookup in CI release jobs.
-
-## [0.0.11] - 2026-02-26
-
-### Changed
-- Published unsigned macOS DMG/PKG assets before notarization replacement.
-
-## [0.0.10] - 2026-02-26
-
-### Changed
-- Added notarization polling diagnostics to improve release failure triage.
-
-## [0.0.9] - 2026-02-25
-
-### Fixed
-- Submitted zipped app bundle payloads for `notarytool` compatibility.
-
-## [0.0.8] - 2026-02-25
-
-### Fixed
-- Added app trust verification after notarization in macOS release flow.
-
-## [0.0.7] - 2026-02-25
-
-### Added
-- AI smoke provider capability fallback across app/web, including runtime fallback status and reason exposure.
-- Remote AI provider model discovery API for API key based setup in settings.
-- Provider preset catalog JSON support with aliases, endpoint defaults, model lists, and `updated_at` metadata.
-- Core policy enforcement for AI model lifecycle retirement dates.
-- Web-managed scene intelligence controls and calibration flows.
-
-### Changed
-- CI now includes AI integration smoke checks and split PR build/smoke paths for faster feedback.
-- Release pipeline hardening for signed/notarized macOS installers (DMG/PKG) and packaging asset validation.
-- Repository language policy enforcement for English-first logs/comments and i18n checks.
-- GUI v2 OS interaction flow and related documentation structure updates.
-
-### Fixed
-- AI smoke environment variable alignment for provider API key parsing and OpenAI OCR compatibility.
-
-## [0.0.1] - 2026-02-21
-
-### Core
-- 10-crate Hexagonal Architecture workspace (oneshim-core, monitor, vision, network, storage, suggestion, ui, web, automation, app)
-- Domain models, port traits, error handling (oneshim-core)
-- Constructor injection + `Arc<dyn T>` DI pattern (no framework)
-- `thiserror` error enums (library crates) + `anyhow::Result` (binary crate)
-
-### Desktop Agent
-- Real-time context monitoring (active windows, system metrics via sysinfo)
-- Edge image processing (delta encoding, WebP, OCR via leptess)
-- Desktop notifications (idle, long session, high usage) with cooldown-based deduplication
-- System tray integration (tray-icon + notify-rust)
-- Auto-update via GitHub Releases (self_update + semver)
-- Auto-start: macOS LaunchAgent, Windows Registry
-- 9-loop scheduler (monitor 1s, metrics 5s, process 10s, sync 10s, heartbeat 30s, aggregate 1h, notification 1m, focus 1m, server events 30s)
-
-### Local Web Dashboard
-- Axum 0.7 REST API (16+ endpoints) + React 18 + Vite + Tailwind CSS frontend
-- Dashboard, Timeline, Reports, Session Replay, Focus Analytics, Search, Settings, Privacy pages
-- Tag system (screenshot tagging/search) with 10-color palette
-- Data backup/restore (JSON export/import)
-- i18n (Korean/English) via i18next, Dark/Light theme
-- Code-based design system (tokens, variants, UI components)
-- SSE real-time stream (metrics, frames, idle state)
-- Static file embedding via rust-embed
-- 72 E2E tests (Playwright)
-
-### Edge Intelligence
-- `FocusAnalyzer`: Focus analysis + local suggestion generation
-- Work session / interruption tracking with automatic app switch detection
-- Suggestion types: TakeBreak, NeedFocusTime, RestoreContext
-- Focus API (5 endpoints)
-
-### Privacy & Permissions
-- PII filter levels (Off/Basic/Standard/Strict) with cascading inheritance
-- Sensitive app auto-detection, app blacklist, window title pattern exclusion
-- GDPR Article 17 (right to erasure) / Article 20 (data portability) compliance via ConsentManager
-- TelemetryConfig, ScheduleConfig (active hours, weekday settings, pause on lock/battery)
-- `oneshim-automation` crate: policy-based command execution, audit logging, server policy sync
-
-### Network
-- JWT auth with token auto-renewal (`TokenManager`)
-- HTTP retry logic (exponential backoff 1s to 30s, Retry-After header support)
-- SSE real-time suggestions with auto-reconnect
-- WebSocket client (tokio-tungstenite)
-- gRPC client (tonic) with auth, session, context RPCs and server streaming
-- gRPC port fallback (primary + configurable fallback ports + REST fallback)
-- Adaptive compression (gzip/zstd/lz4 auto-selection)
-- Lock-free batch upload (crossbeam SegQueue, dynamic batch size)
-- REST standardized auth routes (`/api/v1/auth/tokens`)
-
-### Performance
-- SQLite optimization: composite indexes (V7), PRAGMA tuning (cache_size, mmap_size), N+1 elimination (RETURNING clause)
-- Thumbnail LRU caching (100 entries, FNV-1a hash)
-- Buffer pool + parallel I/O (crossbeam ArrayQueue)
-- Compression stats-based quality prediction
-- Delta encoding pointer optimization (20-30% speedup)
-- Async OCR via spawn_blocking
-
-### Cross-Platform
-- macOS (arm64/x64/Universal Binary), Windows (x64), Linux (x64)
-- Platform-specific: macOS LaunchAgent + AppleScript, Windows Registry + Win32 API, Linux X11/Wayland (xdotool)
-- CI/CD: GitHub Actions (fmt, clippy, test, 4-platform build, auto-release on tag push)
-- Installers: macOS .app (cargo-bundle), Windows .msi (cargo-wix), Linux .deb (cargo-deb)
+### Changelog Entry Format
+Each version entry must include:
+- **Added**: New features or capabilities
+- **Changed**: Changes to existing functionality
+- **Fixed**: Bug fixes
+- **Removed**: Removed features or capabilities
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.0.15...HEAD
-[0.0.15]: https://github.com/pseudotop/oneshim-client/compare/v0.0.14...v0.0.15
-[0.0.14]: https://github.com/pseudotop/oneshim-client/compare/v0.0.13...v0.0.14
-[0.0.13]: https://github.com/pseudotop/oneshim-client/compare/v0.0.12...v0.0.13
-[0.0.12]: https://github.com/pseudotop/oneshim-client/compare/v0.0.11...v0.0.12
-[0.0.11]: https://github.com/pseudotop/oneshim-client/compare/v0.0.10...v0.0.11
-[0.0.10]: https://github.com/pseudotop/oneshim-client/compare/v0.0.9...v0.0.10
-[0.0.9]: https://github.com/pseudotop/oneshim-client/compare/v0.0.8...v0.0.9
-[0.0.8]: https://github.com/pseudotop/oneshim-client/compare/v0.0.7...v0.0.8
-[0.0.7]: https://github.com/pseudotop/oneshim-client/compare/v0.0.6...v0.0.7
-[0.0.1]: https://github.com/pseudotop/oneshim-client/releases/tag/v0.0.1
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/main...HEAD

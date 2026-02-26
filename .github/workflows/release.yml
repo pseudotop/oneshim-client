@@ -14,8 +14,38 @@ permissions:
   attestations: write
 
 jobs:
+  verify-version:
+    name: Verify Version Consistency
+    runs-on: ubuntu-latest
+    env:
+      TAG_REF: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify Cargo.toml version matches tag
+        run: |
+          TAG_VERSION="${TAG_REF#v}"
+          CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          echo "Tag version:   $TAG_VERSION"
+          echo "Cargo version: $CARGO_VERSION"
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Version mismatch! Tag ${TAG_REF} but Cargo.toml has $CARGO_VERSION"
+            echo "Fix: Update [workspace.package] version in Cargo.toml to \"$TAG_VERSION\""
+            exit 1
+          fi
+
+      - name: Verify CHANGELOG.md has entry for this version
+        run: |
+          TAG_VERSION="${TAG_REF#v}"
+          if ! grep -q "## \[$TAG_VERSION\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md missing entry for [$TAG_VERSION]"
+            echo "Fix: Add ## [$TAG_VERSION] - $(date +%Y-%m-%d) section to CHANGELOG.md"
+            exit 1
+          fi
+
   build-frontend-assets:
     name: Build Frontend Assets
+    needs: verify-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
