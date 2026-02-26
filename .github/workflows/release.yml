@@ -512,6 +512,28 @@ jobs:
           ls -la smoke-assets
           test -n "$(find smoke-assets -maxdepth 1 -type f)"
 
+      - name: Download macOS installer artifacts for smoke
+        if: matrix.name == 'macos'
+        uses: actions/download-artifact@v7
+        with:
+          name: oneshim-macos-universal-dmg
+          path: smoke-installers
+
+      - name: Download macOS PKG artifact for smoke
+        if: matrix.name == 'macos'
+        uses: actions/download-artifact@v7
+        with:
+          name: oneshim-macos-universal-pkg
+          path: smoke-installers
+
+      - name: Verify downloaded macOS installer assets
+        if: matrix.name == 'macos'
+        shell: bash
+        run: |
+          find smoke-installers -maxdepth 3 -type f
+          test -f smoke-installers/oneshim-macos-universal-unsigned.dmg
+          test -f smoke-installers/oneshim-macos-universal-unsigned.pkg
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -561,6 +583,13 @@ jobs:
           } else {
             .\scripts\release-reliability-smoke.ps1 -AssetsDir smoke-assets -SkipUpdaterTests
           }
+
+      - name: Run macOS installer smoke script
+        if: matrix.name == 'macos'
+        shell: bash
+        run: |
+          chmod +x ./scripts/release-installer-smoke-macos.sh
+          ./scripts/release-installer-smoke-macos.sh --assets-dir smoke-installers
 
   create-release:
     name: Create GitHub Release
