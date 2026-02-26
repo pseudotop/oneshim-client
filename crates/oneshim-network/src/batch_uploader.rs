@@ -143,6 +143,24 @@ impl BatchUploader {
         warn!("failure event {count}items");
     }
 
+    }
+
+#[async_trait::async_trait]
+impl oneshim_core::ports::batch_sink::BatchSink for BatchUploader {
+    fn enqueue(&self, event: Event) {
+        BatchUploader::enqueue(self, event);
+    }
+
+    fn enqueue_many(&self, events: Vec<Event>) {
+        BatchUploader::enqueue_many(self, events);
+    }
+
+    async fn flush(&self) -> Result<usize, CoreError> {
+        BatchUploader::flush(self).await
+    }
+}
+
+impl BatchUploader {
     pub fn queue_size(&self) -> usize {
         self.queue_size.load(Ordering::Relaxed)
     }
