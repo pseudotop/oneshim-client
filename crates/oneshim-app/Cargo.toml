@@ -18,7 +18,7 @@ oneshim-core = { workspace = true }
 oneshim-automation = { workspace = true }
 oneshim-monitor = { workspace = true }
 oneshim-vision = { workspace = true }
-oneshim-network = { workspace = true, features = ["grpc"] }
+oneshim-network = { workspace = true, optional = true }
 oneshim-storage = { workspace = true }
 oneshim-suggestion = { workspace = true }
 oneshim-ui = { workspace = true }
@@ -47,6 +47,11 @@ zip = { workspace = true }
 flate2 = { workspace = true }
 base64 = { workspace = true }
 parking_lot = { workspace = true }
+
+[features]
+default = []
+server = ["dep:oneshim-network"]
+grpc = ["server", "oneshim-network/grpc"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }

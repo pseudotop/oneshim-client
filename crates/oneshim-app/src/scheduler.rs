@@ -17,7 +17,7 @@ use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
 use oneshim_monitor::idle::IdleTracker;
 use oneshim_monitor::input_activity::InputActivityCollector;
 use oneshim_monitor::window_layout::WindowLayoutTracker;
-use oneshim_network::batch_uploader::BatchUploader;
+use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_vision::privacy::{sanitize_title_with_level, should_exclude};
@@ -191,8 +191,8 @@ pub struct Scheduler {
     storage: Arc<dyn StorageService>,
     sqlite_storage: Arc<dyn SchedulerStorage>,
     frame_storage: Option<Arc<FrameFileStorage>>,
-    batch_uploader: Arc<BatchUploader>,
-    api_client: Arc<dyn ApiClient>,
+    batch_sink: Option<Arc<dyn BatchSink>>,
+    api_client: Option<Arc<dyn ApiClient>>,
     event_tx: Option<broadcast::Sender<RealtimeEvent>>,
     notification_manager: Option<Arc<NotificationManager>>,
     focus_analyzer: Option<Arc<FocusAnalyzer>>,
@@ -211,8 +211,8 @@ impl Scheduler {
         storage: Arc<dyn StorageService>,
         sqlite_storage: Arc<dyn SchedulerStorage>,
         frame_storage: Option<Arc<FrameFileStorage>>,
-        batch_uploader: Arc<BatchUploader>,
-        api_client: Arc<dyn ApiClient>,
+        batch_sink: Option<Arc<dyn BatchSink>>,
+        api_client: Option<Arc<dyn ApiClient>>,
     ) -> Self {
         Self {
             config,
@@ -225,7 +225,7 @@ impl Scheduler {
             storage,
             sqlite_storage,
             frame_storage,
-            batch_uploader,
+            batch_sink,
             api_client,
             event_tx: None,
             notification_manager: None,
@@ -289,7 +289,7 @@ impl Scheduler {
         let storage1 = self.storage.clone();
         let sqlite1 = self.sqlite_storage.clone();
         let frame_storage1 = self.frame_storage.clone();
-        let uploader1 = self.batch_uploader.clone();
+        let uploader1 = self.batch_sink.clone();
         let egress1 = egress_policy;
         let session1 = session_id;
         let notif1 = self.notification_manager.clone();
@@ -358,8 +358,10 @@ impl Scheduler {
                                     if let Err(e) = storage1.save_event(&win_event).await {
                                         warn!("window event save failure: {e}");
                                     }
-                                    if let Some(upload_event) = egress1.prepare_event_for_upload(win_event) {
-                                        uploader1.enqueue(upload_event);
+                                    if let Some(ref sink) = uploader1 {
+                                        if let Some(upload_event) = egress1.prepare_event_for_upload(win_event) {
+                                            sink.enqueue(upload_event);
+                                        }
                                     }
                                 }
 
@@ -436,8 +438,10 @@ impl Scheduler {
 
                                 let _ = sqlite1.increment_session_counters(&session1, 1, 0, 0).await;
 
-                                if let Some(upload_event) = egress1.prepare_event_for_upload(ctx_event) {
-                                    uploader1.enqueue(upload_event);
+                                if let Some(ref sink) = uploader1 {
+                                    if let Some(upload_event) = egress1.prepare_event_for_upload(ctx_event) {
+                                        sink.enqueue(upload_event);
+                                    }
                                 }
 
                                 let app_changed = prev_app.as_ref() != Some(&app_name);
@@ -575,7 +579,7 @@ impl Scheduler {
         egress_policy: Arc<PlatformEgressPolicy>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
-        let uploader4 = self.batch_uploader.clone();
+        let uploader4 = self.batch_sink.clone();
         let storage4 = self.storage.clone();
         let frame_storage4 = self.frame_storage.clone();
         let egress4 = egress_policy;
@@ -586,15 +590,17 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        if egress4.is_enabled() {
-                            match uploader4.flush().await {
-                                Ok(count) => {
-                                    if count > 0 {
-                                        debug!("batch: {count}items sent");
+                        if let Some(ref sink) = uploader4 {
+                            if egress4.is_enabled() {
+                                match sink.flush().await {
+                                    Ok(count) => {
+                                        if count > 0 {
+                                            debug!("batch: {count}items sent");
+                                        }
                                     }
-                                }
-                                Err(e) => {
-                                    warn!("batch failure: {e}");
+                                    Err(e) => {
+                                        warn!("batch failure: {e}");
+                                    }
                                 }
                             }
                         }
@@ -632,6 +638,14 @@ impl Scheduler {
         let sid = session_id;
 
         tokio::spawn(async move {
+            let api = match api {
+                Some(a) => a,
+                None => {
+                    let _ = shutdown_rx.changed().await;
+                    return;
+                }
+            };
+
             if !egress_policy.is_enabled() {
                 let _ = shutdown_rx.changed().await;
                 return;
@@ -771,7 +785,7 @@ impl Scheduler {
     ) -> tokio::task::JoinHandle<()> {
         let proc_mon9 = self.process_monitor.clone();
         let storage9 = self.storage.clone();
-        let uploader9 = self.batch_uploader.clone();
+        let uploader9 = self.batch_sink.clone();
         let input_collector9 = input_collector;
         let egress9 = egress_policy;
 
@@ -802,8 +816,10 @@ impl Scheduler {
                                     warn!("event save failure: {e}");
                                 }
 
-                                if let Some(upload_event) = egress9.prepare_event_for_upload(event) {
-                                    uploader9.enqueue(upload_event);
+                                if let Some(ref sink) = uploader9 {
+                                    if let Some(upload_event) = egress9.prepare_event_for_upload(event) {
+                                        sink.enqueue(upload_event);
+                                    }
                                 }
 
                                 debug!(": {}items", total);
@@ -825,8 +841,10 @@ impl Scheduler {
                                 warn!("event save failure: {e}");
                             }
 
-                            if let Some(upload_event) = egress9.prepare_event_for_upload(event) {
-                                uploader9.enqueue(upload_event);
+                            if let Some(ref sink) = uploader9 {
+                                if let Some(upload_event) = egress9.prepare_event_for_upload(event) {
+                                    sink.enqueue(upload_event);
+                                }
                             }
                         }
                     }

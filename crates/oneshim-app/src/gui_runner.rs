@@ -11,8 +11,11 @@ use oneshim_core::config::{AiAccessMode, AppConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::storage::StorageService;
 use oneshim_monitor::{activity::ActivityTracker, process::ProcessTracker, system::SysInfoMonitor};
+#[cfg(feature = "server")]
 use oneshim_network::auth::TokenManager;
+#[cfg(feature = "server")]
 use oneshim_network::batch_uploader::BatchUploader;
+#[cfg(feature = "server")]
 use oneshim_network::http_client::HttpApiClient;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
@@ -454,13 +457,16 @@ async fn run_agent(
         ocr_tessdata,
     ));
 
+    #[cfg(feature = "server")]
     let token_manager = Arc::new(TokenManager::new(&config.server.base_url));
+    #[cfg(feature = "server")]
     let api_client = Arc::new(HttpApiClient::new(
         &config.server.base_url,
         token_manager.clone(),
         config.request_timeout(),
     )?);
     let session_id = generate_session_id();
+    #[cfg(feature = "server")]
     let batch_uploader = Arc::new(BatchUploader::new(
         api_client.clone(),
         session_id.clone(),
@@ -494,6 +500,18 @@ async fn run_agent(
         idle_threshold_secs: 300,
     };
 
+    #[cfg(feature = "server")]
+    let batch_sink_opt: Option<Arc<dyn oneshim_core::ports::batch_sink::BatchSink>> =
+        Some(batch_uploader.clone());
+    #[cfg(not(feature = "server"))]
+    let batch_sink_opt: Option<Arc<dyn oneshim_core::ports::batch_sink::BatchSink>> = None;
+
+    #[cfg(feature = "server")]
+    let api_client_opt: Option<Arc<dyn oneshim_core::ports::api_client::ApiClient>> =
+        Some(api_client.clone());
+    #[cfg(not(feature = "server"))]
+    let api_client_opt: Option<Arc<dyn oneshim_core::ports::api_client::ApiClient>> = None;
+
     let app_config = Arc::new(tokio::sync::RwLock::new(config.clone()));
     let mut scheduler = Scheduler::new(
         scheduler_config,
@@ -506,8 +524,8 @@ async fn run_agent(
         storage,
         scheduler_storage,
         Some(frame_storage.clone()),
-        batch_uploader,
-        api_client,
+        batch_sink_opt,
+        api_client_opt,
     )
     .with_notification_manager(notification_manager)
     .with_focus_analyzer(focus_analyzer);

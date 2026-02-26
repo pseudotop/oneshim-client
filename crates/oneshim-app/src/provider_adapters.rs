@@ -2,22 +2,29 @@
 
 use std::sync::Arc;
 
+#[cfg(feature = "server")]
 use async_trait::async_trait;
 use oneshim_automation::local_llm::LocalLlmProvider;
-use oneshim_core::config::{
-    AiAccessMode, AiProviderConfig, ExternalApiEndpoint, ExternalDataPolicy, LlmProviderType,
-    OcrProviderType, OcrValidationConfig, PiiFilterLevel,
-};
+#[cfg(feature = "server")]
+use oneshim_core::config::{ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig};
+use oneshim_core::config::{AiAccessMode, AiProviderConfig, LlmProviderType, OcrProviderType, PiiFilterLevel};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::LlmProvider;
-use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
+use oneshim_core::ports::ocr_provider::OcrProvider;
+#[cfg(feature = "server")]
+use oneshim_core::ports::ocr_provider::OcrResult;
+#[cfg(feature = "server")]
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
+#[cfg(feature = "server")]
 use oneshim_network::ai_ocr_client::RemoteOcrProvider;
 use oneshim_vision::local_ocr_provider::LocalOcrProvider;
+#[cfg(feature = "server")]
 use oneshim_vision::privacy_gateway::PrivacyGateway;
+#[cfg(feature = "server")]
 use tracing::{debug, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ProviderSource {
     Local,
     Remote,
@@ -48,6 +55,7 @@ pub struct AiProviderAdapters {
 }
 
 ///
+#[cfg(feature = "server")]
 struct GuardedOcrProvider {
     inner: Arc<dyn OcrProvider>,
     pii_filter_level: PiiFilterLevel,
@@ -56,6 +64,7 @@ struct GuardedOcrProvider {
     ocr_validation: OcrValidationConfig,
 }
 
+#[cfg(feature = "server")]
 impl GuardedOcrProvider {
     fn new(
         inner: Arc<dyn OcrProvider>,
@@ -114,6 +123,7 @@ impl GuardedOcrProvider {
     }
 }
 
+#[cfg(feature = "server")]
 #[async_trait]
 impl OcrProvider for GuardedOcrProvider {
     async fn extract_elements(
@@ -212,6 +222,7 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
     }
 }
 
+#[allow(unused_variables)]
 fn resolve_ocr_provider(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
@@ -222,22 +233,35 @@ fn resolve_ocr_provider(
             ProviderSource::Local,
             None,
         )),
-        OcrProviderType::Remote => resolve_remote_with_optional_fallback(
-            "ocr",
-            config.fallback_to_local,
-            || {
-                let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
-                let remote = Arc::new(RemoteOcrProvider::new(endpoint)?) as Arc<dyn OcrProvider>;
-                Ok(Arc::new(GuardedOcrProvider::new(
-                    remote,
-                    pii_filter_level,
-                    config.external_data_policy,
-                    config.allow_unredacted_external_ocr,
-                    config.ocr_validation.clone(),
-                )) as Arc<dyn OcrProvider>)
-            },
-            || Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
-        ),
+        OcrProviderType::Remote => {
+            #[cfg(feature = "server")]
+            {
+                resolve_remote_with_optional_fallback(
+                    "ocr",
+                    config.fallback_to_local,
+                    || {
+                        let endpoint =
+                            require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
+                        let remote =
+                            Arc::new(RemoteOcrProvider::new(endpoint)?) as Arc<dyn OcrProvider>;
+                        Ok(Arc::new(GuardedOcrProvider::new(
+                            remote,
+                            pii_filter_level,
+                            config.external_data_policy,
+                            config.allow_unredacted_external_ocr,
+                            config.ocr_validation.clone(),
+                        )) as Arc<dyn OcrProvider>)
+                    },
+                    || Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+                )
+            }
+            #[cfg(not(feature = "server"))]
+            {
+                Err(CoreError::Config(
+                    "Remote OCR provider requires the 'server' feature".to_string(),
+                ))
+            }
+        }
     }
 }
 
@@ -250,18 +274,31 @@ fn resolve_llm_provider(
             ProviderSource::Local,
             None,
         )),
-        LlmProviderType::Remote => resolve_remote_with_optional_fallback(
-            "llm",
-            config.fallback_to_local,
-            || {
-                let endpoint = require_endpoint_config(config.llm_api.as_ref(), "llm_api")?;
-                Ok(Arc::new(RemoteLlmProvider::new(endpoint)?) as Arc<dyn LlmProvider>)
-            },
-            || Arc::new(LocalLlmProvider::new()) as Arc<dyn LlmProvider>,
-        ),
+        LlmProviderType::Remote => {
+            #[cfg(feature = "server")]
+            {
+                resolve_remote_with_optional_fallback(
+                    "llm",
+                    config.fallback_to_local,
+                    || {
+                        let endpoint =
+                            require_endpoint_config(config.llm_api.as_ref(), "llm_api")?;
+                        Ok(Arc::new(RemoteLlmProvider::new(endpoint)?) as Arc<dyn LlmProvider>)
+                    },
+                    || Arc::new(LocalLlmProvider::new()) as Arc<dyn LlmProvider>,
+                )
+            }
+            #[cfg(not(feature = "server"))]
+            {
+                Err(CoreError::Config(
+                    "Remote LLM provider requires the 'server' feature".to_string(),
+                ))
+            }
+        }
     }
 }
 
+#[cfg(feature = "server")]
 fn require_endpoint_config<'a>(
     endpoint: Option<&'a ExternalApiEndpoint>,
     field_name: &str,
@@ -291,6 +328,7 @@ fn require_endpoint_config<'a>(
     Ok(endpoint)
 }
 
+#[cfg(feature = "server")]
 fn resolve_remote_with_optional_fallback<T: ?Sized>(
     provider_kind: &str,
     fallback_to_local: bool,
@@ -317,8 +355,10 @@ fn resolve_remote_with_optional_fallback<T: ?Sized>(
     }
 }
 
+#[cfg(feature = "server")]
 const MAX_FALLBACK_REASON_CHARS: usize = 240;
 
+#[cfg(feature = "server")]
 fn format_fallback_reason(err: &CoreError) -> String {
     let raw = err.to_string().replace(['\n', '\r'], " ");
     let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");

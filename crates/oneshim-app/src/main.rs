@@ -33,12 +33,19 @@ use oneshim_core::config_manager::ConfigManager;
 use oneshim_monitor::activity::ActivityTracker;
 use oneshim_monitor::process::ProcessTracker;
 use oneshim_monitor::system::SysInfoMonitor;
+#[cfg(feature = "server")]
 use oneshim_network::auth::TokenManager;
+#[cfg(feature = "server")]
 use oneshim_network::batch_uploader::BatchUploader;
+#[cfg(feature = "grpc")]
 use oneshim_network::grpc::{GrpcConfig, UnifiedClient};
+#[cfg(feature = "server")]
 use oneshim_network::http_client::HttpApiClient;
+#[cfg(feature = "server")]
 use oneshim_network::sse_client::SseStreamClient;
+#[cfg(feature = "server")]
 use oneshim_suggestion::queue::SuggestionQueue;
+#[cfg(feature = "server")]
 use oneshim_suggestion::receiver::SuggestionReceiver;
 use oneshim_ui::notifier::DesktopNotifierImpl;
 use oneshim_vision::processor::EdgeFrameProcessor;
@@ -48,7 +55,9 @@ use oneshim_web::{AiRuntimeStatus, WebServer};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, RwLock};
+#[cfg(feature = "server")]
+use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -57,6 +66,7 @@ use crate::cli_subscription_bridge::{
     default_context_export_path, should_autoinstall_bridge_files, should_include_user_scope,
     sync_bridge_files,
 };
+#[cfg(feature = "server")]
 use crate::event_bus::EventBus;
 use crate::focus_analyzer::FocusAnalyzer;
 use crate::focus_probe_adapter::ProcessMonitorFocusProbe;
@@ -326,51 +336,83 @@ async fn main() -> Result<()> {
         }
     }
 
+    #[cfg(feature = "server")]
     let token_manager = Arc::new(TokenManager::new(&config.server.base_url));
 
-    info!(
-        "network configuration: grpc_auth={}, grpc_context={}, endpoint={}",
-        config.grpc.use_grpc_auth, config.grpc.use_grpc_context, config.grpc.grpc_endpoint
-    );
+    #[cfg(feature = "grpc")]
+    {
+        info!(
+            "network configuration: grpc_auth={}, grpc_context={}, endpoint={}",
+            config.grpc.use_grpc_auth, config.grpc.use_grpc_context, config.grpc.grpc_endpoint
+        );
 
-    let grpc_config = GrpcConfig::from_core_with_rest(&config.grpc, &config.server.base_url);
-    let unified_client = Arc::new(UnifiedClient::new(
-        grpc_config.clone(),
-        token_manager.clone(),
-    )?);
+        let grpc_config = GrpcConfig::from_core_with_rest(&config.grpc, &config.server.base_url);
+        let unified_client = Arc::new(UnifiedClient::new(
+            grpc_config.clone(),
+            token_manager.clone(),
+        )?);
 
-    if platform_connected_mode {
-        let email =
-            std::env::var("ONESHIM_EMAIL").unwrap_or_else(|_| "user@example.com".to_string());
-        let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
-        let org_id = std::env::var("ONESHIM_ORG_ID").unwrap_or_else(|_| "default".to_string());
+        if platform_connected_mode {
+            let email =
+                std::env::var("ONESHIM_EMAIL").unwrap_or_else(|_| "user@example.com".to_string());
+            let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
+            let org_id =
+                std::env::var("ONESHIM_ORG_ID").unwrap_or_else(|_| "default".to_string());
 
-        info!("server login attempt: {email}");
+            info!("server login attempt: {email}");
 
-        if config.grpc.use_grpc_auth {
-            match unified_client.login(&email, &password, &org_id).await {
-                Ok(auth_response) => {
-                    info!("gRPC login success: user_id={:?}", auth_response.user_id);
+            if config.grpc.use_grpc_auth {
+                match unified_client.login(&email, &password, &org_id).await {
+                    Ok(auth_response) => {
+                        info!("gRPC login success: user_id={:?}", auth_response.user_id);
+                    }
+                    Err(e) => {
+                        warn!("gRPC login failure: {e}");
+                        warn!("REST fallback --offline mode.");
+                    }
                 }
-                Err(e) => {
-                    warn!("gRPC login failure: {e}");
-                    warn!("REST fallback --offline mode.");
-                }
+            } else if let Err(e) = token_manager.login(&email, &password).await {
+                warn!("login failure: {e}");
+                warn!("ONESHIM_EMAIL, ONESHIM_PASSWORD settings --offline mode.");
             }
-        } else if let Err(e) = token_manager.login(&email, &password).await {
-            warn!("login failure: {e}");
-            warn!("ONESHIM_EMAIL, ONESHIM_PASSWORD settings --offline mode.");
+        } else {
+            info!("login: standalone/ mode");
         }
-    } else {
-        info!("login: standalone/ mode");
     }
 
+    #[cfg(all(feature = "server", not(feature = "grpc")))]
+    {
+        if platform_connected_mode {
+            let email =
+                std::env::var("ONESHIM_EMAIL").unwrap_or_else(|_| "user@example.com".to_string());
+            let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
+
+            info!("server login attempt: {email}");
+
+            if let Err(e) = token_manager.login(&email, &password).await {
+                warn!("login failure: {e}");
+                warn!("ONESHIM_EMAIL, ONESHIM_PASSWORD settings --offline mode.");
+            }
+        } else {
+            info!("login: standalone/ mode");
+        }
+    }
+
+    #[cfg(not(feature = "server"))]
+    {
+        if !platform_connected_mode {
+            info!("login: standalone/ mode");
+        }
+    }
+
+    #[cfg(feature = "server")]
     let api_client = Arc::new(HttpApiClient::new(
         &config.server.base_url,
         token_manager.clone(),
         config.request_timeout(),
     )?);
 
+    #[cfg(feature = "server")]
     let sse_client = Arc::new(SseStreamClient::new(
         &config.server.base_url,
         token_manager.clone(),
@@ -426,6 +468,8 @@ async fn main() -> Result<()> {
     info!("frame save: {}", frame_storage.frames_dir().display());
 
     let session_id = generate_session_id();
+
+    #[cfg(feature = "server")]
     let batch_uploader = Arc::new(BatchUploader::new(
         api_client.clone(),
         session_id.clone(),
@@ -433,9 +477,12 @@ async fn main() -> Result<()> {
         3,
     ));
 
+    #[cfg(feature = "server")]
     let suggestion_queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+    #[cfg(feature = "server")]
     let (suggestion_tx, mut suggestion_rx) = mpsc::channel(32);
 
+    #[cfg(feature = "server")]
     let receiver = SuggestionReceiver::new(
         sse_client.clone(),
         Some(notifier.clone()),
@@ -443,6 +490,7 @@ async fn main() -> Result<()> {
         suggestion_tx,
     );
 
+    #[cfg(feature = "server")]
     let event_bus = Arc::new(EventBus::new(128));
 
     let lifecycle = Arc::new(LifecycleManager::new());
@@ -458,6 +506,19 @@ async fn main() -> Result<()> {
     ));
 
     let offline_mode = args.offline;
+
+    #[cfg(feature = "server")]
+    let batch_sink_opt: Option<Arc<dyn oneshim_core::ports::batch_sink::BatchSink>> =
+        Some(batch_uploader.clone());
+    #[cfg(not(feature = "server"))]
+    let batch_sink_opt: Option<Arc<dyn oneshim_core::ports::batch_sink::BatchSink>> = None;
+
+    #[cfg(feature = "server")]
+    let api_client_opt: Option<Arc<dyn oneshim_core::ports::api_client::ApiClient>> =
+        Some(api_client.clone());
+    #[cfg(not(feature = "server"))]
+    let api_client_opt: Option<Arc<dyn oneshim_core::ports::api_client::ApiClient>> = None;
+
     let app_config = Arc::new(tokio::sync::RwLock::new(config.clone()));
     let sched = Scheduler::new(
         SchedulerConfig {
@@ -485,8 +546,8 @@ async fn main() -> Result<()> {
         storage.clone(),
         sqlite_storage.clone(),
         Some(frame_storage.clone()),
-        batch_uploader.clone(),
-        api_client.clone(),
+        batch_sink_opt,
+        api_client_opt,
     )
     .with_notification_manager(notification_manager)
     .with_focus_analyzer(focus_analyzer);
@@ -629,6 +690,7 @@ async fn main() -> Result<()> {
         info!(": http://localhost:{}", web_port);
     }
 
+    #[cfg(feature = "server")]
     if platform_connected_mode {
         let sid = session_id.clone();
         tokio::spawn(async move {
