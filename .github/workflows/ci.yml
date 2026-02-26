@@ -176,8 +176,11 @@ jobs:
       - name: Verify commit message hygiene
         run: ./scripts/verify-commit-message-hygiene.sh "${{ github.event.pull_request.base.sha || '' }}" "${{ github.sha }}"
 
-      - name: Run clippy
+      - name: Run clippy (standalone)
         run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
+      - name: Run clippy (server features)
+        run: cargo clippy --workspace --all-targets --features grpc -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
   perf-gates:
     name: Performance Gates
@@ -266,8 +269,11 @@ jobs:
         with:
           shared-key: ci-test
 
-      - name: Run tests
+      - name: Run tests (standalone)
         run: cargo test --workspace
+
+      - name: Run tests (server features)
+        run: cargo test --workspace --features grpc
 
   build-pr-smoke:
     name: Build PR Smoke (linux)

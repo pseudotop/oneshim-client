@@ -164,7 +164,7 @@ jobs:
           key: release-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }} -p oneshim-app
+        run: cargo build --release --target ${{ matrix.target }} -p oneshim-app --features grpc
 
       - name: Validate WiX assets
         if: runner.os == 'Windows'
