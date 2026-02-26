@@ -6,7 +6,7 @@
 
 ## 기능
 
-- **REST API**: 60개+ 엔드포인트 (메트릭, 프로세스, 프레임, 이벤트, 태그, 리포트, 자동화 등)
+- **REST API**: Axum 기반 API 표면 (메트릭, 프로세스, 프레임, 이벤트, 태그, 리포트, 자동화 등)
 - **실시간 SSE**: Server-Sent Events 스트림 (메트릭, 프레임, 유휴 상태)
 - **React 프론트엔드**: rust-embed로 바이너리에 임베드
 - **자동 포트 찾기**: 포트 충돌 시 다음 포트 자동 시도
@@ -18,7 +18,7 @@
 oneshim-web/
 ├── src/
 │   ├── lib.rs          # WebServer + AppState (audit_logger 포함)
-│   ├── routes.rs       # 라우트 정의 (60개+ 엔드포인트)
+│   ├── routes.rs       # 라우트 정의 (HTTP 표면의 기준 소스)
 │   ├── error.rs        # ApiError 타입
 │   ├── embedded.rs     # 정적 파일 서빙
 │   └── handlers/       # API 핸들러
@@ -37,7 +37,7 @@ oneshim-web/
 │       ├── backup.rs
 │       ├── export.rs
 │       ├── settings.rs    # AppSettings DTO + 자동화/샌드박스/AI 설정
-│       └── automation.rs  # 자동화 API (10개 엔드포인트)
+│       └── automation.rs  # 자동화 API 핸들러
 └── frontend/           # React 프론트엔드
     ├── src/
     │   ├── pages/      # 페이지 컴포넌트 (Dashboard, Automation, Settings 등)
@@ -89,6 +89,12 @@ server.run(shutdown_rx).await?;
 이 구조로 웹 애플리케이션 계층은 저장소 구현 교체 시에도 핸들러 코드를 바꾸지 않는다.
 
 ## API 엔드포인트
+
+정규 API 인벤토리 기준:
+- `docs/contracts/http-interface-manifest.v1.json`
+- `docs/contracts/oneshim-web.v1.openapi.yaml`
+
+아래 표는 빠른 파악을 위한 그룹 예시입니다. 정확한 최신 표면은 위 manifest/OpenAPI 스냅샷을 사용하세요.
 
 ### 메트릭
 | 메서드 | 경로 | 설명 |
@@ -316,7 +322,7 @@ pub struct ExternalApiSettings {
 
 ## i18n 지원
 
-한국어/영어 번역 220개+ 키:
+한국어/영어 번역 키:
 - `automation.*` — 자동화 UI 번역 (40개+)
 - `settingsAutomation.*` — 자동화 설정 번역 (26개+)
 - 기존 번역 유지 (dashboard, timeline, settings, privacy, search, reports 등)
@@ -367,7 +373,7 @@ pnpm test:e2e
 
 ## 테스트
 
-- **Rust 테스트**: 78개 — API 핸들러, 라우트, 에러 핸들링, 자동화 DTO 직렬화, 설정 매핑
-- **E2E 테스트**: Playwright 기반 72개 테스트
+- Rust/E2E 총수는 가변 지표이므로 `docs/STATUS.md`에서 단일 소스로 관리합니다.
+- 웹 커버리지는 API 핸들러, 라우트, 에러 핸들링, 자동화 DTO 직렬화, 설정 매핑, Playwright 기반 프론트엔드 E2E 시나리오를 포함합니다.
   - 네비게이션, 대시보드, 타임라인
   - 설정, 개인정보, 검색, 리포트

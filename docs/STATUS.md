@@ -35,9 +35,9 @@ cargo fmt --check
 - Lint status: Enforced in CI (`cargo clippy --workspace`)
 - Format status: Enforced in CI (`cargo fmt --check`)
 - Build status: Enforced in CI (`cargo build --workspace`)
-- Latest CI workflow run: success (`CI`) — [Run 22435164815](https://github.com/pseudotop/oneshim-client/actions/runs/22435164815) (2026-02-26)
+- Latest CI workflow run: success (`CI`) — [Run 22441091666](https://github.com/pseudotop/oneshim-client/actions/runs/22441091666) (2026-02-26)
 - Latest Release workflow run: success (`Release`, tag `v0.0.15`) — [Run 22439123731](https://github.com/pseudotop/oneshim-client/actions/runs/22439123731) (2026-02-26)
-- Latest Notarization workflow run: in progress (`Notarize macOS Release Assets`) — [Run 22439856624](https://github.com/pseudotop/oneshim-client/actions/runs/22439856624) (started 2026-02-26)
+- Latest Notarization workflow run: in progress (`Notarize macOS Release Assets`) — [Run 22440291739](https://github.com/pseudotop/oneshim-client/actions/runs/22440291739) (started 2026-02-26)
 - UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc3.md` (latest tracked run evidence)
 
 ## Notes

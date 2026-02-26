@@ -16,7 +16,7 @@ This directory is organized by document intent.
 - `research/`: exploratory and investigational notes
 - `guides/`: operator/developer playbooks, runbooks, and how-to guides
 - `plan/`: dated implementation plans and execution tracking docs
-- `contracts/`: versioned API/payload contracts
+- `contracts/`: versioned API/payload contracts and generated OpenAPI snapshots
 - `crates/`: crate-level implementation references
 - `migration/`: migration history and phased plans (with active/legacy classification in `migration/README.md`)
 - `security/`: security baseline and integrity operations docs

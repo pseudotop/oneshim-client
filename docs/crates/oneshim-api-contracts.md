@@ -6,9 +6,10 @@
 
 - Shared request/response structs for web handlers and services.
 - Serde defaults used for backward-compatible deserialization.
-- Versioned contract modules that can later be mapped to OpenAPI generation.
+- Versioned contract modules consumed by OpenAPI snapshot automation.
 - OpenAPI standardization bridge via interface manifest:
   - `docs/contracts/http-interface-manifest.v1.json`
+  - `docs/contracts/oneshim-web.v1.openapi.yaml`
   - `docs/contracts/http-api-standardization.md`
 
 ## Current Modules
@@ -29,3 +30,4 @@
 4. Treat this crate as the transport SSOT for `oneshim-web` APIs.
 5. Keep `oneshim-web/src/handlers` free of public DTO definitions (enforced by `scripts/verify-web-contract-boundary.sh`).
 6. Keep route/interface manifest sync green in CI (`scripts/verify-http-interface-manifest.sh`).
+7. Keep generated OpenAPI snapshot sync green in CI (`scripts/verify-http-openapi-sync.sh`).

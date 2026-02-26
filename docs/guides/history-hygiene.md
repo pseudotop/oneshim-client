@@ -28,6 +28,7 @@ Use abstract terms instead:
 
 - `scripts/verify-commit-message-hygiene.sh` checks new commit subjects for sensitive keywords and raw env assignment patterns.
 - `scripts/verify-http-interface-manifest.sh` ensures public HTTP interface history is versioned and synchronized with routes.
+- `scripts/verify-http-openapi-sync.sh` ensures generated OpenAPI snapshots remain synchronized with the interface manifest.
 
 ## Operational note
 

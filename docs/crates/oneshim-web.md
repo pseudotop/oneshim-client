@@ -6,7 +6,7 @@ The local web dashboard crate. Provides a REST API based on Axum 0.7 and a React
 
 ## Features
 
-- **REST API**: 60+ endpoints (metrics, processes, frames, events, tags, reports, automation, etc.)
+- **REST API**: Axum-based API surface (metrics, processes, frames, events, tags, reports, automation, etc.)
 - **Real-time SSE**: Server-Sent Events stream (metrics, frames, idle state)
 - **React Frontend**: Embedded in the binary via rust-embed
 - **Auto Port Finding**: Automatically tries the next port on conflict
@@ -18,7 +18,7 @@ The local web dashboard crate. Provides a REST API based on Axum 0.7 and a React
 oneshim-web/
 ├── src/
 │   ├── lib.rs          # WebServer + AppState (includes audit_logger)
-│   ├── routes.rs       # Route definitions (60+ endpoints)
+│   ├── routes.rs       # Route definitions (canonical HTTP surface source)
 │   ├── error.rs        # ApiError type
 │   ├── embedded.rs     # Static file serving
 │   └── handlers/       # API handlers
@@ -37,7 +37,7 @@ oneshim-web/
 │       ├── backup.rs
 │       ├── export.rs
 │       ├── settings.rs    # AppSettings DTO + automation/sandbox/AI settings
-│       └── automation.rs  # Automation API (10 endpoints)
+│       └── automation.rs  # Automation API handlers
 └── frontend/           # React frontend
     ├── src/
     │   ├── pages/      # Page components (Dashboard, Automation, Settings, etc.)
@@ -89,6 +89,12 @@ server.run(shutdown_rx).await?;
 This keeps the web application layer open for alternate storage adapters without changing handler logic.
 
 ## API Endpoints
+
+Canonical API inventory source:
+- `docs/contracts/http-interface-manifest.v1.json`
+- `docs/contracts/oneshim-web.v1.openapi.yaml`
+
+The tables below are grouped examples for quick orientation. For exact current surface, use the manifest/OpenAPI snapshot above.
 
 ### Metrics
 | Method | Path | Description |
@@ -316,7 +322,7 @@ Three sections added to existing settings:
 
 ## i18n Support
 
-220+ Korean/English translation keys:
+Korean/English translation keys:
 - `automation.*` — Automation UI translations (40+)
 - `settingsAutomation.*` — Automation settings translations (26+)
 - Existing translations retained (dashboard, timeline, settings, privacy, search, reports, etc.)
@@ -367,7 +373,7 @@ pnpm test:e2e
 
 ## Tests
 
-- **Rust tests**: 78 — API handlers, routes, error handling, automation DTO serialization, settings mapping
-- **E2E tests**: 72 Playwright-based tests
+- Current Rust/E2E totals are tracked in `docs/STATUS.md` (single mutable source).
+- Web coverage includes API handlers, routes, error handling, automation DTO serialization, settings mapping, and Playwright-based frontend E2E scenarios.
   - Navigation, dashboard, timeline
   - Settings, privacy, search, reports
