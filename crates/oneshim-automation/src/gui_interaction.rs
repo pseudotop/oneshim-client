@@ -1959,7 +1959,7 @@ mod tests {
         assert_eq!(outcome.session.state, GuiSessionState::Executed);
     }
 
-    // ── Event subscription test ─────────────────────────────────────────
+    // ── M3: Event subscription / SSE integration tests ─────────────────
 
     #[tokio::test]
     async fn subscribe_receives_session_events() {
@@ -1976,6 +1976,272 @@ mod tests {
         let event = rx.try_recv().unwrap();
         assert_eq!(event.event_type, "gui_session.proposed");
         assert_eq!(event.state, GuiSessionState::Proposed);
+    }
+
+    #[tokio::test]
+    async fn subscribe_session_requires_valid_token() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let (sid, _token) = create_test_session(&service).await;
+
+        let err = service
+            .subscribe_session(&sid, "wrong-token")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, GuiInteractionError::Unauthorized));
+    }
+
+    #[tokio::test]
+    async fn subscribe_session_rejects_unknown_session() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let err = service
+            .subscribe_session("nonexistent-session", "any-token")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, GuiInteractionError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn subscribe_session_succeeds_with_valid_token() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let (sid, token) = create_test_session(&service).await;
+
+        let rx = service.subscribe_session(&sid, &token).await;
+        assert!(rx.is_ok(), "Valid token should allow subscription");
+    }
+
+    #[tokio::test]
+    async fn event_stream_full_lifecycle_proposed_to_executed() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let mut rx = service.subscribe();
+
+        // 1. Create session → Proposed
+        let resp = service
+            .create_session(default_create_request())
+            .await
+            .unwrap();
+        let sid = resp.session.session_id;
+        let token = resp.capability_token;
+
+        // 2. Highlight → Highlighted
+        service
+            .highlight_session(
+                &sid,
+                &token,
+                GuiHighlightRequest {
+                    candidate_ids: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // 3. Confirm → Confirmed
+        let ticket = service
+            .confirm_candidate(
+                &sid,
+                &token,
+                GuiConfirmRequest {
+                    candidate_id: "el-1".to_string(),
+                    action: GuiActionRequest {
+                        action_type: GuiActionType::Click,
+                        text: None,
+                    },
+                    ticket_ttl_secs: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // 4. Prepare execution → Executing
+        service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap();
+
+        // 5. Complete → Executed
+        service
+            .complete_execution(&sid, true, None, 1, 1)
+            .await
+            .unwrap();
+
+        // Collect all events
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+
+        let types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
+        assert_eq!(
+            types,
+            vec![
+                "gui_session.proposed",
+                "gui_session.highlighted",
+                "gui_session.confirmed",
+                "gui_session.executing",
+                "gui_session.executed",
+            ],
+            "Events should arrive in state machine order"
+        );
+
+        // All events belong to the same session
+        assert!(
+            events.iter().all(|e| e.session_id == sid),
+            "All events must reference the same session"
+        );
+    }
+
+    #[tokio::test]
+    async fn event_stream_cancel_emits_cancelled_event() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let mut rx = service.subscribe();
+
+        let (sid, token) = create_test_session(&service).await;
+        service.cancel_session(&sid, &token).await.unwrap();
+
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+
+        assert_eq!(events.len(), 2); // proposed + cancelled
+        assert_eq!(events[0].event_type, "gui_session.proposed");
+        assert_eq!(events[1].event_type, "gui_session.cancelled");
+        assert_eq!(events[1].state, GuiSessionState::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn event_stream_execution_failure_emits_failure_event() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let mut rx = service.subscribe();
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+        service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap();
+        service
+            .complete_execution(&sid, false, Some("click missed".to_string()), 0, 1)
+            .await
+            .unwrap();
+
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+
+        let types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
+        assert!(
+            types.contains(&"gui_session.execution_failed"),
+            "Should emit execution_failed event, got: {types:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn event_schema_version_is_consistent() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let mut rx = service.subscribe();
+
+        let _ = service
+            .create_session(default_create_request())
+            .await
+            .unwrap();
+
+        let event = rx.try_recv().unwrap();
+        assert_eq!(
+            event.schema_version, "automation.gui.event.v1",
+            "Event schema version must match contract"
+        );
+    }
+
+    #[tokio::test]
+    async fn events_are_session_scoped_in_broadcast() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        // Create two sessions
+        let (sid1, _token1) = create_test_session(&service).await;
+        let (sid2, _token2) = create_test_session(&service).await;
+
+        // Subscribe AFTER both sessions exist
+        let mut rx = service.subscribe();
+
+        // Cancel session 1 — should emit event for sid1 only
+        service.cancel_session(&sid1, &_token1).await.unwrap();
+
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+
+        // Filter to session 1 events only (simulating handler-level filtering)
+        let sid1_events: Vec<_> = events.iter().filter(|e| e.session_id == sid1).collect();
+        let sid2_events: Vec<_> = events.iter().filter(|e| e.session_id == sid2).collect();
+
+        assert_eq!(sid1_events.len(), 1);
+        assert_eq!(sid1_events[0].event_type, "gui_session.cancelled");
+        assert!(
+            sid2_events.is_empty(),
+            "Session 2 should have no events after session 1 cancel"
+        );
+    }
+
+    #[tokio::test]
+    async fn event_includes_message_from_confirm() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let mut rx = service.subscribe();
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+        service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap();
+
+        // Drain events to find the executing event with ticket_id message
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+
+        let executing_event = events
+            .iter()
+            .find(|e| e.event_type == "gui_session.executing")
+            .expect("Should have executing event");
+
+        assert!(
+            executing_event.message.is_some(),
+            "Executing event should contain ticket_id in message"
+        );
+        assert!(
+            executing_event
+                .message
+                .as_ref()
+                .unwrap()
+                .contains("ticket_id="),
+            "Message should contain ticket_id reference"
+        );
+    }
+
+    #[test]
+    fn event_channel_capacity_is_reasonable() {
+        assert!(
+            GUI_EVENT_CHANNEL_CAPACITY >= 64 && GUI_EVENT_CHANNEL_CAPACITY <= 1024,
+            "Event channel capacity should be between 64 and 1024"
+        );
     }
 
     // ── Build candidates tests ──────────────────────────────────────────
