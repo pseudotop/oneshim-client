@@ -1,39 +1,11 @@
+use super::enums::*;
 use crate::error::CoreError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::time::Duration;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppConfig {
-    pub server: ServerConfig,
-    pub monitor: MonitorConfig,
-    pub storage: StorageConfig,
-    pub vision: VisionConfig,
-    #[serde(default)]
-    pub update: UpdateConfig,
-    #[serde(default)]
-    pub integrity: IntegrityConfig,
-    #[serde(default)]
-    pub web: WebConfig,
-    #[serde(default)]
-    pub notification: NotificationConfig,
-    #[serde(default)]
-    pub grpc: GrpcConfig,
-    #[serde(default)]
-    pub telemetry: TelemetryConfig,
-    #[serde(default)]
-    pub privacy: PrivacyConfig,
-    #[serde(default)]
-    pub schedule: ScheduleConfig,
-    #[serde(default)]
-    pub file_access: FileAccessConfig,
-    #[serde(default)]
-    pub automation: AutomationConfig,
-    #[serde(default)]
-    pub ai_provider: AiProviderConfig,
-}
+// ── IntegrityConfig ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrityConfig {
@@ -61,6 +33,8 @@ impl Default for IntegrityConfig {
     }
 }
 
+// ── TelemetryConfig ────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TelemetryConfig {
     #[serde(default)]
@@ -73,14 +47,7 @@ pub struct TelemetryConfig {
     pub performance_metrics: bool,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PiiFilterLevel {
-    Off,
-    Basic,
-    #[default]
-    Standard,
-    Strict,
-}
+// ── PrivacyConfig ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrivacyConfig {
@@ -108,16 +75,7 @@ impl Default for PrivacyConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Weekday {
-    Mon,
-    Tue,
-    Wed,
-    Thu,
-    Fri,
-    Sat,
-    Sun,
-}
+// ── ScheduleConfig ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduleConfig {
@@ -148,23 +106,7 @@ impl Default for ScheduleConfig {
     }
 }
 
-fn default_active_start_hour() -> u8 {
-    9
-}
-
-fn default_active_end_hour() -> u8 {
-    18
-}
-
-fn default_active_days() -> Vec<Weekday> {
-    vec![
-        Weekday::Mon,
-        Weekday::Tue,
-        Weekday::Wed,
-        Weekday::Thu,
-        Weekday::Fri,
-    ]
-}
+// ── FileAccessConfig ───────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileAccessConfig {
@@ -189,6 +131,8 @@ impl Default for FileAccessConfig {
     }
 }
 
+// ── AutomationConfig ───────────────────────────────────────────────
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AutomationConfig {
     #[serde(default)]
@@ -199,13 +143,7 @@ pub struct AutomationConfig {
     pub custom_presets: Vec<crate::models::intent::WorkflowPreset>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SandboxProfile {
-    Permissive,
-    #[default]
-    Standard,
-    Strict,
-}
+// ── SandboxConfig ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxConfig {
@@ -238,6 +176,8 @@ impl Default for SandboxConfig {
         }
     }
 }
+
+// ── AiProviderConfig ───────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiProviderConfig {
@@ -314,6 +254,8 @@ impl AiProviderConfig {
     }
 }
 
+// ── SceneActionOverrideConfig ──────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SceneActionOverrideConfig {
     #[serde(default)]
@@ -384,6 +326,8 @@ impl SceneActionOverrideConfig {
     }
 }
 
+// ── SceneIntelligenceConfig ────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneIntelligenceConfig {
     #[serde(default = "default_true")]
@@ -451,93 +395,7 @@ impl SceneIntelligenceConfig {
     }
 }
 
-fn validate_remote_endpoint(
-    endpoint: Option<&ExternalApiEndpoint>,
-    field_name: &str,
-) -> Result<(), CoreError> {
-    let endpoint = endpoint.ok_or_else(|| {
-        CoreError::Config(format!(
-            "`{field_name}` is required when a remote provider is selected."
-        ))
-    })?;
-
-    let endpoint_url = endpoint.endpoint.trim();
-    if endpoint_url.is_empty() {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint` must not be empty."
-        )));
-    }
-    if !(endpoint_url.starts_with("http://") || endpoint_url.starts_with("https://")) {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint` must be an http:// or https:// URL."
-        )));
-    }
-
-    if endpoint.api_key.trim().is_empty() {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.api_key` must not be empty."
-        )));
-    }
-
-    if endpoint.timeout_secs == 0 {
-        return Err(CoreError::Config(format!(
-            "`{field_name}.timeout_secs` must be >= 1."
-        )));
-    }
-
-    if let Some(model) = endpoint
-        .model
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        let decision = crate::ai_model_lifecycle_policy::evaluate_model_lifecycle_now(
-            endpoint.provider_type,
-            model,
-        )?;
-        if let crate::ai_model_lifecycle_policy::ModelLifecycleDecision::Block { message, .. } =
-            decision
-        {
-            return Err(CoreError::PolicyDenied(message));
-        }
-    }
-
-    Ok(())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum OcrProviderType {
-    #[default]
-    Local,
-    Remote,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum LlmProviderType {
-    #[default]
-    Local,
-    Remote,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum AiAccessMode {
-    #[default]
-    ProviderApiKey,
-    LocalModel,
-    ProviderSubscriptionCli,
-    PlatformConnected,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum AiProviderType {
-    Anthropic,
-    OpenAi,
-    Google,
-    #[default]
-    Generic,
-}
+// ── ExternalApiEndpoint ────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalApiEndpoint {
@@ -551,13 +409,7 @@ pub struct ExternalApiEndpoint {
     pub provider_type: AiProviderType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum ExternalDataPolicy {
-    #[default]
-    PiiFilterStrict,
-    PiiFilterStandard,
-    AllowFiltered,
-}
+// ── OcrValidationConfig ────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OcrValidationConfig {
@@ -602,46 +454,7 @@ impl OcrValidationConfig {
     }
 }
 
-fn default_api_timeout_secs() -> u64 {
-    30
-}
-
-fn default_ocr_min_confidence() -> f64 {
-    0.25
-}
-
-fn default_ocr_max_invalid_ratio() -> f64 {
-    0.6
-}
-
-fn default_scene_min_confidence() -> f64 {
-    0.35
-}
-
-fn default_scene_max_elements() -> usize {
-    120
-}
-
-fn default_scene_calibration_min_elements() -> usize {
-    8
-}
-
-fn default_scene_calibration_min_avg_confidence() -> f64 {
-    0.55
-}
-
-fn default_excluded_extensions() -> Vec<String> {
-    vec![
-        ".tmp".to_string(),
-        ".log".to_string(),
-        ".lock".to_string(),
-        ".swp".to_string(),
-    ]
-}
-
-fn default_max_events_per_minute() -> u32 {
-    100
-}
+// ── GrpcConfig ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrpcConfig {
@@ -691,21 +504,7 @@ impl Default for GrpcConfig {
     }
 }
 
-fn default_grpc_endpoint() -> String {
-    "http://localhost:50051".to_string()
-}
-
-fn default_grpc_fallback_ports() -> Vec<u16> {
-    vec![50052, 50053]
-}
-
-fn default_grpc_connect_timeout() -> u64 {
-    10
-}
-
-fn default_grpc_request_timeout() -> u64 {
-    30
-}
+// ── NotificationConfig ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationConfig {
@@ -742,6 +541,8 @@ impl Default for NotificationConfig {
     }
 }
 
+// ── WebConfig ──────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebConfig {
     #[serde(default = "default_web_enabled")]
@@ -761,6 +562,8 @@ impl Default for WebConfig {
         }
     }
 }
+
+// ── UpdateConfig ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateConfig {
@@ -855,13 +658,7 @@ impl UpdateConfig {
     }
 }
 
-fn default_update_require_signature() -> bool {
-    true
-}
-
-fn default_update_signature_public_key() -> String {
-    "GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=".to_string()
-}
+// ── ServerConfig ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -871,6 +668,8 @@ pub struct ServerConfig {
     #[serde(default = "default_sse_max_retry_secs")]
     pub sse_max_retry_secs: u64,
 }
+
+// ── MonitorConfig ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorConfig {
@@ -890,6 +689,8 @@ pub struct MonitorConfig {
     pub input_activity: bool,
 }
 
+// ── StorageConfig ──────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConfig {
     pub db_path: Option<PathBuf>,
@@ -898,6 +699,8 @@ pub struct StorageConfig {
     #[serde(default = "default_max_storage_mb")]
     pub max_storage_mb: u64,
 }
+
+// ── VisionConfig ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisionConfig {
@@ -915,64 +718,63 @@ pub struct VisionConfig {
     pub privacy_mode: bool,
 }
 
-// AppConfig impl
+// ── validate_remote_endpoint (free function) ───────────────────────
 
-impl AppConfig {
-    pub fn default_config() -> Self {
-        Self {
-            server: ServerConfig {
-                base_url: "http://localhost:8000".to_string(),
-                request_timeout_ms: default_request_timeout_ms(),
-                sse_max_retry_secs: default_sse_max_retry_secs(),
-            },
-            monitor: MonitorConfig {
-                poll_interval_ms: default_poll_interval_ms(),
-                sync_interval_ms: default_sync_interval_ms(),
-                heartbeat_interval_ms: default_heartbeat_interval_ms(),
-                idle_threshold_secs: default_idle_threshold_secs(),
-                process_interval_secs: default_process_interval_secs(),
-                process_monitoring: true,
-                input_activity: true,
-            },
-            storage: StorageConfig {
-                db_path: None,
-                retention_days: default_retention_days(),
-                max_storage_mb: default_max_storage_mb(),
-            },
-            vision: VisionConfig {
-                capture_enabled: default_capture_enabled(),
-                capture_throttle_ms: default_capture_throttle_ms(),
-                thumbnail_width: default_thumbnail_width(),
-                thumbnail_height: default_thumbnail_height(),
-                ocr_enabled: false,
-                privacy_mode: false,
-            },
-            update: UpdateConfig::default(),
-            integrity: IntegrityConfig::default(),
-            web: WebConfig::default(),
-            notification: NotificationConfig::default(),
-            grpc: GrpcConfig::default(),
-            telemetry: TelemetryConfig::default(),
-            privacy: PrivacyConfig::default(),
-            schedule: ScheduleConfig::default(),
-            file_access: FileAccessConfig::default(),
-            automation: AutomationConfig::default(),
-            ai_provider: AiProviderConfig::default(),
+fn validate_remote_endpoint(
+    endpoint: Option<&ExternalApiEndpoint>,
+    field_name: &str,
+) -> Result<(), CoreError> {
+    let endpoint = endpoint.ok_or_else(|| {
+        CoreError::Config(format!(
+            "`{field_name}` is required when a remote provider is selected."
+        ))
+    })?;
+
+    let endpoint_url = endpoint.endpoint.trim();
+    if endpoint_url.is_empty() {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.endpoint` must not be empty."
+        )));
+    }
+    if !(endpoint_url.starts_with("http://") || endpoint_url.starts_with("https://")) {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.endpoint` must be an http:// or https:// URL."
+        )));
+    }
+
+    if endpoint.api_key.trim().is_empty() {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.api_key` must not be empty."
+        )));
+    }
+
+    if endpoint.timeout_secs == 0 {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.timeout_secs` must be >= 1."
+        )));
+    }
+
+    if let Some(model) = endpoint
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let decision = crate::ai_model_lifecycle_policy::evaluate_model_lifecycle_now(
+            endpoint.provider_type,
+            model,
+        )?;
+        if let crate::ai_model_lifecycle_policy::ModelLifecycleDecision::Block { message, .. } =
+            decision
+        {
+            return Err(CoreError::PolicyDenied(message));
         }
     }
 
-    pub fn request_timeout(&self) -> Duration {
-        Duration::from_millis(self.server.request_timeout_ms)
-    }
-
-    pub fn poll_interval(&self) -> Duration {
-        Duration::from_millis(self.monitor.poll_interval_ms)
-    }
-
-    pub fn sync_interval(&self) -> Duration {
-        Duration::from_millis(self.monitor.sync_interval_ms)
-    }
+    Ok(())
 }
+
+// ── Default / helper functions ─────────────────────────────────────
 
 fn default_true() -> bool {
     true
@@ -986,397 +788,178 @@ fn default_integrity_enabled() -> bool {
     true
 }
 
-fn default_request_timeout_ms() -> u64 {
-    30_000
+fn default_active_start_hour() -> u8 {
+    9
 }
-fn default_sse_max_retry_secs() -> u64 {
+
+fn default_active_end_hour() -> u8 {
+    18
+}
+
+fn default_active_days() -> Vec<Weekday> {
+    vec![
+        Weekday::Mon,
+        Weekday::Tue,
+        Weekday::Wed,
+        Weekday::Thu,
+        Weekday::Fri,
+    ]
+}
+
+fn default_excluded_extensions() -> Vec<String> {
+    vec![
+        ".tmp".to_string(),
+        ".log".to_string(),
+        ".lock".to_string(),
+        ".swp".to_string(),
+    ]
+}
+
+fn default_max_events_per_minute() -> u32 {
+    100
+}
+
+fn default_api_timeout_secs() -> u64 {
     30
 }
-fn default_poll_interval_ms() -> u64 {
-    1_000
+
+fn default_ocr_min_confidence() -> f64 {
+    0.25
 }
-fn default_sync_interval_ms() -> u64 {
-    10_000
+
+fn default_ocr_max_invalid_ratio() -> f64 {
+    0.6
 }
-fn default_heartbeat_interval_ms() -> u64 {
-    30_000
+
+fn default_scene_min_confidence() -> f64 {
+    0.35
 }
-fn default_retention_days() -> u32 {
+
+fn default_scene_max_elements() -> usize {
+    120
+}
+
+fn default_scene_calibration_min_elements() -> usize {
+    8
+}
+
+fn default_scene_calibration_min_avg_confidence() -> f64 {
+    0.55
+}
+
+fn default_grpc_endpoint() -> String {
+    "http://localhost:50051".to_string()
+}
+
+fn default_grpc_fallback_ports() -> Vec<u16> {
+    vec![50052, 50053]
+}
+
+fn default_grpc_connect_timeout() -> u64 {
+    10
+}
+
+fn default_grpc_request_timeout() -> u64 {
     30
 }
-fn default_max_storage_mb() -> u64 {
-    500
-}
-fn default_capture_throttle_ms() -> u64 {
-    5_000
-}
-fn default_thumbnail_width() -> u32 {
-    480
-}
-fn default_thumbnail_height() -> u32 {
-    270
-}
-fn default_update_enabled() -> bool {
-    true
-}
-fn default_repo_owner() -> String {
-    "pseudotop".to_string()
-}
-fn default_repo_name() -> String {
-    "oneshim-client".to_string()
-}
-fn default_check_interval_hours() -> u32 {
-    24
-}
-fn default_web_enabled() -> bool {
-    true
-}
-fn default_web_port() -> u16 {
-    9090
-}
+
 fn default_notification_enabled() -> bool {
     true
 }
+
 fn default_idle_notification() -> bool {
     true
 }
+
 fn default_idle_notification_mins() -> u32 {
     30
 }
+
 fn default_long_session_notification() -> bool {
     true
 }
+
 fn default_long_session_mins() -> u32 {
     60
 }
+
 fn default_high_usage_notification() -> bool {
     false
 }
+
 fn default_high_usage_threshold() -> u32 {
     90
 }
-fn default_idle_threshold_secs() -> u64 {
-    300 // 5 min
-}
-fn default_process_interval_secs() -> u64 {
-    10
-}
-fn default_capture_enabled() -> bool {
+
+fn default_web_enabled() -> bool {
     true
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
+fn default_web_port() -> u16 {
+    9090
+}
 
-    #[test]
-    fn update_integrity_policy_rejects_disabled_signature_verification() {
-        let config = UpdateConfig {
-            enabled: true,
-            require_signature_verification: false,
-            ..UpdateConfig::default()
-        };
+fn default_update_enabled() -> bool {
+    true
+}
 
-        let result = config.validate_integrity_policy();
-        assert!(result.is_err());
-    }
+fn default_repo_owner() -> String {
+    "pseudotop".to_string()
+}
 
-    #[test]
-    fn update_integrity_policy_rejects_invalid_public_key_length() {
-        let config = UpdateConfig {
-            enabled: true,
-            require_signature_verification: true,
-            signature_public_key: BASE64.encode([1u8; 16]),
-            ..UpdateConfig::default()
-        };
+fn default_repo_name() -> String {
+    "oneshim-client".to_string()
+}
 
-        let result = config.validate_integrity_policy();
-        assert!(result.is_err());
-    }
+fn default_check_interval_hours() -> u32 {
+    24
+}
 
-    #[test]
-    fn update_integrity_policy_accepts_valid_key() {
-        let config = UpdateConfig {
-            enabled: true,
-            require_signature_verification: true,
-            signature_public_key: BASE64.encode([7u8; 32]),
-            ..UpdateConfig::default()
-        };
+fn default_update_require_signature() -> bool {
+    true
+}
 
-        let result = config.validate_integrity_policy();
-        assert!(result.is_ok());
-    }
+fn default_update_signature_public_key() -> String {
+    "GIdf7Wg4kvvvoT7jR0xwKLKna8hUR1kvowONbHbPz1E=".to_string()
+}
 
-    #[test]
-    fn update_integrity_policy_rejects_invalid_version_floor() {
-        let config = UpdateConfig {
-            enabled: true,
-            require_signature_verification: true,
-            signature_public_key: BASE64.encode([7u8; 32]),
-            min_allowed_version: Some("not-semver".to_string()),
-            ..UpdateConfig::default()
-        };
-
-        let result = config.validate_integrity_policy();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn grpc_config_defaults_disable_mtls() {
-        let config = GrpcConfig::default();
-        assert!(!config.use_tls);
-        assert!(!config.mtls_enabled);
-        assert!(config.tls_domain_name.is_none());
-    }
-
-    #[test]
-    fn grpc_config_deserializes_mtls_fields() {
-        let payload = json!({
-            "use_grpc_auth": true,
-            "use_grpc_context": true,
-            "grpc_endpoint": "https://grpc.example.com:50051",
-            "grpc_fallback_ports": [50052, 50053],
-            "connect_timeout_secs": 5,
-            "request_timeout_secs": 20,
-            "use_tls": true,
-            "mtls_enabled": true,
-            "tls_domain_name": "grpc.example.com",
-            "tls_ca_cert_path": "/etc/oneshim/ca.pem",
-            "tls_client_cert_path": "/etc/oneshim/client.pem",
-            "tls_client_key_path": "/etc/oneshim/client.key"
-        });
-
-        let parsed: GrpcConfig = serde_json::from_value(payload).expect("grpc config must parse");
-        assert!(parsed.use_tls);
-        assert!(parsed.mtls_enabled);
-        assert_eq!(parsed.tls_domain_name.as_deref(), Some("grpc.example.com"));
-    }
-
-    #[test]
-    fn ai_provider_validation_rejects_missing_remote_api_key() {
-        let config = AiProviderConfig {
-            ocr_provider: OcrProviderType::Remote,
-            llm_provider: LlmProviderType::Local,
-            ocr_api: Some(ExternalApiEndpoint {
-                endpoint: "https://api.example.com/ocr".to_string(),
-                api_key: "".to_string(),
-                model: None,
-                timeout_secs: 30,
-                provider_type: AiProviderType::Generic,
-            }),
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("api_key"));
-    }
-
-    #[test]
-    fn ai_provider_validation_accepts_valid_remote_settings() {
-        let config = AiProviderConfig {
-            ocr_provider: OcrProviderType::Remote,
-            llm_provider: LlmProviderType::Remote,
-            ocr_api: Some(ExternalApiEndpoint {
-                endpoint: "https://api.example.com/ocr".to_string(),
-                api_key: "ocr-key".to_string(),
-                model: None,
-                timeout_secs: 30,
-                provider_type: AiProviderType::Generic,
-            }),
-            llm_api: Some(ExternalApiEndpoint {
-                endpoint: "https://api.example.com/llm".to_string(),
-                api_key: "llm-key".to_string(),
-                model: Some("model-a".to_string()),
-                timeout_secs: 30,
-                provider_type: AiProviderType::Generic,
-            }),
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn ai_provider_validation_rejects_retired_model_by_policy() {
-        let config = AiProviderConfig {
-            llm_provider: LlmProviderType::Remote,
-            llm_api: Some(ExternalApiEndpoint {
-                endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
-                api_key: "llm-key".to_string(),
-                model: Some("gpt-3.5-turbo".to_string()),
-                timeout_secs: 30,
-                provider_type: AiProviderType::OpenAi,
-            }),
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("retired as of"));
-    }
-
-    #[test]
-    fn ai_provider_validation_rejects_remote_in_cli_subscription_mode() {
-        let config = AiProviderConfig {
-            access_mode: AiAccessMode::ProviderSubscriptionCli,
-            ocr_provider: OcrProviderType::Remote,
-            llm_provider: LlmProviderType::Local,
-            ocr_api: Some(ExternalApiEndpoint {
-                endpoint: "https://api.example.com/ocr".to_string(),
-                api_key: "ocr-key".to_string(),
-                model: None,
-                timeout_secs: 30,
-                provider_type: AiProviderType::Generic,
-            }),
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("CLI"));
-    }
-
-    #[test]
-    fn ai_provider_validation_rejects_invalid_ocr_min_confidence() {
-        let config = AiProviderConfig {
-            ocr_validation: OcrValidationConfig {
-                enabled: true,
-                min_confidence: 1.5,
-                max_invalid_ratio: 0.5,
-            },
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("min_confidence"));
-    }
-
-    #[test]
-    fn ai_provider_validation_rejects_invalid_ocr_invalid_ratio() {
-        let config = AiProviderConfig {
-            ocr_validation: OcrValidationConfig {
-                enabled: true,
-                min_confidence: 0.3,
-                max_invalid_ratio: -0.1,
-            },
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("max_invalid_ratio"));
-    }
-
-    #[test]
-    fn ai_provider_validation_rejects_invalid_scene_min_confidence() {
-        let config = AiProviderConfig {
-            scene_intelligence: SceneIntelligenceConfig {
-                min_confidence: 1.2,
-                ..SceneIntelligenceConfig::default()
-            },
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("scene_intelligence"));
-    }
-
-    #[test]
-    fn ai_provider_validation_rejects_invalid_scene_max_elements() {
-        let config = AiProviderConfig {
-            scene_intelligence: SceneIntelligenceConfig {
-                max_elements: 0,
-                ..SceneIntelligenceConfig::default()
-            },
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("max_elements"));
-    }
-
-    #[test]
-    fn scene_action_override_validation_rejects_missing_reason() {
-        let config = AiProviderConfig {
-            scene_action_override: SceneActionOverrideConfig {
-                enabled: true,
-                reason: None,
-                approved_by: Some("sec-review".to_string()),
-                expires_at: Some(Utc::now() + chrono::Duration::minutes(30)),
-            },
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("reason"));
-    }
-
-    #[test]
-    fn scene_action_override_validation_rejects_missing_approver() {
-        let config = AiProviderConfig {
-            scene_action_override: SceneActionOverrideConfig {
-                enabled: true,
-                reason: Some("OCR confidence fallback".to_string()),
-                approved_by: None,
-                expires_at: Some(Utc::now() + chrono::Duration::minutes(30)),
-            },
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("approved_by"));
-    }
-
-    #[test]
-    fn scene_action_override_validation_rejects_expired_ttl() {
-        let config = AiProviderConfig {
-            scene_action_override: SceneActionOverrideConfig {
-                enabled: true,
-                reason: Some("incident investigation".to_string()),
-                approved_by: Some("oncall-lead".to_string()),
-                expires_at: Some(Utc::now() - chrono::Duration::minutes(1)),
-            },
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("must be in the future"));
-    }
-
-    #[test]
-    fn scene_action_override_validation_accepts_valid_config() {
-        let config = AiProviderConfig {
-            scene_action_override: SceneActionOverrideConfig {
-                enabled: true,
-                reason: Some("high-fidelity replay calibration".to_string()),
-                approved_by: Some("security-reviewer".to_string()),
-                expires_at: Some(Utc::now() + chrono::Duration::minutes(45)),
-            },
-            ..AiProviderConfig::default()
-        };
-
-        let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_ok());
-        assert!(config
-            .scene_action_override
-            .is_active_at(Utc::now() + chrono::Duration::minutes(1)));
-    }
+// Functions also used by AppConfig::default_config() in mod.rs
+pub(super) fn default_request_timeout_ms() -> u64 {
+    30_000
+}
+pub(super) fn default_sse_max_retry_secs() -> u64 {
+    30
+}
+pub(super) fn default_poll_interval_ms() -> u64 {
+    1_000
+}
+pub(super) fn default_sync_interval_ms() -> u64 {
+    10_000
+}
+pub(super) fn default_heartbeat_interval_ms() -> u64 {
+    30_000
+}
+pub(super) fn default_idle_threshold_secs() -> u64 {
+    300 // 5 min
+}
+pub(super) fn default_process_interval_secs() -> u64 {
+    10
+}
+pub(super) fn default_retention_days() -> u32 {
+    30
+}
+pub(super) fn default_max_storage_mb() -> u64 {
+    500
+}
+pub(super) fn default_capture_enabled() -> bool {
+    true
+}
+pub(super) fn default_capture_throttle_ms() -> u64 {
+    5_000
+}
+pub(super) fn default_thumbnail_width() -> u32 {
+    480
+}
+pub(super) fn default_thumbnail_height() -> u32 {
+    270
 }
