@@ -412,6 +412,23 @@ mod tests {
         assert_eq!(uploader.queue_size(), 1000);
     }
 
+    #[tokio::test]
+    async fn batch_sink_trait_dispatch() {
+        use oneshim_core::ports::batch_sink::BatchSink;
+
+        let client = Arc::new(MockApiClient { should_fail: false });
+        let uploader = BatchUploader::new(client, "sess_trait".to_string(), 100, 3);
+
+        // Use through dyn BatchSink (same as scheduler does in production)
+        let sink: Arc<dyn BatchSink> = Arc::new(uploader);
+
+        sink.enqueue(make_test_event());
+        sink.enqueue_many(vec![make_test_event(), make_test_event()]);
+
+        let sent = sink.flush().await.unwrap();
+        assert_eq!(sent, 3);
+    }
+
     #[test]
     fn batch_stats() {
         let client = Arc::new(MockApiClient { should_fail: false });

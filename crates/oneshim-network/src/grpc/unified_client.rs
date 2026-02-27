@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use oneshim_core::error::CoreError;
-use oneshim_core::models::event::EventBatch;
 use oneshim_core::models::suggestion::SuggestionFeedback as RestSuggestionFeedback;
 use oneshim_core::ports::api_client::ApiClient; // ApiClient trait for HttpApiClient methods
 use tokio::sync::RwLock;
@@ -335,30 +334,20 @@ impl UnifiedClient {
 
             Ok(response)
         } else {
-            if !request.frames.is_empty() {
+            // REST fallback cannot convert proto ClientEvent → REST Event model.
+            // Log the skipped data and return 0 accepted so callers know nothing was sent.
+            let skipped_events = request.events.len();
+            let skipped_frames = request.frames.len();
+            if skipped_events > 0 || skipped_frames > 0 {
                 warn!(
-                    "REST mode does not support frame upload. Ignoring {} frame(s).",
-                    request.frames.len()
+                    "REST fallback: batch upload skipped — proto→REST event conversion unsupported. \
+                     Skipped {} event(s), {} frame(s) for session {}",
+                    skipped_events, skipped_frames, request.session_id
                 );
             }
 
-            debug!(
-                "REST batch upload started: session_id={}, events={}",
-                request.session_id,
-                request.events.len()
-            );
-
-            let batch = EventBatch {
-                session_id: request.session_id.clone(),
-                events: vec![], // REST path only sends event batches
-                created_at: chrono::Utc::now(),
-            };
-
-            self.http_client.upload_batch(&batch).await?;
-            info!("REST batch upload completed");
-
             Ok(UploadBatchResponse {
-                accepted_count: 0, // REST endpoint does not return this count
+                accepted_count: 0,
             })
         }
     }

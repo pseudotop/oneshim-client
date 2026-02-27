@@ -53,5 +53,6 @@ harness = false
 name = "grpc_test"
 required-features = ["grpc"]
 
-[build-dependencies]
-tonic-prost-build = { workspace = true }
+# Proto code generation: run `scripts/regenerate-protos.sh` when .proto files change.
+# Generated code (src/proto/generated/) is committed to git.
+# tonic-prost-build is NOT a build dependency — it's used only by the script.
