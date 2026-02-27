@@ -28,6 +28,8 @@ const DEFAULT_SESSION_TTL_SECS: i64 = 300;
 const DEFAULT_TICKET_TTL_SECS: i64 = 30;
 const CLEANUP_INTERVAL_SECS: u64 = 30;
 const GUI_EVENT_CHANNEL_CAPACITY: usize = 256;
+const FOCUS_DRIFT_MAX_RETRIES: usize = 2;
+const FOCUS_DRIFT_RETRY_DELAY_MS: u64 = 500;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -584,17 +586,29 @@ impl GuiInteractionService {
             app_name: Some(session_focus.app_name),
             pid: Some(session_focus.pid),
         };
-        let focus_validation = self
-            .focus_probe
-            .validate_execution_binding(&binding)
-            .await
-            .map_err(map_core_error)?;
-        if !focus_validation.valid {
-            return Err(GuiInteractionError::FocusDrift(
-                focus_validation
-                    .reason
-                    .unwrap_or_else(|| "Focused window changed".to_string()),
-            ));
+
+        let mut last_drift_reason = String::new();
+        let mut focus_valid = false;
+        for attempt in 0..=FOCUS_DRIFT_MAX_RETRIES {
+            let focus_validation = self
+                .focus_probe
+                .validate_execution_binding(&binding)
+                .await
+                .map_err(map_core_error)?;
+            if focus_validation.valid {
+                focus_valid = true;
+                break;
+            }
+            last_drift_reason = focus_validation
+                .reason
+                .unwrap_or_else(|| "Focused window changed".to_string());
+            if attempt < FOCUS_DRIFT_MAX_RETRIES {
+                tokio::time::sleep(std::time::Duration::from_millis(FOCUS_DRIFT_RETRY_DELAY_MS))
+                    .await;
+            }
+        }
+        if !focus_valid {
+            return Err(GuiInteractionError::FocusDrift(last_drift_reason));
         }
 
         {
@@ -646,14 +660,7 @@ impl GuiInteractionService {
             }
             stored.session.updated_at = Utc::now();
 
-            (
-                stored.session.clone(),
-                if succeeded {
-                    stored.overlay_handle_id.take()
-                } else {
-                    None
-                },
-            )
+            (stored.session.clone(), stored.overlay_handle_id.take())
         };
 
         if let Some(handle_id) = overlay_handle_id {
@@ -745,21 +752,31 @@ impl GuiInteractionService {
     }
 
     async fn expire_sessions(&self) {
-        let expired_ids = {
+        let (expired_ids, orphaned_overlay_ids) = {
             let mut sessions = self.sessions.write().await;
             let now = Utc::now();
-            let expired_ids: Vec<String> = sessions
+            let expired: Vec<(String, Option<String>)> = sessions
                 .iter()
                 .filter(|(_, stored)| stored.session.expires_at <= now)
-                .map(|(session_id, _)| session_id.clone())
+                .map(|(session_id, stored)| (session_id.clone(), stored.overlay_handle_id.clone()))
+                .collect();
+
+            let expired_ids: Vec<String> = expired.iter().map(|(id, _)| id.clone()).collect();
+            let orphaned_overlay_ids: Vec<String> = expired
+                .iter()
+                .filter_map(|(_, overlay)| overlay.clone())
                 .collect();
 
             for session_id in &expired_ids {
                 sessions.remove(session_id);
             }
 
-            expired_ids
+            (expired_ids, orphaned_overlay_ids)
         };
+
+        for handle_id in orphaned_overlay_ids {
+            let _ = self.overlay_driver.clear_highlights(&handle_id).await;
+        }
 
         for session_id in expired_ids {
             self.publish_event(
@@ -1005,6 +1022,9 @@ mod tests {
     struct MockFocusProbe {
         focus: Mutex<FocusSnapshot>,
         validation_valid: Mutex<bool>,
+        /// When set, validation returns invalid for first N calls, then valid.
+        drift_recover_after: Mutex<Option<usize>>,
+        validation_call_count: AtomicUsize,
     }
 
     impl MockFocusProbe {
@@ -1012,11 +1032,18 @@ mod tests {
             Self {
                 focus: Mutex::new(focus),
                 validation_valid: Mutex::new(true),
+                drift_recover_after: Mutex::new(None),
+                validation_call_count: AtomicUsize::new(0),
             }
         }
 
         fn set_validation_valid(&self, valid: bool) {
             *self.validation_valid.lock().unwrap() = valid;
+        }
+
+        /// Focus returns invalid for first `n` calls, then valid.
+        fn set_drift_recover_after(&self, n: usize) {
+            *self.drift_recover_after.lock().unwrap() = Some(n);
         }
     }
 
@@ -1030,7 +1057,14 @@ mod tests {
             &self,
             _binding: &ExecutionBinding,
         ) -> Result<FocusValidation, CoreError> {
-            let valid = *self.validation_valid.lock().unwrap();
+            let call_num = self.validation_call_count.fetch_add(1, Ordering::SeqCst);
+
+            let valid = if let Some(recover_after) = *self.drift_recover_after.lock().unwrap() {
+                call_num >= recover_after
+            } else {
+                *self.validation_valid.lock().unwrap()
+            };
+
             Ok(FocusValidation {
                 valid,
                 reason: if valid {
@@ -1129,14 +1163,27 @@ mod tests {
         scene: UiScene,
         focus: FocusSnapshot,
     ) -> (Arc<GuiInteractionService>, Arc<MockFocusProbe>) {
+        let (service, probe, _) = make_service_full(scene, focus);
+        (service, probe)
+    }
+
+    fn make_service_full(
+        scene: UiScene,
+        focus: FocusSnapshot,
+    ) -> (
+        Arc<GuiInteractionService>,
+        Arc<MockFocusProbe>,
+        Arc<MockOverlayDriver>,
+    ) {
         let probe = Arc::new(MockFocusProbe::new(focus));
+        let overlay = Arc::new(MockOverlayDriver::new());
         let service = Arc::new(GuiInteractionService::new(
             Arc::new(MockElementFinder::new(scene)),
             probe.clone(),
-            Arc::new(MockOverlayDriver::new()),
+            overlay.clone(),
             Some(TEST_HMAC_SECRET.to_string()),
         ));
-        (service, probe)
+        (service, probe, overlay)
     }
 
     fn default_create_request() -> GuiCreateSessionRequest {
@@ -1999,5 +2046,209 @@ mod tests {
         };
 
         assert!(build_actions_for_candidate(&candidate, &action).is_err());
+    }
+
+    // ── M2: Focus drift recovery tests ─────────────────────────────────
+
+    #[tokio::test]
+    async fn prepare_execution_recovers_from_transient_drift() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, probe) = make_service(scene, make_focus());
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+
+        // confirm_candidate already made call 0 (valid).
+        // In prepare_execution: call 1 → drift, call 2 → recover.
+        probe.set_drift_recover_after(2);
+
+        let plan = service
+            .prepare_execution(
+                &sid,
+                &token,
+                GuiExecutionRequest {
+                    ticket: ticket.clone(),
+                },
+            )
+            .await;
+        assert!(plan.is_ok(), "Should recover after transient drift");
+        // 1 (confirm) + 2 (prepare: drift then recover) = 3
+        assert_eq!(
+            probe.validation_call_count.load(Ordering::SeqCst),
+            3,
+            "Should have retried focus validation"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_execution_recovers_after_two_drifts() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, probe) = make_service(scene, make_focus());
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+
+        // confirm_candidate already made call 0 (valid).
+        // In prepare_execution: call 1 → drift, call 2 → drift, call 3 → recover.
+        probe.set_drift_recover_after(3);
+
+        let plan = service
+            .prepare_execution(
+                &sid,
+                &token,
+                GuiExecutionRequest {
+                    ticket: ticket.clone(),
+                },
+            )
+            .await;
+        assert!(plan.is_ok(), "Should recover after two drifts");
+        // 1 (confirm) + 3 (prepare: drift, drift, recover) = 4
+        assert_eq!(
+            probe.validation_call_count.load(Ordering::SeqCst),
+            4,
+            "Should have attempted initial + 2 retries in prepare_execution"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_execution_fails_after_max_drift_retries() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, probe) = make_service(scene, make_focus());
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+
+        // Never recover
+        probe.set_validation_valid(false);
+
+        let err = service
+            .prepare_execution(
+                &sid,
+                &token,
+                GuiExecutionRequest {
+                    ticket: ticket.clone(),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, GuiInteractionError::FocusDrift(_)));
+        // confirm_candidate calls validate once, then prepare_execution calls
+        // initial + MAX_RETRIES = 1 + (1 + MAX_RETRIES) = MAX_RETRIES + 2
+        assert_eq!(
+            probe.validation_call_count.load(Ordering::SeqCst),
+            FOCUS_DRIFT_MAX_RETRIES + 2,
+            "Should have exhausted all retry attempts"
+        );
+    }
+
+    // ── M2: Overlay cleanup tests ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn complete_execution_clears_overlay_on_failure() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _, overlay) = make_service_full(scene, make_focus());
+
+        let (sid, token) = create_and_highlight(&service).await;
+
+        // Overlay was shown during highlight
+        assert!(overlay.show_count.load(Ordering::SeqCst) >= 1);
+
+        // Confirm the candidate
+        let session = service.get_session(&sid, &token).await.unwrap();
+        let candidate_id = session.candidates[0].element.element_id.clone();
+        let _ticket = service
+            .confirm_candidate(
+                &sid,
+                &token,
+                GuiConfirmRequest {
+                    candidate_id,
+                    action: GuiActionRequest {
+                        action_type: GuiActionType::Click,
+                        text: None,
+                    },
+                    ticket_ttl_secs: Some(60),
+                },
+            )
+            .await
+            .unwrap();
+
+        let clear_before = overlay.clear_count.load(Ordering::SeqCst);
+
+        // Complete with failure
+        let outcome = service
+            .complete_execution(&sid, false, Some("action failed".to_string()))
+            .await
+            .unwrap();
+        assert!(!outcome.succeeded);
+
+        // Overlay should be cleared even on failure
+        assert!(
+            overlay.clear_count.load(Ordering::SeqCst) > clear_before,
+            "Overlay should be cleared on execution failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn complete_execution_clears_overlay_on_success() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _, overlay) = make_service_full(scene, make_focus());
+
+        let (sid, token) = create_and_highlight(&service).await;
+        let session = service.get_session(&sid, &token).await.unwrap();
+        let candidate_id = session.candidates[0].element.element_id.clone();
+        let _ticket = service
+            .confirm_candidate(
+                &sid,
+                &token,
+                GuiConfirmRequest {
+                    candidate_id,
+                    action: GuiActionRequest {
+                        action_type: GuiActionType::Click,
+                        text: None,
+                    },
+                    ticket_ttl_secs: Some(60),
+                },
+            )
+            .await
+            .unwrap();
+
+        let clear_before = overlay.clear_count.load(Ordering::SeqCst);
+
+        let outcome = service.complete_execution(&sid, true, None).await.unwrap();
+        assert!(outcome.succeeded);
+
+        assert!(
+            overlay.clear_count.load(Ordering::SeqCst) > clear_before,
+            "Overlay should be cleared on execution success"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_session_clears_overlay() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _, overlay) = make_service_full(scene, make_focus());
+
+        let (sid, token) = create_and_highlight(&service).await;
+
+        let clear_before = overlay.clear_count.load(Ordering::SeqCst);
+
+        let session = service.cancel_session(&sid, &token).await.unwrap();
+        assert_eq!(session.state, GuiSessionState::Cancelled);
+
+        assert!(
+            overlay.clear_count.load(Ordering::SeqCst) > clear_before,
+            "Overlay should be cleared on session cancel"
+        );
+    }
+
+    // ── M2: Execution constants ────────────────────────────────────────
+
+    #[test]
+    fn focus_drift_retry_constants_are_reasonable() {
+        assert!(
+            FOCUS_DRIFT_MAX_RETRIES <= 5,
+            "Max retries should be bounded"
+        );
+        assert!(
+            FOCUS_DRIFT_RETRY_DELAY_MS >= 100 && FOCUS_DRIFT_RETRY_DELAY_MS <= 5000,
+            "Retry delay should be between 100ms and 5s"
+        );
     }
 }

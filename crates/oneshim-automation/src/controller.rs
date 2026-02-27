@@ -25,6 +25,9 @@ use oneshim_core::ports::sandbox::Sandbox;
 
 pub use oneshim_core::models::automation::{AutomationAction, MouseButton};
 
+const GUI_EXECUTE_TIMEOUT_SECS: u64 = 30;
+const GUI_ACTION_TIMEOUT_SECS: u64 = 10;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutomationCommand {
     pub command_id: String,
@@ -357,45 +360,73 @@ impl AutomationController {
             .prepare_execution(session_id, capability_token, req)
             .await?;
 
-        let mut last_result = IntentResult {
-            success: false,
-            element: None,
-            verification: None,
-            retry_count: 0,
-            elapsed_ms: 0,
-            error: Some("No executable actions in GUI plan".to_string()),
-        };
-        let mut execution_error: Option<String> = None;
+        let total_deadline = std::time::Duration::from_secs(GUI_EXECUTE_TIMEOUT_SECS);
+        let action_timeout = std::time::Duration::from_secs(GUI_ACTION_TIMEOUT_SECS);
 
-        for (index, action) in plan.actions.iter().enumerate() {
-            let command_id = if index == 0 {
-                plan.command_id.clone()
-            } else {
-                format!("{}:stage-{index}", plan.command_id)
+        let actions_result = tokio::time::timeout(total_deadline, async {
+            let mut last_result = IntentResult {
+                success: false,
+                element: None,
+                verification: None,
+                retry_count: 0,
+                elapsed_ms: 0,
+                error: Some("No executable actions in GUI plan".to_string()),
             };
+            let mut execution_error: Option<String> = None;
 
-            let intent_command = IntentCommand {
-                command_id,
-                session_id: plan.session_id.clone(),
-                intent: AutomationIntent::Raw(action.clone()),
-                config: None,
-                timeout_ms: None,
-                policy_token: "gui-session".to_string(),
-            };
+            for (index, action) in plan.actions.iter().enumerate() {
+                let command_id = if index == 0 {
+                    plan.command_id.clone()
+                } else {
+                    format!("{}:stage-{index}", plan.command_id)
+                };
 
-            match self.execute_intent(&intent_command).await {
-                Ok(result) => {
-                    last_result = result;
-                    if !last_result.success {
+                let intent_command = IntentCommand {
+                    command_id,
+                    session_id: plan.session_id.clone(),
+                    intent: AutomationIntent::Raw(action.clone()),
+                    config: None,
+                    timeout_ms: None,
+                    policy_token: "gui-session".to_string(),
+                };
+
+                match tokio::time::timeout(action_timeout, self.execute_intent(&intent_command))
+                    .await
+                {
+                    Ok(Ok(result)) => {
+                        last_result = result;
+                        if !last_result.success {
+                            break;
+                        }
+                    }
+                    Ok(Err(err)) => {
+                        execution_error = Some(err.to_string());
+                        break;
+                    }
+                    Err(_elapsed) => {
+                        execution_error = Some(format!(
+                            "GUI action timed out after {}s (stage {})",
+                            GUI_ACTION_TIMEOUT_SECS, index
+                        ));
                         break;
                     }
                 }
-                Err(err) => {
-                    execution_error = Some(err.to_string());
-                    break;
-                }
             }
-        }
+
+            (last_result, execution_error)
+        })
+        .await;
+
+        let (last_result, execution_error) = match actions_result {
+            Ok(inner) => inner,
+            Err(_elapsed) => {
+                let detail = format!("GUI execution timed out after {GUI_EXECUTE_TIMEOUT_SECS}s");
+                let _ = service
+                    .complete_execution(session_id, false, Some(detail.clone()))
+                    .await;
+                return Err(GuiInteractionError::Internal(detail));
+            }
+        };
 
         let succeeded = execution_error.is_none() && last_result.success;
         let detail = execution_error.clone().or_else(|| {
@@ -1348,5 +1379,31 @@ mod tests {
         let deser: WorkflowStepResult = serde_json::from_str(&json).unwrap();
         assert!(!deser.success);
         assert_eq!(deser.error.unwrap(), "Element not found");
+    }
+
+    // ── M2: Execution timeout constants ────────────────────────────────
+
+    #[test]
+    fn gui_execute_timeout_is_bounded() {
+        assert!(
+            GUI_EXECUTE_TIMEOUT_SECS >= 10 && GUI_EXECUTE_TIMEOUT_SECS <= 120,
+            "Total execution timeout should be between 10s and 120s"
+        );
+    }
+
+    #[test]
+    fn gui_action_timeout_is_bounded() {
+        assert!(
+            GUI_ACTION_TIMEOUT_SECS >= 3 && GUI_ACTION_TIMEOUT_SECS <= 60,
+            "Per-action timeout should be between 3s and 60s"
+        );
+    }
+
+    #[test]
+    fn gui_action_timeout_less_than_total() {
+        assert!(
+            GUI_ACTION_TIMEOUT_SECS < GUI_EXECUTE_TIMEOUT_SECS,
+            "Per-action timeout must be less than total execution timeout"
+        );
     }
 }
