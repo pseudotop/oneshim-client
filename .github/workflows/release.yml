@@ -519,7 +519,7 @@ jobs:
           mkdir -p dmg-staging
           cp -R dist/ONESHIM.app dmg-staging/
           ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "ONESHIM" -srcfolder dmg-staging -ov -format UDZO dist/oneshim-macos-universal-unsigned.dmg
+          hdiutil create -volname "ONESHIM" -srcfolder dmg-staging -ov -format UDZO dist/oneshim-macos-universal.dmg
 
       - name: Create and sign PKG installer
         run: |
@@ -535,22 +535,22 @@ jobs:
             --keychain "$KEYCHAIN_PATH" \
             --sign "$MACOS_INSTALLER_SIGNING_IDENTITY_RESOLVED" \
             "$UNSIGNED_PKG_TMP" \
-            dist/oneshim-macos-universal-unsigned.pkg
-          pkgutil --check-signature dist/oneshim-macos-universal-unsigned.pkg
+            dist/oneshim-macos-universal.pkg
+          pkgutil --check-signature dist/oneshim-macos-universal.pkg
           rm -f "$UNSIGNED_PKG_TMP"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v6
         with:
           name: oneshim-macos-universal-dmg
-          path: dist/oneshim-macos-universal-unsigned.dmg
+          path: dist/oneshim-macos-universal.dmg
           if-no-files-found: error
 
       - name: Upload PKG artifact
         uses: actions/upload-artifact@v6
         with:
           name: oneshim-macos-universal-pkg
-          path: dist/oneshim-macos-universal-unsigned.pkg
+          path: dist/oneshim-macos-universal.pkg
           if-no-files-found: error
 
       - name: Cleanup macOS signing keychain
@@ -614,8 +614,8 @@ jobs:
         shell: bash
         run: |
           find smoke-installers -maxdepth 3 -type f
-          test -f smoke-installers/oneshim-macos-universal-unsigned.dmg
-          test -f smoke-installers/oneshim-macos-universal-unsigned.pkg
+          test -f smoke-installers/oneshim-macos-universal.dmg
+          test -f smoke-installers/oneshim-macos-universal.pkg
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -816,15 +816,12 @@ jobs:
 
           ---
 
-          > **Note:** Initial macOS installers are published as \`*-unsigned.dmg\`/\`*-unsigned.pkg\`.
-          > After Apple notarization completes, the release is updated with notarized versions.
-
           ### Downloads
 
           | Platform | Architecture | File | Format |
           |----------|-------------|------|--------|
-          | macOS | Universal (arm64 + x64) | \`oneshim-macos-universal-unsigned.dmg\` | DMG Installer |
-          | macOS | Universal (arm64 + x64) | \`oneshim-macos-universal-unsigned.pkg\` | PKG Installer |
+          | macOS | Universal (arm64 + x64) | \`oneshim-macos-universal.dmg\` | DMG Installer (signed) |
+          | macOS | Universal (arm64 + x64) | \`oneshim-macos-universal.pkg\` | PKG Installer (signed) |
           | macOS | Universal | \`oneshim-macos-universal.tar.gz\` | Binary |
           | macOS | Apple Silicon | \`oneshim-macos-arm64.tar.gz\` | Binary |
           | macOS | Intel | \`oneshim-macos-x64.tar.gz\` | Binary |

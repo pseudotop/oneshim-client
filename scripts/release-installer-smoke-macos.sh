@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ASSETS_DIR="${ONESHIM_SMOKE_INSTALLERS_DIR:-smoke-installers}"
-DMG_NAME="${ONESHIM_SMOKE_DMG_NAME:-oneshim-macos-universal-unsigned.dmg}"
-PKG_NAME="${ONESHIM_SMOKE_PKG_NAME:-oneshim-macos-universal-unsigned.pkg}"
+DMG_NAME="${ONESHIM_SMOKE_DMG_NAME:-oneshim-macos-universal.dmg}"
+PKG_NAME="${ONESHIM_SMOKE_PKG_NAME:-oneshim-macos-universal.pkg}"
 APP_NAME="${ONESHIM_SMOKE_APP_NAME:-ONESHIM.app}"
 
 info() {
@@ -25,8 +25,8 @@ Usage:
 
 Options:
   --assets-dir <path>  Directory containing DMG/PKG artifacts
-  --dmg-name <name>    DMG file name (default: oneshim-macos-universal-unsigned.dmg)
-  --pkg-name <name>    PKG file name (default: oneshim-macos-universal-unsigned.pkg)
+  --dmg-name <name>    DMG file name (default: oneshim-macos-universal.dmg)
+  --pkg-name <name>    PKG file name (default: oneshim-macos-universal.pkg)
   --app-name <name>    Installed app bundle name (default: ONESHIM.app)
   -h, --help           Show help
 EOF
@@ -128,7 +128,7 @@ if [[ -d "$APP_INSTALL_PATH" ]]; then
 fi
 
 mkdir -p "$MOUNT_DIR"
-info "Mounting unsigned DMG"
+info "Mounting DMG"
 hdiutil attach "$DMG_PATH" -nobrowse -readonly -mountpoint "$MOUNT_DIR" -quiet
 MOUNTED=1
 
@@ -140,11 +140,11 @@ DMG_BINARY_PATH="$DMG_APP_PATH/Contents/MacOS/oneshim"
 info "Validating binary from mounted DMG"
 "$DMG_BINARY_PATH" --version >/dev/null
 
-info "Installing unsigned PKG"
+info "Installing PKG"
 run_as_root installer -pkg "$PKG_PATH" -target / >/dev/null
 [[ -x "$APP_BINARY_PATH" ]] || fatal "Installed app binary missing: $APP_BINARY_PATH"
 
 info "Validating binary from PKG installation"
 "$APP_BINARY_PATH" --version >/dev/null
 
-info "macOS unsigned installer smoke completed"
+info "macOS installer smoke completed"

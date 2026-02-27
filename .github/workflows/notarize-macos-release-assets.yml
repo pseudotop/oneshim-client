@@ -110,8 +110,8 @@ jobs:
           find dist -mindepth 2 -type f \( -name '*.dmg' -o -name '*.pkg' \) -exec mv {} dist/ \;
           find dist -mindepth 1 -type d -empty -delete
           ls -la dist
-          test -f dist/oneshim-macos-universal-unsigned.dmg
-          test -f dist/oneshim-macos-universal-unsigned.pkg
+          test -f dist/oneshim-macos-universal.dmg
+          test -f dist/oneshim-macos-universal.pkg
 
       - name: Configure notarization keychain profile
         shell: bash
@@ -136,21 +136,19 @@ jobs:
         run: |
           set -euo pipefail
           bash ./scripts/notary-submit-and-poll.sh \
-            dist/oneshim-macos-universal-unsigned.dmg \
+            dist/oneshim-macos-universal.dmg \
             "$KEYCHAIN_PATH" \
             "oneshim-notary" \
             "10800" \
             "60"
           bash ./scripts/notary-submit-and-poll.sh \
-            dist/oneshim-macos-universal-unsigned.pkg \
+            dist/oneshim-macos-universal.pkg \
             "$KEYCHAIN_PATH" \
             "oneshim-notary" \
             "10800" \
             "60"
-          xcrun stapler staple dist/oneshim-macos-universal-unsigned.dmg
-          xcrun stapler staple dist/oneshim-macos-universal-unsigned.pkg
-          cp dist/oneshim-macos-universal-unsigned.dmg dist/oneshim-macos-universal.dmg
-          cp dist/oneshim-macos-universal-unsigned.pkg dist/oneshim-macos-universal.pkg
+          xcrun stapler staple dist/oneshim-macos-universal.dmg
+          xcrun stapler staple dist/oneshim-macos-universal.pkg
           spctl --assess --type open --verbose=4 dist/oneshim-macos-universal.dmg
           spctl --assess --type install --verbose=4 dist/oneshim-macos-universal.pkg
 
