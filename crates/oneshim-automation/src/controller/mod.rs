@@ -1,96 +1,43 @@
-use serde::{Deserialize, Serialize};
+mod intent;
+mod preset;
+mod types;
+
+pub use types::{
+    AutomationAction, AutomationCommand, CommandResult, GuiExecutionResult, MouseButton,
+    PlannedIntentResult, WorkflowResult, WorkflowStepResult,
+};
+
 use std::sync::Arc;
-use std::time::Instant;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::RwLock;
 
 use crate::action_dispatcher::{AutomationActionDispatcher, SandboxActionDispatcher};
 use crate::audit::AuditLogger;
-use crate::gui_interaction::{
-    GuiConfirmRequest, GuiCreateSessionRequest, GuiCreateSessionResponse, GuiExecutionOutcome,
-    GuiExecutionRequest, GuiHighlightRequest, GuiInteractionError, GuiInteractionService,
-};
+use crate::gui_interaction::{GuiInteractionError, GuiInteractionService};
 use crate::intent_planner::IntentPlanner;
 use crate::intent_resolver::IntentExecutor;
-use crate::policy::{AuditLevel, PolicyClient};
-use crate::resolver;
+use crate::policy::PolicyClient;
 use oneshim_core::config::SandboxConfig;
 use oneshim_core::error::CoreError;
-use oneshim_core::models::gui::{GuiExecutionTicket, GuiInteractionSession, GuiSessionEvent};
-use oneshim_core::models::intent::{AutomationIntent, IntentCommand, IntentResult, WorkflowPreset};
-use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::focus_probe::FocusProbe;
 use oneshim_core::ports::overlay_driver::OverlayDriver;
 use oneshim_core::ports::sandbox::Sandbox;
 
-pub use oneshim_core::models::automation::{AutomationAction, MouseButton};
-
 const GUI_EXECUTE_TIMEOUT_SECS: u64 = 30;
 const GUI_ACTION_TIMEOUT_SECS: u64 = 10;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AutomationCommand {
-    pub command_id: String,
-    pub session_id: String,
-    pub action: AutomationAction,
-    pub timeout_ms: Option<u64>,
-    pub policy_token: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum CommandResult {
-    Success,
-    Failed(String),
-    Timeout,
-    Denied,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkflowStepResult {
-    pub step_name: String,
-    pub step_index: usize,
-    pub success: bool,
-    pub elapsed_ms: u64,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkflowResult {
-    pub preset_id: String,
-    pub success: bool,
-    pub steps_executed: usize,
-    pub total_steps: usize,
-    pub total_elapsed_ms: u64,
-    pub step_results: Vec<WorkflowStepResult>,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlannedIntentResult {
-    pub planned_intent: AutomationIntent,
-    pub result: IntentResult,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GuiExecutionResult {
-    pub command_id: String,
-    pub ticket: GuiExecutionTicket,
-    pub result: IntentResult,
-    pub outcome: GuiExecutionOutcome,
-}
 
 // AutomationController
 
 pub struct AutomationController {
-    policy_client: Arc<PolicyClient>,
-    audit_logger: Arc<RwLock<AuditLogger>>,
-    action_dispatcher: Arc<dyn AutomationActionDispatcher>,
-    base_sandbox_config: SandboxConfig,
-    enabled: bool,
-    intent_executor: Option<Arc<IntentExecutor>>,
-    intent_planner: Option<Arc<dyn IntentPlanner>>,
-    scene_finder: Option<Arc<dyn ElementFinder>>,
-    gui_service: Option<Arc<GuiInteractionService>>,
+    pub(super) policy_client: Arc<PolicyClient>,
+    pub(super) audit_logger: Arc<RwLock<AuditLogger>>,
+    pub(super) action_dispatcher: Arc<dyn AutomationActionDispatcher>,
+    pub(super) base_sandbox_config: SandboxConfig,
+    pub(super) enabled: bool,
+    pub(super) intent_executor: Option<Arc<IntentExecutor>>,
+    pub(super) intent_planner: Option<Arc<dyn IntentPlanner>>,
+    pub(super) scene_finder: Option<Arc<dyn ElementFinder>>,
+    pub(super) gui_service: Option<Arc<GuiInteractionService>>,
 }
 
 impl AutomationController {
@@ -161,7 +108,7 @@ impl AutomationController {
         Ok(())
     }
 
-    fn ensure_enabled(&self) -> Result<(), CoreError> {
+    pub(super) fn ensure_enabled(&self) -> Result<(), CoreError> {
         if self.enabled {
             Ok(())
         } else {
@@ -171,598 +118,32 @@ impl AutomationController {
         }
     }
 
-    fn require_intent_executor(&self) -> Result<&Arc<IntentExecutor>, CoreError> {
+    pub(super) fn require_intent_executor(&self) -> Result<&Arc<IntentExecutor>, CoreError> {
         self.intent_executor
             .as_ref()
             .ok_or_else(|| CoreError::Internal("IntentExecutor is not configured".to_string()))
     }
 
-    fn require_intent_planner(&self) -> Result<&Arc<dyn IntentPlanner>, CoreError> {
+    pub(super) fn require_intent_planner(&self) -> Result<&Arc<dyn IntentPlanner>, CoreError> {
         self.intent_planner
             .as_ref()
             .ok_or_else(|| CoreError::Internal("IntentPlanner is not configured".to_string()))
     }
 
-    fn require_scene_finder(&self) -> Result<&Arc<dyn ElementFinder>, CoreError> {
+    pub(super) fn require_scene_finder(&self) -> Result<&Arc<dyn ElementFinder>, CoreError> {
         self.scene_finder
             .as_ref()
             .ok_or_else(|| CoreError::Internal("Scene analyzer is not configured".to_string()))
     }
 
-    fn require_gui_service(&self) -> Result<&Arc<GuiInteractionService>, GuiInteractionError> {
+    pub(super) fn require_gui_service(
+        &self,
+    ) -> Result<&Arc<GuiInteractionService>, GuiInteractionError> {
         self.gui_service.as_ref().ok_or_else(|| {
             GuiInteractionError::Unavailable(
                 "GUI interaction service is not configured".to_string(),
             )
         })
-    }
-
-    pub async fn execute_intent(&self, cmd: &IntentCommand) -> Result<IntentResult, CoreError> {
-        self.ensure_enabled()?;
-        let executor = self.require_intent_executor()?;
-
-        {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_start_if(
-                AuditLevel::Basic,
-                &cmd.command_id,
-                &cmd.session_id,
-                &format!("{:?}", cmd.intent),
-            );
-        }
-
-        let start = Instant::now();
-        let result = executor.execute(&cmd.intent).await?;
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-
-        {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_complete_with_time(
-                AuditLevel::Basic,
-                &cmd.command_id,
-                &cmd.session_id,
-                &format!("success={}, elapsed={}ms", result.success, elapsed_ms),
-                elapsed_ms,
-            );
-        }
-
-        Ok(result)
-    }
-
-    pub async fn execute_intent_hint(
-        &self,
-        command_id: &str,
-        session_id: &str,
-        intent_hint: &str,
-    ) -> Result<PlannedIntentResult, CoreError> {
-        self.ensure_enabled()?;
-        let executor = self.require_intent_executor()?;
-        let planner = self.require_intent_planner()?;
-
-        {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_start_if(
-                AuditLevel::Basic,
-                command_id,
-                session_id,
-                &format!("intent_hint={intent_hint}"),
-            );
-        }
-
-        let start = Instant::now();
-        let planned_intent = planner.plan(intent_hint).await?;
-        let result = executor.execute(&planned_intent).await?;
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-
-        {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_complete_with_time(
-                AuditLevel::Basic,
-                command_id,
-                session_id,
-                &format!(
-                    "planned_intent={:?}, success={}, elapsed={}ms",
-                    planned_intent, result.success, elapsed_ms
-                ),
-                elapsed_ms,
-            );
-        }
-
-        Ok(PlannedIntentResult {
-            planned_intent,
-            result,
-        })
-    }
-
-    pub async fn analyze_scene(
-        &self,
-        app_name: Option<&str>,
-        screen_id: Option<&str>,
-    ) -> Result<UiScene, CoreError> {
-        self.ensure_enabled()?;
-        let finder = self.require_scene_finder()?;
-        finder.analyze_scene(app_name, screen_id).await
-    }
-
-    pub async fn analyze_scene_from_image(
-        &self,
-        image_data: Vec<u8>,
-        image_format: String,
-        app_name: Option<&str>,
-        screen_id: Option<&str>,
-    ) -> Result<UiScene, CoreError> {
-        self.ensure_enabled()?;
-        let finder = self.require_scene_finder()?;
-        finder
-            .analyze_scene_from_image(image_data, image_format, app_name, screen_id)
-            .await
-    }
-
-    pub async fn gui_create_session(
-        &self,
-        req: GuiCreateSessionRequest,
-    ) -> Result<GuiCreateSessionResponse, GuiInteractionError> {
-        self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
-        let service = self.require_gui_service()?;
-        service.create_session(req).await
-    }
-
-    pub async fn gui_get_session(
-        &self,
-        session_id: &str,
-        capability_token: &str,
-    ) -> Result<GuiInteractionSession, GuiInteractionError> {
-        self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
-        let service = self.require_gui_service()?;
-        service.get_session(session_id, capability_token).await
-    }
-
-    pub async fn gui_highlight_session(
-        &self,
-        session_id: &str,
-        capability_token: &str,
-        req: GuiHighlightRequest,
-    ) -> Result<GuiInteractionSession, GuiInteractionError> {
-        self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
-        let service = self.require_gui_service()?;
-        service
-            .highlight_session(session_id, capability_token, req)
-            .await
-    }
-
-    pub async fn gui_confirm_candidate(
-        &self,
-        session_id: &str,
-        capability_token: &str,
-        req: GuiConfirmRequest,
-    ) -> Result<GuiExecutionTicket, GuiInteractionError> {
-        self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
-        let service = self.require_gui_service()?;
-        service
-            .confirm_candidate(session_id, capability_token, req)
-            .await
-    }
-
-    pub async fn gui_execute(
-        &self,
-        session_id: &str,
-        capability_token: &str,
-        req: GuiExecutionRequest,
-    ) -> Result<GuiExecutionResult, GuiInteractionError> {
-        self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
-        let service = self.require_gui_service()?;
-        let plan = service
-            .prepare_execution(session_id, capability_token, req)
-            .await?;
-
-        let total_deadline = std::time::Duration::from_secs(GUI_EXECUTE_TIMEOUT_SECS);
-        let action_timeout = std::time::Duration::from_secs(GUI_ACTION_TIMEOUT_SECS);
-        let execution_start = Instant::now();
-
-        let total_steps = plan.actions.len();
-        tracing::info!(
-            session_id,
-            command_id = %plan.command_id,
-            total_steps,
-            timeout_secs = GUI_EXECUTE_TIMEOUT_SECS,
-            "GUI execution started"
-        );
-
-        let actions_result = tokio::time::timeout(total_deadline, async {
-            let mut last_result = IntentResult {
-                success: false,
-                element: None,
-                verification: None,
-                retry_count: 0,
-                elapsed_ms: 0,
-                error: Some("No executable actions in GUI plan".to_string()),
-            };
-            let mut execution_error: Option<String> = None;
-            let mut steps_completed: usize = 0;
-
-            for (index, action) in plan.actions.iter().enumerate() {
-                let command_id = if index == 0 {
-                    plan.command_id.clone()
-                } else {
-                    format!("{}:stage-{index}", plan.command_id)
-                };
-
-                let intent_command = IntentCommand {
-                    command_id,
-                    session_id: plan.session_id.clone(),
-                    intent: AutomationIntent::Raw(action.clone()),
-                    config: None,
-                    timeout_ms: None,
-                    policy_token: "gui-session".to_string(),
-                };
-
-                match tokio::time::timeout(action_timeout, self.execute_intent(&intent_command))
-                    .await
-                {
-                    Ok(Ok(result)) => {
-                        last_result = result;
-                        if last_result.success {
-                            steps_completed += 1;
-                        } else {
-                            tracing::warn!(
-                                stage = index,
-                                error = last_result.error.as_deref().unwrap_or("unknown"),
-                                "GUI action failed at stage"
-                            );
-                            break;
-                        }
-                    }
-                    Ok(Err(err)) => {
-                        tracing::warn!(stage = index, error = %err, "GUI action error at stage");
-                        execution_error = Some(err.to_string());
-                        break;
-                    }
-                    Err(_elapsed) => {
-                        tracing::warn!(
-                            stage = index,
-                            timeout_secs = GUI_ACTION_TIMEOUT_SECS,
-                            "GUI action timed out at stage"
-                        );
-                        execution_error = Some(format!(
-                            "GUI action timed out after {}s (stage {})",
-                            GUI_ACTION_TIMEOUT_SECS, index
-                        ));
-                        break;
-                    }
-                }
-            }
-
-            (last_result, execution_error, steps_completed)
-        })
-        .await;
-
-        let (last_result, execution_error, steps_completed) = match actions_result {
-            Ok(inner) => inner,
-            Err(_elapsed) => {
-                let detail = format!("GUI execution timed out after {GUI_EXECUTE_TIMEOUT_SECS}s");
-                tracing::error!(
-                    session_id,
-                    timeout_secs = GUI_EXECUTE_TIMEOUT_SECS,
-                    elapsed_ms = execution_start.elapsed().as_millis() as u64,
-                    "GUI total execution timeout exceeded"
-                );
-                let _ = service
-                    .complete_execution(session_id, false, Some(detail.clone()), 0, total_steps)
-                    .await;
-                return Err(GuiInteractionError::Internal(detail));
-            }
-        };
-
-        let succeeded = execution_error.is_none() && last_result.success;
-        let detail = execution_error.clone().or_else(|| {
-            if !last_result.success {
-                if steps_completed > 0 {
-                    Some(format!(
-                        "Partial execution: {}/{} steps completed. {}",
-                        steps_completed,
-                        total_steps,
-                        last_result.error.as_deref().unwrap_or("action failed")
-                    ))
-                } else {
-                    last_result.error.clone()
-                }
-            } else {
-                None
-            }
-        });
-        let outcome = service
-            .complete_execution(
-                session_id,
-                succeeded,
-                detail.clone(),
-                steps_completed,
-                total_steps,
-            )
-            .await?;
-
-        tracing::info!(
-            session_id,
-            succeeded,
-            steps_completed,
-            total_steps,
-            elapsed_ms = execution_start.elapsed().as_millis() as u64,
-            "GUI execution finished"
-        );
-
-        if let Some(err) = execution_error {
-            return Err(GuiInteractionError::Internal(err));
-        }
-
-        Ok(GuiExecutionResult {
-            command_id: plan.command_id,
-            ticket: plan.ticket,
-            result: last_result,
-            outcome,
-        })
-    }
-
-    pub async fn gui_cancel_session(
-        &self,
-        session_id: &str,
-        capability_token: &str,
-    ) -> Result<GuiInteractionSession, GuiInteractionError> {
-        self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
-        let service = self.require_gui_service()?;
-        service.cancel_session(session_id, capability_token).await
-    }
-
-    pub async fn gui_subscribe_events(
-        &self,
-        session_id: &str,
-        capability_token: &str,
-    ) -> Result<broadcast::Receiver<GuiSessionEvent>, GuiInteractionError> {
-        self.ensure_enabled()
-            .map_err(|e| GuiInteractionError::Unavailable(e.to_string()))?;
-        let service = self.require_gui_service()?;
-        service
-            .subscribe_session(session_id, capability_token)
-            .await
-    }
-
-    pub async fn run_workflow(&self, preset: &WorkflowPreset) -> Result<WorkflowResult, CoreError> {
-        self.ensure_enabled()?;
-        let executor = self.require_intent_executor()?;
-
-        let total_steps = preset.steps.len();
-        let mut step_results = Vec::with_capacity(total_steps);
-        let mut all_success = true;
-        let workflow_start = Instant::now();
-
-        tracing::info!(
-            preset_id = %preset.id,
-            total_steps,
-            "워크플로우 프리셋 execution started"
-        );
-
-        for (idx, step) in preset.steps.iter().enumerate() {
-            if idx > 0 && step.delay_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(step.delay_ms)).await;
-            }
-
-            let step_cmd_id = format!("{}:step-{}", preset.id, idx);
-            {
-                let mut logger = self.audit_logger.write().await;
-                logger.log_start_if(
-                    AuditLevel::Basic,
-                    &step_cmd_id,
-                    &preset.id,
-                    &format!("step[{}] {}: {:?}", idx, step.name, step.intent),
-                );
-            }
-
-            let step_start = Instant::now();
-            let result = executor.execute(&step.intent).await;
-            let step_elapsed = step_start.elapsed().as_millis() as u64;
-
-            match result {
-                Ok(intent_result) => {
-                    {
-                        let mut logger = self.audit_logger.write().await;
-                        logger.log_complete_with_time(
-                            AuditLevel::Basic,
-                            &step_cmd_id,
-                            &preset.id,
-                            &format!(
-                                "step[{}] success={}, elapsed={}ms",
-                                idx, intent_result.success, step_elapsed
-                            ),
-                            step_elapsed,
-                        );
-                    }
-
-                    let step_success = intent_result.success;
-                    step_results.push(WorkflowStepResult {
-                        step_name: step.name.clone(),
-                        step_index: idx,
-                        success: step_success,
-                        elapsed_ms: step_elapsed,
-                        error: if step_success {
-                            None
-                        } else {
-                            intent_result.error.clone()
-                        },
-                    });
-
-                    if !step_success {
-                        all_success = false;
-                        if step.stop_on_failure {
-                            tracing::warn!(
-                                step = idx,
-                                name = %step.name,
-                                "워크플로우 단계 failure → 중단"
-                            );
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    {
-                        let mut logger = self.audit_logger.write().await;
-                        logger.log_complete_with_time(
-                            AuditLevel::Basic,
-                            &step_cmd_id,
-                            &preset.id,
-                            &format!("step[{}] error: {}", idx, e),
-                            step_elapsed,
-                        );
-                    }
-
-                    step_results.push(WorkflowStepResult {
-                        step_name: step.name.clone(),
-                        step_index: idx,
-                        success: false,
-                        elapsed_ms: step_elapsed,
-                        error: Some(e.to_string()),
-                    });
-
-                    all_success = false;
-                    if step.stop_on_failure {
-                        tracing::warn!(
-                            step = idx,
-                            name = %step.name,
-                            error = %e,
-                            "워크플로우 단계 error → 중단"
-                        );
-                        break;
-                    }
-                }
-            }
-        }
-
-        let total_elapsed = workflow_start.elapsed().as_millis() as u64;
-        let steps_executed = step_results.len();
-
-        let message = if all_success {
-            format!(
-                "프리셋 '{}' success ({}/{}단계, {}ms)",
-                preset.name, steps_executed, total_steps, total_elapsed
-            )
-        } else {
-            format!(
-                "프리셋 '{}' 일부 failure ({}/{}단계, {}ms)",
-                preset.name, steps_executed, total_steps, total_elapsed
-            )
-        };
-
-        tracing::info!(
-            preset_id = %preset.id,
-            success = all_success,
-            steps_executed,
-            total_elapsed_ms = total_elapsed,
-            "워크플로우 프리셋 execution completed"
-        );
-
-        Ok(WorkflowResult {
-            preset_id: preset.id.clone(),
-            success: all_success,
-            steps_executed,
-            total_steps,
-            total_elapsed_ms: total_elapsed,
-            step_results,
-            message,
-        })
-    }
-
-    async fn resolve_for_command(&self, cmd: &AutomationCommand) -> (SandboxConfig, AuditLevel) {
-        match self
-            .policy_client
-            .get_policy_for_token(&cmd.policy_token)
-            .await
-        {
-            Some(policy) => {
-                let config = resolver::resolve_sandbox_config(&policy, &self.base_sandbox_config);
-                (config, policy.audit_level)
-            }
-            None => {
-                let config = resolver::default_strict_config(&self.base_sandbox_config);
-                (config, AuditLevel::Basic)
-            }
-        }
-    }
-
-    pub async fn execute_command(
-        &self,
-        cmd: &AutomationCommand,
-    ) -> Result<CommandResult, CoreError> {
-        self.ensure_enabled()?;
-
-        if !self.policy_client.validate_command(cmd).await? {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_denied(
-                &cmd.command_id,
-                &cmd.session_id,
-                &format!("{:?}", cmd.action),
-            );
-            return Ok(CommandResult::Denied);
-        }
-
-        let (resolved_config, audit_level) = self.resolve_for_command(cmd).await;
-
-        {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_start_if(
-                audit_level,
-                &cmd.command_id,
-                &cmd.session_id,
-                &format!("{:?}", cmd.action),
-            );
-        }
-
-        let timeout_ms = cmd.timeout_ms.or(if resolved_config.max_cpu_time_ms > 0 {
-            Some(resolved_config.max_cpu_time_ms)
-        } else {
-            None
-        });
-
-        let start = Instant::now();
-
-        let result = if let Some(timeout) = timeout_ms {
-            let duration = std::time::Duration::from_millis(timeout);
-            match tokio::time::timeout(
-                duration,
-                self.action_dispatcher
-                    .dispatch(&cmd.action, &resolved_config),
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(_elapsed) => {
-                    let mut logger = self.audit_logger.write().await;
-                    logger.log_timeout(&cmd.command_id, &cmd.session_id, timeout);
-                    return Ok(CommandResult::Timeout);
-                }
-            }
-        } else {
-            self.action_dispatcher
-                .dispatch(&cmd.action, &resolved_config)
-                .await
-        };
-
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-
-        {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_complete_with_time(
-                audit_level,
-                &cmd.command_id,
-                &cmd.session_id,
-                &format!("{:?}", result),
-                elapsed_ms,
-            );
-        }
-
-        Ok(result)
     }
 }
 
