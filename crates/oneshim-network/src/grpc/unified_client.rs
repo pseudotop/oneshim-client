@@ -346,9 +346,7 @@ impl UnifiedClient {
                 );
             }
 
-            Ok(UploadBatchResponse {
-                accepted_count: 0,
-            })
+            Ok(UploadBatchResponse { accepted_count: 0 })
         }
     }
 

@@ -391,30 +391,33 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     let app_cell = std::cell::RefCell::new(Some(app));
     let result = iced::application(
         move || {
-            let state = app_cell.borrow_mut().take().expect("boot called more than once");
+            let state = app_cell
+                .borrow_mut()
+                .take()
+                .expect("boot called more than once");
             (state, Task::none())
         },
         OneshimApp::update,
         OneshimApp::view,
     )
-        .title(OneshimApp::title)
-        .theme(OneshimApp::theme)
-        .subscription(OneshimApp::subscription)
-        .font(KOREAN_FONT)
-        .default_font(KOREAN_FONT_NAME)
-        .exit_on_close_request(false)
-        .window(window::Settings {
-            size: Size::new(420.0, 650.0),
-            min_size: Some(Size::new(350.0, 450.0)),
-            max_size: Some(Size::new(800.0, 900.0)),
-            position: window::Position::Centered,
-            resizable: true,
-            decorations: true,
-            transparent: false,
-            exit_on_close_request: false,
-            ..window::Settings::default()
-        })
-        .run();
+    .title(OneshimApp::title)
+    .theme(OneshimApp::theme)
+    .subscription(OneshimApp::subscription)
+    .font(KOREAN_FONT)
+    .default_font(KOREAN_FONT_NAME)
+    .exit_on_close_request(false)
+    .window(window::Settings {
+        size: Size::new(420.0, 650.0),
+        min_size: Some(Size::new(350.0, 450.0)),
+        max_size: Some(Size::new(800.0, 900.0)),
+        position: window::Position::Centered,
+        resizable: true,
+        decorations: true,
+        transparent: false,
+        exit_on_close_request: false,
+        ..window::Settings::default()
+    })
+    .run();
 
     info!("GUI ended, Agent in progress...");
     let _ = shutdown_tx.send(true);

@@ -279,27 +279,86 @@ foreach ($form in $forms) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::models::gui::HighlightTarget;
+    use oneshim_core::models::intent::ElementBounds;
+
+    fn test_target(id: &str) -> HighlightTarget {
+        HighlightTarget {
+            candidate_id: id.to_string(),
+            bbox_abs: ElementBounds {
+                x: 10,
+                y: 20,
+                width: 100,
+                height: 30,
+            },
+            color: "#22c55e".to_string(),
+            label: Some("Save".to_string()),
+        }
+    }
+
+    fn test_request(targets: Vec<HighlightTarget>) -> HighlightRequest {
+        HighlightRequest {
+            session_id: "s1".to_string(),
+            scene_id: "scene".to_string(),
+            targets,
+        }
+    }
 
     #[test]
     fn payload_file_is_written() {
-        let req = HighlightRequest {
-            session_id: "s1".to_string(),
-            scene_id: "scene".to_string(),
-            targets: vec![oneshim_core::models::gui::HighlightTarget {
-                candidate_id: "el-1".to_string(),
-                bbox_abs: oneshim_core::models::intent::ElementBounds {
-                    x: 10,
-                    y: 20,
-                    width: 100,
-                    height: 30,
-                },
-                color: "#22c55e".to_string(),
-                label: Some("Save".to_string()),
-            }],
-        };
-
-        let path = write_overlay_payload("unit-test", &req).unwrap();
+        let req = test_request(vec![test_target("el-1")]);
+        let path = write_overlay_payload("unit-test-write", &req).unwrap();
         assert!(path.exists());
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn payload_contains_correct_json_structure() {
+        let req = test_request(vec![test_target("el-1")]);
+        let path = write_overlay_payload("unit-test-json", &req).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(parsed["session_id"], "s1");
+        assert_eq!(parsed["scene_id"], "scene");
+        assert_eq!(parsed["targets"][0]["candidate_id"], "el-1");
+        assert_eq!(parsed["targets"][0]["x"], 10);
+        assert_eq!(parsed["targets"][0]["y"], 20);
+        assert_eq!(parsed["targets"][0]["width"], 100);
+        assert_eq!(parsed["targets"][0]["height"], 30);
+        assert_eq!(parsed["targets"][0]["color"], "#22c55e");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn payload_with_multiple_targets() {
+        let req = test_request(vec![test_target("el-1"), test_target("el-2")]);
+        let path = write_overlay_payload("unit-test-multi", &req).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        assert_eq!(parsed["targets"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["targets"][1]["candidate_id"], "el-2");
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn show_highlights_rejects_empty_targets() {
+        let driver = PlatformOverlayDriver::new();
+        let req = test_request(vec![]);
+        let err = driver.show_highlights(req).await.unwrap_err();
+        assert!(matches!(err, CoreError::InvalidArguments(_)));
+    }
+
+    #[tokio::test]
+    async fn clear_highlights_ignores_unknown_handle() {
+        let driver = PlatformOverlayDriver::new();
+        // Should not error even when handle does not exist
+        let result = driver.clear_highlights("nonexistent-handle").await;
+        assert!(result.is_ok());
     }
 }
