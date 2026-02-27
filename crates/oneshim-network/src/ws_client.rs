@@ -101,7 +101,7 @@ impl WsSender {
     pub async fn send_text(&self, text: &str) -> Result<(), CoreError> {
         let mut write = self.write.lock().await;
         write
-            .send(Message::Text(text.to_string()))
+            .send(Message::Text(text.into()))
             .await
             .map_err(|e| CoreError::Internal(format!("WebSocket sent failure: {e}")))
     }

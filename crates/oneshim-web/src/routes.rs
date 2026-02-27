@@ -14,9 +14,9 @@ pub fn api_routes() -> Router<AppState> {
         .route("/processes", get(handlers::processes::get_processes))
         .route("/idle", get(handlers::idle::get_idle_periods))
         .route("/sessions", get(handlers::sessions::list_sessions))
-        .route("/sessions/:id", get(handlers::sessions::get_session))
+        .route("/sessions/{id}", get(handlers::sessions::get_session))
         .route("/frames", get(handlers::frames::get_frames))
-        .route("/frames/:id/image", get(handlers::frames::get_frame_image))
+        .route("/frames/{id}/image", get(handlers::frames::get_frame_image))
         .route("/events", get(handlers::events::get_events))
         .route("/stats/summary", get(handlers::stats::get_summary))
         .route("/stats/apps", get(handlers::stats::get_app_usage))
@@ -44,20 +44,20 @@ pub fn api_routes() -> Router<AppState> {
         .route("/backup/restore", post(handlers::backup::restore_backup))
         .route("/tags", get(handlers::tags::list_tags))
         .route("/tags", post(handlers::tags::create_tag))
-        .route("/tags/:id", get(handlers::tags::get_tag))
-        .route("/tags/:id", put(handlers::tags::update_tag))
-        .route("/tags/:id", delete(handlers::tags::delete_tag))
+        .route("/tags/{id}", get(handlers::tags::get_tag))
+        .route("/tags/{id}", put(handlers::tags::update_tag))
+        .route("/tags/{id}", delete(handlers::tags::delete_tag))
         .route(
-            "/frames/:frame_id/tags",
+            "/frames/{frame_id}/tags",
             get(handlers::tags::get_frame_tags),
         )
         .route("/timeline", get(handlers::timeline::get_timeline))
         .route(
-            "/frames/:frame_id/tags/:tag_id",
+            "/frames/{frame_id}/tags/{tag_id}",
             post(handlers::tags::add_tag_to_frame),
         )
         .route(
-            "/frames/:frame_id/tags/:tag_id",
+            "/frames/{frame_id}/tags/{tag_id}",
             delete(handlers::tags::remove_tag_from_frame),
         )
         .route("/focus/metrics", get(handlers::focus::get_focus_metrics))
@@ -68,7 +68,7 @@ pub fn api_routes() -> Router<AppState> {
         )
         .route("/focus/suggestions", get(handlers::focus::get_suggestions))
         .route(
-            "/focus/suggestions/:id/feedback",
+            "/focus/suggestions/{id}/feedback",
             post(handlers::focus::submit_suggestion_feedback),
         )
         .route(
@@ -104,15 +104,15 @@ pub fn api_routes() -> Router<AppState> {
             post(handlers::automation::create_preset),
         )
         .route(
-            "/automation/presets/:id",
+            "/automation/presets/{id}",
             put(handlers::automation::update_preset),
         )
         .route(
-            "/automation/presets/:id",
+            "/automation/presets/{id}",
             delete(handlers::automation::delete_preset),
         )
         .route(
-            "/automation/presets/:id/run",
+            "/automation/presets/{id}/run",
             post(handlers::automation::run_preset),
         )
         .route(
@@ -136,24 +136,24 @@ pub fn api_routes() -> Router<AppState> {
             post(handlers::automation_gui::create_gui_session),
         )
         .route(
-            "/automation/gui/sessions/:id",
+            "/automation/gui/sessions/{id}",
             get(handlers::automation_gui::get_gui_session)
                 .delete(handlers::automation_gui::delete_gui_session),
         )
         .route(
-            "/automation/gui/sessions/:id/highlight",
+            "/automation/gui/sessions/{id}/highlight",
             post(handlers::automation_gui::highlight_gui_session),
         )
         .route(
-            "/automation/gui/sessions/:id/confirm",
+            "/automation/gui/sessions/{id}/confirm",
             post(handlers::automation_gui::confirm_gui_session),
         )
         .route(
-            "/automation/gui/sessions/:id/execute",
+            "/automation/gui/sessions/{id}/execute",
             post(handlers::automation_gui::execute_gui_session),
         )
         .route(
-            "/automation/gui/sessions/:id/events",
+            "/automation/gui/sessions/{id}/events",
             get(handlers::automation_gui::gui_session_event_stream),
         )
         .route(

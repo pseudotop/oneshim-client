@@ -1,5 +1,5 @@
 use directories::ProjectDirs;
-use iced::widget::{button, column, container, horizontal_rule, row, text, toggler, Column};
+use iced::widget::{button, column, container, row, rule, text, toggler, Column, Space};
 use iced::{event, Alignment, Element, Event, Length, Subscription, Task, Theme};
 use oneshim_core::ports::storage::StorageService;
 use std::path::PathBuf;
@@ -696,7 +696,7 @@ impl OneshimApp {
 
         let header = row![
             text(s.app_title).size(28),
-            iced::widget::horizontal_space(),
+            Space::new().width(Length::Fill),
             button(text(s.settings)).on_press(Message::ToggleSettings),
         ]
         .align_y(Alignment::Center)
@@ -750,16 +750,16 @@ impl OneshimApp {
 
         column![
             header,
-            horizontal_rule(1),
+            rule::horizontal(1),
             connection_status,
             update_status,
             update_message,
             text(active_app_text).size(14),
-            horizontal_rule(1),
+            rule::horizontal(1),
             metrics,
-            horizontal_rule(1),
+            rule::horizontal(1),
             suggestions,
-            iced::widget::vertical_space(),
+            Space::new().height(Length::Fill),
             button(text(s.quit)).on_press(Message::Quit),
         ]
         .spacing(15)
@@ -783,7 +783,7 @@ impl OneshimApp {
         };
         let header = row![
             text(s.system_metrics).size(16),
-            iced::widget::horizontal_space(),
+            Space::new().width(Length::Fill),
             button(text(toggle_label).size(11)).on_press(Message::ToggleMetricsView),
         ]
         .align_y(Alignment::Center);
@@ -988,23 +988,23 @@ impl OneshimApp {
 
         column![
             header,
-            horizontal_rule(1),
+            rule::horizontal(1),
             text(s.general).size(18),
             monitoring_toggle,
             capture_toggle,
             notifications_toggle,
-            horizontal_rule(1),
+            rule::horizontal(1),
             text(s.startup).size(18),
             autostart_toggle,
-            horizontal_rule(1),
+            rule::horizontal(1),
             text(s.appearance).size(18),
             theme_buttons,
             language_buttons,
-            horizontal_rule(1),
+            rule::horizontal(1),
             text(s.connection).size(18),
             server_info,
             data_path_info,
-            iced::widget::vertical_space(),
+            Space::new().height(Length::Fill),
             version_info,
         ]
         .spacing(12)

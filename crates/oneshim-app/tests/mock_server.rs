@@ -190,7 +190,7 @@ fn create_router(state: Arc<MockServerState>) -> Router {
         .route("/api/v1/auth/tokens/refresh", post(handle_refresh)) // token refresh
         .route("/user_context/sessions/", post(handle_create_session))
         .route(
-            "/user_context/sessions/:session_id/heartbeat",
+            "/user_context/sessions/{session_id}/heartbeat",
             post(handle_health),
         )
         .route("/user_context/contexts", post(handle_context_upload))

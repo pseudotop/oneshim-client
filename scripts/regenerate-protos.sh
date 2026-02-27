@@ -68,16 +68,6 @@ $(for p in "${PROTOS[@]}"; do echo "        std::path::PathBuf::from(\"$p\"),"; 
         .out_dir(&out_dir)
         .compile_protos(&protos, std::slice::from_ref(&proto_root))
         .expect("Failed to compile protos");
-
-    // Patch for tonic 0.12 compatibility
-    let generated = out_dir.join("oneshim.client.v1.rs");
-    if generated.exists() {
-        let content = std::fs::read_to_string(&generated).unwrap();
-        let patched = content
-            .replace("tonic::body::Body", "tonic::body::BoxBody")
-            .replace("tonic_prost::ProstCodec", "tonic::codec::ProstCodec");
-        std::fs::write(&generated, patched).unwrap();
-    }
 }
 BUILDRS
 

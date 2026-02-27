@@ -388,7 +388,16 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         app = app.with_tray_receiver(rx);
     }
 
-    let result = iced::application(OneshimApp::title, OneshimApp::update, OneshimApp::view)
+    let app_cell = std::cell::RefCell::new(Some(app));
+    let result = iced::application(
+        move || {
+            let state = app_cell.borrow_mut().take().expect("boot called more than once");
+            (state, Task::none())
+        },
+        OneshimApp::update,
+        OneshimApp::view,
+    )
+        .title(OneshimApp::title)
         .theme(OneshimApp::theme)
         .subscription(OneshimApp::subscription)
         .font(KOREAN_FONT)
@@ -405,7 +414,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
             exit_on_close_request: false,
             ..window::Settings::default()
         })
-        .run_with(move || (app, Task::none()));
+        .run();
 
     info!("GUI ended, Agent in progress...");
     let _ = shutdown_tx.send(true);
