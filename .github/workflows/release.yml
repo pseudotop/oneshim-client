@@ -164,7 +164,8 @@ jobs:
           key: release-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }} -p oneshim-app --features grpc
+        shell: bash
+        run: ./scripts/cargo-cache.sh build --release --target ${{ matrix.target }} -p oneshim-app --features grpc
 
       - name: Validate WiX assets
         if: runner.os == 'Windows'
@@ -182,21 +183,23 @@ jobs:
       # ── MSI 인스톨러 (Windows only) ──
       - name: Install cargo-wix
         if: runner.os == 'Windows'
-        run: cargo install cargo-wix
+        shell: bash
+        run: ./scripts/cargo-cache.sh install cargo-wix
 
       - name: Build MSI installer
         if: runner.os == 'Windows'
+        shell: bash
         working-directory: crates/oneshim-app
-        run: cargo wix -p oneshim-app --nocapture --target ${{ matrix.target }}
+        run: ../../scripts/cargo-cache.sh wix -p oneshim-app --nocapture --target ${{ matrix.target }}
 
       # ── DEB 패키지 (Linux only) ──
       - name: Install cargo-deb
         if: runner.os == 'Linux'
-        run: cargo install cargo-deb
+        run: ./scripts/cargo-cache.sh install cargo-deb
 
       - name: Build DEB package
         if: runner.os == 'Linux'
-        run: cargo deb -p oneshim-app --target ${{ matrix.target }} --no-build
+        run: ./scripts/cargo-cache.sh deb -p oneshim-app --target ${{ matrix.target }} --no-build
 
       # ── 패키징 ──
       - name: Package (Unix)
@@ -266,8 +269,9 @@ jobs:
           echo "DEB file: $(basename $DEB_FILE)"
           echo "DEB version: $DEB_VERSION"
           echo "Expected: $EXPECTED_VERSION"
-          if [ "$DEB_VERSION" != "$EXPECTED_VERSION" ]; then
-            echo "::error::DEB version mismatch: got $DEB_VERSION, expected $EXPECTED_VERSION"
+          DEB_UPSTREAM="${DEB_VERSION%%-*}"
+          if [ "$DEB_UPSTREAM" != "$EXPECTED_VERSION" ]; then
+            echo "::error::DEB version mismatch: got $DEB_VERSION (upstream $DEB_UPSTREAM), expected $EXPECTED_VERSION"
             exit 1
           fi
 
