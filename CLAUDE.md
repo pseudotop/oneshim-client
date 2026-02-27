@@ -29,7 +29,7 @@ client-rust/
 ├── Cargo.toml              # Workspace root (resolver = "2")
 ├── .cargo/config.toml      # Build configuration
 ├── docs/
-│   ├── architecture/   # ADR-only (ADR-001, ADR-002, ...)
+│   ├── architecture/   # ADR-only (ADR-001, ADR-002, ADR-003)
 │   ├── guides/         # Playbooks/runbooks/how-to docs
 │   └── research/       # Exploratory notes
 └── crates/
@@ -242,6 +242,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - [Docs Index](docs/README.md) — Document map by intent
 - [ADR-001: Rust Client Architecture Patterns](docs/architecture/ADR-001-rust-client-architecture-patterns.md)
 - [ADR-002: OS GUI Interaction Boundary and Runtime Split](docs/architecture/ADR-002-os-gui-interaction-boundary.md)
+- [ADR-003: Directory Module Pattern for Large Source Files](docs/architecture/ADR-003-directory-module-pattern.md)
 - [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history
