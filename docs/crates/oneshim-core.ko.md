@@ -15,7 +15,10 @@
 ```
 oneshim-core/src/
 ├── lib.rs           # 크레이트 루트, 모듈 재export
-├── config.rs        # AppConfig 및 설정 섹션
+├── config/          # AppConfig 및 설정 섹션 — 디렉토리 모듈 (ADR-013)
+│   ├── mod.rs       # AppConfig 구조체 + Default + 재export
+│   ├── enums.rs     # PiiFilterLevel, Weekday, SandboxProfile, AiAccessMode 등
+│   └── sections.rs  # 20개 설정 섹션 구조체 + Default 구현
 ├── config_manager.rs # JSON 기반 설정 파일 관리 + 플랫폼별 경로
 ├── consent.rs       # ConsentManager, GDPR Article 17/20 준수
 ├── error.rs         # CoreError enum (thiserror, 23개 변형)

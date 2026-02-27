@@ -37,7 +37,11 @@ oneshim-web/
 │       ├── backup.rs
 │       ├── export.rs
 │       ├── settings.rs    # AppSettings DTO + 자동화/샌드박스/AI 설정
-│       └── automation.rs  # 자동화 API 핸들러
+│       └── automation/    # 자동화 API 핸들러 — 디렉토리 모듈 (ADR-013)
+│           ├── mod.rs     # 재export + 라우터
+│           ├── helpers.rs # 내부 헬퍼 함수
+│           ├── scene.rs   # 씬 분석 + 캘리브레이션
+│           └── execution.rs # 의도/프리셋/정책 핸들러
 └── frontend/           # React 프론트엔드
     ├── src/
     │   ├── pages/      # 페이지 컴포넌트 (Dashboard, Automation, Settings 등)

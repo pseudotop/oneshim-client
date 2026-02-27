@@ -42,12 +42,12 @@ cargo fmt --check
 | oneshim-vision | 84 | pass |
 | oneshim-ui | 37 | pass |
 | oneshim-web | 119 | pass |
-| oneshim-automation | 183 | pass |
+| oneshim-automation | 193 | pass |
 | oneshim-app (unit) | 99 | pass |
 | oneshim-app (integration) | 32 | pass (3 ignored) |
 | oneshim-api-contracts | 8 | pass |
 | language-check | 4 | pass |
-| **Total** | **821** | **0 failed** |
+| **Total** | **831** | **0 failed** |
 
 ### Build & Lint
 

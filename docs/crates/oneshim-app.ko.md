@@ -16,16 +16,28 @@
 
 ```
 oneshim-app/src/
-├── main.rs       # 진입점, DI 와이어링
-├── gui_runner.rs # GUI + Agent 통합 런타임
-├── automation_runtime.rs # AI 제공자 런타임 와이어링
-├── provider_adapters.rs  # AI 제공자 어댑터 해석
-├── cli_subscription_bridge.rs # CLI 구독 브리지 아티팩트 동기화
-├── scheduler.rs  # 스케줄러 - 주기적 태스크
-├── lifecycle.rs  # 라이프사이클 - 시그널 처리
-├── event_bus.rs  # 내부 이벤트 라우팅
-├── autostart.rs  # 자동 시작 설정
-└── updater.rs    # 자동 업데이트
+├── main.rs                      # 진입점, DI 와이어링
+├── gui_runner.rs                # GUI + Agent 통합 런타임
+├── automation_runtime.rs        # AI 제공자 런타임 와이어링
+├── provider_adapters.rs         # AI 제공자 어댑터 해석
+├── cli_subscription_bridge.rs   # CLI 구독 브리지 아티팩트 동기화
+├── scheduler/                   # 스케줄러 — 디렉토리 모듈 (ADR-013)
+│   ├── mod.rs                   # Scheduler 구조체 + run() + 재export + 테스트
+│   ├── config.rs                # SchedulerConfig, PlatformEgressPolicy, 상수
+│   └── loops.rs                 # 9개 루프 본체 함수
+├── focus_analyzer/              # 포커스 분석 — 디렉토리 모듈 (ADR-013)
+│   ├── mod.rs                   # FocusAnalyzer 구조체 + 공개 API + 재export + 테스트
+│   ├── models.rs                # FocusAnalyzerConfig, SuggestionCooldowns, SessionTracker
+│   └── suggestions.rs           # 제안 생성기 + 쿨다운 + 포커스 점수
+├── updater/                     # 자동 업데이트 — 디렉토리 모듈 (ADR-013)
+│   ├── mod.rs                   # Updater 구조체 + 오케스트레이터 + 재export + 테스트
+│   ├── github.rs                # GitHub API: 릴리스, 에셋 선택, 버전 플로어
+│   ├── install.rs               # 다운로드 + 압축해제 + 바이너리 교체 + 서명
+│   └── state.rs                 # 마지막 확인 시각, 버전 영속화
+├── lifecycle.rs                 # 라이프사이클 - 시그널 처리
+├── event_bus.rs                 # 내부 이벤트 라우팅
+├── autostart.rs                 # 자동 시작 설정
+└── notification_manager.rs      # 쿨다운 기반 알림 매니저
 ```
 
 ## CLI 구독 브리지
@@ -75,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
-### Scheduler (scheduler.rs)
+### Scheduler (`scheduler/`)
 
 현재 스케줄러는 3-루프가 아니라 **9-루프 오케스트레이터**다 (`Scheduler::run()` → `run_scheduler_loops()`).
 
@@ -221,7 +233,7 @@ impl Autostart {
 }
 ```
 
-### Updater (updater.rs)
+### Updater (`updater/`)
 
 자동 업데이트는 `Updater` + `update_coordinator` 조합으로 동작한다.
 
@@ -244,7 +256,7 @@ impl Autostart {
 
 릴리스 아티팩트는 `.github/workflows/release.yml`에서 생성되며, 다음 경로에서 공통으로 소비한다.
 
-- 앱 내 업데이트: `crates/oneshim-app/src/updater.rs`
+- 앱 내 업데이트: `crates/oneshim-app/src/updater/`
 - 터미널 인스톨러:
   - `scripts/install.sh`
   - `scripts/install.ps1`

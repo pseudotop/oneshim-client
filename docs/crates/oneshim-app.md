@@ -16,16 +16,28 @@ The binary entry point. DI wiring, scheduler, and lifecycle management.
 
 ```
 oneshim-app/src/
-├── main.rs       # Entry point, DI wiring
-├── gui_runner.rs # GUI + Agent integrated runtime
-├── automation_runtime.rs # AI provider runtime wiring
-├── provider_adapters.rs  # AI provider adapter resolution
-├── cli_subscription_bridge.rs # CLI subscription bridge artifact sync
-├── scheduler.rs  # Scheduler - periodic tasks
-├── lifecycle.rs  # Lifecycle - signal handling
-├── event_bus.rs  # Internal event routing
-├── autostart.rs  # Auto-start configuration
-└── updater.rs    # Auto update
+├── main.rs                      # Entry point, DI wiring
+├── gui_runner.rs                # GUI + Agent integrated runtime
+├── automation_runtime.rs        # AI provider runtime wiring
+├── provider_adapters.rs         # AI provider adapter resolution
+├── cli_subscription_bridge.rs   # CLI subscription bridge artifact sync
+├── scheduler/                   # Scheduler — directory module (ADR-013)
+│   ├── mod.rs                   # Scheduler struct + run() + re-exports + tests
+│   ├── config.rs                # SchedulerConfig, PlatformEgressPolicy, constants
+│   └── loops.rs                 # 9 loop body functions
+├── focus_analyzer/              # Focus analysis — directory module (ADR-013)
+│   ├── mod.rs                   # FocusAnalyzer struct + public API + re-exports + tests
+│   ├── models.rs                # FocusAnalyzerConfig, SuggestionCooldowns, SessionTracker
+│   └── suggestions.rs           # suggestion generators + cooldown + focus score
+├── updater/                     # Auto update — directory module (ADR-013)
+│   ├── mod.rs                   # Updater struct + orchestrator + re-exports + tests
+│   ├── github.rs                # GitHub API: releases, asset selection, version floor
+│   ├── install.rs               # download + decompress + binary replace + signature
+│   └── state.rs                 # last check time, version persistence
+├── lifecycle.rs                 # Lifecycle - signal handling
+├── event_bus.rs                 # Internal event routing
+├── autostart.rs                 # Auto-start configuration
+└── notification_manager.rs      # Cooldown-based notification manager
 ```
 
 ## CLI Subscription Bridge
@@ -75,9 +87,9 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
-### Scheduler (scheduler.rs)
+### Scheduler (`scheduler/`)
 
-Current scheduler is a **9-loop orchestrator** (`Scheduler::run()` → `run_scheduler_loops()`), not a 3-loop model.
+Current scheduler is a **9-loop orchestrator** (`Scheduler::run()` → `run_scheduler_loops()`), not a 3-loop model. Split into `config.rs` (configuration) and `loops.rs` (loop bodies) per ADR-013.
 
 | Loop | Interval | Responsibility |
 |------|----------|----------------|
@@ -221,9 +233,9 @@ impl Autostart {
 }
 ```
 
-### Updater (updater.rs)
+### Updater (`updater/`)
 
-Auto update flow is driven by `Updater` + `update_coordinator`:
+Auto update flow is driven by `Updater` + `update_coordinator`. Split into `github.rs` (API), `install.rs` (binary replacement), and `state.rs` (persistence) per ADR-013:
 
 - Source of truth: `https://api.github.com/repos/{owner}/{repo}/releases/latest`
 - Version policy:

@@ -97,7 +97,10 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `models/`: suggestion, event, frame, context, session, system_metrics, batch
 - `ports/`: ApiClient, SseClient, StorageService, SystemMonitor, ProcessMonitor, ActivityMonitor, CaptureTrigger, FrameProcessor, DesktopNotifier, Compressor
 - `error.rs`: `CoreError` (thiserror)
-- `config.rs`: `AppConfig` + section settings (NotificationConfig, TelemetryConfig, PrivacyConfig, PiiFilterLevel, ScheduleConfig, FileAccessConfig) + `AiProviderType` (Anthropic/OpenAi/Generic)
+- `config/`: `AppConfig` + section settings — directory module (ADR-013)
+  - `mod.rs`: `AppConfig` struct + `Default` impl + helpers + re-exports
+  - `enums.rs`: `PiiFilterLevel`, `Weekday`, `SandboxProfile`, `AiAccessMode`, `AiProviderType`, etc.
+  - `sections.rs`: 20 config section structs (`NotificationConfig`, `TelemetryConfig`, `PrivacyConfig`, `ScheduleConfig`, `FileAccessConfig`, etc.) + `Default` impls
 - `consent.rs`: `ConsentManager`, `ConsentPermissions`, `ConsentRecord` — GDPR Article 17/20 compliant
 - `config_manager.rs`: JSON-based config file manager + platform-specific paths
 
@@ -171,19 +174,36 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `frontend/`: React 18 + Vite + Tailwind CSS + Recharts + FocusWidget
 
 ### oneshim-automation (Automation Control)
-- `controller.rs`: `AutomationController` — policy validation + command execution + audit logging
-- `policy.rs`: `PolicyClient` — server policy synchronization, token validation, argument pattern validation (glob matching)
+- `controller/`: `AutomationController` — directory module (ADR-013)
+  - `mod.rs`: struct + builders + validators + re-exports
+  - `types.rs`: `AutomationCommand`, `CommandResult`, `WorkflowResult`, etc.
+  - `intent.rs`: intent execution + scene analysis methods
+  - `preset.rs`: workflow/preset execution methods
+- `policy/`: `PolicyClient` — directory module (ADR-013)
+  - `mod.rs`: public API + re-exports
+  - `models.rs`: `AuditLevel`, `ExecutionPolicy`, `PolicyCache`, `ProcessOutput`
+  - `token.rs`: token generation, parsing, signature verification
 - `audit.rs`: `AuditLogger` — local VecDeque buffer + batched audit logs transmission, buffer overflow management
 
 ### oneshim-app (Orchestrator, Binary)
 - `main.rs`: tokio runtime + tracing + complete DI wiring + spawned tasks
-- `scheduler.rs`: 9-loop scheduler, `should_run_now()` schedule-based conditional execution (monitor 1s, metrics 5s, process 10s, sync 10s, heartbeat 30s, aggregate 1h, notification 1m, focus analysis 1m, server events 30s)
+- `scheduler/`: 9-loop scheduler — directory module (ADR-013)
+  - `mod.rs`: `Scheduler` struct + `run()` orchestrator + re-exports
+  - `config.rs`: `SchedulerConfig`, `PlatformEgressPolicy`, constants
+  - `loops.rs`: 9 loop body functions (monitor, metrics, process, sync, heartbeat, aggregate, notification, focus, event snapshot)
 - `notification_manager.rs`: Cooldown-based notification manager (idle, long session, high usage)
-- `focus_analyzer.rs`: Focus analysis + local suggestion generation (break, focus time, context restore)
+- `focus_analyzer/`: Focus analysis + local suggestion generation — directory module (ADR-013)
+  - `mod.rs`: `FocusAnalyzer` struct + public API + re-exports
+  - `models.rs`: `FocusAnalyzerConfig`, `SuggestionCooldowns`, `SessionTracker`
+  - `suggestions.rs`: suggestion generators + cooldown logic + focus score calculation
 - `lifecycle.rs`: SIGINT/SIGTERM handling, `tokio::sync::watch` shutdown channel
 - `event_bus.rs`: `tokio::broadcast` internal event routing
 - `autostart.rs`: Run at login — macOS LaunchAgent + Windows Registry
-- `updater.rs`: GitHub Releases based auto-updater — version check + download + binary replacement
+- `updater/`: GitHub Releases based auto-updater — directory module (ADR-013)
+  - `mod.rs`: `Updater` struct + orchestrator + re-exports
+  - `github.rs`: GitHub API: fetch releases, select asset, version floor
+  - `install.rs`: download + decompress + binary replacement + signature verification
+  - `state.rs`: last check time, update interval, version persistence
 
 ## Key Dependencies
 

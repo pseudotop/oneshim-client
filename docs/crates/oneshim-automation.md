@@ -16,11 +16,18 @@ oneshim-automation/src/
 ├── lib.rs              # Crate root (10 modules)
 ├── action_dispatcher.rs # AutomationActionDispatcher — action execution port
 ├── audit.rs            # AuditLogger — audit logging (14 methods)
-├── controller.rs       # AutomationController — policy verification + command execution
+├── controller/         # AutomationController — directory module (ADR-013)
+│   ├── mod.rs          # struct + builders + validators + re-exports + tests
+│   ├── types.rs        # AutomationCommand, CommandResult, WorkflowResult, etc.
+│   ├── intent.rs       # intent execution + scene analysis methods
+│   └── preset.rs       # workflow/preset execution methods
 ├── input_driver.rs     # NoOpInputDriver — test/default input driver
 ├── intent_resolver.rs  # IntentResolver + IntentExecutor — intent resolution + execution
 ├── local_llm.rs        # LocalLlmProvider — local LLM (rule-based)
-├── policy.rs           # PolicyClient — server policy sync + verification
+├── policy/             # PolicyClient — directory module (ADR-013)
+│   ├── mod.rs          # public API + re-exports + tests
+│   ├── models.rs       # AuditLevel, ExecutionPolicy, PolicyCache, ProcessOutput
+│   └── token.rs        # token generation, parsing, signature verification, HMAC
 ├── presets.rs          # builtin_presets() — 10 builtin workflows
 ├── resolver.rs         # Policy → sandbox profile resolver (3 pure functions)
 └── sandbox/            # OS native kernel sandbox
@@ -33,9 +40,9 @@ oneshim-automation/src/
 
 ## Modules
 
-### `controller.rs` — AutomationController
+### `controller/` — AutomationController (directory module)
 
-Central controller for policy verification + command execution + audit logging + sandbox management.
+Central controller for policy verification + command execution + audit logging + sandbox management. Split into `types.rs` (enums/structs), `intent.rs` (intent execution), and `preset.rs` (workflow execution) per ADR-013.
 
 - `AutomationController::new(sandbox, sandbox_config)` — Constructor (`Arc<dyn Sandbox>` + `SandboxConfig`)
 - `set_intent_executor(executor)` — Inject IntentExecutor
@@ -46,9 +53,9 @@ Central controller for policy verification + command execution + audit logging +
 - Disabled by default (`enabled: false`), activate via `set_enabled()`
 - Execution timeout based on `tokio::time::timeout`
 
-### `policy.rs` — PolicyClient
+### `policy/` — PolicyClient (directory module)
 
-Server policy synchronization + command verification + process permission management.
+Server policy synchronization + command verification + process permission management. Split into `models.rs` (data types) and `token.rs` (token operations) per ADR-013.
 
 - `ExecutionPolicy` — Policy ID, process name, binary hash, argument patterns, sudo required, audit level
   - `sandbox_profile: Option<SandboxProfile>` — Server override
@@ -240,8 +247,8 @@ oneshim-automation → oneshim-core (CoreError, models, port traits)
 
 | Module | Test Count | Description |
 |--------|-----------|-------------|
-| controller | 6 | Action/result serialization, intent execution, timeout |
-| policy | 7 | Policy serialization, argument validation, policy update, sandbox fields |
+| controller/ | 6 | Action/result serialization, intent execution, timeout |
+| policy/ | 7 | Policy serialization, argument validation, policy update, sandbox fields |
 | audit | 7 | Log/drain, buffer overflow, partial batch extraction, serialization, non-destructive query, statistics |
 | resolver | 5 | Profile mapping, sudo promotion, path merging, strict default, server override |
 | presets | 3 | Preset loading, platform key mapping, step verification |

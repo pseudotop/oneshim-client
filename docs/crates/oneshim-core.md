@@ -15,7 +15,10 @@ The core crate that defines domain models, port interfaces, error types, and con
 ```
 oneshim-core/src/
 ├── lib.rs           # Crate root, module re-exports
-├── config.rs        # AppConfig and configuration sections
+├── config/          # AppConfig and configuration sections — directory module (ADR-013)
+│   ├── mod.rs       # AppConfig struct + Default + re-exports
+│   ├── enums.rs     # PiiFilterLevel, Weekday, SandboxProfile, AiAccessMode, etc.
+│   └── sections.rs  # 20 config section structs + Default impls
 ├── config_manager.rs # JSON-based config file management + platform-specific paths
 ├── consent.rs       # ConsentManager, GDPR Article 17/20 compliance
 ├── error.rs         # CoreError enum (thiserror, 23 variants)

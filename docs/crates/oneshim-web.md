@@ -37,7 +37,11 @@ oneshim-web/
 │       ├── backup.rs
 │       ├── export.rs
 │       ├── settings.rs    # AppSettings DTO + automation/sandbox/AI settings
-│       └── automation.rs  # Automation API handlers
+│       └── automation/    # Automation API handlers — directory module (ADR-013)
+│           ├── mod.rs     # re-exports + router
+│           ├── helpers.rs # private helper functions
+│           ├── scene.rs   # scene analysis + calibration
+│           └── execution.rs # intent/preset/policy handlers
 └── frontend/           # React frontend
     ├── src/
     │   ├── pages/      # Page components (Dashboard, Automation, Settings, etc.)
