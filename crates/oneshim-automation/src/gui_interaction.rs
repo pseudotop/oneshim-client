@@ -226,6 +226,11 @@ impl GuiInteractionService {
 
         let candidates = build_candidates(&scene, min_confidence, max_candidates);
         if candidates.is_empty() {
+            tracing::warn!(
+                app = ?req.app_name,
+                min_confidence,
+                "GUI session creation failed — no eligible candidates"
+            );
             return Err(GuiInteractionError::BadRequest(
                 "No eligible GUI candidates found in scene".to_string(),
             ));
@@ -260,6 +265,14 @@ impl GuiInteractionService {
                 },
             );
         }
+
+        tracing::info!(
+            session_id = %session.session_id,
+            candidates = session.candidates.len(),
+            ttl_secs = ttl_secs,
+            app = %session.focus.app_name,
+            "GUI session created"
+        );
 
         self.publish_event(
             session_id,
@@ -579,9 +592,22 @@ impl GuiInteractionService {
             ));
         }
         if is_expired_past_grace(&req.ticket.expires_at, TICKET_EXPIRY_GRACE_SECS) {
+            tracing::warn!(
+                session_id,
+                ticket_id = %req.ticket.ticket_id,
+                "GUI ticket expired past grace period"
+            );
             return Err(GuiInteractionError::TicketInvalid(
                 "ticket expired".to_string(),
             ));
+        }
+        if is_expired(&req.ticket.expires_at) {
+            tracing::debug!(
+                session_id,
+                ticket_id = %req.ticket.ticket_id,
+                grace_secs = TICKET_EXPIRY_GRACE_SECS,
+                "GUI ticket nominally expired but within grace window"
+            );
         }
 
         let binding = ExecutionBinding {
@@ -606,11 +632,24 @@ impl GuiInteractionService {
                 .reason
                 .unwrap_or_else(|| "Focused window changed".to_string());
             if attempt < FOCUS_DRIFT_MAX_RETRIES {
+                tracing::debug!(
+                    session_id,
+                    attempt = attempt + 1,
+                    max_retries = FOCUS_DRIFT_MAX_RETRIES,
+                    reason = %last_drift_reason,
+                    "Focus drift detected, retrying"
+                );
                 tokio::time::sleep(std::time::Duration::from_millis(FOCUS_DRIFT_RETRY_DELAY_MS))
                     .await;
             }
         }
         if !focus_valid {
+            tracing::warn!(
+                session_id,
+                retries_exhausted = FOCUS_DRIFT_MAX_RETRIES,
+                reason = %last_drift_reason,
+                "Focus drift — all retries exhausted"
+            );
             return Err(GuiInteractionError::FocusDrift(last_drift_reason));
         }
 
@@ -636,12 +675,21 @@ impl GuiInteractionService {
             Some(format!("ticket_id={}", req.ticket.ticket_id)),
         );
 
-        Ok(GuiExecutionPlan {
+        let plan = GuiExecutionPlan {
             session_id: session_id.to_string(),
             command_id: format!("gui-action-{}", Utc::now().timestamp_millis().abs()),
             actions: confirmed_action.actions,
             ticket: req.ticket,
-        })
+        };
+
+        tracing::info!(
+            session_id,
+            command_id = %plan.command_id,
+            action_count = plan.actions.len(),
+            "GUI execution prepared"
+        );
+
+        Ok(plan)
     }
 
     pub async fn complete_execution(
@@ -683,6 +731,23 @@ impl GuiInteractionService {
             detail.clone(),
         );
 
+        if succeeded {
+            tracing::info!(
+                session_id,
+                steps_completed,
+                total_steps,
+                "GUI execution completed successfully"
+            );
+        } else {
+            tracing::warn!(
+                session_id,
+                steps_completed,
+                total_steps,
+                detail = detail.as_deref().unwrap_or("unknown"),
+                "GUI execution failed"
+            );
+        }
+
         Ok(GuiExecutionOutcome {
             session: updated_session,
             succeeded,
@@ -713,6 +778,8 @@ impl GuiInteractionService {
         if let Some(handle_id) = overlay_handle_id {
             let _ = self.overlay_driver.clear_highlights(&handle_id).await;
         }
+
+        tracing::info!(session_id, "GUI session cancelled");
 
         self.publish_event(
             session_id.to_string(),
@@ -783,6 +850,13 @@ impl GuiInteractionService {
 
         for handle_id in orphaned_overlay_ids {
             let _ = self.overlay_driver.clear_highlights(&handle_id).await;
+        }
+
+        if !expired_ids.is_empty() {
+            tracing::debug!(
+                count = expired_ids.len(),
+                "GUI sessions expired by TTL cleanup"
+            );
         }
 
         for session_id in expired_ids {

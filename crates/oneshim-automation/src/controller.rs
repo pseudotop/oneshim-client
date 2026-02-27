@@ -362,8 +362,17 @@ impl AutomationController {
 
         let total_deadline = std::time::Duration::from_secs(GUI_EXECUTE_TIMEOUT_SECS);
         let action_timeout = std::time::Duration::from_secs(GUI_ACTION_TIMEOUT_SECS);
+        let execution_start = Instant::now();
 
         let total_steps = plan.actions.len();
+        tracing::info!(
+            session_id,
+            command_id = %plan.command_id,
+            total_steps,
+            timeout_secs = GUI_EXECUTE_TIMEOUT_SECS,
+            "GUI execution started"
+        );
+
         let actions_result = tokio::time::timeout(total_deadline, async {
             let mut last_result = IntentResult {
                 success: false,
@@ -400,14 +409,25 @@ impl AutomationController {
                         if last_result.success {
                             steps_completed += 1;
                         } else {
+                            tracing::warn!(
+                                stage = index,
+                                error = last_result.error.as_deref().unwrap_or("unknown"),
+                                "GUI action failed at stage"
+                            );
                             break;
                         }
                     }
                     Ok(Err(err)) => {
+                        tracing::warn!(stage = index, error = %err, "GUI action error at stage");
                         execution_error = Some(err.to_string());
                         break;
                     }
                     Err(_elapsed) => {
+                        tracing::warn!(
+                            stage = index,
+                            timeout_secs = GUI_ACTION_TIMEOUT_SECS,
+                            "GUI action timed out at stage"
+                        );
                         execution_error = Some(format!(
                             "GUI action timed out after {}s (stage {})",
                             GUI_ACTION_TIMEOUT_SECS, index
@@ -425,6 +445,12 @@ impl AutomationController {
             Ok(inner) => inner,
             Err(_elapsed) => {
                 let detail = format!("GUI execution timed out after {GUI_EXECUTE_TIMEOUT_SECS}s");
+                tracing::error!(
+                    session_id,
+                    timeout_secs = GUI_EXECUTE_TIMEOUT_SECS,
+                    elapsed_ms = execution_start.elapsed().as_millis() as u64,
+                    "GUI total execution timeout exceeded"
+                );
                 let _ = service
                     .complete_execution(session_id, false, Some(detail.clone()), 0, total_steps)
                     .await;
@@ -458,6 +484,15 @@ impl AutomationController {
                 total_steps,
             )
             .await?;
+
+        tracing::info!(
+            session_id,
+            succeeded,
+            steps_completed,
+            total_steps,
+            elapsed_ms = execution_start.elapsed().as_millis() as u64,
+            "GUI execution finished"
+        );
 
         if let Some(err) = execution_error {
             return Err(GuiInteractionError::Internal(err));
