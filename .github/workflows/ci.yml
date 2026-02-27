@@ -152,7 +152,7 @@ jobs:
           shared-key: ci-check
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: ./scripts/cargo-cache.sh fmt --all -- --check
 
       - name: Verify web contract boundary
         run: ./scripts/verify-web-contract-boundary.sh
@@ -177,13 +177,13 @@ jobs:
         run: ./scripts/verify-commit-message-hygiene.sh "${{ github.event.pull_request.base.sha || '' }}" "${{ github.sha }}"
 
       - name: Run clippy (standalone)
-        run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+        run: ./scripts/cargo-cache.sh clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
       - name: Run clippy (server features)
-        run: cargo clippy --workspace --all-targets --features server -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+        run: ./scripts/cargo-cache.sh clippy --workspace --all-targets --features server -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
       - name: Run clippy (grpc features)
-        run: cargo clippy --workspace --all-targets --features grpc -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+        run: ./scripts/cargo-cache.sh clippy --workspace --all-targets --features grpc -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
   perf-gates:
     name: Performance Gates
@@ -227,10 +227,10 @@ jobs:
           shared-key: ci-perf-gates
 
       - name: Run automation perf gate tests
-        run: cargo test --release -p oneshim-automation perf_budget_ -- --nocapture
+        run: ./scripts/cargo-cache.sh test --release -p oneshim-automation perf_budget_ -- --nocapture
 
       - name: Run vision perf gate tests
-        run: cargo test --release -p oneshim-vision perf_budget_ -- --nocapture
+        run: ./scripts/cargo-cache.sh test --release -p oneshim-vision perf_budget_ -- --nocapture
 
   test:
     name: Test
@@ -273,13 +273,13 @@ jobs:
           shared-key: ci-test
 
       - name: Run tests (standalone)
-        run: cargo test --workspace
+        run: ./scripts/cargo-cache.sh test --workspace
 
       - name: Run tests (server features)
-        run: cargo test --workspace --features server
+        run: ./scripts/cargo-cache.sh test --workspace --features server
 
       - name: Run tests (grpc features)
-        run: cargo test --workspace --features grpc
+        run: ./scripts/cargo-cache.sh test --workspace --features grpc
 
   build-pr-smoke:
     name: Build PR Smoke (linux)
@@ -341,7 +341,7 @@ jobs:
           shared-key: ci-build-pr-linux
 
       - name: Build release (linux smoke)
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+        run: ./scripts/cargo-cache.sh build --release --target x86_64-unknown-linux-gnu
 
   build:
     name: Build (${{ matrix.target }})
@@ -423,7 +423,8 @@ jobs:
           shared-key: ci-build-${{ matrix.target }}
 
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }}
+        shell: bash
+        run: ./scripts/cargo-cache.sh build --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'

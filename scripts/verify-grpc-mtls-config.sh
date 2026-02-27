@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CARGO_CMD="$ROOT_DIR/scripts/cargo-cache.sh"
 cd "${ROOT_DIR}"
 
 echo "[grpc-mtls] Validating TLS/mTLS configuration invariants"
-cargo test -p oneshim-network --features grpc test_tls_
-cargo test -p oneshim-network --features grpc test_mtls_
+"$CARGO_CMD" test -p oneshim-network --features grpc test_tls_
+"$CARGO_CMD" test -p oneshim-network --features grpc test_mtls_
 
 echo "[grpc-mtls] TLS/mTLS validation checks completed"

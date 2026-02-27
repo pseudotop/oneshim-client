@@ -44,29 +44,29 @@ jobs:
 
       - name: Install tooling
         run: |
-          cargo install cargo-audit --locked
-          cargo install cargo-deny --locked
-          cargo install cargo-vet --locked
-          cargo install cargo-about --locked
-          cargo install cargo-cyclonedx --locked
+          ./scripts/cargo-cache.sh install cargo-audit --locked
+          ./scripts/cargo-cache.sh install cargo-deny --locked
+          ./scripts/cargo-cache.sh install cargo-vet --locked
+          ./scripts/cargo-cache.sh install cargo-about --locked
+          ./scripts/cargo-cache.sh install cargo-cyclonedx --locked
 
       - name: RustSec audit
-        run: cargo audit
+        run: ./scripts/cargo-cache.sh audit
 
       - name: License/advisory/source policy
-        run: cargo deny check licenses advisories sources bans
+        run: ./scripts/cargo-cache.sh deny check licenses advisories sources bans
 
       - name: Supply-chain policy (cargo-vet)
-        run: cargo vet check
+        run: ./scripts/cargo-cache.sh vet check
 
       - name: Generate third-party notice
-        run: cargo about generate --workspace --offline --threshold 1.0 --config about.toml about.hbs > THIRD_PARTY_NOTICES.html
+        run: ./scripts/cargo-cache.sh about generate --workspace --offline --threshold 1.0 --config about.toml about.hbs > THIRD_PARTY_NOTICES.html
 
       - name: Generate SBOM (CycloneDX)
         run: |
           mkdir -p artifacts/sbom
           find crates -name 'sbom.cdx.json' -delete
-          cargo cyclonedx --format json --override-filename sbom.cdx --manifest-path Cargo.toml
+          ./scripts/cargo-cache.sh cyclonedx --format json --override-filename sbom.cdx --manifest-path Cargo.toml
 
           sbom_count=0
           while IFS= read -r sbom_path; do

@@ -13,6 +13,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CARGO_CMD="$ROOT_DIR/scripts/cargo-cache.sh"
+
+cd "$ROOT_DIR"
+
 if [ $# -ne 1 ]; then
   echo "Usage: $0 <version>"
   echo "Example: $0 0.0.2"
@@ -57,7 +63,7 @@ rm -f Cargo.toml.bak
 
 # 2. Update Cargo.lock
 echo "Updating Cargo.lock..."
-cargo update --workspace 2>/dev/null || cargo generate-lockfile 2>/dev/null || true
+"$CARGO_CMD" update --workspace 2>/dev/null || "$CARGO_CMD" generate-lockfile 2>/dev/null || true
 
 # 3. Validate CHANGELOG.md
 if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then

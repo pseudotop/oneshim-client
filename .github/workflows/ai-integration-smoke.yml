@@ -116,4 +116,4 @@ jobs:
           ONESHIM_AI_SMOKE_OCR_ENDPOINT: ${{ secrets.ONESHIM_AI_SMOKE_OCR_ENDPOINT }}
           ONESHIM_AI_SMOKE_OCR_API_KEY: ${{ secrets.ONESHIM_AI_SMOKE_OCR_API_KEY }}
           ONESHIM_AI_SMOKE_OCR_MODEL: ${{ secrets.ONESHIM_AI_SMOKE_OCR_MODEL }}
-        run: cargo test -p oneshim-network --test ai_provider_live_smoke -- --nocapture --test-threads=1
+        run: ./scripts/cargo-cache.sh test -p oneshim-network --test ai_provider_live_smoke -- --nocapture --test-threads=1

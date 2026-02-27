@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 
 function Write-Info {
     param([string]$Message)
@@ -49,6 +50,7 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
 }
 
 $serverProcess = $null
+Push-Location $repoRoot
 try {
     Write-Info "Serving assets from $AssetsDir on http://$ListenHost`:$Port"
     $serverProcess = Start-Process `
@@ -79,7 +81,12 @@ try {
 
     if (-not $SkipUpdaterTests) {
         Write-Info "Running updater reliability regression tests"
-        & cargo test -p oneshim-app release_reliability_ -- --nocapture
+        $bashCommand = Get-Command bash -ErrorAction SilentlyContinue
+        if ($bashCommand) {
+            & $bashCommand.Source -lc "./scripts/cargo-cache.sh test -p oneshim-app release_reliability_ -- --nocapture"
+        } else {
+            & cargo test -p oneshim-app release_reliability_ -- --nocapture
+        }
     }
 
     Write-Info "Release reliability smoke completed"
@@ -88,4 +95,5 @@ try {
         Stop-Process -Id $serverProcess.Id -Force -ErrorAction SilentlyContinue
     }
     Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    Pop-Location
 }

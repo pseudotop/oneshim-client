@@ -55,7 +55,7 @@ For version pinning, signature enforcement, and uninstall:
 
 ```bash
 # 1) Run in standalone mode (recommended for security-sensitive environments)
-cargo run -p oneshim-app -- --offline
+./scripts/cargo-cache.sh run -p oneshim-app -- --offline
 
 # 2) Open local dashboard
 # http://localhost:9090
@@ -120,10 +120,10 @@ Standalone mode remains the production-ready default path for release use.
 ./scripts/build-frontend.sh
 
 # Development build
-cargo build -p oneshim-app
+./scripts/cargo-cache.sh build -p oneshim-app
 
 # Release build
-cargo build --release -p oneshim-app
+./scripts/cargo-cache.sh build --release -p oneshim-app
 ```
 
 ### Build Cache (Recommended for Local Development)
@@ -157,7 +157,7 @@ ONESHIM_TARGET_HARD_LIMIT_MB=6144 \
 
 ```bash
 # Standalone mode (recommended)
-cargo run -p oneshim-app -- --offline
+./scripts/cargo-cache.sh run -p oneshim-app -- --offline
 ```
 
 Connected mode is preview-only and intentionally gated behind explicit server/auth configuration.
@@ -167,16 +167,16 @@ Use standalone mode as the default production path unless your environment has v
 
 ```bash
 # Rust tests (current metrics: docs/STATUS.md)
-cargo test --workspace
+./scripts/cargo-cache.sh test --workspace
 
 # E2E tests (current metrics: docs/STATUS.md) — web dashboard
 cd crates/oneshim-web/frontend && pnpm test:e2e
 
 # Lint (policy: zero warnings in CI)
-cargo clippy --workspace
+./scripts/cargo-cache.sh clippy --workspace
 
 # Format check
-cargo fmt --check
+./scripts/cargo-cache.sh fmt --check
 
 # Language / i18n quality checks
 ./scripts/check-language.sh
@@ -350,14 +350,14 @@ Korean companion policy/status docs: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DO
 
 macOS .app bundle:
 ```bash
-cargo install cargo-bundle
-cargo bundle --release -p oneshim-app
+./scripts/cargo-cache.sh install cargo-bundle
+./scripts/cargo-cache.sh bundle --release -p oneshim-app
 ```
 
 Windows .msi:
 ```bash
-cargo install cargo-wix
-cargo wix -p oneshim-app
+./scripts/cargo-cache.sh install cargo-wix
+./scripts/cargo-cache.sh wix -p oneshim-app
 ```
 
 ## License

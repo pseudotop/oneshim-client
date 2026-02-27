@@ -49,10 +49,10 @@ jobs:
 
       - name: Install tooling
         run: |
-          cargo install cargo-audit --locked
-          cargo install cargo-deny --locked
-          cargo install cargo-vet --locked
-          cargo install cargo-cyclonedx --locked
+          ./scripts/cargo-cache.sh install cargo-audit --locked
+          ./scripts/cargo-cache.sh install cargo-deny --locked
+          ./scripts/cargo-cache.sh install cargo-vet --locked
+          ./scripts/cargo-cache.sh install cargo-cyclonedx --locked
           python3 -m pip install --upgrade pynacl
 
       - name: Run integrity verification script

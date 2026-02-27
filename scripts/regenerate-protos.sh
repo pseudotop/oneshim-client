@@ -13,6 +13,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CARGO_CMD="$ROOT_DIR/scripts/cargo-cache.sh"
 PROTO_ROOT="$ROOT_DIR/api/proto"
 OUT_DIR="$ROOT_DIR/crates/oneshim-network/src/proto/generated"
 
@@ -72,7 +73,7 @@ $(for p in "${PROTOS[@]}"; do echo "        std::path::PathBuf::from(\"$p\"),"; 
 BUILDRS
 
 echo "Running code generation (this downloads tonic-prost-build if needed)..."
-(cd "$TEMP_DIR" && cargo build --quiet 2>&1)
+"$CARGO_CMD" build --manifest-path "$TEMP_DIR/Cargo.toml" --quiet 2>&1
 
 echo "Generated: $OUT_DIR/oneshim.client.v1.rs"
 echo ""

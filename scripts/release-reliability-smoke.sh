@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CARGO_CMD="$ROOT_DIR/scripts/cargo-cache.sh"
+
 ASSETS_DIR="${ONESHIM_SMOKE_ASSETS_DIR:-dist}"
 INSTALL_SCRIPT="${ONESHIM_INSTALL_SCRIPT:-scripts/install.sh}"
 HOST="${ONESHIM_SMOKE_HOST:-127.0.0.1}"
@@ -167,7 +171,7 @@ info "Validating first-run command"
 
 if [[ "$RUN_UPDATER_TESTS" == "1" ]]; then
   info "Running updater reliability regression tests"
-  cargo test -p oneshim-app release_reliability_ -- --nocapture
+  "$CARGO_CMD" test --manifest-path "$ROOT_DIR/Cargo.toml" -p oneshim-app release_reliability_ -- --nocapture
 fi
 
 info "Release reliability smoke completed"

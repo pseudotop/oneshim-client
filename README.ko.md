@@ -55,7 +55,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
 
 ```bash
 # 1) Standalone 모드로 실행 (보안 민감 환경 권장)
-cargo run -p oneshim-app -- --offline
+./scripts/cargo-cache.sh run -p oneshim-app -- --offline
 
 # 2) 로컬 대시보드 열기
 # http://localhost:9090
@@ -120,10 +120,10 @@ Connected 모드는 opt-in 프리뷰 경로로만 제공됩니다.
 ./scripts/build-frontend.sh
 
 # 개발 빌드
-cargo build -p oneshim-app
+./scripts/cargo-cache.sh build -p oneshim-app
 
 # 릴리스 빌드
-cargo build --release -p oneshim-app
+./scripts/cargo-cache.sh build --release -p oneshim-app
 ```
 
 ### 빌드 캐시 (로컬 개발 권장)
@@ -157,7 +157,7 @@ ONESHIM_TARGET_HARD_LIMIT_MB=6144 \
 
 ```bash
 # Standalone 모드 (권장)
-cargo run -p oneshim-app -- --offline
+./scripts/cargo-cache.sh run -p oneshim-app -- --offline
 ```
 
 Connected 모드는 프리뷰 전용이며, 명시적인 서버/인증 설정에서만 사용하도록 게이트되어 있습니다.
@@ -167,16 +167,16 @@ Connected 모드는 프리뷰 전용이며, 명시적인 서버/인증 설정에
 
 ```bash
 # Rust 테스트 (현재 지표: docs/STATUS.md)
-cargo test --workspace
+./scripts/cargo-cache.sh test --workspace
 
 # E2E 테스트 (현재 지표: docs/STATUS.md) — 웹 대시보드
 cd crates/oneshim-web/frontend && pnpm test:e2e
 
 # 린트 (정책: CI에서 경고 0건)
-cargo clippy --workspace
+./scripts/cargo-cache.sh clippy --workspace
 
 # 포맷 검사
-cargo fmt --check
+./scripts/cargo-cache.sh fmt --check
 ```
 
 ## 설치
@@ -340,14 +340,14 @@ oneshim-client/
 
 macOS .app 번들:
 ```bash
-cargo install cargo-bundle
-cargo bundle --release -p oneshim-app
+./scripts/cargo-cache.sh install cargo-bundle
+./scripts/cargo-cache.sh bundle --release -p oneshim-app
 ```
 
 Windows .msi:
 ```bash
-cargo install cargo-wix
-cargo wix -p oneshim-app
+./scripts/cargo-cache.sh install cargo-wix
+./scripts/cargo-cache.sh wix -p oneshim-app
 ```
 
 ## 라이선스

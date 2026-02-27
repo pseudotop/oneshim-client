@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARTIFACT_DIR="${ROOT_DIR}/artifacts/integrity"
+CARGO_CMD="$ROOT_DIR/scripts/cargo-cache.sh"
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -37,15 +38,15 @@ fi
 
 cd "${ROOT_DIR}"
 
-cargo test -p oneshim-core update_integrity_policy
-cargo test -p oneshim-app integrity_guard
-cargo test -p oneshim-app verify_signature_
-cargo audit
-cargo deny check licenses advisories sources bans
-cargo vet check
+"$CARGO_CMD" test -p oneshim-core update_integrity_policy
+"$CARGO_CMD" test -p oneshim-app integrity_guard
+"$CARGO_CMD" test -p oneshim-app verify_signature_
+"$CARGO_CMD" audit
+"$CARGO_CMD" deny check licenses advisories sources bans
+"$CARGO_CMD" vet check
 
 find "${ROOT_DIR}/crates" -name 'sbom.cdx.json' -delete
-cargo cyclonedx --format json --override-filename sbom.cdx --manifest-path Cargo.toml
+"$CARGO_CMD" cyclonedx --format json --override-filename sbom.cdx --manifest-path Cargo.toml
 
 sbom_count=0
 while IFS= read -r sbom_path; do
