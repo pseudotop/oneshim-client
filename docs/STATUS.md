@@ -30,15 +30,49 @@ cargo fmt --check
 
 ## Current Snapshot
 
-- Rust tests: See latest CI run artifact/logs for exact count
+### Rust Tests (2026-02-27)
+
+| Crate | Tests | Status |
+|-------|------:|--------|
+| oneshim-core | 74 | pass |
+| oneshim-network | 87 | pass |
+| oneshim-suggestion | 17 | pass |
+| oneshim-storage | 42 | pass |
+| oneshim-monitor | 39 | pass |
+| oneshim-vision | 84 | pass |
+| oneshim-ui | 37 | pass |
+| oneshim-web | 119 | pass |
+| oneshim-automation | 183 | pass |
+| oneshim-app (unit) | 99 | pass |
+| oneshim-app (integration) | 32 | pass (3 ignored) |
+| oneshim-api-contracts | 8 | pass |
+| language-check | 4 | pass |
+| **Total** | **821** | **0 failed** |
+
+### Build & Lint
+
+- `cargo check --workspace`: pass
+- `cargo clippy --workspace --tests`: pass (2 pre-existing `type_complexity` warnings in `oneshim-app`)
+- `cargo fmt --check`: pass
 - E2E tests: See latest Playwright CI report for exact count
-- Lint status: Enforced in CI (`cargo clippy --workspace`)
-- Format status: Enforced in CI (`cargo fmt --check`)
-- Build status: Enforced in CI (`cargo build --workspace`)
+
+### CI/CD
+
 - Latest CI workflow run: success (`CI`) — [Run 22441091666](https://github.com/pseudotop/oneshim-client/actions/runs/22441091666) (2026-02-26)
 - Latest Release workflow run: success (`Release`, tag `v0.0.15`) — [Run 22439123731](https://github.com/pseudotop/oneshim-client/actions/runs/22439123731) (2026-02-26)
 - Latest Notarization workflow run: in progress (`Notarize macOS Release Assets`) — [Run 22440291739](https://github.com/pseudotop/oneshim-client/actions/runs/22440291739) (started 2026-02-26)
 - UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc3.md` (latest tracked run evidence)
+
+### GUI V2 Milestone Status (ADR-002)
+
+| Milestone | Description | Status |
+|-----------|-------------|--------|
+| M1 | Handler Integration Tests + Contract Documentation | done (75 tests, `001fc4f`) |
+| M2-P1 | Execution Reliability — focus drift retry, overlay cleanup, timeout | done (10 tests, `a6e7a1a`) |
+| M2-P2 | Ticket Expiry Grace Period + Partial Execution Tracking | done (10 tests, `411cd60`) |
+| M2-P3 | Execution Reliability Tracing | done (`933bfba`) |
+| M3 | SSE Event Stream Integration | pending |
+| M4 | End-to-End Workflow Tests | pending |
 
 ## Notes
 
