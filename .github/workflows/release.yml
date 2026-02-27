@@ -503,6 +503,7 @@ jobs:
         shell: bash
         run: |
           codesign --force --deep --options runtime --timestamp \
+            --entitlements crates/oneshim-app/assets/oneshim.entitlements \
             --keychain "$KEYCHAIN_PATH" \
             --sign "$MACOS_APP_SIGNING_IDENTITY_RESOLVED" \
             dist/ONESHIM.app

@@ -132,7 +132,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - Performance optimization: compound indexes, batch inserts, memory cache, ArrayQueue buffer pool
 
 ### oneshim-monitor (System Monitoring)
-- `system.rs`: `SysInfoMonitor` — CPU/Memory/Disk/Network (sysinfo 0.32)
+- `system.rs`: `SysInfoMonitor` — CPU/Memory/Disk/Network (sysinfo 0.38)
 - `process.rs`: `ProcessTracker` — active process/window + `get_detailed_processes()`
 - `macos.rs`: macOS specific (`#[cfg(target_os = "macos")]`) — osascript
 - `windows.rs`: Windows specific (`#[cfg(target_os = "windows")]`) — Win32 GetForegroundWindow + sysinfo
@@ -163,7 +163,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `views/`: suggestion_popup, main_window, status_bar, context_panel, timeline_view, settings
 
 ### oneshim-web (Local Web Dashboard)
-- `lib.rs`: `WebServer` — Axum 0.7 HTTP server + graceful shutdown
+- `lib.rs`: `WebServer` — Axum 0.8 HTTP server + graceful shutdown
 - `routes.rs`: REST API route definitions (16+ endpoints)
 - `handlers/`: metrics, processes, idle, sessions, frames, events, stats, tags, focus
 - `embedded.rs`: static file serving for React frontend using rust-embed
@@ -190,21 +190,21 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 | Category | Crate | Version |
 |----------|-------|---------|
 | Runtime | tokio | 1 (full) |
-| HTTP | reqwest | 0.12 |
-| Web Server | axum + tower-http | 0.7 / 0.6 |
-| SSE | eventsource-client | 0.13 |
-| WebSocket | tokio-tungstenite | 0.24 |
-| **gRPC** | tonic + prost | 0.12 / 0.13 |
-| DB | rusqlite | 0.32 (bundled) |
-| Monitoring | sysinfo | 0.32 |
-| Image | image + fast_image_resize + webp + xcap | 0.25 / 4 / 0.3 / 0.8 |
-| UI | iced | 0.13 |
-| Windows API | windows-sys | 0.59 |
+| HTTP | reqwest | 0.13 |
+| Web Server | axum + tower-http | 0.8 / 0.6 |
+| SSE | eventsource-stream | 0.2 |
+| WebSocket | tokio-tungstenite | 0.28 |
+| **gRPC** | tonic + tonic-prost + prost | 0.14 / 0.14 / 0.14 |
+| DB | rusqlite | 0.38 (bundled, fallible_uint) |
+| Monitoring | sysinfo | 0.38 |
+| Image | image + fast_image_resize + webp + xcap | 0.25 / 6 / 0.3 / 0.8 |
+| UI | iced | 0.14 |
+| Windows API | windows-sys | 0.61 |
 | Error | thiserror / anyhow | 2 / 1 |
 | Serialization| serde + serde_json | 1 |
 | Concurrency | crossbeam + parking_lot | 0.8 / 0.12 |
-| Caching | lru | 0.12 |
-| Auto Update | self_update + semver | 0.41 / 1 |
+| Caching | lru | 0.16 |
+| Auto Update | self_update + semver | 0.42 / 1 |
 | Decompression| tar + zip | 0.4 / 2 |
 
 ## Coding Conventions
@@ -246,7 +246,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - **Notification System**: Desktop notifications (idle, long session, high usage)
 
 ### Phase 9 Additions (Local Web Dashboard)
-- **New Crate**: `oneshim-web` — REST API based on Axum 0.7 + React frontend
+- **New Crate**: `oneshim-web` — REST API based on Axum 0.8 + React frontend
 - **REST API**: 11 endpoints (metrics, processes, idle, sessions, frames, events, stats)
 - **Frontend**: React 18 + Vite + Tailwind CSS + Recharts
   - Dashboard Page: System summary, CPU/Memory charts, app usage time, Top 10 processes
@@ -630,7 +630,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - **Async OCR** (`ocr.rs`):
   - `extract_async()` — Prevent main thread blocking using `spawn_blocking`
   - `extract_roi_async()` — Process center region only (CPU saving)
-- **New Dependencies**: `lru 0.12`, `crossbeam 0.8`, `parking_lot 0.12`
+- **New Dependencies**: `lru 0.16`, `crossbeam 0.8`, `parking_lot 0.12`
 - **Tests**: 322 all passed
 
 ### Phase 34 Additions (Server Integration Enhancement)
@@ -696,7 +696,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - Batch upload: Warning that frames are unsupported via REST
   - Suggestion list: Returns empty list when REST unsupported
 - **Industrial Environment ASCII Output**: Disable emojis with `NO_EMOJI=1` env var
-- **New Dependencies**: `tonic 0.12`, `prost 0.13`, `prost-types 0.13`
+- **New Dependencies**: `tonic 0.14`, `tonic-prost 0.14`, `prost 0.14`, `prost-types 0.14`
 - **Tests**: Mock server communication verified (All 8 RPCs successful)
 
 ### Phase 37 Additions (REST Standardization + gRPC Port Fallback) ⭐ NEW (2026-02-05)

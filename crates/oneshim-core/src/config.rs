@@ -53,7 +53,7 @@ impl Default for IntegrityConfig {
     fn default() -> Self {
         Self {
             enabled: default_integrity_enabled(),
-            require_signed_policy_bundle: false,
+            require_signed_policy_bundle: true,
             policy_file_path: None,
             policy_signature_path: None,
             policy_public_key: None,
