@@ -145,8 +145,8 @@ pub fn should_run_now(config: &AppConfig) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use self::config::{PlatformEgressPolicy, REDACTED_WINDOW_TITLE};
+    use super::*;
     use oneshim_core::config::{AiAccessMode, ExternalDataPolicy, PiiFilterLevel, PrivacyConfig};
     use oneshim_core::models::event::{ContextEvent, Event};
     use std::time::Duration;

@@ -4,10 +4,7 @@
 use super::{ReleaseInfo, UpdateError, Updater};
 
 impl Updater {
-    pub(super) fn find_platform_asset(
-        &self,
-        release: &ReleaseInfo,
-    ) -> Result<String, UpdateError> {
+    pub(super) fn find_platform_asset(&self, release: &ReleaseInfo) -> Result<String, UpdateError> {
         let platform_patterns = Self::get_platform_patterns()?;
 
         for asset in &release.assets {

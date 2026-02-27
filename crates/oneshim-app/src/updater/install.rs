@@ -188,10 +188,7 @@ impl Updater {
         format!("{:x}", hasher.finalize())
     }
 
-    pub(super) fn validate_download_url(
-        &self,
-        url: &str,
-    ) -> Result<reqwest::Url, UpdateError> {
+    pub(super) fn validate_download_url(&self, url: &str) -> Result<reqwest::Url, UpdateError> {
         let parsed = reqwest::Url::parse(url)
             .map_err(|e| UpdateError::Download(format!("Failed to parse download URL: {}", e)))?;
 
@@ -433,10 +430,7 @@ impl Updater {
         self.find_binary_in_dir(extract_dir)
     }
 
-    pub(super) fn find_binary_in_dir(
-        &self,
-        dir: &std::path::Path,
-    ) -> Result<PathBuf, UpdateError> {
+    pub(super) fn find_binary_in_dir(&self, dir: &std::path::Path) -> Result<PathBuf, UpdateError> {
         let binary_name = if cfg!(windows) {
             "oneshim.exe"
         } else {
