@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-02-27
+
+### Fixed
+
+- **macOS installer naming**: Remove misleading `-unsigned` suffix from signed DMG/PKG artifacts
+- **Notarize workflow**: Update artifact filenames to match signed installer names
+- **Installer smoke test**: Align default filenames with release pipeline
+
+### Changed
+
+- **Build scripts**: Replace direct `cargo` calls with `cargo-cache.sh` wrapper across all CI workflows and scripts
+
 ## [0.1.0] - 2026-02-27
 
 First public release of the ONESHIM Rust desktop client.
@@ -68,5 +80,6 @@ Each version entry must include:
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/pseudotop/oneshim-client/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/pseudotop/oneshim-client/releases/tag/v0.1.0
