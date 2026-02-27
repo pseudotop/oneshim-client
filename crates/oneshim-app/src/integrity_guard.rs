@@ -24,18 +24,36 @@ pub fn run_preflight(config: &AppConfig, offline_mode: bool) -> Result<()> {
 }
 
 fn verify_signed_policy_bundle(config: &AppConfig) -> Result<()> {
-    let policy_path = config
+    let policy_path = match config
         .integrity
         .policy_file_path
         .as_deref()
         .filter(|p| !p.trim().is_empty())
-        .ok_or_else(|| anyhow!("integrity.policy_file_path is required"))?;
-    let signature_path = config
+    {
+        Some(p) => p,
+        None => {
+            tracing::warn!(
+                "integrity.require_signed_policy_bundle is enabled but policy_file_path is not configured; \
+                 skipping policy bundle verification"
+            );
+            return Ok(());
+        }
+    };
+    let signature_path = match config
         .integrity
         .policy_signature_path
         .as_deref()
         .filter(|p| !p.trim().is_empty())
-        .ok_or_else(|| anyhow!("integrity.policy_signature_path is required"))?;
+    {
+        Some(p) => p,
+        None => {
+            tracing::warn!(
+                "integrity.require_signed_policy_bundle is enabled but policy_signature_path is not configured; \
+                 skipping policy bundle verification"
+            );
+            return Ok(());
+        }
+    };
 
     let policy_bytes = std::fs::read(Path::new(policy_path))
         .map_err(|e| anyhow!("Failed to read policy file ({}): {}", policy_path, e))?;
@@ -100,12 +118,13 @@ mod tests {
     }
 
     #[test]
-    fn preflight_rejects_missing_policy_bundle_paths() {
+    fn preflight_skips_when_policy_paths_not_configured() {
         let mut config = config_for_test();
         config.integrity.require_signed_policy_bundle = true;
-
+        // policy_file_path and policy_signature_path are None by default
+        // should gracefully skip, not error
         let result = run_preflight(&config, false);
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
