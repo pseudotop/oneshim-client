@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Duration, Utc};
 use oneshim_core::error::CoreError;
 use serde::Deserialize;
@@ -37,7 +35,6 @@ impl TokenManager {
         }
     }
 
-    ///
     /// # Arguments
     pub async fn login(&self, email: &str, password: &str) -> Result<(), CoreError> {
         let organization_id =

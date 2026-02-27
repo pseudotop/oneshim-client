@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Duration, Utc};
 use oneshim_core::models::event::ContextEvent;
 use oneshim_core::ports::vision::CaptureRequest;

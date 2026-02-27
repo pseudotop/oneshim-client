@@ -1,5 +1,3 @@
-//!
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -15,7 +13,6 @@ use oneshim_core::models::ui_scene::{
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
-///
 pub struct OcrElementFinder {
     ocr_provider: Arc<dyn OcrProvider>,
     last_image: tokio::sync::RwLock<Option<(Vec<u8>, String)>>,
@@ -87,7 +84,6 @@ impl OcrElementFinder {
             .collect()
     }
 
-    ///
     pub async fn analyze_scene(
         &self,
         app_name: Option<&str>,
@@ -259,7 +255,6 @@ impl ElementFinder for OcrElementFinder {
     }
 }
 
-///
 pub struct ChainedElementFinder {
     finders: Vec<Box<dyn ElementFinder>>,
 }
@@ -372,7 +367,6 @@ impl ElementFinder for ChainedElementFinder {
     }
 }
 
-///
 fn text_similarity(text: &str, query: &str) -> f64 {
     let text_lower = text.to_lowercase();
     let query_lower = query.to_lowercase();

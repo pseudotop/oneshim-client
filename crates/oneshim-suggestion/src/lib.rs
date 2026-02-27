@@ -1,5 +1,4 @@
 //! # oneshim-suggestion
-//!
 
 pub mod feedback;
 pub mod history;

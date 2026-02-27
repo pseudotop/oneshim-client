@@ -1,13 +1,13 @@
-//!
-
 use std::sync::Arc;
 
 #[cfg(feature = "server")]
 use async_trait::async_trait;
 use oneshim_automation::local_llm::LocalLlmProvider;
+use oneshim_core::config::{
+    AiAccessMode, AiProviderConfig, LlmProviderType, OcrProviderType, PiiFilterLevel,
+};
 #[cfg(feature = "server")]
 use oneshim_core::config::{ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig};
-use oneshim_core::config::{AiAccessMode, AiProviderConfig, LlmProviderType, OcrProviderType, PiiFilterLevel};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::LlmProvider;
 use oneshim_core::ports::ocr_provider::OcrProvider;
@@ -54,7 +54,6 @@ pub struct AiProviderAdapters {
     pub llm_fallback_reason: Option<String>,
 }
 
-///
 #[cfg(feature = "server")]
 struct GuardedOcrProvider {
     inner: Arc<dyn OcrProvider>,
@@ -240,8 +239,7 @@ fn resolve_ocr_provider(
                     "ocr",
                     config.fallback_to_local,
                     || {
-                        let endpoint =
-                            require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
+                        let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
                         let remote =
                             Arc::new(RemoteOcrProvider::new(endpoint)?) as Arc<dyn OcrProvider>;
                         Ok(Arc::new(GuardedOcrProvider::new(
@@ -281,8 +279,7 @@ fn resolve_llm_provider(
                     "llm",
                     config.fallback_to_local,
                     || {
-                        let endpoint =
-                            require_endpoint_config(config.llm_api.as_ref(), "llm_api")?;
+                        let endpoint = require_endpoint_config(config.llm_api.as_ref(), "llm_api")?;
                         Ok(Arc::new(RemoteLlmProvider::new(endpoint)?) as Arc<dyn LlmProvider>)
                     },
                     || Arc::new(LocalLlmProvider::new()) as Arc<dyn LlmProvider>,

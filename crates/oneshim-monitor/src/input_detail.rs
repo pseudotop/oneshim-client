@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use oneshim_core::config::PiiFilterLevel;
 use serde::{Deserialize, Serialize};
@@ -81,7 +79,6 @@ pub enum DetailedInputEvent {
     Scroll(ScrollEvent),
 }
 
-///
 pub fn sanitize_key_name(key_name: &str, level: PiiFilterLevel) -> String {
     match level {
         PiiFilterLevel::Off => key_name.to_string(),

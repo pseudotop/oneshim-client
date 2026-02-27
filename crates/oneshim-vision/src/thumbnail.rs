@@ -1,5 +1,3 @@
-//!
-
 use fast_image_resize::{images::Image as FirImage, ResizeAlg, ResizeOptions, Resizer};
 use image::{DynamicImage, RgbaImage};
 use lru::LruCache;
@@ -19,7 +17,6 @@ static THUMBNAIL_CACHE: Lazy<Mutex<LruCache<CacheKey, Vec<u8>>>> = Lazy::new(|| 
     ))
 });
 
-///
 #[inline]
 fn compute_image_hash(image: &DynamicImage) -> u64 {
     let rgba = image.to_rgba8();
@@ -62,7 +59,6 @@ fn compute_image_hash(image: &DynamicImage) -> u64 {
     hash
 }
 
-///
 pub fn fast_resize(
     image: &DynamicImage,
     width: u32,

@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
@@ -26,7 +24,6 @@ pub trait StorageService: Send + Sync {
     async fn enforce_retention(&self) -> Result<usize, CoreError>;
 }
 
-///
 #[async_trait]
 pub trait MetricsStorage: Send + Sync {
     async fn save_metrics(&self, metrics: &SystemMetrics) -> Result<(), CoreError>;

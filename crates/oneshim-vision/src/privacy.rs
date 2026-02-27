@@ -1,8 +1,5 @@
-//!
-
 use oneshim_core::config::PiiFilterLevel;
 
-///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PiiMarker {
     Email,
@@ -43,7 +40,6 @@ pub fn sanitize_title(title: &str) -> String {
     sanitize_title_with_level(title, PiiFilterLevel::Standard)
 }
 
-///
 pub fn detect_pii_markers_with_level(text: &str, level: PiiFilterLevel) -> Vec<PiiMarker> {
     let masked = sanitize_title_with_level(text, level);
     let mut markers = Vec::new();

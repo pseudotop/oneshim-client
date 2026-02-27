@@ -1,6 +1,3 @@
-//!
-//!
-
 #![allow(clippy::redundant_closure, clippy::unit_arg)]
 
 use std::hint::black_box;

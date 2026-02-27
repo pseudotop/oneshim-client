@@ -1,5 +1,3 @@
-//!
-
 use chrono::Utc;
 use oneshim_core::models::suggestion::{FeedbackType, Priority, Suggestion, SuggestionType};
 use oneshim_suggestion::history::SuggestionHistory;

@@ -1,7 +1,3 @@
-//!
-//!
-//!
-
 use oneshim_core::error::CoreError;
 use oneshim_core::models::context::{MousePosition, WindowInfo};
 use std::process::Command;
@@ -34,7 +30,6 @@ pub fn detect_display_server() -> DisplayServer {
     DisplayServer::Unknown
 }
 
-///
 pub fn get_active_window_linux() -> Result<Option<WindowInfo>, CoreError> {
     let display_server = detect_display_server();
 
@@ -160,7 +155,6 @@ fn get_process_name(pid: u32) -> Option<String> {
         .map(|s| s.trim().to_string())
 }
 
-///
 pub fn get_idle_time_linux() -> Option<u64> {
     let display_server = detect_display_server();
 
@@ -198,7 +192,6 @@ fn get_idle_time_x11() -> Option<u64> {
     Some(ms / 1000)
 }
 
-///
 pub fn get_mouse_position_linux() -> Option<MousePosition> {
     let display_server = detect_display_server();
 

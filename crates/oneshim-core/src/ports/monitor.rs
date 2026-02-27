@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 
 use crate::error::CoreError;
@@ -18,7 +16,6 @@ pub trait ProcessMonitor: Send + Sync {
 
     async fn get_top_processes(&self, limit: usize) -> Result<Vec<ProcessInfo>, CoreError>;
 
-    ///
     async fn get_detailed_processes(
         &self,
         foreground_pid: Option<u32>,

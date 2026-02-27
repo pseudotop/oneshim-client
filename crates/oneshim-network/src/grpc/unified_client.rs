@@ -41,7 +41,6 @@ pub struct SessionResponse {
     pub capabilities: Vec<String>,
 }
 
-///
 pub struct UnifiedClient {
     config: GrpcConfig,
 

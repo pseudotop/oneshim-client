@@ -1,5 +1,3 @@
-//!
-
 use std::sync::Arc;
 
 use oneshim_core::config::{ExternalDataPolicy, PiiFilterLevel, PrivacyConfig};
@@ -42,7 +40,6 @@ struct SensitiveRegion {
 
 // PrivacyGateway
 
-///
 pub struct PrivacyGateway {
     consent_manager: Arc<ConsentManager>,
     pii_filter_level: PiiFilterLevel,
@@ -65,7 +62,6 @@ impl PrivacyGateway {
         }
     }
 
-    ///
     pub async fn sanitize_image_for_external_policy(
         image_data: &[u8],
         pii_filter_level: PiiFilterLevel,
@@ -144,7 +140,6 @@ impl PrivacyGateway {
             .collect())
     }
 
-    ///
     async fn blur_pii_regions(image_data: &[u8], filter_level: PiiFilterLevel) -> (Vec<u8>, usize) {
         #[cfg(feature = "ocr")]
         {

@@ -1,4 +1,3 @@
-//!
 //! Linux(Landlock+seccomp), macOS(Seatbelt), Windows(Job Objects)
 
 use async_trait::async_trait;

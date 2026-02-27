@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -8,7 +6,7 @@ use crate::error::CoreError;
 
 pub const CURRENT_POLICY_VERSION: &str = "1.0.0";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConsentPermissions {
     // --- Tier 1 ---
     #[serde(default)]
@@ -33,22 +31,6 @@ pub struct ConsentPermissions {
     pub clipboard_monitoring: bool,
     #[serde(default)]
     pub file_access_monitoring: bool,
-}
-
-impl Default for ConsentPermissions {
-    fn default() -> Self {
-        Self {
-            screen_capture: false,
-            ocr_processing: false,
-            telemetry: false,
-            process_monitoring: false,
-            input_activity: false,
-            window_title_collection: false,
-            app_usage_analytics: false,
-            clipboard_monitoring: false,
-            file_access_monitoring: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

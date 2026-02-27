@@ -1,5 +1,3 @@
-//!
-
 use crate::error::CoreError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

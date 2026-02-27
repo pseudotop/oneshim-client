@@ -1,14 +1,8 @@
 //! # oneshim-network
-//!
-//!
 //! ## Feature Flags
-//!
-//!
-//!
 //! ```rust,ignore
 //! use oneshim_network::http_client::HttpApiClient;
 //! use oneshim_network::sse_client::SseStreamClient;
-//!
 //! #[cfg(feature = "grpc")]
 //! use oneshim_network::grpc::{GrpcAuthClient, GrpcConfig};
 //! ```

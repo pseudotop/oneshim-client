@@ -1,5 +1,3 @@
-//!
-
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use oneshim_core::error::CoreError;
@@ -34,7 +32,6 @@ impl WsClient {
         }
     }
 
-    ///
     pub async fn connect(
         &self,
         path: &str,

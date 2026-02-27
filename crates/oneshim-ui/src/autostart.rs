@@ -1,4 +1,3 @@
-//!
 //! macOS: LaunchAgent plist
 //! Windows: Registry (HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run)
 

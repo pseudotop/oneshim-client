@@ -9,7 +9,6 @@ use crate::AppState;
 
 use super::{PaginatedResponse, PaginationMeta, TimeRangeQuery};
 
-///
 /// GET /api/frames?from=&to=&limit=&offset=
 pub async fn get_frames(
     State(state): State<AppState>,
@@ -86,7 +85,6 @@ pub async fn get_frames(
     }))
 }
 
-///
 /// GET /api/frames/:id/image
 pub async fn get_frame_image(State(state): State<AppState>, Path(frame_id): Path<i64>) -> Response {
     let file_path = match state.storage.get_frame_file_path(frame_id) {

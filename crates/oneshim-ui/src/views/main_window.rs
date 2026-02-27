@@ -1,5 +1,3 @@
-//!
-
 use std::collections::VecDeque;
 
 pub const METRICS_HISTORY_SIZE: usize = 60;

@@ -61,10 +61,7 @@ impl GrpcAuthClient {
         Ok(response.into_inner())
     }
 
-    pub async fn refresh_token(
-        &mut self,
-        refresh_token: &str,
-    ) -> Result<TokenResponse, CoreError> {
+    pub async fn refresh_token(&mut self, refresh_token: &str) -> Result<TokenResponse, CoreError> {
         debug!("gRPC token refresh request");
 
         let request = tonic::Request::new(RefreshTokenRequest {

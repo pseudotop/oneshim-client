@@ -1,5 +1,4 @@
 //! # oneshim-monitor
-//!
 
 pub mod activity;
 pub mod clipboard;

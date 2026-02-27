@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -141,7 +139,6 @@ pub enum SessionState {
     EndedBySwitch,
 }
 
-///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkSession {
     pub id: i64,
@@ -175,7 +172,6 @@ impl WorkSession {
         self.state == SessionState::Active
     }
 
-    ///
     pub fn focus_score(&self) -> f32 {
         if self.duration_secs == 0 {
             return 0.0;
@@ -188,7 +184,6 @@ impl WorkSession {
     }
 }
 
-///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Interruption {
     pub id: i64,

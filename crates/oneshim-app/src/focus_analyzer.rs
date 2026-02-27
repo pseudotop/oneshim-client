@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Duration, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::work_session::{
@@ -13,7 +11,6 @@ use tracing::{debug, info, warn};
 
 use crate::workflow_intelligence::{PlaybookSignal, WorkflowIntelligence};
 
-///
 pub trait FocusStorage: Send + Sync {
     fn increment_focus_metrics(
         &self,
@@ -201,13 +198,11 @@ impl FocusAnalyzer {
         Self::new(FocusAnalyzerConfig::default(), storage, notifier)
     }
 
-    ///
     #[allow(dead_code)]
     pub async fn on_app_switch(&self, new_app: &str) {
         self.on_app_switch_with_context(new_app, "", None).await;
     }
 
-    ///
     pub async fn on_app_switch_with_context(
         &self,
         new_app: &str,
@@ -361,7 +356,6 @@ impl FocusAnalyzer {
         }
     }
 
-    ///
     pub async fn analyze_periodic(&self) {
         let now = Utc::now();
         let today = now.format("%Y-%m-%d").to_string();

@@ -1,5 +1,3 @@
-//!
-
 use std::fs;
 use std::time::Duration;
 
@@ -8,7 +6,6 @@ use oneshim_core::error::CoreError;
 use serde::{Deserialize, Serialize};
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Identity};
 
-///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrpcConfig {
     #[serde(default)]

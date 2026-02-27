@@ -1,5 +1,3 @@
-//!
-
 use anyhow::Result;
 use directories::ProjectDirs;
 use iced::{window, Font, Size, Task};
@@ -99,7 +97,6 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
     }
 }
 
-///
 /// - Main thread: iced GUI
 pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     info!("GUI + Agent mode started");

@@ -1,6 +1,4 @@
 //! # oneshim-web
-//!
-//!
 
 pub mod embedded;
 pub mod error;
@@ -94,12 +92,10 @@ impl WebServer {
         self
     }
 
-    ///
     pub fn event_sender(&self) -> broadcast::Sender<RealtimeEvent> {
         self.state.event_tx.clone()
     }
 
-    ///
     pub fn with_event_tx(mut self, event_tx: broadcast::Sender<RealtimeEvent>) -> Self {
         self.state.event_tx = event_tx;
         self
@@ -110,8 +106,6 @@ impl WebServer {
         self
     }
 
-    ///
-    ///
     /// # Arguments
     ///
     /// # Returns

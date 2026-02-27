@@ -1,5 +1,4 @@
 //! CLI subscription bridge artifacts.
-//!
 //! Generates command/skill files so Codex / Claude Code / Gemini CLI can
 //! consume ONESHIM exported context in provider subscription mode.
 

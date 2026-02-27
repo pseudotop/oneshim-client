@@ -1,5 +1,3 @@
-//!
-
 use tracing::{debug, info, warn};
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -29,7 +27,6 @@ fn get_process_windows() -> Vec<HWND> {
     windows
 }
 
-///
 pub fn hide_app() {
     let windows = get_process_windows();
     if windows.is_empty() {
@@ -45,7 +42,6 @@ pub fn hide_app() {
     info!("Windows: app (ShowWindow SW_HIDE)");
 }
 
-///
 pub fn show_app() {
     let windows = get_process_windows();
     if windows.is_empty() {

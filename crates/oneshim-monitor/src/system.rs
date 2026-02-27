@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::system::{NetworkInfo, SystemMetrics};

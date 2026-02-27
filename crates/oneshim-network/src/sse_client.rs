@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;

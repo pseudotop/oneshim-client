@@ -1,5 +1,4 @@
 //! # oneshim-ui
-//!
 
 pub mod app;
 pub mod autostart;

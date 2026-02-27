@@ -1,5 +1,3 @@
-//!
-
 use core_graphics::event::CGEvent;
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use oneshim_core::error::CoreError;
@@ -78,7 +76,6 @@ pub fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
     }))
 }
 
-///
 pub fn get_idle_time_macos() -> Option<u64> {
     use std::process::Command;
 
@@ -107,7 +104,6 @@ pub fn get_idle_time_macos() -> Option<u64> {
     None
 }
 
-///
 pub fn get_mouse_position_macos() -> Option<MousePosition> {
     let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState).ok()?;
 

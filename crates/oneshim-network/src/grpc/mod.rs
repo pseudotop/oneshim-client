@@ -1,7 +1,5 @@
 //! gRPC client module — Consumer Contract (oneshim.client.v1).
-//!
 //! ## Health Check
-//!
 //! ```rust,ignore
 //! let mut health = GrpcHealthClient::connect(config).await?;
 //! if health.is_healthy().await {

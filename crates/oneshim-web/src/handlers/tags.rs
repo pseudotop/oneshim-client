@@ -5,7 +5,6 @@ use oneshim_api_contracts::tags::{CreateTagRequest, TagResponse, UpdateTagReques
 use crate::error::ApiError;
 use crate::AppState;
 
-///
 /// GET /api/tags
 pub async fn list_tags(State(state): State<AppState>) -> Result<Json<Vec<TagResponse>>, ApiError> {
     let tags = state.storage.get_all_tags()?;
@@ -23,7 +22,6 @@ pub async fn list_tags(State(state): State<AppState>) -> Result<Json<Vec<TagResp
     Ok(Json(response))
 }
 
-///
 /// POST /api/tags
 pub async fn create_tag(
     State(state): State<AppState>,
@@ -41,7 +39,6 @@ pub async fn create_tag(
     }))
 }
 
-///
 /// GET /api/tags/:id
 pub async fn get_tag(
     State(state): State<AppState>,
@@ -60,7 +57,6 @@ pub async fn get_tag(
     }))
 }
 
-///
 /// PUT /api/tags/:id
 pub async fn update_tag(
     State(state): State<AppState>,
@@ -86,7 +82,6 @@ pub async fn update_tag(
     }))
 }
 
-///
 /// DELETE /api/tags/:id
 pub async fn delete_tag(
     State(state): State<AppState>,
@@ -103,7 +98,6 @@ pub async fn delete_tag(
     ))
 }
 
-///
 /// GET /api/frames/:frame_id/tags
 pub async fn get_frame_tags(
     State(state): State<AppState>,
@@ -124,7 +118,6 @@ pub async fn get_frame_tags(
     Ok(Json(response))
 }
 
-///
 /// POST /api/frames/:frame_id/tags/:tag_id
 pub async fn add_tag_to_frame(
     State(state): State<AppState>,
@@ -137,7 +130,6 @@ pub async fn add_tag_to_frame(
     ))
 }
 
-///
 /// DELETE /api/frames/:frame_id/tags/:tag_id
 pub async fn remove_tag_from_frame(
     State(state): State<AppState>,

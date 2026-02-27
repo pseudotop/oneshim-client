@@ -1,5 +1,4 @@
 #![cfg(feature = "server")]
-//!
 
 use oneshim_core::config::AppConfig;
 use oneshim_monitor::system::SysInfoMonitor;

@@ -1,16 +1,11 @@
-//!
-//!
 //!   cargo run -p oneshim-network --example grpc_test --features grpc
-//!
 //!   NO_EMOJI=1 cargo run -p oneshim-network --example grpc_test --features grpc
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use oneshim_network::auth::TokenManager;
-use oneshim_network::grpc::{
-    FeedbackAction, GrpcConfig, UnifiedClient, UploadBatchRequest,
-};
+use oneshim_network::grpc::{FeedbackAction, GrpcConfig, UnifiedClient, UploadBatchRequest};
 
 struct Output {
     use_emoji: bool,
@@ -144,10 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  user_id: {}", response.user_id);
 
             println!("\n=== 3. heartbeat test ===");
-            match client
-                .heartbeat(&response.session_id)
-                .await
-            {
+            match client.heartbeat(&response.session_id).await {
                 Ok(success) => {
                     println!("  {} heartbeat success: {}", out.ok(), success);
                 }
@@ -173,10 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             println!("\n=== 4. suggestion test ===");
-            match client
-                .subscribe_suggestions(&response.session_id)
-                .await
-            {
+            match client.subscribe_suggestions(&response.session_id).await {
                 Ok(mut stream) => {
                     println!("{} suggestion stream subscribe success", out.ok());
                     println!("first suggestion waiting in progress... (5s timeout)");
@@ -224,7 +213,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("  {} feedback sent failure: {}", out.err(), e);
                 }
             }
-
         }
         Err(e) => {
             println!("  {} session create failure: {}", out.err(), e);

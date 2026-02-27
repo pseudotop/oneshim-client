@@ -1,5 +1,3 @@
-//!
-//!
 //! 3. CreateProcessAsUser with restricted token
 //! 4. AssignProcessToJobObject
 

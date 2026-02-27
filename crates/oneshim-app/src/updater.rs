@@ -1,5 +1,3 @@
-//!
-
 #![allow(dead_code)] // UI /
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -605,7 +603,6 @@ impl Updater {
         }
     }
 
-    ///
     /// # Safety
     pub fn install_and_restart(&self, downloaded_path: &Path) -> Result<(), UpdateError> {
         use self_update::self_replace;

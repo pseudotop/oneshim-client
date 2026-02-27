@@ -1,5 +1,3 @@
-//!
-
 use oneshim_core::error::CoreError;
 use std::collections::HashMap;
 use tracing::debug;
@@ -53,7 +51,6 @@ impl SqliteStorage {
         Ok(map)
     }
 
-    ///
     /// # Arguments
     pub fn create_tag(&self, name: &str, color: &str) -> Result<TagRecord, CoreError> {
         let conn = self

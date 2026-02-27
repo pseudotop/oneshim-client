@@ -1,5 +1,3 @@
-//!
-
 use chrono::Utc;
 use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::event::{WindowInfo, WindowLayoutEvent, WindowLayoutEventType};
@@ -44,7 +42,6 @@ impl WindowLayoutTracker {
             .unwrap_or((1920, 1080))
     }
 
-    ///
     pub fn update(
         &self,
         app_name: &str,

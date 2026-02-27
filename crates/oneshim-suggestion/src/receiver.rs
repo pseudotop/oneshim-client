@@ -1,5 +1,3 @@
-//!
-
 use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::api_client::{SseClient, SseEvent};

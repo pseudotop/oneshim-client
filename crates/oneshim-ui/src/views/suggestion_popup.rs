@@ -1,5 +1,3 @@
-//!
-
 use oneshim_suggestion::presenter::SuggestionView;
 
 #[derive(Debug, Clone)]

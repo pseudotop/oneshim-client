@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use chrono::Utc;
 use oneshim_core::error::CoreError;
@@ -8,7 +6,6 @@ use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor};
 use std::sync::Arc;
 use tracing::debug;
 
-///
 pub struct ActivityTracker {
     process_monitor: Arc<dyn ProcessMonitor>,
 }
@@ -45,7 +42,6 @@ impl ActivityMonitor for ActivityTracker {
     }
 }
 
-///
 /// - macOS: Core Graphics API
 /// - Windows: Win32 GetCursorPos
 /// - Linux: xdotool getmouselocation (X11/XWayland)

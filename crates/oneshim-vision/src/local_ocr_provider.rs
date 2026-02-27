@@ -1,11 +1,8 @@
-//!
-
 use async_trait::async_trait;
 
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
-///
 pub struct LocalOcrProvider;
 
 impl LocalOcrProvider {

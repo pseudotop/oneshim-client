@@ -5,7 +5,6 @@ use oneshim_api_contracts::sessions::SessionResponse;
 use crate::error::ApiError;
 use crate::AppState;
 
-///
 /// GET /api/sessions
 pub async fn list_sessions(
     State(state): State<AppState>,
@@ -36,7 +35,6 @@ pub async fn list_sessions(
     Ok(Json(sessions))
 }
 
-///
 /// GET /api/sessions/:id
 pub async fn get_session(
     State(state): State<AppState>,

@@ -8,7 +8,6 @@ use crate::AppState;
 
 use super::TimeRangeQuery;
 
-///
 /// GET /api/metrics?from=&to=&limit=
 pub async fn get_metrics(
     State(state): State<AppState>,
@@ -46,7 +45,6 @@ pub async fn get_metrics(
     Ok(Json(response))
 }
 
-///
 /// GET /api/metrics/hourly?hours=24
 pub async fn get_hourly_metrics(
     State(state): State<AppState>,

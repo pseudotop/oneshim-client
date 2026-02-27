@@ -1,5 +1,3 @@
-//!
-
 use base64::Engine;
 use chrono::{Datelike, Duration as ChronoDuration, Timelike, Utc};
 use oneshim_core::config::{AiAccessMode, AppConfig, ExternalDataPolicy, PrivacyConfig, Weekday};
@@ -11,13 +9,13 @@ use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::event::{ContextEvent, Event, ProcessSnapshotEvent};
 use oneshim_core::models::frame::{FrameMetadata, ImagePayload};
 use oneshim_core::ports::api_client::ApiClient;
+use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
 use oneshim_core::ports::storage::{MetricsStorage, StorageService};
 use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
 use oneshim_monitor::idle::IdleTracker;
 use oneshim_monitor::input_activity::InputActivityCollector;
 use oneshim_monitor::window_layout::WindowLayoutTracker;
-use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_vision::privacy::{sanitize_title_with_level, should_exclude};
@@ -30,7 +28,6 @@ use tracing::{debug, info, warn};
 use crate::focus_analyzer::FocusAnalyzer;
 use crate::notification_manager::NotificationManager;
 
-///
 pub trait SchedulerStorage: MetricsStorage + Send + Sync {
     fn save_frame_metadata_with_bounds(
         &self,
@@ -936,7 +933,6 @@ impl Scheduler {
     }
 }
 
-///
 #[allow(dead_code)]
 pub fn should_run_now(config: &AppConfig) -> bool {
     let schedule = &config.schedule;

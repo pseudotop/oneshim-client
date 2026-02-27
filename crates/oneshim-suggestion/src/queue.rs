@@ -1,5 +1,3 @@
-//!
-
 use oneshim_core::models::suggestion::Suggestion;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;

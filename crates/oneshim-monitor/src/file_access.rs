@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use oneshim_core::config::FileAccessConfig;
 use serde::{Deserialize, Serialize};

@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -15,10 +13,8 @@ pub struct OcrResult {
     pub confidence: f64,
 }
 
-///
 #[async_trait]
 pub trait OcrProvider: Send + Sync {
-    ///
     async fn extract_elements(
         &self,
         image: &[u8],

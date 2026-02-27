@@ -1,5 +1,3 @@
-//!
-
 use image::{DynamicImage, GenericImageView};
 use oneshim_core::models::frame::Rect;
 use tracing::debug;
@@ -92,7 +90,6 @@ pub fn compute_delta(prev: &DynamicImage, curr: &DynamicImage) -> Option<DeltaRe
     })
 }
 
-///
 #[inline]
 fn is_tile_changed_fast(
     prev: &[u8],
@@ -219,7 +216,6 @@ pub fn compute_delta_adaptive(
     })
 }
 
-///
 #[inline]
 #[allow(clippy::too_many_arguments)]
 fn is_tile_changed_with_threshold(

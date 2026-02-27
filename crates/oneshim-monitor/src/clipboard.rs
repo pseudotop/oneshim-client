@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use oneshim_core::config::PiiFilterLevel;
 use serde::{Deserialize, Serialize};
@@ -34,7 +32,6 @@ impl ClipboardMonitor {
         }
     }
 
-    ///
     pub fn check_text_change(&mut self, text: &str) -> Option<ClipboardEvent> {
         let hash = hash_string(text);
         if hash == self.last_content_hash {

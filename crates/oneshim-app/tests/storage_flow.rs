@@ -1,5 +1,3 @@
-//!
-
 use chrono::Utc;
 use oneshim_core::models::event::{ContextEvent, Event};
 use oneshim_core::ports::storage::StorageService;

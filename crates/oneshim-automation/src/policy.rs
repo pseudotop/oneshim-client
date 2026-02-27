@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -201,7 +199,6 @@ impl PolicyClient {
         Ok(true)
     }
 
-    ///
     /// - unsigned: `{policy_id}:{nonce}`
     /// - signed: `{policy_id}:{nonce}:{sha256(policy_id:nonce:secret)}`
     pub async fn issue_command_token(&self, policy_id: &str) -> Result<String, CoreError> {
@@ -219,7 +216,6 @@ impl PolicyClient {
         issue_command_token_for_policy(&policy, &nonce, None)
     }
 
-    ///
     pub async fn issue_command_token_for_command(
         &self,
         policy_id: &str,

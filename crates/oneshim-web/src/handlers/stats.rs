@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use crate::error::ApiError;
 use crate::AppState;
 
-///
 /// GET /api/stats/summary?date=YYYY-MM-DD
 pub async fn get_summary(
     State(state): State<AppState>,
@@ -126,7 +125,6 @@ pub async fn get_summary(
     }))
 }
 
-///
 /// GET /api/stats/apps?date=YYYY-MM-DD
 pub async fn get_app_usage(
     State(state): State<AppState>,
@@ -198,9 +196,7 @@ pub async fn get_app_usage(
     }))
 }
 
-///
 /// GET /api/stats/heatmap?days=7
-///
 pub async fn get_heatmap(
     State(state): State<AppState>,
     Query(params): Query<HeatmapQuery>,

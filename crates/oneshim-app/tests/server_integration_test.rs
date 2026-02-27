@@ -1,6 +1,4 @@
 #![cfg(feature = "server")]
-//!
-//!
 //! ```
 //! cargo test -p oneshim-app --test server_integration_test -- --nocapture
 //! ```

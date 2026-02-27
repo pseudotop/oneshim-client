@@ -7,9 +7,9 @@ use tracing::{debug, error, info};
 
 use super::{map_grpc_status_error, GrpcConfig};
 use crate::proto::client_v1::{
-    client_context_client::ClientContextClient,
-    client_suggestion_client::ClientSuggestionClient, FeedbackAction, SendFeedbackRequest,
-    SubscribeRequest, SuggestionEvent, UploadBatchRequest, UploadBatchResponse,
+    client_context_client::ClientContextClient, client_suggestion_client::ClientSuggestionClient,
+    FeedbackAction, SendFeedbackRequest, SubscribeRequest, SuggestionEvent, UploadBatchRequest,
+    UploadBatchResponse,
 };
 
 /// Wraps both ClientContext (batch upload) and ClientSuggestion (subscribe/feedback) services.

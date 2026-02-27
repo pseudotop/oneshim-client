@@ -1,5 +1,3 @@
-//!
-
 use flate2::read::{GzDecoder, GzEncoder};
 use flate2::Compression;
 use oneshim_core::error::CoreError;
@@ -13,7 +11,6 @@ impl AdaptiveCompressor {
         Self
     }
 
-    ///
     pub fn select_algorithm(data_size: usize) -> CompressionAlgorithm {
         if data_size < 1024 {
             CompressionAlgorithm::Lz4

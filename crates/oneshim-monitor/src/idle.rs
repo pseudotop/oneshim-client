@@ -1,10 +1,7 @@
-//!
-
 use oneshim_core::models::activity::{IdleInfo, IdleState};
 use tracing::debug;
 
 const DEFAULT_IDLE_THRESHOLD_SECS: u64 = 300; // 5min
-///
 pub struct IdleTracker {
     threshold_secs: u64,
     previous_state: IdleState,
@@ -76,7 +73,6 @@ impl Default for IdleTracker {
     }
 }
 
-///
 pub fn get_idle_time() -> Option<u64> {
     #[cfg(target_os = "macos")]
     {

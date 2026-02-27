@@ -1,5 +1,4 @@
 //! Workflow Intelligence.
-//!
 
 use chrono::{DateTime, Utc};
 use oneshim_core::models::work_session::AppCategory;

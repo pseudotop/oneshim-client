@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::event::EventBatch;
@@ -21,7 +19,6 @@ fn is_retryable(error: &CoreError) -> bool {
     )
 }
 
-///
 pub struct HttpApiClient {
     client: reqwest::Client,
     base_url: String,
@@ -63,7 +60,6 @@ impl HttpApiClient {
         Ok(self.client.request(method, &url).bearer_auth(token))
     }
 
-    ///
     async fn check_response(
         &self,
         resp: reqwest::Response,
@@ -97,7 +93,6 @@ impl HttpApiClient {
         }
     }
 
-    ///
     async fn execute_with_retry<F, Fut, T>(&self, operation: F) -> Result<T, CoreError>
     where
         F: Fn() -> Fut,

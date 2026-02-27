@@ -1,5 +1,4 @@
 //! # oneshim-app
-//!
 
 mod automation_runtime;
 mod autostart;
@@ -56,9 +55,9 @@ use oneshim_web::{AiRuntimeStatus, WebServer};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, RwLock};
 #[cfg(feature = "server")]
 use tokio::sync::Mutex;
+use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -76,7 +75,6 @@ use crate::notification_manager::NotificationManager;
 use crate::platform_overlay::create_platform_overlay_driver;
 use crate::scheduler::{Scheduler, SchedulerConfig};
 
-///
 #[derive(Parser, Debug)]
 #[command(name = "oneshim")]
 #[command(author, version, about, long_about = None)]
@@ -125,7 +123,6 @@ fn generate_session_id() -> String {
     format!("sess_{ts}_{rand_part:08x}")
 }
 
-///
 /// - macOS: `~/Library/Application Support/com.oneshim.agent/oneshim.db`
 /// - Windows: `%APPDATA%\oneshim\agent\oneshim.db`
 /// - Linux: `~/.local/share/oneshim/agent/oneshim.db`
@@ -357,8 +354,7 @@ async fn main() -> Result<()> {
             let email =
                 std::env::var("ONESHIM_EMAIL").unwrap_or_else(|_| "user@example.com".to_string());
             let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
-            let org_id =
-                std::env::var("ONESHIM_ORG_ID").unwrap_or_else(|_| "default".to_string());
+            let org_id = std::env::var("ONESHIM_ORG_ID").unwrap_or_else(|_| "default".to_string());
 
             info!("server login attempt: {email}");
 

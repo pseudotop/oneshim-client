@@ -1,7 +1,4 @@
 //! # oneshim-core
-//!
-//!
-//!
 
 pub mod ai_model_lifecycle_policy;
 pub mod config;

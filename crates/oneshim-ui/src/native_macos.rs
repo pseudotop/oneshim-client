@@ -1,6 +1,3 @@
-//!
-//!
-
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
 use tracing::{debug, info, warn};
@@ -9,7 +6,6 @@ fn get_mtm() -> Option<MainThreadMarker> {
     MainThreadMarker::new()
 }
 
-///
 pub fn hide_app() {
     let Some(mtm) = get_mtm() else {
         warn!("macOS: app hide failure");
@@ -21,7 +17,6 @@ pub fn hide_app() {
     info!("macOS: app (NSApplication.hide)");
 }
 
-///
 #[allow(deprecated)]
 #[allow(unused_unsafe)]
 pub fn show_app() {
@@ -49,7 +44,6 @@ pub fn is_app_hidden() -> bool {
     hidden
 }
 
-///
 #[allow(dead_code)]
 pub fn set_accessory_mode() {
     let Some(mtm) = get_mtm() else {

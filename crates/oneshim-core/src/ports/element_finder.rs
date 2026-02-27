@@ -1,15 +1,11 @@
-//!
-
 use async_trait::async_trait;
 
 use crate::error::CoreError;
 use crate::models::intent::{ElementBounds, UiElement};
 use crate::models::ui_scene::UiScene;
 
-///
 #[async_trait]
 pub trait ElementFinder: Send + Sync {
-    ///
     async fn find_element(
         &self,
         text: Option<&str>,
@@ -17,7 +13,6 @@ pub trait ElementFinder: Send + Sync {
         region: Option<&ElementBounds>,
     ) -> Result<Vec<UiElement>, CoreError>;
 
-    ///
     async fn analyze_scene(
         &self,
         _app_name: Option<&str>,
@@ -29,7 +24,6 @@ pub trait ElementFinder: Send + Sync {
         )))
     }
 
-    ///
     async fn analyze_scene_from_image(
         &self,
         _image_data: Vec<u8>,

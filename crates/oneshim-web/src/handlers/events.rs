@@ -107,7 +107,6 @@ fn event_response_from_event(event: Event) -> EventResponse {
     }
 }
 
-///
 /// GET /api/events?from=&to=&limit=&offset=
 pub async fn get_events(
     State(state): State<AppState>,

@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -82,7 +80,6 @@ impl AuditLogger {
         );
     }
 
-    ///
     pub fn log_event(&mut self, action_type: &str, session_id: &str, details: &str) {
         self.push_entry(
             &format!("event-{}", uuid::Uuid::new_v4()),

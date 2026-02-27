@@ -1,5 +1,3 @@
-//!
-
 use directories::ProjectDirs;
 use iced::widget::{button, column, container, horizontal_rule, row, text, toggler, Column};
 use iced::{event, Alignment, Element, Event, Length, Subscription, Task, Theme};

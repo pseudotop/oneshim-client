@@ -1,5 +1,3 @@
-//!
-
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -196,7 +194,6 @@ impl AutomationController {
         })
     }
 
-    ///
     pub async fn execute_intent(&self, cmd: &IntentCommand) -> Result<IntentResult, CoreError> {
         self.ensure_enabled()?;
         let executor = self.require_intent_executor()?;
@@ -229,7 +226,6 @@ impl AutomationController {
         Ok(result)
     }
 
-    ///
     pub async fn execute_intent_hint(
         &self,
         command_id: &str,
@@ -447,7 +443,6 @@ impl AutomationController {
             .await
     }
 
-    ///
     pub async fn run_workflow(&self, preset: &WorkflowPreset) -> Result<WorkflowResult, CoreError> {
         self.ensure_enabled()?;
         let executor = self.require_intent_executor()?;

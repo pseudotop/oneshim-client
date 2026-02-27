@@ -1,6 +1,3 @@
-//!
-//!
-
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use thiserror::Error;
@@ -26,7 +23,6 @@ pub enum OcrError {
 
 static TESSDATA_PATH: OnceLock<Option<String>> = OnceLock::new();
 
-///
 pub struct OcrExtractor {
     tessdata_path: Option<PathBuf>,
     max_chars: usize,
@@ -84,7 +80,6 @@ impl OcrExtractor {
         }
     }
 
-    ///
     pub async fn extract_async(&self, image: &image::DynamicImage) -> Result<String, OcrError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
@@ -128,7 +123,6 @@ impl OcrExtractor {
         result
     }
 
-    ///
     pub async fn extract_roi_async(
         &self,
         image: &image::DynamicImage,
@@ -173,7 +167,6 @@ pub struct OcrWordBox {
 }
 
 impl OcrExtractor {
-    ///
     pub async fn extract_words_with_boxes(
         &self,
         image: &image::DynamicImage,

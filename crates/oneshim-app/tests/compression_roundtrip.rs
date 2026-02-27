@@ -1,5 +1,4 @@
 #![cfg(feature = "server")]
-//!
 
 use oneshim_core::ports::compressor::{CompressionAlgorithm, Compressor};
 use oneshim_network::compression::AdaptiveCompressor;

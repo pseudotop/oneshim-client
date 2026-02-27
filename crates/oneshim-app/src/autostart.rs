@@ -1,4 +1,3 @@
-//!
 //! - macOS: `~/Library/LaunchAgents/com.oneshim.agent.plist`
 
 #![allow(dead_code)]

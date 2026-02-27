@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use tracing::debug;
 
@@ -8,7 +6,6 @@ use oneshim_core::models::intent::{ElementBounds, UiElement};
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
 
-///
 pub struct NoOpInputDriver;
 
 #[async_trait]
@@ -48,7 +45,6 @@ impl InputDriver for NoOpInputDriver {
     }
 }
 
-///
 pub struct NoOpElementFinder;
 
 #[async_trait]
@@ -68,7 +64,6 @@ impl ElementFinder for NoOpElementFinder {
     }
 }
 
-///
 #[cfg(feature = "enigo")]
 pub struct EnigoInputDriver {
     enigo: tokio::sync::Mutex<enigo::Enigo>,
@@ -229,7 +224,6 @@ impl InputDriver for EnigoInputDriver {
     }
 }
 
-///
 pub fn parse_mouse_button(button: &str) -> &str {
     match button.to_lowercase().as_str() {
         "left" | "l" => "left",
@@ -239,7 +233,6 @@ pub fn parse_mouse_button(button: &str) -> &str {
     }
 }
 
-///
 pub fn create_platform_input_driver() -> Box<dyn InputDriver> {
     #[cfg(feature = "enigo")]
     {

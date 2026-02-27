@@ -1,11 +1,8 @@
-//!
-
 use axum::http::{header, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Response};
 #[cfg(oneshim_web_embedded_dist)]
 use rust_embed::Embed;
 
-///
 #[cfg(oneshim_web_embedded_dist)]
 #[derive(Embed)]
 #[folder = "frontend/dist"]

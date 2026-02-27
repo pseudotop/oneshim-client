@@ -1,5 +1,4 @@
 //! # oneshim-vision
-//!
 
 pub mod capture;
 pub mod delta;

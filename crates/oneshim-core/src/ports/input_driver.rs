@@ -1,10 +1,7 @@
-//!
-
 use async_trait::async_trait;
 
 use crate::error::CoreError;
 
-///
 #[async_trait]
 pub trait InputDriver: Send + Sync {
     async fn mouse_move(&self, x: i32, y: i32) -> Result<(), CoreError>;

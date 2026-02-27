@@ -1,5 +1,3 @@
-//!
-
 use std::sync::mpsc;
 use tracing::{debug, info};
 
@@ -66,7 +64,6 @@ struct MenuIds {
     quit_id: tray_icon::menu::MenuId,
 }
 
-///
 #[cfg(not(target_os = "linux"))]
 pub struct TrayManager {
     #[allow(dead_code)]
@@ -77,7 +74,6 @@ pub struct TrayManager {
 
 #[cfg(not(target_os = "linux"))]
 impl TrayManager {
-    ///
     /// # Returns
     ///
     /// # Panics

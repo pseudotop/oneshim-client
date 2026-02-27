@@ -7,7 +7,6 @@ use crate::AppState;
 
 use super::TimeRangeQuery;
 
-///
 /// GET /api/processes?from=&to=&limit=
 pub async fn get_processes(
     State(state): State<AppState>,

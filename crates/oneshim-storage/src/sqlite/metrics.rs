@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Timelike, Utc};
 use oneshim_core::error::CoreError;
@@ -391,7 +389,6 @@ impl MetricsStorage for SqliteStorage {
         Ok(id)
     }
 
-    ///
     async fn end_idle_period(&self, id: i64, end_time: DateTime<Utc>) -> Result<(), CoreError> {
         let conn = self
             .conn

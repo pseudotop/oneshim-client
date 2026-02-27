@@ -1,5 +1,3 @@
-//!
-
 use chrono::Utc;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::{FeedbackType, SuggestionFeedback};

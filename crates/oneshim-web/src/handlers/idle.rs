@@ -7,7 +7,6 @@ use crate::AppState;
 
 use super::TimeRangeQuery;
 
-///
 /// GET /api/idle?from=&to=
 pub async fn get_idle_periods(
     State(state): State<AppState>,

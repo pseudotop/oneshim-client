@@ -1,9 +1,6 @@
-//!
-//!
 //! ```
 //! cargo test -p oneshim-app --test memory_profile_test -- --nocapture --ignored
 //! ```
-//!
 //! ```
 //! cargo test -p oneshim-app --test memory_profile_test --release -- --nocapture --ignored
 //! ```
@@ -52,7 +49,6 @@ fn create_test_image(width: u32, height: u32, seed: u8) -> DynamicImage {
     DynamicImage::ImageRgba8(img)
 }
 
-///
 fn calculate_stable_growth_rate(snapshots: &[MemorySnapshot], warmup_ratio: f64) -> f64 {
     let warmup_count = (snapshots.len() as f64 * warmup_ratio).ceil() as usize;
     let stable_snapshots = &snapshots[warmup_count..];
@@ -86,7 +82,6 @@ fn calculate_stable_growth_rate(snapshots: &[MemorySnapshot], warmup_ratio: f64)
     (n * sum_xy - sum_x * sum_y) / denominator
 }
 
-///
 fn calculate_memory_variance(snapshots: &[MemorySnapshot], last_n: usize) -> u64 {
     if snapshots.len() < last_n {
         return u64::MAX;
@@ -174,7 +169,6 @@ impl LeakCheckResult {
     }
 }
 
-///
 #[test]
 #[ignore = "long-running test - run with cargo test --ignored"]
 fn test_vision_pipeline_memory() {
@@ -232,7 +226,6 @@ fn test_vision_pipeline_memory() {
     );
 }
 
-///
 #[test]
 #[ignore = "long-running test - run with cargo test --ignored"]
 fn test_storage_memory() {
@@ -315,7 +308,6 @@ fn test_storage_memory() {
     );
 }
 
-///
 #[test]
 #[ignore = "long-running test - run with cargo test --ignored"]
 fn test_combined_memory() {

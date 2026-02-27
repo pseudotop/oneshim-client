@@ -1,5 +1,3 @@
-//!
-//!
 //! 2. Command::new("sandbox-exec") -p "<sbpl>" -- <child>
 
 use async_trait::async_trait;

@@ -1,5 +1,4 @@
 //! # oneshim-automation
-//!
 
 pub mod action_dispatcher;
 pub mod audit;

@@ -1,5 +1,3 @@
-//!
-
 use crate::error::CoreError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::{DateTime, Utc};
@@ -255,7 +253,6 @@ pub struct AiProviderConfig {
     pub llm_api: Option<ExternalApiEndpoint>,
     #[serde(default)]
     pub external_data_policy: ExternalDataPolicy,
-    ///
     #[serde(default)]
     pub allow_unredacted_external_ocr: bool,
     #[serde(default)]
@@ -287,7 +284,6 @@ impl Default for AiProviderConfig {
 }
 
 impl AiProviderConfig {
-    ///
     pub fn validate_selected_remote_endpoints(&self) -> Result<(), CoreError> {
         self.ocr_validation.validate()?;
         self.scene_action_override.validate()?;
@@ -318,7 +314,6 @@ impl AiProviderConfig {
     }
 }
 
-///
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SceneActionOverrideConfig {
     #[serde(default)]
@@ -389,7 +384,6 @@ impl SceneActionOverrideConfig {
     }
 }
 
-///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneIntelligenceConfig {
     #[serde(default = "default_true")]
@@ -525,7 +519,6 @@ pub enum LlmProviderType {
     Remote,
 }
 
-///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AiAccessMode {
@@ -536,7 +529,6 @@ pub enum AiAccessMode {
     PlatformConnected,
 }
 
-///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AiProviderType {
@@ -547,7 +539,6 @@ pub enum AiProviderType {
     Generic,
 }
 
-///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalApiEndpoint {
     pub endpoint: String,
@@ -568,7 +559,6 @@ pub enum ExternalDataPolicy {
     AllowFiltered,
 }
 
-///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OcrValidationConfig {
     #[serde(default = "default_true")]

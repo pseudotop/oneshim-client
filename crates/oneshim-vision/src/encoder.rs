@@ -1,5 +1,3 @@
-//!
-
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use image::{DynamicImage, GenericImageView};
 use oneshim_core::error::CoreError;
@@ -82,7 +80,6 @@ pub fn encode_webp_base64(image: &DynamicImage, quality: WebPQuality) -> Result<
     Ok(B64.encode(&bytes))
 }
 
-///
 pub fn encode_adaptive(
     image: &DynamicImage,
     max_bytes: usize,
@@ -137,7 +134,6 @@ fn estimate_quality_from_stats(target_ratio: f32) -> WebPQuality {
     }
 }
 
-///
 pub fn encode_smart_adaptive(
     image: &DynamicImage,
     max_bytes: usize,

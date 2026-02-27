@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::work_session::{
@@ -112,7 +110,6 @@ impl SqliteStorage {
         }
     }
 
-    ///
     pub fn end_work_session(&self, session_id: i64) -> Result<(), CoreError> {
         let conn = self
             .conn
@@ -175,7 +172,6 @@ impl SqliteStorage {
     // --------------------------------------------------------
     // --------------------------------------------------------
 
-    ///
     pub fn get_app_durations_by_date(
         &self,
         from: &str,
@@ -208,7 +204,6 @@ impl SqliteStorage {
         Ok(result)
     }
 
-    ///
     pub fn get_daily_active_secs(
         &self,
         from: &str,

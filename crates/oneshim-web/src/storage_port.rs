@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::activity::SessionStats;

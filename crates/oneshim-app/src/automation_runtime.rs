@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
 use oneshim_automation::intent_planner::{IntentPlanner, LlmIntentPlanner};
@@ -257,10 +255,9 @@ impl ElementFinder for LatestFrameOcrElementFinder {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use oneshim_core::config::{
-        AiAccessMode, AiProviderConfig, AiProviderType, ExternalApiEndpoint, LlmProviderType,
-        OcrProviderType,
-    };
+    #[cfg(feature = "server")]
+    use oneshim_core::config::{AiAccessMode, AiProviderType, ExternalApiEndpoint};
+    use oneshim_core::config::{AiProviderConfig, LlmProviderType, OcrProviderType};
     use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
     use std::path::PathBuf;
     use tempfile::TempDir;

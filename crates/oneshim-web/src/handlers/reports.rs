@@ -1,5 +1,3 @@
-//!
-
 use axum::extract::{Query, State};
 use axum::Json;
 use chrono::{DateTime, Duration, NaiveDate, Timelike, Utc};

@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use oneshim_core::config::NotificationConfig;
 use oneshim_core::ports::notifier::DesktopNotifier;
@@ -47,7 +45,6 @@ impl NotificationManager {
         state.last_activity = Some(Utc::now());
     }
 
-    ///
     pub async fn check_idle(&self, idle_secs: u64) {
         let config = self.config.read().await;
 
@@ -80,7 +77,6 @@ impl NotificationManager {
         }
     }
 
-    ///
     pub async fn check_long_session(&self) {
         let config = self.config.read().await;
 
@@ -127,7 +123,6 @@ impl NotificationManager {
         }
     }
 
-    ///
     pub async fn check_high_usage(&self, cpu_percent: f32, memory_percent: f32) {
         let config = self.config.read().await;
 

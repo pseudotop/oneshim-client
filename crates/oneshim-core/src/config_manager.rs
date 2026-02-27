@@ -1,5 +1,3 @@
-//!
-
 use crate::config::AppConfig;
 use crate::error::CoreError;
 use std::fs;
@@ -11,7 +9,6 @@ const CONFIG_FILE_NAME: &str = "config.json";
 
 const APP_DIR_NAME: &str = "oneshim";
 
-///
 #[derive(Debug, Clone)]
 pub struct ConfigManager {
     config: Arc<RwLock<AppConfig>>,
@@ -19,7 +16,6 @@ pub struct ConfigManager {
 }
 
 impl ConfigManager {
-    ///
     pub fn new() -> Result<Self, CoreError> {
         let config_path = Self::default_config_path()?;
         Self::with_path(config_path)

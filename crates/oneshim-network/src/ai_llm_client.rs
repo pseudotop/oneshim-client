@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -9,9 +7,7 @@ use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::{InterpretedAction, LlmProvider, ScreenContext};
 
-///
 /// - Claude (Anthropic): `POST /v1/messages`
-///
 #[derive(Debug)]
 pub struct RemoteLlmProvider {
     http_client: reqwest::Client,

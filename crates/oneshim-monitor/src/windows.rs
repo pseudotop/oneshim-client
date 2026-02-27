@@ -1,5 +1,3 @@
-//!
-
 #![cfg(target_os = "windows")]
 
 use oneshim_core::error::CoreError;
@@ -84,7 +82,6 @@ fn get_process_name(pid: u32) -> Option<String> {
         .map(|p| p.name().to_string_lossy().to_string())
 }
 
-///
 pub fn get_idle_time_windows() -> Option<u64> {
     unsafe {
         let mut last_input: LASTINPUTINFO = std::mem::zeroed();
@@ -100,7 +97,6 @@ pub fn get_idle_time_windows() -> Option<u64> {
     }
 }
 
-///
 pub fn get_mouse_position_windows() -> Option<MousePosition> {
     unsafe {
         let mut point: POINT = std::mem::zeroed();

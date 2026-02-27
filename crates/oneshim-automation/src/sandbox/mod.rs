@@ -1,6 +1,3 @@
-//!
-//!
-
 mod noop;
 
 #[cfg(target_os = "linux")]
@@ -23,7 +20,6 @@ use oneshim_core::config::SandboxConfig;
 use oneshim_core::ports::sandbox::Sandbox;
 use std::sync::Arc;
 
-///
 pub fn create_platform_sandbox(config: &SandboxConfig) -> Arc<dyn Sandbox> {
     if !config.enabled {
         return Arc::new(NoOpSandbox);

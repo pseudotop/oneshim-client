@@ -1,11 +1,8 @@
-//!
-
 use chrono::{DateTime, Utc};
 use oneshim_core::models::event::{InputActivityEvent, KeyboardActivity, MouseActivity};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 
-///
 pub struct InputActivityCollector {
     period_start: Mutex<DateTime<Utc>>,
     current_app: Mutex<String>,
@@ -98,7 +95,6 @@ impl InputActivityCollector {
         }
     }
 
-    ///
     pub fn estimate_from_idle_change(&self, prev_idle_secs: u64, curr_idle_secs: u64) {
         if curr_idle_secs < prev_idle_secs {
             let estimated_keystrokes = (prev_idle_secs - curr_idle_secs).min(10) as u32;
@@ -109,7 +105,6 @@ impl InputActivityCollector {
         }
     }
 
-    ///
     pub fn take_snapshot(&self) -> InputActivityEvent {
         let now = Utc::now();
 

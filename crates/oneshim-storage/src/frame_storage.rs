@@ -1,6 +1,3 @@
-//!
-//!
-
 use chrono::{DateTime, Utc};
 use crossbeam::queue::ArrayQueue;
 use oneshim_core::error::CoreError;
@@ -16,7 +13,6 @@ const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
 const PARALLEL_DELETE_LIMIT: usize = 8;
 
-///
 struct BufferPool {
     pool: ArrayQueue<Vec<u8>>,
 }
@@ -42,8 +38,6 @@ impl BufferPool {
     }
 }
 
-///
-///
 pub struct FrameFileStorage {
     base_dir: PathBuf,
     max_storage_mb: u64,
@@ -53,7 +47,6 @@ pub struct FrameFileStorage {
 }
 
 impl FrameFileStorage {
-    ///
     /// # Arguments
     pub async fn new(
         base_dir: PathBuf,
@@ -82,8 +75,6 @@ impl FrameFileStorage {
         })
     }
 
-    ///
-    ///
     /// # Arguments
     ///
     /// # Returns
@@ -118,8 +109,6 @@ impl FrameFileStorage {
         Ok(relative_path)
     }
 
-    ///
-    ///
     /// # Arguments
     ///
     /// # Returns
@@ -166,8 +155,6 @@ impl FrameFileStorage {
         results
     }
 
-    ///
-    ///
     /// # Arguments
     pub async fn load_frame(&self, relative_path: &Path) -> Result<Vec<u8>, CoreError> {
         let full_path = self.base_dir.join(relative_path);
@@ -193,7 +180,6 @@ impl FrameFileStorage {
         Ok(result)
     }
 
-    ///
     pub async fn load_latest_frame(&self) -> Result<Option<(Vec<u8>, String)>, CoreError> {
         let frames_dir = self.base_dir.join("frames");
         if !frames_dir.exists() {
@@ -252,7 +238,6 @@ impl FrameFileStorage {
         Ok(None)
     }
 
-    ///
     pub async fn load_frames_batch(&self, paths: Vec<PathBuf>) -> Vec<Result<Vec<u8>, CoreError>> {
         let mut handles = Vec::with_capacity(paths.len());
 
@@ -296,8 +281,6 @@ impl FrameFileStorage {
         results
     }
 
-    ///
-    ///
     /// # Returns
     pub async fn enforce_retention(&self) -> Result<usize, CoreError> {
         let frames_dir = self.base_dir.join("frames");
@@ -379,7 +362,6 @@ impl FrameFileStorage {
         Ok(size_bytes / 1024 / 1024)
     }
 
-    ///
     pub async fn enforce_storage_limit(&self) -> Result<usize, CoreError> {
         let current_mb = self.total_size_mb().await?;
 

@@ -1,5 +1,3 @@
-//!
-
 use crossbeam::queue::SegQueue;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::event::{Event, EventBatch};
@@ -9,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, warn};
 
-///
 pub struct BatchUploader {
     api_client: Arc<dyn ApiClient>,
     queue: Arc<SegQueue<Event>>,
@@ -43,7 +40,6 @@ impl BatchUploader {
         self
     }
 
-    ///
     pub fn enqueue(&self, event: Event) {
         self.queue.push(event);
         let size = self.queue_size.fetch_add(1, Ordering::Relaxed) + 1;
@@ -59,7 +55,6 @@ impl BatchUploader {
         debug!("event {count}items add (lock-free), current size: {size}");
     }
 
-    ///
     fn compute_batch_size(&self, queue_len: usize) -> usize {
         if !self.dynamic_batch {
             return self.max_batch_size;
@@ -142,8 +137,7 @@ impl BatchUploader {
         self.queue_size.fetch_add(count, Ordering::Relaxed);
         warn!("failure event {count}items");
     }
-
-    }
+}
 
 #[async_trait::async_trait]
 impl oneshim_core::ports::batch_sink::BatchSink for BatchUploader {

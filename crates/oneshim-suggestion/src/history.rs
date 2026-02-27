@@ -1,5 +1,3 @@
-//!
-
 use oneshim_core::models::suggestion::{FeedbackType, Suggestion};
 use std::collections::VecDeque;
 

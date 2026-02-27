@@ -1,5 +1,3 @@
-//!
-
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -174,7 +172,6 @@ impl IntentResolver {
     }
 }
 
-///
 pub struct IntentExecutor {
     resolver: IntentResolver,
     config: IntentConfig,

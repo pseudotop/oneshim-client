@@ -1,5 +1,3 @@
-//!
-
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,7 +21,6 @@ impl std::fmt::Display for ConnectionStatus {
     }
 }
 
-///
 pub struct ConnectivityManager {
     is_online: AtomicBool,
     last_success: AtomicU64,
@@ -35,7 +32,6 @@ pub struct ConnectivityManager {
 }
 
 impl ConnectivityManager {
-    ///
     pub fn new(offline_threshold: u64) -> Self {
         let (status_tx, status_rx) = watch::channel(ConnectionStatus::Connected);
         Self {
@@ -78,7 +74,6 @@ impl ConnectivityManager {
         self.status_rx.clone()
     }
 
-    ///
     pub fn record_success(&self) {
         if self.is_force_offline() {
             return;
@@ -105,7 +100,6 @@ impl ConnectivityManager {
         }
     }
 
-    ///
     pub fn record_failure(&self) {
         if self.is_force_offline() {
             return;

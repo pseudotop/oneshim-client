@@ -1,9 +1,6 @@
-//!
-
 use crate::policy::{AuditLevel, ExecutionPolicy};
 use oneshim_core::config::{SandboxConfig, SandboxProfile};
 
-///
 pub fn resolve_sandbox_profile(policy: &ExecutionPolicy) -> SandboxProfile {
     if let Some(profile) = policy.sandbox_profile {
         return profile;
@@ -23,7 +20,6 @@ pub fn resolve_sandbox_profile(policy: &ExecutionPolicy) -> SandboxProfile {
     base_profile
 }
 
-///
 pub fn resolve_sandbox_config(
     policy: &ExecutionPolicy,
     base_config: &SandboxConfig,

@@ -1,5 +1,3 @@
-//!
-
 use chrono::Utc;
 use image::{DynamicImage, RgbaImage};
 use oneshim_core::models::event::ContextEvent;

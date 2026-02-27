@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use oneshim_core::error::CoreError;
@@ -85,8 +83,6 @@ impl SqliteStorage {
         }
     }
 
-    ///
-    ///
     /// # Arguments
     ///
     /// # Returns

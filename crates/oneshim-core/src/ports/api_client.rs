@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 
 use crate::error::CoreError;
@@ -18,10 +16,8 @@ pub struct SessionCreateResponse {
 
 #[async_trait]
 pub trait ApiClient: Send + Sync {
-    ///
     async fn create_session(&self, client_id: &str) -> Result<SessionCreateResponse, CoreError>;
 
-    ///
     async fn end_session(&self, session_id: &str) -> Result<(), CoreError>;
 
     async fn upload_batch(&self, batch: &EventBatch) -> Result<(), CoreError>;
@@ -49,7 +45,6 @@ pub enum SseEvent {
 
 #[async_trait]
 pub trait SseClient: Send + Sync {
-    ///
     async fn connect(
         &self,
         session_id: &str,

@@ -9,9 +9,7 @@ use tokio_stream::StreamExt;
 
 use crate::AppState;
 
-///
 /// GET /api/stream
-///
 pub async fn event_stream(
     State(state): State<AppState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {

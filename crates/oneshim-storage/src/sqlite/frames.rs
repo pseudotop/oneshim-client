@@ -1,5 +1,3 @@
-//!
-
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::context::WindowBounds;
@@ -47,7 +45,6 @@ impl SqliteStorage {
         }
     }
 
-    ///
     /// # Arguments
     pub fn save_frame_metadata(
         &self,
@@ -58,7 +55,6 @@ impl SqliteStorage {
         self.save_frame_metadata_with_bounds(metadata, file_path, ocr_text, None)
     }
 
-    ///
     /// # Arguments
     pub fn save_frame_metadata_with_bounds(
         &self,
@@ -105,7 +101,6 @@ impl SqliteStorage {
         Ok(frame_id)
     }
 
-    ///
     /// # Arguments
     pub fn get_frames(
         &self,

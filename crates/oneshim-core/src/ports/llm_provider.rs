@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +19,6 @@ pub struct InterpretedAction {
     pub confidence: f64,
 }
 
-///
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn interpret_intent(

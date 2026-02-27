@@ -1,14 +1,10 @@
 //! gRPC health client — Consumer Contract (oneshim.client.v1.ClientHealth).
-//!
 //! ```rust,ignore
 //! use oneshim_network::grpc::{GrpcHealthClient, GrpcConfig};
-//!
 //! let config = GrpcConfig::default();
 //! let mut client = GrpcHealthClient::connect(config).await?;
-//!
 //! let response = client.ping().await?;
 //! println!("server_version={}, healthy={}", response.server_version, response.healthy);
-//!
 //! if client.is_healthy().await {
 //!     // server is reachable
 //! }

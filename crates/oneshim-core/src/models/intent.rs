@@ -1,10 +1,7 @@
-//!
-
 use serde::{Deserialize, Serialize};
 
 use super::automation::AutomationAction;
 
-///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AutomationIntent {
     ClickElement {

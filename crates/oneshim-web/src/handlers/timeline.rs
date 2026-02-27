@@ -6,7 +6,6 @@ use crate::error::ApiError;
 use crate::services::timeline_service;
 use crate::AppState;
 
-///
 /// GET /api/timeline?from=&to=&max_events=&max_frames=
 pub async fn get_timeline(
     State(state): State<AppState>,

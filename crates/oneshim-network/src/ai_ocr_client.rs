@@ -1,5 +1,3 @@
-//!
-
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
@@ -10,10 +8,8 @@ use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
-///
 /// - Claude Vision (Anthropic): `POST /v1/messages` + image content block
 /// - Google Cloud Vision: `POST /v1/images:annotate` + TEXT_DETECTION
-///
 #[derive(Debug)]
 pub struct RemoteOcrProvider {
     http_client: reqwest::Client,
@@ -132,7 +128,6 @@ impl OcrProviderStrategy {
 }
 
 impl RemoteOcrProvider {
-    ///
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
         if config.api_key.is_empty() {
             return Err(CoreError::Config(

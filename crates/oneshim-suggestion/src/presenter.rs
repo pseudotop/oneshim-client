@@ -1,5 +1,3 @@
-//!
-
 use oneshim_core::models::suggestion::{Priority, Suggestion, SuggestionType};
 
 #[derive(Debug, Clone)]

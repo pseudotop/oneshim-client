@@ -1,5 +1,3 @@
-//!
-
 use iced::widget::canvas::{self, Cache, Geometry, Path, Stroke};
 use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
