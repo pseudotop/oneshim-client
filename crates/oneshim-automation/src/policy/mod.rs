@@ -1,76 +1,27 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+mod models;
+mod token;
+
+// ── Public re-exports (external API) ────────────────────────────────
+pub use models::{AuditLevel, ExecutionPolicy, PolicyCache, ProcessOutput};
+
+use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
-use uuid::Uuid;
 
 use crate::controller::AutomationCommand;
-use oneshim_core::config::SandboxProfile;
 use oneshim_core::error::CoreError;
 
-const POLICY_TOKEN_SIGNING_SECRET_ENV: &str = "ONESHIM_POLICY_TOKEN_SIGNING_SECRET";
-const COMMAND_HASH_SEGMENT_PREFIX: char = 'h';
-
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AuditLevel {
-    None,
-    #[default]
-    Basic,
-    Detailed,
-    Full,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecutionPolicy {
-    pub policy_id: String,
-    pub process_name: String,
-    pub process_hash: Option<String>,
-    pub allowed_args: Vec<String>,
-    pub requires_sudo: bool,
-    pub max_execution_time_ms: u64,
-    #[serde(default)]
-    pub audit_level: AuditLevel,
-    #[serde(default)]
-    pub sandbox_profile: Option<SandboxProfile>,
-    #[serde(default)]
-    pub allowed_paths: Vec<String>,
-    #[serde(default)]
-    pub allow_network: Option<bool>,
-    #[serde(default)]
-    pub require_signed_token: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct PolicyCache {
-    pub policies: Vec<ExecutionPolicy>,
-    pub last_updated: DateTime<Utc>,
-    pub ttl_seconds: u64,
-}
-
-impl Default for PolicyCache {
-    fn default() -> Self {
-        Self {
-            policies: Vec::new(),
-            last_updated: Utc::now(),
-            ttl_seconds: 300, // 5 min
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ProcessOutput {
-    pub exit_code: i32,
-    pub stdout: String,
-    pub stderr: String,
-}
+use token::{
+    compute_command_scope_hash, is_valid_nonce, is_valid_signature, issue_command_token_for_policy,
+    issue_policy_nonce, parse_policy_token, verify_policy_token_signature,
+};
 
 // PolicyClient
 
 pub struct PolicyClient {
     policy_cache: RwLock<PolicyCache>,
     allowed_processes: RwLock<HashSet<String>>,
-    validated_tokens: RwLock<HashMap<String, DateTime<Utc>>>,
+    validated_tokens: RwLock<HashMap<String, chrono::DateTime<Utc>>>,
 }
 
 impl PolicyClient {
@@ -290,187 +241,11 @@ impl Default for PolicyClient {
     }
 }
 
-struct ParsedPolicyToken<'a> {
-    policy_id: &'a str,
-    nonce: &'a str,
-    command_hash: Option<&'a str>,
-    signature: Option<&'a str>,
-}
-
-fn parse_policy_token(token: &str) -> Option<ParsedPolicyToken<'_>> {
-    let parts: Vec<&str> = token.split(':').map(str::trim).collect();
-    let (policy_id, nonce, command_hash, signature) = match parts.as_slice() {
-        [policy_id, nonce] => (*policy_id, *nonce, None, None),
-        [policy_id, nonce, third] => {
-            if let Some(command_hash) = parse_command_hash_segment(third) {
-                (*policy_id, *nonce, Some(command_hash), None)
-            } else {
-                (*policy_id, *nonce, None, Some(*third))
-            }
-        }
-        [policy_id, nonce, third, fourth] => {
-            let command_hash = parse_command_hash_segment(third)?;
-            (*policy_id, *nonce, Some(command_hash), Some(*fourth))
-        }
-        _ => return None,
-    };
-
-    if policy_id.is_empty() || nonce.is_empty() {
-        return None;
-    }
-    if command_hash.is_some_and(|hash| !is_valid_hash(hash)) {
-        return None;
-    }
-    if signature.is_some_and(|sig| sig.is_empty()) {
-        return None;
-    }
-
-    Some(ParsedPolicyToken {
-        policy_id,
-        nonce,
-        command_hash,
-        signature,
-    })
-}
-
-fn is_valid_nonce(nonce: &str) -> bool {
-    nonce.len() >= 8
-        && nonce
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-}
-
-fn is_valid_signature(signature: &str) -> bool {
-    is_valid_hash(signature)
-}
-
-fn issue_policy_nonce() -> String {
-    Uuid::new_v4().simple().to_string()
-}
-
-fn issue_command_token_for_policy(
-    policy: &ExecutionPolicy,
-    nonce: &str,
-    command_hash: Option<&str>,
-) -> Result<String, CoreError> {
-    if !is_valid_nonce(nonce) {
-        return Err(CoreError::InvalidArguments(
-            "policy token nonce 형식이 유효하지 않습니다".to_string(),
-        ));
-    }
-    if command_hash.is_some_and(|hash| !is_valid_hash(hash)) {
-        return Err(CoreError::InvalidArguments(
-            "policy token command hash 형식이 유효하지 않습니다".to_string(),
-        ));
-    }
-
-    let mut token = format!("{}:{nonce}", policy.policy_id);
-    if let Some(command_hash) = command_hash {
-        token.push(':');
-        token.push(COMMAND_HASH_SEGMENT_PREFIX);
-        token.push_str(command_hash);
-    }
-
-    if policy.require_signed_token {
-        let secret = load_signing_secret().ok_or_else(|| {
-            CoreError::Config(format!(
-                "서명 policy이 active화되어 있지만 {} 환경 변수가 비어 있습니다.",
-                POLICY_TOKEN_SIGNING_SECRET_ENV
-            ))
-        })?;
-        let signature =
-            compute_policy_token_signature(&policy.policy_id, nonce, command_hash, &secret);
-        token.push(':');
-        token.push_str(&signature);
-    }
-
-    Ok(token)
-}
-
-fn parse_command_hash_segment(segment: &str) -> Option<&str> {
-    let mut chars = segment.chars();
-    if chars.next()? != COMMAND_HASH_SEGMENT_PREFIX {
-        return None;
-    }
-    let hash = chars.as_str();
-    if !is_valid_hash(hash) {
-        return None;
-    }
-    Some(hash)
-}
-
-fn is_valid_hash(hash: &str) -> bool {
-    hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
-}
-
-fn compute_command_scope_hash(cmd: &AutomationCommand) -> Result<String, CoreError> {
-    #[derive(Serialize)]
-    struct PolicyCommandScope<'a> {
-        command_id: &'a str,
-        session_id: &'a str,
-        action: &'a crate::controller::AutomationAction,
-        timeout_ms: Option<u64>,
-    }
-
-    let scope = PolicyCommandScope {
-        command_id: cmd.command_id.as_str(),
-        session_id: cmd.session_id.as_str(),
-        action: &cmd.action,
-        timeout_ms: cmd.timeout_ms,
-    };
-    let serialized = serde_json::to_vec(&scope).map_err(|e| {
-        CoreError::Internal(format!(
-            "Failed to serialize policy token command scope: {e}"
-        ))
-    })?;
-    let digest = Sha256::digest(serialized);
-    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
-}
-
-fn verify_policy_token_signature(
-    policy_id: &str,
-    nonce: &str,
-    command_hash: Option<&str>,
-    signature: &str,
-) -> bool {
-    let Some(secret) = load_signing_secret() else {
-        tracing::warn!(
-            env = POLICY_TOKEN_SIGNING_SECRET_ENV,
-            "서명 policy active화됐지만 token 서명 시크릿이 설정되지 않음"
-        );
-        return false;
-    };
-
-    compute_policy_token_signature(policy_id, nonce, command_hash, &secret)
-        .eq_ignore_ascii_case(signature)
-}
-
-fn load_signing_secret() -> Option<String> {
-    std::env::var(POLICY_TOKEN_SIGNING_SECRET_ENV)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-}
-
-fn compute_policy_token_signature(
-    policy_id: &str,
-    nonce: &str,
-    command_hash: Option<&str>,
-    secret: &str,
-) -> String {
-    let payload = if let Some(command_hash) = command_hash {
-        format!("{policy_id}:{nonce}:{command_hash}:{secret}")
-    } else {
-        format!("{policy_id}:{nonce}:{secret}")
-    };
-    let digest = Sha256::digest(payload.as_bytes());
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::OnceLock;
+    use token::{compute_policy_token_signature, POLICY_TOKEN_SIGNING_SECRET_ENV};
     use tokio::sync::Mutex;
 
     fn env_lock() -> &'static Mutex<()> {

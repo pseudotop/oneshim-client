@@ -1,277 +1,20 @@
-use base64::Engine;
-use chrono::{Datelike, Duration as ChronoDuration, Timelike, Utc};
-use oneshim_core::config::{AiAccessMode, AppConfig, ExternalDataPolicy, PrivacyConfig, Weekday};
-use oneshim_core::error::CoreError;
-use oneshim_core::models::activity::{
-    IdleState, ProcessSnapshot, ProcessSnapshotEntry, SessionStats,
-};
-use oneshim_core::models::context::WindowBounds;
+use chrono::{Duration as ChronoDuration, Utc};
+use oneshim_core::models::activity::{IdleState, ProcessSnapshot, ProcessSnapshotEntry};
 use oneshim_core::models::event::{ContextEvent, Event, ProcessSnapshotEvent};
-use oneshim_core::models::frame::{FrameMetadata, ImagePayload};
-use oneshim_core::ports::api_client::ApiClient;
-use oneshim_core::ports::batch_sink::BatchSink;
-use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
-use oneshim_core::ports::storage::{MetricsStorage, StorageService};
-use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
+use oneshim_core::models::frame::ImagePayload;
 use oneshim_monitor::idle::IdleTracker;
 use oneshim_monitor::input_activity::InputActivityCollector;
 use oneshim_monitor::window_layout::WindowLayoutTracker;
-use oneshim_storage::frame_storage::FrameFileStorage;
-use oneshim_storage::sqlite::SqliteStorage;
-use oneshim_vision::privacy::{sanitize_title_with_level, should_exclude};
 use oneshim_web::{MetricsUpdate, RealtimeEvent};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, Mutex};
 use tracing::{debug, info, warn};
 
-use crate::focus_analyzer::FocusAnalyzer;
-use crate::notification_manager::NotificationManager;
-
-pub trait SchedulerStorage: MetricsStorage + Send + Sync {
-    fn save_frame_metadata_with_bounds(
-        &self,
-        metadata: &FrameMetadata,
-        file_path: Option<&str>,
-        ocr_text: Option<&str>,
-        bounds: Option<&WindowBounds>,
-    ) -> Result<i64, CoreError>;
-}
-
-impl SchedulerStorage for SqliteStorage {
-    fn save_frame_metadata_with_bounds(
-        &self,
-        metadata: &FrameMetadata,
-        file_path: Option<&str>,
-        ocr_text: Option<&str>,
-        bounds: Option<&WindowBounds>,
-    ) -> Result<i64, CoreError> {
-        SqliteStorage::save_frame_metadata_with_bounds(self, metadata, file_path, ocr_text, bounds)
-    }
-}
-
-fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
-    base64::engine::general_purpose::STANDARD
-        .decode(input)
-        .map_err(|e| e.to_string())
-}
-
-const REDACTED_WINDOW_TITLE: &str = "[REDACTED_WINDOW_TITLE]";
-
-#[derive(Clone)]
-struct PlatformEgressPolicy {
-    enabled: bool,
-    external_data_policy: ExternalDataPolicy,
-    privacy_config: PrivacyConfig,
-}
-
-impl PlatformEgressPolicy {
-    fn new(config: &SchedulerConfig) -> Self {
-        Self {
-            enabled: !config.offline_mode
-                && config.ai_access_mode == AiAccessMode::PlatformConnected,
-            external_data_policy: config.external_data_policy,
-            privacy_config: config.privacy_config.clone(),
-        }
-    }
-
-    fn is_enabled(&self) -> bool {
-        self.enabled
-    }
-
-    fn prepare_event_for_upload(&self, mut event: Event) -> Option<Event> {
-        if !self.enabled {
-            return None;
-        }
-
-        match &mut event {
-            Event::Context(ctx) => {
-                let app_name = ctx.app_name.clone();
-                let title = ctx.window_title.clone();
-                if self.should_skip(&app_name, &title) {
-                    return None;
-                }
-                ctx.window_title = self.sanitize_title(&title);
-            }
-            Event::Window(layout) => {
-                let app_name = layout.window.app_name.clone();
-                let title = layout.window.window_title.clone();
-                if self.should_skip(&app_name, &title) {
-                    return None;
-                }
-                layout.window.window_title = self.sanitize_title(&title);
-            }
-            Event::User(user) => {
-                let app_name = user.app_name.clone();
-                let title = user.window_title.clone();
-                if self.should_skip(&app_name, &title) {
-                    return None;
-                }
-                user.window_title = self.sanitize_title(&title);
-            }
-            Event::System(_) | Event::Input(_) | Event::Process(_) => {}
-        }
-
-        Some(event)
-    }
-
-    fn sanitize_title(&self, title: &str) -> String {
-        match self.external_data_policy {
-            ExternalDataPolicy::AllowFiltered => {
-                sanitize_title_with_level(title, self.privacy_config.pii_filter_level)
-            }
-            ExternalDataPolicy::PiiFilterStrict | ExternalDataPolicy::PiiFilterStandard => {
-                REDACTED_WINDOW_TITLE.to_string()
-            }
-        }
-    }
-
-    fn should_skip(&self, app_name: &str, window_title: &str) -> bool {
-        should_exclude(
-            app_name,
-            window_title,
-            &self.privacy_config.excluded_apps,
-            &self.privacy_config.excluded_app_patterns,
-            &self.privacy_config.excluded_title_patterns,
-            self.privacy_config.auto_exclude_sensitive,
-        )
-    }
-}
-
-pub struct SchedulerConfig {
-    pub poll_interval: Duration,
-    pub metrics_interval: Duration,
-    pub process_interval: Duration,
-    pub detailed_process_interval: Duration,
-    pub input_activity_interval: Duration,
-    pub sync_interval: Duration,
-    pub heartbeat_interval: Duration,
-    pub aggregation_interval: Duration,
-    pub session_id: String,
-    pub offline_mode: bool,
-    pub ai_access_mode: AiAccessMode,
-    pub external_data_policy: ExternalDataPolicy,
-    pub privacy_config: PrivacyConfig,
-    pub idle_threshold_secs: u64,
-}
-
-impl Default for SchedulerConfig {
-    fn default() -> Self {
-        Self {
-            poll_interval: Duration::from_secs(1),
-            metrics_interval: Duration::from_secs(5),
-            process_interval: Duration::from_secs(10),
-            detailed_process_interval: Duration::from_secs(30), // 30 s
-            input_activity_interval: Duration::from_secs(30),   // 30 s
-            sync_interval: Duration::from_secs(10),
-            heartbeat_interval: Duration::from_secs(30),
-            aggregation_interval: Duration::from_secs(3600), // 1 hour
-            session_id: String::new(),                       // set by caller
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::default(),
-            external_data_policy: ExternalDataPolicy::default(),
-            privacy_config: PrivacyConfig::default(),
-            idle_threshold_secs: 300, // 5 min
-        }
-    }
-}
-
-pub struct Scheduler {
-    config: SchedulerConfig,
-    #[allow(dead_code)]
-    app_config: Arc<tokio::sync::RwLock<AppConfig>>,
-    system_monitor: Arc<dyn SystemMonitor>,
-    activity_monitor: Arc<dyn ActivityMonitor>,
-    process_monitor: Arc<dyn ProcessMonitor>,
-    capture_trigger: Arc<Mutex<Box<dyn CaptureTrigger>>>,
-    frame_processor: Arc<Mutex<Box<dyn FrameProcessor>>>,
-    storage: Arc<dyn StorageService>,
-    sqlite_storage: Arc<dyn SchedulerStorage>,
-    frame_storage: Option<Arc<FrameFileStorage>>,
-    batch_sink: Option<Arc<dyn BatchSink>>,
-    api_client: Option<Arc<dyn ApiClient>>,
-    event_tx: Option<broadcast::Sender<RealtimeEvent>>,
-    notification_manager: Option<Arc<NotificationManager>>,
-    focus_analyzer: Option<Arc<FocusAnalyzer>>,
-}
+use super::config::{base64_decode, PlatformEgressPolicy};
+use super::Scheduler;
 
 impl Scheduler {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        config: SchedulerConfig,
-        app_config: Arc<tokio::sync::RwLock<AppConfig>>,
-        system_monitor: Arc<dyn SystemMonitor>,
-        activity_monitor: Arc<dyn ActivityMonitor>,
-        process_monitor: Arc<dyn ProcessMonitor>,
-        capture_trigger: Box<dyn CaptureTrigger>,
-        frame_processor: Box<dyn FrameProcessor>,
-        storage: Arc<dyn StorageService>,
-        sqlite_storage: Arc<dyn SchedulerStorage>,
-        frame_storage: Option<Arc<FrameFileStorage>>,
-        batch_sink: Option<Arc<dyn BatchSink>>,
-        api_client: Option<Arc<dyn ApiClient>>,
-    ) -> Self {
-        Self {
-            config,
-            app_config,
-            system_monitor,
-            activity_monitor,
-            process_monitor,
-            capture_trigger: Arc::new(Mutex::new(capture_trigger)),
-            frame_processor: Arc::new(Mutex::new(frame_processor)),
-            storage,
-            sqlite_storage,
-            frame_storage,
-            batch_sink,
-            api_client,
-            event_tx: None,
-            notification_manager: None,
-            focus_analyzer: None,
-        }
-    }
-
-    pub fn with_event_tx(mut self, event_tx: broadcast::Sender<RealtimeEvent>) -> Self {
-        self.event_tx = Some(event_tx);
-        self
-    }
-
-    pub fn with_notification_manager(mut self, manager: Arc<NotificationManager>) -> Self {
-        self.notification_manager = Some(manager);
-        self
-    }
-
-    pub fn with_focus_analyzer(mut self, analyzer: Arc<FocusAnalyzer>) -> Self {
-        self.focus_analyzer = Some(analyzer);
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn app_config(&self) -> Arc<tokio::sync::RwLock<AppConfig>> {
-        self.app_config.clone()
-    }
-
-    async fn initialize_session(&self, session_id: &str) {
-        let sqlite_init = self.sqlite_storage.clone();
-        let session_stats = SessionStats::new(session_id.to_string());
-        if let Err(e) = sqlite_init.upsert_session(&session_stats).await {
-            warn!("session initialize failure: {e}");
-        }
-    }
-
-    pub async fn run(&self, shutdown_rx: tokio::sync::watch::Receiver<bool>) {
-        info!(
-            "스케줄러 started: 모니터링={}ms, 메트릭={}ms, 프로세스={}ms, 동기화={}ms, heartbeat={}ms, 집계={}ms",
-            self.config.poll_interval.as_millis(),
-            self.config.metrics_interval.as_millis(),
-            self.config.process_interval.as_millis(),
-            self.config.sync_interval.as_millis(),
-            self.config.heartbeat_interval.as_millis(),
-            self.config.aggregation_interval.as_millis(),
-        );
-        self.run_scheduler_loops(shutdown_rx).await;
-    }
-
-    fn spawn_monitor_loop(
+    pub(super) fn spawn_monitor_loop(
         &self,
         poll: Duration,
         idle_threshold: u64,
@@ -470,7 +213,7 @@ impl Scheduler {
         })
     }
 
-    fn spawn_metrics_loop(
+    pub(super) fn spawn_metrics_loop(
         &self,
         metrics_interval: Duration,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
@@ -527,7 +270,7 @@ impl Scheduler {
         })
     }
 
-    fn spawn_process_loop(
+    pub(super) fn spawn_process_loop(
         &self,
         process_interval: Duration,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
@@ -570,7 +313,7 @@ impl Scheduler {
         })
     }
 
-    fn spawn_sync_loop(
+    pub(super) fn spawn_sync_loop(
         &self,
         sync_interval: Duration,
         egress_policy: Arc<PlatformEgressPolicy>,
@@ -624,7 +367,7 @@ impl Scheduler {
         })
     }
 
-    fn spawn_heartbeat_loop(
+    pub(super) fn spawn_heartbeat_loop(
         &self,
         heartbeat_interval: Duration,
         session_id: String,
@@ -666,7 +409,7 @@ impl Scheduler {
         })
     }
 
-    fn spawn_aggregation_loop(
+    pub(super) fn spawn_aggregation_loop(
         &self,
         aggregation_interval: Duration,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
@@ -712,7 +455,7 @@ impl Scheduler {
         })
     }
 
-    fn spawn_notification_loop(
+    pub(super) fn spawn_notification_loop(
         &self,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
@@ -742,7 +485,7 @@ impl Scheduler {
         })
     }
 
-    fn spawn_focus_loop(
+    pub(super) fn spawn_focus_loop(
         &self,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
@@ -772,7 +515,7 @@ impl Scheduler {
         })
     }
 
-    fn spawn_event_snapshot_loop(
+    pub(super) fn spawn_event_snapshot_loop(
         &self,
         detailed_process_interval: Duration,
         input_activity_interval: Duration,
@@ -854,7 +597,10 @@ impl Scheduler {
         })
     }
 
-    async fn run_scheduler_loops(&self, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) {
+    pub(super) async fn run_scheduler_loops(
+        &self,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) {
         let poll = self.config.poll_interval;
         let metrics_interval = self.config.metrics_interval;
         let process_interval = self.config.process_interval;
@@ -930,138 +676,5 @@ impl Scheduler {
         notification_task.abort();
         focus_task.abort();
         event_snapshot_task.abort();
-    }
-}
-
-#[allow(dead_code)]
-pub fn should_run_now(config: &AppConfig) -> bool {
-    let schedule = &config.schedule;
-    if !schedule.active_hours_enabled {
-        return true;
-    }
-
-    let now = chrono::Local::now();
-    let hour = now.hour() as u8;
-    let weekday = match now.weekday() {
-        chrono::Weekday::Mon => Weekday::Mon,
-        chrono::Weekday::Tue => Weekday::Tue,
-        chrono::Weekday::Wed => Weekday::Wed,
-        chrono::Weekday::Thu => Weekday::Thu,
-        chrono::Weekday::Fri => Weekday::Fri,
-        chrono::Weekday::Sat => Weekday::Sat,
-        chrono::Weekday::Sun => Weekday::Sun,
-    };
-
-    if !schedule.active_days.contains(&weekday) {
-        return false;
-    }
-
-    hour >= schedule.active_start_hour && hour < schedule.active_end_hour
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use oneshim_core::config::PiiFilterLevel;
-
-    #[test]
-    fn should_run_when_disabled() {
-        let config = AppConfig::default_config();
-        assert!(should_run_now(&config));
-    }
-
-    #[test]
-    fn scheduler_config_default() {
-        let config = SchedulerConfig::default();
-        assert_eq!(config.poll_interval, Duration::from_secs(1));
-        assert_eq!(config.metrics_interval, Duration::from_secs(5));
-        assert_eq!(config.ai_access_mode, AiAccessMode::ProviderApiKey);
-        assert_eq!(config.idle_threshold_secs, 300);
-    }
-
-    #[test]
-    fn platform_sync_enabled_only_for_platform_connected_mode() {
-        let mut config = SchedulerConfig {
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::ProviderApiKey,
-            ..SchedulerConfig::default()
-        };
-
-        let policy = PlatformEgressPolicy::new(&config);
-        assert!(!policy.is_enabled());
-
-        config.ai_access_mode = AiAccessMode::PlatformConnected;
-        let policy = PlatformEgressPolicy::new(&config);
-        assert!(policy.is_enabled());
-    }
-
-    #[test]
-    fn strict_policy_redacts_window_title() {
-        let config = SchedulerConfig {
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::PlatformConnected,
-            external_data_policy: ExternalDataPolicy::PiiFilterStrict,
-            ..SchedulerConfig::default()
-        };
-        let policy = PlatformEgressPolicy::new(&config);
-        let event = Event::Context(ContextEvent {
-            app_name: "Chrome".to_string(),
-            window_title: "Inbox user@example.com".to_string(),
-            prev_app_name: None,
-            timestamp: Utc::now(),
-        });
-
-        let uploaded = policy.prepare_event_for_upload(event);
-        let Some(Event::Context(ctx)) = uploaded else {
-            panic!("context event should be uploadable");
-        };
-        assert_eq!(ctx.window_title, REDACTED_WINDOW_TITLE);
-    }
-
-    #[test]
-    fn allow_filtered_policy_uses_pii_filter() {
-        let privacy = PrivacyConfig {
-            pii_filter_level: PiiFilterLevel::Basic,
-            ..PrivacyConfig::default()
-        };
-        let config = SchedulerConfig {
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::PlatformConnected,
-            external_data_policy: ExternalDataPolicy::AllowFiltered,
-            privacy_config: privacy,
-            ..SchedulerConfig::default()
-        };
-        let policy = PlatformEgressPolicy::new(&config);
-        let event = Event::Context(ContextEvent {
-            app_name: "Chrome".to_string(),
-            window_title: "Inbox user@example.com".to_string(),
-            prev_app_name: None,
-            timestamp: Utc::now(),
-        });
-
-        let uploaded = policy.prepare_event_for_upload(event);
-        let Some(Event::Context(ctx)) = uploaded else {
-            panic!("context event should be uploadable");
-        };
-        assert!(ctx.window_title.contains("[EMAIL]"));
-        assert!(!ctx.window_title.contains('@'));
-    }
-
-    #[test]
-    fn sensitive_apps_are_skipped_from_upload() {
-        let config = SchedulerConfig {
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::PlatformConnected,
-            ..SchedulerConfig::default()
-        };
-        let policy = PlatformEgressPolicy::new(&config);
-        let event = Event::Context(ContextEvent {
-            app_name: "Bitwarden".to_string(),
-            window_title: "Vault".to_string(),
-            prev_app_name: None,
-            timestamp: Utc::now(),
-        });
-
-        assert!(policy.prepare_event_for_upload(event).is_none());
     }
 }

@@ -1,178 +1,27 @@
-use chrono::{DateTime, Duration, Utc};
-use oneshim_core::error::CoreError;
-use oneshim_core::models::work_session::{
-    AppCategory, FocusMetrics, Interruption, LocalSuggestion, WorkSession,
-};
+mod models;
+mod suggestions;
+
+// ── Public re-exports (external API) ────────────────────────────────
+pub use models::{FocusAnalyzerConfig, FocusStorage};
+
+use chrono::Utc;
+use oneshim_core::models::work_session::AppCategory;
 use oneshim_core::ports::notifier::DesktopNotifier;
-use oneshim_storage::sqlite::SqliteStorage;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
-use crate::workflow_intelligence::{PlaybookSignal, WorkflowIntelligence};
+use crate::workflow_intelligence::WorkflowIntelligence;
 
-pub trait FocusStorage: Send + Sync {
-    fn increment_focus_metrics(
-        &self,
-        date: &str,
-        active_secs: u64,
-        deep_work_secs: u64,
-        communication_secs: u64,
-        context_switches: u32,
-        interruption_count: u32,
-    ) -> Result<(), CoreError>;
-
-    fn add_deep_work_secs(&self, session_id: i64, secs: u64) -> Result<(), CoreError>;
-    fn record_interruption(&self, interruption: &Interruption) -> Result<i64, CoreError>;
-    fn increment_work_session_interruption(&self, session_id: i64) -> Result<(), CoreError>;
-    fn record_interruption_resume(
-        &self,
-        interruption_id: i64,
-        resumed_to_app: &str,
-    ) -> Result<(), CoreError>;
-    fn end_work_session(&self, session_id: i64) -> Result<(), CoreError>;
-    fn start_work_session(
-        &self,
-        primary_app: &str,
-        category: AppCategory,
-    ) -> Result<WorkSession, CoreError>;
-    fn get_or_create_focus_metrics(&self, date: &str) -> Result<FocusMetrics, CoreError>;
-    fn update_focus_metrics(&self, date: &str, metrics: &FocusMetrics) -> Result<(), CoreError>;
-    fn save_local_suggestion(&self, suggestion: &LocalSuggestion) -> Result<i64, CoreError>;
-    fn mark_suggestion_shown(&self, suggestion_id: i64) -> Result<(), CoreError>;
-    fn get_pending_interruption(&self) -> Result<Option<Interruption>, CoreError>;
-}
-
-impl FocusStorage for SqliteStorage {
-    fn increment_focus_metrics(
-        &self,
-        date: &str,
-        active_secs: u64,
-        deep_work_secs: u64,
-        communication_secs: u64,
-        context_switches: u32,
-        interruption_count: u32,
-    ) -> Result<(), CoreError> {
-        SqliteStorage::increment_focus_metrics(
-            self,
-            date,
-            active_secs,
-            deep_work_secs,
-            communication_secs,
-            context_switches,
-            interruption_count,
-        )
-    }
-
-    fn add_deep_work_secs(&self, session_id: i64, secs: u64) -> Result<(), CoreError> {
-        SqliteStorage::add_deep_work_secs(self, session_id, secs)
-    }
-
-    fn record_interruption(&self, interruption: &Interruption) -> Result<i64, CoreError> {
-        SqliteStorage::record_interruption(self, interruption)
-    }
-
-    fn increment_work_session_interruption(&self, session_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::increment_work_session_interruption(self, session_id)
-    }
-
-    fn record_interruption_resume(
-        &self,
-        interruption_id: i64,
-        resumed_to_app: &str,
-    ) -> Result<(), CoreError> {
-        SqliteStorage::record_interruption_resume(self, interruption_id, resumed_to_app)
-    }
-
-    fn end_work_session(&self, session_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::end_work_session(self, session_id)
-    }
-
-    fn start_work_session(
-        &self,
-        primary_app: &str,
-        category: AppCategory,
-    ) -> Result<WorkSession, CoreError> {
-        SqliteStorage::start_work_session(self, primary_app, category)
-    }
-
-    fn get_or_create_focus_metrics(&self, date: &str) -> Result<FocusMetrics, CoreError> {
-        SqliteStorage::get_or_create_focus_metrics(self, date)
-    }
-
-    fn update_focus_metrics(&self, date: &str, metrics: &FocusMetrics) -> Result<(), CoreError> {
-        SqliteStorage::update_focus_metrics(self, date, metrics)
-    }
-
-    fn save_local_suggestion(&self, suggestion: &LocalSuggestion) -> Result<i64, CoreError> {
-        SqliteStorage::save_local_suggestion(self, suggestion)
-    }
-
-    fn mark_suggestion_shown(&self, suggestion_id: i64) -> Result<(), CoreError> {
-        SqliteStorage::mark_suggestion_shown(self, suggestion_id)
-    }
-
-    fn get_pending_interruption(&self) -> Result<Option<Interruption>, CoreError> {
-        SqliteStorage::get_pending_interruption(self)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FocusAnalyzerConfig {
-    #[allow(dead_code)]
-    pub deep_work_min_secs: u64,
-    pub break_suggestion_mins: u32,
-    pub excessive_communication_threshold: f32,
-    pub suggestion_cooldown_secs: u64,
-    pub focus_score_deep_work_weight: f32,
-    pub focus_score_interruption_penalty: f32,
-    pub workflow_split_idle_secs: u64,
-    pub playbook_min_relevance: f32,
-    pub playbook_stale_flush_secs: u64,
-}
-
-impl Default for FocusAnalyzerConfig {
-    fn default() -> Self {
-        Self {
-            deep_work_min_secs: 300,                // 5 min
-            break_suggestion_mins: 90,              // 90 min
-            excessive_communication_threshold: 0.4, // 40%
-            suggestion_cooldown_secs: 1800,         // 30 min
-            focus_score_deep_work_weight: 0.7,
-            focus_score_interruption_penalty: 0.1,
-            workflow_split_idle_secs: 300, // 5 min
-            playbook_min_relevance: 0.35,
-            playbook_stale_flush_secs: 900, // 15 min
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct SuggestionCooldowns {
-    last_break: Option<DateTime<Utc>>,
-    last_focus_time: Option<DateTime<Utc>>,
-    last_restore_context: Option<DateTime<Utc>>,
-    last_excessive_comm: Option<DateTime<Utc>>,
-    last_pattern_detected: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Default)]
-struct SessionTracker {
-    active_session_id: Option<i64>,
-    current_app: Option<String>,
-    current_category: Option<AppCategory>,
-    current_app_start: Option<DateTime<Utc>>,
-    continuous_deep_work_secs: u64,
-    pending_interruption_id: Option<i64>,
-}
+use models::{SessionTracker, SuggestionCooldowns};
 
 pub struct FocusAnalyzer {
-    config: FocusAnalyzerConfig,
-    storage: Arc<dyn FocusStorage>,
-    notifier: Arc<dyn DesktopNotifier>,
-    tracker: RwLock<SessionTracker>,
-    cooldowns: RwLock<SuggestionCooldowns>,
-    workflow_intelligence: RwLock<WorkflowIntelligence>,
+    pub(super) config: FocusAnalyzerConfig,
+    pub(super) storage: Arc<dyn FocusStorage>,
+    pub(super) notifier: Arc<dyn DesktopNotifier>,
+    pub(super) tracker: RwLock<SessionTracker>,
+    pub(super) cooldowns: RwLock<SuggestionCooldowns>,
+    pub(super) workflow_intelligence: RwLock<WorkflowIntelligence>,
 }
 
 impl FocusAnalyzer {
@@ -268,7 +117,7 @@ impl FocusAnalyzer {
                 }
 
                 if prev_cat.is_deep_work() && new_category.is_communication() {
-                    let interruption = Interruption::new(
+                    let interruption = oneshim_core::models::work_session::Interruption::new(
                         0, // id assigned on persist
                         prev_app_name,
                         new_app.to_string(),
@@ -400,227 +249,6 @@ impl FocusAnalyzer {
         );
     }
 
-    fn calculate_focus_score(&self, metrics: &FocusMetrics) -> f32 {
-        if metrics.total_active_secs == 0 {
-            return 0.0;
-        }
-
-        let deep_work_ratio = metrics.deep_work_secs as f32 / metrics.total_active_secs as f32;
-        let interruption_penalty = (metrics.interruption_count as f32
-            * self.config.focus_score_interruption_penalty)
-            .min(0.5);
-
-        ((deep_work_ratio * self.config.focus_score_deep_work_weight) - interruption_penalty)
-            .clamp(0.0, 1.0)
-    }
-
-    async fn maybe_suggest_break(&self) {
-        let tracker = self.tracker.read().await;
-        let continuous_mins = (tracker.continuous_deep_work_secs / 60) as u32;
-
-        if continuous_mins < self.config.break_suggestion_mins {
-            return;
-        }
-
-        if !self.check_cooldown("break").await {
-            return;
-        }
-
-        let suggestion = LocalSuggestion::TakeBreak {
-            continuous_work_mins: continuous_mins,
-        };
-
-        let suggestion_id = match self.storage.save_local_suggestion(&suggestion) {
-            Ok(id) => id,
-            Err(e) => {
-                warn!("suggestion save failure: {e}");
-                return;
-            }
-        };
-
-        let title = "☕ 휴식 시간";
-        let body = format!(
-            "{}분 동안 집중하셨습니다. 잠시 휴식을 취해보세요!",
-            continuous_mins
-        );
-
-        if let Err(e) = self.notifier.show_notification(title, &body).await {
-            warn!("notification failure: {e}");
-        } else {
-            let _ = self.storage.mark_suggestion_shown(suggestion_id);
-            info!("suggestion sent: {}min consecutive", continuous_mins);
-        }
-
-        self.update_cooldown("break").await;
-    }
-
-    async fn maybe_suggest_focus_time(&self, metrics: &FocusMetrics) {
-        let comm_ratio = metrics.communication_ratio();
-
-        if comm_ratio < self.config.excessive_communication_threshold {
-            return;
-        }
-
-        if !self.check_cooldown("focus_time").await {
-            return;
-        }
-
-        let suggested_focus_mins = (metrics.communication_secs / 60).max(30) as u32;
-
-        let suggestion = LocalSuggestion::NeedFocusTime {
-            communication_ratio: comm_ratio,
-            suggested_focus_mins,
-        };
-
-        let suggestion_id = match self.storage.save_local_suggestion(&suggestion) {
-            Ok(id) => id,
-            Err(e) => {
-                warn!("in progress hour suggestion save failure: {e}");
-                return;
-            }
-        };
-
-        let title = "🎯 집중 시간 필요";
-        let body = format!(
-            "오늘 소통에 {:.0}%의 시간을 사용했습니다. {}분의 집중 시간을 확보해보세요.",
-            comm_ratio * 100.0,
-            suggested_focus_mins
-        );
-
-        if let Err(e) = self.notifier.show_notification(title, &body).await {
-            warn!("in progress hour notification failure: {e}");
-        } else {
-            let _ = self.storage.mark_suggestion_shown(suggestion_id);
-            info!(
-                "in progress hour suggestion sent: {:.1}%",
-                comm_ratio * 100.0
-            );
-        }
-
-        self.update_cooldown("focus_time").await;
-    }
-
-    async fn maybe_suggest_restore_context(&self, app: &str, now: DateTime<Utc>) {
-        if !self.check_cooldown("restore_context").await {
-            return;
-        }
-
-        let interruption = match self.storage.get_pending_interruption() {
-            Ok(Some(int)) => int,
-            _ => return,
-        };
-
-        if (now - interruption.interrupted_at).num_minutes() > 30 {
-            return;
-        }
-
-        let suggestion = LocalSuggestion::RestoreContext {
-            interrupted_app: app.to_string(),
-            interrupted_at: interruption.interrupted_at,
-            snapshot_frame_id: interruption.snapshot_frame_id.unwrap_or(0),
-        };
-
-        let suggestion_id = match self.storage.save_local_suggestion(&suggestion) {
-            Ok(id) => id,
-            Err(e) => {
-                warn!("context restore suggestion save failure: {e}");
-                return;
-            }
-        };
-
-        let title = "🔄 작업 context";
-        let duration_mins = (now - interruption.interrupted_at).num_minutes();
-        let body = format!(
-            "{}에서 {}분 전 중단되었습니다. 이전 작업으로 돌아가시겠습니까?",
-            app, duration_mins
-        );
-
-        if let Err(e) = self.notifier.show_notification(title, &body).await {
-            warn!("context restore notification failure: {e}");
-        } else {
-            let _ = self.storage.mark_suggestion_shown(suggestion_id);
-            info!(
-                "context 복원 suggestion 발송: {} ({}분 전 중단)",
-                app, duration_mins
-            );
-        }
-
-        self.update_cooldown("restore_context").await;
-    }
-
-    async fn maybe_suggest_pattern_detected(&self, signal: PlaybookSignal) {
-        if !self.check_cooldown("pattern_detected").await {
-            return;
-        }
-
-        let suggestion = LocalSuggestion::PatternDetected {
-            pattern_description: signal.description.clone(),
-            confidence: signal.confidence,
-        };
-
-        let suggestion_id = match self.storage.save_local_suggestion(&suggestion) {
-            Ok(id) => id,
-            Err(e) => {
-                warn!("suggestion save failure: {e}");
-                return;
-            }
-        };
-
-        let title = "🧭 반복 플레이북";
-        let confidence_percent = (signal.confidence * 100.0).round() as i32;
-        let body = format!(
-            "{} (confidence {}%)",
-            signal.description, confidence_percent
-        );
-
-        if let Err(e) = self.notifier.show_notification(title, &body).await {
-            warn!("suggestion notification failure: {e}");
-            return;
-        }
-
-        let _ = self.storage.mark_suggestion_shown(suggestion_id);
-        info!(
-            confidence = signal.confidence,
-            description = %signal.description,
-            "플레이북 패턴 suggestion 발송"
-        );
-        self.update_cooldown("pattern_detected").await;
-    }
-
-    async fn check_cooldown(&self, suggestion_type: &str) -> bool {
-        let cooldowns = self.cooldowns.read().await;
-        let now = Utc::now();
-        let cooldown_duration = Duration::seconds(self.config.suggestion_cooldown_secs as i64);
-
-        let last_time = match suggestion_type {
-            "break" => cooldowns.last_break,
-            "focus_time" => cooldowns.last_focus_time,
-            "restore_context" => cooldowns.last_restore_context,
-            "excessive_comm" => cooldowns.last_excessive_comm,
-            "pattern_detected" => cooldowns.last_pattern_detected,
-            _ => None,
-        };
-
-        match last_time {
-            Some(last) => now - last > cooldown_duration,
-            None => true,
-        }
-    }
-
-    async fn update_cooldown(&self, suggestion_type: &str) {
-        let mut cooldowns = self.cooldowns.write().await;
-        let now = Utc::now();
-
-        match suggestion_type {
-            "break" => cooldowns.last_break = Some(now),
-            "focus_time" => cooldowns.last_focus_time = Some(now),
-            "restore_context" => cooldowns.last_restore_context = Some(now),
-            "excessive_comm" => cooldowns.last_excessive_comm = Some(now),
-            "pattern_detected" => cooldowns.last_pattern_detected = Some(now),
-            _ => {}
-        }
-    }
-
     #[allow(dead_code)]
     pub async fn on_idle_resume(&self) {
         let now = Utc::now();
@@ -653,8 +281,11 @@ impl FocusAnalyzer {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use chrono::Duration;
     use oneshim_core::error::CoreError;
     use oneshim_core::models::suggestion::Suggestion;
+    use oneshim_core::models::work_session::FocusMetrics;
+    use oneshim_storage::sqlite::SqliteStorage;
     use std::sync::atomic::{AtomicU32, Ordering};
     use tempfile::TempDir;
 
@@ -749,10 +380,6 @@ mod tests {
         };
 
         let score = analyzer.calculate_focus_score(&metrics);
-        // deep_work_ratio = 2400/3600 = 0.667
-        // weighted = 0.667 * 0.7 = 0.467
-        // penalty = 3 * 0.1 = 0.3
-        // score = 0.467 - 0.3 = 0.167
         assert!(score > 0.1 && score < 0.3, "score was {}", score);
     }
 
@@ -778,7 +405,7 @@ mod tests {
         let metrics = FocusMetrics {
             period_start: now,
             period_end: now + Duration::hours(8),
-            total_active_secs: 0, // zero-safe path
+            total_active_secs: 0,
             deep_work_secs: 0,
             communication_secs: 0,
             context_switches: 0,
@@ -801,7 +428,7 @@ mod tests {
             period_start: now,
             period_end: now + Duration::hours(8),
             total_active_secs: 3600,
-            deep_work_secs: 3600, // 100%
+            deep_work_secs: 3600,
             communication_secs: 0,
             context_switches: 100,
             interruption_count: 100,
@@ -811,9 +438,6 @@ mod tests {
         };
 
         let score = analyzer.calculate_focus_score(&metrics);
-        // deep_work_ratio = 1.0, weighted = 0.7
-        // penalty = min(100 * 0.1, 0.5) = 0.5
-        // score = 0.7 - 0.5 = 0.2
         assert!((0.0..=1.0).contains(&score), "score was {}", score);
         assert!((score - 0.2).abs() < 0.01, "score was {}", score);
     }
@@ -852,7 +476,7 @@ mod tests {
         let (analyzer, _temp, _notifier) = create_test_analyzer().await;
 
         analyzer.on_app_switch("Visual Studio Code").await;
-        analyzer.on_app_switch("Visual Studio Code").await; // app
+        analyzer.on_app_switch("Visual Studio Code").await;
         let tracker = analyzer.tracker.read().await;
         assert_eq!(tracker.current_app, Some("Visual Studio Code".to_string()));
     }
