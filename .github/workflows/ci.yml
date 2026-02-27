@@ -180,6 +180,9 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
       - name: Run clippy (server features)
+        run: cargo clippy --workspace --all-targets --features server -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
+      - name: Run clippy (grpc features)
         run: cargo clippy --workspace --all-targets --features grpc -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
   perf-gates:
@@ -273,6 +276,9 @@ jobs:
         run: cargo test --workspace
 
       - name: Run tests (server features)
+        run: cargo test --workspace --features server
+
+      - name: Run tests (grpc features)
         run: cargo test --workspace --features grpc
 
   build-pr-smoke:

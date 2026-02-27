@@ -4,6 +4,7 @@
 mod automation_runtime;
 mod autostart;
 mod cli_subscription_bridge;
+#[cfg(feature = "server")]
 mod event_bus;
 mod focus_analyzer;
 mod focus_probe_adapter;

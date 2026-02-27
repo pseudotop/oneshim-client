@@ -54,5 +54,7 @@ fn compile_protos() {
         std::fs::write(&generated, patched).expect("write patched");
     }
 
-    println!("cargo:rerun-if-changed={}", proto_root.display());
+    for proto in &protos {
+        println!("cargo:rerun-if-changed={}", proto.display());
+    }
 }
