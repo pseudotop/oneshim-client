@@ -142,6 +142,8 @@ pub async fn execute_gui_session(
             session: result.outcome.session,
             succeeded: result.outcome.succeeded,
             detail: result.outcome.detail,
+            steps_completed: result.outcome.steps_completed,
+            total_steps: result.outcome.total_steps,
         },
     }))
 }

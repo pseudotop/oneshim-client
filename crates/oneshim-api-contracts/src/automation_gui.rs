@@ -57,6 +57,8 @@ pub struct GuiExecutionOutcome {
     pub session: GuiInteractionSession,
     pub succeeded: bool,
     pub detail: Option<String>,
+    pub steps_completed: usize,
+    pub total_steps: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -171,11 +173,15 @@ mod tests {
                 "expires_at": "2026-01-01T01:00:00Z"
             },
             "succeeded": true,
-            "detail": null
+            "detail": null,
+            "steps_completed": 1,
+            "total_steps": 1
         }"#;
         let outcome: GuiExecutionOutcome = serde_json::from_str(json).unwrap();
         assert!(outcome.succeeded);
         assert!(outcome.detail.is_none());
         assert_eq!(outcome.session.session_id, "s1");
+        assert_eq!(outcome.steps_completed, 1);
+        assert_eq!(outcome.total_steps, 1);
     }
 }

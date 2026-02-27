@@ -30,6 +30,7 @@ const CLEANUP_INTERVAL_SECS: u64 = 30;
 const GUI_EVENT_CHANNEL_CAPACITY: usize = 256;
 const FOCUS_DRIFT_MAX_RETRIES: usize = 2;
 const FOCUS_DRIFT_RETRY_DELAY_MS: u64 = 500;
+const TICKET_EXPIRY_GRACE_SECS: i64 = 5;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -105,6 +106,8 @@ pub struct GuiExecutionOutcome {
     pub session: GuiInteractionSession,
     pub succeeded: bool,
     pub detail: Option<String>,
+    pub steps_completed: usize,
+    pub total_steps: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -575,7 +578,7 @@ impl GuiInteractionService {
                 "action_hash mismatch".to_string(),
             ));
         }
-        if is_expired(&req.ticket.expires_at) {
+        if is_expired_past_grace(&req.ticket.expires_at, TICKET_EXPIRY_GRACE_SECS) {
             return Err(GuiInteractionError::TicketInvalid(
                 "ticket expired".to_string(),
             ));
@@ -646,6 +649,8 @@ impl GuiInteractionService {
         session_id: &str,
         succeeded: bool,
         detail: Option<String>,
+        steps_completed: usize,
+        total_steps: usize,
     ) -> Result<GuiExecutionOutcome, GuiInteractionError> {
         let (updated_session, overlay_handle_id) = {
             let mut sessions = self.sessions.write().await;
@@ -682,6 +687,8 @@ impl GuiInteractionService {
             session: updated_session,
             succeeded,
             detail,
+            steps_completed,
+            total_steps,
         })
     }
 
@@ -946,6 +953,10 @@ fn decode_hex(input: &str) -> Option<Vec<u8>> {
 
 fn is_expired(expires_at: &DateTime<Utc>) -> bool {
     *expires_at <= Utc::now()
+}
+
+fn is_expired_past_grace(expires_at: &DateTime<Utc>, grace_secs: i64) -> bool {
+    *expires_at + ChronoDuration::seconds(grace_secs) <= Utc::now()
 }
 
 fn map_core_error(err: CoreError) -> GuiInteractionError {
@@ -1598,7 +1609,10 @@ mod tests {
             .unwrap();
 
         // Complete execution to go back to Confirmed for re-test
-        service.complete_execution(&sid, false, None).await.unwrap();
+        service
+            .complete_execution(&sid, false, None, 0, 1)
+            .await
+            .unwrap();
 
         // Replay same ticket nonce — should be rejected
         let err = service
@@ -1689,7 +1703,10 @@ mod tests {
             .await
             .unwrap();
 
-        let outcome = service.complete_execution(&sid, true, None).await.unwrap();
+        let outcome = service
+            .complete_execution(&sid, true, None, 1, 1)
+            .await
+            .unwrap();
 
         assert!(outcome.succeeded);
         assert_eq!(outcome.session.state, GuiSessionState::Executed);
@@ -1707,7 +1724,7 @@ mod tests {
             .unwrap();
 
         let outcome = service
-            .complete_execution(&sid, false, Some("click missed".to_string()))
+            .complete_execution(&sid, false, Some("click missed".to_string()), 0, 1)
             .await
             .unwrap();
 
@@ -1860,7 +1877,10 @@ mod tests {
         assert_eq!(session.state, GuiSessionState::Executing);
 
         // 5. Complete
-        let outcome = service.complete_execution(&sid, true, None).await.unwrap();
+        let outcome = service
+            .complete_execution(&sid, true, None, 1, 1)
+            .await
+            .unwrap();
         assert!(outcome.succeeded);
         assert_eq!(outcome.session.state, GuiSessionState::Executed);
     }
@@ -2173,7 +2193,7 @@ mod tests {
 
         // Complete with failure
         let outcome = service
-            .complete_execution(&sid, false, Some("action failed".to_string()))
+            .complete_execution(&sid, false, Some("action failed".to_string()), 0, 1)
             .await
             .unwrap();
         assert!(!outcome.succeeded);
@@ -2211,7 +2231,10 @@ mod tests {
 
         let clear_before = overlay.clear_count.load(Ordering::SeqCst);
 
-        let outcome = service.complete_execution(&sid, true, None).await.unwrap();
+        let outcome = service
+            .complete_execution(&sid, true, None, 1, 1)
+            .await
+            .unwrap();
         assert!(outcome.succeeded);
 
         assert!(
@@ -2250,5 +2273,200 @@ mod tests {
             FOCUS_DRIFT_RETRY_DELAY_MS >= 100 && FOCUS_DRIFT_RETRY_DELAY_MS <= 5000,
             "Retry delay should be between 100ms and 5s"
         );
+    }
+
+    // ── M2 P2: Ticket expiry grace period ────────────────────────────────
+
+    #[test]
+    fn ticket_expiry_grace_secs_is_reasonable() {
+        assert!(
+            TICKET_EXPIRY_GRACE_SECS >= 1 && TICKET_EXPIRY_GRACE_SECS <= 30,
+            "Grace period should be between 1s and 30s"
+        );
+        assert!(
+            TICKET_EXPIRY_GRACE_SECS < DEFAULT_TICKET_TTL_SECS,
+            "Grace period must be shorter than ticket TTL"
+        );
+    }
+
+    #[test]
+    fn is_expired_past_grace_rejects_well_past_deadline() {
+        let well_expired = Utc::now() - ChronoDuration::seconds(60);
+        assert!(
+            is_expired_past_grace(&well_expired, TICKET_EXPIRY_GRACE_SECS),
+            "Ticket expired 60s ago should fail even with grace"
+        );
+    }
+
+    #[test]
+    fn is_expired_past_grace_allows_within_grace_window() {
+        // Expired 2s ago, but grace is 5s — should still be valid
+        let just_expired = Utc::now() - ChronoDuration::seconds(2);
+        assert!(
+            !is_expired_past_grace(&just_expired, TICKET_EXPIRY_GRACE_SECS),
+            "Ticket expired 2s ago should be allowed within 5s grace"
+        );
+    }
+
+    #[test]
+    fn is_expired_past_grace_rejects_past_grace_boundary() {
+        // Expired 10s ago, grace is 5s — should fail
+        let past_grace = Utc::now() - ChronoDuration::seconds(10);
+        assert!(
+            is_expired_past_grace(&past_grace, TICKET_EXPIRY_GRACE_SECS),
+            "Ticket expired 10s ago should fail with 5s grace"
+        );
+    }
+
+    #[test]
+    fn is_expired_still_strict_for_sessions() {
+        // Session expiry uses strict is_expired (no grace)
+        let just_expired = Utc::now() - ChronoDuration::seconds(1);
+        assert!(
+            is_expired(&just_expired),
+            "Session expiry should remain strict"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_execution_allows_ticket_within_grace_window() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        // Confirm with a 1-second TTL so it expires quickly
+        let (sid, token, _) = create_highlight_and_confirm(&service).await;
+        let ticket = service
+            .confirm_candidate(
+                &sid,
+                &token,
+                GuiConfirmRequest {
+                    candidate_id: "el-1".to_string(),
+                    action: GuiActionRequest {
+                        action_type: GuiActionType::Click,
+                        text: None,
+                    },
+                    ticket_ttl_secs: Some(1),
+                },
+            )
+            .await
+            .unwrap();
+
+        // Wait for ticket to nominally expire (1s), but grace (5s) keeps it valid
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+
+        let result = service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "Ticket expired 1.2s ago should be accepted within 5s grace window"
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_execution_rejects_ticket_past_grace_window() {
+        // Test the is_expired_past_grace function directly since we can't
+        // tamper with expires_at without breaking the HMAC signature
+        let past_grace = Utc::now() - ChronoDuration::seconds(60);
+        assert!(
+            is_expired_past_grace(&past_grace, TICKET_EXPIRY_GRACE_SECS),
+            "Ticket expired 60s ago should be rejected even with grace"
+        );
+
+        let within_grace = Utc::now() - ChronoDuration::seconds(2);
+        assert!(
+            !is_expired_past_grace(&within_grace, TICKET_EXPIRY_GRACE_SECS),
+            "Ticket expired 2s ago should pass with 5s grace"
+        );
+    }
+
+    // ── M2 P2: Partial execution step tracking ──────────────────────────
+
+    #[tokio::test]
+    async fn complete_execution_tracks_step_counts() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+        service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap();
+
+        // Simulate partial execution: 2 of 5 steps completed
+        let outcome = service
+            .complete_execution(&sid, false, Some("step 3 failed".to_string()), 2, 5)
+            .await
+            .unwrap();
+
+        assert!(!outcome.succeeded);
+        assert_eq!(outcome.steps_completed, 2);
+        assert_eq!(outcome.total_steps, 5);
+        assert_eq!(outcome.session.state, GuiSessionState::Confirmed);
+    }
+
+    #[tokio::test]
+    async fn complete_execution_full_success_step_counts() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+        service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap();
+
+        let outcome = service
+            .complete_execution(&sid, true, None, 3, 3)
+            .await
+            .unwrap();
+
+        assert!(outcome.succeeded);
+        assert_eq!(outcome.steps_completed, 3);
+        assert_eq!(outcome.total_steps, 3);
+        assert_eq!(outcome.session.state, GuiSessionState::Executed);
+    }
+
+    #[tokio::test]
+    async fn partial_execution_allows_retry_with_new_ticket() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+        service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap();
+
+        // Partial failure reverts to Confirmed
+        let outcome = service
+            .complete_execution(&sid, false, Some("step 2 failed".to_string()), 1, 3)
+            .await
+            .unwrap();
+        assert_eq!(outcome.session.state, GuiSessionState::Confirmed);
+
+        // Client can re-confirm to get a new ticket
+        let new_ticket = service
+            .confirm_candidate(
+                &sid,
+                &token,
+                GuiConfirmRequest {
+                    candidate_id: "el-1".to_string(),
+                    action: GuiActionRequest {
+                        action_type: GuiActionType::Click,
+                        text: None,
+                    },
+                    ticket_ttl_secs: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // New ticket should work for retry
+        let plan = service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket: new_ticket })
+            .await;
+        assert!(plan.is_ok(), "Retry with new ticket should succeed");
     }
 }

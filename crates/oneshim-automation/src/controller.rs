@@ -363,6 +363,7 @@ impl AutomationController {
         let total_deadline = std::time::Duration::from_secs(GUI_EXECUTE_TIMEOUT_SECS);
         let action_timeout = std::time::Duration::from_secs(GUI_ACTION_TIMEOUT_SECS);
 
+        let total_steps = plan.actions.len();
         let actions_result = tokio::time::timeout(total_deadline, async {
             let mut last_result = IntentResult {
                 success: false,
@@ -373,6 +374,7 @@ impl AutomationController {
                 error: Some("No executable actions in GUI plan".to_string()),
             };
             let mut execution_error: Option<String> = None;
+            let mut steps_completed: usize = 0;
 
             for (index, action) in plan.actions.iter().enumerate() {
                 let command_id = if index == 0 {
@@ -395,7 +397,9 @@ impl AutomationController {
                 {
                     Ok(Ok(result)) => {
                         last_result = result;
-                        if !last_result.success {
+                        if last_result.success {
+                            steps_completed += 1;
+                        } else {
                             break;
                         }
                     }
@@ -413,16 +417,16 @@ impl AutomationController {
                 }
             }
 
-            (last_result, execution_error)
+            (last_result, execution_error, steps_completed)
         })
         .await;
 
-        let (last_result, execution_error) = match actions_result {
+        let (last_result, execution_error, steps_completed) = match actions_result {
             Ok(inner) => inner,
             Err(_elapsed) => {
                 let detail = format!("GUI execution timed out after {GUI_EXECUTE_TIMEOUT_SECS}s");
                 let _ = service
-                    .complete_execution(session_id, false, Some(detail.clone()))
+                    .complete_execution(session_id, false, Some(detail.clone()), 0, total_steps)
                     .await;
                 return Err(GuiInteractionError::Internal(detail));
             }
@@ -430,12 +434,29 @@ impl AutomationController {
 
         let succeeded = execution_error.is_none() && last_result.success;
         let detail = execution_error.clone().or_else(|| {
-            (!last_result.success)
-                .then(|| last_result.error.clone())
-                .flatten()
+            if !last_result.success {
+                if steps_completed > 0 {
+                    Some(format!(
+                        "Partial execution: {}/{} steps completed. {}",
+                        steps_completed,
+                        total_steps,
+                        last_result.error.as_deref().unwrap_or("action failed")
+                    ))
+                } else {
+                    last_result.error.clone()
+                }
+            } else {
+                None
+            }
         });
         let outcome = service
-            .complete_execution(session_id, succeeded, detail.clone())
+            .complete_execution(
+                session_id,
+                succeeded,
+                detail.clone(),
+                steps_completed,
+                total_steps,
+            )
             .await?;
 
         if let Some(err) = execution_error {
