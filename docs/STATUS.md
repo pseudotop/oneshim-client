@@ -30,21 +30,21 @@ cargo fmt --check
 
 ## Current Snapshot
 
-### Rust Tests (2026-02-27)
+### Rust Tests (2026-02-28)
 
 | Crate | Tests | Status |
 |-------|------:|--------|
 | oneshim-core | 74 | pass |
-| oneshim-network | 87 | pass |
+| oneshim-network | 87 + 3 | pass |
 | oneshim-suggestion | 17 | pass |
 | oneshim-storage | 42 | pass |
 | oneshim-monitor | 39 | pass |
 | oneshim-vision | 84 | pass |
 | oneshim-ui | 37 | pass |
 | oneshim-web | 119 | pass |
-| oneshim-automation | 193 | pass |
+| oneshim-automation | 193 + 1 | pass |
 | oneshim-app (unit) | 99 | pass |
-| oneshim-app (integration) | 32 | pass (3 ignored) |
+| oneshim-app (integration) | 32 | pass (4 ignored) |
 | oneshim-api-contracts | 8 | pass |
 | language-check | 4 | pass |
 | **Total** | **831** | **0 failed** |
@@ -52,16 +52,23 @@ cargo fmt --check
 ### Build & Lint
 
 - `cargo check --workspace`: pass
-- `cargo clippy --workspace --tests`: pass (2 pre-existing `type_complexity` warnings in `oneshim-app`)
+- `cargo clippy --workspace --tests`: pass (2 pre-existing `type_complexity` warnings in `oneshim-app`, 8 `assert_constant` warnings in `oneshim-automation` tests)
 - `cargo fmt --check`: pass
 - E2E tests: See latest Playwright CI report for exact count
 
 ### CI/CD
 
-- Latest CI workflow run: failure (`CI`, stale HTTP interface manifest) — [Run 22489514315](https://github.com/pseudotop/oneshim-client/actions/runs/22489514315) (2026-02-27)
+- Latest CI workflow run: failure (`CI`, stale HTTP interface manifest — pre-existing) — [Run 22489514315](https://github.com/pseudotop/oneshim-client/actions/runs/22489514315) (2026-02-27)
 - Latest Release workflow run: success (`Release`, tag `v0.1.1`) — [Run 22489557639](https://github.com/pseudotop/oneshim-client/actions/runs/22489557639) (2026-02-27)
 - Latest Notarization workflow run: in progress (`Notarize macOS Release Assets`) — [Run 22512298797](https://github.com/pseudotop/oneshim-client/actions/runs/22512298797) (started 2026-02-28)
 - UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc3.md` (latest tracked run evidence)
+
+### Recent Changes (Agent Review Batch 1-4, 2026-02-28)
+
+- **Batch 1**: Config warn stub fix, CI expression injection hardening, script permissions, STATUS update
+- **Batch 2**: Added missing derives — `Serialize`/`Deserialize` on `ConsentStatus`/`SessionCreateResponse`/`SseEvent`, `PartialEq`/`Eq` on `AutomationAction`/`AutomationIntent`
+- **Batch 3**: `CoreError::RequestTimeout` variant, `map_reqwest_error()` timeout detection, `Swatinem/rust-cache@v2` in release.yml
+- **Batch 4**: Vision port traits `&mut self` → `&self` with interior mutability (`Mutex`), Scheduler DI simplified from `Arc<Mutex<Box<dyn T>>>` → `Arc<dyn T>`
 
 ### GUI V2 Milestone Status (ADR-002)
 
