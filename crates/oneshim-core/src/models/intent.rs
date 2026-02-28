@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::automation::AutomationAction;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AutomationIntent {
     ClickElement {
         text: Option<String>,

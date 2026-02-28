@@ -5,7 +5,7 @@ use crate::models::event::EventBatch;
 use crate::models::frame::ContextUpload;
 use crate::models::suggestion::{Suggestion, SuggestionFeedback};
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SessionCreateResponse {
     pub session_id: String,
     pub user_id: String,
@@ -29,7 +29,7 @@ pub trait ApiClient: Send + Sync {
     async fn send_heartbeat(&self, session_id: &str) -> Result<(), CoreError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub enum SseEvent {
     Connected {
         session_id: String,

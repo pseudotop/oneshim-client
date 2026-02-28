@@ -7,7 +7,7 @@ pub enum MouseButton {
     Middle,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AutomationAction {
     MouseMove { x: i32, y: i32 },
     MouseClick { button: String, x: i32, y: i32 },

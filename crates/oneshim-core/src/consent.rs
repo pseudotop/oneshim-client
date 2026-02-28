@@ -43,7 +43,7 @@ pub struct ConsentRecord {
     pub data_retention_days: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConsentStatus {
     NotGranted,
     Valid,
