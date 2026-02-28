@@ -15,8 +15,19 @@ const DEFAULT_MAX_RETRIES: u32 = 3;
 fn is_retryable(error: &CoreError) -> bool {
     matches!(
         error,
-        CoreError::Network(_) | CoreError::ServiceUnavailable(_) | CoreError::RateLimit { .. }
+        CoreError::Network(_)
+            | CoreError::RequestTimeout { .. }
+            | CoreError::ServiceUnavailable(_)
+            | CoreError::RateLimit { .. }
     )
+}
+
+fn map_reqwest_error(e: reqwest::Error, context: &str) -> CoreError {
+    if e.is_timeout() {
+        CoreError::RequestTimeout { timeout_ms: 0 }
+    } else {
+        CoreError::Network(format!("{context}: {e}"))
+    }
 }
 
 pub struct HttpApiClient {
@@ -141,10 +152,11 @@ impl ApiClient for HttpApiClient {
                 .await?;
 
             let body = serde_json::json!({ "client_id": client_id });
-            let resp =
-                req.json(&body).send().await.map_err(|e| {
-                    CoreError::Network(format!("session create request failure: {e}"))
-                })?;
+            let resp = req
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| map_reqwest_error(e, "session create request failure"))?;
 
             let resp = self.check_response(resp).await?;
             let session: SessionCreateResponse = resp.json().await.map_err(|e| {
@@ -169,7 +181,7 @@ impl ApiClient for HttpApiClient {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| CoreError::Network(format!("session ended request failure: {e}")))?;
+                .map_err(|e| map_reqwest_error(e, "session ended request failure"))?;
 
             self.check_response(resp).await?;
             debug!("session ended success");
@@ -186,10 +198,11 @@ impl ApiClient for HttpApiClient {
                 .authorized_request(reqwest::Method::POST, "/user_context/batches")
                 .await?;
 
-            let resp =
-                req.json(batch).send().await.map_err(|e| {
-                    CoreError::Network(format!("batch upload request failure: {e}"))
-                })?;
+            let resp = req
+                .json(batch)
+                .send()
+                .await
+                .map_err(|e| map_reqwest_error(e, "batch upload request failure"))?;
 
             self.check_response(resp).await?;
             debug!("batch upload success");
@@ -210,7 +223,7 @@ impl ApiClient for HttpApiClient {
                 .json(upload)
                 .send()
                 .await
-                .map_err(|e| CoreError::Network(format!("context upload failure: {e}")))?;
+                .map_err(|e| map_reqwest_error(e, "context upload failure"))?;
 
             self.check_response(resp).await?;
             Ok(())
@@ -233,7 +246,7 @@ impl ApiClient for HttpApiClient {
                 .json(feedback)
                 .send()
                 .await
-                .map_err(|e| CoreError::Network(format!("feedback sent failure: {e}")))?;
+                .map_err(|e| map_reqwest_error(e, "feedback sent failure"))?;
 
             self.check_response(resp).await?;
             Ok(())
@@ -253,7 +266,7 @@ impl ApiClient for HttpApiClient {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| CoreError::Network(format!("heartbeat sent failure: {e}")))?;
+                .map_err(|e| map_reqwest_error(e, "heartbeat sent failure"))?;
 
             self.check_response(resp).await?;
             Ok(())

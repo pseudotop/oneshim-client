@@ -23,6 +23,9 @@ pub enum CoreError {
     #[error("Network error: {0}")]
     Network(String),
 
+    #[error("Request timed out after {timeout_ms}ms")]
+    RequestTimeout { timeout_ms: u64 },
+
     #[error("Request rate limit exceeded, retry after {retry_after_secs}s")]
     RateLimit { retry_after_secs: u64 },
 
