@@ -112,7 +112,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download frontend dist artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend
@@ -309,13 +309,13 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download arm64 artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: oneshim-macos-arm64-archive
           path: artifacts/arm64
 
       - name: Download x64 artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: oneshim-macos-x64-archive
           path: artifacts/x64
@@ -584,7 +584,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download release archive for smoke
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.artifact_name }}
           path: smoke-assets
@@ -597,14 +597,14 @@ jobs:
 
       - name: Download macOS installer artifacts for smoke
         if: matrix.name == 'macos'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: oneshim-macos-universal-dmg
           path: smoke-installers
 
       - name: Download macOS PKG artifact for smoke
         if: matrix.name == 'macos'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: oneshim-macos-universal-pkg
           path: smoke-installers
@@ -682,7 +682,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: oneshim-*
           path: dist
