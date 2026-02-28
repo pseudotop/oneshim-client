@@ -74,7 +74,7 @@ oneshim-core  ←  oneshim-monitor
 
 ### Async Trait Pattern (ADR-001 §2)
 
-Apply `#[async_trait]` to all port traits. Required for `Arc<dyn PortTrait>` DI.
+Apply `#[async_trait]` to all port traits. Required for `Arc<dyn PortTrait>` DI. All port traits use `&self` (not `&mut self`) — implementations needing mutable state use interior mutability (`Mutex`, `RwLock`, atomic types).
 
 ```rust
 #[async_trait]
@@ -85,7 +85,7 @@ pub trait ApiClient: Send + Sync {
 
 ### DI Pattern (ADR-001 §3)
 
-Constructor injection + `Arc<dyn T>`. No DI framework is used. Wiring is manually performed in `oneshim-app/src/main.rs`.
+Constructor injection + `Arc<dyn T>`. No DI framework is used. Wiring is manually performed in `oneshim-app/src/main.rs`. All port implementations are wrapped directly in `Arc` — never `Arc<Mutex<Box<dyn T>>>`.
 
 ### Testing (ADR-001 §5)
 
@@ -96,7 +96,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ### oneshim-core (Foundation)
 - `models/`: suggestion, event, frame, context, session, system_metrics, batch
 - `ports/`: ApiClient, SseClient, StorageService, SystemMonitor, ProcessMonitor, ActivityMonitor, CaptureTrigger, FrameProcessor, DesktopNotifier, Compressor
-- `error.rs`: `CoreError` (thiserror)
+- `error.rs`: `CoreError` (thiserror) — Network, RequestTimeout, RateLimit, ServiceUnavailable variants
 - `config/`: `AppConfig` + section settings — directory module (ADR-013)
   - `mod.rs`: `AppConfig` struct + `Default` impl + helpers + re-exports
   - `enums.rs`: `PiiFilterLevel`, `Weekday`, `SandboxProfile`, `AiAccessMode`, `AiProviderType`, etc.
@@ -106,7 +106,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ### oneshim-network (Network Adapter)
 - `auth.rs`: `TokenManager` — JWT login/refresh/logout, `RwLock<TokenState>`
-- `http_client.rs`: `HttpApiClient` — REST API (impl ApiClient)
+- `http_client.rs`: `HttpApiClient` — REST API (impl ApiClient), timeout detection (`map_reqwest_error`)
 - `sse_client.rs`: `SseStreamClient` — SSE stream + auto-reconnect (exponential backoff 1s→30s)
 - `compression.rs`: `AdaptiveCompressor` — auto selection of gzip/zstd/lz4
 - `batch_uploader.rs`: `BatchUploader` — Lock-free SegQueue + dynamic batch size + retry
@@ -146,11 +146,11 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ### oneshim-vision (Edge Image Processing)
 - `capture.rs`: `ScreenCapture` — multi-monitor capture using xcap
-- `trigger.rs`: `SmartCaptureTrigger` (impl CaptureTrigger) — event classification + importance + throttle
+- `trigger.rs`: `SmartCaptureTrigger` (impl CaptureTrigger) — event classification + importance + throttle, interior mutability (`Mutex<TriggerState>`)
 - `delta.rs`: 16x16 tile comparison → changed region extraction (pointer-based fast pixel access)
 - `encoder.rs`: WebP encoding (Low/Medium/High quality) + stat-based quality prediction
 - `thumbnail.rs`: fast_image_resize + LRU caching (100 entries, FNV-1a hash)
-- `processor.rs`: `EdgeFrameProcessor` (impl FrameProcessor) — branches by importance
+- `processor.rs`: `EdgeFrameProcessor` (impl FrameProcessor) — branches by importance, interior mutability (`Mutex<Option<DynamicImage>>` for prev_frame)
   - >= 0.8: Full + OCR
   - >= 0.5: Delta
   - >= 0.3: Thumbnail
