@@ -458,9 +458,11 @@ async fn run_agent(
     let activity_monitor = Arc::new(ActivityTracker::new(process_monitor.clone()));
 
     // Vision pipeline
-    let capture_trigger = Box::new(SmartCaptureTrigger::new(config.vision.capture_throttle_ms));
+    let capture_trigger: Arc<dyn oneshim_core::ports::vision::CaptureTrigger> =
+        Arc::new(SmartCaptureTrigger::new(config.vision.capture_throttle_ms));
     let ocr_tessdata = std::env::var("ONESHIM_TESSDATA").ok().map(PathBuf::from);
-    let frame_processor = Box::new(EdgeFrameProcessor::new(
+    let frame_processor: Arc<dyn oneshim_core::ports::vision::FrameProcessor> =
+        Arc::new(EdgeFrameProcessor::new(
         config.vision.thumbnail_width,
         config.vision.thumbnail_height,
         ocr_tessdata,

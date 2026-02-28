@@ -15,7 +15,7 @@ use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_web::RealtimeEvent;
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 use tracing::{info, warn};
 
 use crate::focus_analyzer::FocusAnalyzer;
@@ -28,8 +28,8 @@ pub struct Scheduler {
     pub(super) system_monitor: Arc<dyn SystemMonitor>,
     pub(super) activity_monitor: Arc<dyn ActivityMonitor>,
     pub(super) process_monitor: Arc<dyn ProcessMonitor>,
-    pub(super) capture_trigger: Arc<Mutex<Box<dyn CaptureTrigger>>>,
-    pub(super) frame_processor: Arc<Mutex<Box<dyn FrameProcessor>>>,
+    pub(super) capture_trigger: Arc<dyn CaptureTrigger>,
+    pub(super) frame_processor: Arc<dyn FrameProcessor>,
     pub(super) storage: Arc<dyn StorageService>,
     pub(super) sqlite_storage: Arc<dyn SchedulerStorage>,
     pub(super) frame_storage: Option<Arc<FrameFileStorage>>,
@@ -48,8 +48,8 @@ impl Scheduler {
         system_monitor: Arc<dyn SystemMonitor>,
         activity_monitor: Arc<dyn ActivityMonitor>,
         process_monitor: Arc<dyn ProcessMonitor>,
-        capture_trigger: Box<dyn CaptureTrigger>,
-        frame_processor: Box<dyn FrameProcessor>,
+        capture_trigger: Arc<dyn CaptureTrigger>,
+        frame_processor: Arc<dyn FrameProcessor>,
         storage: Arc<dyn StorageService>,
         sqlite_storage: Arc<dyn SchedulerStorage>,
         frame_storage: Option<Arc<FrameFileStorage>>,
@@ -62,8 +62,8 @@ impl Scheduler {
             system_monitor,
             activity_monitor,
             process_monitor,
-            capture_trigger: Arc::new(Mutex::new(capture_trigger)),
-            frame_processor: Arc::new(Mutex::new(frame_processor)),
+            capture_trigger,
+            frame_processor,
             storage,
             sqlite_storage,
             frame_storage,

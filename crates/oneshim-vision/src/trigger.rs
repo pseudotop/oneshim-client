@@ -2,6 +2,7 @@ use chrono::{DateTime, Duration, Utc};
 use oneshim_core::models::event::ContextEvent;
 use oneshim_core::ports::vision::CaptureRequest;
 use oneshim_core::ports::vision::CaptureTrigger;
+use std::sync::Mutex;
 use tracing::debug;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -14,27 +15,34 @@ pub enum TriggerType {
     Regular,
 }
 
-pub struct SmartCaptureTrigger {
+struct TriggerState {
     last_capture: Option<DateTime<Utc>>,
     prev_app_name: Option<String>,
+}
+
+pub struct SmartCaptureTrigger {
+    state: Mutex<TriggerState>,
     throttle_ms: u64,
 }
 
 impl SmartCaptureTrigger {
     pub fn new(throttle_ms: u64) -> Self {
         Self {
-            last_capture: None,
-            prev_app_name: None,
+            state: Mutex::new(TriggerState {
+                last_capture: None,
+                prev_app_name: None,
+            }),
             throttle_ms,
         }
     }
 
-    fn classify_event(&self, event: &ContextEvent) -> TriggerType {
+    fn classify_event(
+        event: &ContextEvent,
+        prev_app_name: &Option<String>,
+    ) -> TriggerType {
         let title_lower = event.window_title.to_lowercase();
         if title_lower.contains("error")
             || title_lower.contains("exception")
-            || title_lower.contains("error")
-            || title_lower.contains("error")
         {
             return TriggerType::ErrorDetected;
         }
@@ -43,7 +51,7 @@ impl SmartCaptureTrigger {
             if prev != &event.app_name {
                 return TriggerType::ContextSwitch;
             }
-        } else if let Some(prev) = &self.prev_app_name {
+        } else if let Some(prev) = prev_app_name {
             if prev != &event.app_name {
                 return TriggerType::WindowChange;
             }
@@ -52,7 +60,7 @@ impl SmartCaptureTrigger {
         TriggerType::Regular
     }
 
-    fn compute_importance(&self, trigger_type: &TriggerType) -> f32 {
+    pub fn compute_importance(&self, trigger_type: &TriggerType) -> f32 {
         match trigger_type {
             TriggerType::ErrorDetected => 0.9,
             TriggerType::FormSubmission => 0.8,
@@ -63,11 +71,11 @@ impl SmartCaptureTrigger {
         }
     }
 
-    fn is_throttled(&self, now: DateTime<Utc>) -> bool {
-        match self.last_capture {
+    fn is_throttled(last_capture: &Option<DateTime<Utc>>, now: DateTime<Utc>, throttle_ms: u64) -> bool {
+        match last_capture {
             Some(last) => {
-                let elapsed = now - last;
-                elapsed < Duration::milliseconds(self.throttle_ms as i64)
+                let elapsed = now - *last;
+                elapsed < Duration::milliseconds(throttle_ms as i64)
             }
             None => false,
         }
@@ -75,12 +83,13 @@ impl SmartCaptureTrigger {
 }
 
 impl CaptureTrigger for SmartCaptureTrigger {
-    fn should_capture(&mut self, event: &ContextEvent) -> Option<CaptureRequest> {
+    fn should_capture(&self, event: &ContextEvent) -> Option<CaptureRequest> {
+        let mut state = self.state.lock().unwrap();
         let now = event.timestamp;
-        let trigger_type = self.classify_event(event);
+        let trigger_type = Self::classify_event(event, &state.prev_app_name);
         let importance = self.compute_importance(&trigger_type);
 
-        if importance < 0.8 && self.is_throttled(now) {
+        if importance < 0.8 && Self::is_throttled(&state.last_capture, now, self.throttle_ms) {
             debug!(
                 "capture: {:?} (in progress {:.1})",
                 trigger_type, importance
@@ -88,8 +97,8 @@ impl CaptureTrigger for SmartCaptureTrigger {
             return None;
         }
 
-        self.last_capture = Some(now);
-        self.prev_app_name = Some(event.app_name.clone());
+        state.last_capture = Some(now);
+        state.prev_app_name = Some(event.app_name.clone());
 
         let trigger_type_str = format!("{:?}", trigger_type);
         debug!(
@@ -121,7 +130,7 @@ mod tests {
 
     #[test]
     fn window_change_trigger() {
-        let mut trigger = SmartCaptureTrigger::new(5000);
+        let trigger = SmartCaptureTrigger::new(5000);
         let event = make_event("Code", "test.rs", Some("Firefox"));
         let req = trigger.should_capture(&event);
         assert!(req.is_some());
@@ -132,7 +141,7 @@ mod tests {
 
     #[test]
     fn error_detection() {
-        let mut trigger = SmartCaptureTrigger::new(5000);
+        let trigger = SmartCaptureTrigger::new(5000);
         let event = make_event("Terminal", "Error: command failed", None);
         let req = trigger.should_capture(&event);
         assert!(req.is_some());
@@ -141,7 +150,7 @@ mod tests {
 
     #[test]
     fn throttle_low_importance() {
-        let mut trigger = SmartCaptureTrigger::new(5000);
+        let trigger = SmartCaptureTrigger::new(5000);
 
         let event1 = make_event("Code", "main.rs", None);
         assert!(trigger.should_capture(&event1).is_some());
@@ -152,7 +161,7 @@ mod tests {
 
     #[test]
     fn high_importance_bypasses_throttle() {
-        let mut trigger = SmartCaptureTrigger::new(5000);
+        let trigger = SmartCaptureTrigger::new(5000);
 
         let event1 = make_event("Code", "main.rs", None);
         trigger.should_capture(&event1);

@@ -113,10 +113,8 @@ impl Scheduler {
                                 };
 
                                 {
-                                    let mut trig = trigger.lock().await;
-                                    if let Some(capture_req) = trig.should_capture(&event) {
-                                        let mut proc = processor.lock().await;
-                                        match proc.capture_and_process(&capture_req).await {
+                                    if let Some(capture_req) = trigger.should_capture(&event) {
+                                        match processor.capture_and_process(&capture_req).await {
                                             Ok(frame) => {
                                                 debug!("frame completed: {:?}", frame.metadata.trigger_type);
 

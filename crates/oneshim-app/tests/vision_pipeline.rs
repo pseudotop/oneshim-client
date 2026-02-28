@@ -26,7 +26,7 @@ fn make_event(app: &str, title: &str, prev: Option<&str>) -> ContextEvent {
 fn trigger_produces_capture_requests() {
     use oneshim_core::ports::vision::CaptureTrigger;
 
-    let mut trigger = SmartCaptureTrigger::new(0);
+    let trigger = SmartCaptureTrigger::new(0);
 
     let error_event = make_event("Terminal", "Error: panic at line 42", None);
     let req = trigger.should_capture(&error_event);
@@ -149,7 +149,7 @@ fn timeline_add_and_filter() {
 fn full_vision_pipeline() {
     use oneshim_core::ports::vision::CaptureTrigger;
 
-    let mut trigger = SmartCaptureTrigger::new(5000);
+    let trigger = SmartCaptureTrigger::new(5000);
     let event = make_event("Terminal", "Error: segfault", None);
     let capture_req = trigger.should_capture(&event).unwrap();
     assert!(capture_req.importance >= 0.8);

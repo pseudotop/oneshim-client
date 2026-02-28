@@ -5,6 +5,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::frame::{FrameMetadata, ImagePayload, ProcessedFrame};
 use oneshim_core::ports::vision::{CaptureRequest, FrameProcessor};
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tracing::debug;
 
 use crate::capture::ScreenCapture;
@@ -15,7 +16,7 @@ use crate::thumbnail;
 
 pub struct EdgeFrameProcessor {
     capture: ScreenCapture,
-    prev_frame: Option<DynamicImage>,
+    prev_frame: Mutex<Option<DynamicImage>>,
     thumbnail_width: u32,
     thumbnail_height: u32,
     #[cfg(feature = "ocr")]
@@ -27,7 +28,7 @@ impl EdgeFrameProcessor {
     pub fn new(thumbnail_width: u32, thumbnail_height: u32, ocr_tessdata: Option<PathBuf>) -> Self {
         Self {
             capture: ScreenCapture::new(),
-            prev_frame: None,
+            prev_frame: Mutex::new(None),
             thumbnail_width,
             thumbnail_height,
             #[cfg(feature = "ocr")]
@@ -62,7 +63,7 @@ fn extract_ocr_text(frame: &DynamicImage, processor: &EdgeFrameProcessor) -> Opt
 #[async_trait]
 impl FrameProcessor for EdgeFrameProcessor {
     async fn capture_and_process(
-        &mut self,
+        &self,
         capture_request: &CaptureRequest,
     ) -> Result<ProcessedFrame, CoreError> {
         let sanitized_title = privacy::sanitize_title(&capture_request.window_title);
@@ -91,7 +92,8 @@ impl FrameProcessor for EdgeFrameProcessor {
             })
         } else if importance >= 0.5 {
             debug!("(in progress {:.1})", importance);
-            if let Some(prev) = &self.prev_frame {
+            let prev = self.prev_frame.lock().unwrap();
+            if let Some(prev) = prev.as_ref() {
                 if let Some(delta_region) = delta::compute_delta(prev, &current_frame) {
                     let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::Medium)?;
                     Some(ImagePayload::Delta {
@@ -128,7 +130,7 @@ impl FrameProcessor for EdgeFrameProcessor {
             None
         };
 
-        self.prev_frame = Some(current_frame);
+        *self.prev_frame.lock().unwrap() = Some(current_frame);
 
         Ok(ProcessedFrame {
             metadata,
@@ -156,7 +158,7 @@ mod tests {
         let proc = EdgeFrameProcessor::new(480, 270, None);
         assert_eq!(proc.thumbnail_width, 480);
         assert_eq!(proc.thumbnail_height, 270);
-        assert!(proc.prev_frame.is_none());
+        assert!(proc.prev_frame.lock().unwrap().is_none());
     }
 
     #[test]
