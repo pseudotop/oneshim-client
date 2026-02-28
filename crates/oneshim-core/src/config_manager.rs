@@ -126,7 +126,7 @@ impl ConfigManager {
 
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
-            warn!(", current");
+            tracing::warn!("Unsupported platform; using current directory as config base");
             Ok(PathBuf::from(".").join(APP_DIR_NAME))
         }
     }
