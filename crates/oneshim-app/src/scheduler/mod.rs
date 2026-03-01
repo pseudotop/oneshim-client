@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn scheduler_config_default() {
         let config = SchedulerConfig::default();
-        assert_eq!(config.poll_interval, Duration::from_secs(1));
+        assert_eq!(config.poll_interval, Duration::from_secs(5));
         assert_eq!(config.metrics_interval, Duration::from_secs(5));
         assert_eq!(config.ai_access_mode, AiAccessMode::ProviderApiKey);
         assert_eq!(config.idle_threshold_secs, 300);

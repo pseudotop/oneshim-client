@@ -1,8 +1,12 @@
 #![allow(dead_code)]
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
+
+/// 스냅샷 링 버퍼 최대 용량 (1시간 @ 1회/초)
+const MAX_SNAPSHOTS: usize = 3600;
 
 #[derive(Debug, Clone)]
 pub struct MemorySnapshot {
@@ -16,7 +20,7 @@ pub struct MemorySnapshot {
 pub struct MemoryTracker {
     initial_rss: AtomicU64,
     peak_rss: AtomicU64,
-    snapshots: parking_lot::Mutex<Vec<MemorySnapshot>>,
+    snapshots: parking_lot::Mutex<VecDeque<MemorySnapshot>>,
     start_time: Instant,
 }
 
@@ -32,7 +36,7 @@ impl MemoryTracker {
         Self {
             initial_rss: AtomicU64::new(initial),
             peak_rss: AtomicU64::new(initial),
-            snapshots: parking_lot::Mutex::new(Vec::with_capacity(1000)),
+            snapshots: parking_lot::Mutex::new(VecDeque::with_capacity(MAX_SNAPSHOTS)),
             start_time: Instant::now(),
         }
     }
@@ -47,20 +51,24 @@ impl MemoryTracker {
 
         self.peak_rss.fetch_max(rss, Ordering::Relaxed);
 
-        self.snapshots.lock().push(snapshot.clone());
+        let mut snapshots = self.snapshots.lock();
+        if snapshots.len() >= MAX_SNAPSHOTS {
+            snapshots.pop_front();
+        }
+        snapshots.push_back(snapshot.clone());
 
         Some(snapshot)
     }
 
     pub fn analyze(&self) -> MemoryAnalysis {
-        let snapshots = self.snapshots.lock();
+        let mut snapshots = self.snapshots.lock();
         let initial = self.initial_rss.load(Ordering::Relaxed);
         let peak = self.peak_rss.load(Ordering::Relaxed);
-        let current = snapshots.last().map(|s| s.rss_bytes).unwrap_or(initial);
+        let current = snapshots.back().map(|s| s.rss_bytes).unwrap_or(initial);
         let elapsed = self.start_time.elapsed();
 
         let growth_rate = if snapshots.len() >= 2 {
-            calculate_growth_rate(&snapshots)
+            calculate_growth_rate(snapshots.make_contiguous())
         } else {
             0.0
         };
@@ -153,20 +161,13 @@ fn calculate_growth_rate(snapshots: &[MemorySnapshot]) -> f64 {
 
 #[cfg(target_os = "macos")]
 pub fn get_current_rss() -> Option<u64> {
-    use std::process::Command;
+    // sysinfo API를 사용하여 ps 서브프로세스 호출을 방지
+    use sysinfo::{Pid, ProcessesToUpdate, System};
 
-    let pid = std::process::id();
-    let output = Command::new("ps")
-        .args(["-o", "rss=", "-p", &pid.to_string()])
-        .output()
-        .ok()?;
-
-    let rss_kb: u64 = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .ok()?;
-
-    Some(rss_kb * 1024) // KB to bytes
+    let pid = Pid::from_u32(std::process::id());
+    let mut sys = System::new();
+    sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    sys.process(pid).map(|p| p.memory())
 }
 
 #[cfg(target_os = "linux")]
@@ -250,5 +251,24 @@ mod tests {
 
         let rate = calculate_growth_rate(&snapshots);
         assert!((rate - 1_000_000.0).abs() < 10_000.0, "rate: {}", rate);
+    }
+
+    #[test]
+    fn test_snapshot_ring_buffer_bounded() {
+        // MAX_SNAPSHOTS 이상 push 해도 용량이 제한되는지 검증
+        let tracker = MemoryTracker::new();
+
+        // Record more snapshots than the max capacity
+        for _ in 0..(MAX_SNAPSHOTS + 100) {
+            tracker.record_snapshot();
+        }
+
+        let analysis = tracker.analyze();
+        assert!(
+            analysis.snapshot_count <= MAX_SNAPSHOTS,
+            "snapshot count {} exceeds MAX_SNAPSHOTS {}",
+            analysis.snapshot_count,
+            MAX_SNAPSHOTS,
+        );
     }
 }

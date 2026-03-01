@@ -133,6 +133,8 @@ pub struct OneshimApp {
     pub(super) locale: Locale,
     pub(super) recent_suggestions: Vec<String>,
     pub(super) offline_mode: bool,
+    // std::sync::Mutex 사용이 올바름: iced update()는 동기 메서드이며,
+    // await 지점 없이 짧은 시간 동안만 잠금을 유지함. tokio::sync::Mutex 불필요.
     pub(super) monitor: Mutex<LocalMonitor>,
     pub(super) data_dir: PathBuf,
     pub(super) tray_rx: Option<std::sync::mpsc::Receiver<TrayEvent>>,
@@ -255,7 +257,8 @@ impl OneshimApp {
         });
 
         Subscription::batch([
-            iced::time::every(Duration::from_secs(1)).map(Message::Tick),
+            // 5초 간격: 데스크톱 모니터링 에이전트에 1초는 과도하게 빈번함
+            iced::time::every(Duration::from_secs(5)).map(Message::Tick),
             window_events,
         ])
     }

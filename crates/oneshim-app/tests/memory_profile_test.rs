@@ -22,20 +22,13 @@ struct MemorySnapshot {
 }
 
 fn get_rss() -> u64 {
-    use std::process::Command;
+    // sysinfo API를 사용하여 ps 서브프로세스 호출을 방지
+    use sysinfo::{Pid, ProcessesToUpdate, System};
 
-    let pid = std::process::id();
-    let output = Command::new("ps")
-        .args(["-o", "rss=", "-p", &pid.to_string()])
-        .output()
-        .expect("failed to run ps command");
-
-    let rss_kb: u64 = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse()
-        .unwrap_or(0);
-
-    rss_kb * 1024
+    let pid = Pid::from_u32(std::process::id());
+    let mut sys = System::new();
+    sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    sys.process(pid).map(|p| p.memory()).unwrap_or(0)
 }
 
 fn create_test_image(width: u32, height: u32, seed: u8) -> DynamicImage {

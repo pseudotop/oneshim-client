@@ -363,30 +363,40 @@ impl FrameFileStorage {
     }
 
     pub async fn enforce_storage_limit(&self) -> Result<usize, CoreError> {
-        let current_mb = self.total_size_mb().await?;
+        let frames_dir = self.base_dir.join("frames");
+
+        if !frames_dir.exists() {
+            return Ok(0);
+        }
+
+        // 전체 크기를 한 번만 계산하고, 삭제할 때마다 차감하여 반복 디렉터리 순회를 방지
+        let total_bytes = calculate_dir_size(&frames_dir).await?;
+        let mut current_mb = total_bytes / 1024 / 1024;
 
         if current_mb <= self.max_storage_mb {
             return Ok(0);
         }
 
-        let frames_dir = self.base_dir.join("frames");
         let mut deleted_count = 0;
 
         let mut dirs = list_date_dirs(&frames_dir).await?;
-        dirs.sort(); // YYYY-MM-DD =
+        dirs.sort(); // YYYY-MM-DD 오름차순 (오래된 것부터 삭제)
         for dir_name in dirs {
-            let current = self.total_size_mb().await?;
-            if current <= self.max_storage_mb {
+            if current_mb <= self.max_storage_mb {
                 break;
             }
 
             let dir_path = frames_dir.join(&dir_name);
+            let dir_size_bytes = calculate_dir_size(&dir_path).await.unwrap_or(0);
             let count = count_files_in_dir(&dir_path).await;
             deleted_count += count;
 
             if let Err(e) = fs::remove_dir_all(&dir_path).await {
                 warn!("s folder delete failure: {e}");
             } else {
+                // 삭제된 디렉터리 크기를 차감
+                let dir_size_mb = dir_size_bytes / 1024 / 1024;
+                current_mb = current_mb.saturating_sub(dir_size_mb);
                 info!("s folder delete: {} ({count}items file)", dir_name);
             }
         }

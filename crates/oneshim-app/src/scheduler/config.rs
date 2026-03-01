@@ -139,7 +139,7 @@ pub struct SchedulerConfig {
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
-            poll_interval: Duration::from_secs(1),
+            poll_interval: Duration::from_secs(5),
             metrics_interval: Duration::from_secs(5),
             process_interval: Duration::from_secs(10),
             detailed_process_interval: Duration::from_secs(30), // 30 s

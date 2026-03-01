@@ -2,10 +2,17 @@ use crossbeam::queue::SegQueue;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::event::{Event, EventBatch};
 use oneshim_core::ports::api_client::ApiClient;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, warn};
+
+/// Maximum number of events allowed in the upload queue.
+/// Prevents OOM under backpressure when the server is unreachable or slow.
+pub const MAX_UPLOAD_QUEUE_SIZE: usize = 10_000;
+
+/// Threshold ratio (80%) at which a capacity warning is emitted.
+const QUEUE_PRESSURE_WARN_RATIO: f64 = 0.80;
 
 pub struct BatchUploader {
     api_client: Arc<dyn ApiClient>,
@@ -15,6 +22,10 @@ pub struct BatchUploader {
     max_batch_size: usize,
     max_retries: u32,
     dynamic_batch: bool,
+    max_queue_size: usize,
+    /// Tracks whether we have already emitted a pressure warning for the
+    /// current high-water-mark episode, so we don't spam logs every enqueue.
+    pressure_warned: AtomicBool,
 }
 
 impl BatchUploader {
@@ -32,6 +43,8 @@ impl BatchUploader {
             max_batch_size,
             max_retries,
             dynamic_batch: true,
+            max_queue_size: MAX_UPLOAD_QUEUE_SIZE,
+            pressure_warned: AtomicBool::new(false),
         }
     }
 
@@ -40,19 +53,88 @@ impl BatchUploader {
         self
     }
 
+    /// Override the default max queue size. Useful for testing.
+    pub fn with_max_queue_size(mut self, max_queue_size: usize) -> Self {
+        self.max_queue_size = max_queue_size;
+        self
+    }
+
     pub fn enqueue(&self, event: Event) {
+        let size = self.queue_size.load(Ordering::Relaxed);
+
+        // If at capacity, drop the oldest entry to make room (newer data is
+        // more valuable for monitoring).
+        if size >= self.max_queue_size {
+            self.drop_oldest(1);
+        }
+
         self.queue.push(event);
-        let size = self.queue_size.fetch_add(1, Ordering::Relaxed) + 1;
-        debug!("event add (lock-free), current size: {size}");
+        let new_size = self.queue_size.fetch_add(1, Ordering::Relaxed) + 1;
+        self.check_pressure(new_size);
+        debug!("event add (lock-free), current size: {new_size}");
     }
 
     pub fn enqueue_many(&self, events: Vec<Event>) {
         let count = events.len();
+        if count == 0 {
+            return;
+        }
+
+        let size = self.queue_size.load(Ordering::Relaxed);
+
+        // Calculate how many oldest entries we need to evict to stay within
+        // capacity after inserting all new events.
+        let total_after = size + count;
+        if total_after > self.max_queue_size {
+            let overflow = total_after - self.max_queue_size;
+            self.drop_oldest(overflow);
+        }
+
         for event in events {
             self.queue.push(event);
         }
-        let size = self.queue_size.fetch_add(count, Ordering::Relaxed) + count;
-        debug!("event {count}items add (lock-free), current size: {size}");
+        let new_size = self.queue_size.fetch_add(count, Ordering::Relaxed) + count;
+        self.check_pressure(new_size);
+        debug!("event {count}items add (lock-free), current size: {new_size}");
+    }
+
+    /// Drop `count` oldest entries from the front of the queue.
+    fn drop_oldest(&self, count: usize) {
+        let mut dropped = 0;
+        for _ in 0..count {
+            if self.queue.pop().is_some() {
+                dropped += 1;
+            } else {
+                break;
+            }
+        }
+        if dropped > 0 {
+            self.queue_size.fetch_sub(dropped, Ordering::Relaxed);
+            warn!(
+                "upload queue at capacity ({max}), dropped {dropped} oldest event(s)",
+                max = self.max_queue_size,
+            );
+        }
+    }
+
+    /// Emit a warning once when the queue reaches the 80% pressure threshold.
+    /// The warning flag resets when the queue drops below the threshold.
+    fn check_pressure(&self, current_size: usize) {
+        let threshold = (self.max_queue_size as f64 * QUEUE_PRESSURE_WARN_RATIO) as usize;
+
+        if current_size >= threshold {
+            // Only warn once per pressure episode.
+            if !self.pressure_warned.swap(true, Ordering::Relaxed) {
+                warn!(
+                    "upload queue pressure: {current_size}/{max} ({pct:.0}% full)",
+                    max = self.max_queue_size,
+                    pct = (current_size as f64 / self.max_queue_size as f64) * 100.0,
+                );
+            }
+        } else {
+            // Reset the flag so we warn again next time we cross the threshold.
+            self.pressure_warned.store(false, Ordering::Relaxed);
+        }
     }
 
     fn compute_batch_size(&self, queue_len: usize) -> usize {
@@ -131,11 +213,21 @@ impl BatchUploader {
 
     fn requeue_failed_events(&self, events: Vec<Event>) {
         let count = events.len();
+        let current_size = self.queue_size.load(Ordering::Relaxed);
+
+        // Respect the queue limit when requeueing failed events.
+        // Drop oldest entries if we would exceed capacity.
+        let total_after = current_size + count;
+        if total_after > self.max_queue_size {
+            let overflow = total_after - self.max_queue_size;
+            self.drop_oldest(overflow);
+        }
+
         for event in events {
             self.queue.push(event);
         }
         self.queue_size.fetch_add(count, Ordering::Relaxed);
-        warn!("failure event {count}items");
+        warn!("failure event {count}items requeued");
     }
 }
 
@@ -159,10 +251,15 @@ impl BatchUploader {
         self.queue_size.load(Ordering::Relaxed)
     }
 
+    pub fn max_queue_size(&self) -> usize {
+        self.max_queue_size
+    }
+
     pub fn stats(&self) -> BatchStats {
         BatchStats {
             queue_size: self.queue_size(),
             max_batch_size: self.max_batch_size,
+            max_queue_size: self.max_queue_size,
             dynamic_batch_enabled: self.dynamic_batch,
         }
     }
@@ -172,6 +269,7 @@ impl BatchUploader {
 pub struct BatchStats {
     pub queue_size: usize,
     pub max_batch_size: usize,
+    pub max_queue_size: usize,
     pub dynamic_batch_enabled: bool,
 }
 
@@ -441,6 +539,119 @@ mod tests {
         let stats = uploader.stats();
         assert_eq!(stats.queue_size, 25);
         assert_eq!(stats.max_batch_size, 50);
+        assert_eq!(stats.max_queue_size, MAX_UPLOAD_QUEUE_SIZE);
         assert!(stats.dynamic_batch_enabled);
+    }
+
+    // --- Backpressure tests ---
+
+    #[test]
+    fn enqueue_drops_oldest_when_at_capacity() {
+        let client = Arc::new(MockApiClient { should_fail: false });
+        let uploader = BatchUploader::new(client, "sess_bp".to_string(), 100, 3)
+            .with_max_queue_size(5);
+
+        // Fill to capacity
+        for _ in 0..5 {
+            uploader.enqueue(make_test_event());
+        }
+        assert_eq!(uploader.queue_size(), 5);
+
+        // Enqueue one more — should drop oldest, size stays at 5
+        uploader.enqueue(make_test_event());
+        assert_eq!(uploader.queue_size(), 5);
+    }
+
+    #[test]
+    fn enqueue_many_drops_oldest_when_overflow() {
+        let client = Arc::new(MockApiClient { should_fail: false });
+        let uploader = BatchUploader::new(client, "sess_bp2".to_string(), 100, 3)
+            .with_max_queue_size(5);
+
+        // Fill with 3 items
+        for _ in 0..3 {
+            uploader.enqueue(make_test_event());
+        }
+        assert_eq!(uploader.queue_size(), 3);
+
+        // Enqueue 4 more (total would be 7, capacity 5) -> drop 2 oldest
+        uploader.enqueue_many(vec![
+            make_test_event(),
+            make_test_event(),
+            make_test_event(),
+            make_test_event(),
+        ]);
+        assert_eq!(uploader.queue_size(), 5);
+    }
+
+    #[tokio::test]
+    async fn requeue_respects_capacity_limit() {
+        let client = Arc::new(MockApiClient { should_fail: true });
+        let uploader = BatchUploader::new(client, "sess_bp3".to_string(), 100, 0)
+            .with_max_queue_size(5)
+            .with_dynamic_batch(false);
+
+        // Fill to capacity
+        for _ in 0..5 {
+            uploader.enqueue(make_test_event());
+        }
+        assert_eq!(uploader.queue_size(), 5);
+
+        // Flush will drain up to max_batch_size (100), fail, and requeue all 5.
+        // The requeue should still respect the limit.
+        let _ = uploader.flush().await;
+        assert!(uploader.queue_size() <= 5);
+    }
+
+    #[test]
+    fn with_max_queue_size_builder() {
+        let client = Arc::new(MockApiClient { should_fail: false });
+        let uploader = BatchUploader::new(client, "sess_builder".to_string(), 100, 3)
+            .with_max_queue_size(500);
+        assert_eq!(uploader.max_queue_size(), 500);
+    }
+
+    #[test]
+    fn stats_includes_max_queue_size() {
+        let client = Arc::new(MockApiClient { should_fail: false });
+        let uploader = BatchUploader::new(client, "sess_stats2".to_string(), 50, 3)
+            .with_max_queue_size(2000);
+
+        let stats = uploader.stats();
+        assert_eq!(stats.max_queue_size, 2000);
+    }
+
+    #[test]
+    fn concurrent_enqueue_respects_capacity() {
+        use std::thread;
+
+        let client = Arc::new(MockApiClient { should_fail: false });
+        let uploader = Arc::new(
+            BatchUploader::new(client, "sess_concurrent_bp".to_string(), 100, 3)
+                .with_max_queue_size(100),
+        );
+
+        let mut handles = vec![];
+        for _ in 0..10 {
+            let uploader = Arc::clone(&uploader);
+            handles.push(thread::spawn(move || {
+                for _ in 0..100 {
+                    uploader.enqueue(make_test_event());
+                }
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        // With 10 threads x 100 events = 1000, but capacity is 100.
+        // Due to concurrent lock-free nature, the exact count may slightly
+        // exceed the limit transiently, but it should be close to max.
+        assert!(
+            uploader.queue_size() <= 150,
+            "queue_size {} should be near max_queue_size 100 (some slack for concurrency)",
+            uploader.queue_size()
+        );
     }
 }

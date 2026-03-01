@@ -47,6 +47,7 @@ zip = { workspace = true }
 flate2 = { workspace = true }
 base64 = { workspace = true }
 parking_lot = { workspace = true }
+sysinfo = { workspace = true }
 
 [features]
 default = []
