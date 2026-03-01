@@ -21,15 +21,15 @@ oneshim-app/src/
 ├── automation_runtime.rs        # AI provider runtime wiring
 ├── provider_adapters.rs         # AI provider adapter resolution
 ├── cli_subscription_bridge.rs   # CLI subscription bridge artifact sync
-├── scheduler/                   # Scheduler — directory module (ADR-013)
+├── scheduler/                   # Scheduler — directory module (ADR-003)
 │   ├── mod.rs                   # Scheduler struct + run() + re-exports + tests
 │   ├── config.rs                # SchedulerConfig, PlatformEgressPolicy, constants
 │   └── loops.rs                 # 9 loop body functions
-├── focus_analyzer/              # Focus analysis — directory module (ADR-013)
+├── focus_analyzer/              # Focus analysis — directory module (ADR-003)
 │   ├── mod.rs                   # FocusAnalyzer struct + public API + re-exports + tests
 │   ├── models.rs                # FocusAnalyzerConfig, SuggestionCooldowns, SessionTracker
 │   └── suggestions.rs           # suggestion generators + cooldown + focus score
-├── updater/                     # Auto update — directory module (ADR-013)
+├── updater/                     # Auto update — directory module (ADR-003)
 │   ├── mod.rs                   # Updater struct + orchestrator + re-exports + tests
 │   ├── github.rs                # GitHub API: releases, asset selection, version floor
 │   ├── install.rs               # download + decompress + binary replace + signature
@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
 
 ### Scheduler (`scheduler/`)
 
-Current scheduler is a **9-loop orchestrator** (`Scheduler::run()` → `run_scheduler_loops()`), not a 3-loop model. Split into `config.rs` (configuration) and `loops.rs` (loop bodies) per ADR-013.
+Current scheduler is a **9-loop orchestrator** (`Scheduler::run()` → `run_scheduler_loops()`), not a 3-loop model. Split into `config.rs` (configuration) and `loops.rs` (loop bodies) per ADR-003.
 
 | Loop | Interval | Responsibility |
 |------|----------|----------------|
@@ -235,7 +235,7 @@ impl Autostart {
 
 ### Updater (`updater/`)
 
-Auto update flow is driven by `Updater` + `update_coordinator`. Split into `github.rs` (API), `install.rs` (binary replacement), and `state.rs` (persistence) per ADR-013:
+Auto update flow is driven by `Updater` + `update_coordinator`. Split into `github.rs` (API), `install.rs` (binary replacement), and `state.rs` (persistence) per ADR-003:
 
 - Source of truth: `https://api.github.com/repos/{owner}/{repo}/releases/latest`
 - Version policy:

@@ -15,7 +15,7 @@
 ```
 oneshim-core/src/
 ├── lib.rs           # 크레이트 루트, 모듈 재export
-├── config/          # AppConfig 및 설정 섹션 — 디렉토리 모듈 (ADR-013)
+├── config/          # AppConfig 및 설정 섹션 — 디렉토리 모듈 (ADR-003)
 │   ├── mod.rs       # AppConfig 구조체 + Default + 재export
 │   ├── enums.rs     # PiiFilterLevel, Weekday, SandboxProfile, AiAccessMode 등
 │   └── sections.rs  # 20개 설정 섹션 구조체 + Default 구현

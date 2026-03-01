@@ -21,15 +21,15 @@ oneshim-app/src/
 ├── automation_runtime.rs        # AI 제공자 런타임 와이어링
 ├── provider_adapters.rs         # AI 제공자 어댑터 해석
 ├── cli_subscription_bridge.rs   # CLI 구독 브리지 아티팩트 동기화
-├── scheduler/                   # 스케줄러 — 디렉토리 모듈 (ADR-013)
+├── scheduler/                   # 스케줄러 — 디렉토리 모듈 (ADR-003)
 │   ├── mod.rs                   # Scheduler 구조체 + run() + 재export + 테스트
 │   ├── config.rs                # SchedulerConfig, PlatformEgressPolicy, 상수
 │   └── loops.rs                 # 9개 루프 본체 함수
-├── focus_analyzer/              # 포커스 분석 — 디렉토리 모듈 (ADR-013)
+├── focus_analyzer/              # 포커스 분석 — 디렉토리 모듈 (ADR-003)
 │   ├── mod.rs                   # FocusAnalyzer 구조체 + 공개 API + 재export + 테스트
 │   ├── models.rs                # FocusAnalyzerConfig, SuggestionCooldowns, SessionTracker
 │   └── suggestions.rs           # 제안 생성기 + 쿨다운 + 포커스 점수
-├── updater/                     # 자동 업데이트 — 디렉토리 모듈 (ADR-013)
+├── updater/                     # 자동 업데이트 — 디렉토리 모듈 (ADR-003)
 │   ├── mod.rs                   # Updater 구조체 + 오케스트레이터 + 재export + 테스트
 │   ├── github.rs                # GitHub API: 릴리스, 에셋 선택, 버전 플로어
 │   ├── install.rs               # 다운로드 + 압축해제 + 바이너리 교체 + 서명

@@ -37,7 +37,7 @@ oneshim-web/
 │       ├── backup.rs
 │       ├── export.rs
 │       ├── settings.rs    # AppSettings DTO + automation/sandbox/AI settings
-│       └── automation/    # Automation API handlers — directory module (ADR-013)
+│       └── automation/    # Automation API handlers — directory module (ADR-003)
 │           ├── mod.rs     # re-exports + router
 │           ├── helpers.rs # private helper functions
 │           ├── scene.rs   # scene analysis + calibration

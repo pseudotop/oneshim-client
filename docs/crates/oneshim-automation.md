@@ -16,7 +16,7 @@ oneshim-automation/src/
 ├── lib.rs              # Crate root (10 modules)
 ├── action_dispatcher.rs # AutomationActionDispatcher — action execution port
 ├── audit.rs            # AuditLogger — audit logging (14 methods)
-├── controller/         # AutomationController — directory module (ADR-013)
+├── controller/         # AutomationController — directory module (ADR-003)
 │   ├── mod.rs          # struct + builders + validators + re-exports + tests
 │   ├── types.rs        # AutomationCommand, CommandResult, WorkflowResult, etc.
 │   ├── intent.rs       # intent execution + scene analysis methods
@@ -24,7 +24,7 @@ oneshim-automation/src/
 ├── input_driver.rs     # NoOpInputDriver — test/default input driver
 ├── intent_resolver.rs  # IntentResolver + IntentExecutor — intent resolution + execution
 ├── local_llm.rs        # LocalLlmProvider — local LLM (rule-based)
-├── policy/             # PolicyClient — directory module (ADR-013)
+├── policy/             # PolicyClient — directory module (ADR-003)
 │   ├── mod.rs          # public API + re-exports + tests
 │   ├── models.rs       # AuditLevel, ExecutionPolicy, PolicyCache, ProcessOutput
 │   └── token.rs        # token generation, parsing, signature verification, HMAC
@@ -42,7 +42,7 @@ oneshim-automation/src/
 
 ### `controller/` — AutomationController (directory module)
 
-Central controller for policy verification + command execution + audit logging + sandbox management. Split into `types.rs` (enums/structs), `intent.rs` (intent execution), and `preset.rs` (workflow execution) per ADR-013.
+Central controller for policy verification + command execution + audit logging + sandbox management. Split into `types.rs` (enums/structs), `intent.rs` (intent execution), and `preset.rs` (workflow execution) per ADR-003.
 
 - `AutomationController::new(sandbox, sandbox_config)` — Constructor (`Arc<dyn Sandbox>` + `SandboxConfig`)
 - `set_intent_executor(executor)` — Inject IntentExecutor
@@ -55,7 +55,7 @@ Central controller for policy verification + command execution + audit logging +
 
 ### `policy/` — PolicyClient (directory module)
 
-Server policy synchronization + command verification + process permission management. Split into `models.rs` (data types) and `token.rs` (token operations) per ADR-013.
+Server policy synchronization + command verification + process permission management. Split into `models.rs` (data types) and `token.rs` (token operations) per ADR-003.
 
 - `ExecutionPolicy` — Policy ID, process name, binary hash, argument patterns, sudo required, audit level
   - `sandbox_profile: Option<SandboxProfile>` — Server override
