@@ -34,11 +34,7 @@
       "menuOnLeftClick": true
     }
   },
-  "plugins": {
-    "notification": {
-      "enabled": true
-    }
-  },
+  "plugins": {},
   "bundle": {
     "active": true,
     "targets": "all",
