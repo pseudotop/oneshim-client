@@ -285,12 +285,25 @@ jobs:
         run: ./scripts/cargo-cache.sh test --workspace --features grpc
 
   build-pr-smoke:
-    name: Build PR Smoke (linux)
+    name: Build PR Smoke (${{ matrix.name }})
     needs: [changes, test]
     if: >
       github.event_name == 'pull_request' &&
       (needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true')
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: macos
+            os: macos-latest
+            target: aarch64-apple-darwin
+          - name: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
 
@@ -310,6 +323,7 @@ jobs:
           test -f crates/oneshim-web/frontend/dist/index.html
 
       - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -331,20 +345,78 @@ jobs:
             libxcb-xfixes0-dev
 
       - name: Verify DEB metadata assets
+        if: runner.os == 'Linux'
         run: ./scripts/verify-deb-metadata.sh
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-gnu
+          targets: ${{ matrix.target }}
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ci-build-pr-linux
+          shared-key: ci-build-pr-${{ matrix.target }}
 
-      - name: Build release (linux smoke)
-        run: ./scripts/cargo-cache.sh build --release --target x86_64-unknown-linux-gnu
+      - name: Build release (PR smoke)
+        shell: bash
+        run: ./scripts/cargo-cache.sh build --release --target ${{ matrix.target }}
+
+      - name: Binary smoke (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/oneshim"
+          test -x "$BIN"
+          "$BIN" --version >/dev/null
+
+      - name: Binary smoke (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = "target/${{ matrix.target }}/release/oneshim.exe"
+          if (!(Test-Path $bin)) {
+            throw "binary missing: $bin"
+          }
+          & $bin --version | Out-Null
+
+      - name: GUI bootstrap smoke (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/oneshim"
+          LOG="$RUNNER_TEMP/oneshim-pr-gui-smoke.log"
+
+          set +e
+          "$BIN" --offline --gui >"$LOG" 2>&1 &
+          PID=$!
+          sleep 8
+          if kill -0 "$PID" >/dev/null 2>&1; then
+            kill "$PID" >/dev/null 2>&1 || true
+          fi
+          wait "$PID"
+          RC=$?
+          set -e
+
+          if grep -qE "Cannot start a runtime from within a runtime|Cannot drop a runtime|panicked|panic|Abort trap|SIGABRT" "$LOG"; then
+            echo "GUI bootstrap smoke detected runtime/panic failure"
+            cat "$LOG"
+            exit 1
+          fi
+
+          if [[ "$RC" -ne 0 && "$RC" -ne 143 ]]; then
+            echo "GUI bootstrap smoke exited unexpectedly: rc=$RC"
+            cat "$LOG"
+            exit 1
+          fi
+
+      - name: Upload macOS GUI smoke log
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr-gui-smoke-log-${{ matrix.name }}
+          path: ${{ runner.temp }}/oneshim-pr-gui-smoke.log
+          if-no-files-found: ignore
 
   build:
     name: Build (${{ matrix.target }})
