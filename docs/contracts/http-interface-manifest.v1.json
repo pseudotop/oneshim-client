@@ -30,14 +30,14 @@
       "module": "sessions",
       "operations": [
         { "method": "GET", "path": "/api/sessions" },
-        { "method": "GET", "path": "/api/sessions/:id" }
+        { "method": "GET", "path": "/api/sessions/{id}" }
       ]
     },
     {
       "module": "frames",
       "operations": [
         { "method": "GET", "path": "/api/frames" },
-        { "method": "GET", "path": "/api/frames/:id/image" }
+        { "method": "GET", "path": "/api/frames/{id}/image" }
       ]
     },
     {
@@ -114,12 +114,12 @@
       "operations": [
         { "method": "GET", "path": "/api/tags" },
         { "method": "POST", "path": "/api/tags" },
-        { "method": "GET", "path": "/api/tags/:id" },
-        { "method": "PUT", "path": "/api/tags/:id" },
-        { "method": "DELETE", "path": "/api/tags/:id" },
-        { "method": "GET", "path": "/api/frames/:frame_id/tags" },
-        { "method": "POST", "path": "/api/frames/:frame_id/tags/:tag_id" },
-        { "method": "DELETE", "path": "/api/frames/:frame_id/tags/:tag_id" }
+        { "method": "GET", "path": "/api/tags/{id}" },
+        { "method": "PUT", "path": "/api/tags/{id}" },
+        { "method": "DELETE", "path": "/api/tags/{id}" },
+        { "method": "GET", "path": "/api/frames/{frame_id}/tags" },
+        { "method": "POST", "path": "/api/frames/{frame_id}/tags/{tag_id}" },
+        { "method": "DELETE", "path": "/api/frames/{frame_id}/tags/{tag_id}" }
       ]
     },
     {
@@ -135,7 +135,7 @@
         { "method": "GET", "path": "/api/focus/sessions" },
         { "method": "GET", "path": "/api/focus/interruptions" },
         { "method": "GET", "path": "/api/focus/suggestions" },
-        { "method": "POST", "path": "/api/focus/suggestions/:id/feedback" }
+        { "method": "POST", "path": "/api/focus/suggestions/{id}/feedback" }
       ]
     },
     {
@@ -149,9 +149,9 @@
         { "method": "GET", "path": "/api/automation/stats" },
         { "method": "GET", "path": "/api/automation/presets" },
         { "method": "POST", "path": "/api/automation/presets" },
-        { "method": "PUT", "path": "/api/automation/presets/:id" },
-        { "method": "DELETE", "path": "/api/automation/presets/:id" },
-        { "method": "POST", "path": "/api/automation/presets/:id/run" },
+        { "method": "PUT", "path": "/api/automation/presets/{id}" },
+        { "method": "DELETE", "path": "/api/automation/presets/{id}" },
+        { "method": "POST", "path": "/api/automation/presets/{id}/run" },
         { "method": "POST", "path": "/api/automation/execute-hint" },
         { "method": "POST", "path": "/api/automation/execute-scene-action" },
         { "method": "GET", "path": "/api/automation/scene" },
@@ -162,12 +162,12 @@
       "module": "automation_gui",
       "operations": [
         { "method": "POST", "path": "/api/automation/gui/sessions" },
-        { "method": "GET", "path": "/api/automation/gui/sessions/:id" },
-        { "method": "DELETE", "path": "/api/automation/gui/sessions/:id" },
-        { "method": "POST", "path": "/api/automation/gui/sessions/:id/highlight" },
-        { "method": "POST", "path": "/api/automation/gui/sessions/:id/confirm" },
-        { "method": "POST", "path": "/api/automation/gui/sessions/:id/execute" },
-        { "method": "GET", "path": "/api/automation/gui/sessions/:id/events" }
+        { "method": "GET", "path": "/api/automation/gui/sessions/{id}" },
+        { "method": "DELETE", "path": "/api/automation/gui/sessions/{id}" },
+        { "method": "POST", "path": "/api/automation/gui/sessions/{id}/highlight" },
+        { "method": "POST", "path": "/api/automation/gui/sessions/{id}/confirm" },
+        { "method": "POST", "path": "/api/automation/gui/sessions/{id}/execute" },
+        { "method": "GET", "path": "/api/automation/gui/sessions/{id}/events" }
       ]
     },
     {

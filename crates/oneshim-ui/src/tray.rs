@@ -78,8 +78,10 @@ impl TrayManager {
     ///
     /// # Panics
     pub fn new() -> Result<(Self, mpsc::Receiver<TrayEvent>), String> {
+        #[cfg(not(target_os = "macos"))]
+        use tray_icon::menu::PredefinedMenuItem;
         use tray_icon::{
-            menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+            menu::{Menu, MenuEvent, MenuItem},
             TrayIconBuilder,
         };
 
@@ -95,6 +97,7 @@ impl TrayManager {
         let quit_item = MenuItem::new("ended", true, None);
 
         menu.append(&show_item).map_err(|e| e.to_string())?;
+        #[cfg(not(target_os = "macos"))]
         menu.append(&PredefinedMenuItem::separator())
             .map_err(|e| e.to_string())?;
         menu.append(&settings_item).map_err(|e| e.to_string())?;
@@ -102,6 +105,7 @@ impl TrayManager {
         menu.append(&approve_update_item)
             .map_err(|e| e.to_string())?;
         menu.append(&defer_update_item).map_err(|e| e.to_string())?;
+        #[cfg(not(target_os = "macos"))]
         menu.append(&PredefinedMenuItem::separator())
             .map_err(|e| e.to_string())?;
         menu.append(&quit_item).map_err(|e| e.to_string())?;
@@ -134,29 +138,35 @@ impl TrayManager {
             let menu_event_rx = MenuEvent::receiver();
 
             loop {
-                if let Ok(event) = menu_event_rx.recv() {
-                    let tray_event = if event.id == menu_ids.show_id {
-                        Some(TrayEvent::ToggleWindow)
-                    } else if event.id == menu_ids.settings_id {
-                        Some(TrayEvent::OpenSettings)
-                    } else if event.id == menu_ids.automation_id {
-                        Some(TrayEvent::ToggleAutomation)
-                    } else if event.id == menu_ids.approve_update_id {
-                        Some(TrayEvent::ApproveUpdate)
-                    } else if event.id == menu_ids.defer_update_id {
-                        Some(TrayEvent::DeferUpdate)
-                    } else if event.id == menu_ids.quit_id {
-                        Some(TrayEvent::Quit)
-                    } else {
-                        None
-                    };
+                let event = match menu_event_rx.recv() {
+                    Ok(event) => event,
+                    Err(_) => {
+                        info!("tray menu event receiver closed");
+                        break;
+                    }
+                };
 
-                    if let Some(e) = tray_event {
-                        debug!("tray event: {:?}", e);
-                        if tx.send(e).is_err() {
-                            info!("tray event channel closed, ended");
-                            break;
-                        }
+                let tray_event = if event.id == menu_ids.show_id {
+                    Some(TrayEvent::ToggleWindow)
+                } else if event.id == menu_ids.settings_id {
+                    Some(TrayEvent::OpenSettings)
+                } else if event.id == menu_ids.automation_id {
+                    Some(TrayEvent::ToggleAutomation)
+                } else if event.id == menu_ids.approve_update_id {
+                    Some(TrayEvent::ApproveUpdate)
+                } else if event.id == menu_ids.defer_update_id {
+                    Some(TrayEvent::DeferUpdate)
+                } else if event.id == menu_ids.quit_id {
+                    Some(TrayEvent::Quit)
+                } else {
+                    None
+                };
+
+                if let Some(e) = tray_event {
+                    debug!("tray event: {:?}", e);
+                    if tx.send(e).is_err() {
+                        info!("tray event channel closed, ended");
+                        break;
                     }
                 }
             }

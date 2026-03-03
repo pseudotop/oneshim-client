@@ -163,6 +163,12 @@ ONESHIM_TARGET_HARD_LIMIT_MB=6144 \
 Connected 모드는 프리뷰 전용이며, 명시적인 서버/인증 설정에서만 사용하도록 게이트되어 있습니다.
 운영 환경 기본값은 Standalone 모드이며, Connected 모드는 환경 검증 후에만 사용하세요.
 
+macOS headless CI/원격 디버그처럼 WindowServer가 없는 환경에서 트레이 초기화가 실패할 수 있으면:
+```bash
+ONESHIM_DISABLE_TRAY=1 ./scripts/cargo-cache.sh run -p oneshim-app -- --offline --gui
+```
+이 값은 비대화형 smoke/debug 경로에서만 사용하세요.
+
 ### 테스트
 
 ```bash
@@ -178,6 +184,12 @@ cd crates/oneshim-web/frontend && pnpm test:e2e
 # 포맷 검사
 ./scripts/cargo-cache.sh fmt --check
 ```
+
+### macOS WindowServer Smoke (Self-hosted)
+
+실제 WindowServer 세션에서 macOS GUI 부트스트랩을 검증하려면 다음 수동 워크플로를 실행하세요.
+- 워크플로: `.github/workflows/macos-windowserver-gui-smoke.yml`
+- 러너 라벨: `self-hosted`, `macOS`, `windowserver`
 
 ## 설치
 
@@ -228,6 +240,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
 | `ONESHIM_EMAIL` | 로그인 이메일 (Connected 모드 전용) | (Standalone에서는 선택사항) |
 | `ONESHIM_PASSWORD` | 로그인 비밀번호 (Connected 모드 전용) | (Standalone에서는 선택사항) |
 | `ONESHIM_TESSDATA` | Tesseract 데이터 경로 | (선택사항) |
+| `ONESHIM_DISABLE_TRAY` | 시스템 트레이 초기화 스킵 (headless CI/원격 GUI smoke 전용) | `0` |
 | `RUST_LOG` | 로그 레벨 | `info` |
 
 ### 설정 파일

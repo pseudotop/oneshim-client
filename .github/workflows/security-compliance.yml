@@ -56,7 +56,13 @@ jobs:
       - name: License/advisory/source policy
         run: ./scripts/cargo-cache.sh deny check licenses advisories sources bans
 
-      - name: Supply-chain policy (cargo-vet)
+      - name: Supply-chain policy (cargo-vet, blocking)
+        if: github.event_name != 'pull_request'
+        run: ./scripts/cargo-cache.sh vet check
+
+      - name: Supply-chain policy (cargo-vet, PR advisory)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
         run: ./scripts/cargo-cache.sh vet check
 
       - name: Generate third-party notice

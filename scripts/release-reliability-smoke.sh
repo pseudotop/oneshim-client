@@ -66,6 +66,35 @@ detect_asset_name() {
   esac
 }
 
+run_gui_bootstrap_smoke() {
+  local bin_path="$1"
+  local label="$2"
+  local log_path="$LOG_DIR/gui-bootstrap-${label}.log"
+
+  info "Running GUI bootstrap smoke (${label})"
+
+  set +e
+  "$bin_path" --offline --gui >"$log_path" 2>&1 &
+  local pid=$!
+  sleep 8
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    kill "$pid" >/dev/null 2>&1 || true
+  fi
+  wait "$pid"
+  local rc=$?
+  set -e
+
+  if grep -qE "Cannot start a runtime from within a runtime|Cannot drop a runtime|panicked|panic|Abort trap|SIGABRT" "$log_path"; then
+    cat "$log_path"
+    fatal "GUI bootstrap smoke detected runtime/panic failure (${label})"
+  fi
+
+  if [[ "$rc" -ne 0 && "$rc" -ne 143 ]]; then
+    cat "$log_path"
+    fatal "GUI bootstrap smoke exited unexpectedly (rc=$rc, ${label})"
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --assets-dir)
@@ -126,9 +155,11 @@ CHECKSUM_PATH="$ARTIFACT_PATH.sha256"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/oneshim-release-smoke.XXXXXX")"
 SERVER_LOG="$TMP_DIR/http.log"
+LOG_DIR="${ONESHIM_SMOKE_LOG_DIR:-$TMP_DIR}"
 if [[ -z "$INSTALL_DIR" ]]; then
   INSTALL_DIR="$TMP_DIR/bin"
 fi
+mkdir -p "$LOG_DIR"
 
 cleanup() {
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" >/dev/null 2>&1; then
@@ -168,6 +199,10 @@ TARGET_BIN="$INSTALL_DIR/oneshim"
 
 info "Validating first-run command"
 "$TARGET_BIN" --version >/dev/null
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  run_gui_bootstrap_smoke "$TARGET_BIN" "installed-binary"
+fi
 
 if [[ "$RUN_UPDATER_TESTS" == "1" ]]; then
   info "Running updater reliability regression tests"

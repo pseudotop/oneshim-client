@@ -90,16 +90,48 @@ run_as_root() {
   fi
 }
 
+run_gui_bootstrap_smoke() {
+  local bin_path="$1"
+  local label="$2"
+  local log_path="$LOG_DIR/gui-bootstrap-${label}.log"
+
+  info "Running GUI bootstrap smoke (${label})"
+
+  set +e
+  "$bin_path" --offline --gui >"$log_path" 2>&1 &
+  local pid=$!
+  sleep 8
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    kill "$pid" >/dev/null 2>&1 || true
+  fi
+  wait "$pid"
+  local rc=$?
+  set -e
+
+  if grep -qE "Cannot start a runtime from within a runtime|Cannot drop a runtime|panicked|panic|Abort trap|SIGABRT" "$log_path"; then
+    cat "$log_path"
+    fatal "GUI bootstrap smoke detected runtime/panic failure (${label})"
+  fi
+
+  if [[ "$rc" -ne 0 && "$rc" -ne 143 ]]; then
+    cat "$log_path"
+    fatal "GUI bootstrap smoke exited unexpectedly (rc=$rc, ${label})"
+  fi
+}
+
 DMG_PATH="$(resolve_asset "$DMG_NAME")"
 PKG_PATH="$(resolve_asset "$PKG_NAME")"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/oneshim-installer-smoke.XXXXXX")"
 MOUNT_DIR="$TMP_DIR/mount"
+LOG_DIR="${ONESHIM_SMOKE_LOG_DIR:-${RUNNER_TEMP:-$TMP_DIR}/oneshim-installer-smoke}"
 APP_INSTALL_PATH="/Applications/$APP_NAME"
 APP_BINARY_PATH="$APP_INSTALL_PATH/Contents/MacOS/oneshim"
 APP_BACKUP_PATH="$TMP_DIR/${APP_NAME}.backup"
 MOUNTED=0
 APP_WAS_PRESENT=0
+
+mkdir -p "$LOG_DIR"
 
 cleanup() {
   if [[ "$MOUNTED" == "1" ]]; then
@@ -139,6 +171,7 @@ DMG_BINARY_PATH="$DMG_APP_PATH/Contents/MacOS/oneshim"
 
 info "Validating binary from mounted DMG"
 "$DMG_BINARY_PATH" --version >/dev/null
+run_gui_bootstrap_smoke "$DMG_BINARY_PATH" "dmg"
 
 info "Installing PKG"
 run_as_root installer -pkg "$PKG_PATH" -target / >/dev/null
@@ -146,5 +179,6 @@ run_as_root installer -pkg "$PKG_PATH" -target / >/dev/null
 
 info "Validating binary from PKG installation"
 "$APP_BINARY_PATH" --version >/dev/null
+run_gui_bootstrap_smoke "$APP_BINARY_PATH" "pkg"
 
 info "macOS installer smoke completed"

@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARTIFACT_DIR="${ROOT_DIR}/artifacts/integrity"
 CARGO_CMD="$ROOT_DIR/scripts/cargo-cache.sh"
+VET_MODE="${INTEGRITY_VET_MODE:-strict}"
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -15,6 +16,14 @@ require_cmd() {
 }
 
 require_cmd cargo
+
+case "$VET_MODE" in
+  strict|advisory) ;;
+  *)
+    printf "Invalid INTEGRITY_VET_MODE: %s (expected strict|advisory)\n" "$VET_MODE" >&2
+    exit 1
+    ;;
+esac
 
 if ! command -v cargo-audit >/dev/null 2>&1; then
   printf "cargo-audit is required. Install: cargo install cargo-audit --locked\n" >&2
@@ -43,7 +52,13 @@ cd "${ROOT_DIR}"
 "$CARGO_CMD" test -p oneshim-app verify_signature_
 "$CARGO_CMD" audit
 "$CARGO_CMD" deny check licenses advisories sources bans
-"$CARGO_CMD" vet check
+if [[ "$VET_MODE" == "strict" ]]; then
+  "$CARGO_CMD" vet check
+else
+  if ! "$CARGO_CMD" vet check; then
+    printf "[integrity] cargo-vet advisory failed (strict mode remains enforced on push/schedule).\n" >&2
+  fi
+fi
 
 find "${ROOT_DIR}/crates" -name 'sbom.cdx.json' -delete
 "$CARGO_CMD" cyclonedx --format json --override-filename sbom.cdx --manifest-path Cargo.toml

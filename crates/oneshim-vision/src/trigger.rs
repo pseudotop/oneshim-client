@@ -36,14 +36,9 @@ impl SmartCaptureTrigger {
         }
     }
 
-    fn classify_event(
-        event: &ContextEvent,
-        prev_app_name: &Option<String>,
-    ) -> TriggerType {
+    fn classify_event(event: &ContextEvent, prev_app_name: &Option<String>) -> TriggerType {
         let title_lower = event.window_title.to_lowercase();
-        if title_lower.contains("error")
-            || title_lower.contains("exception")
-        {
+        if title_lower.contains("error") || title_lower.contains("exception") {
             return TriggerType::ErrorDetected;
         }
 
@@ -71,7 +66,11 @@ impl SmartCaptureTrigger {
         }
     }
 
-    fn is_throttled(last_capture: &Option<DateTime<Utc>>, now: DateTime<Utc>, throttle_ms: u64) -> bool {
+    fn is_throttled(
+        last_capture: &Option<DateTime<Utc>>,
+        now: DateTime<Utc>,
+        throttle_ms: u64,
+    ) -> bool {
         match last_capture {
             Some(last) => {
                 let elapsed = now - *last;

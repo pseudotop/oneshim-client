@@ -645,6 +645,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           chmod +x ./scripts/release-reliability-smoke.sh
+          export ONESHIM_SMOKE_LOG_DIR="$RUNNER_TEMP/oneshim-release-smoke"
           if [[ "${{ matrix.run_updater_tests }}" == "true" ]]; then
             ./scripts/release-reliability-smoke.sh --assets-dir smoke-assets
           else
@@ -666,7 +667,18 @@ jobs:
         shell: bash
         run: |
           chmod +x ./scripts/release-installer-smoke-macos.sh
-          ./scripts/release-installer-smoke-macos.sh --assets-dir smoke-installers
+          ONESHIM_SMOKE_LOG_DIR="$RUNNER_TEMP/oneshim-installer-smoke" \
+            ./scripts/release-installer-smoke-macos.sh --assets-dir smoke-installers
+
+      - name: Upload macOS release smoke logs
+        if: failure() && matrix.name == 'macos'
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-smoke-logs-${{ matrix.name }}
+          path: |
+            ${{ runner.temp }}/oneshim-release-smoke
+            ${{ runner.temp }}/oneshim-installer-smoke
+          if-no-files-found: ignore
 
   create-release:
     name: Create GitHub Release

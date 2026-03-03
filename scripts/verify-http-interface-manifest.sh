@@ -4,6 +4,20 @@ set -euo pipefail
 MANIFEST_PATH="docs/contracts/http-interface-manifest.v1.json"
 ROUTES_PATH="crates/oneshim-web/src/routes.rs"
 
+readarray_compat() {
+  local target="$1"
+  if command -v mapfile >/dev/null 2>&1; then
+    mapfile -t "$target"
+    return
+  fi
+
+  eval "$target=()"
+  local line
+  while IFS= read -r line; do
+    eval "$target+=(\"\$line\")"
+  done
+}
+
 if [[ ! -f "$MANIFEST_PATH" ]]; then
   echo "[http-interface-manifest] missing file: $MANIFEST_PATH" >&2
   exit 1
@@ -41,7 +55,7 @@ if ! jq -e '
   exit 1
 fi
 
-mapfile -t route_paths < <(
+readarray_compat route_paths < <(
   {
     if command -v rg >/dev/null 2>&1; then
       rg -o '"\/[^"]+"' "$ROUTES_PATH" || true
@@ -51,7 +65,7 @@ mapfile -t route_paths < <(
   } | tr -d '"' | sort -u
 )
 
-mapfile -t manifest_paths < <(
+readarray_compat manifest_paths < <(
   jq -r '.groups[].operations[].path' "$MANIFEST_PATH" | sed 's#^/api##' | sort -u
 )
 

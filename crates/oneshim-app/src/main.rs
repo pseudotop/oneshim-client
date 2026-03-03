@@ -254,8 +254,7 @@ fn handle_autostart_commands(args: &Args) -> bool {
     false
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let args = Args::parse();
 
     if handle_autostart_commands(&args) {
@@ -276,6 +275,13 @@ async fn main() -> Result<()> {
         return gui_runner::run_gui(args.offline, args.data_dir.as_deref());
     }
 
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(main_async(args))
+}
+
+async fn main_async(args: Args) -> Result<()> {
     print_banner(args.offline);
 
     if args.offline {

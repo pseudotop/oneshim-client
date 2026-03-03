@@ -24,7 +24,6 @@ use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use oneshim_web::{AiRuntimeStatus, RealtimeEvent, WebServer};
-use std::panic;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -110,35 +109,47 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     std::fs::create_dir_all(&data_dir_path)?;
     info!("data save path: {}", data_dir_path.display());
 
-    let tray_rx = match TrayManager::new() {
-        Ok((manager, rx)) => {
-            Box::leak(Box::new(manager));
-            info!("system tray initialize completed");
-            Some(rx)
-        }
-        Err(e) => {
-            warn!("system tray initialize failure: {e}");
-            None
+    let disable_tray = std::env::var("ONESHIM_DISABLE_TRAY")
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false);
+
+    let tray_rx = if disable_tray {
+        info!("system tray initialize skipped (ONESHIM_DISABLE_TRAY)");
+        None
+    } else {
+        match TrayManager::new() {
+            Ok((manager, rx)) => {
+                Box::leak(Box::new(manager));
+                info!("system tray initialize completed");
+                Some(rx)
+            }
+            Err(e) => {
+                warn!("system tray initialize failure: {e}");
+                None
+            }
         }
     };
 
-    let default_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        let panic_msg = info.to_string();
-        if panic_msg.contains("Cannot drop a runtime")
-            || panic_msg.contains("cannot drop a runtime")
-        {
-            info!("tokio panic (tray mode)");
-            return;
+    let config_manager = match ConfigManager::new() {
+        Ok(manager) => manager,
+        Err(init_err) => {
+            warn!("settings initialize failure, attempting fallback: {init_err}");
+            let fallback_path = data_dir_path.join("config.json");
+            match ConfigManager::with_path(fallback_path) {
+                Ok(manager) => manager,
+                Err(fallback_err) => {
+                    return Err(anyhow::anyhow!(
+                        "failed to initialize config manager (init: {init_err}; fallback: {fallback_err})"
+                    ));
+                }
+            }
         }
-        default_hook(info);
-    }));
-
-    let config_manager = ConfigManager::new().unwrap_or_else(|e| {
-        warn!("settings initialize failure, default settings: {e}");
-        let fallback_path = data_dir_path.join("config.json");
-        ConfigManager::with_path(fallback_path).expect("Failed to create config manager")
-    });
+    };
     info!("settings file: {:?}", config_manager.config_path());
 
     let config = config_manager.get();
@@ -336,7 +347,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                 error!("server error: {e}");
             }
         });
-        info!(": http://localhost:{}", web_port);
+        info!("web server task started (port configured: {})", web_port);
     }
 
     let (ui_update_tx, ui_update_rx) = std::sync::mpsc::channel::<UpdateUserAction>();
@@ -463,10 +474,10 @@ async fn run_agent(
     let ocr_tessdata = std::env::var("ONESHIM_TESSDATA").ok().map(PathBuf::from);
     let frame_processor: Arc<dyn oneshim_core::ports::vision::FrameProcessor> =
         Arc::new(EdgeFrameProcessor::new(
-        config.vision.thumbnail_width,
-        config.vision.thumbnail_height,
-        ocr_tessdata,
-    ));
+            config.vision.thumbnail_width,
+            config.vision.thumbnail_height,
+            ocr_tessdata,
+        ));
 
     #[cfg(feature = "server")]
     let token_manager = Arc::new(TokenManager::new(&config.server.base_url));
