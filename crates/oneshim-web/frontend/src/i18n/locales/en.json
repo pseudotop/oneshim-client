@@ -612,5 +612,9 @@
     "focus": { "title": "Focus Analysis Preparing", "description": "Analysis will start automatically as you use apps" },
     "replay": { "title": "No Session Records", "description": "No sessions recorded in the selected period. Try adjusting the date range" },
     "automation": { "title": "Automation Inactive", "description": "The automation system is inactive. Enable it in Settings", "action": "Go to Settings" }
+  },
+  "commandPalette": {
+    "placeholder": "Type a command or search...",
+    "noResults": "No results found"
   }
 }

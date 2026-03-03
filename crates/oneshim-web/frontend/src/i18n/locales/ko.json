@@ -612,5 +612,9 @@
     "focus": { "title": "집중도 분석 준비 중", "description": "앱을 사용하면 자동으로 분석이 시작됩니다" },
     "replay": { "title": "세션 기록 없음", "description": "선택한 기간에 기록된 세션이 없습니다. 날짜 범위를 조정해보세요" },
     "automation": { "title": "자동화 비활성", "description": "자동화 시스템이 비활성 상태입니다. Settings에서 활성화하세요", "action": "설정으로 이동" }
+  },
+  "commandPalette": {
+    "placeholder": "명령어 또는 검색어를 입력하세요...",
+    "noResults": "결과가 없습니다"
   }
 }

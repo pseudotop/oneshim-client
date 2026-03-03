@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 interface ShortcutHandlers {
   onHelp?: () => void
   onEscape?: () => void
+  onToggleSidebar?: () => void
   onArrowLeft?: () => void
   onArrowRight?: () => void
   onArrowUp?: () => void
@@ -20,6 +21,13 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
+      // Cmd+B / Ctrl+B: toggle sidebar (works even when focused in inputs)
+      if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
+        event.preventDefault()
+        handlers.onToggleSidebar?.()
+        return
+      }
+
       const target = event.target as HTMLElement
       if (
         target.tagName === 'INPUT' ||
@@ -114,5 +122,7 @@ export function getShortcutsList() {
     { key: 'ESC', description: '선택 해제 / 모달 닫기' },
     { key: '← →', description: '이전/next 항목' },
     { key: 'Enter', description: '선택 확인' },
+    { key: '\u2318B', description: 'Toggle Sidebar' },
+    { key: '\u2318K', description: 'Command Palette' },
   ]
 }
