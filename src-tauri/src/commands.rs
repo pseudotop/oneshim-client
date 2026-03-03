@@ -55,14 +55,63 @@ pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_jso
     serde_json::to_value(&config).map_err(|e| e.to_string())
 }
 
-/// 설정 업데이트 — 전체 AppConfig JSON을 받아서 저장
+/// WebView에서 수정 가능한 설정 필드 (보안 민감 필드 제외)
+///
+/// 허용: monitoring, capture, notification, web, schedule, telemetry, privacy, update, language, theme
+/// 거부: sandbox, ai_provider endpoints/api_key 변경, allow_action_execution, file_access
 #[command]
 pub async fn update_setting(
     config_json: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let new_config: oneshim_core::config::AppConfig =
+    let patch: serde_json::Value =
         serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+
+    let patch_obj = patch.as_object().ok_or("expected JSON object")?;
+
+    // Security-sensitive top-level keys that the WebView must not overwrite
+    const BLOCKED_KEYS: &[&str] = &[
+        "sandbox",
+        "file_access",
+    ];
+
+    for key in BLOCKED_KEYS {
+        if patch_obj.contains_key(*key) {
+            return Err(format!("modifying '{}' from the WebView is not permitted", key));
+        }
+    }
+
+    // Block ai_provider sub-fields that could redirect data to external servers
+    if let Some(ai) = patch_obj.get("ai_provider") {
+        if let Some(ai_obj) = ai.as_object() {
+            const BLOCKED_AI_KEYS: &[&str] = &[
+                "allow_action_execution",
+                "scene_action_override",
+            ];
+            for key in BLOCKED_AI_KEYS {
+                if ai_obj.contains_key(*key) {
+                    return Err(format!(
+                        "modifying 'ai_provider.{}' from the WebView is not permitted",
+                        key
+                    ));
+                }
+            }
+        }
+    }
+
+    // Merge patch into current config (only allowed fields survive)
+    let current = state.config_manager.get();
+    let mut current_val =
+        serde_json::to_value(&current).map_err(|e| e.to_string())?;
+
+    if let (Some(base), Some(patch)) = (current_val.as_object_mut(), patch.as_object()) {
+        for (k, v) in patch {
+            base.insert(k.clone(), v.clone());
+        }
+    }
+
+    let new_config: oneshim_core::config::AppConfig =
+        serde_json::from_value(current_val).map_err(|e| e.to_string())?;
     state
         .config_manager
         .update(new_config)
