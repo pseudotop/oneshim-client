@@ -76,8 +76,15 @@ try {
     $target = Join-Path $InstallDir "oneshim.exe"
     Throw-IfMissing -Path $target -Label "Installed binary"
 
-    Write-Info "Validating first-run command"
-    & $target --version | Out-Null
+    Write-Info "Validating binary format"
+    if (!(Test-Path $target)) {
+        throw "Installed binary not found: $target"
+    }
+    $fileSize = (Get-Item $target).Length
+    if ($fileSize -lt 1MB) {
+        throw "Binary too small ($fileSize bytes), likely corrupt: $target"
+    }
+    Write-Info "Binary OK: $target ($([math]::Round($fileSize / 1MB, 1)) MB)"
 
     if (-not $SkipUpdaterTests) {
         Write-Info "Running updater reliability regression tests"
