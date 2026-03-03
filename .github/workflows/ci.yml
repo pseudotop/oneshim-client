@@ -383,6 +383,44 @@ jobs:
           }
           & $bin --version | Out-Null
 
+      - name: GUI bootstrap smoke (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = "target/${{ matrix.target }}/release/oneshim.exe"
+          $outLog = Join-Path $env:RUNNER_TEMP "oneshim-pr-gui-smoke-win.out.log"
+          $errLog = Join-Path $env:RUNNER_TEMP "oneshim-pr-gui-smoke-win.err.log"
+          $mergedLog = Join-Path $env:RUNNER_TEMP "oneshim-pr-gui-smoke-win.log"
+
+          $proc = Start-Process -FilePath $bin -ArgumentList "--offline", "--gui" -PassThru -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+          Start-Sleep -Seconds 8
+
+          $wasRunning = -not $proc.HasExited
+          if ($wasRunning) {
+            Stop-Process -Id $proc.Id -Force
+            Wait-Process -Id $proc.Id -ErrorAction SilentlyContinue
+          } else {
+            if ($proc.ExitCode -ne 0) {
+              Write-Host "GUI bootstrap smoke exited unexpectedly: rc=$($proc.ExitCode)"
+              if (Test-Path $outLog) { Get-Content $outLog }
+              if (Test-Path $errLog) { Get-Content $errLog }
+              exit 1
+            }
+          }
+
+          $stdout = if (Test-Path $outLog) { Get-Content $outLog -Raw } else { "" }
+          $stderr = if (Test-Path $errLog) { Get-Content $errLog -Raw } else { "" }
+          $combined = "$stdout`n$stderr"
+          Set-Content -Path $mergedLog -Value $combined
+
+          $panicPattern = "Cannot start a runtime from within a runtime|Cannot drop a runtime|panicked|panic|Abort trap|SIGABRT"
+          if ($combined -match $panicPattern) {
+            Write-Host "GUI bootstrap smoke detected runtime/panic failure"
+            if (Test-Path $outLog) { Get-Content $outLog }
+            if (Test-Path $errLog) { Get-Content $errLog }
+            exit 1
+          }
+
       - name: GUI bootstrap smoke (macOS)
         if: runner.os == 'macOS'
         shell: bash
@@ -414,11 +452,22 @@ jobs:
           fi
 
       - name: Upload macOS GUI smoke log
-        if: failure() && runner.os == 'macOS'
+        if: always() && runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
           name: pr-gui-smoke-log-${{ matrix.name }}
           path: ${{ runner.temp }}/oneshim-pr-gui-smoke.log
+          if-no-files-found: ignore
+
+      - name: Upload Windows GUI smoke log
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: pr-gui-smoke-log-${{ matrix.name }}
+          path: |
+            ${{ runner.temp }}/oneshim-pr-gui-smoke-win.log
+            ${{ runner.temp }}/oneshim-pr-gui-smoke-win.out.log
+            ${{ runner.temp }}/oneshim-pr-gui-smoke-win.err.log
           if-no-files-found: ignore
 
   build:
