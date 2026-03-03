@@ -74,7 +74,7 @@ run_gui_bootstrap_smoke() {
   info "Running GUI bootstrap smoke (${label})"
 
   set +e
-  "$bin_path" --offline --gui >"$log_path" 2>&1 &
+  ONESHIM_DISABLE_TRAY=1 "$bin_path" --offline --gui >"$log_path" 2>&1 &
   local pid=$!
   sleep 8
   if kill -0 "$pid" >/dev/null 2>&1; then
