@@ -163,6 +163,12 @@ ONESHIM_TARGET_HARD_LIMIT_MB=6144 \
 Connected mode is preview-only and intentionally gated behind explicit server/auth configuration.
 Use standalone mode as the default production path unless your environment has validated connected mode.
 
+For headless CI/remote debug sessions where macOS tray bootstrap can fail due missing WindowServer:
+```bash
+ONESHIM_DISABLE_TRAY=1 ./scripts/cargo-cache.sh run -p oneshim-app -- --offline --gui
+```
+Use this only for non-interactive smoke/debug paths.
+
 ### Test
 
 ```bash
@@ -187,6 +193,12 @@ cd crates/oneshim-web/frontend && pnpm test:e2e
 # Optional: strict mode (fails on hardcoded UI copy warnings too)
 ./scripts/check-language.sh --strict-i18n
 ```
+
+### macOS WindowServer Smoke (Self-hosted)
+
+For real macOS GUI bootstrap verification with a live WindowServer session, run:
+- Workflow: `.github/workflows/macos-windowserver-gui-smoke.yml`
+- Runner labels: `self-hosted`, `macOS`, `windowserver`
 
 ## Installation
 
@@ -237,6 +249,7 @@ Download from [Releases](https://github.com/pseudotop/oneshim-client/releases):
 | `ONESHIM_EMAIL` | Login email (connected mode only) | (optional in standalone) |
 | `ONESHIM_PASSWORD` | Login password (connected mode only) | (optional in standalone) |
 | `ONESHIM_TESSDATA` | Tesseract data path | (optional) |
+| `ONESHIM_DISABLE_TRAY` | Skip system tray initialization (headless CI/remote GUI smoke only) | `0` |
 | `RUST_LOG` | Log level | `info` |
 
 ### Config File
