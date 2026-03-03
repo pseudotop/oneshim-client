@@ -8,6 +8,10 @@
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --accent: #14b8a6;
+  --titlebar-height: 32px;
+  --statusbar-height: 24px;
+  --activitybar-width: 48px;
+  --sidebar-width: 260px;
 }
 
 body {
@@ -36,4 +40,32 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
+}
+
+/* Desktop shell layout */
+.app-shell {
+  display: grid;
+  grid-template-rows: var(--titlebar-height) 1fr var(--statusbar-height);
+  grid-template-columns: var(--activitybar-width) auto 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell-titlebar {
+  grid-column: 1 / -1;
+}
+
+.app-shell-statusbar {
+  grid-column: 1 / -1;
+}
+
+/* Tauri drag region */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] a {
+  -webkit-app-region: no-drag;
 }
