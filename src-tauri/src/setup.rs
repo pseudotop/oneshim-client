@@ -398,8 +398,7 @@ async fn run_agent(
     ));
 
     // 데스크톱 알림 — Tauri 모드에서는 NoOp (Tauri 플러그인으로 대체)
-    let notifier: Arc<dyn oneshim_core::ports::notifier::DesktopNotifier> =
-        Arc::new(NoOpNotifier);
+    let notifier: Arc<dyn oneshim_core::ports::notifier::DesktopNotifier> = Arc::new(NoOpNotifier);
     let notification_manager = Arc::new(NotificationManager::new(
         config.notification.clone(),
         notifier.clone(),
@@ -481,12 +480,19 @@ impl oneshim_core::ports::notifier::DesktopNotifier for NoOpNotifier {
         title: &str,
         body: &str,
     ) -> Result<(), oneshim_core::error::CoreError> {
-        tracing::debug!(title, body, "notification suppressed (Tauri handles notifications)");
+        tracing::debug!(
+            title,
+            body,
+            "notification suppressed (Tauri handles notifications)"
+        );
         Ok(())
     }
 
     async fn show_error(&self, message: &str) -> Result<(), oneshim_core::error::CoreError> {
-        tracing::debug!(message, "error notification suppressed (Tauri handles notifications)");
+        tracing::debug!(
+            message,
+            "error notification suppressed (Tauri handles notifications)"
+        );
         Ok(())
     }
 }

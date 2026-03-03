@@ -17,9 +17,7 @@ pub struct MetricsResponse {
 
 /// 시스템 메트릭 수집 — 기존 LocalMonitor 로직
 #[command]
-pub async fn get_metrics(
-    _state: tauri::State<'_, AppState>,
-) -> Result<MetricsResponse, String> {
+pub async fn get_metrics(_state: tauri::State<'_, AppState>) -> Result<MetricsResponse, String> {
     let mut sys = System::new();
     sys.refresh_cpu_all();
     sys.refresh_memory();
@@ -52,9 +50,7 @@ pub async fn get_metrics(
 
 /// 설정 조회
 #[command]
-pub async fn get_settings(
-    state: tauri::State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
+pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
     let config = state.config_manager.get();
     serde_json::to_value(&config).map_err(|e| e.to_string())
 }
@@ -88,9 +84,7 @@ pub async fn get_update_status(
 
 /// 업데이트 승인
 #[command]
-pub async fn approve_update(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn approve_update(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state
         .update_action_tx
         .send(UpdateAction::Approve)
@@ -99,9 +93,7 @@ pub async fn approve_update(
 
 /// 업데이트 연기
 #[command]
-pub async fn defer_update(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn defer_update(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state
         .update_action_tx
         .send(UpdateAction::Defer)
@@ -110,8 +102,6 @@ pub async fn defer_update(
 
 /// 자동화 상태 조회 — 컨트롤러 구성 여부 반환
 #[command]
-pub async fn get_automation_status(
-    state: tauri::State<'_, AppState>,
-) -> Result<bool, String> {
+pub async fn get_automation_status(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     Ok(state.automation_controller.is_some())
 }
