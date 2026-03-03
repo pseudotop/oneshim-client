@@ -115,7 +115,7 @@ enigo = { version = "0.6", features = ["serde"] }
 # 자동 업데이트 (native-tls로 ring 의존성 회피)
 self_update = { version = "0.42", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2"] }
 tar = "0.4"
-zip = "2"
+zip = "8"
 
 # 웹 프레임워크 (Axum)
 axum = { version = "0.8", features = ["macros"] }
