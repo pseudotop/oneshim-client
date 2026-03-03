@@ -742,6 +742,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [build-release, build-macos-universal, release-reliability-smoke]
+    if: always() && needs.build-release.result == 'success' && needs.build-macos-universal.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
