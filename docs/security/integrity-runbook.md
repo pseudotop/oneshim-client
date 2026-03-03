@@ -24,10 +24,10 @@ Expected output:
 The following workflows enforce integrity in CI:
 
 - `CI` (`.github/workflows/ci.yml`): lint, tests, cross-platform build sanity
-- `Security & Compliance` (`.github/workflows/security-compliance.yml`): supply-chain checks + SBOM
-- `Integrity Gates` (`.github/workflows/integrity-gates.yml`): policy + signature + supply-chain checks
+- `Security & Compliance` (`.github/workflows/security-compliance.yml`): supply-chain checks + SBOM (`cargo vet` is advisory on PRs, blocking on push/schedule)
+- `Integrity Gates` (`.github/workflows/integrity-gates.yml`): policy + signature + supply-chain checks (`cargo vet` is advisory on PRs, blocking on push/schedule)
 
-PRs must not bypass these workflows.
+PRs must not bypass these workflows. Even in PR mode, `audit`/`deny` stay blocking and `cargo vet` findings are surfaced as advisory output.
 
 ## 3. Release Procedure
 

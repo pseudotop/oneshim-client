@@ -7,6 +7,20 @@ cd "$ROOT_DIR"
 MANIFEST_PATH="docs/contracts/http-interface-manifest.v1.json"
 OUTPUT_PATH="${1:-docs/contracts/oneshim-web.v1.openapi.yaml}"
 
+readarray_compat() {
+  local target="$1"
+  if command -v mapfile >/dev/null 2>&1; then
+    mapfile -t "$target"
+    return
+  fi
+
+  eval "$target=()"
+  local line
+  while IFS= read -r line; do
+    eval "$target+=(\"\$line\")"
+  done
+}
+
 if ! command -v jq >/dev/null 2>&1; then
   echo "[http-openapi] jq is required" >&2
   exit 1
@@ -41,7 +55,7 @@ servers:
 paths:
 EOF
 
-mapfile -t api_paths < <(
+readarray_compat api_paths < <(
   jq -r '[.groups[].operations[].path | gsub(":(?<p>[A-Za-z_][A-Za-z0-9_]*)"; "{\(.p)}")] | unique[]' "$MANIFEST_PATH"
 )
 
@@ -59,7 +73,7 @@ for api_path in "${api_paths[@]}"; do
         | sed -E 's/[{}]//g; s/[^A-Za-z0-9]+/_/g; s/^_+//; s/_+$//'
     )"
 
-    summary="${method^^} ${raw_path}"
+    summary="$(printf '%s %s' "$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')" "$raw_path")"
 
     {
       printf '    %s:\n' "$method"
@@ -69,7 +83,7 @@ for api_path in "${api_paths[@]}"; do
       printf '      summary: "%s"\n' "$summary"
     } >> "$OUTPUT_PATH"
 
-    mapfile -t path_params < <(
+    readarray_compat path_params < <(
       printf '%s\n' "$api_path" \
         | grep -oE '\{[A-Za-z_][A-Za-z0-9_]*\}' \
         | tr -d '{}' \

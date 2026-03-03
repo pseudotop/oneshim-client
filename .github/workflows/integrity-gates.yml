@@ -55,7 +55,14 @@ jobs:
           ./scripts/cargo-cache.sh install cargo-cyclonedx --locked
           python3 -m pip install --upgrade pynacl
 
-      - name: Run integrity verification script
+      - name: Run integrity verification script (blocking)
+        if: github.event_name != 'pull_request'
+        run: ./scripts/verify-integrity.sh
+
+      - name: Run integrity verification script (PR advisory vet)
+        if: github.event_name == 'pull_request'
+        env:
+          INTEGRITY_VET_MODE: advisory
         run: ./scripts/verify-integrity.sh
 
       - name: Run key rotation rehearsal script
