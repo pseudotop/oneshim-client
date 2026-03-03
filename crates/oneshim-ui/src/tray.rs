@@ -79,9 +79,11 @@ impl TrayManager {
     /// # Panics
     pub fn new() -> Result<(Self, mpsc::Receiver<TrayEvent>), String> {
         use tray_icon::{
-            menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+            menu::{Menu, MenuEvent, MenuItem},
             TrayIconBuilder,
         };
+        #[cfg(not(target_os = "macos"))]
+        use tray_icon::menu::PredefinedMenuItem;
 
         info!("system tray initialize ( )");
 
@@ -95,6 +97,7 @@ impl TrayManager {
         let quit_item = MenuItem::new("ended", true, None);
 
         menu.append(&show_item).map_err(|e| e.to_string())?;
+        #[cfg(not(target_os = "macos"))]
         menu.append(&PredefinedMenuItem::separator())
             .map_err(|e| e.to_string())?;
         menu.append(&settings_item).map_err(|e| e.to_string())?;
@@ -102,6 +105,7 @@ impl TrayManager {
         menu.append(&approve_update_item)
             .map_err(|e| e.to_string())?;
         menu.append(&defer_update_item).map_err(|e| e.to_string())?;
+        #[cfg(not(target_os = "macos"))]
         menu.append(&PredefinedMenuItem::separator())
             .map_err(|e| e.to_string())?;
         menu.append(&quit_item).map_err(|e| e.to_string())?;

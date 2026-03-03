@@ -33,7 +33,7 @@ pub fn get_active_window_windows() -> Result<Option<WindowInfo>, CoreError> {
         let bounds = get_window_bounds(hwnd);
 
         debug!(
-            "active 창: {app_name} — {title} (PID: {pid}, {:?})",
+            "active window: {app_name} - {title} (PID: {pid}, {:?})",
             bounds.map(|b| format!("{}x{} at ({},{})", b.width, b.height, b.x, b.y))
         );
 

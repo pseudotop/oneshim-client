@@ -50,7 +50,7 @@ impl AutomationController {
         tracing::info!(
             platform = sandbox.platform(),
             available = sandbox.is_available(),
-            "자동화 제어기 initialize — 샌드박스 connection"
+            "automation controller initialized - sandbox connected"
         );
         Self {
             policy_client,

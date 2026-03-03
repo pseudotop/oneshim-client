@@ -104,7 +104,7 @@ impl SystemMonitor for SysInfoMonitor {
         };
 
         debug!(
-            "시스템 메트릭: CPU {:.1}%, 메모리 {}/{}MB",
+            "system metrics: CPU {:.1}%, memory {}/{}MB",
             metrics.cpu_usage,
             metrics.memory_used / 1_048_576,
             metrics.memory_total / 1_048_576

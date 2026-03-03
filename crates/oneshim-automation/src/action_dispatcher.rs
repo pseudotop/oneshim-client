@@ -28,7 +28,7 @@ impl AutomationActionDispatcher for SandboxActionDispatcher {
             action = ?action,
             sandbox = self.sandbox.platform(),
             profile = ?config.profile,
-            "자동화 명령 execution (policy 기반 샌드박스 경유)"
+            "executing automation command (policy-based sandbox path)"
         );
 
         if let Err(e) = self.sandbox.execute_sandboxed(action, config).await {

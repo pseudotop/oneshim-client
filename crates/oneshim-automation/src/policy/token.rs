@@ -155,7 +155,7 @@ pub(super) fn verify_policy_token_signature(
     let Some(secret) = load_signing_secret() else {
         tracing::warn!(
             env = POLICY_TOKEN_SIGNING_SECRET_ENV,
-            "서명 policy active화됐지만 token 서명 시크릿이 설정되지 않음"
+            "signature policy is enabled but token signing secret is not configured"
         );
         return false;
     };

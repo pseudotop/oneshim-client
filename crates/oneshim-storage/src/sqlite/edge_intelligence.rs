@@ -35,7 +35,7 @@ impl SqliteStorage {
 
         let id = conn.last_insert_rowid();
         debug!(
-            "작업 session started: id={}, app={}, category={:?}",
+            "work session started: id={}, app={}, category={:?}",
             id, primary_app, category
         );
 
@@ -133,7 +133,7 @@ impl SqliteStorage {
             .map_err(|e| CoreError::Internal(format!("Failed to end work session: {e}")))?;
 
         debug!(
-            "작업 session ended: id={}, duration={}초",
+            "work session ended: id={}, duration={}s",
             session_id, duration_secs
         );
         Ok(())
@@ -261,7 +261,7 @@ impl SqliteStorage {
 
         let id = conn.last_insert_rowid();
         debug!(
-            "인터럽션 record: {} → {}",
+            "interruption recorded: {} -> {}",
             interruption.from_app, interruption.to_app
         );
         Ok(id)
@@ -452,7 +452,7 @@ impl SqliteStorage {
         .map_err(|e| CoreError::Internal(format!("Failed to update focus metric: {e}")))?;
 
         debug!(
-            "집중도 메트릭 update: date={}, score={:.2}",
+            "focus metrics updated: date={}, score={:.2}",
             date, metrics.focus_score
         );
         Ok(())

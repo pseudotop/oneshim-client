@@ -70,7 +70,7 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
 
     if !should_autoinstall_bridge_files() {
         info!(
-            "ProviderSubscriptionCli mode detection: CLI 브리지 자동 설치 비active화 (ONESHIM_CLI_BRIDGE_AUTOINSTALL=1로 active화)"
+            "ProviderSubscriptionCli mode detected: CLI bridge auto-install disabled (set ONESHIM_CLI_BRIDGE_AUTOINSTALL=1 to enable)"
         );
         return;
     }
@@ -87,7 +87,7 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
         written_files = report.written_files.len(),
         unchanged_files = report.unchanged_files.len(),
         errors = report.errors.len(),
-        "CLI subscribe 브리지 file 동기화 completed"
+        "CLI subscription bridge file sync completed"
     );
 
     if !report.is_successful() {
@@ -233,7 +233,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
             Err(err) => {
                 warn!(
                     error = %err,
-                    "자동화 전용 frame save소 initialize failure: NoOp 요소 탐색기로 폴백"
+                    "automation-only frame storage initialization failed: falling back to NoOp element finder"
                 );
                 None
             }
@@ -262,7 +262,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                         llm_provider = runtime.llm_provider_name,
                         llm_source = runtime.llm_source.as_str(),
                         llm_fallback_reason = ?runtime.llm_fallback_reason,
-                        "AI 제공자 어댑터 해석 completed"
+                        "AI provider adapter resolution completed"
                     );
 
                     let policy_client = Arc::new(PolicyClient::new());
@@ -291,7 +291,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                         warn!(
                             error = %err,
                             fallback_enabled = true,
-                            "AI 제공자 어댑터 해석 failure; NoOp 자동화 execution기로 폴백"
+                            "AI provider adapter resolution failed; falling back to NoOp automation executor"
                         );
 
                         let policy_client = Arc::new(PolicyClient::new());
@@ -309,7 +309,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                         error!(
                             error = %err,
                             fallback_enabled = false,
-                            "AI 제공자 어댑터 해석 failure; fallback_to_local=false 이므로 자동화 컨트롤러를 비active화합니다"
+                            "AI provider adapter resolution failed; disabling automation controller because fallback_to_local=false"
                         );
                         None
                     }

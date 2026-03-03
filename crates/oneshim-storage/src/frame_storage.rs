@@ -59,7 +59,7 @@ impl FrameFileStorage {
             .map_err(|e| CoreError::Internal(format!("Failed to create frame directory: {e}")))?;
 
         info!(
-            "frame save소 initialize: {} (최대 {}MB, {}일 보존, 버퍼풀 {}개)",
+            "frame storage initialized: {} (max={}MB, retention={} days, buffer_pool={})",
             frames_dir.display(),
             max_storage_mb,
             retention_days,
@@ -343,7 +343,7 @@ impl FrameFileStorage {
 
         if deleted_count > 0 {
             info!(
-                "frame 보존 policy: {deleted_count}개 file delete (>{} 일)",
+                "frame retention policy: deleted {deleted_count} files (>{} days)",
                 self.retention_days
             );
         }

@@ -122,7 +122,7 @@ impl Sandbox for LinuxSandbox {
             allow_network = seccomp_allowlist.allow_network,
             max_memory = resource_limits.max_memory_bytes,
             action = ?action,
-            "Linux 샌드박스 execution"
+            "Linux sandbox execution"
         );
 
         let landlock_avail = self.landlock_available;
@@ -184,7 +184,7 @@ fn apply_landlock_rules(rules: &LandlockRules) -> Result<(), CoreError> {
     tracing::debug!(
         read = rules.read_paths.len(),
         write = rules.write_paths.len(),
-        "Landlock 규칙 적용"
+        "applying Landlock rules"
     );
     Ok(())
 }
@@ -194,7 +194,7 @@ fn apply_seccomp_filter(allowlist: &SeccompAllowlist) -> Result<(), CoreError> {
         basic = allowlist.allow_basic,
         network = allowlist.allow_network,
         process = allowlist.allow_process,
-        "seccomp 필터 적용"
+        "applying seccomp filter"
     );
     Ok(())
 }
@@ -203,7 +203,7 @@ fn apply_resource_limits(limits: &ResourceLimits) -> Result<(), CoreError> {
     if limits.max_memory_bytes > 0 {
         tracing::debug!(
             max_memory = limits.max_memory_bytes,
-            "setrlimit RLIMIT_AS 설정"
+            "setting RLIMIT_AS with setrlimit"
         );
     }
     if limits.max_cpu_time_ms > 0 {

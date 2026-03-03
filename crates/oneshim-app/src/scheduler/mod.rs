@@ -105,7 +105,7 @@ impl Scheduler {
 
     pub async fn run(&self, shutdown_rx: tokio::sync::watch::Receiver<bool>) {
         info!(
-            "스케줄러 started: 모니터링={}ms, 메트릭={}ms, 프로세스={}ms, 동기화={}ms, heartbeat={}ms, 집계={}ms",
+            "scheduler started: monitoring={}ms, metrics={}ms, process={}ms, sync={}ms, heartbeat={}ms, aggregation={}ms",
             self.config.poll_interval.as_millis(),
             self.config.metrics_interval.as_millis(),
             self.config.process_interval.as_millis(),

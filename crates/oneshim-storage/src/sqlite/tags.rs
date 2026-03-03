@@ -179,7 +179,7 @@ impl SqliteStorage {
             .map_err(|e| CoreError::Internal(format!("Failed to remove frame tag: {e}")))?;
 
         debug!(
-            "frame 태그 제거: frame_id={}, tag_id={}, affected={}",
+            "frame tag removed: frame_id={}, tag_id={}, affected={}",
             frame_id, tag_id, deleted
         );
         Ok(deleted > 0)

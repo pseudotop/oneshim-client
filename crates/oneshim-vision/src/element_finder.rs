@@ -350,7 +350,7 @@ impl ElementFinder for ChainedElementFinder {
                     debug!(
                         finder = finder.name(),
                         error = %err,
-                        "이미지 Scene analysis failed, trying next finder"
+                        "image scene analysis failed, trying next finder"
                     );
                     last_err = Some(err);
                 }

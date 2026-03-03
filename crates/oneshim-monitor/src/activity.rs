@@ -30,7 +30,7 @@ impl ActivityMonitor for ActivityTracker {
         };
 
         debug!(
-            "context collect: 앱={}, 프로세스={}개",
+            "context collected: app={}, process_count={}",
             context
                 .active_window
                 .as_ref()

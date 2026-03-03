@@ -386,17 +386,17 @@ pub async fn run_preset(
         tracing::info!(
             preset_id = %preset.id,
             steps = preset.steps.len(),
-            "워크플로우 프리셋 execution request (컨트롤러 미설정, 로깅 전용)"
+            "workflow preset execution requested (controller not configured, logging only)"
         );
 
         Ok(Json(PresetRunResult {
             preset_id: id,
             success: true,
-            message: format!(
-                "프리셋 '{}' execution request됨 ({}단계, 로깅 전용)",
-                preset.name,
-                preset.steps.len()
-            ),
+                message: format!(
+                    "preset '{}' execution requested ({} steps, logging only)",
+                    preset.name,
+                    preset.steps.len()
+                ),
             steps_executed: None,
             total_steps: Some(preset.steps.len()),
             total_elapsed_ms: None,

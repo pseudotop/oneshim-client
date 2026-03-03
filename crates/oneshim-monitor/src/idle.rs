@@ -33,7 +33,7 @@ impl IdleTracker {
 
         if state != self.previous_state {
             debug!(
-                "idle state 변경: {:?} → {:?} ({}초)",
+                "idle state changed: {:?} -> {:?} ({}s)",
                 self.previous_state, state, idle_secs
             );
         }

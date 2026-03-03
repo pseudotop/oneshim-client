@@ -64,7 +64,7 @@ pub fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
     };
 
     debug!(
-        "active 창: {app_name} — {title} ({:?})",
+        "active window: {app_name} - {title} ({:?})",
         bounds.map(|b| format!("{}x{} at ({},{})", b.width, b.height, b.x, b.y))
     );
 

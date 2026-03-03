@@ -145,7 +145,7 @@ impl OcrProvider for GuardedOcrProvider {
         debug!(
             redacted_regions = sanitized.redacted_regions,
             allow_unredacted_external_ocr = self.allow_unredacted_external_ocr,
-            "외부 OCR sent 전 이미지 세정 completed"
+            "image sanitization completed before external OCR request"
         );
 
         let results = self
@@ -340,7 +340,7 @@ fn resolve_remote_with_optional_fallback<T: ?Sized>(
                 provider = provider_kind,
                 error = %err,
                 fallback_reason = %fallback_reason,
-                "원격 제공자 initialize failure, 로컬 제공자로 폴백"
+                "remote provider initialization failed, falling back to local provider"
             );
             Ok((
                 local_builder(),
