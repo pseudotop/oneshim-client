@@ -228,6 +228,20 @@ mod tests {
         }
     }
 
+    fn can_bind_loopback() -> bool {
+        match std::net::TcpListener::bind(("127.0.0.1", 0)) {
+            Ok(listener) => {
+                drop(listener);
+                true
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+                eprintln!("skipping localhost updater test: {err}");
+                false
+            }
+            Err(err) => panic!("unexpected loopback bind failure: {err}"),
+        }
+    }
+
     #[test]
     fn current_version_is_valid_semver() {
         let version = semver::Version::parse(CURRENT_VERSION);
@@ -676,6 +690,10 @@ mod tests {
 
     #[tokio::test]
     async fn release_reliability_download_update_accepts_localhost_with_integrity() {
+        if !can_bind_loopback() {
+            return;
+        }
+
         let mut server = mockito::Server::new_async().await;
         let asset_name = "oneshim-test-update.tar.gz";
         let payload = b"release-artifact-v1".to_vec();
@@ -710,6 +728,10 @@ mod tests {
 
     #[tokio::test]
     async fn release_reliability_download_update_rejects_checksum_mismatch() {
+        if !can_bind_loopback() {
+            return;
+        }
+
         let mut server = mockito::Server::new_async().await;
         let asset_name = "oneshim-test-update.tar.gz";
 

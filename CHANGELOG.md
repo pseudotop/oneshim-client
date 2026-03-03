@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-03-03
+
+### Fixed
+
+- Stabilize GUI startup and shutdown paths to prevent runtime panic during tray bootstrap
+- Harden cross-platform GUI smoke flows to avoid false negatives on headless runners
+- Unblock release gates by addressing clippy bound checks and contract/vet workflow drift
+
+### Changed
+
+- Expand release reliability smoke coverage across Linux, macOS, and Windows in PR pipelines
+- Upload GUI/bootstrap diagnostics on CI failures for faster release triage
+- Align license policy and CI checks for release packaging consistency
+
 ## [0.1.1] - 2026-02-27
 
 ### Fixed
@@ -80,6 +94,7 @@ Each version entry must include:
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/pseudotop/oneshim-client/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/pseudotop/oneshim-client/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/pseudotop/oneshim-client/releases/tag/v0.1.0
