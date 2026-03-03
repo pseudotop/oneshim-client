@@ -109,15 +109,29 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
     std::fs::create_dir_all(&data_dir_path)?;
     info!("data save path: {}", data_dir_path.display());
 
-    let tray_rx = match TrayManager::new() {
-        Ok((manager, rx)) => {
-            Box::leak(Box::new(manager));
-            info!("system tray initialize completed");
-            Some(rx)
-        }
-        Err(e) => {
-            warn!("system tray initialize failure: {e}");
-            None
+    let disable_tray = std::env::var("ONESHIM_DISABLE_TRAY")
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false);
+
+    let tray_rx = if disable_tray {
+        info!("system tray initialize skipped (ONESHIM_DISABLE_TRAY)");
+        None
+    } else {
+        match TrayManager::new() {
+            Ok((manager, rx)) => {
+                Box::leak(Box::new(manager));
+                info!("system tray initialize completed");
+                Some(rx)
+            }
+            Err(e) => {
+                warn!("system tray initialize failure: {e}");
+                None
+            }
         }
     };
 
