@@ -24,7 +24,6 @@ use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use oneshim_web::{AiRuntimeStatus, RealtimeEvent, WebServer};
-use std::panic;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -122,23 +121,21 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
         }
     };
 
-    let default_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        let panic_msg = info.to_string();
-        if panic_msg.contains("Cannot drop a runtime")
-            || panic_msg.contains("cannot drop a runtime")
-        {
-            info!("tokio panic (tray mode)");
-            return;
+    let config_manager = match ConfigManager::new() {
+        Ok(manager) => manager,
+        Err(init_err) => {
+            warn!("settings initialize failure, attempting fallback: {init_err}");
+            let fallback_path = data_dir_path.join("config.json");
+            match ConfigManager::with_path(fallback_path) {
+                Ok(manager) => manager,
+                Err(fallback_err) => {
+                    return Err(anyhow::anyhow!(
+                        "failed to initialize config manager (init: {init_err}; fallback: {fallback_err})"
+                    ));
+                }
+            }
         }
-        default_hook(info);
-    }));
-
-    let config_manager = ConfigManager::new().unwrap_or_else(|e| {
-        warn!("settings initialize failure, default settings: {e}");
-        let fallback_path = data_dir_path.join("config.json");
-        ConfigManager::with_path(fallback_path).expect("Failed to create config manager")
-    });
+    };
     info!("settings file: {:?}", config_manager.config_path());
 
     let config = config_manager.get();
@@ -336,7 +333,7 @@ pub fn run_gui(offline_mode: bool, data_dir: Option<&str>) -> Result<()> {
                 error!("server error: {e}");
             }
         });
-        info!(": http://localhost:{}", web_port);
+        info!("web server task started (port configured: {})", web_port);
     }
 
     let (ui_update_tx, ui_update_rx) = std::sync::mpsc::channel::<UpdateUserAction>();

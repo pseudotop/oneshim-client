@@ -357,6 +357,13 @@ impl Scheduler {
                         }
                     }
                     _ = shutdown_rx.changed() => {
+                        if let Some(ref sink) = uploader4 {
+                            if egress4.is_enabled() {
+                                if let Err(e) = sink.flush().await {
+                                    warn!("final batch flush failure on shutdown: {e}");
+                                }
+                            }
+                        }
                         info!("ended");
                         break;
                     }
@@ -660,19 +667,32 @@ impl Scheduler {
         let _ = shutdown_rx.changed().await;
         info!("ended received");
 
+        let mut tasks = [
+            ("monitor", monitor_task),
+            ("metrics", metrics_task),
+            ("process", process_task),
+            ("sync", sync_task),
+            ("heartbeat", heartbeat_task),
+            ("aggregation", aggregation_task),
+            ("notification", notification_task),
+            ("focus", focus_task),
+            ("event_snapshot", event_snapshot_task),
+        ];
+
+        for (name, task) in &mut tasks {
+            match tokio::time::timeout(Duration::from_secs(3), &mut *task).await {
+                Ok(_) => {}
+                Err(_) => {
+                    warn!("task '{name}' did not stop in time, aborting");
+                    task.abort();
+                    let _ = task.await;
+                }
+            }
+        }
+
         let sqlite_end = self.sqlite_storage.clone();
         if let Err(e) = sqlite_end.end_session(&session_id, Utc::now()).await {
             warn!("session ended record failure: {e}");
         }
-
-        monitor_task.abort();
-        metrics_task.abort();
-        process_task.abort();
-        sync_task.abort();
-        heartbeat_task.abort();
-        aggregation_task.abort();
-        notification_task.abort();
-        focus_task.abort();
-        event_snapshot_task.abort();
     }
 }
