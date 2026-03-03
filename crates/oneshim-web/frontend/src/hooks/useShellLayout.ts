@@ -4,23 +4,27 @@ import { layout } from '../styles/tokens'
 const STORAGE_KEY_WIDTH = 'oneshim-sidebar-width'
 const STORAGE_KEY_COLLAPSED = 'oneshim-sidebar-collapsed'
 
-function loadPersistedState() {
+function loadPersistedWidth(): number {
   try {
     const width = localStorage.getItem(STORAGE_KEY_WIDTH)
-    const collapsed = localStorage.getItem(STORAGE_KEY_COLLAPSED)
-    return {
-      sidebarWidth: width ? Math.min(Math.max(Number(width), layout.sidePanel.minWidth), layout.sidePanel.maxWidth) : layout.sidePanel.defaultWidth,
-      sidebarCollapsed: collapsed === 'true',
-    }
+    return width ? Math.min(Math.max(Number(width), layout.sidePanel.minWidth), layout.sidePanel.maxWidth) : layout.sidePanel.defaultWidth
   } catch {
-    return { sidebarWidth: layout.sidePanel.defaultWidth, sidebarCollapsed: false }
+    return layout.sidePanel.defaultWidth
+  }
+}
+
+function loadPersistedCollapsed(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY_COLLAPSED) === 'true'
+  } catch {
+    return false
   }
 }
 
 export function useShellLayout() {
-  const persisted = loadPersistedState()
-  const [sidebarWidth, setSidebarWidth] = useState(persisted.sidebarWidth)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(persisted.sidebarCollapsed)
+  // Lazy initializers — called only once on mount
+  const [sidebarWidth, setSidebarWidth] = useState(loadPersistedWidth)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(loadPersistedCollapsed)
   const [isResizing, setIsResizing] = useState(false)
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
@@ -34,6 +38,7 @@ export function useShellLayout() {
 
   useEffect(() => {
     const width = sidebarCollapsed ? 0 : sidebarWidth
+    if (!Number.isFinite(width)) return
     document.documentElement.style.setProperty('--sidebar-width', `${width}px`)
   }, [sidebarWidth, sidebarCollapsed])
 
@@ -41,12 +46,15 @@ export function useShellLayout() {
     setSidebarCollapsed(prev => !prev)
   }, [])
 
+  // Stable ref — does not depend on sidebarWidth (reads startWidthRef at drag time)
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-    setIsResizing(true)
     startXRef.current = e.clientX
-    startWidthRef.current = sidebarWidth
-  }, [sidebarWidth])
+    // Capture current width from the DOM CSS variable (source of truth during drag)
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width')
+    startWidthRef.current = parseInt(raw, 10) || layout.sidePanel.defaultWidth
+    setIsResizing(true)
+  }, [])
 
   useEffect(() => {
     if (!isResizing) return
@@ -77,11 +85,19 @@ export function useShellLayout() {
     }
   }, [isResizing])
 
+  const onResizeByKeyboard = useCallback((delta: number) => {
+    setSidebarWidth(prev => {
+      const next = Math.min(Math.max(prev + delta, layout.sidePanel.minWidth), layout.sidePanel.maxWidth)
+      return next
+    })
+  }, [])
+
   return {
     sidebarWidth,
     sidebarCollapsed,
     isResizing,
     toggleSidebar,
     onResizeStart,
+    onResizeByKeyboard,
   }
 }

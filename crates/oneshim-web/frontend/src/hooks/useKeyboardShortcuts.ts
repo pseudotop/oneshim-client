@@ -1,5 +1,6 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { MOD_KEY } from '../utils/platform'
 
 interface ShortcutHandlers {
   onHelp?: () => void
@@ -13,18 +14,24 @@ interface ShortcutHandlers {
   onSpace?: () => void
 }
 
-/**
- *
- */
 export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = true) {
   const navigate = useNavigate()
+  const handlersRef = useRef(handlers)
+  handlersRef.current = handlers
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
+  useEffect(() => {
+    if (!enabled) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Guard: skip during IME composition (Korean, Japanese, Chinese input)
+      if (event.isComposing) return
+
+      const h = handlersRef.current
+
       // Cmd+B / Ctrl+B: toggle sidebar (works even when focused in inputs)
       if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
         event.preventDefault()
-        handlers.onToggleSidebar?.()
+        h.onToggleSidebar?.()
         return
       }
 
@@ -34,9 +41,8 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       ) {
-        if (event.key === 'Escape' && handlers.onEscape) {
-          handlers.onEscape()
-          return
+        if (event.key === 'Escape' && h.onEscape) {
+          h.onEscape()
         }
         return
       }
@@ -60,69 +66,72 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
           break
         case '?':
           event.preventDefault()
-          handlers.onHelp?.()
+          h.onHelp?.()
           break
         case '/':
           if (event.shiftKey) {
             event.preventDefault()
-            handlers.onHelp?.()
+            h.onHelp?.()
           }
           break
       }
 
       switch (event.key) {
         case 'Escape':
-          handlers.onEscape?.()
+          h.onEscape?.()
           break
         case 'ArrowLeft':
-          event.preventDefault()
-          handlers.onArrowLeft?.()
+          if (h.onArrowLeft) {
+            event.preventDefault()
+            h.onArrowLeft()
+          }
           break
         case 'ArrowRight':
-          event.preventDefault()
-          handlers.onArrowRight?.()
+          if (h.onArrowRight) {
+            event.preventDefault()
+            h.onArrowRight()
+          }
           break
         case 'ArrowUp':
-          event.preventDefault()
-          handlers.onArrowUp?.()
+          if (h.onArrowUp) {
+            event.preventDefault()
+            h.onArrowUp()
+          }
           break
         case 'ArrowDown':
-          event.preventDefault()
-          handlers.onArrowDown?.()
+          if (h.onArrowDown) {
+            event.preventDefault()
+            h.onArrowDown()
+          }
           break
         case 'Enter':
-          handlers.onEnter?.()
+          h.onEnter?.()
           break
         case ' ':
-          event.preventDefault()
-          handlers.onSpace?.()
+          if (h.onSpace) {
+            event.preventDefault()
+            h.onSpace()
+          }
           break
       }
-    },
-    [navigate, handlers]
-  )
-
-  useEffect(() => {
-    if (!enabled) return
+    }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [enabled, handleKeyDown])
+  }, [enabled, navigate])
 }
 
-/**
- */
 export function getShortcutsList() {
   return [
-    { key: 'D', description: '대시보드로 이동' },
-    { key: 'T', description: '타임라인으로 이동' },
-    { key: 'S', description: '설정으로 이동' },
-    { key: 'P', description: '개인정보로 이동' },
-    { key: '?', description: '단축키 도움말' },
-    { key: 'ESC', description: '선택 해제 / 모달 닫기' },
-    { key: '← →', description: '이전/next 항목' },
-    { key: 'Enter', description: '선택 확인' },
-    { key: '\u2318B', description: 'Toggle Sidebar' },
-    { key: '\u2318K', description: 'Command Palette' },
+    { key: 'D', descriptionKey: 'shortcuts.dashboard' },
+    { key: 'T', descriptionKey: 'shortcuts.timeline' },
+    { key: 'S', descriptionKey: 'shortcuts.settings' },
+    { key: 'P', descriptionKey: 'shortcuts.privacy' },
+    { key: '?', descriptionKey: 'shortcuts.help' },
+    { key: 'ESC', descriptionKey: 'shortcuts.escape' },
+    { key: '\u2190 \u2192', descriptionKey: 'shortcuts.arrows' },
+    { key: 'Enter', descriptionKey: 'shortcuts.enter' },
+    { key: `${MOD_KEY}B`, descriptionKey: 'shortcuts.toggleSidebar' },
+    { key: `${MOD_KEY}K`, descriptionKey: 'shortcuts.commandPalette' },
   ]
 }
