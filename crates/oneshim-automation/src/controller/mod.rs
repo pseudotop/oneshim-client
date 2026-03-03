@@ -823,7 +823,8 @@ mod tests {
     #[test]
     fn gui_execute_timeout_is_bounded() {
         assert!(
-            GUI_EXECUTE_TIMEOUT_SECS >= 10 && GUI_EXECUTE_TIMEOUT_SECS <= 120,
+            std::hint::black_box(GUI_EXECUTE_TIMEOUT_SECS) >= 10
+                && std::hint::black_box(GUI_EXECUTE_TIMEOUT_SECS) <= 120,
             "Total execution timeout should be between 10s and 120s"
         );
     }
@@ -831,7 +832,8 @@ mod tests {
     #[test]
     fn gui_action_timeout_is_bounded() {
         assert!(
-            GUI_ACTION_TIMEOUT_SECS >= 3 && GUI_ACTION_TIMEOUT_SECS <= 60,
+            std::hint::black_box(GUI_ACTION_TIMEOUT_SECS) >= 3
+                && std::hint::black_box(GUI_ACTION_TIMEOUT_SECS) <= 60,
             "Per-action timeout should be between 3s and 60s"
         );
     }
@@ -839,7 +841,8 @@ mod tests {
     #[test]
     fn gui_action_timeout_less_than_total() {
         assert!(
-            GUI_ACTION_TIMEOUT_SECS < GUI_EXECUTE_TIMEOUT_SECS,
+            std::hint::black_box(GUI_ACTION_TIMEOUT_SECS)
+                < std::hint::black_box(GUI_EXECUTE_TIMEOUT_SECS),
             "Per-action timeout must be less than total execution timeout"
         );
     }

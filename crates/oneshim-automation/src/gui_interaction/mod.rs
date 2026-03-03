@@ -1240,7 +1240,8 @@ mod tests {
     #[test]
     fn event_channel_capacity_is_reasonable() {
         assert!(
-            GUI_EVENT_CHANNEL_CAPACITY >= 64 && GUI_EVENT_CHANNEL_CAPACITY <= 1024,
+            std::hint::black_box(GUI_EVENT_CHANNEL_CAPACITY) >= 64
+                && std::hint::black_box(GUI_EVENT_CHANNEL_CAPACITY) <= 1024,
             "Event channel capacity should be between 64 and 1024"
         );
     }
@@ -1607,11 +1608,12 @@ mod tests {
     #[test]
     fn focus_drift_retry_constants_are_reasonable() {
         assert!(
-            FOCUS_DRIFT_MAX_RETRIES <= 5,
+            std::hint::black_box(FOCUS_DRIFT_MAX_RETRIES) <= 5,
             "Max retries should be bounded"
         );
         assert!(
-            FOCUS_DRIFT_RETRY_DELAY_MS >= 100 && FOCUS_DRIFT_RETRY_DELAY_MS <= 5000,
+            std::hint::black_box(FOCUS_DRIFT_RETRY_DELAY_MS) >= 100
+                && std::hint::black_box(FOCUS_DRIFT_RETRY_DELAY_MS) <= 5000,
             "Retry delay should be between 100ms and 5s"
         );
     }
@@ -1621,11 +1623,13 @@ mod tests {
     #[test]
     fn ticket_expiry_grace_secs_is_reasonable() {
         assert!(
-            TICKET_EXPIRY_GRACE_SECS >= 1 && TICKET_EXPIRY_GRACE_SECS <= 30,
+            std::hint::black_box(TICKET_EXPIRY_GRACE_SECS) >= 1
+                && std::hint::black_box(TICKET_EXPIRY_GRACE_SECS) <= 30,
             "Grace period should be between 1s and 30s"
         );
         assert!(
-            TICKET_EXPIRY_GRACE_SECS < DEFAULT_TICKET_TTL_SECS,
+            std::hint::black_box(TICKET_EXPIRY_GRACE_SECS)
+                < std::hint::black_box(DEFAULT_TICKET_TTL_SECS),
             "Grace period must be shorter than ticket TTL"
         );
     }
