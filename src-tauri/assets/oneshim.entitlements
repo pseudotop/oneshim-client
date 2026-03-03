@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Network: outbound connections to ONESHIM server -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Network: localhost TCP server (Axum web dashboard) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- Screen capture: xcap-based screenshot + OCR -->
+    <key>com.apple.security.screen-recording</key>
+    <true/>
+
+    <!-- Accessibility: active window detection via AX API -->
+    <key>com.apple.security.accessibility</key>
+    <true/>
+
+    <!-- JIT: WKWebView JavaScript execution under hardened runtime -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- Unsigned memory: WKWebView requires this for JS engine -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- File read/write: SQLite database, config, frame storage -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!-- App data: ~/Library/Application Support/com.oneshim.agent -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+</dict>
+</plist>

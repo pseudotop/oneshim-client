@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MANIFEST="crates/oneshim-app/Cargo.toml"
+MANIFEST="src-tauri/Cargo.toml"
 
 python3 - << 'PY'
 from pathlib import Path
 import tomllib
 
-manifest = Path("crates/oneshim-app/Cargo.toml")
+manifest = Path("src-tauri/Cargo.toml")
 if not manifest.exists():
     raise SystemExit(f"missing manifest: {manifest}")
 

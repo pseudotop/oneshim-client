@@ -1,0 +1,104 @@
+[package]
+name = "oneshim-app"
+description = "ONESHIM 데스크톱 에이전트 — Tauri v2 기반 GUI, DI, 오케스트레이션, 라이프사이클"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "oneshim"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { workspace = true, features = [] }
+
+[dependencies]
+tauri = { workspace = true }
+tauri-plugin-notification = { workspace = true }
+
+# 내부 크레이트
+oneshim-core = { workspace = true }
+oneshim-automation = { workspace = true }
+oneshim-monitor = { workspace = true }
+oneshim-vision = { workspace = true }
+oneshim-network = { workspace = true, optional = true }
+oneshim-storage = { workspace = true }
+oneshim-suggestion = { workspace = true }
+oneshim-web = { workspace = true }
+
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+semver = { workspace = true }
+sha2 = { workspace = true }
+uuid = { workspace = true }
+ed25519-dalek = { workspace = true }
+directories = { workspace = true }
+parking_lot = { workspace = true }
+sysinfo = { workspace = true }
+
+# 자동 업데이트
+self_update = { workspace = true }
+reqwest = { workspace = true }
+tar = { workspace = true }
+zip = { workspace = true }
+flate2 = { workspace = true }
+base64 = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+server = ["dep:oneshim-network"]
+grpc = ["server", "oneshim-network/grpc"]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
+
+[package.metadata.bundle]
+name = "ONESHIM"
+identifier = "com.oneshim.client"
+icon = ["icons/icon.icns"]
+copyright = "Copyright 2026 ONESHIM Contributors"
+category = "Productivity"
+short_description = "AI-powered autonomous office work support agent"
+long_description = """
+ONESHIM은 AI 기반 자율 사무 업무 지원 에이전트입니다.
+데스크톱 컨텍스트를 모니터링하고 지능형 제안을 제공합니다.
+"""
+osx_minimum_system_version = "10.15"
+
+[package.metadata.deb]
+maintainer = "ONESHIM Team"
+copyright = "2026, ONESHIM Contributors"
+license-file = ["../LICENSE", "4"]
+extended-description = """
+ONESHIM은 AI 기반 자율 사무 업무 지원 에이전트입니다.
+"""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/oneshim", "usr/bin/", "755"],
+]
+
+[dev-dependencies]
+serde_json = { workspace = true }
+image = { workspace = true }
+base64 = { workspace = true }
+uuid = { workspace = true }
+mockito = { workspace = true }
+tokio-test = { workspace = true }
+tempfile = { workspace = true }
+axum = { workspace = true }
+futures = { workspace = true }

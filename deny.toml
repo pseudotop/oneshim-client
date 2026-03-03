@@ -16,14 +16,17 @@ allow = [
   "ISC",
   "Unicode-3.0",
   "Zlib",
+  # --- Tauri v2 (iced → Tauri 마이그레이션) ---
+  "LGPL-2.1-only",  # webkit2gtk (Linux only, 동적 링크)
+  "OpenSSL",        # openssl-sys (일부 플랫폼)
 ]
 private = { ignore = true }
 
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db"]
-unmaintained = "none"
-unsound = "none"
+unmaintained = "warn"
+unsound = "deny"
 ignore = []
 
 [bans]

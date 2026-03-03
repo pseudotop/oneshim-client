@@ -106,9 +106,21 @@ impl WebServer {
         self
     }
 
-    /// # Arguments
-    ///
-    /// # Returns
+    /// TCP 바인딩 없이 Router만 반환 — Tauri 커스텀 프로토콜 등에서 사용
+    pub fn build_router(state: AppState) -> Router {
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+
+        Router::new()
+            .nest("/api", routes::api_routes())
+            .fallback(embedded::serve_static)
+            .layer(cors)
+            .layer(TraceLayer::new_for_http())
+            .with_state(state)
+    }
+
     pub async fn run(self, mut shutdown_rx: watch::Receiver<bool>) -> Result<(), std::io::Error> {
         let host = if self.config.allow_external {
             "0.0.0.0"
@@ -116,17 +128,7 @@ impl WebServer {
             "127.0.0.1"
         };
 
-        let cors = CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any);
-
-        let app = Router::new()
-            .nest("/api", routes::api_routes())
-            .fallback(embedded::serve_static)
-            .layer(cors)
-            .layer(TraceLayer::new_for_http())
-            .with_state(self.state);
+        let app = Self::build_router(self.state);
 
         let base_port = self.config.port;
         let mut last_error = None;

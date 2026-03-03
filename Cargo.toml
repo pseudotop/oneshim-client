@@ -8,18 +8,19 @@ members = [
     "crates/oneshim-network",
     "crates/oneshim-storage",
     "crates/oneshim-suggestion",
-    "crates/oneshim-ui",
+    # "crates/oneshim-ui",      # iced UI → Tauri v2 마이그레이션으로 제거
     "crates/oneshim-web",
     "crates/oneshim-automation",
-    "crates/oneshim-app",
+    # "crates/oneshim-app",     # src-tauri로 대체
+    "src-tauri",
 ]
 resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.1.4"
+version = "0.1.5"
 license = "Apache-2.0"
-rust-version = "1.75"
+rust-version = "1.77.1"
 repository = "https://github.com/pseudotop/oneshim-client"
 homepage = "https://github.com/pseudotop/oneshim-client"
 authors = ["ONESHIM Contributors"]
@@ -62,12 +63,10 @@ xcap = "0.8"
 leptess = "0.14"
 base64 = "0.22"
 
-# UI
-iced = { version = "0.14", features = ["tokio", "debug", "canvas"] }
-
-# 시스템 트레이
-tray-icon = "0.21"
-notify-rust = "4"
+# Tauri v2 (iced → Tauri 마이그레이션)
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-build = "2"
+tauri-plugin-notification = "2"
 
 # 에러 처리
 thiserror = "2"
@@ -143,7 +142,6 @@ oneshim-vision = { path = "crates/oneshim-vision" }
 oneshim-network = { path = "crates/oneshim-network" }
 oneshim-storage = { path = "crates/oneshim-storage" }
 oneshim-suggestion = { path = "crates/oneshim-suggestion" }
-oneshim-ui = { path = "crates/oneshim-ui" }
 oneshim-web = { path = "crates/oneshim-web" }
 oneshim-automation = { path = "crates/oneshim-automation" }
 

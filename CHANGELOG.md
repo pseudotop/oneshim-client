@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-03-04
+
+### Changed
+
+- **Desktop runtime**: Migrate from iced 0.13 to Tauri v2 for integrated WebView, tray, and IPC
+- **Project structure**: Replace `oneshim-ui` + `oneshim-app` crates with `src-tauri/` Tauri project
+- **Window behavior**: Close-to-tray (hide on close instead of quit)
+- **Security**: `emit_to("main", ...)` targeted events instead of global `emit()`
+- **Tray menu**: Direct AppState access for approve/defer update actions
+- **Graceful shutdown**: `watch::Sender<bool>` via `RunEvent::Exit`
+- **IPC commands**: 7 Tauri commands (get_metrics, get_settings, update_setting, get_update_status, approve_update, defer_update, get_automation_status)
+- **Web router**: Extract `build_router()` from `WebServer` for in-process API routing
+
+### Added
+
+- **Tauri v2 scaffold**: `src-tauri/` with main.rs, setup.rs, tray.rs, commands.rs
+- **macOS entitlements**: WKWebView JIT + unsigned memory + localhost network
+- **Release checks**: tauri.conf.json consistency validation, NSAppTransportSecurity
+- **CI**: `src-tauri/**` path filter, Tauri cargo-vet exemptions
+
+### Removed
+
+- **iced dependency**: iced 0.13, cosmic-text, wgpu stack (~16 crate exemptions removed)
+- **oneshim-ui crate**: Replaced by Tauri WebView + React dashboard
+- **oneshim-app crate**: Migrated to src-tauri binary
+
+### Fixed
+
+- **cargo-vet**: Remove 16 stale iced/wgpu exemptions
+- **dead_code warnings**: Suppress 19 warnings in migrated-but-unwired modules
+- **deny.toml**: `unsound = "deny"` (was `"none"`), `unmaintained = "warn"` (was `"none"`)
+- **verify-deb-metadata.sh**: Update path from `crates/oneshim-app/` to `src-tauri/`
+
 ## [0.1.4] - 2026-03-03
 
 ### Fixed
@@ -107,7 +140,8 @@ Each version entry must include:
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/pseudotop/oneshim-client/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/pseudotop/oneshim-client/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/pseudotop/oneshim-client/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/pseudotop/oneshim-client/compare/v0.1.1...v0.1.2

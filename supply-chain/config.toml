@@ -564,10 +564,6 @@ criteria = "safe-to-deploy"
 version = "0.4.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.cosmic-text]]
-version = "0.12.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.cpufeatures]]
 version = "0.2.17"
 criteria = "safe-to-deploy"
@@ -1254,50 +1250,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.iana-time-zone-haiku]]
 version = "0.1.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced]]
-version = "0.13.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_core]]
-version = "0.13.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_futures]]
-version = "0.13.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_glyphon]]
-version = "0.6.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_graphics]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_renderer]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_runtime]]
-version = "0.13.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_tiny_skia]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_wgpu]]
-version = "0.13.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_widget]]
-version = "0.13.4"
-criteria = "safe-to-deploy"
-
-[[exemptions.iced_winit]]
-version = "0.13.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.icu_collections]]
@@ -2792,6 +2744,50 @@ criteria = "safe-to-deploy"
 version = "0.12.16"
 criteria = "safe-to-deploy"
 
+[[exemptions.tao]]
+version = "0.34.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri]]
+version = "2.10.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-build]]
+version = "2.5.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-codegen]]
+version = "2.5.4"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-macros]]
+version = "2.5.4"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-plugin]]
+version = "2.5.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-plugin-notification]]
+version = "2.3.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-runtime]]
+version = "2.10.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-runtime-wry]]
+version = "2.10.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-utils]]
+version = "2.8.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.tauri-winres]]
+version = "0.3.5"
+criteria = "safe-to-deploy"
+
 [[exemptions.tauri-winrt-notification]]
 version = "0.7.2"
 criteria = "safe-to-deploy"
@@ -3240,28 +3236,16 @@ criteria = "safe-to-deploy"
 version = "1.1.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.webkit2gtk]]
+version = "2.0.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.webp]]
 version = "0.3.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.weezl]]
 version = "0.1.12"
-criteria = "safe-to-deploy"
-
-[[exemptions.wgpu]]
-version = "0.19.4"
-criteria = "safe-to-deploy"
-
-[[exemptions.wgpu-core]]
-version = "0.19.4"
-criteria = "safe-to-deploy"
-
-[[exemptions.wgpu-hal]]
-version = "0.19.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.wgpu-types]]
-version = "0.19.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.which]]
@@ -3586,6 +3570,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.writeable]]
 version = "0.6.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.wry]]
+version = "0.54.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.x11]]
