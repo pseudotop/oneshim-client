@@ -33,15 +33,19 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
   }
 
   return (
-    <div className="text-sm">
+    <div className="text-sm" role={depth === 0 ? 'tree' : 'group'}>
       {nodes.map(node => {
         const hasChildren = node.children && node.children.length > 0
         const isExpanded = expanded.has(node.id)
         const isSelected = selectedId === node.id
 
         return (
-          <div key={node.id}>
+          <div key={node.id} role="none">
             <button
+              role="treeitem"
+              aria-expanded={hasChildren ? isExpanded : undefined}
+              aria-selected={isSelected}
+              aria-level={depth + 1}
               onClick={() => {
                 if (hasChildren) toggleExpand(node.id)
                 onSelect?.(node.id)
@@ -78,3 +82,5 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
     </div>
   )
 }
+
+TreeView.displayName = 'TreeView'

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   LayoutDashboard, Clock, Zap, Monitor,
   Image, BarChart3, Tag, FileText,
@@ -12,24 +13,26 @@ interface NavItem {
   id: string
   to: string
   icon: React.ElementType
-  label: string
+  labelKey: string
   group: 'monitor' | 'data' | 'manage'
 }
 
+const ACTIVITYBAR_WIDTH_PX = 48
+
 const navItems: NavItem[] = [
-  { id: 'dashboard', to: '/',          icon: LayoutDashboard, label: 'Dashboard',  group: 'monitor' },
-  { id: 'timeline',  to: '/timeline',  icon: Clock,           label: 'Timeline',   group: 'monitor' },
-  { id: 'replay',    to: '/replay',    icon: Zap,             label: 'Replay',     group: 'monitor' },
-  { id: 'automation',to: '/automation',icon: Monitor,         label: 'Automation', group: 'monitor' },
-  { id: 'focus',     to: '/focus',     icon: Image,           label: 'Focus',      group: 'data' },
-  { id: 'reports',   to: '/reports',   icon: BarChart3,       label: 'Reports',    group: 'data' },
-  { id: 'search',    to: '/search',    icon: Tag,             label: 'Search',     group: 'data' },
-  { id: 'updates',   to: '/updates',   icon: FileText,        label: 'Updates',    group: 'manage' },
+  { id: 'dashboard', to: '/',          icon: LayoutDashboard, labelKey: 'nav.dashboard',  group: 'monitor' },
+  { id: 'timeline',  to: '/timeline',  icon: Clock,           labelKey: 'nav.timeline',   group: 'monitor' },
+  { id: 'replay',    to: '/replay',    icon: Zap,             labelKey: 'nav.replay',     group: 'monitor' },
+  { id: 'automation',to: '/automation',icon: Monitor,         labelKey: 'nav.automation', group: 'monitor' },
+  { id: 'focus',     to: '/focus',     icon: Image,           labelKey: 'nav.focus',      group: 'data' },
+  { id: 'reports',   to: '/reports',   icon: BarChart3,       labelKey: 'nav.reports',    group: 'data' },
+  { id: 'search',    to: '/search',    icon: Tag,             labelKey: 'nav.search',     group: 'data' },
+  { id: 'updates',   to: '/updates',   icon: FileText,        labelKey: 'nav.updates',    group: 'manage' },
 ]
 
 const bottomItems: NavItem[] = [
-  { id: 'settings', to: '/settings', icon: Settings, label: 'Settings', group: 'manage' },
-  { id: 'privacy',  to: '/privacy',  icon: Info,     label: 'Privacy',  group: 'manage' },
+  { id: 'settings', to: '/settings', icon: Settings, labelKey: 'nav.settings', group: 'manage' },
+  { id: 'privacy',  to: '/privacy',  icon: Info,     labelKey: 'nav.privacy',  group: 'manage' },
 ]
 
 interface ActivityBarProps {
@@ -40,6 +43,7 @@ interface ActivityBarProps {
 export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: ActivityBarProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [tooltip, setTooltip] = useState<string | null>(null)
   const [tooltipY, setTooltipY] = useState(0)
 
@@ -60,13 +64,14 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
   const renderItem = (item: NavItem) => {
     const Icon = item.icon
     const active = isActive(item.to)
+    const label = t(item.labelKey)
 
     return (
       <button
         key={item.id}
         onClick={() => handleClick(item)}
         onMouseEnter={(e) => {
-          setTooltip(item.label)
+          setTooltip(label)
           setTooltipY(e.currentTarget.getBoundingClientRect().top)
         }}
         onMouseLeave={() => setTooltip(null)}
@@ -75,7 +80,8 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
           active ? layout.activityBar.iconActive : layout.activityBar.iconDefault,
           !active && 'hover:text-slate-600 dark:hover:text-slate-300',
         )}
-        title={item.label}
+        aria-current={active ? 'page' : undefined}
+        title={label}
       >
         {active && (
           <div className={cn('absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r', layout.activityBar.indicator)} />
@@ -92,28 +98,35 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
   }
 
   return (
-    <div className={cn('flex flex-col items-center py-1', layout.activityBar.bg, layout.activityBar.border, layout.activityBar.width)}>
+    <nav
+      className={cn('flex flex-col items-center py-1', layout.activityBar.bg, layout.activityBar.border, layout.activityBar.width)}
+      role="navigation"
+      aria-label={t('nav.mainNavLabel', 'Main Navigation')}
+    >
       {groups.monitor.map(renderItem)}
-      <div className="w-6 border-t border-slate-200 dark:border-slate-800 my-1" />
+      <hr className="w-6 border-t border-slate-200 dark:border-slate-800 my-1" />
 
       {groups.data.map(renderItem)}
-      <div className="w-6 border-t border-slate-200 dark:border-slate-800 my-1" />
+      <hr className="w-6 border-t border-slate-200 dark:border-slate-800 my-1" />
 
       {groups.manage.map(renderItem)}
 
       <div className="flex-1" />
 
-      <div className="w-6 border-t border-slate-200 dark:border-slate-800 my-1" />
+      <hr className="w-6 border-t border-slate-200 dark:border-slate-800 my-1" />
       {bottomItems.map(renderItem)}
 
       {tooltip && (
         <div
           className={cn('fixed z-50 pointer-events-none', layout.activityBar.tooltip)}
-          style={{ left: 56, top: tooltipY + 4 }}
+          style={{ left: ACTIVITYBAR_WIDTH_PX + 8, top: tooltipY + 4 }}
+          role="tooltip"
         >
           {tooltip}
         </div>
       )}
-    </div>
+    </nav>
   )
 }
+
+ActivityBar.displayName = 'ActivityBar'

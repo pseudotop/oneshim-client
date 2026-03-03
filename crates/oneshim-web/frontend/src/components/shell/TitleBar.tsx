@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { Search } from 'lucide-react'
 import { layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
+import { IS_MAC, MOD_KEY } from '../../utils/platform'
 
 interface TitleBarProps {
   title?: string
@@ -9,13 +10,11 @@ interface TitleBarProps {
 }
 
 export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarProps) {
-  const isMac = navigator.platform.toUpperCase().includes('MAC')
-
   const handleMinimize = useCallback(async () => {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
       await getCurrentWindow().minimize()
-    } catch { /* not in Tauri */ }
+    } catch { /* browser fallback — no-op */ }
   }, [])
 
   const handleMaximize = useCallback(async () => {
@@ -27,14 +26,15 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
       } else {
         await win.maximize()
       }
-    } catch { /* not in Tauri */ }
+    } catch { /* browser fallback — no-op */ }
   }, [])
 
+  // hide() instead of close() — keeps the app running in the system tray (close-to-tray pattern)
   const handleClose = useCallback(async () => {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
       await getCurrentWindow().hide()
-    } catch { /* not in Tauri */ }
+    } catch { /* browser fallback — no-op */ }
   }, [])
 
   return (
@@ -47,9 +47,6 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
       )}
       data-tauri-drag-region
     >
-      {/* macOS: leave space for traffic lights */}
-      {isMac && <div className="w-[70px] flex-shrink-0" />}
-
       {/* Brand / Title — centered */}
       <div className="flex-1 flex items-center justify-center" data-tauri-drag-region>
         <span className={layout.titleBar.brand}>{title}</span>
@@ -58,22 +55,23 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
       {/* Search trigger */}
       <button
         onClick={onSearchOpen}
+        aria-label={`Search (${MOD_KEY}+K)`}
         className={cn(
           'flex items-center gap-1.5 px-2 py-1 rounded text-xs',
           'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300',
           'hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors',
           'mr-2',
         )}
-        title={`${isMac ? '⌘' : 'Ctrl'}+K`}
+        title={`${MOD_KEY}+K`}
       >
         <Search className="w-3.5 h-3.5" />
         <span className="hidden sm:inline text-[11px] text-slate-400 dark:text-slate-600">
-          {isMac ? '⌘K' : 'Ctrl+K'}
+          {MOD_KEY}K
         </span>
       </button>
 
-      {/* Windows: window controls */}
-      {!isMac && (
+      {/* Window controls — only shown on non-macOS (macOS uses decorations:false with no traffic lights) */}
+      {!IS_MAC && (
         <div className="flex items-center h-full">
           <button
             onClick={handleMinimize}
@@ -101,3 +99,5 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
     </div>
   )
 }
+
+TitleBar.displayName = 'TitleBar'

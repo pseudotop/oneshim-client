@@ -4,6 +4,8 @@ import { useSSE } from '../../hooks/useSSE'
 import { layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
+declare const __APP_VERSION__: string
+
 export default function StatusBar() {
   const { t } = useTranslation()
   const { status, latestMetrics } = useSSE()
@@ -20,38 +22,40 @@ export default function StatusBar() {
       layout.statusBar.text,
     )}>
       <div className="flex items-center">
-        <button className={cn('flex items-center gap-1 px-1.5 h-full', layout.statusBar.itemHover)}>
+        <span className="flex items-center gap-1 px-1.5">
           {connected
-            ? <><Wifi className="w-3 h-3" /><span>{t('common.connected', 'Connected')}</span></>
-            : <><WifiOff className="w-3 h-3 opacity-60" /><span>{t('common.offline', 'Offline')}</span></>
+            ? <><Wifi className="w-3 h-3" /><span>{t('shell.connected', 'Connected')}</span></>
+            : <><WifiOff className="w-3 h-3 opacity-60" /><span>{t('shell.offline', 'Offline')}</span></>
           }
-        </button>
+        </span>
 
         <div className={layout.statusBar.separator} />
 
-        <button className={cn('flex items-center gap-1 px-1.5 h-full', layout.statusBar.itemHover)}>
+        <span className="flex items-center gap-1 px-1.5">
           <Zap className="w-3 h-3" />
-          <span>Auto: ON</span>
-        </button>
+          <span>{t('shell.automationOn', 'Auto: ON')}</span>
+        </span>
       </div>
 
       <div className="flex items-center">
-        <button className={cn('flex items-center gap-1 px-1.5 h-full', layout.statusBar.itemHover)}>
+        <span className="flex items-center gap-1 px-1.5" aria-label={`CPU: ${cpuText}`}>
           <Cpu className="w-3 h-3" />
           <span>{cpuText}</span>
-        </button>
+        </span>
 
         <div className={layout.statusBar.separator} />
 
-        <button className={cn('flex items-center gap-1 px-1.5 h-full', layout.statusBar.itemHover)}>
+        <span className="flex items-center gap-1 px-1.5" aria-label={`RAM: ${ramMb}`}>
           <HardDrive className="w-3 h-3" />
           <span>{ramMb}</span>
-        </button>
+        </span>
 
         <div className={layout.statusBar.separator} />
 
-        <span className="px-1.5 opacity-70">v0.1.5</span>
+        <span className="px-1.5 opacity-70">{__APP_VERSION__}</span>
       </div>
     </div>
   )
 }
+
+StatusBar.displayName = 'StatusBar'

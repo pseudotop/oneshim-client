@@ -1,130 +1,179 @@
+import { useMemo, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import TreeView, { type TreeNode } from './TreeView'
 
-const pageSidebarConfig: Record<string, { title: string; nodes: TreeNode[] }> = {
+interface SidebarConfig {
+  titleKey: string
+  nodes: { id: string; labelKey: string; children?: { id: string; labelKey: string }[] }[]
+}
+
+const pageSidebarConfig: Record<string, SidebarConfig> = {
   '/': {
-    title: 'Dashboard',
+    titleKey: 'nav.dashboard',
     nodes: [
-      { id: 'overview', label: 'Overview' },
-      { id: 'metrics', label: 'System Metrics' },
-      { id: 'processes', label: 'Active Processes' },
-      { id: 'focus', label: 'Focus Score' },
-      { id: 'heatmap', label: 'Activity Heatmap' },
-      { id: 'updates', label: 'Update Status' },
+      { id: 'overview', labelKey: 'sidebar.overview' },
+      { id: 'metrics', labelKey: 'sidebar.systemMetrics' },
+      { id: 'processes', labelKey: 'sidebar.activeProcesses' },
+      { id: 'focus', labelKey: 'sidebar.focusScore' },
+      { id: 'heatmap', labelKey: 'sidebar.activityHeatmap' },
+      { id: 'updates', labelKey: 'sidebar.updateStatus' },
     ],
   },
   '/timeline': {
-    title: 'Timeline',
+    titleKey: 'nav.timeline',
     nodes: [
-      { id: 'all', label: 'All Frames' },
-      { id: 'filters', label: 'Filters', children: [
-        { id: 'by-app', label: 'By Application' },
-        { id: 'by-tag', label: 'By Tag' },
-        { id: 'by-importance', label: 'By Importance' },
+      { id: 'all', labelKey: 'sidebar.allFrames' },
+      { id: 'filters', labelKey: 'sidebar.filters', children: [
+        { id: 'by-app', labelKey: 'sidebar.byApplication' },
+        { id: 'by-tag', labelKey: 'sidebar.byTag' },
+        { id: 'by-importance', labelKey: 'sidebar.byImportance' },
       ]},
     ],
   },
   '/reports': {
-    title: 'Reports',
+    titleKey: 'nav.reports',
     nodes: [
-      { id: 'activity', label: 'Activity Report' },
-      { id: 'focus', label: 'Focus Report' },
-      { id: 'export', label: 'Export Data' },
+      { id: 'activity', labelKey: 'sidebar.activityReport' },
+      { id: 'focus', labelKey: 'sidebar.focusReport' },
+      { id: 'export', labelKey: 'sidebar.exportData' },
     ],
   },
   '/focus': {
-    title: 'Focus',
+    titleKey: 'nav.focus',
     nodes: [
-      { id: 'score', label: 'Current Score' },
-      { id: 'trend', label: 'Weekly Trend' },
-      { id: 'sessions', label: 'Focus Sessions' },
-      { id: 'interruptions', label: 'Interruptions' },
+      { id: 'score', labelKey: 'sidebar.currentScore' },
+      { id: 'trend', labelKey: 'sidebar.weeklyTrend' },
+      { id: 'sessions', labelKey: 'sidebar.focusSessions' },
+      { id: 'interruptions', labelKey: 'sidebar.interruptions' },
     ],
   },
   '/replay': {
-    title: 'Session Replay',
+    titleKey: 'nav.replay',
     nodes: [
-      { id: 'timeline', label: 'Timeline' },
-      { id: 'events', label: 'Event Log' },
+      { id: 'timeline', labelKey: 'sidebar.timeline' },
+      { id: 'events', labelKey: 'sidebar.eventLog' },
     ],
   },
   '/automation': {
-    title: 'Automation',
+    titleKey: 'nav.automation',
     nodes: [
-      { id: 'policies', label: 'Policies' },
-      { id: 'commands', label: 'Commands' },
-      { id: 'history', label: 'Execution History' },
+      { id: 'policies', labelKey: 'sidebar.policies' },
+      { id: 'commands', labelKey: 'sidebar.commands' },
+      { id: 'history', labelKey: 'sidebar.executionHistory' },
     ],
   },
   '/updates': {
-    title: 'Updates',
+    titleKey: 'nav.updates',
     nodes: [
-      { id: 'status', label: 'Current Status' },
-      { id: 'history', label: 'Update History' },
+      { id: 'status', labelKey: 'sidebar.currentStatus' },
+      { id: 'history', labelKey: 'sidebar.updateHistory' },
     ],
   },
   '/settings': {
-    title: 'Settings',
+    titleKey: 'nav.settings',
     nodes: [
-      { id: 'general', label: 'General' },
-      { id: 'notification', label: 'Notifications' },
-      { id: 'privacy', label: 'Privacy' },
-      { id: 'schedule', label: 'Schedule' },
-      { id: 'ai', label: 'AI Provider' },
-      { id: 'about', label: 'About' },
+      { id: 'general', labelKey: 'sidebar.general' },
+      { id: 'notification', labelKey: 'sidebar.notifications' },
+      { id: 'privacy', labelKey: 'sidebar.privacy' },
+      { id: 'schedule', labelKey: 'sidebar.schedule' },
+      { id: 'ai', labelKey: 'sidebar.aiProvider' },
+      { id: 'about', labelKey: 'sidebar.about' },
     ],
   },
   '/privacy': {
-    title: 'Privacy',
+    titleKey: 'nav.privacy',
     nodes: [
-      { id: 'data', label: 'Data Controls' },
-      { id: 'consent', label: 'Consent' },
-      { id: 'export', label: 'Data Export' },
+      { id: 'data', labelKey: 'sidebar.dataControls' },
+      { id: 'consent', labelKey: 'sidebar.consent' },
+      { id: 'export', labelKey: 'sidebar.dataExport' },
     ],
   },
   '/search': {
-    title: 'Search',
+    titleKey: 'nav.search',
     nodes: [
-      { id: 'recent', label: 'Recent Searches' },
-      { id: 'tags', label: 'Browse Tags' },
+      { id: 'recent', labelKey: 'sidebar.recentSearches' },
+      { id: 'tags', labelKey: 'sidebar.browseTags' },
     ],
   },
+}
+
+function translateNodes(
+  nodes: SidebarConfig['nodes'],
+  t: (key: string) => string
+): TreeNode[] {
+  return nodes.map(node => ({
+    id: node.id,
+    label: t(node.labelKey),
+    children: node.children ? node.children.map(child => ({
+      id: child.id,
+      label: t(child.labelKey),
+    })) : undefined,
+  }))
 }
 
 interface SidePanelProps {
   collapsed: boolean
   width: number
   onResizeStart: (e: React.MouseEvent) => void
+  onResizeByKeyboard?: (delta: number) => void
 }
 
-export default function SidePanel({ collapsed, width, onResizeStart }: SidePanelProps) {
+export default function SidePanel({ collapsed, width, onResizeStart, onResizeByKeyboard }: SidePanelProps) {
   const location = useLocation()
-
-  if (collapsed) return null
+  const { t } = useTranslation()
 
   const path = location.pathname
   const config = pageSidebarConfig[path] ?? Object.entries(pageSidebarConfig).find(
     ([key]) => key !== '/' && path.startsWith(key)
   )?.[1] ?? pageSidebarConfig['/']
 
+  const translatedNodes = useMemo(
+    () => translateNodes(config.nodes, t),
+    [config.nodes, t]
+  )
+
+  const handleResizeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const STEP = 20
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      onResizeByKeyboard?.(-STEP)
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      onResizeByKeyboard?.(STEP)
+    }
+  }, [onResizeByKeyboard])
+
+  if (collapsed) return null
+
   return (
     <div className="relative flex" style={{ width }}>
       <div className={cn('flex-1 flex flex-col overflow-hidden', layout.sidePanel.bg, layout.sidePanel.border)}>
         <div className={cn('px-4 py-2 flex-shrink-0', layout.sidePanel.headerBg)}>
-          <span className={layout.sidePanel.headerText}>{config.title}</span>
+          <span className={layout.sidePanel.headerText}>{t(config.titleKey)}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-1 py-1">
-          <TreeView nodes={config.nodes} />
+          <TreeView key={path} nodes={translatedNodes} />
         </div>
       </div>
 
       <div
         className={cn('flex-shrink-0', layout.sidePanel.resizeHandle)}
         onMouseDown={onResizeStart}
+        onKeyDown={handleResizeKeyDown}
+        role="separator"
+        aria-orientation="vertical"
+        aria-valuenow={width}
+        aria-valuemin={layout.sidePanel.minWidth}
+        aria-valuemax={layout.sidePanel.maxWidth}
+        tabIndex={0}
+        aria-label={t('shell.resizeSidebar', 'Resize sidebar')}
       />
     </div>
   )
 }
+
+SidePanel.displayName = 'SidePanel'

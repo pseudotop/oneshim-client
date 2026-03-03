@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { lazy, Suspense, useMemo } from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { TitleBar, ActivityBar, SidePanel, StatusBar, CommandPalette } from './components/shell'
 import { useShellLayout } from './hooks/useShellLayout'
 import { useCommandPalette } from './hooks/useCommandPalette'
@@ -21,15 +21,17 @@ const Automation = lazy(() => import('./pages/Automation'))
 const Updates = lazy(() => import('./pages/Updates'))
 
 function App() {
-  const { sidebarWidth, sidebarCollapsed, toggleSidebar, onResizeStart } = useShellLayout()
+  const { sidebarWidth, sidebarCollapsed, toggleSidebar, onResizeStart, onResizeByKeyboard } = useShellLayout()
   const { isOpen: isPaletteOpen, open: openPalette, close: closePalette } = useCommandPalette()
 
-  useKeyboardShortcuts({
+  const shortcutHandlers = useMemo(() => ({
     onEscape: () => {
       if (isPaletteOpen) closePalette()
     },
     onToggleSidebar: toggleSidebar,
-  })
+  }), [isPaletteOpen, closePalette, toggleSidebar])
+
+  useKeyboardShortcuts(shortcutHandlers)
 
   return (
     <div className="app-shell bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
@@ -44,9 +46,10 @@ function App() {
         collapsed={sidebarCollapsed}
         width={sidebarWidth}
         onResizeStart={onResizeStart}
+        onResizeByKeyboard={onResizeByKeyboard}
       />
 
-      <main className={cn('overflow-y-auto', layout.mainContent.bg)}>
+      <main className={cn('overflow-y-auto', layout.mainContent.bg)} aria-label="Main content">
         <ErrorBoundary>
           <Suspense
             fallback={
@@ -66,6 +69,7 @@ function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/search" element={<Search />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </ErrorBoundary>
