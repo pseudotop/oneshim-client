@@ -73,7 +73,7 @@ jobs:
         run: ./scripts/rehearse-key-rotation.sh
 
       - name: Upload integrity artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: integrity-artifacts
           path: artifacts/integrity/

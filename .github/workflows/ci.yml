@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload Playwright report artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-playwright-artifacts
           path: |
@@ -102,7 +102,7 @@ jobs:
         run: tar -czf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend dist
 
       - name: Upload frontend dist artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend/frontend-dist.tar.gz
@@ -172,7 +172,7 @@ jobs:
         run: ./scripts/generate-http-openapi.sh dist/oneshim-web.v1.openapi.yaml
 
       - name: Upload HTTP OpenAPI snapshot artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: oneshim-web-v1-openapi
           path: dist/oneshim-web.v1.openapi.yaml
@@ -478,7 +478,7 @@ jobs:
 
       - name: Upload macOS GUI smoke log
         if: always() && runner.os == 'macOS'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pr-gui-smoke-log-${{ matrix.name }}
           path: ${{ runner.temp }}/oneshim-pr-gui-smoke.log
@@ -486,7 +486,7 @@ jobs:
 
       - name: Upload Windows GUI smoke log
         if: always() && runner.os == 'Windows'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: pr-gui-smoke-log-${{ matrix.name }}
           path: |
@@ -595,7 +595,7 @@ jobs:
           Compress-Archive -Path target/${{ matrix.target }}/release/oneshim.exe -DestinationPath ${{ matrix.artifact_name }}.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: |
