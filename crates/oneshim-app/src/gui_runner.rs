@@ -460,10 +460,10 @@ async fn run_agent(
     let ocr_tessdata = std::env::var("ONESHIM_TESSDATA").ok().map(PathBuf::from);
     let frame_processor: Arc<dyn oneshim_core::ports::vision::FrameProcessor> =
         Arc::new(EdgeFrameProcessor::new(
-        config.vision.thumbnail_width,
-        config.vision.thumbnail_height,
-        ocr_tessdata,
-    ));
+            config.vision.thumbnail_width,
+            config.vision.thumbnail_height,
+            ocr_tessdata,
+        ));
 
     #[cfg(feature = "server")]
     let token_manager = Arc::new(TokenManager::new(&config.server.base_url));

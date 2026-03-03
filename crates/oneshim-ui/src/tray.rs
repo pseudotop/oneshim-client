@@ -78,12 +78,12 @@ impl TrayManager {
     ///
     /// # Panics
     pub fn new() -> Result<(Self, mpsc::Receiver<TrayEvent>), String> {
+        #[cfg(not(target_os = "macos"))]
+        use tray_icon::menu::PredefinedMenuItem;
         use tray_icon::{
             menu::{Menu, MenuEvent, MenuItem},
             TrayIconBuilder,
         };
-        #[cfg(not(target_os = "macos"))]
-        use tray_icon::menu::PredefinedMenuItem;
 
         info!("system tray initialize ( )");
 

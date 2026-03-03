@@ -548,8 +548,8 @@ mod tests {
     #[test]
     fn enqueue_drops_oldest_when_at_capacity() {
         let client = Arc::new(MockApiClient { should_fail: false });
-        let uploader = BatchUploader::new(client, "sess_bp".to_string(), 100, 3)
-            .with_max_queue_size(5);
+        let uploader =
+            BatchUploader::new(client, "sess_bp".to_string(), 100, 3).with_max_queue_size(5);
 
         // Fill to capacity
         for _ in 0..5 {
@@ -565,8 +565,8 @@ mod tests {
     #[test]
     fn enqueue_many_drops_oldest_when_overflow() {
         let client = Arc::new(MockApiClient { should_fail: false });
-        let uploader = BatchUploader::new(client, "sess_bp2".to_string(), 100, 3)
-            .with_max_queue_size(5);
+        let uploader =
+            BatchUploader::new(client, "sess_bp2".to_string(), 100, 3).with_max_queue_size(5);
 
         // Fill with 3 items
         for _ in 0..3 {
@@ -606,16 +606,16 @@ mod tests {
     #[test]
     fn with_max_queue_size_builder() {
         let client = Arc::new(MockApiClient { should_fail: false });
-        let uploader = BatchUploader::new(client, "sess_builder".to_string(), 100, 3)
-            .with_max_queue_size(500);
+        let uploader =
+            BatchUploader::new(client, "sess_builder".to_string(), 100, 3).with_max_queue_size(500);
         assert_eq!(uploader.max_queue_size(), 500);
     }
 
     #[test]
     fn stats_includes_max_queue_size() {
         let client = Arc::new(MockApiClient { should_fail: false });
-        let uploader = BatchUploader::new(client, "sess_stats2".to_string(), 50, 3)
-            .with_max_queue_size(2000);
+        let uploader =
+            BatchUploader::new(client, "sess_stats2".to_string(), 50, 3).with_max_queue_size(2000);
 
         let stats = uploader.stats();
         assert_eq!(stats.max_queue_size, 2000);
