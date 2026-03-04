@@ -345,7 +345,7 @@
     "escape": "선택 해제 / 모달 닫기",
     "arrows": "이전/다음 항목",
     "enter": "선택 확인",
-    "closeHint": "아무 키나 눌러서 닫기",
+    "closeHint": "Esc 키를 눌러 닫기",
     "toggleSidebar": "사이드바 토글",
     "commandPalette": "커맨드 팔레트"
   },

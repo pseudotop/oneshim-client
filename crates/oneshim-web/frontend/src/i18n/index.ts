@@ -52,7 +52,7 @@ export const getCurrentLanguage = (): SupportedLanguageCode => {
     : 'en'
 }
 
-// Supported language list (ja/zh stubs kept in locales/ for future translation)
+// Supported language list
 export const supportedLanguages = [
   { code: 'en', name: 'English' },
   { code: 'ko', name: '한국어' },

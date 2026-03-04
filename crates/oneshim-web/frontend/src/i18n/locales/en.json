@@ -345,7 +345,7 @@
     "escape": "Deselect / Close Modal",
     "arrows": "Previous/Next Item",
     "enter": "Confirm Selection",
-    "closeHint": "Press any key to close",
+    "closeHint": "Press Esc to close",
     "toggleSidebar": "Toggle Sidebar",
     "commandPalette": "Command Palette"
   },
