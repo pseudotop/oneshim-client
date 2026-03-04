@@ -1,6 +1,6 @@
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense, useMemo, useState, useCallback } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { TitleBar, ActivityBar, SidePanel, StatusBar, CommandPalette } from './components/shell'
+import { TitleBar, ActivityBar, SidePanel, StatusBar, CommandPalette, ShortcutsHelp } from './components/shell'
 import { useShellLayout } from './hooks/useShellLayout'
 import { useCommandPalette } from './hooks/useCommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -22,14 +22,20 @@ const Updates = lazy(() => import('./pages/Updates'))
 
 function App() {
   const { sidebarWidth, sidebarCollapsed, toggleSidebar, onResizeStart, onResizeByKeyboard } = useShellLayout()
-  const { isOpen: isPaletteOpen, open: openPalette, close: closePalette } = useCommandPalette()
+  const { isOpen: isPaletteOpen, open: openPalette, close: closePalette, toggle: togglePalette } = useCommandPalette()
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const openHelp = useCallback(() => setIsHelpOpen(true), [])
+  const closeHelp = useCallback(() => setIsHelpOpen(false), [])
 
   const shortcutHandlers = useMemo(() => ({
     onEscape: () => {
       if (isPaletteOpen) closePalette()
+      if (isHelpOpen) closeHelp()
     },
     onToggleSidebar: toggleSidebar,
-  }), [isPaletteOpen, closePalette, toggleSidebar])
+    onTogglePalette: togglePalette,
+    onHelp: openHelp,
+  }), [isPaletteOpen, closePalette, isHelpOpen, closeHelp, toggleSidebar, togglePalette, openHelp])
 
   useKeyboardShortcuts(shortcutHandlers)
 
@@ -82,6 +88,7 @@ function App() {
         onClose={closePalette}
         onToggleSidebar={toggleSidebar}
       />
+      {isHelpOpen && <ShortcutsHelp onClose={closeHelp} />}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -6,7 +6,7 @@ import {
   Image, BarChart3, Tag, FileText,
   Settings, Info,
 } from 'lucide-react'
-import { layout } from '../../styles/tokens'
+import { layout, interaction } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 interface NavItem {
@@ -18,6 +18,7 @@ interface NavItem {
 }
 
 const ACTIVITYBAR_WIDTH_PX = 48
+const TOOLTIP_ID = 'activity-bar-tooltip'
 
 const navItems: NavItem[] = [
   { id: 'dashboard', to: '/',          icon: LayoutDashboard, labelKey: 'nav.dashboard',  group: 'monitor' },
@@ -35,6 +36,13 @@ const bottomItems: NavItem[] = [
   { id: 'privacy',  to: '/privacy',  icon: Info,     labelKey: 'nav.privacy',  group: 'manage' },
 ]
 
+// Static grouping — computed once outside render
+const groups = {
+  monitor: navItems.filter(i => i.group === 'monitor'),
+  data: navItems.filter(i => i.group === 'data'),
+  manage: navItems.filter(i => i.group === 'manage'),
+}
+
 interface ActivityBarProps {
   onToggleSidebar: () => void
   sidebarCollapsed: boolean
@@ -47,19 +55,19 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
   const [tooltip, setTooltip] = useState<string | null>(null)
   const [tooltipY, setTooltipY] = useState(0)
 
-  const isActive = (to: string) => {
+  const isActive = useCallback((to: string) => {
     if (to === '/') return location.pathname === '/'
     return location.pathname.startsWith(to)
-  }
+  }, [location.pathname])
 
-  const handleClick = (item: NavItem) => {
+  const handleClick = useCallback((item: NavItem) => {
     if (isActive(item.to) && !sidebarCollapsed) {
       onToggleSidebar()
     } else {
       navigate(item.to)
       if (sidebarCollapsed) onToggleSidebar()
     }
-  }
+  }, [isActive, sidebarCollapsed, onToggleSidebar, navigate])
 
   const renderItem = (item: NavItem) => {
     const Icon = item.icon
@@ -79,8 +87,10 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
           'relative w-full flex items-center justify-center h-11 transition-colors',
           active ? layout.activityBar.iconActive : layout.activityBar.iconDefault,
           !active && 'hover:text-slate-600 dark:hover:text-slate-300',
+          interaction.focusRing,
         )}
         aria-current={active ? 'page' : undefined}
+        aria-describedby={tooltip ? TOOLTIP_ID : undefined}
         title={label}
       >
         {active && (
@@ -89,12 +99,6 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
         <Icon className={layout.activityBar.iconSize} />
       </button>
     )
-  }
-
-  const groups = {
-    monitor: navItems.filter(i => i.group === 'monitor'),
-    data: navItems.filter(i => i.group === 'data'),
-    manage: navItems.filter(i => i.group === 'manage'),
   }
 
   return (
@@ -118,6 +122,7 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
 
       {tooltip && (
         <div
+          id={TOOLTIP_ID}
           className={cn('fixed z-50 pointer-events-none', layout.activityBar.tooltip)}
           style={{ left: ACTIVITYBAR_WIDTH_PX + 8, top: tooltipY + 4 }}
           role="tooltip"

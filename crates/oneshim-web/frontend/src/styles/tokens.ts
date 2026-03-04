@@ -135,13 +135,11 @@ export const layout = {
   },
   mainContent: {
     bg: 'bg-white dark:bg-slate-950',
-    padding: 'p-6',
   },
   statusBar: {
     height: 'h-6',
     bg: 'bg-teal-600 dark:bg-teal-700',
     text: 'text-white text-[11px]',
-    itemHover: 'hover:bg-teal-500/50 dark:hover:bg-teal-600/50',
     separator: 'w-px bg-teal-500/50 mx-1 h-3.5',
   },
   commandPalette: {

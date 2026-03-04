@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { Search } from 'lucide-react'
-import { layout } from '../../styles/tokens'
+import { layout, interaction } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { IS_MAC, MOD_KEY } from '../../utils/platform'
 
@@ -75,21 +75,21 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
         <div className="flex items-center h-full">
           <button
             onClick={handleMinimize}
-            className="h-full px-3 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400"
+            className={cn('h-full px-3 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400', interaction.focusRing)}
             aria-label="Minimize"
           >
             <svg width="10" height="1" viewBox="0 0 10 1"><rect fill="currentColor" width="10" height="1" /></svg>
           </button>
           <button
             onClick={handleMaximize}
-            className="h-full px-3 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400"
+            className={cn('h-full px-3 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400', interaction.focusRing)}
             aria-label="Maximize"
           >
             <svg width="10" height="10" viewBox="0 0 10 10"><rect fill="none" stroke="currentColor" width="9" height="9" x="0.5" y="0.5" /></svg>
           </button>
           <button
             onClick={handleClose}
-            className="h-full px-3 hover:bg-red-500 hover:text-white transition-colors text-slate-500 dark:text-slate-400"
+            className={cn('h-full px-3 hover:bg-red-500 hover:text-white transition-colors text-slate-500 dark:text-slate-400', interaction.focusRing)}
             aria-label="Close"
           >
             <svg width="10" height="10" viewBox="0 0 10 10"><line stroke="currentColor" strokeWidth="1.2" x1="1" y1="1" x2="9" y2="9" /><line stroke="currentColor" strokeWidth="1.2" x1="9" y1="1" x2="1" y2="9" /></svg>

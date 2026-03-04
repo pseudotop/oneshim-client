@@ -29,12 +29,14 @@ export function useShellLayout() {
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
 
+  // Persist to localStorage — skip during active mouse resize to avoid hundreds of writes
   useEffect(() => {
+    if (isResizing) return
     try {
       localStorage.setItem(STORAGE_KEY_WIDTH, String(sidebarWidth))
       localStorage.setItem(STORAGE_KEY_COLLAPSED, String(sidebarCollapsed))
     } catch { /* ignore */ }
-  }, [sidebarWidth, sidebarCollapsed])
+  }, [sidebarWidth, sidebarCollapsed, isResizing])
 
   useEffect(() => {
     const width = sidebarCollapsed ? 0 : sidebarWidth
@@ -95,7 +97,6 @@ export function useShellLayout() {
   return {
     sidebarWidth,
     sidebarCollapsed,
-    isResizing,
     toggleSidebar,
     onResizeStart,
     onResizeByKeyboard,

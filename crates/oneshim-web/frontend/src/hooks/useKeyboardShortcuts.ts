@@ -6,6 +6,7 @@ interface ShortcutHandlers {
   onHelp?: () => void
   onEscape?: () => void
   onToggleSidebar?: () => void
+  onTogglePalette?: () => void
   onArrowLeft?: () => void
   onArrowRight?: () => void
   onArrowUp?: () => void
@@ -28,11 +29,18 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
 
       const h = handlersRef.current
 
-      // Cmd+B / Ctrl+B: toggle sidebar (works even when focused in inputs)
-      if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
-        event.preventDefault()
-        h.onToggleSidebar?.()
-        return
+      // Cmd/Ctrl shortcuts — work even when focused in inputs
+      if (event.metaKey || event.ctrlKey) {
+        if (event.key === 'b') {
+          event.preventDefault()
+          h.onToggleSidebar?.()
+          return
+        }
+        if (event.key === 'k') {
+          event.preventDefault()
+          h.onTogglePalette?.()
+          return
+        }
       }
 
       const target = event.target as HTMLElement

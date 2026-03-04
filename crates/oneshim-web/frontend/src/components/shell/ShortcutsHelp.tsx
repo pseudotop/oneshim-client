@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getShortcutsList } from '../hooks/useKeyboardShortcuts'
+import { getShortcutsList } from '../../hooks/useKeyboardShortcuts'
 
 interface ShortcutsHelpProps {
   onClose: () => void

@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { layout } from '../../styles/tokens'
@@ -124,6 +124,7 @@ interface SidePanelProps {
 export default function SidePanel({ collapsed, width, onResizeStart, onResizeByKeyboard }: SidePanelProps) {
   const location = useLocation()
   const { t } = useTranslation()
+  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>()
 
   const path = location.pathname
   const config = pageSidebarConfig[path] ?? Object.entries(pageSidebarConfig).find(
@@ -134,6 +135,13 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
     () => translateNodes(config.nodes, t),
     [config.nodes, t]
   )
+
+  const handleNodeSelect = useCallback((id: string) => {
+    setSelectedNodeId(id)
+    // Scroll the corresponding section into view on the main content area
+    const el = document.getElementById(`section-${id}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
 
   const handleResizeKeyDown = useCallback((e: React.KeyboardEvent) => {
     const STEP = 20
@@ -156,7 +164,7 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
         </div>
 
         <div className="flex-1 overflow-y-auto px-1 py-1">
-          <TreeView key={path} nodes={translatedNodes} />
+          <TreeView key={path} nodes={translatedNodes} selectedId={selectedNodeId} onSelect={handleNodeSelect} />
         </div>
       </div>
 

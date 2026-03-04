@@ -28,8 +28,9 @@ interface CommandPaletteProps {
 const LISTBOX_ID = 'command-palette-listbox'
 
 export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: CommandPaletteProps) {
-  const navigateRef = useRef(useNavigate())
-  navigateRef.current = useNavigate()
+  const navigate = useNavigate()
+  const navigateRef = useRef(navigate)
+  navigateRef.current = navigate
   const { t } = useTranslation()
   const { theme, toggleTheme } = useTheme()
   const [query, setQuery] = useState('')
@@ -147,7 +148,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={t('commandPalette.placeholder', 'Command Palette')}
+        aria-label={t('commandPalette.dialogLabel', 'Command Palette')}
         className={cn(
           layout.commandPalette.width,
           layout.commandPalette.bg,
