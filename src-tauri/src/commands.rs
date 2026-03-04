@@ -77,8 +77,7 @@ pub async fn update_setting(
     config_json: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let patch: serde_json::Value =
-        serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+    let patch: serde_json::Value = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
 
     let patch_obj = patch.as_object().ok_or("expected JSON object")?;
 
@@ -110,12 +109,14 @@ pub async fn update_setting(
     // This preserves existing sub-keys that the patch does not mention,
     // preventing silent resets to struct defaults (e.g. privacy.pii_filter_level).
     let current = state.config_manager.get();
-    let mut current_val =
-        serde_json::to_value(&current).map_err(|e| e.to_string())?;
+    let mut current_val = serde_json::to_value(&current).map_err(|e| e.to_string())?;
 
     if let (Some(base), Some(patch)) = (current_val.as_object_mut(), patch.as_object()) {
         for (k, v) in patch {
-            deep_merge(base.entry(k.clone()).or_insert(serde_json::Value::Null), v.clone());
+            deep_merge(
+                base.entry(k.clone()).or_insert(serde_json::Value::Null),
+                v.clone(),
+            );
         }
     }
 
