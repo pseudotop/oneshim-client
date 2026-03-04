@@ -39,18 +39,18 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
   const dialogRef = useRef<HTMLDivElement>(null)
 
   const items = useMemo<PaletteItem[]>(() => [
-    { id: 'dashboard',  labelKey: 'nav.dashboard',    labelFallback: 'Dashboard',        icon: <LayoutDashboard className="w-4 h-4" />, type: 'page',   action: () => navigateRef.current('/') },
-    { id: 'timeline',   labelKey: 'nav.timeline',     labelFallback: 'Timeline',         icon: <Clock className="w-4 h-4" />,           type: 'page',   action: () => navigateRef.current('/timeline') },
-    { id: 'reports',    labelKey: 'nav.reports',       labelFallback: 'Reports',          icon: <BarChart3 className="w-4 h-4" />,      type: 'page',   action: () => navigateRef.current('/reports') },
-    { id: 'focus',      labelKey: 'nav.focus',         labelFallback: 'Focus',            icon: <Image className="w-4 h-4" />,           type: 'page',   action: () => navigateRef.current('/focus') },
-    { id: 'replay',     labelKey: 'nav.replay',        labelFallback: 'Session Replay',   icon: <Zap className="w-4 h-4" />,             type: 'page',   action: () => navigateRef.current('/replay') },
-    { id: 'automation', labelKey: 'nav.automation',    labelFallback: 'Automation',       icon: <Monitor className="w-4 h-4" />,         type: 'page',   action: () => navigateRef.current('/automation') },
-    { id: 'updates',    labelKey: 'nav.updates',       labelFallback: 'Updates',          icon: <FileText className="w-4 h-4" />,        type: 'page',   action: () => navigateRef.current('/updates') },
-    { id: 'settings',   labelKey: 'nav.settings',      labelFallback: 'Settings',         icon: <Settings className="w-4 h-4" />,        type: 'page',   action: () => navigateRef.current('/settings') },
-    { id: 'privacy',    labelKey: 'nav.privacy',       labelFallback: 'Privacy',          icon: <Info className="w-4 h-4" />,             type: 'page',   action: () => navigateRef.current('/privacy') },
-    { id: 'search',     labelKey: 'nav.search',        labelFallback: 'Search',           icon: <Search className="w-4 h-4" />,          type: 'page',   action: () => navigateRef.current('/search') },
-    { id: 'theme',      labelKey: 'shell.switchToLight', labelFallback: theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />, type: 'action', action: toggleTheme },
-    { id: 'sidebar',    labelKey: 'shell.toggleSidebar', labelFallback: 'Toggle Sidebar', icon: <PanelLeft className="w-4 h-4" />,       type: 'action', action: onToggleSidebar },
+    { id: 'dashboard',  labelKey: 'nav.dashboard',    labelFallback: 'Dashboard',        icon: <LayoutDashboard className="w-4 h-4" aria-hidden="true" />, type: 'page',   action: () => navigateRef.current('/') },
+    { id: 'timeline',   labelKey: 'nav.timeline',     labelFallback: 'Timeline',         icon: <Clock className="w-4 h-4" aria-hidden="true" />,           type: 'page',   action: () => navigateRef.current('/timeline') },
+    { id: 'reports',    labelKey: 'nav.reports',       labelFallback: 'Reports',          icon: <BarChart3 className="w-4 h-4" aria-hidden="true" />,      type: 'page',   action: () => navigateRef.current('/reports') },
+    { id: 'focus',      labelKey: 'nav.focus',         labelFallback: 'Focus',            icon: <Image className="w-4 h-4" aria-hidden="true" />,           type: 'page',   action: () => navigateRef.current('/focus') },
+    { id: 'replay',     labelKey: 'nav.replay',        labelFallback: 'Session Replay',   icon: <Zap className="w-4 h-4" aria-hidden="true" />,             type: 'page',   action: () => navigateRef.current('/replay') },
+    { id: 'automation', labelKey: 'nav.automation',    labelFallback: 'Automation',       icon: <Monitor className="w-4 h-4" aria-hidden="true" />,         type: 'page',   action: () => navigateRef.current('/automation') },
+    { id: 'updates',    labelKey: 'nav.updates',       labelFallback: 'Updates',          icon: <FileText className="w-4 h-4" aria-hidden="true" />,        type: 'page',   action: () => navigateRef.current('/updates') },
+    { id: 'settings',   labelKey: 'nav.settings',      labelFallback: 'Settings',         icon: <Settings className="w-4 h-4" aria-hidden="true" />,        type: 'page',   action: () => navigateRef.current('/settings') },
+    { id: 'privacy',    labelKey: 'nav.privacy',       labelFallback: 'Privacy',          icon: <Info className="w-4 h-4" aria-hidden="true" />,             type: 'page',   action: () => navigateRef.current('/privacy') },
+    { id: 'search',     labelKey: 'nav.search',        labelFallback: 'Search',           icon: <Search className="w-4 h-4" aria-hidden="true" />,          type: 'page',   action: () => navigateRef.current('/search') },
+    { id: 'theme',      labelKey: 'shell.switchToLight', labelFallback: theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: theme === 'dark' ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />, type: 'action', action: toggleTheme },
+    { id: 'sidebar',    labelKey: 'shell.toggleSidebar', labelFallback: 'Toggle Sidebar', icon: <PanelLeft className="w-4 h-4" aria-hidden="true" />,       type: 'action', action: onToggleSidebar },
   ], [theme, toggleTheme, onToggleSidebar])
 
   const getLabel = useCallback((item: PaletteItem) => {
@@ -159,7 +159,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-          <Search className="w-4 h-4 text-slate-400 mr-3 flex-shrink-0" />
+          <Search className="w-4 h-4 text-slate-400 mr-3 flex-shrink-0" aria-hidden="true" />
           <input
             ref={inputRef}
             type="text"

@@ -4,6 +4,7 @@ import { TitleBar, ActivityBar, SidePanel, StatusBar, CommandPalette, ShortcutsH
 import { useShellLayout } from './hooks/useShellLayout'
 import { useCommandPalette } from './hooks/useCommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { useTranslation } from 'react-i18next'
 import { layout } from './styles/tokens'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Spinner } from './components/ui'
@@ -21,6 +22,7 @@ const Automation = lazy(() => import('./pages/Automation'))
 const Updates = lazy(() => import('./pages/Updates'))
 
 function App() {
+  const { t } = useTranslation()
   const { sidebarWidth, sidebarCollapsed, toggleSidebar, onResizeStart, onResizeByKeyboard } = useShellLayout()
   const { isOpen: isPaletteOpen, open: openPalette, close: closePalette, toggle: togglePalette } = useCommandPalette()
   const [isHelpOpen, setIsHelpOpen] = useState(false)
@@ -30,7 +32,7 @@ function App() {
   const shortcutHandlers = useMemo(() => ({
     onEscape: () => {
       if (isPaletteOpen) closePalette()
-      if (isHelpOpen) closeHelp()
+      else if (isHelpOpen) closeHelp()
     },
     onToggleSidebar: toggleSidebar,
     onTogglePalette: togglePalette,
@@ -43,7 +45,7 @@ function App() {
     <div className="app-shell bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
       {/* Skip navigation link for keyboard users (WCAG 2.4.1) */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-teal-600 focus:text-white focus:rounded focus:text-sm">
-        Skip to main content
+        {t('shell.skipToContent', 'Skip to main content')}
       </a>
 
       <TitleBar onSearchOpen={openPalette} />

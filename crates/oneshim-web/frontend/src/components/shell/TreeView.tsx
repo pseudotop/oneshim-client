@@ -82,9 +82,21 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
         const btn = items[currentIndex]
         const nodeId = btn.dataset.nodeId
         if (nodeId && expanded.has(nodeId)) {
+          // Open parent node: collapse it
           toggleExpand(nodeId)
         } else {
-          focusAndTrack(items[currentIndex - 1])
+          // Leaf or closed parent: move focus to parent treeitem
+          const currentLevel = parseInt(btn.getAttribute('aria-level') || '1', 10)
+          if (currentLevel > 1) {
+            // Walk backwards to find the first item at a shallower level (the parent)
+            for (let i = currentIndex - 1; i >= 0; i--) {
+              const level = parseInt(items[i].getAttribute('aria-level') || '1', 10)
+              if (level < currentLevel) {
+                focusAndTrack(items[i])
+                break
+              }
+            }
+          }
         }
         break
       }

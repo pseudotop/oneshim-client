@@ -629,7 +629,11 @@
     "automationOff": "Auto: OFF",
     "connected": "Connected",
     "offline": "Offline",
-    "resizeSidebar": "Resize sidebar"
+    "resizeSidebar": "Resize sidebar",
+    "skipToContent": "Skip to main content",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "closeToTray": "Close to tray"
   },
   "sidebar": {
     "overview": "Overview",

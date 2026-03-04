@@ -96,12 +96,12 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
         )}
         aria-current={active ? 'page' : undefined}
         aria-describedby={tooltip ? TOOLTIP_ID : undefined}
-        title={label}
+        aria-label={label}
       >
         {active && (
           <div className={cn('absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r', layout.activityBar.indicator)} />
         )}
-        <Icon className={layout.activityBar.iconSize} />
+        <Icon className={layout.activityBar.iconSize} aria-hidden="true" />
       </button>
     )
   }

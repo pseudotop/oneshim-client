@@ -64,12 +64,12 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={t('shortcuts.title')}
+        aria-labelledby="shortcuts-help-title"
         className={cn(layout.commandPalette.bg, layout.commandPalette.border, 'rounded-lg shadow-xl max-w-md w-full mx-4')}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+          <h2 id="shortcuts-help-title" className="text-lg font-semibold text-slate-900 dark:text-white">
             {t('shortcuts.title')}
           </h2>
           <button

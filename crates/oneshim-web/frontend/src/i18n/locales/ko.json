@@ -629,7 +629,11 @@
     "automationOff": "자동화: OFF",
     "connected": "연결됨",
     "offline": "오프라인",
-    "resizeSidebar": "사이드바 크기 조절"
+    "resizeSidebar": "사이드바 크기 조절",
+    "skipToContent": "본문으로 건너뛰기",
+    "minimize": "최소화",
+    "maximize": "최대화",
+    "closeToTray": "트레이로 닫기"
   },
   "sidebar": {
     "overview": "개요",

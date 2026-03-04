@@ -79,7 +79,7 @@ export const radius = {
 
 export const interaction = {
   interactive: 'transition-colors',
-  focusRing: 'focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent',
+  focusRing: 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:border-transparent',
   disabled: 'disabled:opacity-50 disabled:cursor-not-allowed',
 } as const
 

@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
 import { layout, interaction } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
@@ -10,6 +11,7 @@ interface TitleBarProps {
 }
 
 export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarProps) {
+  const { t } = useTranslation()
   const handleMinimize = useCallback(async () => {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
@@ -65,7 +67,7 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
         )}
         title={`${MOD_KEY}+K`}
       >
-        <Search className="w-3.5 h-3.5" />
+        <Search className="w-3.5 h-3.5" aria-hidden="true" />
         <span className="hidden sm:inline text-[11px] text-slate-400 dark:text-slate-600">
           {MOD_KEY}K
         </span>
@@ -77,23 +79,23 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
           <button
             onClick={handleMinimize}
             className={cn('h-full px-3 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400', interaction.focusRing)}
-            aria-label="Minimize"
+            aria-label={t('shell.minimize', 'Minimize')}
           >
-            <svg width="10" height="1" viewBox="0 0 10 1"><rect fill="currentColor" width="10" height="1" /></svg>
+            <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true"><rect fill="currentColor" width="10" height="1" /></svg>
           </button>
           <button
             onClick={handleMaximize}
             className={cn('h-full px-3 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400', interaction.focusRing)}
-            aria-label="Maximize"
+            aria-label={t('shell.maximize', 'Maximize')}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect fill="none" stroke="currentColor" width="9" height="9" x="0.5" y="0.5" /></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect fill="none" stroke="currentColor" width="9" height="9" x="0.5" y="0.5" /></svg>
           </button>
           <button
             onClick={handleClose}
             className={cn('h-full px-3 hover:bg-red-500 hover:text-white transition-colors text-slate-500 dark:text-slate-400', interaction.focusRing)}
-            aria-label="Close"
+            aria-label={t('shell.closeToTray', 'Close to tray')}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10"><line stroke="currentColor" strokeWidth="1.2" x1="1" y1="1" x2="9" y2="9" /><line stroke="currentColor" strokeWidth="1.2" x1="9" y1="1" x2="1" y2="9" /></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><line stroke="currentColor" strokeWidth="1.2" x1="1" y1="1" x2="9" y2="9" /><line stroke="currentColor" strokeWidth="1.2" x1="9" y1="1" x2="1" y2="9" /></svg>
           </button>
         </div>
       )}
