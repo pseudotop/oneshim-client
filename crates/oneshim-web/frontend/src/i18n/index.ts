@@ -5,14 +5,10 @@ import LanguageDetector from 'i18next-browser-languagedetector'
 
 import ko from './locales/ko.json'
 import en from './locales/en.json'
-import ja from './locales/ja.json'
-import zh from './locales/zh.json'
 
 const resources = {
   ko: { translation: ko },
   en: { translation: en },
-  ja: { translation: ja },
-  zh: { translation: zh },
 }
 
 i18n
@@ -21,7 +17,7 @@ i18n
   .init({
     resources,
     fallbackLng: 'en',
-    supportedLngs: ['ko', 'en', 'ja', 'zh'],
+    supportedLngs: ['ko', 'en'],
 
     detection: {
       order: ['localStorage'],
@@ -40,7 +36,7 @@ i18n
 
 export default i18n
 
-export type SupportedLanguageCode = 'ko' | 'en' | 'ja' | 'zh'
+export type SupportedLanguageCode = 'ko' | 'en'
 
 // Language change helper
 export const changeLanguage = (lng: SupportedLanguageCode) => {
@@ -51,15 +47,13 @@ export const changeLanguage = (lng: SupportedLanguageCode) => {
 // Get current language
 export const getCurrentLanguage = (): SupportedLanguageCode => {
   const lng = i18n.language
-  return (['ko', 'en', 'ja', 'zh'] as const).includes(lng as SupportedLanguageCode)
+  return (['ko', 'en'] as const).includes(lng as SupportedLanguageCode)
     ? (lng as SupportedLanguageCode)
     : 'en'
 }
 
-// Supported language list
+// Supported language list (ja/zh stubs kept in locales/ for future translation)
 export const supportedLanguages = [
   { code: 'en', name: 'English' },
   { code: 'ko', name: '한국어' },
-  { code: 'ja', name: '日本語' },
-  { code: 'zh', name: '中文' },
 ] as const

@@ -617,6 +617,7 @@
     "automation": { "title": "Automation Inactive", "description": "The automation system is inactive. Enable it in Settings", "action": "Go to Settings" }
   },
   "commandPalette": {
+    "dialogLabel": "Command Palette",
     "placeholder": "Type a command or search...",
     "noResults": "No results found"
   },

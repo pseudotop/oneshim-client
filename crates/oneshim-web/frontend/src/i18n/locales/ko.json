@@ -617,6 +617,7 @@
     "automation": { "title": "자동화 비활성", "description": "자동화 시스템이 비활성 상태입니다. Settings에서 활성화하세요", "action": "설정으로 이동" }
   },
   "commandPalette": {
+    "dialogLabel": "커맨드 팔레트",
     "placeholder": "명령어 또는 검색어를 입력하세요...",
     "noResults": "결과가 없습니다"
   },
