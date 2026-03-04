@@ -184,15 +184,16 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
             </div>
           ) : (
             filtered.map((item, index) => (
-              <button
+              <div
                 key={item.id}
                 id={`palette-option-${item.id}`}
                 role="option"
                 aria-selected={index === selectedIndex}
+                tabIndex={-1}
                 onClick={() => executeItem(item)}
                 onMouseEnter={() => setSelectedIndex(index)}
                 className={cn(
-                  'w-full flex items-center gap-3 px-4 py-2 text-left transition-colors',
+                  'w-full flex items-center gap-3 px-4 py-2 text-left transition-colors cursor-pointer',
                   layout.commandPalette.itemText,
                   index === selectedIndex && layout.commandPalette.itemActive,
                   layout.commandPalette.itemBg,
@@ -201,7 +202,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
                 <span className="flex-shrink-0 text-slate-400">{item.icon}</span>
                 <span className="flex-1 truncate">{getLabel(item)}</span>
                 <span className={layout.commandPalette.badge}>{item.type}</span>
-              </button>
+              </div>
             ))
           )}
         </div>

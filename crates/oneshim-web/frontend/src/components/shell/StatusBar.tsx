@@ -31,31 +31,31 @@ export default function StatusBar() {
       <div className="flex items-center">
         <span className="flex items-center gap-1 px-1.5" aria-live="polite" aria-atomic="true">
           {connected
-            ? <><Wifi className="w-3 h-3" /><span>{t('shell.connected', 'Connected')}</span></>
-            : <><WifiOff className="w-3 h-3 opacity-60" /><span>{t('shell.offline', 'Offline')}</span></>
+            ? <><Wifi className="w-3 h-3" aria-hidden="true" /><span>{t('shell.connected', 'Connected')}</span></>
+            : <><WifiOff className="w-3 h-3 opacity-60" aria-hidden="true" /><span>{t('shell.offline', 'Offline')}</span></>
           }
         </span>
 
         <div className={layout.statusBar.separator} />
 
-        <span className="flex items-center gap-1 px-1.5" aria-label={automationOn ? t('shell.automationOn', 'Auto: ON') : t('shell.automationOff', 'Auto: OFF')}>
+        <span className="flex items-center gap-1 px-1.5" aria-live="polite" aria-atomic="true" aria-label={automationOn ? t('shell.automationOn', 'Auto: ON') : t('shell.automationOff', 'Auto: OFF')}>
           {automationOn
-            ? <><Zap className="w-3 h-3" /><span>{t('shell.automationOn', 'Auto: ON')}</span></>
-            : <><ZapOff className="w-3 h-3 opacity-60" /><span>{t('shell.automationOff', 'Auto: OFF')}</span></>
+            ? <><Zap className="w-3 h-3" aria-hidden="true" /><span>{t('shell.automationOn', 'Auto: ON')}</span></>
+            : <><ZapOff className="w-3 h-3 opacity-60" aria-hidden="true" /><span>{t('shell.automationOff', 'Auto: OFF')}</span></>
           }
         </span>
       </div>
 
       <div className="flex items-center">
         <span className="flex items-center gap-1 px-1.5" aria-label={`CPU: ${cpuText}`}>
-          <Cpu className="w-3 h-3" />
+          <Cpu className="w-3 h-3" aria-hidden="true" />
           <span>{cpuText}</span>
         </span>
 
         <div className={layout.statusBar.separator} />
 
         <span className="flex items-center gap-1 px-1.5" aria-label={`RAM: ${ramMb}`}>
-          <HardDrive className="w-3 h-3" />
+          <HardDrive className="w-3 h-3" aria-hidden="true" />
           <span>{ramMb}</span>
         </span>
 

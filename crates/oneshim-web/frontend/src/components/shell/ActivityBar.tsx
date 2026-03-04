@@ -83,6 +83,11 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
           setTooltipY(e.currentTarget.getBoundingClientRect().top)
         }}
         onMouseLeave={() => setTooltip(null)}
+        onFocus={(e) => {
+          setTooltip(label)
+          setTooltipY(e.currentTarget.getBoundingClientRect().top)
+        }}
+        onBlur={() => setTooltip(null)}
         className={cn(
           'relative w-full flex items-center justify-center h-11 transition-colors',
           active ? layout.activityBar.iconActive : layout.activityBar.iconDefault,

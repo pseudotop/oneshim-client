@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getShortcutsList } from '../../hooks/useKeyboardShortcuts'
+import { layout, interaction } from '../../styles/tokens'
+import { cn } from '../../utils/cn'
 
 interface ShortcutsHelpProps {
   onClose: () => void
@@ -15,31 +17,17 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
   // Save previous focus + auto-focus dialog on open
   useEffect(() => {
     previousFocusRef.current = document.activeElement
-    // Focus the close button inside the dialog
     const timer = setTimeout(() => {
       const firstFocusable = dialogRef.current?.querySelector<HTMLElement>('button')
       firstFocusable?.focus()
     }, 50)
     return () => {
       clearTimeout(timer)
-      // Return focus on unmount
       if (previousFocusRef.current instanceof HTMLElement) {
         previousFocusRef.current.focus()
       }
     }
   }, [])
-
-  // Escape to close
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
 
   // Focus trap
   useEffect(() => {
@@ -69,7 +57,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className={cn('fixed inset-0 z-50 flex items-center justify-center', layout.commandPalette.overlay)}
       onClick={onClose}
     >
       <div
@@ -77,7 +65,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
         role="dialog"
         aria-modal="true"
         aria-label={t('shortcuts.title')}
-        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-md w-full mx-4"
+        className={cn(layout.commandPalette.bg, layout.commandPalette.border, 'rounded-lg shadow-xl max-w-md w-full mx-4')}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
@@ -86,10 +74,10 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
           </h2>
           <button
             onClick={onClose}
-            className="p-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            className={cn('p-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded', interaction.focusRing)}
             aria-label={t('common.close', 'Close')}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>

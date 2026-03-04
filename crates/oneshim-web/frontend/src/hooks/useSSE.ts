@@ -76,11 +76,10 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
         case 'metrics':
           setLatestMetrics(data.data)
           setMetricsHistory((prev) => {
-            const newHistory = [...prev, data.data]
-            if (newHistory.length > MAX_HISTORY_SIZE) {
-              return newHistory.slice(-MAX_HISTORY_SIZE)
+            if (prev.length >= MAX_HISTORY_SIZE) {
+              return [...prev.slice(1), data.data]
             }
-            return newHistory
+            return [...prev, data.data]
           })
           break
         case 'frame':

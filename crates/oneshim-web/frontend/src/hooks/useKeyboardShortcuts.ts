@@ -17,6 +17,8 @@ interface ShortcutHandlers {
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = true) {
   const navigate = useNavigate()
+  const navigateRef = useRef(navigate)
+  navigateRef.current = navigate
   const handlersRef = useRef(handlers)
   handlersRef.current = handlers
 
@@ -58,19 +60,19 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
       switch (event.key.toLowerCase()) {
         case 'd':
           event.preventDefault()
-          navigate('/')
+          navigateRef.current('/')
           break
         case 't':
           event.preventDefault()
-          navigate('/timeline')
+          navigateRef.current('/timeline')
           break
         case 's':
           event.preventDefault()
-          navigate('/settings')
+          navigateRef.current('/settings')
           break
         case 'p':
           event.preventDefault()
-          navigate('/privacy')
+          navigateRef.current('/privacy')
           break
         case '?':
           event.preventDefault()
@@ -126,7 +128,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [enabled, navigate])
+  }, [enabled])
 }
 
 export function getShortcutsList() {

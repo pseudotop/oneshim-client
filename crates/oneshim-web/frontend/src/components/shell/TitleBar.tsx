@@ -60,6 +60,7 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
           'flex items-center gap-1.5 px-2 py-1 rounded text-xs',
           'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300',
           'hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors',
+          interaction.focusRing,
           'mr-2',
         )}
         title={`${MOD_KEY}+K`}

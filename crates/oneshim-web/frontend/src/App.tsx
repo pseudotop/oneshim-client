@@ -41,6 +41,11 @@ function App() {
 
   return (
     <div className="app-shell bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
+      {/* Skip navigation link for keyboard users (WCAG 2.4.1) */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-teal-600 focus:text-white focus:rounded focus:text-sm">
+        Skip to main content
+      </a>
+
       <TitleBar onSearchOpen={openPalette} />
 
       <ActivityBar
@@ -55,7 +60,7 @@ function App() {
         onResizeByKeyboard={onResizeByKeyboard}
       />
 
-      <main className={cn('overflow-y-auto', layout.mainContent.bg)} aria-label="Main content">
+      <main id="main-content" className={cn('overflow-y-auto', layout.mainContent.bg)} aria-label="Main content">
         <ErrorBoundary>
           <Suspense
             fallback={

@@ -24,14 +24,23 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
   })
   const treeRef = useRef<HTMLDivElement>(null)
 
-  const toggleExpand = (id: string) => {
+  const toggleExpand = useCallback((id: string) => {
     setExpanded(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
-  }
+  }, [])
+
+  // Update roving tabindex: move tabIndex=0 to the focused item
+  const updateRovingTabIndex = useCallback((focusedEl: HTMLElement) => {
+    if (!treeRef.current) return
+    const items = treeRef.current.querySelectorAll<HTMLElement>('[role="treeitem"]')
+    items.forEach(item => {
+      item.tabIndex = item === focusedEl ? 0 : -1
+    })
+  }, [])
 
   // Arrow-key navigation for ARIA tree pattern (root level only)
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -40,17 +49,21 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
     const currentIndex = items.indexOf(e.target as HTMLElement)
     if (currentIndex === -1) return
 
+    const focusAndTrack = (el: HTMLElement | undefined) => {
+      if (!el) return
+      el.focus()
+      updateRovingTabIndex(el)
+    }
+
     switch (e.key) {
       case 'ArrowDown': {
         e.preventDefault()
-        const next = items[currentIndex + 1]
-        next?.focus()
+        focusAndTrack(items[currentIndex + 1])
         break
       }
       case 'ArrowUp': {
         e.preventDefault()
-        const prev = items[currentIndex - 1]
-        prev?.focus()
+        focusAndTrack(items[currentIndex - 1])
         break
       }
       case 'ArrowRight': {
@@ -60,9 +73,7 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
         if (nodeId && !expanded.has(nodeId)) {
           toggleExpand(nodeId)
         } else {
-          // Move into first child
-          const next = items[currentIndex + 1]
-          next?.focus()
+          focusAndTrack(items[currentIndex + 1])
         }
         break
       }
@@ -73,24 +84,22 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
         if (nodeId && expanded.has(nodeId)) {
           toggleExpand(nodeId)
         } else {
-          // Move to parent (previous item at lower depth)
-          const prev = items[currentIndex - 1]
-          prev?.focus()
+          focusAndTrack(items[currentIndex - 1])
         }
         break
       }
       case 'Home': {
         e.preventDefault()
-        items[0]?.focus()
+        focusAndTrack(items[0])
         break
       }
       case 'End': {
         e.preventDefault()
-        items[items.length - 1]?.focus()
+        focusAndTrack(items[items.length - 1])
         break
       }
     }
-  }, [expanded])
+  }, [expanded, toggleExpand, updateRovingTabIndex])
 
   return (
     <div
