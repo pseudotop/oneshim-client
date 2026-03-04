@@ -97,6 +97,7 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
               }
             }
           }
+          // currentLevel === 1: no-op per APG Tree Pattern — focus stays
         }
         break
       }
@@ -147,7 +148,7 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
               style={{ paddingLeft: `${depth * 12 + 8}px` }}
             >
               {hasChildren ? (
-                isExpanded ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
+                isExpanded ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" /> : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
               ) : (
                 <span className="w-3.5 flex-shrink-0" />
               )}

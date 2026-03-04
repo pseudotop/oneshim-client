@@ -633,7 +633,8 @@
     "skipToContent": "Skip to main content",
     "minimize": "Minimize",
     "maximize": "Maximize",
-    "closeToTray": "Close to tray"
+    "closeToTray": "Close to tray",
+    "searchShortcut": "Search ({{key}}+K)"
   },
   "sidebar": {
     "overview": "Overview",

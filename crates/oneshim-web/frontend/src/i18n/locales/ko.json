@@ -633,7 +633,8 @@
     "skipToContent": "본문으로 건너뛰기",
     "minimize": "최소화",
     "maximize": "최대화",
-    "closeToTray": "트레이로 닫기"
+    "closeToTray": "트레이로 닫기",
+    "searchShortcut": "검색 ({{key}}+K)"
   },
   "sidebar": {
     "overview": "개요",

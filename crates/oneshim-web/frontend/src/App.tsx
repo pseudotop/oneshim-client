@@ -44,7 +44,7 @@ function App() {
   return (
     <div className="app-shell bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
       {/* Skip navigation link for keyboard users (WCAG 2.4.1) */}
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-teal-600 focus:text-white focus:rounded focus:text-sm">
+      <a href="#main-content" className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:z-[60] focus-visible:top-2 focus-visible:left-2 focus-visible:px-4 focus-visible:py-2 focus-visible:bg-teal-600 focus-visible:text-white focus-visible:rounded focus-visible:text-sm">
         {t('shell.skipToContent', 'Skip to main content')}
       </a>
 

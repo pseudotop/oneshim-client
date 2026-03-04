@@ -57,7 +57,7 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
       {/* Search trigger */}
       <button
         onClick={onSearchOpen}
-        aria-label={`Search (${MOD_KEY}+K)`}
+        aria-label={t('shell.searchShortcut', { key: MOD_KEY, defaultValue: `Search (${MOD_KEY}+K)` })}
         className={cn(
           'flex items-center gap-1.5 px-2 py-1 rounded text-xs',
           'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300',
@@ -65,7 +65,6 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
           interaction.focusRing,
           'mr-2',
         )}
-        title={`${MOD_KEY}+K`}
       >
         <Search className="w-3.5 h-3.5" aria-hidden="true" />
         <span className="hidden sm:inline text-[11px] text-slate-400 dark:text-slate-600">

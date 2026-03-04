@@ -87,9 +87,9 @@ export const form = {
   label: 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2',
   labelSm: 'block text-xs text-slate-600 dark:text-slate-400 mb-1',
   helper: 'mt-1 text-xs text-slate-600 dark:text-slate-500',
-  checkbox: 'w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500',
-  checkboxInline: 'w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500 mr-3',
-  radio: 'w-4 h-4 bg-slate-900 border-slate-700 text-teal-500 focus:ring-teal-500',
+  checkbox: 'w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus-visible:ring-teal-500',
+  checkboxInline: 'w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus-visible:ring-teal-500 mr-3',
+  radio: 'w-4 h-4 bg-slate-900 border-slate-700 text-teal-500 focus-visible:ring-teal-500',
   sectionDivider: 'border-slate-300 dark:border-slate-700',
 } as const
 

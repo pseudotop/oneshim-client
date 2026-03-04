@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { layout } from '../../styles/tokens'
+import { layout, interaction } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import TreeView, { type TreeNode } from './TreeView'
 
@@ -169,7 +169,7 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
       </div>
 
       <div
-        className={cn('flex-shrink-0', layout.sidePanel.resizeHandle)}
+        className={cn('flex-shrink-0', layout.sidePanel.resizeHandle, interaction.focusRing)}
         onMouseDown={onResizeStart}
         onKeyDown={handleResizeKeyDown}
         role="separator"

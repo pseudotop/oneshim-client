@@ -49,7 +49,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
     { id: 'settings',   labelKey: 'nav.settings',      labelFallback: 'Settings',         icon: <Settings className="w-4 h-4" aria-hidden="true" />,        type: 'page',   action: () => navigateRef.current('/settings') },
     { id: 'privacy',    labelKey: 'nav.privacy',       labelFallback: 'Privacy',          icon: <Info className="w-4 h-4" aria-hidden="true" />,             type: 'page',   action: () => navigateRef.current('/privacy') },
     { id: 'search',     labelKey: 'nav.search',        labelFallback: 'Search',           icon: <Search className="w-4 h-4" aria-hidden="true" />,          type: 'page',   action: () => navigateRef.current('/search') },
-    { id: 'theme',      labelKey: 'shell.switchToLight', labelFallback: theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: theme === 'dark' ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />, type: 'action', action: toggleTheme },
+    { id: 'theme',      labelKey: theme === 'dark' ? 'shell.switchToLight' : 'shell.switchToDark', labelFallback: theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: theme === 'dark' ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />, type: 'action', action: toggleTheme },
     { id: 'sidebar',    labelKey: 'shell.toggleSidebar', labelFallback: 'Toggle Sidebar', icon: <PanelLeft className="w-4 h-4" aria-hidden="true" />,       type: 'action', action: onToggleSidebar },
   ], [theme, toggleTheme, onToggleSidebar])
 
@@ -164,7 +164,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
             ref={inputRef}
             type="text"
             role="combobox"
-            aria-expanded={filtered.length > 0}
+            aria-expanded={true}
             aria-haspopup="listbox"
             aria-controls={LISTBOX_ID}
             aria-activedescendant={activeDescendant}
