@@ -25,6 +25,7 @@ pub struct EventBus {
     tx: broadcast::Sender<AppEvent>,
 }
 
+#[allow(dead_code)]
 impl EventBus {
     pub fn new(capacity: usize) -> Self {
         let (tx, _) = broadcast::channel(capacity);
@@ -36,7 +37,6 @@ impl EventBus {
         let _ = self.tx.send(event);
     }
 
-    #[allow(dead_code)]
     pub fn subscribe(&self) -> broadcast::Receiver<AppEvent> {
         self.tx.subscribe()
     }

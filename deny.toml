@@ -25,8 +25,8 @@ private = { ignore = true }
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db"]
-unmaintained = "warn"
-unsound = "deny"
+unmaintained = "workspace"
+unsound = "all"
 ignore = []
 
 [bans]
