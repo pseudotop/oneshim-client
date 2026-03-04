@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-03-04
+
+### Added
+
+- **Vitest test infrastructure**: Complete unit test setup for React web dashboard
+  - `vitest.config.private.ts` with jsdom environment, `@src/` path alias
+  - 61 smoke tests covering all major UI components (Dashboard, Timeline, Settings, Events, Sessions, Shell layout)
+  - Shared test helpers: `SpyEventSource` for SSE mocking, render utilities
+  - CI-compatible runner script (`run-frontend.sh`) with per-test metadata tracking
+
+## [0.1.6] - 2026-03-04
+
+### Added
+
+- **Desktop shell layout** (VS Code-style): TitleBar, ActivityBar, SidePanel, TreeView, CommandPalette, ShortcutsHelp, StatusBar
+- **3 new hooks**: `useShellLayout`, `useCommandPalette`, `useKeyboardShortcuts`
+- **Accessibility (WCAG 2.1 AA)**: Skip navigation, focus-visible policy, full ARIA coverage, keyboard-navigable resize
+- **i18n**: 40+ new translation keys (en/ko parity)
+
 ## [0.1.5] - 2026-03-04
 
 ### Changed
@@ -140,7 +159,9 @@ Each version entry must include:
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/pseudotop/oneshim-client/compare/v0.1.6...v0.1.7
+[0.1.6]: https://github.com/pseudotop/oneshim-client/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/pseudotop/oneshim-client/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/pseudotop/oneshim-client/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/pseudotop/oneshim-client/compare/v0.1.2...v0.1.3
