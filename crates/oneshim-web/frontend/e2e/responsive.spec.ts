@@ -4,8 +4,7 @@ import { mockDynamicJson, mockStaticJson } from './helpers/mock-api'
 
 const dashboardHeadingName = i18nRegex('dashboard.title')
 const timelineHeadingName = i18nRegex('timeline.title')
-const searchHeadingName = i18nRegex('search.title')
-const globalSearchPlaceholder = /\(Enter\)/i
+const timelineName = i18nRegex('nav.timeline')
 
 async function mockResponsiveApis(page: Page) {
   await mockStaticJson(page, '**/api/stats/summary**', {
@@ -109,32 +108,30 @@ async function mockResponsiveApis(page: Page) {
 }
 
 test.describe('Responsive', () => {
-  test('supports mobile navigation in 430x932 viewport', async ({ page }) => {
+  test('supports small viewport with ActivityBar navigation', async ({ page }) => {
     await page.setViewportSize({ width: 430, height: 932 })
     await mockResponsiveApis(page)
 
     await page.goto('/')
     await expect(page.getByRole('heading', { name: dashboardHeadingName })).toBeVisible()
 
-    await page.locator('a[href="/timeline"]').first().click()
+    // ActivityBar buttons use title attribute for labels
+    await page.getByTitle(timelineName).click()
 
     await expect(page).toHaveURL(/\/timeline/)
     await expect(page.getByRole('heading', { name: timelineHeadingName })).toBeVisible()
   })
 
-  test('supports tablet global search flow in 768x1024 viewport', async ({ page }) => {
+  test('supports tablet viewport with CommandPalette', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 })
     await mockResponsiveApis(page)
 
     await page.goto('/')
     await expect(page.getByRole('heading', { name: dashboardHeadingName })).toBeVisible()
 
-    const globalSearch = page.getByPlaceholder(globalSearchPlaceholder)
-    await expect(globalSearch).toBeVisible()
-    await globalSearch.fill('focus')
-    await globalSearch.press('Enter')
-
-    await expect(page).toHaveURL(/\/search\?q=focus/)
-    await expect(page.getByRole('heading', { name: searchHeadingName })).toBeVisible()
+    // Open command palette with keyboard shortcut
+    await page.keyboard.press('Meta+k')
+    const input = page.getByRole('dialog').locator('input')
+    await expect(input).toBeVisible()
   })
 })
