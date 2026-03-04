@@ -7,7 +7,7 @@ afterEach(() => {
 })
 
 // Provide __APP_VERSION__ global used by StatusBar
-globalThis.__APP_VERSION__ = 'v0.1.0-test'
+;(globalThis as Record<string, unknown>).__APP_VERSION__ = 'v0.1.0-test'
 
 // Mock EventSource (jsdom doesn't provide it)
 class MockEventSource {
