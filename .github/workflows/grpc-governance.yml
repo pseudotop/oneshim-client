@@ -51,6 +51,9 @@ jobs:
         with:
           shared-key: grpc-governance
 
+      - name: Create frontend dist stub for Tauri generate_context!()
+        run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
+
       - name: Run gRPC compatibility matrix gate
         run: ./scripts/verify-grpc-compatibility.sh
 

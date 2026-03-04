@@ -59,6 +59,9 @@ jobs:
           ./scripts/cargo-cache.sh install cargo-cyclonedx --locked
           python3 -m pip install --upgrade pynacl
 
+      - name: Create frontend dist stub for Tauri generate_context!()
+        run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
+
       - name: Run integrity verification script (blocking)
         if: github.event_name != 'pull_request'
         run: ./scripts/verify-integrity.sh
