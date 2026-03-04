@@ -184,6 +184,9 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: ./scripts/verify-commit-message-hygiene.sh "$PR_BASE_SHA" "$HEAD_SHA"
 
+      - name: Create frontend dist stub for Tauri generate_context!()
+        run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
+
       - name: Run clippy (standalone)
         run: ./scripts/cargo-cache.sh clippy --workspace --all-targets -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
