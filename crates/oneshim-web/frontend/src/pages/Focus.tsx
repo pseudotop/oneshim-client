@@ -173,7 +173,7 @@ export default function Focus() {
   const trend = today.focus_score - avgScore
 
   return (
-    <div className="space-y-6">
+    <div className="h-full overflow-y-auto p-6 space-y-6">
       {/* UI note */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">

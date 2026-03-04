@@ -539,7 +539,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="h-full overflow-y-auto p-6 space-y-6">
       {/* UI note */}
       <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
 

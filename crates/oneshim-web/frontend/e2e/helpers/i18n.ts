@@ -9,11 +9,10 @@ const localesDir = path.resolve(currentDir, '../../src/i18n/locales')
 
 const koLocale = loadLocale('ko')
 const enLocale = loadLocale('en')
-const jaLocale = loadLocale('ja')
-const zhLocale = loadLocale('zh')
-const locales = [koLocale, enLocale, jaLocale, zhLocale]
+// Only include locales with complete key coverage for shell/sidebar/shortcuts
+const locales = [koLocale, enLocale]
 
-function loadLocale(code: 'ko' | 'en' | 'ja' | 'zh'): LocaleTree {
+function loadLocale(code: 'ko' | 'en'): LocaleTree {
   const localePath = path.join(localesDir, `${code}.json`)
   return JSON.parse(fs.readFileSync(localePath, 'utf-8')) as LocaleTree
 }

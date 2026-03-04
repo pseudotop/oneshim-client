@@ -342,7 +342,7 @@ export default function SessionReplay() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="h-full overflow-y-auto p-6 space-y-4">
       {/* UI note */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">

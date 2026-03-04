@@ -158,7 +158,7 @@ export default function Timeline() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="h-full overflow-y-auto p-6 space-y-6">
       {/* UI note */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">

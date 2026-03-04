@@ -28,7 +28,8 @@
     "settings": "Settings",
     "privacy": "Privacy",
     "search": "Search",
-    "automation": "Automation"
+    "automation": "Automation",
+    "mainNavLabel": "Main Navigation"
   },
   "dashboard": {
     "title": "Activity Summary",
@@ -344,7 +345,9 @@
     "escape": "Deselect / Close Modal",
     "arrows": "Previous/Next Item",
     "enter": "Confirm Selection",
-    "closeHint": "Press any key to close"
+    "closeHint": "Press Esc to close",
+    "toggleSidebar": "Toggle Sidebar",
+    "commandPalette": "Command Palette"
   },
   "heatmap": {
     "title": "Activity Heatmap",
@@ -612,5 +615,63 @@
     "focus": { "title": "Focus Analysis Preparing", "description": "Analysis will start automatically as you use apps" },
     "replay": { "title": "No Session Records", "description": "No sessions recorded in the selected period. Try adjusting the date range" },
     "automation": { "title": "Automation Inactive", "description": "The automation system is inactive. Enable it in Settings", "action": "Go to Settings" }
+  },
+  "commandPalette": {
+    "dialogLabel": "Command Palette",
+    "placeholder": "Type a command or search...",
+    "noResults": "No results found"
+  },
+  "shell": {
+    "toggleSidebar": "Toggle Sidebar",
+    "switchToLight": "Switch to Light Mode",
+    "switchToDark": "Switch to Dark Mode",
+    "automationOn": "Auto: ON",
+    "automationOff": "Auto: OFF",
+    "connected": "Connected",
+    "offline": "Offline",
+    "resizeSidebar": "Resize sidebar",
+    "skipToContent": "Skip to main content",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "closeToTray": "Close to tray",
+    "searchShortcut": "Search ({{key}}+K)"
+  },
+  "sidebar": {
+    "overview": "Overview",
+    "systemMetrics": "System Metrics",
+    "activeProcesses": "Active Processes",
+    "focusScore": "Focus Score",
+    "activityHeatmap": "Activity Heatmap",
+    "updateStatus": "Update Status",
+    "allFrames": "All Frames",
+    "filters": "Filters",
+    "byApplication": "By Application",
+    "byTag": "By Tag",
+    "byImportance": "By Importance",
+    "activityReport": "Activity Report",
+    "focusReport": "Focus Report",
+    "exportData": "Export Data",
+    "currentScore": "Current Score",
+    "weeklyTrend": "Weekly Trend",
+    "focusSessions": "Focus Sessions",
+    "interruptions": "Interruptions",
+    "timeline": "Timeline",
+    "eventLog": "Event Log",
+    "policies": "Policies",
+    "commands": "Commands",
+    "executionHistory": "Execution History",
+    "currentStatus": "Current Status",
+    "updateHistory": "Update History",
+    "general": "General",
+    "notifications": "Notifications",
+    "privacy": "Privacy",
+    "schedule": "Schedule",
+    "aiProvider": "AI Provider",
+    "about": "About",
+    "dataControls": "Data Controls",
+    "consent": "Consent",
+    "dataExport": "Data Export",
+    "recentSearches": "Recent Searches",
+    "browseTags": "Browse Tags"
   }
 }

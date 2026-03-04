@@ -6,7 +6,7 @@ export default function Updates() {
   const { t } = useTranslation()
 
   return (
-    <div className="space-y-6">
+    <div className="h-full overflow-y-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('updates.title')}</h1>
       </div>

@@ -5,6 +5,19 @@ use tauri::command;
 use crate::setup::AppState;
 use oneshim_web::update_control::UpdateAction;
 
+/// Recursively merge `patch` into `base`.
+/// Objects are merged key-by-key; all other values are replaced.
+fn deep_merge(base: &mut serde_json::Value, patch: serde_json::Value) {
+    match (base.as_object_mut(), patch) {
+        (Some(base_obj), serde_json::Value::Object(patch_obj)) => {
+            for (k, v) in patch_obj {
+                deep_merge(base_obj.entry(k).or_insert(serde_json::Value::Null), v);
+            }
+        }
+        (_, patch) => *base = patch,
+    }
+}
+
 /// 시스템 메트릭 응답
 #[derive(Serialize)]
 pub struct MetricsResponse {
@@ -55,14 +68,59 @@ pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_jso
     serde_json::to_value(&config).map_err(|e| e.to_string())
 }
 
-/// 설정 업데이트 — 전체 AppConfig JSON을 받아서 저장
+/// WebView에서 수정 가능한 설정 필드 — 화이트리스트 모델
+///
+/// 허용: monitoring, capture, notification, web, schedule, telemetry, privacy, update, language, theme
+/// 그 외 모든 키 거부 (sandbox, ai_provider, file_access, server 등)
 #[command]
 pub async fn update_setting(
     config_json: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let new_config: oneshim_core::config::AppConfig =
+    let patch: serde_json::Value =
         serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+
+    let patch_obj = patch.as_object().ok_or("expected JSON object")?;
+
+    // Allowlist: only these top-level keys may be modified from the WebView
+    const ALLOWED_KEYS: &[&str] = &[
+        "monitoring",
+        "capture",
+        "notification",
+        "web",
+        "schedule",
+        "telemetry",
+        "privacy",
+        "update",
+        "language",
+        "theme",
+    ];
+
+    for key in patch_obj.keys() {
+        if !ALLOWED_KEYS.contains(&key.as_str()) {
+            return Err(format!(
+                "modifying '{}' from the WebView is not permitted; allowed: {}",
+                key,
+                ALLOWED_KEYS.join(", "),
+            ));
+        }
+    }
+
+    // Deep-merge allowed keys into current config.
+    // This preserves existing sub-keys that the patch does not mention,
+    // preventing silent resets to struct defaults (e.g. privacy.pii_filter_level).
+    let current = state.config_manager.get();
+    let mut current_val =
+        serde_json::to_value(&current).map_err(|e| e.to_string())?;
+
+    if let (Some(base), Some(patch)) = (current_val.as_object_mut(), patch.as_object()) {
+        for (k, v) in patch {
+            deep_merge(base.entry(k.clone()).or_insert(serde_json::Value::Null), v.clone());
+        }
+    }
+
+    let new_config: oneshim_core::config::AppConfig =
+        serde_json::from_value(current_val).map_err(|e| e.to_string())?;
     state
         .config_manager
         .update(new_config)
