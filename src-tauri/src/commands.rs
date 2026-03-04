@@ -5,6 +5,19 @@ use tauri::command;
 use crate::setup::AppState;
 use oneshim_web::update_control::UpdateAction;
 
+/// Recursively merge `patch` into `base`.
+/// Objects are merged key-by-key; all other values are replaced.
+fn deep_merge(base: &mut serde_json::Value, patch: serde_json::Value) {
+    match (base.as_object_mut(), patch) {
+        (Some(base_obj), serde_json::Value::Object(patch_obj)) => {
+            for (k, v) in patch_obj {
+                deep_merge(base_obj.entry(k).or_insert(serde_json::Value::Null), v);
+            }
+        }
+        (_, patch) => *base = patch,
+    }
+}
+
 /// 시스템 메트릭 응답
 #[derive(Serialize)]
 pub struct MetricsResponse {
@@ -93,14 +106,16 @@ pub async fn update_setting(
         }
     }
 
-    // Merge only allowed keys into current config
+    // Deep-merge allowed keys into current config.
+    // This preserves existing sub-keys that the patch does not mention,
+    // preventing silent resets to struct defaults (e.g. privacy.pii_filter_level).
     let current = state.config_manager.get();
     let mut current_val =
         serde_json::to_value(&current).map_err(|e| e.to_string())?;
 
     if let (Some(base), Some(patch)) = (current_val.as_object_mut(), patch.as_object()) {
         for (k, v) in patch {
-            base.insert(k.clone(), v.clone());
+            deep_merge(base.entry(k.clone()).or_insert(serde_json::Value::Null), v.clone());
         }
     }
 

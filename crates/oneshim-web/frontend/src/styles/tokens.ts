@@ -116,7 +116,6 @@ export const layout = {
     iconSize: 'w-5 h-5',
     iconDefault: 'text-slate-400 dark:text-slate-500',
     iconActive: 'text-teal-600 dark:text-teal-400',
-    iconHover: 'text-slate-600 dark:text-slate-300',
     indicator: 'bg-teal-500',
     tooltip: 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 text-xs px-2 py-1 rounded shadow-lg',
   },
