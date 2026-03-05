@@ -44,6 +44,7 @@ import {
   ScheduleSettings,
   ToggleRow,
 } from './settingSections'
+import LanguageSelector from '../components/LanguageSelector'
 
 const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
   {
@@ -541,7 +542,10 @@ export default function Settings() {
   return (
     <div className="h-full overflow-y-auto p-6 space-y-6">
       {/* UI note */}
-      <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
+        <LanguageSelector />
+      </div>
 
       {/* UI note */}
       {saveMessage && (

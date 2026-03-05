@@ -144,7 +144,7 @@ test.describe('Dashboard', () => {
   })
 
   test('should display activity heatmap', async ({ page }) => {
-    await expect(page.getByText(activityHeatmapName)).toBeVisible()
+    await expect(page.getByRole('heading', { name: activityHeatmapName })).toBeVisible()
   })
 
   test('should display system status section', async ({ page }) => {

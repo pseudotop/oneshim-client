@@ -118,7 +118,7 @@ test.describe('Search', () => {
   test('should perform search', async ({ page }) => {
     const searchInput = page.getByPlaceholder(searchPlaceholderName)
     await searchInput.fill('test')
-    await page.getByRole('button', { name: searchButtonName }).click()
+    await page.locator('form').getByRole('button', { name: searchButtonName }).click()
 
     await expect(page.getByText(resultsLabelName)).toBeVisible()
   })
@@ -127,7 +127,7 @@ test.describe('Search', () => {
     const searchInput = page.getByPlaceholder(searchPlaceholderName)
     await searchInput.fill('test')
     await page.getByRole('button', { name: framesFilterName }).click()
-    await page.getByRole('button', { name: searchButtonName }).click()
+    await page.locator('form').getByRole('button', { name: searchButtonName }).click()
 
     await expect(page.getByText(screenshotBadgeName).first()).toBeVisible()
   })
@@ -146,7 +146,7 @@ test.describe('Search', () => {
   test('should display pagination when results exist', async ({ page }) => {
     const searchInput = page.getByPlaceholder(searchPlaceholderName)
     await searchInput.fill('test')
-    await page.getByRole('button', { name: searchButtonName }).click()
+    await page.locator('form').getByRole('button', { name: searchButtonName }).click()
 
     await expect(page.getByRole('button', { name: prevPageName })).toBeVisible()
     await expect(page.getByRole('button', { name: nextPageName })).toBeVisible()
