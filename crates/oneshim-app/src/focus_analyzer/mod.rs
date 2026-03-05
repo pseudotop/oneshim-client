@@ -77,7 +77,7 @@ impl FocusAnalyzer {
             }
 
             debug!(
-                "앱 전환: {:?} ({:?}) → {} ({:?})",
+                "app switch: {:?} ({:?}) -> {} ({:?})",
                 prev_app, prev_category, new_app, new_category
             );
 
@@ -180,7 +180,7 @@ impl FocusAnalyzer {
                     category = ?prev_cat,
                     duration_secs,
                     relevance = score,
-                    "앱 relevance update"
+                    "app relevance updated"
                 );
             }
 
@@ -241,7 +241,7 @@ impl FocusAnalyzer {
         }
 
         debug!(
-            "집중도 분석: score={:.2}, deep_work={}초, comm={}초, interruptions={}",
+            "focus analysis: score={:.2}, deep_work={}s, comm={}s, interruptions={}",
             focus_score,
             metrics.deep_work_secs,
             metrics.communication_secs,

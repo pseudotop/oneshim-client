@@ -165,7 +165,7 @@ impl ProcessMonitor for ProcessTracker {
         }
 
         debug!(
-            "상세 프로세스 {}개 collect (foreground={:?})",
+            "detailed process list collected: count={}, foreground={:?}",
             result.len(),
             foreground_pid
         );

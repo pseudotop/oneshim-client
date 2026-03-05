@@ -160,7 +160,7 @@ impl NotificationManager {
         } else {
             state.last_high_usage_notification = Some(now);
             info!(
-                "고사용량 notification 발송: CPU {:.1}%, Memory {:.1}%",
+                "high-usage notification sent: CPU {:.1}%, memory {:.1}%",
                 cpu_percent, memory_percent
             );
         }

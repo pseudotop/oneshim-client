@@ -254,7 +254,7 @@ impl StorageService for SqliteStorage {
 
         if deleted > 0 {
             info!(
-                "보존 policy: {deleted}개 event delete (>{} 일)",
+                "retention policy: deleted {deleted} events (>{} days)",
                 self.retention_days
             );
         }

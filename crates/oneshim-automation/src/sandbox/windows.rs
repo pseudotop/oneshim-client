@@ -98,7 +98,7 @@ impl Sandbox for WindowsSandbox {
             max_processes = job_limits.max_processes,
             disable_admin = token_restrictions.disable_admin_sid,
             action = ?action,
-            "Windows 샌드박스 execution"
+            "Windows sandbox execution"
         );
 
         let result = tokio::task::spawn_blocking(move || {

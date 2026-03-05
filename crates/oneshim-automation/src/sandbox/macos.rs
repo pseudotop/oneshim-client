@@ -111,7 +111,7 @@ impl Sandbox for MacOsSandbox {
         tracing::debug!(
             profile = %config.profile as u8,
             action = ?action,
-            "macOS Seatbelt 샌드박스 execution"
+            "macOS Seatbelt sandbox execution"
         );
 
         apply_resource_limits(config)?;
@@ -119,7 +119,7 @@ impl Sandbox for MacOsSandbox {
         tracing::info!(
             action = ?action,
             sbpl_len = profile.len(),
-            "macOS 샌드박스 within 액션 execution completed"
+            "macOS sandboxed action execution completed"
         );
 
         Ok(())
@@ -164,14 +164,14 @@ fn apply_resource_limits(config: &SandboxConfig) -> Result<(), CoreError> {
     if config.max_memory_bytes > 0 {
         tracing::debug!(
             max_memory = config.max_memory_bytes,
-            "메모리 제한 설정 (macOS)"
+            "configuring memory limit (macOS)"
         );
     }
 
     if config.max_cpu_time_ms > 0 {
         tracing::debug!(
             max_cpu_ms = config.max_cpu_time_ms,
-            "CPU 시간 제한 설정 (macOS)"
+            "configuring CPU time limit (macOS)"
         );
     }
 

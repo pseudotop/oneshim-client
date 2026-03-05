@@ -147,7 +147,7 @@ impl FocusAnalyzer {
         } else {
             let _ = self.storage.mark_suggestion_shown(suggestion_id);
             info!(
-                "context 복원 suggestion 발송: {} ({}분 전 중단)",
+                "context restore suggestion sent: {} (interrupted {} minutes ago)",
                 app, duration_mins
             );
         }
@@ -189,7 +189,7 @@ impl FocusAnalyzer {
         info!(
             confidence = signal.confidence,
             description = %signal.description,
-            "플레이북 패턴 suggestion 발송"
+            "playbook pattern suggestion sent"
         );
         self.update_cooldown("pattern_detected").await;
     }

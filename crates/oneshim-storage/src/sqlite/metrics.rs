@@ -141,7 +141,7 @@ impl MetricsStorage for SqliteStorage {
         .map_err(|e| CoreError::Internal(format!("Failed to save system metrics: {e}")))?;
 
         debug!(
-            "시스템 메트릭 save: CPU {:.1}%, 메모리 {}MB",
+            "system metrics saved: CPU {:.1}%, memory {}MB",
             metrics.cpu_usage,
             metrics.memory_used / 1_048_576
         );
@@ -292,7 +292,7 @@ impl MetricsStorage for SqliteStorage {
         .map_err(|e| CoreError::Internal(format!("Failed to save process snapshot: {e}")))?;
 
         debug!(
-            "프로세스 스냅샷 save: {}개 프로세스",
+            "process snapshot saved: {} processes",
             snapshot.processes.len()
         );
         Ok(())

@@ -92,7 +92,7 @@ impl SqliteStorage {
 
         let frame_id = conn.last_insert_rowid();
         debug!(
-            "frame 메타데이터 save: id={}, app={}, file={}",
+            "frame metadata saved: id={}, app={}, file={}",
             frame_id,
             metadata.app_name,
             file_path.unwrap_or("-")

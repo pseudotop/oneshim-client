@@ -112,7 +112,7 @@ impl IntentResolver {
                             info!(
                                 text,
                                 elapsed_ms = start.elapsed().as_millis(),
-                                "텍스트 발견"
+                                "text found"
                             );
                             return Ok((true, elems.first().cloned()));
                         }

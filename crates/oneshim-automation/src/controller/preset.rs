@@ -22,7 +22,7 @@ impl AutomationController {
         tracing::info!(
             preset_id = %preset.id,
             total_steps,
-            "워크플로우 프리셋 execution started"
+            "workflow preset execution started"
         );
 
         for (idx, step) in preset.steps.iter().enumerate() {
@@ -80,7 +80,7 @@ impl AutomationController {
                             tracing::warn!(
                                 step = idx,
                                 name = %step.name,
-                                "워크플로우 단계 failure → 중단"
+                                "workflow step failed -> stopping"
                             );
                             break;
                         }
@@ -112,7 +112,7 @@ impl AutomationController {
                             step = idx,
                             name = %step.name,
                             error = %e,
-                            "워크플로우 단계 error → 중단"
+                            "workflow step error -> stopping"
                         );
                         break;
                     }
@@ -125,12 +125,12 @@ impl AutomationController {
 
         let message = if all_success {
             format!(
-                "프리셋 '{}' success ({}/{}단계, {}ms)",
+                "preset '{}' succeeded ({}/{} steps, {}ms)",
                 preset.name, steps_executed, total_steps, total_elapsed
             )
         } else {
             format!(
-                "프리셋 '{}' 일부 failure ({}/{}단계, {}ms)",
+                "preset '{}' partially failed ({}/{} steps, {}ms)",
                 preset.name, steps_executed, total_steps, total_elapsed
             )
         };
@@ -140,7 +140,7 @@ impl AutomationController {
             success = all_success,
             steps_executed,
             total_elapsed_ms = total_elapsed,
-            "워크플로우 프리셋 execution completed"
+            "workflow preset execution completed"
         );
 
         Ok(WorkflowResult {

@@ -98,7 +98,7 @@ impl MemoryTracker {
 
         if analysis.leak_suspected {
             warn!(
-                "⚠️ 메모리 누수 의심: {:.2}KB/s 증가율",
+                "possible memory leak detected: growth rate {:.2}KB/s",
                 analysis.growth_rate_bytes_per_sec / 1024.0
             );
         }

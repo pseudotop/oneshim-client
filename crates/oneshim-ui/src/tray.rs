@@ -84,6 +84,8 @@ impl TrayManager {
             menu::{Menu, MenuEvent, MenuItem},
             TrayIconBuilder,
         };
+        #[cfg(not(target_os = "macos"))]
+        use tray_icon::menu::PredefinedMenuItem;
 
         info!("system tray initialize ( )");
 

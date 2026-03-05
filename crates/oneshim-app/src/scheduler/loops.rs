@@ -621,7 +621,7 @@ impl Scheduler {
         info!(
             access_mode = ?self.config.ai_access_mode,
             platform_sync_enabled = egress_policy.is_enabled(),
-            "플랫폼 egress policy 적용"
+            "platform egress policy applied"
         );
 
         self.initialize_session(&session_id).await;
