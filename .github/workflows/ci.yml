@@ -330,7 +330,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Try to download frontend dist artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: frontend-dist-bundle
@@ -533,7 +533,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Try to download frontend dist artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: frontend-dist-bundle
