@@ -29,7 +29,7 @@ db-urls = ["https://github.com/RustSec/advisory-db"]
 # (GTK3 bindings, fxhash) we cannot control until upstream migrates
 unmaintained = "none"
 unsound = "all"
-yanked = "all"
+yanked = "deny"
 ignore = []
 
 [bans]
