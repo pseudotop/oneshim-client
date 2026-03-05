@@ -25,10 +25,11 @@ private = { ignore = true }
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db"]
-# "none" — skip unmaintained checks; all flagged crates are Tauri transitive deps
-# (GTK3 bindings, fxhash) we cannot control until upstream migrates
+# GTK3 bindings (Tauri transitive deps) trigger unmaintained + unsound advisories
+# (RUSTSEC-2024-0411..0418, 2025-0057, 2024-0429) we cannot control upstream
+# "none"/"workspace" — skip transitive dep checks, only guard our own crates
 unmaintained = "none"
-unsound = "all"
+unsound = "workspace"
 yanked = "deny"
 ignore = []
 
