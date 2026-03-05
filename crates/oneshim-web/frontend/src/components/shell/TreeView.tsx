@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
-import { layout, interaction } from '../../styles/tokens'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
+import { interaction, layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 export interface TreeNode {
@@ -20,12 +20,12 @@ interface TreeViewProps {
 
 export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: TreeViewProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => {
-    return new Set(nodes.filter(n => n.children?.length).map(n => n.id))
+    return new Set(nodes.filter((n) => n.children?.length).map((n) => n.id))
   })
   const treeRef = useRef<HTMLDivElement>(null)
 
   const toggleExpand = useCallback((id: string) => {
-    setExpanded(prev => {
+    setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -37,84 +37,88 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
   const updateRovingTabIndex = useCallback((focusedEl: HTMLElement) => {
     if (!treeRef.current) return
     const items = treeRef.current.querySelectorAll<HTMLElement>('[role="treeitem"]')
-    items.forEach(item => {
+    items.forEach((item) => {
       item.tabIndex = item === focusedEl ? 0 : -1
     })
   }, [])
 
   // Arrow-key navigation for ARIA tree pattern (root level only)
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!treeRef.current) return
-    const items = Array.from(treeRef.current.querySelectorAll<HTMLElement>('[role="treeitem"]'))
-    const currentIndex = items.indexOf(e.target as HTMLElement)
-    if (currentIndex === -1) return
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!treeRef.current) return
+      const items = Array.from(treeRef.current.querySelectorAll<HTMLElement>('[role="treeitem"]'))
+      const currentIndex = items.indexOf(e.target as HTMLElement)
+      if (currentIndex === -1) return
 
-    const focusAndTrack = (el: HTMLElement | undefined) => {
-      if (!el) return
-      el.focus()
-      updateRovingTabIndex(el)
-    }
+      const focusAndTrack = (el: HTMLElement | undefined) => {
+        if (!el) return
+        el.focus()
+        updateRovingTabIndex(el)
+      }
 
-    switch (e.key) {
-      case 'ArrowDown': {
-        e.preventDefault()
-        focusAndTrack(items[currentIndex + 1])
-        break
-      }
-      case 'ArrowUp': {
-        e.preventDefault()
-        focusAndTrack(items[currentIndex - 1])
-        break
-      }
-      case 'ArrowRight': {
-        e.preventDefault()
-        const btn = items[currentIndex]
-        const nodeId = btn.dataset.nodeId
-        if (nodeId && !expanded.has(nodeId)) {
-          toggleExpand(nodeId)
-        } else {
+      switch (e.key) {
+        case 'ArrowDown': {
+          e.preventDefault()
           focusAndTrack(items[currentIndex + 1])
+          break
         }
-        break
-      }
-      case 'ArrowLeft': {
-        e.preventDefault()
-        const btn = items[currentIndex]
-        const nodeId = btn.dataset.nodeId
-        if (nodeId && expanded.has(nodeId)) {
-          // Open parent node: collapse it
-          toggleExpand(nodeId)
-        } else {
-          // Leaf or closed parent: move focus to parent treeitem
-          const currentLevel = parseInt(btn.getAttribute('aria-level') || '1', 10)
-          if (currentLevel > 1) {
-            // Walk backwards to find the first item at a shallower level (the parent)
-            for (let i = currentIndex - 1; i >= 0; i--) {
-              const level = parseInt(items[i].getAttribute('aria-level') || '1', 10)
-              if (level < currentLevel) {
-                focusAndTrack(items[i])
-                break
+        case 'ArrowUp': {
+          e.preventDefault()
+          focusAndTrack(items[currentIndex - 1])
+          break
+        }
+        case 'ArrowRight': {
+          e.preventDefault()
+          const btn = items[currentIndex]
+          const nodeId = btn.dataset.nodeId
+          if (nodeId && !expanded.has(nodeId)) {
+            toggleExpand(nodeId)
+          } else {
+            focusAndTrack(items[currentIndex + 1])
+          }
+          break
+        }
+        case 'ArrowLeft': {
+          e.preventDefault()
+          const btn = items[currentIndex]
+          const nodeId = btn.dataset.nodeId
+          if (nodeId && expanded.has(nodeId)) {
+            // Open parent node: collapse it
+            toggleExpand(nodeId)
+          } else {
+            // Leaf or closed parent: move focus to parent treeitem
+            const currentLevel = parseInt(btn.getAttribute('aria-level') || '1', 10)
+            if (currentLevel > 1) {
+              // Walk backwards to find the first item at a shallower level (the parent)
+              for (let i = currentIndex - 1; i >= 0; i--) {
+                const level = parseInt(items[i].getAttribute('aria-level') || '1', 10)
+                if (level < currentLevel) {
+                  focusAndTrack(items[i])
+                  break
+                }
               }
             }
+            // currentLevel === 1: no-op per APG Tree Pattern — focus stays
           }
-          // currentLevel === 1: no-op per APG Tree Pattern — focus stays
+          break
         }
-        break
+        case 'Home': {
+          e.preventDefault()
+          focusAndTrack(items[0])
+          break
+        }
+        case 'End': {
+          e.preventDefault()
+          focusAndTrack(items[items.length - 1])
+          break
+        }
       }
-      case 'Home': {
-        e.preventDefault()
-        focusAndTrack(items[0])
-        break
-      }
-      case 'End': {
-        e.preventDefault()
-        focusAndTrack(items[items.length - 1])
-        break
-      }
-    }
-  }, [expanded, toggleExpand, updateRovingTabIndex])
+    },
+    [expanded, toggleExpand, updateRovingTabIndex],
+  )
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: role="tree" is interactive; onKeyDown only at root depth for roving tabindex
     <div
       ref={depth === 0 ? treeRef : undefined}
       className="text-sm"
@@ -129,6 +133,7 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
         return (
           <div key={node.id} role="none">
             <button
+              type="button"
               role="treeitem"
               aria-expanded={hasChildren ? isExpanded : undefined}
               aria-selected={isSelected}
@@ -140,7 +145,7 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
                 onSelect?.(node.id)
               }}
               className={cn(
-                'w-full flex items-center gap-1.5 py-1 px-2 rounded-sm transition-colors',
+                'flex w-full items-center gap-1.5 rounded-sm px-2 py-1 transition-colors',
                 isSelected ? layout.sidePanel.itemActive : layout.sidePanel.itemBg,
                 layout.sidePanel.itemText,
                 interaction.focusRing,
@@ -148,23 +153,22 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
               style={{ paddingLeft: `${depth * 12 + 8}px` }}
             >
               {hasChildren ? (
-                isExpanded ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" /> : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
+                isExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-content-muted" aria-hidden="true" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-content-muted" aria-hidden="true" />
+                )
               ) : (
                 <span className="w-3.5 flex-shrink-0" />
               )}
               {node.icon && <span className="flex-shrink-0">{node.icon}</span>}
-              <span className="truncate flex-1 text-left">{node.label}</span>
+              <span className="flex-1 truncate text-left">{node.label}</span>
               {node.count !== undefined && (
-                <span className="text-[10px] text-slate-400 dark:text-slate-600 tabular-nums">{node.count}</span>
+                <span className="text-[10px] text-content-muted tabular-nums">{node.count}</span>
               )}
             </button>
             {hasChildren && isExpanded && (
-              <TreeView
-                nodes={node.children!}
-                selectedId={selectedId}
-                onSelect={onSelect}
-                depth={depth + 1}
-              />
+              <TreeView nodes={node.children ?? []} selectedId={selectedId} onSelect={onSelect} depth={depth + 1} />
             )}
           </div>
         )

@@ -1,26 +1,28 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Bot, CheckCircle2, ChevronDown, ChevronUp, Clock, XCircle } from 'lucide-react'
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { Bot, ChevronDown, ChevronUp, CheckCircle2, XCircle, Clock } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
-import { Button } from '../components/ui/Button'
-import { Badge } from '../components/ui/Badge'
-import { Spinner } from '../components/ui/Spinner'
-import { EmptyState, Select } from '../components/ui'
 import {
-  fetchAutomationStatus,
-  fetchAutomationStats,
-  fetchAuditLogs,
-  fetchPolicies,
-  fetchAutomationContracts,
-  fetchPresets,
-  runPreset,
-  deletePreset,
   type AuditEntry,
-  type WorkflowPreset,
+  deletePreset,
+  fetchAuditLogs,
+  fetchAutomationContracts,
+  fetchAutomationStats,
+  fetchAutomationStatus,
+  fetchPolicies,
+  fetchPresets,
   type PresetRunResult,
+  runPreset,
+  type WorkflowPreset,
 } from '../api/client'
+import { EmptyState, Select } from '../components/ui'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
+import { Spinner } from '../components/ui/Spinner'
+import { colors, interaction, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 
 type PresetTab = 'Productivity' | 'AppManagement' | 'Workflow' | 'Custom'
 
@@ -38,10 +40,7 @@ const sourceLabelByValue: Record<string, string> = {
   platform: 'automation.sourcePlatform',
 }
 
-const sourceBadgeColorByValue: Record<
-  string,
-  'default' | 'info' | 'warning' | 'success' | 'primary'
-> = {
+const sourceBadgeColorByValue: Record<string, 'default' | 'info' | 'warning' | 'success' | 'primary'> = {
   local: 'default',
   remote: 'info',
   'local-fallback': 'warning',
@@ -134,32 +133,57 @@ function Automation() {
     }
   }
 
-  const getFeedback = (presetId: string): RunFeedback | undefined =>
-    runFeedbacks.find((f) => f.presetId === presetId)
+  const getFeedback = (presetId: string): RunFeedback | undefined => runFeedbacks.find((f) => f.presetId === presetId)
 
   const statusBadge = (s: string) => {
     switch (s) {
-      case 'Completed': return <Badge color="success" size="sm">{t('automation.successful')}</Badge>
-      case 'Failed': return <Badge color="error" size="sm">{t('automation.failed')}</Badge>
-      case 'Denied': return <Badge color="warning" size="sm">{t('automation.denied')}</Badge>
-      case 'Timeout': return <Badge color="purple" size="sm">{t('automation.timeout')}</Badge>
-      case 'Started': return <Badge color="info" size="sm">{t('automation.started')}</Badge>
-      default: return <Badge color="default" size="sm">{s}</Badge>
+      case 'Completed':
+        return (
+          <Badge color="success" size="sm">
+            {t('automation.successful')}
+          </Badge>
+        )
+      case 'Failed':
+        return (
+          <Badge color="error" size="sm">
+            {t('automation.failed')}
+          </Badge>
+        )
+      case 'Denied':
+        return (
+          <Badge color="warning" size="sm">
+            {t('automation.denied')}
+          </Badge>
+        )
+      case 'Timeout':
+        return (
+          <Badge color="purple" size="sm">
+            {t('automation.timeout')}
+          </Badge>
+        )
+      case 'Started':
+        return (
+          <Badge color="info" size="sm">
+            {t('automation.started')}
+          </Badge>
+        )
+      default:
+        return (
+          <Badge color="default" size="sm">
+            {s}
+          </Badge>
+        )
     }
   }
 
   const filteredPresets = (presetsData?.presets ?? []).filter((p: WorkflowPreset) => p.category === presetTab)
-  const ocrFallbackActive =
-    status?.ocr_source === 'local-fallback' || Boolean(status?.ocr_fallback_reason)
-  const llmFallbackActive =
-    status?.llm_source === 'local-fallback' || Boolean(status?.llm_fallback_reason)
+  const ocrFallbackActive = status?.ocr_source === 'local-fallback' || Boolean(status?.ocr_fallback_reason)
+  const llmFallbackActive = status?.llm_source === 'local-fallback' || Boolean(status?.llm_fallback_reason)
   const hasFallbackDetails = ocrFallbackActive || llmFallbackActive
 
-  const sourceLabel = (source?: string | null) =>
-    t(sourceLabelByValue[source ?? ''] ?? 'automation.sourceUnknown')
+  const sourceLabel = (source?: string | null) => t(sourceLabelByValue[source ?? ''] ?? 'automation.sourceUnknown')
 
-  const sourceBadgeColor = (source?: string | null) =>
-    sourceBadgeColorByValue[source ?? ''] ?? 'default'
+  const sourceBadgeColor = (source?: string | null) => sourceBadgeColorByValue[source ?? ''] ?? 'default'
 
   if (statusLoading) {
     return (
@@ -172,7 +196,7 @@ function Automation() {
   if ((auditLogs?.length ?? 0) === 0 && (stats?.total_executions ?? 0) === 0 && !status?.enabled) {
     return (
       <EmptyState
-        icon={<Bot className="w-8 h-8" />}
+        icon={<Bot className="h-8 w-8" />}
         title={t('emptyState.automation.title')}
         description={t('emptyState.automation.description')}
         action={{ label: t('emptyState.automation.action'), onClick: () => navigate('/settings') }}
@@ -181,16 +205,14 @@ function Automation() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-        {t('automation.title')}
-      </h1>
+    <div className="h-full space-y-6 overflow-y-auto p-6">
+      <h1 className={cn(typography.h1, colors.text.primary)}>{t('automation.title')}</h1>
 
       {/* UI note */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardContent>
-            <div className="text-sm text-slate-500 dark:text-slate-400">{t('automation.status')}</div>
+            <div className="text-content-secondary text-sm">{t('automation.status')}</div>
             <div className="mt-1">
               {status?.enabled ? (
                 <Badge color="success">{t('automation.enabled')}</Badge>
@@ -202,20 +224,16 @@ function Automation() {
         </Card>
         <Card>
           <CardContent>
-            <div className="text-sm text-slate-500 dark:text-slate-400">{t('automation.sandbox')}</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
-              {status?.sandbox_profile ?? '-'}
-            </div>
+            <div className="text-content-secondary text-sm">{t('automation.sandbox')}</div>
+            <div className="mt-1 font-semibold text-content text-lg">{status?.sandbox_profile ?? '-'}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent>
-            <div className="text-sm text-slate-500 dark:text-slate-400">{t('automation.ocrProvider')}</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
-              {status?.ocr_provider ?? '-'}
-            </div>
+            <div className="text-content-secondary text-sm">{t('automation.ocrProvider')}</div>
+            <div className="mt-1 font-semibold text-content text-lg">{status?.ocr_provider ?? '-'}</div>
             <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400">{t('automation.providerSource')}</span>
+              <span className="text-content-secondary text-xs">{t('automation.providerSource')}</span>
               <Badge color={sourceBadgeColor(status?.ocr_source)} size="sm">
                 {sourceLabel(status?.ocr_source)}
               </Badge>
@@ -224,12 +242,10 @@ function Automation() {
         </Card>
         <Card>
           <CardContent>
-            <div className="text-sm text-slate-500 dark:text-slate-400">{t('automation.llmProvider')}</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
-              {status?.llm_provider ?? '-'}
-            </div>
+            <div className="text-content-secondary text-sm">{t('automation.llmProvider')}</div>
+            <div className="mt-1 font-semibold text-content text-lg">{status?.llm_provider ?? '-'}</div>
             <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400">{t('automation.providerSource')}</span>
+              <span className="text-content-secondary text-xs">{t('automation.providerSource')}</span>
               <Badge color={sourceBadgeColor(status?.llm_source)} size="sm">
                 {sourceLabel(status?.llm_source)}
               </Badge>
@@ -238,10 +254,8 @@ function Automation() {
         </Card>
         <Card>
           <CardContent>
-            <div className="text-sm text-slate-500 dark:text-slate-400">{t('automation.pendingAudit')}</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
-              {status?.pending_audit_entries ?? 0}
-            </div>
+            <div className="text-content-secondary text-sm">{t('automation.pendingAudit')}</div>
+            <div className="mt-1 font-semibold text-content text-lg">{status?.pending_audit_entries ?? 0}</div>
           </CardContent>
         </Card>
       </div>
@@ -256,26 +270,28 @@ function Automation() {
               {ocrFallbackActive && (
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-900 dark:text-white">{t('automation.ocrProvider')}</span>
+                    <span className="font-medium text-content">{t('automation.ocrProvider')}</span>
                     <Badge color={sourceBadgeColor(status?.ocr_source)} size="sm">
                       {sourceLabel(status?.ocr_source)}
                     </Badge>
                   </div>
-                  <div className="mt-1 text-slate-600 dark:text-slate-300">
-                    {t('automation.fallbackReason')}: {status?.ocr_fallback_reason ?? t('automation.fallbackReasonUnavailable')}
+                  <div className="mt-1 text-content-secondary">
+                    {t('automation.fallbackReason')}:{' '}
+                    {status?.ocr_fallback_reason ?? t('automation.fallbackReasonUnavailable')}
                   </div>
                 </div>
               )}
               {llmFallbackActive && (
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-900 dark:text-white">{t('automation.llmProvider')}</span>
+                    <span className="font-medium text-content">{t('automation.llmProvider')}</span>
                     <Badge color={sourceBadgeColor(status?.llm_source)} size="sm">
                       {sourceLabel(status?.llm_source)}
                     </Badge>
                   </div>
-                  <div className="mt-1 text-slate-600 dark:text-slate-300">
-                    {t('automation.fallbackReason')}: {status?.llm_fallback_reason ?? t('automation.fallbackReasonUnavailable')}
+                  <div className="mt-1 text-content-secondary">
+                    {t('automation.fallbackReason')}:{' '}
+                    {status?.llm_fallback_reason ?? t('automation.fallbackReasonUnavailable')}
                   </div>
                 </div>
               )}
@@ -290,78 +306,83 @@ function Automation() {
           <CardTitle>{t('automation.presets')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex space-x-2 mb-4">
+          <div className="mb-4 flex space-x-2">
             {(['Productivity', 'AppManagement', 'Workflow', 'Custom'] as PresetTab[]).map((tab) => (
               <button
+                type="button"
                 key={tab}
                 onClick={() => setPresetTab(tab)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  presetTab === tab
-                    ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
+                className={cn(
+                  'rounded-md px-3 py-1.5 font-medium text-sm transition-colors',
+                  interaction.focusRing,
+                  presetTab === tab ? 'bg-accent-teal/10 text-accent-teal' : 'text-content-secondary hover:bg-hover',
+                )}
               >
                 {t(`automation.category.${tab}`)}
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {filteredPresets.map((preset: WorkflowPreset) => {
               const feedback = getFeedback(preset.id)
               const isExpanded = expandedPreset === preset.id
               return (
                 <div
                   key={preset.id}
-                  className={`border rounded-lg p-4 flex flex-col transition-colors ${
+                  className={`flex flex-col rounded-lg border p-4 transition-colors ${
                     feedback
                       ? feedback.result.success
-                        ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
-                        : 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10'
-                      : 'border-slate-200 dark:border-slate-700'
+                        ? 'border-status-connected bg-semantic-success/10'
+                        : 'border-status-error bg-semantic-error/10'
+                      : 'border-muted'
                   }`}
                 >
                   <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-slate-900 dark:text-white">{preset.name}</h3>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{preset.description}</p>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-medium text-content">{preset.name}</h3>
+                      <p className="mt-1 text-content-secondary text-sm">{preset.description}</p>
                     </div>
-                    <div className="flex items-center space-x-1 ml-2 shrink-0">
+                    <div className="ml-2 flex shrink-0 items-center space-x-1">
                       {preset.platform && (
-                        <Badge color="default" size="sm">{preset.platform}</Badge>
+                        <Badge color="default" size="sm">
+                          {preset.platform}
+                        </Badge>
                       )}
-                      {preset.builtin && <Badge color="info" size="sm">{t('automation.builtin')}</Badge>}
+                      {preset.builtin && (
+                        <Badge color="info" size="sm">
+                          {t('automation.builtin')}
+                        </Badge>
+                      )}
                     </div>
                   </div>
 
                   {/* UI note */}
                   <button
+                    type="button"
                     onClick={() => setExpandedPreset(isExpanded ? null : preset.id)}
-                    className="mt-2 flex items-center text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  >
-                    <span>{preset.steps.length} {t('automation.steps')}</span>
-                    {preset.steps.length > 0 && (
-                      isExpanded
-                        ? <ChevronUp className="w-3 h-3 ml-1" />
-                        : <ChevronDown className="w-3 h-3 ml-1" />
+                    className={cn(
+                      'mt-2 flex items-center text-content-muted text-xs transition-colors hover:text-content-strong',
+                      interaction.focusRing,
                     )}
+                  >
+                    <span>
+                      {preset.steps.length} {t('automation.steps')}
+                    </span>
+                    {preset.steps.length > 0 &&
+                      (isExpanded ? <ChevronUp className="ml-1 h-3 w-3" /> : <ChevronDown className="ml-1 h-3 w-3" />)}
                   </button>
 
                   {/* UI note */}
                   {isExpanded && preset.steps.length > 0 && (
                     <div className="mt-2 space-y-1">
                       {preset.steps.map((step, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center text-xs text-slate-500 dark:text-slate-400"
-                        >
-                          <span className="w-4 h-4 flex items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-medium mr-2 shrink-0">
+                        <div key={step.name} className="flex items-center text-content-secondary text-xs">
+                          <span className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-hover font-medium text-[10px]">
                             {idx + 1}
                           </span>
                           <span className="truncate">{step.name}</span>
                           {step.delay_ms > 0 && (
-                            <span className="ml-auto text-slate-400 dark:text-slate-600 shrink-0">
-                              +{step.delay_ms}ms
-                            </span>
+                            <span className="ml-auto shrink-0 text-content-muted">+{step.delay_ms}ms</span>
                           )}
                         </div>
                       ))}
@@ -370,27 +391,31 @@ function Automation() {
 
                   {/* UI note */}
                   {feedback && (
-                    <div className={`mt-3 p-2 rounded-md text-xs ${
-                      feedback.result.success
-                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                        : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                    }`}>
+                    <div
+                      className={`mt-3 rounded-md p-2 text-xs ${
+                        feedback.result.success
+                          ? 'bg-semantic-success/20 text-semantic-success'
+                          : 'bg-semantic-error/20 text-semantic-error'
+                      }`}
+                    >
                       <div className="flex items-center">
                         {feedback.result.success ? (
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                          <CheckCircle2 className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                         ) : (
-                          <XCircle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                          <XCircle className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                         )}
-                        <span className="font-medium truncate">{feedback.result.message}</span>
+                        <span className="truncate font-medium">{feedback.result.message}</span>
                       </div>
                       {(feedback.result.steps_executed != null || feedback.result.total_elapsed_ms != null) && (
-                        <div className="flex items-center mt-1 ml-5 space-x-3 text-[11px] opacity-80">
+                        <div className="mt-1 ml-5 flex items-center space-x-3 text-[11px] opacity-80">
                           {feedback.result.steps_executed != null && feedback.result.total_steps != null && (
-                            <span>{feedback.result.steps_executed}/{feedback.result.total_steps} {t('automation.steps')}</span>
+                            <span>
+                              {feedback.result.steps_executed}/{feedback.result.total_steps} {t('automation.steps')}
+                            </span>
                           )}
                           {feedback.result.total_elapsed_ms != null && (
                             <span className="flex items-center">
-                              <Clock className="w-3 h-3 mr-0.5" />
+                              <Clock className="mr-0.5 h-3 w-3" />
                               {feedback.result.total_elapsed_ms}ms
                             </span>
                           )}
@@ -399,7 +424,7 @@ function Automation() {
                     </div>
                   )}
 
-                  <div className="mt-auto pt-3 flex items-center space-x-2">
+                  <div className="mt-auto flex items-center space-x-2 pt-3">
                     <Button
                       variant="primary"
                       size="sm"
@@ -410,11 +435,7 @@ function Automation() {
                       {t('automation.run')}
                     </Button>
                     {!preset.builtin && (
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => deletePresetMutation.mutate(preset.id)}
-                      >
+                      <Button variant="danger" size="sm" onClick={() => deletePresetMutation.mutate(preset.id)}>
                         {t('common.delete')}
                       </Button>
                     )}
@@ -423,7 +444,7 @@ function Automation() {
               )
             })}
             {filteredPresets.length === 0 && (
-              <p className="text-sm text-slate-500 dark:text-slate-400 col-span-full py-4 text-center">
+              <p className="col-span-full py-4 text-center text-content-secondary text-sm">
                 {t('automation.noPresets')}
               </p>
             )}
@@ -437,54 +458,50 @@ function Automation() {
           <CardTitle>{t('automation.statsTitle')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             <div className="text-center">
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats?.total_executions ?? 0}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.totalExecutions')}</div>
+              <div className="font-bold text-2xl text-content">{stats?.total_executions ?? 0}</div>
+              <div className="text-content-secondary text-xs">{t('automation.totalExecutions')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">{stats?.successful ?? 0}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.successful')}</div>
+              <div className="font-bold text-2xl text-accent-teal">{stats?.successful ?? 0}</div>
+              <div className="text-content-secondary text-xs">{t('automation.successful')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-red-600 dark:text-red-400">{stats?.failed ?? 0}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.failed')}</div>
+              <div className="font-bold text-2xl text-accent-red">{stats?.failed ?? 0}</div>
+              <div className="text-content-secondary text-xs">{t('automation.failed')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{stats?.denied ?? 0}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.denied')}</div>
+              <div className="font-bold text-2xl text-accent-orange">{stats?.denied ?? 0}</div>
+              <div className="text-content-secondary text-xs">{t('automation.denied')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats?.timeout ?? 0}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.timeout')}</div>
+              <div className="font-bold text-2xl text-semantic-warning">{stats?.timeout ?? 0}</div>
+              <div className="text-content-secondary text-xs">{t('automation.timeout')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              <div className="font-bold text-2xl text-accent-emerald">
                 {((stats?.success_rate ?? 0) * 100).toFixed(1)}%
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.successRate')}</div>
+              <div className="text-content-secondary text-xs">{t('automation.successRate')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-orange-500 dark:text-orange-400">
+              <div className="font-bold text-2xl text-accent-orange">
                 {((stats?.blocked_rate ?? 0) * 100).toFixed(1)}%
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.blockedRate')}</div>
+              <div className="text-content-secondary text-xs">{t('automation.blockedRate')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                {(stats?.avg_elapsed_ms ?? 0).toFixed(0)}ms
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.avgElapsed')}</div>
+              <div className="font-bold text-2xl text-content">{(stats?.avg_elapsed_ms ?? 0).toFixed(0)}ms</div>
+              <div className="text-content-secondary text-xs">{t('automation.avgElapsed')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                {(stats?.p95_elapsed_ms ?? 0).toFixed(0)}ms
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.p95Elapsed')}</div>
+              <div className="font-bold text-2xl text-content">{(stats?.p95_elapsed_ms ?? 0).toFixed(0)}ms</div>
+              <div className="text-content-secondary text-xs">{t('automation.p95Elapsed')}</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats?.timing_samples ?? 0}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{t('automation.timingSamples')}</div>
+              <div className="font-bold text-2xl text-content">{stats?.timing_samples ?? 0}</div>
+              <div className="text-content-secondary text-xs">{t('automation.timingSamples')}</div>
             </div>
           </div>
         </CardContent>
@@ -511,31 +528,37 @@ function Automation() {
         </CardHeader>
         <CardContent>
           {(auditLogs?.length ?? 0) === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">{t('common.noData')}</p>
+            <p className="py-4 text-center text-content-secondary text-sm">{t('common.noData')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-700">
-                    <th className="text-left py-2 px-2 text-slate-500 dark:text-slate-400 font-medium">{t('automation.time')}</th>
-                    <th className="text-left py-2 px-2 text-slate-500 dark:text-slate-400 font-medium">{t('automation.commandId')}</th>
-                    <th className="text-left py-2 px-2 text-slate-500 dark:text-slate-400 font-medium">{t('automation.actionType')}</th>
-                    <th className="text-left py-2 px-2 text-slate-500 dark:text-slate-400 font-medium">{t('automation.statusLabel')}</th>
-                    <th className="text-right py-2 px-2 text-slate-500 dark:text-slate-400 font-medium">{t('automation.elapsed')}</th>
+                  <tr className="border-muted border-b">
+                    <th className="px-2 py-2 text-left font-medium text-content-secondary">{t('automation.time')}</th>
+                    <th className="px-2 py-2 text-left font-medium text-content-secondary">
+                      {t('automation.commandId')}
+                    </th>
+                    <th className="px-2 py-2 text-left font-medium text-content-secondary">
+                      {t('automation.actionType')}
+                    </th>
+                    <th className="px-2 py-2 text-left font-medium text-content-secondary">
+                      {t('automation.statusLabel')}
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium text-content-secondary">
+                      {t('automation.elapsed')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {(auditLogs ?? []).map((entry: AuditEntry) => (
-                    <tr key={entry.entry_id} className="border-b border-slate-100 dark:border-slate-800">
-                      <td className="py-2 px-2 text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                    <tr key={entry.entry_id} className="border-muted border-b">
+                      <td className="whitespace-nowrap px-2 py-2 text-content-strong">
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </td>
-                      <td className="py-2 px-2 text-slate-700 dark:text-slate-300 font-mono text-xs">
-                        {entry.command_id}
-                      </td>
-                      <td className="py-2 px-2 text-slate-700 dark:text-slate-300">{entry.action_type}</td>
-                      <td className="py-2 px-2">{statusBadge(entry.status)}</td>
-                      <td className="py-2 px-2 text-right text-slate-700 dark:text-slate-300">
+                      <td className="px-2 py-2 font-mono text-content-strong text-xs">{entry.command_id}</td>
+                      <td className="px-2 py-2 text-content-strong">{entry.action_type}</td>
+                      <td className="px-2 py-2">{statusBadge(entry.status)}</td>
+                      <td className="px-2 py-2 text-right text-content-strong">
                         {entry.elapsed_ms != null ? `${entry.elapsed_ms}ms` : '-'}
                       </td>
                     </tr>
@@ -553,36 +576,36 @@ function Automation() {
           <CardTitle>{t('automation.policies')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2 lg:grid-cols-3">
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.automationEnabled')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+              <div className="text-content-secondary">{t('automation.automationEnabled')}</div>
+              <div className="mt-1 font-medium text-content">
                 {policies?.automation_enabled ? t('automation.enabled') : t('automation.disabled')}
               </div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.sandboxProfile')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">{policies?.sandbox_profile ?? '-'}</div>
+              <div className="text-content-secondary">{t('automation.sandboxProfile')}</div>
+              <div className="mt-1 font-medium text-content">{policies?.sandbox_profile ?? '-'}</div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.sandboxEnabled')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+              <div className="text-content-secondary">{t('automation.sandboxEnabled')}</div>
+              <div className="mt-1 font-medium text-content">
                 {policies?.sandbox_enabled ? t('automation.enabled') : t('automation.disabled')}
               </div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.allowNetwork')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+              <div className="text-content-secondary">{t('automation.allowNetwork')}</div>
+              <div className="mt-1 font-medium text-content">
                 {policies?.allow_network ? t('automation.enabled') : t('automation.disabled')}
               </div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.dataPolicy')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">{policies?.external_data_policy ?? '-'}</div>
+              <div className="text-content-secondary">{t('automation.dataPolicy')}</div>
+              <div className="mt-1 font-medium text-content">{policies?.external_data_policy ?? '-'}</div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneOverride')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+              <div className="text-content-secondary">{t('automation.sceneOverride')}</div>
+              <div className="mt-1 font-medium text-content">
                 {policies?.scene_action_override_active
                   ? t('automation.active')
                   : policies?.scene_action_override_enabled
@@ -591,36 +614,28 @@ function Automation() {
               </div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneOverrideExpires')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
+              <div className="text-content-secondary">{t('automation.sceneOverrideExpires')}</div>
+              <div className="mt-1 font-medium text-content">
                 {policies?.scene_action_override_expires_at
                   ? new Date(policies.scene_action_override_expires_at).toLocaleString()
                   : '-'}
               </div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneOverrideIssue')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
-                {policies?.scene_action_override_issue || '-'}
-              </div>
+              <div className="text-content-secondary">{t('automation.sceneOverrideIssue')}</div>
+              <div className="mt-1 font-medium text-content">{policies?.scene_action_override_issue || '-'}</div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneSchemaVersion')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
-                {contracts?.scene_schema_version ?? '-'}
-              </div>
+              <div className="text-content-secondary">{t('automation.sceneSchemaVersion')}</div>
+              <div className="mt-1 font-medium text-content">{contracts?.scene_schema_version ?? '-'}</div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.auditSchemaVersion')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
-                {contracts?.audit_schema_version ?? '-'}
-              </div>
+              <div className="text-content-secondary">{t('automation.auditSchemaVersion')}</div>
+              <div className="mt-1 font-medium text-content">{contracts?.audit_schema_version ?? '-'}</div>
             </div>
             <div>
-              <div className="text-slate-500 dark:text-slate-400">{t('automation.sceneActionSchemaVersion')}</div>
-              <div className="mt-1 font-medium text-slate-900 dark:text-white">
-                {contracts?.scene_action_schema_version ?? '-'}
-              </div>
+              <div className="text-content-secondary">{t('automation.sceneActionSchemaVersion')}</div>
+              <div className="mt-1 font-medium text-content">{contracts?.scene_action_schema_version ?? '-'}</div>
             </div>
           </div>
         </CardContent>

@@ -1,15 +1,16 @@
 import type {
   AppSettings,
   AutomationSettings,
-  ExecuteSceneActionRequest,
   AutomationStats,
   AutomationStatus,
   BackupArchive,
   DailySummary,
   DeleteResult,
+  ExecuteSceneActionRequest,
   FocusMetricsResponse,
   LocalSuggestion,
   PoliciesInfo,
+  ProviderPresetCatalog,
   ReportResponse,
   RestoreResult,
   SearchResponse,
@@ -17,7 +18,6 @@ import type {
   Tag,
   TimelineResponse,
   UiScene,
-  ProviderPresetCatalog,
   UpdateStatus,
   WorkflowPreset,
 } from './client'
@@ -55,13 +55,11 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPresetCatalog = {
       provider_type: 'Google',
       aliases: ['google', 'gemini'],
       display_name: 'Google',
-      llm_endpoint:
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      llm_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
       ocr_endpoint: 'https://vision.googleapis.com/v1/images:annotate',
       model_catalog_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
       ocr_model_catalog_supported: false,
-      ocr_model_catalog_notice:
-        'Google Vision OCR endpoint does not expose a selectable model catalog.',
+      ocr_model_catalog_notice: 'Google Vision OCR endpoint does not expose a selectable model catalog.',
       llm_models: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-pro'],
       ocr_models: [],
     },
@@ -392,11 +390,7 @@ function makeDefaultAutomationStats(): AutomationStats {
   }
 }
 
-function makeDefaultAutomationScene(
-  appName?: string,
-  screenId?: string,
-  frameId?: number
-): UiScene {
+function makeDefaultAutomationScene(appName?: string, screenId?: string, frameId?: number): UiScene {
   return {
     schema_version: 'ui_scene.v1',
     scene_id: `scene-standalone-${frameId ?? Date.now()}`,
@@ -536,7 +530,7 @@ function makeBackupArchive(): BackupArchive {
 export async function handleStandaloneRequest(
   url: string,
   options?: RequestInit,
-  force = false
+  force = false,
 ): Promise<Response | null> {
   if (!standaloneMode && !force) {
     return null
@@ -545,9 +539,7 @@ export async function handleStandaloneRequest(
     setStandaloneMode(true)
   }
 
-  const requestUrl = hasWindow()
-    ? new URL(url, window.location.origin)
-    : new URL(url, 'http://localhost')
+  const requestUrl = hasWindow() ? new URL(url, window.location.origin) : new URL(url, 'http://localhost')
   const method = (options?.method ?? 'GET').toUpperCase()
   const path = requestUrl.pathname
 
@@ -621,7 +613,9 @@ export async function handleStandaloneRequest(
   }
   if (path === '/api/ai/providers/models' && method === 'POST') {
     const payload = body as { provider_type?: string } | null
-    const provider = String(payload?.provider_type ?? 'generic').trim().toLowerCase()
+    const provider = String(payload?.provider_type ?? 'generic')
+      .trim()
+      .toLowerCase()
     if (provider === 'google' || provider === 'gemini') {
       return jsonResponse({
         models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
@@ -690,7 +684,7 @@ export async function handleStandaloneRequest(
   if (path.startsWith('/api/export/') && method === 'GET') {
     return textBlobResponse(
       JSON.stringify({ mode: 'standalone', exported_at: new Date().toISOString() }, null, 2),
-      'application/json'
+      'application/json',
     )
   }
   if (path === '/api/tags' && method === 'GET') {
@@ -821,7 +815,7 @@ export async function handleStandaloneRequest(
     const scene = makeDefaultAutomationScene(
       requestUrl.searchParams.get('app_name') ?? undefined,
       requestUrl.searchParams.get('screen_id') ?? undefined,
-      Number.isFinite(frameId) ? frameId : undefined
+      Number.isFinite(frameId) ? frameId : undefined,
     )
     const cfg = state.settings.ai_provider.scene_intelligence
     if (!cfg.enabled) {
@@ -843,7 +837,7 @@ export async function handleStandaloneRequest(
     const scene = makeDefaultAutomationScene(
       requestUrl.searchParams.get('app_name') ?? undefined,
       requestUrl.searchParams.get('screen_id') ?? undefined,
-      Number.isFinite(frameId) ? frameId : undefined
+      Number.isFinite(frameId) ? frameId : undefined,
     )
     const cfg = state.settings.ai_provider.scene_intelligence
     if (!cfg.enabled) {
@@ -855,21 +849,17 @@ export async function handleStandaloneRequest(
       .slice(0, cfg.max_elements)
     const considered = filtered.filter((item) => Number.isFinite(item.confidence))
     const avgConfidence =
-      considered.length > 0
-        ? considered.reduce((sum, item) => sum + item.confidence, 0) / considered.length
-        : 0
+      considered.length > 0 ? considered.reduce((sum, item) => sum + item.confidence, 0) / considered.length : 0
     const reasons: string[] = []
     if (!cfg.calibration_enabled) {
       reasons.push('calibration disabled by configuration')
     } else {
       if (considered.length < cfg.calibration_min_elements) {
-        reasons.push(
-          `insufficient elements: ${considered.length} < ${cfg.calibration_min_elements}`
-        )
+        reasons.push(`insufficient elements: ${considered.length} < ${cfg.calibration_min_elements}`)
       }
       if (avgConfidence < cfg.calibration_min_avg_confidence) {
         reasons.push(
-          `low average confidence: ${avgConfidence.toFixed(3)} < ${cfg.calibration_min_avg_confidence.toFixed(3)}`
+          `low average confidence: ${avgConfidence.toFixed(3)} < ${cfg.calibration_min_avg_confidence.toFixed(3)}`,
         )
       }
     }
@@ -919,9 +909,7 @@ export async function handleStandaloneRequest(
   }
 
   if (path === '/api/automation/execute-hint' && method === 'POST') {
-    const payload = body as
-      | { command_id?: string; session_id?: string; intent_hint?: string }
-      | null
+    const payload = body as { command_id?: string; session_id?: string; intent_hint?: string } | null
     const now = Date.now()
     const commandId = payload?.command_id?.trim() || `intent-hint-${now}`
     const sessionId = payload?.session_id?.trim() || 'standalone-session'
@@ -971,12 +959,13 @@ export async function handleStandaloneRequest(
       applied_privacy_policy: 'AllowFiltered',
       scene_action_override_active: false,
       scene_action_override_expires_at: null,
-      executed_intents: payload?.action_type === 'type_text'
-        ? [
-            { Raw: { MouseClick: { button: 'left', x: 0, y: 0 } } },
-            { Raw: { KeyType: { text: payload?.text ?? '' } } },
-          ]
-        : [{ Raw: { MouseClick: { button: 'left', x: 0, y: 0 } } }],
+      executed_intents:
+        payload?.action_type === 'type_text'
+          ? [
+              { Raw: { MouseClick: { button: 'left', x: 0, y: 0 } } },
+              { Raw: { KeyType: { text: payload?.text ?? '' } } },
+            ]
+          : [{ Raw: { MouseClick: { button: 'left', x: 0, y: 0 } } }],
       result: {
         success: true,
         element: null,

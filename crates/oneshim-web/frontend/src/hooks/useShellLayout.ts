@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { layout } from '../styles/tokens'
 
 const STORAGE_KEY_WIDTH = 'oneshim-sidebar-width'
@@ -7,7 +7,9 @@ const STORAGE_KEY_COLLAPSED = 'oneshim-sidebar-collapsed'
 function loadPersistedWidth(): number {
   try {
     const width = localStorage.getItem(STORAGE_KEY_WIDTH)
-    return width ? Math.min(Math.max(Number(width), layout.sidePanel.minWidth), layout.sidePanel.maxWidth) : layout.sidePanel.defaultWidth
+    return width
+      ? Math.min(Math.max(Number(width), layout.sidePanel.minWidth), layout.sidePanel.maxWidth)
+      : layout.sidePanel.defaultWidth
   } catch {
     return layout.sidePanel.defaultWidth
   }
@@ -35,7 +37,9 @@ export function useShellLayout() {
     try {
       localStorage.setItem(STORAGE_KEY_WIDTH, String(sidebarWidth))
       localStorage.setItem(STORAGE_KEY_COLLAPSED, String(sidebarCollapsed))
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [sidebarWidth, sidebarCollapsed, isResizing])
 
   useEffect(() => {
@@ -45,7 +49,7 @@ export function useShellLayout() {
   }, [sidebarWidth, sidebarCollapsed])
 
   const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed(prev => !prev)
+    setSidebarCollapsed((prev) => !prev)
   }, [])
 
   // Stable ref — does not depend on sidebarWidth (reads startWidthRef at drag time)
@@ -65,7 +69,7 @@ export function useShellLayout() {
       const delta = e.clientX - startXRef.current
       const newWidth = Math.min(
         Math.max(startWidthRef.current + delta, layout.sidePanel.minWidth),
-        layout.sidePanel.maxWidth
+        layout.sidePanel.maxWidth,
       )
       setSidebarWidth(newWidth)
     }
@@ -88,7 +92,7 @@ export function useShellLayout() {
   }, [isResizing])
 
   const onResizeByKeyboard = useCallback((delta: number) => {
-    setSidebarWidth(prev => {
+    setSidebarWidth((prev) => {
       const next = Math.min(Math.max(prev + delta, layout.sidePanel.minWidth), layout.sidePanel.maxWidth)
       return next
     })

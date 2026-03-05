@@ -1,24 +1,27 @@
 /**
  *
  */
-import { useState, useRef, ReactNode } from 'react'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BarChart3, Calendar, Camera, FileText, HardDrive } from 'lucide-react'
+import { type ReactNode, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FileText, Camera, BarChart3, HardDrive, Calendar } from 'lucide-react'
 import {
-  deleteDataRange,
+  type BackupArchive,
+  type BackupParams,
+  type DeleteRangeRequest,
+  type DeleteResult,
   deleteAllData,
-  fetchStorageStats,
+  deleteDataRange,
   downloadBackup,
-  restoreBackup,
   downloadBlob,
-  DeleteRangeRequest,
-  DeleteResult,
-  BackupParams,
-  BackupArchive,
-  RestoreResult,
+  fetchStorageStats,
+  type RestoreResult,
+  restoreBackup,
 } from '../api/client'
-import { Card, CardTitle, Input, Button, Spinner } from '../components/ui'
+import { Button, Card, CardTitle, Input, Spinner } from '../components/ui'
+import { colors, elevation, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 import { formatBytes, formatNumber } from '../utils/formatters'
 
 interface ConfirmModalProps {
@@ -36,20 +39,15 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDangerous, onConf
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card variant="default" padding="lg" className="max-w-md w-full mx-4 shadow-xl">
-        <CardTitle className={`mb-2 ${isDangerous ? 'text-red-400' : ''}`}>
-          {title}
-        </CardTitle>
-        <p className="text-slate-600 dark:text-slate-300 mb-6 whitespace-pre-line">{message}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <Card variant="default" padding="lg" className={cn('mx-4 w-full max-w-md', elevation.dialog)}>
+        <CardTitle className={`mb-2 ${isDangerous ? 'text-red-400' : ''}`}>{title}</CardTitle>
+        <p className="mb-6 whitespace-pre-line text-content-secondary">{message}</p>
         <div className="flex justify-end space-x-3">
           <Button variant="secondary" onClick={onCancel}>
             {t('privacy.cancel')}
           </Button>
-          <Button
-            variant={isDangerous ? 'danger' : 'primary'}
-            onClick={onConfirm}
-          >
+          <Button variant={isDangerous ? 'danger' : 'primary'} onClick={onConfirm}>
             {confirmText}
           </Button>
         </div>
@@ -132,9 +130,7 @@ export default function Privacy() {
   })
 
   const handleDataTypeToggle = (type: DataType) => {
-    setSelectedDataTypes((prev) =>
-      prev.includes(type) ? prev.filter((dt) => dt !== type) : [...prev, type]
-    )
+    setSelectedDataTypes((prev) => (prev.includes(type) ? prev.filter((dt) => dt !== type) : [...prev, type]))
   }
 
   const handleDeleteRange = () => {
@@ -189,33 +185,46 @@ export default function Privacy() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Spinner size="lg" className="text-teal-500" />
-        <span className="ml-3 text-slate-600 dark:text-slate-400">{t('common.loading')}</span>
+      <div className="flex h-64 items-center justify-center">
+        <Spinner size="lg" className="text-accent-teal" />
+        <span className="ml-3 text-content-secondary">{t('common.loading')}</span>
       </div>
     )
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
+    <div className="h-full space-y-6 overflow-y-auto p-6">
       {/* UI note */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('privacy.title')}</h1>
-        <p className="mt-1 text-slate-600 dark:text-slate-400">{t('privacy.subtitle')}</p>
+        <h1 className={cn(typography.h1, colors.text.primary)}>{t('privacy.title')}</h1>
+        <p className="mt-1 text-content-secondary">{t('privacy.subtitle')}</p>
       </div>
 
       {/* UI note */}
       {deleteResult && (
-        <div className="bg-green-500/20 border border-green-500 text-green-600 dark:text-green-400 p-4 rounded-lg">
+        <div className="rounded-lg border border-status-connected bg-semantic-success/20 p-4 text-semantic-success">
           <div className="font-medium">{deleteResult.message}</div>
-          <div className="mt-2 text-sm space-y-1">
-            {deleteResult.events_deleted > 0 && <div>{t('privacy.deleteResult.events', { count: deleteResult.events_deleted })}</div>}
-            {deleteResult.frames_deleted > 0 && <div>{t('privacy.deleteResult.frames', { count: deleteResult.frames_deleted })}</div>}
-            {deleteResult.metrics_deleted > 0 && <div>{t('privacy.deleteResult.metrics', { count: deleteResult.metrics_deleted })}</div>}
-            {deleteResult.process_snapshots_deleted > 0 && <div>{t('privacy.deleteResult.process_snapshots', { count: deleteResult.process_snapshots_deleted })}</div>}
-            {deleteResult.idle_periods_deleted > 0 && <div>{t('privacy.deleteResult.idle_periods', { count: deleteResult.idle_periods_deleted })}</div>}
+          <div className="mt-2 space-y-1 text-sm">
+            {deleteResult.events_deleted > 0 && (
+              <div>{t('privacy.deleteResult.events', { count: deleteResult.events_deleted })}</div>
+            )}
+            {deleteResult.frames_deleted > 0 && (
+              <div>{t('privacy.deleteResult.frames', { count: deleteResult.frames_deleted })}</div>
+            )}
+            {deleteResult.metrics_deleted > 0 && (
+              <div>{t('privacy.deleteResult.metrics', { count: deleteResult.metrics_deleted })}</div>
+            )}
+            {deleteResult.process_snapshots_deleted > 0 && (
+              <div>
+                {t('privacy.deleteResult.process_snapshots', { count: deleteResult.process_snapshots_deleted })}
+              </div>
+            )}
+            {deleteResult.idle_periods_deleted > 0 && (
+              <div>{t('privacy.deleteResult.idle_periods', { count: deleteResult.idle_periods_deleted })}</div>
+            )}
           </div>
           <button
+            type="button"
             onClick={() => setDeleteResult(null)}
             className="mt-3 text-sm underline hover:no-underline"
           >
@@ -229,19 +238,37 @@ export default function Privacy() {
         <CardTitle className="mb-4">{t('privacy.currentData')}</CardTitle>
         {storageStats && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <DataCard label={t('privacy.eventsLabel')} value={formatNumber(storageStats.event_count)} icon={<FileText className="w-4 h-4" />} />
-              <DataCard label={t('privacy.screenshotsLabel')} value={formatNumber(storageStats.frame_count)} icon={<Camera className="w-4 h-4" />} />
-              <DataCard label={t('privacy.metricsLabel')} value={formatNumber(storageStats.metric_count)} icon={<BarChart3 className="w-4 h-4" />} />
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+              <DataCard
+                label={t('privacy.eventsLabel')}
+                value={formatNumber(storageStats.event_count)}
+                icon={<FileText className="h-4 w-4" />}
+              />
+              <DataCard
+                label={t('privacy.screenshotsLabel')}
+                value={formatNumber(storageStats.frame_count)}
+                icon={<Camera className="h-4 w-4" />}
+              />
+              <DataCard
+                label={t('privacy.metricsLabel')}
+                value={formatNumber(storageStats.metric_count)}
+                icon={<BarChart3 className="h-4 w-4" />}
+              />
               <DataCard
                 label={t('privacy.storageSizeLabel')}
                 value={formatBytes(storageStats.total_size_bytes)}
-                icon={<HardDrive className="w-4 h-4" />}
+                icon={<HardDrive className="h-4 w-4" />}
               />
-              <DataCard label={t('privacy.dataRangeLabel')} value={getDateRangeText()} icon={<Calendar className="w-4 h-4" />} small />
+              <DataCard
+                label={t('privacy.dataRangeLabel')}
+                value={getDateRangeText()}
+                icon={<Calendar className="h-4 w-4" />}
+                small
+              />
             </div>
-            <div className="mt-4 text-sm text-slate-500 dark:text-slate-500">
-              {t('settings.dbSize')}: {formatBytes(storageStats.db_size_bytes)} / {t('settings.frameSize')}: {formatBytes(storageStats.frames_size_bytes)}
+            <div className="mt-4 text-content-tertiary text-sm">
+              {t('settings.dbSize')}: {formatBytes(storageStats.db_size_bytes)} / {t('settings.frameSize')}:{' '}
+              {formatBytes(storageStats.frames_size_bytes)}
             </div>
           </>
         )}
@@ -250,29 +277,25 @@ export default function Privacy() {
       {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('privacy.deleteByRangeTitle')}</CardTitle>
-        <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">{t('privacy.deleteByRangeDesc')}</p>
+        <p className="mb-4 text-content-secondary text-sm">{t('privacy.deleteByRangeDesc')}</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t('privacy.startDate')}</label>
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-            />
+            <label htmlFor="privacy-start-date" className="mb-2 block font-medium text-content-strong text-sm">
+              {t('privacy.startDate')}
+            </label>
+            <Input id="privacy-start-date" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t('privacy.endDate')}</label>
-            <Input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-            />
+            <label htmlFor="privacy-end-date" className="mb-2 block font-medium text-content-strong text-sm">
+              {t('privacy.endDate')}
+            </label>
+            <Input id="privacy-end-date" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
         </div>
 
         <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t('privacy.dataTypesHint')}</label>
+          <span className="mb-2 block font-medium text-content-strong text-sm">{t('privacy.dataTypesHint')}</span>
           <div className="flex flex-wrap gap-2">
             {(Object.entries(DATA_TYPE_LABELS) as [DataType, string][]).map(([type, label]) => (
               <Button
@@ -299,15 +322,9 @@ export default function Privacy() {
 
       {/* UI note */}
       <Card variant="danger" padding="lg">
-        <CardTitle className="mb-2 text-red-600 dark:text-red-400">{t('privacy.deleteAllTitle')}</CardTitle>
-        <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
-          {t('privacy.deleteAllDesc')}
-        </p>
-        <Button
-          variant="danger"
-          onClick={() => setShowDeleteAllModal(true)}
-          isLoading={deleteAllMutation.isPending}
-        >
+        <CardTitle className="mb-2 text-accent-red">{t('privacy.deleteAllTitle')}</CardTitle>
+        <p className="mb-4 text-content-secondary text-sm">{t('privacy.deleteAllDesc')}</p>
+        <Button variant="danger" onClick={() => setShowDeleteAllModal(true)} isLoading={deleteAllMutation.isPending}>
           {deleteAllMutation.isPending ? t('privacy.deleting') : t('privacy.deleteAllButton')}
         </Button>
       </Card>
@@ -315,33 +332,41 @@ export default function Privacy() {
       {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('backup.title')}</CardTitle>
-        <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
-          {t('backup.description')}
-        </p>
+        <p className="mb-4 text-content-secondary text-sm">{t('backup.description')}</p>
 
         {/* UI note */}
         {restoreResult && (
-          <div className={`mb-4 p-4 rounded-lg ${
-            restoreResult.success
-              ? 'bg-green-500/20 border border-green-500 text-green-600 dark:text-green-400'
-              : 'bg-red-500/20 border border-red-500 text-red-600 dark:text-red-400'
-          }`}>
+          <div
+            className={`mb-4 rounded-lg p-4 ${
+              restoreResult.success
+                ? 'border border-status-connected bg-semantic-success/20 text-semantic-success'
+                : 'border border-status-error bg-semantic-error/20 text-semantic-error'
+            }`}
+          >
             <div className="font-medium">
               {restoreResult.success ? t('backup.restoreSuccess') : t('backup.restoreFailed')}
             </div>
-            <div className="mt-2 text-sm space-y-1">
+            <div className="mt-2 space-y-1 text-sm">
               {restoreResult.restored.settings && <div>{t('backup.settingsRestored')}</div>}
-              {restoreResult.restored.tags > 0 && <div>{t('backup.tagsRestored', { count: restoreResult.restored.tags })}</div>}
-              {restoreResult.restored.frame_tags > 0 && <div>{t('backup.frameTagsRestored', { count: restoreResult.restored.frame_tags })}</div>}
-              {restoreResult.restored.events > 0 && <div>{t('backup.eventsRestored', { count: restoreResult.restored.events })}</div>}
-              {restoreResult.restored.frames > 0 && <div>{t('backup.framesRestored', { count: restoreResult.restored.frames })}</div>}
+              {restoreResult.restored.tags > 0 && (
+                <div>{t('backup.tagsRestored', { count: restoreResult.restored.tags })}</div>
+              )}
+              {restoreResult.restored.frame_tags > 0 && (
+                <div>{t('backup.frameTagsRestored', { count: restoreResult.restored.frame_tags })}</div>
+              )}
+              {restoreResult.restored.events > 0 && (
+                <div>{t('backup.eventsRestored', { count: restoreResult.restored.events })}</div>
+              )}
+              {restoreResult.restored.frames > 0 && (
+                <div>{t('backup.framesRestored', { count: restoreResult.restored.frames })}</div>
+              )}
             </div>
             {restoreResult.errors.length > 0 && (
               <div className="mt-2 text-sm">
                 <div className="font-medium">{t('backup.errors')}:</div>
-                <ul className="list-disc list-inside">
-                  {restoreResult.errors.slice(0, 5).map((err, i) => (
-                    <li key={i}>{err}</li>
+                <ul className="list-inside list-disc">
+                  {restoreResult.errors.slice(0, 5).map((err) => (
+                    <li key={err}>{err}</li>
                   ))}
                   {restoreResult.errors.length > 5 && (
                     <li>...{t('backup.moreErrors', { count: restoreResult.errors.length - 5 })}</li>
@@ -350,6 +375,7 @@ export default function Privacy() {
               </div>
             )}
             <button
+              type="button"
               onClick={() => setRestoreResult(null)}
               className="mt-3 text-sm underline hover:no-underline"
             >
@@ -360,62 +386,48 @@ export default function Privacy() {
 
         {/* UI note */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-            {t('backup.includeData')}
-          </label>
+          <span className="mb-2 block font-medium text-content-strong text-sm">{t('backup.includeData')}</span>
           <div className="flex flex-wrap gap-2">
             <Button
               variant={backupOptions.include_settings ? 'primary' : 'secondary'}
               size="sm"
-              onClick={() => setBackupOptions(prev => ({ ...prev, include_settings: !prev.include_settings }))}
+              onClick={() => setBackupOptions((prev) => ({ ...prev, include_settings: !prev.include_settings }))}
             >
               {t('backup.settings')}
             </Button>
             <Button
               variant={backupOptions.include_tags ? 'primary' : 'secondary'}
               size="sm"
-              onClick={() => setBackupOptions(prev => ({ ...prev, include_tags: !prev.include_tags }))}
+              onClick={() => setBackupOptions((prev) => ({ ...prev, include_tags: !prev.include_tags }))}
             >
               {t('backup.tags')}
             </Button>
             <Button
               variant={backupOptions.include_events ? 'primary' : 'secondary'}
               size="sm"
-              onClick={() => setBackupOptions(prev => ({ ...prev, include_events: !prev.include_events }))}
+              onClick={() => setBackupOptions((prev) => ({ ...prev, include_events: !prev.include_events }))}
             >
               {t('backup.events')}
             </Button>
             <Button
               variant={backupOptions.include_frames ? 'primary' : 'secondary'}
               size="sm"
-              onClick={() => setBackupOptions(prev => ({ ...prev, include_frames: !prev.include_frames }))}
+              onClick={() => setBackupOptions((prev) => ({ ...prev, include_frames: !prev.include_frames }))}
             >
               {t('backup.frames')}
             </Button>
           </div>
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-500">
-            {t('backup.optionsHint')}
-          </p>
+          <p className="mt-2 text-content-tertiary text-xs">{t('backup.optionsHint')}</p>
         </div>
 
         {/* UI note */}
         <div className="flex flex-wrap gap-3">
-          <Button
-            variant="primary"
-            onClick={handleBackup}
-            isLoading={backupMutation.isPending}
-          >
+          <Button variant="primary" onClick={handleBackup} isLoading={backupMutation.isPending}>
             {backupMutation.isPending ? t('backup.creating') : t('backup.download')}
           </Button>
 
           <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleRestoreFile}
-              className="hidden"
-            />
+            <input ref={fileInputRef} type="file" accept=".json" onChange={handleRestoreFile} className="hidden" />
             <Button
               variant="secondary"
               onClick={() => fileInputRef.current?.click()}
@@ -428,12 +440,12 @@ export default function Privacy() {
 
         {/* UI note */}
         {backupMutation.isError && (
-          <div className="mt-3 text-sm text-red-600 dark:text-red-400">
+          <div className="mt-3 text-accent-red text-sm">
             {t('backup.downloadFailed')}: {(backupMutation.error as Error).message}
           </div>
         )}
         {restoreMutation.isError && (
-          <div className="mt-3 text-sm text-red-600 dark:text-red-400">
+          <div className="mt-3 text-accent-red text-sm">
             {t('backup.restoreFailed')}: {(restoreMutation.error as Error).message}
           </div>
         )}
@@ -442,21 +454,21 @@ export default function Privacy() {
       {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('privacy.dataInfoTitle')}</CardTitle>
-        <div className="space-y-3 text-sm text-slate-700 dark:text-slate-300">
+        <div className="space-y-3 text-content-strong text-sm">
           <div className="flex items-start space-x-2">
-            <span className="text-teal-500 dark:text-teal-400">✓</span>
+            <span className="text-accent-teal">✓</span>
             <span>{t('privacy.dataInfo1')}</span>
           </div>
           <div className="flex items-start space-x-2">
-            <span className="text-teal-500 dark:text-teal-400">✓</span>
+            <span className="text-accent-teal">✓</span>
             <span>{t('privacy.dataInfo2')}</span>
           </div>
           <div className="flex items-start space-x-2">
-            <span className="text-teal-500 dark:text-teal-400">✓</span>
+            <span className="text-accent-teal">✓</span>
             <span>{t('privacy.dataInfo3')}</span>
           </div>
           <div className="flex items-start space-x-2">
-            <span className="text-teal-500 dark:text-teal-400">✓</span>
+            <span className="text-accent-teal">✓</span>
             <span>{t('privacy.dataInfo4')}</span>
           </div>
         </div>
@@ -501,11 +513,11 @@ interface DataCardProps {
 function DataCard({ label, value, icon, small }: DataCardProps) {
   return (
     <Card variant="elevated" padding="md">
-      <div className="flex items-center space-x-2 text-slate-600 dark:text-slate-400 text-sm">
+      <div className="flex items-center space-x-2 text-content-secondary text-sm">
         {icon}
         <span>{label}</span>
       </div>
-      <div className={`font-bold text-slate-900 dark:text-white mt-1 ${small ? 'text-sm' : 'text-xl'}`}>{value}</div>
+      <div className={`mt-1 font-bold text-content ${small ? 'text-sm' : 'text-xl'}`}>{value}</div>
     </Card>
   )
 }

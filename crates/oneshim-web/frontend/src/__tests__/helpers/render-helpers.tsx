@@ -1,9 +1,9 @@
-import { type ReactElement } from 'react'
-import { render, type RenderOptions } from '@testing-library/react'
-import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ThemeProvider } from '../../contexts/ThemeContext'
+import { type RenderOptions, render } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import { I18nextProvider } from 'react-i18next'
+import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom'
+import { ThemeProvider } from '../../contexts/ThemeContext'
 import i18n from '../../i18n'
 
 interface ProvidersProps {
@@ -39,9 +39,7 @@ export function renderWithProviders(
 ) {
   const { routerProps, ...renderOptions } = options ?? {}
   return render(ui, {
-    wrapper: ({ children }) => (
-      <AllProviders routerProps={routerProps}>{children}</AllProviders>
-    ),
+    wrapper: ({ children }) => <AllProviders routerProps={routerProps}>{children}</AllProviders>,
     ...renderOptions,
   })
 }

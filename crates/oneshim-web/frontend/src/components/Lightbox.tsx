@@ -1,4 +1,5 @@
-import { useEffect, useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
+import { iconSize } from '../styles/tokens'
 
 interface LightboxProps {
   imageUrl: string
@@ -39,7 +40,7 @@ export default function Lightbox({
           break
       }
     },
-    [onClose, onPrev, onNext, hasPrev, hasNext]
+    [onClose, onPrev, onNext, hasPrev, hasNext],
   )
 
   useEffect(() => {
@@ -53,17 +54,17 @@ export default function Lightbox({
   }, [handleKeyDown])
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
-      onClick={onClose}
-    >
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay — keyboard Escape handled via global keydown listener
+    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handling via global keydown listener (Escape, ArrowLeft, ArrowRight)
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
       {/* UI note */}
       <button
+        type="button"
         onClick={onClose}
-        className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors z-10"
+        className="absolute top-4 right-4 z-10 p-2 text-white/70 transition-colors hover:text-white"
         aria-label="닫기"
       >
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
@@ -71,45 +72,48 @@ export default function Lightbox({
       {/* UI note */}
       {hasPrev && onPrev && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation()
             onPrev()
           }}
-          className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-full transition-all z-10"
+          className="absolute top-1/2 left-4 z-10 -translate-y-1/2 rounded-full bg-black/30 p-3 text-white/70 transition-all hover:bg-black/50 hover:text-white"
           aria-label="이전"
         >
-          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
       )}
 
       {/* UI note */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: onClick only prevents bubble to backdrop, not interactive */}
       <img
         src={imageUrl}
         alt={alt}
-        className="max-w-[90vw] max-h-[90vh] object-contain"
+        className="max-h-[90vh] max-w-[90vw] object-contain"
         onClick={(e) => e.stopPropagation()}
       />
 
       {/* UI note */}
       {hasNext && onNext && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation()
             onNext()
           }}
-          className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-black/30 hover:bg-black/50 rounded-full transition-all z-10"
+          className="absolute top-1/2 right-4 z-10 -translate-y-1/2 rounded-full bg-black/30 p-3 text-white/70 transition-all hover:bg-black/50 hover:text-white"
           aria-label="next"
         >
-          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
       )}
 
       {/* UI note */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 text-sm text-white/50">
+      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-4 text-sm text-white/50">
         <span>ESC 닫기</span>
         {(hasPrev || hasNext) && <span>← → 이동</span>}
       </div>

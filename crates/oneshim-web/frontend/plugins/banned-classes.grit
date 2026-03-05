@@ -1,0 +1,10 @@
+language js;
+
+`<$_ className=$value $$$/>` where {
+  $value <: contains r"(bg|text|border)-(slate|gray)-\d",
+  register_diagnostic(
+    span = $value,
+    message = "Hardcoded color class detected. Use semantic tokens from styles/tokens.ts instead (e.g., bg-surface-muted, text-content-secondary).",
+    severity = "error"
+  )
+}

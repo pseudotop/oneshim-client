@@ -1,9 +1,10 @@
 /**
  *
  */
-import { cn } from '../../utils/cn'
-import { badgeVariants } from '../../styles/variants'
+
 import { radius } from '../../styles/tokens'
+import { badgeVariants } from '../../styles/variants'
+import { cn } from '../../utils/cn'
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   color?: keyof typeof badgeVariants.color
@@ -18,7 +19,7 @@ export function Badge({ className, color = 'default', size = 'md', ...props }: B
         radius.full,
         badgeVariants.color[color],
         badgeVariants.size[size],
-        className
+        className,
       )}
       {...props}
     />

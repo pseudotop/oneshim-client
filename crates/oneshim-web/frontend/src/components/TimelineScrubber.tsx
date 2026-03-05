@@ -1,10 +1,9 @@
-
-import { useRef, useCallback, useMemo } from 'react'
+import { Moon, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Play, Pause, SkipBack, SkipForward, Moon } from 'lucide-react'
-import { Select } from './ui'
 import type { AppSegment, TimelineItem } from '../api/client'
 import { formatTime } from '../utils/formatters'
+import { Select } from './ui'
 
 interface TimelineScrubberProps {
   startTime: Date
@@ -42,95 +41,98 @@ export default function TimelineScrubber({
 
   const totalDuration = endTime.getTime() - startTime.getTime()
 
-  const currentPosition = totalDuration > 0
-    ? (currentTime.getTime() - startTime.getTime()) / totalDuration
-    : 0
+  const currentPosition = totalDuration > 0 ? (currentTime.getTime() - startTime.getTime()) / totalDuration : 0
 
   const idlePeriods = useMemo(() => {
     return items
       .filter((item): item is Extract<TimelineItem, { type: 'IdlePeriod' }> => item.type === 'IdlePeriod')
-      .map(item => ({
+      .map((item) => ({
         start: new Date(item.start).getTime(),
         end: new Date(item.end).getTime(),
       }))
   }, [items])
 
-  const handleTrackClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!trackRef.current || totalDuration <= 0) return
+  const handleTrackClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!trackRef.current || totalDuration <= 0) return
 
-    const rect = trackRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const ratio = Math.max(0, Math.min(1, x / rect.width))
-    const newTime = new Date(startTime.getTime() + ratio * totalDuration)
-    onTimeChange(newTime)
-  }, [startTime, totalDuration, onTimeChange])
-
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!trackRef.current || totalDuration <= 0) return
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!trackRef.current) return
       const rect = trackRef.current.getBoundingClientRect()
-      const x = moveEvent.clientX - rect.left
+      const x = e.clientX - rect.left
       const ratio = Math.max(0, Math.min(1, x / rect.width))
       const newTime = new Date(startTime.getTime() + ratio * totalDuration)
       onTimeChange(newTime)
-    }
+    },
+    [startTime, totalDuration, onTimeChange],
+  )
 
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!trackRef.current || totalDuration <= 0) return
 
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        if (!trackRef.current) return
+        const rect = trackRef.current.getBoundingClientRect()
+        const x = moveEvent.clientX - rect.left
+        const ratio = Math.max(0, Math.min(1, x / rect.width))
+        const newTime = new Date(startTime.getTime() + ratio * totalDuration)
+        onTimeChange(newTime)
+      }
 
-    handleTrackClick(e)
-  }, [startTime, totalDuration, onTimeChange, handleTrackClick])
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+
+      handleTrackClick(e)
+    },
+    [startTime, totalDuration, onTimeChange, handleTrackClick],
+  )
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow border border-slate-200 dark:border-slate-700">
+    <div className="rounded-lg border border-muted bg-surface-overlay p-4 shadow">
       {/* UI note */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           {/* UI note */}
           <button
+            type="button"
             onClick={onSkipToStart}
-            className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-hover"
             title={t('replay.skipToStart', '처음으로')}
           >
-            <SkipBack className="w-5 h-5" />
+            <SkipBack className="h-5 w-5" />
           </button>
 
           {/* UI note */}
           <button
+            type="button"
             onClick={onPlayPause}
-            className="p-2 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors"
+            className="rounded-lg bg-teal-500 p-2 text-white transition-colors hover:bg-teal-600"
             title={isPlaying ? t('replay.pause', '일시정지') : t('replay.play', '재생')}
           >
-            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
           </button>
 
           {/* UI note */}
           <button
+            type="button"
             onClick={onSkipToEnd}
-            className="p-2 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-hover"
             title={t('replay.skipToEnd', '끝으로')}
           >
-            <SkipForward className="w-5 h-5" />
+            <SkipForward className="h-5 w-5" />
           </button>
 
           {/* UI note */}
-          <span className="ml-3 text-sm font-mono text-slate-700 dark:text-slate-300">
-            {formatTime(currentTime.toISOString())}
-          </span>
+          <span className="ml-3 font-mono text-content-strong text-sm">{formatTime(currentTime.toISOString())}</span>
         </div>
 
         {/* UI note */}
         <div className="flex items-center space-x-2">
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {t('replay.speed', '재생 속도')}:
-          </span>
+          <span className="text-content-secondary text-xs">{t('replay.speed', '재생 속도')}:</span>
           <Select
             value={playbackSpeed}
             selectSize="sm"
@@ -147,26 +149,24 @@ export default function TimelineScrubber({
       </div>
 
       {/* UI note */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: custom scrubber track — keyboard users use playback buttons */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: drag interaction; keyboard users use playback buttons */}
       <div
         ref={trackRef}
-        className="relative h-10 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer overflow-hidden"
+        className="relative h-10 cursor-pointer overflow-hidden rounded-lg bg-hover"
         onClick={handleTrackClick}
         onMouseDown={handleMouseDown}
       >
         {/* UI note */}
-        {segments.map((segment, index) => {
+        {segments.map((segment) => {
           const segmentStart = new Date(segment.start).getTime()
           const segmentEnd = new Date(segment.end).getTime()
-          const left = totalDuration > 0
-            ? ((segmentStart - startTime.getTime()) / totalDuration) * 100
-            : 0
-          const width = totalDuration > 0
-            ? ((segmentEnd - segmentStart) / totalDuration) * 100
-            : 0
+          const left = totalDuration > 0 ? ((segmentStart - startTime.getTime()) / totalDuration) * 100 : 0
+          const width = totalDuration > 0 ? ((segmentEnd - segmentStart) / totalDuration) * 100 : 0
 
           return (
             <div
-              key={`segment-${index}`}
+              key={`segment-${segment.app_name}-${segment.start}`}
               className="absolute top-0 h-full transition-opacity hover:opacity-80"
               style={{
                 left: `${left}%`,
@@ -179,80 +179,71 @@ export default function TimelineScrubber({
         })}
 
         {/* UI note */}
-        {idlePeriods.map((idle, index) => {
-          const left = totalDuration > 0
-            ? ((idle.start - startTime.getTime()) / totalDuration) * 100
-            : 0
-          const width = totalDuration > 0
-            ? ((idle.end - idle.start) / totalDuration) * 100
-            : 0
+        {idlePeriods.map((idle) => {
+          const left = totalDuration > 0 ? ((idle.start - startTime.getTime()) / totalDuration) * 100 : 0
+          const width = totalDuration > 0 ? ((idle.end - idle.start) / totalDuration) * 100 : 0
 
           return (
             <div
-              key={`idle-${index}`}
-              className="absolute top-0 h-full flex items-center justify-center"
+              key={`idle-${idle.start}-${idle.end}`}
+              className="absolute top-0 flex h-full items-center justify-center"
               style={{
                 left: `${left}%`,
                 width: `${Math.max(width, 0.5)}%`,
-                background: 'repeating-linear-gradient(45deg, rgba(100,116,139,0.3), rgba(100,116,139,0.3) 2px, transparent 2px, transparent 4px)',
+                background:
+                  'repeating-linear-gradient(45deg, rgba(100,116,139,0.3), rgba(100,116,139,0.3) 2px, transparent 2px, transparent 4px)',
               }}
               title={t('replay.idle', 'idle')}
             >
-              {width > 3 && (
-                <Moon className="w-3 h-3 text-slate-500 dark:text-slate-400 opacity-70" />
-              )}
+              {width > 3 && <Moon className="h-3 w-3 text-content-secondary opacity-70" />}
             </div>
           )
         })}
 
         {/* UI note */}
         <div
-          className="absolute top-0 w-0.5 h-full bg-red-500 shadow-lg z-10"
+          className="absolute top-0 z-10 h-full w-0.5 bg-red-500 shadow-lg"
           style={{ left: `${currentPosition * 100}%` }}
         >
           {/* UI note */}
-          <div className="absolute -top-1 -left-1.5 w-4 h-4 bg-red-500 rounded-full shadow-lg" />
+          <div className="absolute -top-1 -left-1.5 h-4 w-4 rounded-full bg-red-500 shadow-lg" />
         </div>
 
         {/* UI note */}
-        <div className="absolute bottom-0 left-1 text-xs text-slate-600 dark:text-slate-400 opacity-70">
+        <div className="absolute bottom-0 left-1 text-content-secondary text-xs opacity-70">
           {formatTime(startTime.toISOString())}
         </div>
-        <div className="absolute bottom-0 right-1 text-xs text-slate-600 dark:text-slate-400 opacity-70">
+        <div className="absolute right-1 bottom-0 text-content-secondary text-xs opacity-70">
           {formatTime(endTime.toISOString())}
         </div>
       </div>
 
       {/* UI note */}
       {segments.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
           {/* UI note */}
-          {Array.from(new Set(segments.map(s => s.app_name))).slice(0, 8).map((appName) => {
-            const segment = segments.find(s => s.app_name === appName)
-            return (
-              <div key={appName} className="flex items-center space-x-1">
-                <div
-                  className="w-3 h-3 rounded-sm"
-                  style={{ backgroundColor: segment?.color || '#6B7280' }}
-                />
-                <span className="text-xs text-slate-600 dark:text-slate-400 truncate max-w-[80px]">
-                  {appName}
-                </span>
-              </div>
-            )
-          })}
+          {Array.from(new Set(segments.map((s) => s.app_name)))
+            .slice(0, 8)
+            .map((appName) => {
+              const segment = segments.find((s) => s.app_name === appName)
+              return (
+                <div key={appName} className="flex items-center space-x-1">
+                  <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: segment?.color || '#6B7280' }} />
+                  <span className="max-w-[80px] truncate text-content-secondary text-xs">{appName}</span>
+                </div>
+              )
+            })}
           {/* UI note */}
           {idlePeriods.length > 0 && (
             <div className="flex items-center space-x-1">
               <div
-                className="w-3 h-3 rounded-sm"
+                className="h-3 w-3 rounded-sm"
                 style={{
-                  background: 'repeating-linear-gradient(45deg, rgba(100,116,139,0.5), rgba(100,116,139,0.5) 1px, transparent 1px, transparent 2px)',
+                  background:
+                    'repeating-linear-gradient(45deg, rgba(100,116,139,0.5), rgba(100,116,139,0.5) 1px, transparent 1px, transparent 2px)',
                 }}
               />
-              <span className="text-xs text-slate-600 dark:text-slate-400">
-                {t('replay.idle', 'idle')}
-              </span>
+              <span className="text-content-secondary text-xs">{t('replay.idle', 'idle')}</span>
             </div>
           )}
         </div>

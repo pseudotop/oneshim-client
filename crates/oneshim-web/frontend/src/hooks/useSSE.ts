@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { isStandaloneModeEnabled } from '../api/standalone'
 
 export interface MetricsUpdate {
@@ -52,11 +52,7 @@ const MAX_HISTORY_SIZE = 60 // 60items data ( 5min)
  *
  */
 export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
-  const {
-    autoReconnect = true,
-    reconnectDelay = 3000,
-    maxRetries = 10,
-  } = options
+  const { autoReconnect = true, reconnectDelay = 3000, maxRetries = 10 } = options
 
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
   const [latestMetrics, setLatestMetrics] = useState<MetricsUpdate | null>(null)

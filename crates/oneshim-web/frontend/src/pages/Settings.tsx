@@ -1,50 +1,46 @@
 /**
  *
  */
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import {
+  type AiProviderSettings,
+  type AppSettings,
+  type AutomationSettings,
+  discoverProviderModels,
+  downloadBlob,
+  type ExportDataType,
+  type ExportFormat,
+  type ExternalApiSettings,
+  exportData,
+  fetchProviderPresets,
   fetchSettings,
-  updateSettings,
   fetchStorageStats,
   fetchUpdateStatus,
-  postUpdateAction,
-  fetchProviderPresets,
-  discoverProviderModels,
-  exportData,
-  downloadBlob,
-  type AppSettings,
-  type NotificationSettings as NotificationSettingsType,
-  type TelemetrySettings,
   type MonitorControlSettings,
-  type PrivacySettings as PrivacySettingsType,
-  type ScheduleSettings as ScheduleSettingsType,
-  type AutomationSettings,
-  type SandboxSettings,
-  type AiProviderSettings,
+  type NotificationSettings as NotificationSettingsType,
   type OcrValidationSettings as OcrValidationSettingsType,
+  type PrivacySettings as PrivacySettingsType,
+  type ProviderModelsResponse,
+  type ProviderPreset,
+  postUpdateAction,
+  type SandboxSettings,
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
   type SceneIntelligenceSettings as SceneIntelligenceSettingsType,
-  type ExternalApiSettings,
-  type ProviderPreset,
-  type ProviderModelsResponse,
-  type ExportFormat,
-  type ExportDataType,
+  type ScheduleSettings as ScheduleSettingsType,
+  type TelemetrySettings,
+  type UpdateAction,
   type UpdateStatus,
-  type UpdateAction
+  updateSettings,
 } from '../api/client'
-import { Card, CardTitle, Input, Button, Spinner, Select } from '../components/ui'
+import LanguageSelector from '../components/LanguageSelector'
+import { Button, Card, CardTitle, Input, Select, Spinner } from '../components/ui'
 import { colors, form, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatBytes, formatNumber } from '../utils/formatters'
-import {
-  NotificationSettings,
-  PrivacySettings,
-  ScheduleSettings,
-  ToggleRow,
-} from './settingSections'
-import LanguageSelector from '../components/LanguageSelector'
+import { NotificationSettings, PrivacySettings, ScheduleSettings, ToggleRow } from './settingSections'
 
 const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
   {
@@ -73,13 +69,11 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
     provider_type: 'Google',
     aliases: ['google', 'gemini'],
     display_name: 'Google',
-    llm_endpoint:
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+    llm_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
     ocr_endpoint: 'https://vision.googleapis.com/v1/images:annotate',
     model_catalog_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
     ocr_model_catalog_supported: false,
-    ocr_model_catalog_notice:
-      'Google Vision OCR endpoint does not expose a selectable model catalog.',
+    ocr_model_catalog_notice: 'Google Vision OCR endpoint does not expose a selectable model catalog.',
     llm_models: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-pro'],
     ocr_models: [],
   },
@@ -214,7 +208,10 @@ export default function Settings() {
       setSaveMessage({ type: 'success', text: t('settings.exportDone') })
       setTimeout(() => setSaveMessage(null), 3000)
     } catch (error) {
-      setSaveMessage({ type: 'error', text: `${t('settings.saveFailed')}: ${error instanceof Error ? error.message : String(error)}` })
+      setSaveMessage({
+        type: 'error',
+        text: `${t('settings.saveFailed')}: ${error instanceof Error ? error.message : String(error)}`,
+      })
       setTimeout(() => setSaveMessage(null), 5000)
     } finally {
       setExportLoading(null)
@@ -225,7 +222,7 @@ export default function Settings() {
     if (formData) {
       setFormData({
         ...formData,
-        notification: { ...formData.notification, [field]: value }
+        notification: { ...formData.notification, [field]: value },
       })
     }
   }
@@ -234,7 +231,7 @@ export default function Settings() {
     if (formData) {
       setFormData({
         ...formData,
-        telemetry: { ...formData.telemetry, [field]: value }
+        telemetry: { ...formData.telemetry, [field]: value },
       })
     }
   }
@@ -243,7 +240,7 @@ export default function Settings() {
     if (formData) {
       setFormData({
         ...formData,
-        monitor: { ...formData.monitor, [field]: value }
+        monitor: { ...formData.monitor, [field]: value },
       })
     }
   }
@@ -252,7 +249,7 @@ export default function Settings() {
     if (formData) {
       setFormData({
         ...formData,
-        privacy: { ...formData.privacy, [field]: value }
+        privacy: { ...formData.privacy, [field]: value },
       })
     }
   }
@@ -261,7 +258,7 @@ export default function Settings() {
     if (formData) {
       setFormData({
         ...formData,
-        schedule: { ...formData.schedule, [field]: value }
+        schedule: { ...formData.schedule, [field]: value },
       })
     }
   }
@@ -270,7 +267,7 @@ export default function Settings() {
     if (formData) {
       setFormData({
         ...formData,
-        update: { ...formData.update, [field]: value }
+        update: { ...formData.update, [field]: value },
       })
     }
   }
@@ -279,7 +276,7 @@ export default function Settings() {
     if (formData) {
       setFormData({
         ...formData,
-        automation: { ...formData.automation, [field]: value }
+        automation: { ...formData.automation, [field]: value },
       })
     }
   }
@@ -288,33 +285,24 @@ export default function Settings() {
     if (formData) {
       setFormData({
         ...formData,
-        sandbox: { ...formData.sandbox, [field]: value }
+        sandbox: { ...formData.sandbox, [field]: value },
       })
     }
   }
 
   const handleAiProviderChange = (
     field: keyof AiProviderSettings,
-    value:
-      | string
-      | boolean
-      | ExternalApiSettings
-      | OcrValidationSettingsType
-      | SceneIntelligenceSettingsType
-      | null
+    value: string | boolean | ExternalApiSettings | OcrValidationSettingsType | SceneIntelligenceSettingsType | null,
   ) => {
     if (formData) {
       setFormData({
         ...formData,
-        ai_provider: { ...formData.ai_provider, [field]: value }
+        ai_provider: { ...formData.ai_provider, [field]: value },
       })
     }
   }
 
-  const handleOcrValidationChange = (
-    field: keyof OcrValidationSettingsType,
-    value: boolean | number
-  ) => {
+  const handleOcrValidationChange = (field: keyof OcrValidationSettingsType, value: boolean | number) => {
     if (formData) {
       setFormData({
         ...formData,
@@ -331,7 +319,7 @@ export default function Settings() {
 
   const handleSceneActionOverrideChange = (
     field: keyof SceneActionOverrideSettingsType,
-    value: boolean | string | null
+    value: boolean | string | null,
   ) => {
     if (formData) {
       setFormData({
@@ -347,10 +335,7 @@ export default function Settings() {
     }
   }
 
-  const handleSceneIntelligenceChange = (
-    field: keyof SceneIntelligenceSettingsType,
-    value: boolean | number
-  ) => {
+  const handleSceneIntelligenceChange = (field: keyof SceneIntelligenceSettingsType, value: boolean | number) => {
     if (formData) {
       setFormData({
         ...formData,
@@ -376,7 +361,7 @@ export default function Settings() {
   const handleExternalApiChange = (
     which: 'ocr_api' | 'llm_api',
     field: keyof ExternalApiSettings,
-    value: string | number | null
+    value: string | number | null,
   ) => {
     setFormData((prev) => {
       if (!prev) return prev
@@ -399,7 +384,7 @@ export default function Settings() {
     return providerPresets.find(
       (preset) =>
         preset.provider_type.toLowerCase() === normalized ||
-        preset.aliases.some((alias) => alias.toLowerCase() === normalized)
+        preset.aliases.some((alias) => alias.toLowerCase() === normalized),
     )
   }
 
@@ -422,20 +407,14 @@ export default function Settings() {
   const handleProviderTypeChange = (which: 'ocr_api' | 'llm_api', rawProviderType: string) => {
     const providerType = resolveProviderType(rawProviderType)
     const preset = findProviderPreset(providerType)
-    const presetEndpoint =
-      which === 'ocr_api' ? preset?.ocr_endpoint ?? '' : preset?.llm_endpoint ?? ''
-    const presetModel =
-      which === 'ocr_api' ? preset?.ocr_models?.[0] ?? null : preset?.llm_models?.[0] ?? null
+    const presetEndpoint = which === 'ocr_api' ? (preset?.ocr_endpoint ?? '') : (preset?.llm_endpoint ?? '')
+    const presetModel = which === 'ocr_api' ? (preset?.ocr_models?.[0] ?? null) : (preset?.llm_models?.[0] ?? null)
 
     setFormData((prev) => {
       if (!prev) return prev
       const current = prev.ai_provider[which] ?? defaultExternalApiSettings()
-      const endpoint =
-        current.endpoint && current.endpoint.trim().length > 0
-          ? current.endpoint
-          : presetEndpoint
-      const model =
-        current.model && current.model.trim().length > 0 ? current.model : presetModel
+      const endpoint = current.endpoint && current.endpoint.trim().length > 0 ? current.endpoint : presetEndpoint
+      const model = current.model && current.model.trim().length > 0 ? current.model : presetModel
       return {
         ...prev,
         ai_provider: {
@@ -454,7 +433,7 @@ export default function Settings() {
   const handleModelDiscoveryResult = (
     which: 'ocr_api' | 'llm_api',
     currentModel: string | null | undefined,
-    result: ProviderModelsResponse
+    result: ProviderModelsResponse,
   ) => {
     setModelCatalog((prev) => ({
       ...prev,
@@ -462,11 +441,7 @@ export default function Settings() {
     }))
     setModelCatalogNotice((prev) => ({
       ...prev,
-      [which]:
-        result.notice ??
-        (result.models.length === 0
-          ? t('settingsAutomation.modelDiscoveryNoModels')
-          : null),
+      [which]: result.notice ?? (result.models.length === 0 ? t('settingsAutomation.modelDiscoveryNoModels') : null),
     }))
 
     if ((!currentModel || !currentModel.trim()) && result.models.length > 0) {
@@ -512,7 +487,7 @@ export default function Settings() {
   }
 
   const updateSectionDirty = Boolean(
-    formData && settings && JSON.stringify(formData.update) !== JSON.stringify(settings.update)
+    formData && settings && JSON.stringify(formData.update) !== JSON.stringify(settings.update),
   )
 
   const saveUpdateSection = () => {
@@ -532,7 +507,7 @@ export default function Settings() {
 
   if (settingsLoading || storageLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <Spinner size="lg" className={colors.primary.text} />
         <span className={cn('ml-3', colors.text.secondary)}>{t('common.loading')}</span>
       </div>
@@ -540,7 +515,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
+    <div className="h-full space-y-6 overflow-y-auto p-6">
       {/* UI note */}
       <div className="flex items-center justify-between">
         <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
@@ -550,10 +525,10 @@ export default function Settings() {
       {/* UI note */}
       {saveMessage && (
         <div
-          className={`p-4 rounded-lg ${
+          className={`rounded-lg p-4 ${
             saveMessage.type === 'success'
-              ? 'bg-green-500/20 border border-green-500 text-green-600 dark:text-green-400'
-              : 'bg-red-500/20 border border-red-500 text-red-600 dark:text-red-400'
+              ? 'border border-status-connected bg-semantic-success/20 text-semantic-success'
+              : 'border border-status-error bg-semantic-error/20 text-semantic-error'
           }`}
         >
           {saveMessage.text}
@@ -564,7 +539,7 @@ export default function Settings() {
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('settings.storageStats')}</CardTitle>
         {storageStats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <StorageCard
               label={t('settings.totalSize')}
               value={formatBytes(storageStats.total_size_bytes)}
@@ -588,8 +563,9 @@ export default function Settings() {
           </div>
         )}
         {storageStats?.oldest_data_date && storageStats?.newest_data_date && (
-          <div className="mt-4 text-sm text-slate-600 dark:text-slate-400">
-            {t('settings.dataRange')}: {storageStats.oldest_data_date.split('T')[0]} ~ {storageStats.newest_data_date.split('T')[0]}
+          <div className="mt-4 text-content-secondary text-sm">
+            {t('settings.dataRange')}: {storageStats.oldest_data_date.split('T')[0]} ~{' '}
+            {storageStats.newest_data_date.split('T')[0]}
           </div>
         )}
       </Card>
@@ -597,12 +573,12 @@ export default function Settings() {
       {/* UI note */}
       <Card variant="default" padding="lg">
         <CardTitle className="mb-4">{t('settings.exportTitle')}</CardTitle>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{t('settings.exportDescription')}</p>
+        <p className="mb-4 text-content-secondary text-sm">{t('settings.exportDescription')}</p>
 
         {/* UI note */}
-        <div className="flex items-center gap-4 mb-4">
-          <span className="text-slate-700 dark:text-slate-300 text-sm">{t('settings.exportFormatLabel')}:</span>
-          <label className="flex items-center cursor-pointer">
+        <div className="mb-4 flex items-center gap-4">
+          <span className="text-content-strong text-sm">{t('settings.exportFormatLabel')}:</span>
+          <label className="flex cursor-pointer items-center">
             <input
               type="radio"
               name="exportFormat"
@@ -611,9 +587,9 @@ export default function Settings() {
               onChange={() => setExportFormat('json')}
               className={form.radio}
             />
-            <span className="ml-2 text-slate-700 dark:text-slate-300">JSON</span>
+            <span className="ml-2 text-content-strong">JSON</span>
           </label>
-          <label className="flex items-center cursor-pointer">
+          <label className="flex cursor-pointer items-center">
             <input
               type="radio"
               name="exportFormat"
@@ -622,12 +598,12 @@ export default function Settings() {
               onChange={() => setExportFormat('csv')}
               className={form.radio}
             />
-            <span className="ml-2 text-slate-700 dark:text-slate-300">CSV</span>
+            <span className="ml-2 text-content-strong">CSV</span>
           </label>
         </div>
 
         {/* UI note */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <ExportButton
             label={t('settings.exportMetricsLabel')}
             description={t('settings.exportMetricsDesc')}
@@ -655,31 +631,33 @@ export default function Settings() {
           {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.retentionTitle')}</CardTitle>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
-                <label className={form.label}>
+                <label htmlFor="settings-retention-days" className={form.label}>
                   {t('settings.retentionDays')}
                 </label>
                 <Input
+                  id="settings-retention-days"
                   type="number"
                   min={1}
                   max={365}
                   value={formData.retention_days}
-                  onChange={(e) => handleChange('retention_days', parseInt(e.target.value) || 30)}
+                  onChange={(e) => handleChange('retention_days', parseInt(e.target.value, 10) || 30)}
                 />
                 <p className={form.helper}>{t('settings.retentionAutoDelete')}</p>
               </div>
               <div>
-                <label className={form.label}>
+                <label htmlFor="settings-max-storage-mb" className={form.label}>
                   {t('settings.maxStorageMb')}
                 </label>
                 <Input
+                  id="settings-max-storage-mb"
                   type="number"
                   min={100}
                   max={10000}
                   step={100}
                   value={formData.max_storage_mb}
-                  onChange={(e) => handleChange('max_storage_mb', parseInt(e.target.value) || 500)}
+                  onChange={(e) => handleChange('max_storage_mb', parseInt(e.target.value, 10) || 500)}
                 />
                 <p className={form.helper}>{t('settings.maxStorageOverflow')}</p>
               </div>
@@ -690,10 +668,10 @@ export default function Settings() {
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.collectionTitle')}</CardTitle>
             <div className="space-y-4">
-              <label className="flex items-center justify-between cursor-pointer">
+              <label className="flex cursor-pointer items-center justify-between">
                 <div>
-                  <span className="text-slate-700 dark:text-slate-300">{t('settings.captureEnabled')}</span>
-                  <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.captureEnabledDesc')}</p>
+                  <span className="text-content-strong">{t('settings.captureEnabled')}</span>
+                  <p className="text-content-secondary text-xs">{t('settings.captureEnabledDesc')}</p>
                 </div>
                 <input
                   type="checkbox"
@@ -703,42 +681,45 @@ export default function Settings() {
                 />
               </label>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+              <div className="grid grid-cols-1 gap-4 pt-4 md:grid-cols-3">
                 <div>
-                  <label className={form.label}>
+                  <label htmlFor="settings-idle-threshold" className={form.label}>
                     {t('settings.idleThresholdSecs')}
                   </label>
                   <Input
+                    id="settings-idle-threshold"
                     type="number"
                     min={60}
                     max={3600}
                     step={60}
                     value={formData.idle_threshold_secs}
-                    onChange={(e) => handleChange('idle_threshold_secs', parseInt(e.target.value) || 300)}
+                    onChange={(e) => handleChange('idle_threshold_secs', parseInt(e.target.value, 10) || 300)}
                   />
                 </div>
                 <div>
-                  <label className={form.label}>
+                  <label htmlFor="settings-metrics-interval" className={form.label}>
                     {t('settings.metricsIntervalSecs')}
                   </label>
                   <Input
+                    id="settings-metrics-interval"
                     type="number"
                     min={1}
                     max={60}
                     value={formData.metrics_interval_secs}
-                    onChange={(e) => handleChange('metrics_interval_secs', parseInt(e.target.value) || 5)}
+                    onChange={(e) => handleChange('metrics_interval_secs', parseInt(e.target.value, 10) || 5)}
                   />
                 </div>
                 <div>
-                  <label className={form.label}>
+                  <label htmlFor="settings-process-interval" className={form.label}>
                     {t('settings.processIntervalSecs')}
                   </label>
                   <Input
+                    id="settings-process-interval"
                     type="number"
                     min={5}
                     max={300}
                     value={formData.process_interval_secs}
-                    onChange={(e) => handleChange('process_interval_secs', parseInt(e.target.value) || 10)}
+                    onChange={(e) => handleChange('process_interval_secs', parseInt(e.target.value, 10) || 10)}
                   />
                 </div>
               </div>
@@ -748,22 +729,23 @@ export default function Settings() {
           {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.webTitle')}</CardTitle>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
-                <label className={form.label}>
+                <label htmlFor="settings-web-port" className={form.label}>
                   {t('settings.portLabel')}
                 </label>
                 <Input
+                  id="settings-web-port"
                   type="number"
                   min={1024}
                   max={65535}
                   value={formData.web_port}
-                  onChange={(e) => handleChange('web_port', parseInt(e.target.value) || 9090)}
+                  onChange={(e) => handleChange('web_port', parseInt(e.target.value, 10) || 9090)}
                 />
                 <p className={form.helper}>{t('settings.portRestart')}</p>
               </div>
               <div className="flex items-center">
-                <label className="flex items-center cursor-pointer">
+                <label className="flex cursor-pointer items-center">
                   <input
                     type="checkbox"
                     checked={formData.allow_external}
@@ -771,8 +753,8 @@ export default function Settings() {
                     className={form.checkboxInline}
                   />
                   <div>
-                    <span className="text-slate-700 dark:text-slate-300">{t('settings.allowExternal')}</span>
-                    <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.allowExternalDesc')}</p>
+                    <span className="text-content-strong">{t('settings.allowExternal')}</span>
+                    <p className="text-content-secondary text-xs">{t('settings.allowExternalDesc')}</p>
                   </div>
                 </label>
               </div>
@@ -796,21 +778,22 @@ export default function Settings() {
                 onChange={(v) => handleUpdateChange('auto_install', v)}
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className={form.label}>
+                  <label htmlFor="settings-update-interval" className={form.label}>
                     {t('settings.updateIntervalHours')}
                   </label>
                   <Input
+                    id="settings-update-interval"
                     type="number"
                     min={1}
                     max={168}
                     value={formData.update.check_interval_hours}
-                    onChange={(e) => handleUpdateChange('check_interval_hours', parseInt(e.target.value) || 24)}
+                    onChange={(e) => handleUpdateChange('check_interval_hours', parseInt(e.target.value, 10) || 24)}
                   />
                 </div>
                 <div className="flex items-end">
-                  <label className="flex items-center cursor-pointer">
+                  <label className="flex cursor-pointer items-center">
                     <input
                       type="checkbox"
                       checked={formData.update.include_prerelease}
@@ -818,27 +801,31 @@ export default function Settings() {
                       className={form.checkboxInline}
                     />
                     <div>
-                      <span className="text-slate-700 dark:text-slate-300">{t('settings.updateIncludePrerelease')}</span>
-                      <p className="text-xs text-slate-600 dark:text-slate-500">{t('settings.updateIncludePrereleaseDesc')}</p>
+                      <span className="text-content-strong">{t('settings.updateIncludePrerelease')}</span>
+                      <p className="text-content-secondary text-xs">{t('settings.updateIncludePrereleaseDesc')}</p>
                     </div>
                   </label>
                 </div>
               </div>
 
-              <div className="mt-2 p-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
-                <div className="text-sm font-medium text-slate-900 dark:text-white">{t('settings.updateRuntimeStatus')}</div>
-                <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+              <div className="mt-2 rounded-lg border border-muted bg-surface-inset p-4">
+                <div className="font-medium text-content text-sm">{t('settings.updateRuntimeStatus')}</div>
+                <div className="mt-1 text-content-strong text-sm">
                   {updateStatus?.message ?? t('settings.updateStatusUnavailable')}
                 </div>
                 {updateStatus?.pending && (
-                  <div className="mt-2 text-xs text-slate-600 dark:text-slate-400 space-y-1">
-                    <div>{t('settings.updateCurrentVersion')}: {updateStatus.pending.current_version}</div>
-                    <div>{t('settings.updateLatestVersion')}: {updateStatus.pending.latest_version}</div>
+                  <div className="mt-2 space-y-1 text-content-secondary text-xs">
+                    <div>
+                      {t('settings.updateCurrentVersion')}: {updateStatus.pending.current_version}
+                    </div>
+                    <div>
+                      {t('settings.updateLatestVersion')}: {updateStatus.pending.latest_version}
+                    </div>
                     <a
                       href={updateStatus.pending.release_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-teal-600 dark:text-teal-400 underline"
+                      className="text-accent-teal underline"
                     >
                       {t('settings.updateReleaseNote')}
                     </a>
@@ -891,10 +878,7 @@ export default function Settings() {
           </Card>
 
           {/* UI note */}
-          <NotificationSettings
-            notification={formData.notification}
-            onChange={handleNotificationChange}
-          />
+          <NotificationSettings notification={formData.notification} onChange={handleNotificationChange} />
 
           {/* UI note */}
           <Card variant="default" padding="lg">
@@ -922,21 +906,15 @@ export default function Settings() {
           </Card>
 
           {/* UI note */}
-          <PrivacySettings
-            privacy={formData.privacy}
-            onChange={handlePrivacyChange}
-          />
+          <PrivacySettings privacy={formData.privacy} onChange={handlePrivacyChange} />
 
           {/* UI note */}
-          <ScheduleSettings
-            schedule={formData.schedule}
-            onChange={handleScheduleChange}
-          />
+          <ScheduleSettings schedule={formData.schedule} onChange={handleScheduleChange} />
 
           {/* UI note */}
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.telemetryTitle')}</CardTitle>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{t('settings.telemetryDesc')}</p>
+            <p className="mb-4 text-content-secondary text-sm">{t('settings.telemetryDesc')}</p>
             <div className="space-y-4">
               <ToggleRow
                 label={t('settings.telemetryEnabled')}
@@ -945,7 +923,9 @@ export default function Settings() {
                 onChange={(v) => handleTelemetryChange('enabled', v)}
               />
 
-              <div className={`space-y-4 pl-4 border-l-2 border-slate-300 dark:border-slate-600 ${!formData.telemetry.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div
+                className={`space-y-4 border-DEFAULT border-l-2 pl-4 ${!formData.telemetry.enabled ? 'pointer-events-none opacity-50' : ''}`}
+              >
                 <ToggleRow
                   label={t('settings.crashReports')}
                   description={t('settings.crashReportsDesc')}
@@ -992,12 +972,13 @@ export default function Settings() {
                 onChange={(v) => handleSandboxChange('enabled', v)}
               />
 
-              <div className={`space-y-4 ${!formData.sandbox.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div className={`space-y-4 ${!formData.sandbox.enabled ? 'pointer-events-none opacity-50' : ''}`}>
                 <div>
-                  <label className={form.label}>
+                  <label htmlFor="settings-sandbox-profile" className={form.label}>
                     {t('settingsAutomation.sandboxProfile')}
                   </label>
                   <Select
+                    id="settings-sandbox-profile"
                     value={formData.sandbox.profile}
                     onChange={(e) => handleSandboxChange('profile', e.target.value)}
                   >
@@ -1021,12 +1002,13 @@ export default function Settings() {
           <Card variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settingsAutomation.aiTitle')}</CardTitle>
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className={form.label}>
+                  <label htmlFor="settings-ocr-provider" className={form.label}>
                     {t('settingsAutomation.ocrProvider')}
                   </label>
                   <Select
+                    id="settings-ocr-provider"
                     value={formData.ai_provider.ocr_provider}
                     onChange={(e) => handleAiProviderChange('ocr_provider', e.target.value)}
                   >
@@ -1035,10 +1017,11 @@ export default function Settings() {
                   </Select>
                 </div>
                 <div>
-                  <label className={form.label}>
+                  <label htmlFor="settings-llm-provider" className={form.label}>
                     {t('settingsAutomation.llmProvider')}
                   </label>
                   <Select
+                    id="settings-llm-provider"
                     value={formData.ai_provider.llm_provider}
                     onChange={(e) => handleAiProviderChange('llm_provider', e.target.value)}
                   >
@@ -1049,10 +1032,11 @@ export default function Settings() {
               </div>
 
               <div>
-                <label className={form.label}>
+                <label htmlFor="settings-data-policy" className={form.label}>
                   {t('settingsAutomation.dataPolicy')}
                 </label>
                 <Select
+                  id="settings-data-policy"
                   value={formData.ai_provider.external_data_policy}
                   onChange={(e) => handleAiProviderChange('external_data_policy', e.target.value)}
                 >
@@ -1069,8 +1053,8 @@ export default function Settings() {
                 onChange={(v) => handleAiProviderChange('allow_unredacted_external_ocr', v)}
               />
 
-              <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
-                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <div className="space-y-3 rounded-lg border border-muted p-4">
+                <h4 className="font-medium text-content-strong text-sm">
                   {t('settingsAutomation.sceneActionOverrideTitle')}
                 </h4>
                 <ToggleRow
@@ -1079,12 +1063,18 @@ export default function Settings() {
                   checked={formData.ai_provider.scene_action_override.enabled}
                   onChange={(v) => handleSceneActionOverrideChange('enabled', v)}
                 />
-                <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${!formData.ai_provider.scene_action_override.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div
+                  className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${!formData.ai_provider.scene_action_override.enabled ? 'pointer-events-none opacity-50' : ''}`}
+                >
                   <div className="md:col-span-2">
-                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                    <label
+                      htmlFor="settings-scene-override-reason"
+                      className="mb-1 block text-content-secondary text-xs"
+                    >
                       {t('settingsAutomation.sceneActionOverrideReason')}
                     </label>
                     <Input
+                      id="settings-scene-override-reason"
                       type="text"
                       value={formData.ai_provider.scene_action_override.reason}
                       onChange={(e) => handleSceneActionOverrideChange('reason', e.target.value)}
@@ -1092,10 +1082,14 @@ export default function Settings() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                    <label
+                      htmlFor="settings-scene-override-approved-by"
+                      className="mb-1 block text-content-secondary text-xs"
+                    >
                       {t('settingsAutomation.sceneActionOverrideApprovedBy')}
                     </label>
                     <Input
+                      id="settings-scene-override-approved-by"
                       type="text"
                       value={formData.ai_provider.scene_action_override.approved_by}
                       onChange={(e) => handleSceneActionOverrideChange('approved_by', e.target.value)}
@@ -1103,151 +1097,138 @@ export default function Settings() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                    <label
+                      htmlFor="settings-scene-override-expires"
+                      className="mb-1 block text-content-secondary text-xs"
+                    >
                       {t('settingsAutomation.sceneActionOverrideExpiresAt')}
                     </label>
                     <Input
+                      id="settings-scene-override-expires"
                       type="datetime-local"
                       value={toDateTimeLocalValue(formData.ai_provider.scene_action_override.expires_at)}
-                      onChange={(e) =>
-                        handleSceneActionOverrideChange(
-                          'expires_at',
-                          toRfc3339OrNull(e.target.value)
-                        )
-                      }
+                      onChange={(e) => handleSceneActionOverrideChange('expires_at', toRfc3339OrNull(e.target.value))}
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
-                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <div className="space-y-3 rounded-lg border border-muted p-4">
+                <h4 className="font-medium text-content-strong text-sm">
                   {t('settingsAutomation.sceneIntelligenceTitle', 'Scene Intelligence')}
                 </h4>
                 <ToggleRow
                   label={t('settingsAutomation.sceneIntelligenceEnabled', 'Enable Scene Intelligence')}
                   description={t(
                     'settingsAutomation.sceneIntelligenceEnabledDescription',
-                    'Enable OCR-based UI structure detection and assistant recommendations.'
+                    'Enable OCR-based UI structure detection and assistant recommendations.',
                   )}
                   checked={formData.ai_provider.scene_intelligence.enabled}
                   onChange={(v) => handleSceneIntelligenceChange('enabled', v)}
                 />
-                <div className={`space-y-3 ${!formData.ai_provider.scene_intelligence.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div
+                  className={`space-y-3 ${!formData.ai_provider.scene_intelligence.enabled ? 'pointer-events-none opacity-50' : ''}`}
+                >
                   <ToggleRow
                     label={t('settingsAutomation.sceneOverlayEnabled', 'Show Overlay')}
                     description={t(
                       'settingsAutomation.sceneOverlayEnabledDescription',
-                      'Render detected UI element boxes on session replay screenshots.'
+                      'Render detected UI element boxes on session replay screenshots.',
                     )}
                     checked={formData.ai_provider.scene_intelligence.overlay_enabled}
                     onChange={(v) => handleSceneIntelligenceChange('overlay_enabled', v)}
                   />
                   <ToggleRow
-                    label={t(
-                      'settingsAutomation.sceneAllowExecution',
-                      'Allow Scene Action Execution'
-                    )}
+                    label={t('settingsAutomation.sceneAllowExecution', 'Allow Scene Action Execution')}
                     description={t(
                       'settingsAutomation.sceneAllowExecutionDescription',
-                      'Permit direct click/type execution from scene coordinates (RPA gate).'
+                      'Permit direct click/type execution from scene coordinates (RPA gate).',
                     )}
                     checked={formData.ai_provider.scene_intelligence.allow_action_execution}
                     onChange={(v) => handleSceneIntelligenceChange('allow_action_execution', v)}
                   />
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      <label
+                        htmlFor="settings-scene-min-confidence"
+                        className="mb-1 block text-content-secondary text-xs"
+                      >
                         {t('settingsAutomation.sceneMinConfidence', 'Scene Min Confidence')}
                       </label>
                       <Input
+                        id="settings-scene-min-confidence"
                         type="number"
                         min={0}
                         max={1}
                         step={0.05}
                         value={formData.ai_provider.scene_intelligence.min_confidence}
-                        onChange={(e) =>
-                          handleSceneIntelligenceChange(
-                            'min_confidence',
-                            Number(e.target.value)
-                          )
-                        }
+                        onChange={(e) => handleSceneIntelligenceChange('min_confidence', Number(e.target.value))}
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      <label
+                        htmlFor="settings-scene-max-elements"
+                        className="mb-1 block text-content-secondary text-xs"
+                      >
                         {t('settingsAutomation.sceneMaxElements', 'Scene Max Elements')}
                       </label>
                       <Input
+                        id="settings-scene-max-elements"
                         type="number"
                         min={1}
                         max={1000}
                         step={1}
                         value={formData.ai_provider.scene_intelligence.max_elements}
-                        onChange={(e) =>
-                          handleSceneIntelligenceChange(
-                            'max_elements',
-                            Number(e.target.value)
-                          )
-                        }
+                        onChange={(e) => handleSceneIntelligenceChange('max_elements', Number(e.target.value))}
                       />
                     </div>
                   </div>
-                  <div className="p-3 rounded-md bg-slate-100/70 dark:bg-slate-800/70 space-y-3">
+                  <div className="space-y-3 rounded-md bg-surface-elevated/70 p-3">
                     <ToggleRow
-                      label={t(
-                        'settingsAutomation.sceneCalibrationEnabled',
-                        'Enable Calibration Validation'
-                      )}
+                      label={t('settingsAutomation.sceneCalibrationEnabled', 'Enable Calibration Validation')}
                       description={t(
                         'settingsAutomation.sceneCalibrationEnabledDescription',
-                        'Validate whether current scene quality is sufficient before assistant usage.'
+                        'Validate whether current scene quality is sufficient before assistant usage.',
                       )}
                       checked={formData.ai_provider.scene_intelligence.calibration_enabled}
                       onChange={(v) => handleSceneIntelligenceChange('calibration_enabled', v)}
                     />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div>
-                        <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
-                          {t(
-                            'settingsAutomation.sceneCalibrationMinElements',
-                            'Calibration Min Elements'
-                          )}
+                        <label
+                          htmlFor="settings-scene-cal-min-elements"
+                          className="mb-1 block text-content-secondary text-xs"
+                        >
+                          {t('settingsAutomation.sceneCalibrationMinElements', 'Calibration Min Elements')}
                         </label>
                         <Input
+                          id="settings-scene-cal-min-elements"
                           type="number"
                           min={1}
                           max={1000}
                           step={1}
                           value={formData.ai_provider.scene_intelligence.calibration_min_elements}
                           onChange={(e) =>
-                            handleSceneIntelligenceChange(
-                              'calibration_min_elements',
-                              Number(e.target.value)
-                            )
+                            handleSceneIntelligenceChange('calibration_min_elements', Number(e.target.value))
                           }
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
-                          {t(
-                            'settingsAutomation.sceneCalibrationMinAvgConfidence',
-                            'Calibration Min Avg Confidence'
-                          )}
+                        <label
+                          htmlFor="settings-scene-cal-min-confidence"
+                          className="mb-1 block text-content-secondary text-xs"
+                        >
+                          {t('settingsAutomation.sceneCalibrationMinAvgConfidence', 'Calibration Min Avg Confidence')}
                         </label>
                         <Input
+                          id="settings-scene-cal-min-confidence"
                           type="number"
                           min={0}
                           max={1}
                           step={0.05}
-                          value={
-                            formData.ai_provider.scene_intelligence.calibration_min_avg_confidence
-                          }
+                          value={formData.ai_provider.scene_intelligence.calibration_min_avg_confidence}
                           onChange={(e) =>
-                            handleSceneIntelligenceChange(
-                              'calibration_min_avg_confidence',
-                              Number(e.target.value)
-                            )
+                            handleSceneIntelligenceChange('calibration_min_avg_confidence', Number(e.target.value))
                           }
                         />
                       </div>
@@ -1256,8 +1237,8 @@ export default function Settings() {
                 </div>
               </div>
 
-              <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
-                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <div className="space-y-3 rounded-lg border border-muted p-4">
+                <h4 className="font-medium text-content-strong text-sm">
                   {t('settingsAutomation.ocrValidationTitle')}
                 </h4>
                 <ToggleRow
@@ -1266,12 +1247,15 @@ export default function Settings() {
                   checked={formData.ai_provider.ocr_validation.enabled}
                   onChange={(v) => handleOcrValidationChange('enabled', v)}
                 />
-                <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${!formData.ai_provider.ocr_validation.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div
+                  className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${!formData.ai_provider.ocr_validation.enabled ? 'pointer-events-none opacity-50' : ''}`}
+                >
                   <div>
-                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                    <label htmlFor="settings-ocr-min-confidence" className="mb-1 block text-content-secondary text-xs">
                       {t('settingsAutomation.ocrMinConfidence')}
                     </label>
                     <Input
+                      id="settings-ocr-min-confidence"
                       type="number"
                       min={0}
                       max={1}
@@ -1281,10 +1265,14 @@ export default function Settings() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                    <label
+                      htmlFor="settings-ocr-max-invalid-ratio"
+                      className="mb-1 block text-content-secondary text-xs"
+                    >
                       {t('settingsAutomation.ocrMaxInvalidRatio')}
                     </label>
                     <Input
+                      id="settings-ocr-max-invalid-ratio"
                       type="number"
                       min={0}
                       max={1}
@@ -1305,16 +1293,15 @@ export default function Settings() {
 
               {/* UI note */}
               {formData.ai_provider.ocr_provider === 'Remote' && (
-                <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
-                  <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    OCR {t('settingsAutomation.externalApi')}
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-3 rounded-lg border border-muted p-4">
+                  <h4 className="font-medium text-content-strong text-sm">OCR {t('settingsAutomation.externalApi')}</h4>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      <label htmlFor="settings-ocr-provider-type" className="mb-1 block text-content-secondary text-xs">
                         {t('settingsAutomation.providerType')}
                       </label>
                       <Select
+                        id="settings-ocr-provider-type"
                         value={resolveProviderType(formData.ai_provider.ocr_api?.provider_type)}
                         onChange={(e) => handleProviderTypeChange('ocr_api', e.target.value)}
                       >
@@ -1337,8 +1324,11 @@ export default function Settings() {
                       </Button>
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.endpoint')}</label>
+                      <label htmlFor="settings-ocr-endpoint" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.endpoint')}
+                      </label>
                       <Input
+                        id="settings-ocr-endpoint"
                         type="text"
                         value={formData.ai_provider.ocr_api?.endpoint ?? ''}
                         onChange={(e) => handleExternalApiChange('ocr_api', 'endpoint', e.target.value)}
@@ -1346,8 +1336,11 @@ export default function Settings() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.apiKey')}</label>
+                      <label htmlFor="settings-ocr-api-key" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.apiKey')}
+                      </label>
                       <Input
+                        id="settings-ocr-api-key"
                         type="password"
                         value={formData.ai_provider.ocr_api?.api_key_masked ?? ''}
                         onChange={(e) => handleExternalApiChange('ocr_api', 'api_key_masked', e.target.value)}
@@ -1355,8 +1348,11 @@ export default function Settings() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.model')}</label>
+                      <label htmlFor="settings-ocr-model" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.model')}
+                      </label>
                       <Input
+                        id="settings-ocr-model"
                         type="text"
                         list="ocr-model-catalog"
                         value={formData.ai_provider.ocr_api?.model ?? ''}
@@ -1371,36 +1367,38 @@ export default function Settings() {
                       )}
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.timeoutSecs')}</label>
+                      <label htmlFor="settings-ocr-timeout" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.timeoutSecs')}
+                      </label>
                       <Input
+                        id="settings-ocr-timeout"
                         type="number"
                         min={5}
                         max={300}
                         value={formData.ai_provider.ocr_api?.timeout_secs ?? 30}
-                        onChange={(e) => handleExternalApiChange('ocr_api', 'timeout_secs', parseInt(e.target.value) || 30)}
+                        onChange={(e) =>
+                          handleExternalApiChange('ocr_api', 'timeout_secs', parseInt(e.target.value, 10) || 30)
+                        }
                       />
                     </div>
                   </div>
                   {modelCatalogNotice.ocr_api && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {modelCatalogNotice.ocr_api}
-                    </p>
+                    <p className="text-content-secondary text-xs">{modelCatalogNotice.ocr_api}</p>
                   )}
                 </div>
               )}
 
               {/* UI note */}
               {formData.ai_provider.llm_provider === 'Remote' && (
-                <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
-                  <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    LLM {t('settingsAutomation.externalApi')}
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-3 rounded-lg border border-muted p-4">
+                  <h4 className="font-medium text-content-strong text-sm">LLM {t('settingsAutomation.externalApi')}</h4>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      <label htmlFor="settings-llm-provider-type" className="mb-1 block text-content-secondary text-xs">
                         {t('settingsAutomation.providerType')}
                       </label>
                       <Select
+                        id="settings-llm-provider-type"
                         value={resolveProviderType(formData.ai_provider.llm_api?.provider_type)}
                         onChange={(e) => handleProviderTypeChange('llm_api', e.target.value)}
                       >
@@ -1423,8 +1421,11 @@ export default function Settings() {
                       </Button>
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.endpoint')}</label>
+                      <label htmlFor="settings-llm-endpoint" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.endpoint')}
+                      </label>
                       <Input
+                        id="settings-llm-endpoint"
                         type="text"
                         value={formData.ai_provider.llm_api?.endpoint ?? ''}
                         onChange={(e) => handleExternalApiChange('llm_api', 'endpoint', e.target.value)}
@@ -1432,8 +1433,11 @@ export default function Settings() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.apiKey')}</label>
+                      <label htmlFor="settings-llm-api-key" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.apiKey')}
+                      </label>
                       <Input
+                        id="settings-llm-api-key"
                         type="password"
                         value={formData.ai_provider.llm_api?.api_key_masked ?? ''}
                         onChange={(e) => handleExternalApiChange('llm_api', 'api_key_masked', e.target.value)}
@@ -1441,8 +1445,11 @@ export default function Settings() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.model')}</label>
+                      <label htmlFor="settings-llm-model" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.model')}
+                      </label>
                       <Input
+                        id="settings-llm-model"
                         type="text"
                         list="llm-model-catalog"
                         value={formData.ai_provider.llm_api?.model ?? ''}
@@ -1457,20 +1464,23 @@ export default function Settings() {
                       )}
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-600 dark:text-slate-400 mb-1">{t('settingsAutomation.timeoutSecs')}</label>
+                      <label htmlFor="settings-llm-timeout" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.timeoutSecs')}
+                      </label>
                       <Input
+                        id="settings-llm-timeout"
                         type="number"
                         min={5}
                         max={300}
                         value={formData.ai_provider.llm_api?.timeout_secs ?? 30}
-                        onChange={(e) => handleExternalApiChange('llm_api', 'timeout_secs', parseInt(e.target.value) || 30)}
+                        onChange={(e) =>
+                          handleExternalApiChange('llm_api', 'timeout_secs', parseInt(e.target.value, 10) || 30)
+                        }
                       />
                     </div>
                   </div>
                   {modelCatalogNotice.llm_api && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {modelCatalogNotice.llm_api}
-                    </p>
+                    <p className="text-content-secondary text-xs">{modelCatalogNotice.llm_api}</p>
                   )}
                 </div>
               )}
@@ -1479,12 +1489,7 @@ export default function Settings() {
 
           {/* UI note */}
           <div className="flex justify-end">
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              isLoading={mutation.isPending}
-            >
+            <Button type="submit" variant="primary" size="lg" isLoading={mutation.isPending}>
               {mutation.isPending ? t('settings.saving') : t('settings.saveSettings')}
             </Button>
           </div>
@@ -1504,8 +1509,8 @@ function StorageCard({ label, value, subValue }: StorageCardProps) {
   return (
     <Card variant="elevated" padding="md">
       <div className={cn('text-sm', colors.text.secondary)}>{label}</div>
-      <div className={cn('text-2xl font-bold mt-1', colors.text.primary)}>{value}</div>
-      <div className={cn('text-xs mt-1', colors.text.tertiary)}>{subValue}</div>
+      <div className={cn('mt-1 font-bold text-2xl', colors.text.primary)}>{value}</div>
+      <div className={cn('mt-1 text-xs', colors.text.tertiary)}>{subValue}</div>
     </Card>
   )
 }
@@ -1520,16 +1525,18 @@ interface ExportButtonProps {
 function ExportButton({ label, description, onClick, loading }: ExportButtonProps) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={loading}
-      className="flex flex-col items-start p-4 bg-slate-200 dark:bg-slate-900 rounded-lg border border-slate-300 dark:border-slate-700 hover:border-teal-500 hover:bg-slate-300 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      className="flex flex-col items-start rounded-lg border border-DEFAULT bg-surface-muted p-4 transition-colors hover:border-brand-signal hover:bg-active disabled:cursor-not-allowed disabled:opacity-50"
     >
       <div className="flex items-center gap-2">
         <svg
-          className={cn('w-5 h-5', colors.primary.text)}
+          className={cn('h-5 w-5', colors.primary.text)}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"
@@ -1541,7 +1548,7 @@ function ExportButton({ label, description, onClick, loading }: ExportButtonProp
         <span className={cn('font-medium', colors.text.primary)}>{label}</span>
         {loading && <Spinner size="sm" className={colors.primary.text} />}
       </div>
-      <span className={cn('text-xs mt-1', colors.text.tertiary)}>{description}</span>
+      <span className={cn('mt-1 text-xs', colors.text.tertiary)}>{description}</span>
     </button>
   )
 }

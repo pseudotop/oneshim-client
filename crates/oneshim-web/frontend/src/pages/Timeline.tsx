@@ -1,20 +1,22 @@
 /**
  *
  */
-import { useState, useCallback, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Camera } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { Camera } from 'lucide-react'
-import { fetchFrames, fetchTags, fetchFrameTags, addTagToFrame, removeTagFromFrame, Frame } from '../api/client'
+import { addTagToFrame, type Frame, fetchFrames, fetchFrameTags, fetchTags, removeTagFromFrame } from '../api/client'
 import DateRangePicker from '../components/DateRangePicker'
 import Lightbox from '../components/Lightbox'
-import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
-import { Card, CardTitle, Button, Select, Badge, Spinner, EmptyState } from '../components/ui'
 import { TagBadge } from '../components/TagBadge'
 import { TagInput } from '../components/TagInput'
+import { Badge, Button, Card, CardTitle, EmptyState, Select, Spinner } from '../components/ui'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { colors, interaction, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
-import { formatTime, formatDate } from '../utils/formatters'
+import { formatDate, formatTime } from '../utils/formatters'
 
 type ViewMode = 'grid' | 'list'
 type ImportanceFilter = 'all' | 'high' | 'medium' | 'low'
@@ -57,16 +59,14 @@ export default function Timeline() {
   })
 
   const addTagMutation = useMutation({
-    mutationFn: ({ frameId, tagId }: { frameId: number; tagId: number }) =>
-      addTagToFrame(frameId, tagId),
+    mutationFn: ({ frameId, tagId }: { frameId: number; tagId: number }) => addTagToFrame(frameId, tagId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frame-tags', selectedFrame?.id] })
     },
   })
 
   const removeTagMutation = useMutation({
-    mutationFn: ({ frameId, tagId }: { frameId: number; tagId: number }) =>
-      removeTagFromFrame(frameId, tagId),
+    mutationFn: ({ frameId, tagId }: { frameId: number; tagId: number }) => removeTagFromFrame(frameId, tagId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frame-tags', selectedFrame?.id] })
     },
@@ -140,8 +140,8 @@ export default function Timeline() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Spinner size="lg" className="text-teal-500" />
+      <div className="flex h-64 items-center justify-center">
+        <Spinner size="lg" className="text-accent-teal" />
       </div>
     )
   }
@@ -149,7 +149,7 @@ export default function Timeline() {
   if (frames.length === 0) {
     return (
       <EmptyState
-        icon={<Camera className="w-8 h-8" />}
+        icon={<Camera className="h-8 w-8" />}
         title={t('emptyState.timeline.title')}
         description={t('emptyState.timeline.description')}
         action={{ label: t('emptyState.timeline.action'), onClick: () => navigate('/settings') }}
@@ -158,12 +158,12 @@ export default function Timeline() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
+    <div className="h-full space-y-6 overflow-y-auto p-6">
       {/* UI note */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center space-x-4">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('timeline.title')}</h1>
-          <span className="text-slate-600 dark:text-slate-400">
+          <h1 className={cn(typography.h1, colors.text.primary)}>{t('timeline.title')}</h1>
+          <span className="text-content-secondary">
             {pagination ? `${pagination.total}${t('timeline.captures')}` : `${frames.length}${t('timeline.captures')}`}
             {filteredFrames.length !== frames.length && ` (${filteredFrames.length}${t('timeline.showing')})`}
           </span>
@@ -176,23 +176,31 @@ export default function Timeline() {
         <div className="flex flex-wrap items-center gap-4">
           {/* UI note */}
           <div className="flex items-center gap-2">
-            <label className="text-sm text-slate-600 dark:text-slate-400">{t('timeline.app')}:</label>
+            <label htmlFor="timeline-app-filter" className="text-content-secondary text-sm">
+              {t('timeline.app')}:
+            </label>
             <Select
+              id="timeline-app-filter"
               value={appFilter}
               onChange={(e) => setAppFilter(e.target.value)}
               selectSize="sm"
             >
               <option value="all">{t('common.all')}</option>
               {appList.map((app) => (
-                <option key={app} value={app}>{app}</option>
+                <option key={app} value={app}>
+                  {app}
+                </option>
               ))}
             </Select>
           </div>
 
           {/* UI note */}
           <div className="flex items-center gap-2">
-            <label className="text-sm text-slate-600 dark:text-slate-400">{t('timeline.importance')}:</label>
+            <label htmlFor="timeline-importance-filter" className="text-content-secondary text-sm">
+              {t('timeline.importance')}:
+            </label>
             <Select
+              id="timeline-importance-filter"
               value={importanceFilter}
               onChange={(e) => setImportanceFilter(e.target.value as ImportanceFilter)}
               selectSize="sm"
@@ -207,30 +215,40 @@ export default function Timeline() {
           {/* UI note */}
           {allTags.length > 0 && (
             <div className="flex items-center gap-2">
-              <label className="text-sm text-slate-600 dark:text-slate-400">{t('timeline.tag')}:</label>
+              <label htmlFor="timeline-tag-filter" className="text-content-secondary text-sm">
+                {t('timeline.tag')}:
+              </label>
               <Select
+                id="timeline-tag-filter"
                 value={tagFilter === 'all' ? 'all' : String(tagFilter)}
                 onChange={(e) => setTagFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
                 selectSize="sm"
               >
                 <option value="all">{t('common.all')}</option>
                 {allTags.map((tag) => (
-                  <option key={tag.id} value={tag.id}>{tag.name}</option>
+                  <option key={tag.id} value={tag.id}>
+                    {tag.name}
+                  </option>
                 ))}
               </Select>
             </div>
           )}
 
           {/* UI note */}
-          <div className="flex items-center gap-1 ml-auto">
+          <div className="ml-auto flex items-center gap-1">
             <Button
               variant={viewMode === 'grid' ? 'primary' : 'secondary'}
               size="icon"
               onClick={() => setViewMode('grid')}
               title={t('timeline.gridView')}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                />
               </svg>
             </Button>
             <Button
@@ -239,18 +257,18 @@ export default function Timeline() {
               onClick={() => setViewMode('list')}
               title={t('timeline.listView')}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </Button>
           </div>
 
           {/* UI note */}
-          <div className="hidden md:flex items-center text-xs text-slate-500 dark:text-slate-500">
-            <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-600 rounded text-slate-700 dark:text-slate-300">← →</kbd>
+          <div className="hidden items-center text-content-tertiary text-xs md:flex">
+            <kbd className="rounded bg-hover px-1.5 py-0.5 text-content-strong">← →</kbd>
             <span className="ml-1">{t('timeline.move')}</span>
             <span className="mx-2">|</span>
-            <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-600 rounded text-slate-700 dark:text-slate-300">Enter</kbd>
+            <kbd className="rounded bg-hover px-1.5 py-0.5 text-content-strong">Enter</kbd>
             <span className="ml-1">{t('timeline.enlarge')}</span>
           </div>
         </div>
@@ -259,9 +277,10 @@ export default function Timeline() {
       {/* UI note */}
       {viewMode === 'grid' && (
         <Card variant="default" padding="md">
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
             {filteredFrames.map((frame, index) => (
               <button
+                type="button"
                 key={frame.id}
                 onClick={() => selectFrame(frame, index)}
                 onDoubleClick={() => {
@@ -269,21 +288,22 @@ export default function Timeline() {
                   if (frame.image_url) setLightboxOpen(true)
                 }}
                 className={cn(
-                  'aspect-video bg-slate-200 dark:bg-slate-700 rounded overflow-hidden border-2 transition-all hover:scale-105',
+                  'aspect-video overflow-hidden rounded border-2 bg-hover transition-all hover:scale-105',
+                  interaction.focusRing,
                   selectedFrame?.id === frame.id
-                    ? 'border-teal-500 ring-2 ring-teal-500/50'
-                    : 'border-transparent hover:border-slate-400 dark:hover:border-slate-500'
+                    ? 'border-brand-signal ring-2 ring-brand-signal/50'
+                    : 'border-transparent hover:border-strong',
                 )}
               >
                 {frame.image_url ? (
                   <img
                     src={frame.image_url}
                     alt={frame.window_title}
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                     loading="lazy"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-xs text-slate-500">
+                  <div className="flex h-full w-full items-center justify-center text-content-tertiary text-xs">
                     {t('timeline.noImage')}
                   </div>
                 )}
@@ -291,7 +311,7 @@ export default function Timeline() {
             ))}
           </div>
           {filteredFrames.length === 0 && (
-            <div className="text-center py-8 text-slate-600 dark:text-slate-400">
+            <div className="py-8 text-center text-content-secondary">
               {frames.length === 0 ? t('timeline.noFrames') : t('timeline.noFilterMatch')}
             </div>
           )}
@@ -301,11 +321,12 @@ export default function Timeline() {
       {/* UI note */}
       {viewMode === 'list' && (
         <Card variant="default" padding="none">
-          <div className="divide-y divide-slate-200 dark:divide-slate-700">
+          <div className="divide-y divide-border-muted">
             {filteredFrames.map((frame, index) => {
               const badge = getImportanceBadge(frame.importance)
               return (
                 <button
+                  type="button"
                   key={frame.id}
                   onClick={() => selectFrame(frame, index)}
                   onDoubleClick={() => {
@@ -313,45 +334,40 @@ export default function Timeline() {
                     if (frame.image_url) setLightboxOpen(true)
                   }}
                   className={cn(
-                    'w-full flex items-center gap-4 p-3 text-left transition-colors',
-                    selectedFrame?.id === frame.id
-                      ? 'bg-teal-500/10'
-                      : 'hover:bg-slate-200/50 dark:hover:bg-slate-700/50'
+                    'flex w-full items-center gap-4 p-3 text-left transition-colors',
+                    interaction.focusRing,
+                    selectedFrame?.id === frame.id ? 'bg-teal-500/10' : 'hover:bg-hover/50',
                   )}
                 >
                   {/* UI note */}
-                  <div className="w-24 h-14 flex-shrink-0 bg-slate-200 dark:bg-slate-700 rounded overflow-hidden">
+                  <div className="h-14 w-24 flex-shrink-0 overflow-hidden rounded bg-hover">
                     {frame.image_url ? (
                       <img
                         src={frame.image_url}
                         alt={frame.window_title}
-                        className="w-full h-full object-cover"
+                        className="h-full w-full object-cover"
                         loading="lazy"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-500">
+                      <div className="flex h-full w-full items-center justify-center text-content-tertiary text-xs">
                         {t('timeline.noImage')}
                       </div>
                     )}
                   </div>
 
                   {/* UI note */}
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                        {frame.app_name}
-                      </span>
+                      <span className="truncate font-medium text-content text-sm">{frame.app_name}</span>
                       <Badge color={badge.color} size="sm">
                         {badge.label}
                       </Badge>
                     </div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 truncate">
-                      {frame.window_title}
-                    </p>
+                    <p className="truncate text-content-secondary text-sm">{frame.window_title}</p>
                   </div>
 
                   {/* UI note */}
-                  <div className="text-right text-sm text-slate-500 dark:text-slate-500 flex-shrink-0">
+                  <div className="flex-shrink-0 text-right text-content-tertiary text-sm">
                     <div>{formatDate(frame.timestamp)}</div>
                     <div>{formatTime(frame.timestamp)}</div>
                   </div>
@@ -360,7 +376,7 @@ export default function Timeline() {
             })}
           </div>
           {filteredFrames.length === 0 && (
-            <div className="text-center py-8 text-slate-600 dark:text-slate-400">
+            <div className="py-8 text-center text-content-secondary">
               {frames.length === 0 ? t('timeline.noFrames') : t('timeline.noFilterMatch')}
             </div>
           )}
@@ -370,21 +386,13 @@ export default function Timeline() {
       {/* UI note */}
       {pagination && pagination.total > pageSize && (
         <div className="flex items-center justify-center space-x-4">
-          <Button
-            variant="secondary"
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={page === 0}
-          >
+          <Button variant="secondary" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
             {t('common.prev')}
           </Button>
-          <span className="text-slate-600 dark:text-slate-400">
+          <span className="text-content-secondary">
             {page + 1} / {Math.ceil(pagination.total / pageSize)} {t('common.page')}
           </span>
-          <Button
-            variant="secondary"
-            onClick={() => setPage((p) => p + 1)}
-            disabled={!pagination.has_more}
-          >
+          <Button variant="secondary" onClick={() => setPage((p) => p + 1)} disabled={!pagination.has_more}>
             {t('common.next')}
           </Button>
         </div>
@@ -393,10 +401,11 @@ export default function Timeline() {
       {/* UI note */}
       {selectedFrame && (
         <Card variant="default" padding="lg">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* UI note */}
-            <div
-              className="aspect-video bg-slate-200 dark:bg-slate-900 rounded-lg overflow-hidden cursor-pointer group relative"
+            <button
+              type="button"
+              className="group relative aspect-video w-full cursor-pointer overflow-hidden rounded-lg bg-surface-muted"
               onClick={openLightbox}
             >
               {selectedFrame.image_url ? (
@@ -404,20 +413,31 @@ export default function Timeline() {
                   <img
                     src={selectedFrame.image_url}
                     alt={selectedFrame.window_title}
-                    className="w-full h-full object-contain"
+                    className="h-full w-full object-contain"
                   />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                    <svg className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
+                    <svg
+                      className="h-12 w-12 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
+                      />
                     </svg>
                   </div>
                 </>
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-slate-500">
+                <div className="flex h-full w-full items-center justify-center text-content-tertiary">
                   {t('timeline.noImage')}
                 </div>
               )}
-            </div>
+            </button>
 
             {/* UI note */}
             <div className="space-y-4">
@@ -425,42 +445,46 @@ export default function Timeline() {
                 <CardTitle className="mb-2">{t('timeline.frameInfo')}</CardTitle>
                 <dl className="space-y-2">
                   <div className="flex justify-between">
-                    <dt className="text-slate-600 dark:text-slate-400">{t('timeline.time')}</dt>
-                    <dd className="text-slate-900 dark:text-white">{formatTime(selectedFrame.timestamp)}</dd>
+                    <dt className="text-content-secondary">{t('timeline.time')}</dt>
+                    <dd className="text-content">{formatTime(selectedFrame.timestamp)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-slate-600 dark:text-slate-400">{t('timeline.app')}</dt>
-                    <dd className="text-slate-900 dark:text-white">{selectedFrame.app_name}</dd>
+                    <dt className="text-content-secondary">{t('timeline.app')}</dt>
+                    <dd className="text-content">{selectedFrame.app_name}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-slate-600 dark:text-slate-400">{t('timeline.windowTitle')}</dt>
-                    <dd className="text-slate-900 dark:text-white truncate max-w-xs" title={selectedFrame.window_title}>
+                    <dt className="text-content-secondary">{t('timeline.windowTitle')}</dt>
+                    <dd className="max-w-xs truncate text-content" title={selectedFrame.window_title}>
                       {selectedFrame.window_title}
                     </dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-slate-600 dark:text-slate-400">{t('timeline.trigger')}</dt>
-                    <dd className="text-slate-900 dark:text-white">{selectedFrame.trigger_type}</dd>
+                    <dt className="text-content-secondary">{t('timeline.trigger')}</dt>
+                    <dd className="text-content">{selectedFrame.trigger_type}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-slate-600 dark:text-slate-400">{t('timeline.importance')}</dt>
+                    <dt className="text-content-secondary">{t('timeline.importance')}</dt>
                     <dd>
                       {(() => {
                         const badge = getImportanceBadge(selectedFrame.importance)
-                        return <Badge color={badge.color} size="md">{badge.label}</Badge>
+                        return (
+                          <Badge color={badge.color} size="md">
+                            {badge.label}
+                          </Badge>
+                        )
                       })()}
                     </dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-slate-600 dark:text-slate-400">{t('timeline.resolution')}</dt>
-                    <dd className="text-slate-900 dark:text-white">{selectedFrame.resolution}</dd>
+                    <dt className="text-content-secondary">{t('timeline.resolution')}</dt>
+                    <dd className="text-content">{selectedFrame.resolution}</dd>
                   </div>
                 </dl>
               </div>
 
               {/* UI note */}
               <div>
-                <h4 className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">{t('timeline.tags')}</h4>
+                <h4 className="mb-2 font-medium text-content-secondary text-sm">{t('timeline.tags')}</h4>
                 <div className="space-y-2">
                   {/* UI note */}
                   {selectedFrameTags.length > 0 && (
@@ -501,35 +525,39 @@ export default function Timeline() {
               {/* UI note */}
               {selectedFrame.ocr_text && (
                 <div>
-                  <h4 className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">{t('timeline.ocrText')}</h4>
-                  <div className="bg-slate-200 dark:bg-slate-900 rounded p-3 text-sm text-slate-700 dark:text-slate-300 max-h-32 overflow-y-auto font-mono">
+                  <h4 className="mb-2 font-medium text-content-secondary text-sm">{t('timeline.ocrText')}</h4>
+                  <div className="max-h-32 overflow-y-auto rounded bg-surface-muted p-3 font-mono text-content-strong text-sm">
                     {selectedFrame.ocr_text}
                   </div>
                 </div>
               )}
 
               {/* UI note */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
-                <Button
-                  variant="secondary"
-                  onClick={goToPrev}
-                  disabled={selectedIndex <= 0}
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center justify-between border-muted border-t pt-4">
+                <Button variant="secondary" onClick={goToPrev} disabled={selectedIndex <= 0}>
+                  <svg
+                    className="mr-2 h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                   {t('common.prev')}
                 </Button>
-                <span className="text-sm text-slate-600 dark:text-slate-400">
+                <span className="text-content-secondary text-sm">
                   {selectedIndex + 1} / {filteredFrames.length}
                 </span>
-                <Button
-                  variant="secondary"
-                  onClick={goToNext}
-                  disabled={selectedIndex >= filteredFrames.length - 1}
-                >
+                <Button variant="secondary" onClick={goToNext} disabled={selectedIndex >= filteredFrames.length - 1}>
                   {t('common.next')}
-                  <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    className="ml-2 h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </Button>

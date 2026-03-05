@@ -1,4 +1,4 @@
-import { ProcessSnapshot } from '../api/client'
+import type { ProcessSnapshot } from '../api/client'
 import { formatBytes } from '../utils/formatters'
 
 interface ProcessListProps {
@@ -9,39 +9,28 @@ export default function ProcessList({ snapshot }: ProcessListProps) {
   const processes = snapshot.processes.slice(0, 10)
 
   if (processes.length === 0) {
-    return (
-      <div className="text-center py-8 text-slate-400">
-        프로세스 데이터 none
-      </div>
-    )
+    return <div className="py-8 text-center text-content-muted">프로세스 데이터 none</div>
   }
 
   return (
     <div className="space-y-2">
       {processes.map((proc, index) => (
-        <div
-          key={`${proc.pid}-${index}`}
-          className="flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-900 rounded-lg"
-        >
+        <div key={proc.pid} className="flex items-center justify-between rounded-lg bg-surface-muted p-3">
           <div className="flex items-center space-x-3">
-            <span className="text-slate-500 text-sm w-6">{index + 1}</span>
+            <span className="w-6 text-content-tertiary text-sm">{index + 1}</span>
             <div>
-              <div className="font-medium text-slate-900 dark:text-white">{proc.name}</div>
-              <div className="text-xs text-slate-500">PID: {proc.pid}</div>
+              <div className="font-medium text-content">{proc.name}</div>
+              <div className="text-content-tertiary text-xs">PID: {proc.pid}</div>
             </div>
           </div>
           <div className="flex items-center space-x-4 text-right">
             <div>
-              <div className="text-sm font-medium text-teal-400">
-                {proc.cpu_usage.toFixed(1)}%
-              </div>
-              <div className="text-xs text-slate-500">CPU</div>
+              <div className="font-medium text-sm text-teal-400">{proc.cpu_usage.toFixed(1)}%</div>
+              <div className="text-content-tertiary text-xs">CPU</div>
             </div>
             <div>
-              <div className="text-sm font-medium text-blue-400">
-                {formatBytes(proc.memory_bytes)}
-              </div>
-              <div className="text-xs text-slate-500">Memory</div>
+              <div className="font-medium text-blue-400 text-sm">{formatBytes(proc.memory_bytes)}</div>
+              <div className="text-content-tertiary text-xs">Memory</div>
             </div>
           </div>
         </div>

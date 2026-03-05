@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { fetchHeatmap, HeatmapResponse } from '../api/client'
+import { fetchHeatmap, type HeatmapResponse } from '../api/client'
 
 interface ActivityHeatmapProps {
   days?: number
@@ -10,7 +10,7 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2
 const DAY_LABELS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 function getColor(ratio: number): string {
-  if (ratio === 0) return 'bg-slate-200 dark:bg-slate-700'
+  if (ratio === 0) return 'bg-hover'
   if (ratio < 0.2) return 'bg-green-100 dark:bg-green-900'
   if (ratio < 0.4) return 'bg-green-200 dark:bg-green-800'
   if (ratio < 0.6) return 'bg-green-300 dark:bg-green-700'
@@ -30,9 +30,9 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
   if (isLoading) {
     return (
       <div className={`rounded-lg p-4 transition-colors ${className}`}>
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">{t('heatmap.title')}</h3>
-        <div className="flex items-center justify-center h-48">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500"></div>
+        <h3 className="mb-4 font-semibold text-content text-lg">{t('heatmap.title')}</h3>
+        <div className="flex h-48 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-teal-500 border-b-2"></div>
         </div>
       </div>
     )
@@ -41,8 +41,8 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
   if (error || !data) {
     return (
       <div className={`rounded-lg p-4 transition-colors ${className}`}>
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">{t('heatmap.title')}</h3>
-        <div className="text-center text-red-500 py-8">{t('heatmap.loadError')}</div>
+        <h3 className="mb-4 font-semibold text-content text-lg">{t('heatmap.title')}</h3>
+        <div className="py-8 text-center text-red-500">{t('heatmap.loadError')}</div>
       </div>
     )
   }
@@ -58,19 +58,19 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
 
   return (
     <div className={`rounded-lg p-6 transition-colors ${className}`}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{t('heatmap.title')}</h3>
-        <span className="text-sm text-slate-600 dark:text-slate-400">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="font-semibold text-content text-lg">{t('heatmap.title')}</h3>
+        <span className="text-accent-blue text-sm">
           {data.from_date} ~ {data.to_date}
         </span>
       </div>
 
       {/* UI note */}
-      <div className="flex ml-8 mb-1">
+      <div className="mb-1 ml-8 flex">
         {HOUR_LABELS.map((hour, i) => (
           <div
             key={hour}
-            className="flex-1 text-center text-xs text-slate-500 dark:text-slate-500"
+            className="flex-1 text-center text-content-tertiary text-xs"
             style={{ visibility: i % 3 === 0 ? 'visible' : 'hidden' }}
           >
             {hour}
@@ -81,18 +81,16 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
       {/* UI note */}
       <div className="flex flex-col gap-0.5">
         {grid.map((row, dayIndex) => (
-          <div key={dayIndex} className="flex items-center gap-0.5">
+          <div key={dayLabels[dayIndex]} className="flex items-center gap-0.5">
             {/* UI note */}
-            <div className="w-8 text-xs text-slate-600 dark:text-slate-400 text-right pr-2">
-              {dayLabels[dayIndex]}
-            </div>
+            <div className="w-8 pr-2 text-right text-content-secondary text-xs">{dayLabels[dayIndex]}</div>
             {/* UI note */}
             {row.map((value, hourIndex) => {
               const ratio = value / maxValue
               return (
                 <div
-                  key={hourIndex}
-                  className={`flex-1 h-4 rounded-sm ${getColor(ratio)} transition-colors cursor-pointer hover:ring-2 hover:ring-teal-400`}
+                  key={HOUR_LABELS[hourIndex]}
+                  className={`h-4 flex-1 rounded-sm ${getColor(ratio)} cursor-pointer transition-colors hover:ring-2 hover:ring-brand-signal`}
                   title={`${dayLabels[dayIndex]} ${HOUR_LABELS[hourIndex]}:00 - ${t('heatmap.activity')}: ${value}`}
                 />
               )
@@ -102,17 +100,17 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
       </div>
 
       {/* UI note */}
-      <div className="flex items-center justify-end gap-2 mt-4">
-        <span className="text-xs text-slate-600 dark:text-slate-400">{t('heatmap.low')}</span>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <span className="text-content-secondary text-xs">{t('heatmap.low')}</span>
         <div className="flex gap-0.5">
-          <div className="w-3 h-3 rounded-sm bg-slate-200 dark:bg-slate-700" />
-          <div className="w-3 h-3 rounded-sm bg-green-100 dark:bg-green-900" />
-          <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-800" />
-          <div className="w-3 h-3 rounded-sm bg-green-300 dark:bg-green-700" />
-          <div className="w-3 h-3 rounded-sm bg-green-400 dark:bg-green-600" />
-          <div className="w-3 h-3 rounded-sm bg-green-500 dark:bg-green-500" />
+          <div className="h-3 w-3 rounded-sm bg-hover" />
+          <div className="h-3 w-3 rounded-sm bg-green-100 dark:bg-green-900" />
+          <div className="h-3 w-3 rounded-sm bg-green-200 dark:bg-green-800" />
+          <div className="h-3 w-3 rounded-sm bg-green-300 dark:bg-green-700" />
+          <div className="h-3 w-3 rounded-sm bg-green-400 dark:bg-green-600" />
+          <div className="h-3 w-3 rounded-sm bg-green-500 dark:bg-green-500" />
         </div>
-        <span className="text-xs text-slate-600 dark:text-slate-400">{t('heatmap.high')}</span>
+        <span className="text-content-secondary text-xs">{t('heatmap.high')}</span>
       </div>
     </div>
   )

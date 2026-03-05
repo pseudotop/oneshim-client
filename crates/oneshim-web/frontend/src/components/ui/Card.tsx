@@ -2,9 +2,9 @@
  *
  */
 import { forwardRef } from 'react'
-import { cn } from '../../utils/cn'
-import { cardVariants } from '../../styles/variants'
 import { colors, radius, typography } from '../../styles/tokens'
+import { cardVariants } from '../../styles/variants'
+import { cn } from '../../utils/cn'
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: keyof typeof cardVariants.variant
@@ -21,12 +21,12 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
           'transition-colors',
           cardVariants.variant[variant],
           cardVariants.padding[padding],
-          className
+          className,
         )}
         {...props}
       />
     )
-  }
+  },
 )
 
 Card.displayName = 'Card'

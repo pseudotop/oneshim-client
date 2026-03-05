@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/helpers/render-helpers'
 import CommandPalette from '../CommandPalette'
 
@@ -16,9 +16,7 @@ describe('CommandPalette', () => {
   })
 
   it('returns null when closed', () => {
-    const { container } = renderWithProviders(
-      <CommandPalette {...defaultProps} isOpen={false} />,
-    )
+    const { container } = renderWithProviders(<CommandPalette {...defaultProps} isOpen={false} />)
     expect(container.innerHTML).toBe('')
   })
 

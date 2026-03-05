@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
 import { screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/helpers/render-helpers'
 import SidePanel from '../SidePanel'
 
@@ -16,9 +16,7 @@ describe('SidePanel', () => {
   })
 
   it('returns null when collapsed', () => {
-    const { container } = renderWithProviders(
-      <SidePanel {...defaultProps} collapsed={true} />,
-    )
+    const { container } = renderWithProviders(<SidePanel {...defaultProps} collapsed={true} />)
     expect(container.innerHTML).toBe('')
   })
 

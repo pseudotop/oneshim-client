@@ -1,4 +1,4 @@
-import { Wifi, WifiOff, Zap, ZapOff, Cpu, HardDrive } from 'lucide-react'
+import { Cpu, HardDrive, Wifi, WifiOff, Zap, ZapOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSSE } from '../../hooks/useSSE'
 import { layout } from '../../styles/tokens'
@@ -22,40 +22,56 @@ export default function StatusBar() {
   const ramMb = latestMetrics ? `${Math.round(latestMetrics.memory_used / 1024 / 1024)}MB` : '--'
 
   return (
-    <div className={cn(
-      'app-shell-statusbar flex items-center justify-between px-2 select-none',
-      layout.statusBar.height,
-      layout.statusBar.bg,
-      layout.statusBar.text,
-    )}>
+    <div
+      className={cn(
+        'app-shell-statusbar flex select-none items-center justify-between px-2',
+        layout.statusBar.height,
+        layout.statusBar.bg,
+        layout.statusBar.text,
+      )}
+    >
       <div className="flex items-center">
         <span className="flex items-center gap-1 px-1.5" aria-live="polite" aria-atomic="true">
-          {connected
-            ? <><Wifi className="w-3 h-3" aria-hidden="true" /><span>{t('shell.connected', 'Connected')}</span></>
-            : <><WifiOff className="w-3 h-3 opacity-60" aria-hidden="true" /><span>{t('shell.offline', 'Offline')}</span></>
-          }
+          {connected ? (
+            <>
+              <Wifi className="h-3 w-3" aria-hidden="true" />
+              <span>{t('shell.connected', 'Connected')}</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-3 w-3 opacity-60" aria-hidden="true" />
+              <span>{t('shell.offline', 'Offline')}</span>
+            </>
+          )}
         </span>
 
         <div className={layout.statusBar.separator} />
 
-        <span className="flex items-center gap-1 px-1.5" aria-live="polite" aria-atomic="true" aria-label={automationOn ? t('shell.automationOn', 'Auto: ON') : t('shell.automationOff', 'Auto: OFF')}>
-          {automationOn
-            ? <><Zap className="w-3 h-3" aria-hidden="true" /><span>{t('shell.automationOn', 'Auto: ON')}</span></>
-            : <><ZapOff className="w-3 h-3 opacity-60" aria-hidden="true" /><span>{t('shell.automationOff', 'Auto: OFF')}</span></>
-          }
-        </span>
+        <output className="flex items-center gap-1 px-1.5" aria-live="polite" aria-atomic="true">
+          {automationOn ? (
+            <>
+              <Zap className="h-3 w-3" aria-hidden="true" />
+              <span>{t('shell.automationOn', 'Auto: ON')}</span>
+            </>
+          ) : (
+            <>
+              <ZapOff className="h-3 w-3 opacity-60" aria-hidden="true" />
+              <span>{t('shell.automationOff', 'Auto: OFF')}</span>
+            </>
+          )}
+        </output>
       </div>
 
       <div className="flex items-center">
-        <span className="flex items-center gap-1 px-1.5" aria-label={`CPU: ${cpuText}`}>
-          <Cpu className="w-3 h-3" aria-hidden="true" />
+        <span className="flex items-center gap-1 px-1.5">
+          <Cpu className="h-3 w-3" aria-hidden="true" />
           <span>{cpuText}</span>
         </span>
 
         <div className={layout.statusBar.separator} />
 
-        <span className="flex items-center gap-1 px-1.5" aria-label={`RAM: ${ramMb}`}>
-          <HardDrive className="w-3 h-3" aria-hidden="true" />
+        <span className="flex items-center gap-1 px-1.5">
+          <HardDrive className="h-3 w-3" aria-hidden="true" />
           <span>{ramMb}</span>
         </span>
 

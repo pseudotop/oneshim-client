@@ -1,14 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Badge, Button, Card, CardTitle, Spinner } from './ui'
-import {
-  fetchUpdateStatus,
-  postUpdateAction,
-  type UpdateAction,
-  type UpdateStatus,
-} from '../api/client'
+import { fetchUpdateStatus, postUpdateAction, type UpdateAction, type UpdateStatus } from '../api/client'
 import { useUpdateStream } from '../hooks/useUpdateStream'
+import { Badge, Button, Card, CardTitle, Spinner } from './ui'
 
 type UpdatePanelProps = {
   compact?: boolean
@@ -78,7 +73,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
       <Card variant="default" padding="lg">
         <div className="flex items-center space-x-2">
           <Spinner size="sm" />
-          <span className="text-slate-600 dark:text-slate-400">{t('updates.loading')}</span>
+          <span className="text-content-secondary">{t('updates.loading')}</span>
         </div>
       </Card>
     )
@@ -86,7 +81,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
 
   return (
     <Card variant="default" padding="lg">
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <CardTitle>{t('updates.title')}</CardTitle>
         <div className="flex items-center space-x-2">
           <Badge color={stream.status === 'connected' ? 'success' : 'warning'} size="sm">
@@ -104,45 +99,40 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
         </div>
       </div>
 
-      <p className="text-sm text-slate-700 dark:text-slate-300">
-        {status?.message ?? t('updates.statusUnavailable')}
-      </p>
+      <p className="text-content-strong text-sm">{status?.message ?? t('updates.statusUnavailable')}</p>
 
-      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+      <p className="mt-2 text-content-secondary text-xs">
         {freshness.ageSec === null
           ? t('updates.lastUpdateUnknown')
           : t('updates.lastUpdateAge', { seconds: freshness.ageSec })}
       </p>
 
       {freshness.severelyStale && (
-        <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-          {t('updates.staleActionBlocked')}
-        </div>
+        <div className="mt-2 text-accent-amber text-xs">{t('updates.staleActionBlocked')}</div>
       )}
 
       {(stream.lastError || stream.retryCount > 0) && (
-        <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+        <div className="mt-2 text-accent-amber text-xs">
           {stream.lastError ? t('updates.streamIssue') : t('updates.reconnecting', { count: stream.retryCount })}
         </div>
       )}
 
       {status?.pending && (
-        <div className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-1 text-xs text-slate-600 dark:text-slate-400">
-          <div>{t('updates.currentVersion')}: {status.pending.current_version}</div>
-          <div>{t('updates.latestVersion')}: {status.pending.latest_version}</div>
-          <a
-            href={status.pending.release_url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-teal-600 dark:text-teal-400 underline"
-          >
+        <div className="mt-3 space-y-1 rounded-lg border border-muted p-3 text-content-secondary text-xs">
+          <div>
+            {t('updates.currentVersion')}: {status.pending.current_version}
+          </div>
+          <div>
+            {t('updates.latestVersion')}: {status.pending.latest_version}
+          </div>
+          <a href={status.pending.release_url} target="_blank" rel="noreferrer" className="text-accent-teal underline">
             {t('updates.openRelease')}
           </a>
         </div>
       )}
 
       {!compact && (
-        <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+        <div className="mt-3 text-content-secondary text-xs">
           {status?.auto_install ? t('updates.autoInstallOn') : t('updates.autoInstallOff')}
         </div>
       )}
@@ -180,9 +170,7 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
       </div>
 
       {actionMutation.isError && (
-        <div className="mt-3 text-xs text-red-500">
-          {(actionMutation.error as Error).message}
-        </div>
+        <div className="mt-3 text-red-500 text-xs">{(actionMutation.error as Error).message}</div>
       )}
     </Card>
   )

@@ -1,21 +1,23 @@
 import { useTranslation } from 'react-i18next'
-import { Card, CardTitle } from '../components/ui'
 import UpdatePanel from '../components/UpdatePanel'
+import { Card, CardTitle } from '../components/ui'
+import { colors, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 
 export default function Updates() {
   const { t } = useTranslation()
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
+    <div className="h-full space-y-6 overflow-y-auto p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('updates.title')}</h1>
+        <h1 className={cn(typography.h1, colors.text.primary)}>{t('updates.title')}</h1>
       </div>
 
       <UpdatePanel />
 
       <Card variant="default" padding="lg">
         <CardTitle className="mb-3">{t('updates.policyTitle')}</CardTitle>
-        <ul className="text-sm text-slate-700 dark:text-slate-300 space-y-1">
+        <ul className="space-y-1 text-content-strong text-sm">
           <li>{t('updates.policyIntegrity')}</li>
           <li>{t('updates.policySignature')}</li>
           <li>{t('updates.policyRollback')}</li>

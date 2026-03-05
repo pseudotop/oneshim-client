@@ -1,13 +1,13 @@
-import { lazy, Suspense, useMemo, useState, useCallback } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { TitleBar, ActivityBar, SidePanel, StatusBar, CommandPalette, ShortcutsHelp } from './components/shell'
-import { useShellLayout } from './hooks/useShellLayout'
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import ErrorBoundary from './components/ErrorBoundary'
+import { ActivityBar, CommandPalette, ShortcutsHelp, SidePanel, StatusBar, TitleBar } from './components/shell'
+import { Spinner } from './components/ui'
 import { useCommandPalette } from './hooks/useCommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
-import { useTranslation } from 'react-i18next'
+import { useShellLayout } from './hooks/useShellLayout'
 import { layout } from './styles/tokens'
-import ErrorBoundary from './components/ErrorBoundary'
-import { Spinner } from './components/ui'
 import { cn } from './utils/cn'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -29,31 +29,34 @@ function App() {
   const openHelp = useCallback(() => setIsHelpOpen(true), [])
   const closeHelp = useCallback(() => setIsHelpOpen(false), [])
 
-  const shortcutHandlers = useMemo(() => ({
-    onEscape: () => {
-      if (isPaletteOpen) closePalette()
-      else if (isHelpOpen) closeHelp()
-    },
-    onToggleSidebar: toggleSidebar,
-    onTogglePalette: togglePalette,
-    onHelp: openHelp,
-  }), [isPaletteOpen, closePalette, isHelpOpen, closeHelp, toggleSidebar, togglePalette, openHelp])
+  const shortcutHandlers = useMemo(
+    () => ({
+      onEscape: () => {
+        if (isPaletteOpen) closePalette()
+        else if (isHelpOpen) closeHelp()
+      },
+      onToggleSidebar: toggleSidebar,
+      onTogglePalette: togglePalette,
+      onHelp: openHelp,
+    }),
+    [isPaletteOpen, closePalette, isHelpOpen, closeHelp, toggleSidebar, togglePalette, openHelp],
+  )
 
   useKeyboardShortcuts(shortcutHandlers)
 
   return (
-    <div className="app-shell bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
+    <div className="app-shell bg-surface-sunken text-content">
       {/* Skip navigation link for keyboard users (WCAG 2.4.1) */}
-      <a href="#main-content" className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:z-[60] focus-visible:top-2 focus-visible:left-2 focus-visible:px-4 focus-visible:py-2 focus-visible:bg-teal-600 focus-visible:text-white focus-visible:rounded focus-visible:text-sm">
+      <a
+        href="#main-content"
+        className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-2 focus-visible:left-2 focus-visible:z-[60] focus-visible:rounded focus-visible:bg-teal-600 focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:text-white"
+      >
         {t('shell.skipToContent', 'Skip to main content')}
       </a>
 
       <TitleBar onSearchOpen={openPalette} />
 
-      <ActivityBar
-        onToggleSidebar={toggleSidebar}
-        sidebarCollapsed={sidebarCollapsed}
-      />
+      <ActivityBar onToggleSidebar={toggleSidebar} sidebarCollapsed={sidebarCollapsed} />
 
       <SidePanel
         collapsed={sidebarCollapsed}
@@ -66,7 +69,7 @@ function App() {
         <ErrorBoundary>
           <Suspense
             fallback={
-              <div className="flex items-center justify-center h-full">
+              <div className="flex h-full items-center justify-center">
                 <Spinner size="lg" />
               </div>
             }
@@ -90,11 +93,7 @@ function App() {
 
       <StatusBar />
 
-      <CommandPalette
-        isOpen={isPaletteOpen}
-        onClose={closePalette}
-        onToggleSidebar={toggleSidebar}
-      />
+      <CommandPalette isOpen={isPaletteOpen} onClose={closePalette} onToggleSidebar={toggleSidebar} />
       {isHelpOpen && <ShortcutsHelp onClose={closeHelp} />}
     </div>
   )

@@ -1,38 +1,28 @@
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
 import {
-  Focus as FocusIcon,
-  Clock,
-  MessageSquare,
-  Zap,
-  TrendingUp,
-  TrendingDown,
   ArrowRightLeft,
-  Laptop,
   Brain,
+  Clock,
+  Focus as FocusIcon,
+  Laptop,
+  MessageSquare,
+  TrendingDown,
+  TrendingUp,
+  Zap,
 } from 'lucide-react'
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
-import { Spinner } from '../components/ui/Spinner'
-import { Badge } from '../components/ui/Badge'
-import { EmptyState } from '../components/ui'
-import { useTheme } from '../contexts/ThemeContext'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { fetchFocusMetrics, fetchInterruptions, fetchWorkSessions } from '../api/client'
 import DateRangePicker from '../components/DateRangePicker'
 import StatCard from '../components/StatCard'
-import {
-  fetchFocusMetrics,
-  fetchWorkSessions,
-  fetchInterruptions,
-} from '../api/client'
+import { EmptyState } from '../components/ui'
+import { Badge } from '../components/ui/Badge'
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
+import { Spinner } from '../components/ui/Spinner'
+import { useTheme } from '../contexts/ThemeContext'
+import { colors, iconSize, motion, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -42,8 +32,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   Browser: 'bg-amber-500',
   Design: 'bg-pink-500',
   Media: 'bg-red-500',
-  System: 'bg-slate-500',
-  Other: 'bg-gray-500',
+  System: 'bg-accent-slate',
+  Other: 'bg-status-disconnected',
 }
 
 function CircularGauge({ value, size = 120 }: { value: number; size?: number }) {
@@ -61,16 +51,8 @@ function CircularGauge({ value, size = 120 }: { value: number; size?: number }) 
   const color = getColor(value)
 
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100">
-      <circle
-        cx="50"
-        cy="50"
-        r="45"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="8"
-        className="text-slate-200 dark:text-slate-700"
-      />
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" className="text-border-muted" />
       <circle
         cx="50"
         cy="50"
@@ -82,23 +64,12 @@ function CircularGauge({ value, size = 120 }: { value: number; size?: number }) 
         strokeDasharray={circumference}
         strokeDashoffset={strokeDashoffset}
         transform="rotate(-90 50 50)"
-        className="transition-all duration-700"
+        className={`transition-all ${motion.slow}`}
       />
-      <text
-        x="50"
-        y="45"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        className="fill-slate-900 dark:fill-white text-2xl font-bold"
-      >
+      <text x="50" y="45" textAnchor="middle" dominantBaseline="middle" className="fill-content font-bold text-2xl">
         {Math.round(value)}
       </text>
-      <text
-        x="50"
-        y="62"
-        textAnchor="middle"
-        className="fill-slate-500 dark:fill-slate-400 text-xs"
-      >
+      <text x="50" y="62" textAnchor="middle" className="fill-content-secondary text-xs">
         {t('focus.score')}
       </text>
     </svg>
@@ -114,7 +85,11 @@ export default function Focus() {
     to: new Date(),
   })
 
-  const { data: metrics, isLoading: metricsLoading, error: metricsError } = useQuery({
+  const {
+    data: metrics,
+    isLoading: metricsLoading,
+    error: metricsError,
+  } = useQuery({
     queryKey: ['focusMetrics'],
     queryFn: fetchFocusMetrics,
   })
@@ -131,7 +106,7 @@ export default function Focus() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <Spinner size="lg" />
       </div>
     )
@@ -152,7 +127,7 @@ export default function Focus() {
   if (today.focus_score === 0 && sessions.length === 0) {
     return (
       <EmptyState
-        icon={<Brain className="w-8 h-8" />}
+        icon={<Brain className="h-8 w-8" />}
         title={t('emptyState.focus.title')}
         description={t('emptyState.focus.description')}
       />
@@ -167,17 +142,15 @@ export default function Focus() {
   }))
 
   const avgScore =
-    metrics.history.length > 0
-      ? metrics.history.reduce((a, b) => a + b.focus_score, 0) / metrics.history.length
-      : 0
+    metrics.history.length > 0 ? metrics.history.reduce((a, b) => a + b.focus_score, 0) / metrics.history.length : 0
   const trend = today.focus_score - avgScore
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
+    <div className="h-full space-y-6 overflow-y-auto p-6">
       {/* UI note */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <FocusIcon className="w-7 h-7" />
+      <div className="flex items-center justify-between">
+        <h1 className={cn(typography.h1, colors.text.primary, 'flex items-center gap-2')}>
+          <FocusIcon className={iconSize.lg} />
           {t('focus.pageTitle')}
         </h1>
         <DateRangePicker
@@ -190,18 +163,16 @@ export default function Focus() {
       </div>
 
       {/* UI note */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card variant="elevated" className="flex flex-col items-center justify-center p-6">
           <CircularGauge value={today.focus_score} />
           <div className="mt-2 flex items-center gap-1">
             {trend >= 0 ? (
-              <TrendingUp className="w-4 h-4 text-green-500" />
+              <TrendingUp className="h-4 w-4 text-green-500" />
             ) : (
-              <TrendingDown className="w-4 h-4 text-red-500" />
+              <TrendingDown className="h-4 w-4 text-red-500" />
             )}
-            <span
-              className={`text-sm font-medium ${trend >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-            >
+            <span className={`font-medium text-sm ${trend >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
               {trend >= 0 ? '+' : ''}
               {trend.toFixed(1)}
             </span>
@@ -211,21 +182,21 @@ export default function Focus() {
         <StatCard
           title={t('focus.deepWork')}
           value={formatDuration(today.deep_work_secs, true)}
-          icon={<Clock className="w-5 h-5 text-blue-500" />}
+          icon={<Clock className="h-5 w-5 text-blue-500" />}
           color="blue"
         />
 
         <StatCard
           title={t('focus.communication')}
           value={formatDuration(today.communication_secs, true)}
-          icon={<MessageSquare className="w-5 h-5 text-purple-500" />}
+          icon={<MessageSquare className="h-5 w-5 text-purple-500" />}
           color="purple"
         />
 
         <StatCard
           title={t('focus.interruptions')}
           value={`${today.interruption_count}${t('focus.times')}`}
-          icon={<Zap className="w-5 h-5 text-amber-500" />}
+          icon={<Zap className="h-5 w-5 text-amber-500" />}
           color="teal"
         />
       </div>
@@ -240,7 +211,7 @@ export default function Focus() {
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={historyData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border-muted" />
                   <XAxis dataKey="date" className="text-xs" />
                   <YAxis domain={[0, 100]} className="text-xs" />
                   <Tooltip
@@ -265,48 +236,37 @@ export default function Focus() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="text-center text-slate-500 dark:text-slate-400 py-8">
-              {t('common.noData')}
-            </p>
+            <p className="py-8 text-center text-content-tertiary">{t('common.noData')}</p>
           )}
         </CardContent>
       </Card>
 
       {/* UI note */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* UI note */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Laptop className="w-5 h-5" />
+              <Laptop className="h-5 w-5" />
               {t('focus.sessions')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {sessions.length > 0 ? (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
+              <div className="max-h-80 space-y-3 overflow-y-auto">
                 {sessions.slice(0, 10).map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50"
-                  >
+                  <div key={session.id} className="flex items-center justify-between rounded-lg bg-surface-inset p-3">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-3 h-3 rounded-full ${CATEGORY_COLORS[session.category] || CATEGORY_COLORS.Other}`}
+                        className={`h-3 w-3 rounded-full ${CATEGORY_COLORS[session.category] || CATEGORY_COLORS.Other}`}
                       />
                       <div>
-                        <p className="text-sm font-medium text-slate-900 dark:text-white">
-                          {session.primary_app}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {session.category}
-                        </p>
+                        <p className="font-medium text-content text-sm">{session.primary_app}</p>
+                        <p className="text-content-tertiary text-xs">{session.category}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">
-                        {formatDuration(session.duration_secs, true)}
-                      </p>
+                      <p className="font-medium text-content text-sm">{formatDuration(session.duration_secs, true)}</p>
                       <Badge color={session.state === 'active' ? 'success' : 'default'} size="sm">
                         {session.state === 'active' ? t('focus.active') : t('focus.completed')}
                       </Badge>
@@ -315,9 +275,7 @@ export default function Focus() {
                 ))}
               </div>
             ) : (
-              <p className="text-center text-slate-500 dark:text-slate-400 py-8">
-                {t('common.noData')}
-              </p>
+              <p className="py-8 text-center text-content-tertiary">{t('common.noData')}</p>
             )}
           </CardContent>
         </Card>
@@ -326,47 +284,36 @@ export default function Focus() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ArrowRightLeft className="w-5 h-5" />
+              <ArrowRightLeft className="h-5 w-5" />
               {t('focus.interruptionList')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {interruptions.length > 0 ? (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
+              <div className="max-h-80 space-y-3 overflow-y-auto">
                 {interruptions.slice(0, 10).map((int) => (
-                  <div
-                    key={int.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50"
-                  >
+                  <div key={int.id} className="flex items-center justify-between rounded-lg bg-surface-inset p-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="font-medium text-slate-900 dark:text-white truncate max-w-[80px]">
-                        {int.from_app}
-                      </span>
-                      <ArrowRightLeft className="w-4 h-4 text-slate-400" />
-                      <span className="font-medium text-slate-900 dark:text-white truncate max-w-[80px]">
-                        {int.to_app}
-                      </span>
+                      <span className="max-w-[80px] truncate font-medium text-content">{int.from_app}</span>
+                      <ArrowRightLeft className="h-4 w-4 text-content-muted" />
+                      <span className="max-w-[80px] truncate font-medium text-content">{int.to_app}</span>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <p className="text-content-tertiary text-xs">
                         {new Date(int.interrupted_at).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
                         })}
                       </p>
                       {int.duration_secs && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {formatDuration(int.duration_secs, true)}
-                        </p>
+                        <p className="text-content-tertiary text-xs">{formatDuration(int.duration_secs, true)}</p>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-center text-slate-500 dark:text-slate-400 py-8">
-                {t('common.noData')}
-              </p>
+              <p className="py-8 text-center text-content-tertiary">{t('common.noData')}</p>
             )}
           </CardContent>
         </Card>

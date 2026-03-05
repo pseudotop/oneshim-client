@@ -12,14 +12,7 @@ interface TagBadgeProps {
   size?: 'sm' | 'md'
 }
 
-export function TagBadge({
-  name,
-  color,
-  onRemove,
-  onClick,
-  selected = false,
-  size = 'md',
-}: TagBadgeProps) {
+export function TagBadge({ name, color, onRemove, onClick, selected = false, size = 'md' }: TagBadgeProps) {
   const bgColor = `${color}20`
   const borderColor = selected ? color : `${color}60`
 
@@ -28,42 +21,53 @@ export function TagBadge({
     md: 'px-2 py-1 text-sm',
   }
 
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full font-medium border transition-all',
-        sizeClasses[size],
-        onClick && 'cursor-pointer hover:opacity-80',
-        selected && 'ring-2 ring-offset-1'
-      )}
-      style={{
-        backgroundColor: bgColor,
-        borderColor: borderColor,
-        color: color,
-        ...(selected && { ringColor: color }),
-      }}
-      onClick={onClick}
-    >
-      <span
-        className="w-2 h-2 rounded-full"
-        style={{ backgroundColor: color }}
-      />
+  const sharedClassName = cn(
+    'inline-flex items-center gap-1 rounded-full border font-medium transition-all',
+    sizeClasses[size],
+    onClick && 'cursor-pointer hover:opacity-80',
+    selected && 'ring-2 ring-offset-1',
+  )
+
+  const sharedStyle = {
+    backgroundColor: bgColor,
+    borderColor: borderColor,
+    color: color,
+    ...(selected && { ringColor: color }),
+  }
+
+  const children = (
+    <>
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
       {name}
       {onRemove && (
         <button
           type="button"
-          className="ml-0.5 hover:opacity-70 focus:outline-none"
+          className="ml-0.5 rounded-sm ring-brand-signal hover:opacity-70 focus-visible:ring-2"
           onClick={(e) => {
             e.stopPropagation()
             onRemove()
           }}
           aria-label={`${name} 태그 delete`}
         >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
       )}
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button type="button" className={sharedClassName} style={sharedStyle} onClick={onClick}>
+        {children}
+      </button>
+    )
+  }
+
+  return (
+    <span className={sharedClassName} style={sharedStyle}>
+      {children}
     </span>
   )
 }

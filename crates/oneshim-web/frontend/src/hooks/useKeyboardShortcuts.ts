@@ -46,11 +46,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
       }
 
       const target = event.target as HTMLElement
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         if (event.key === 'Escape' && h.onEscape) {
           h.onEscape()
         }

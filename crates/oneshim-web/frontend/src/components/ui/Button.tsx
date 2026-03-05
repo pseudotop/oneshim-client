@@ -2,9 +2,9 @@
  *
  */
 import { forwardRef } from 'react'
-import { cn } from '../../utils/cn'
-import { buttonVariants } from '../../styles/variants'
 import { interaction, radius } from '../../styles/tokens'
+import { buttonVariants } from '../../styles/variants'
+import { cn } from '../../utils/cn'
 import { Spinner } from './Spinner'
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -22,10 +22,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           'inline-flex items-center justify-center',
           radius.md,
           interaction.interactive,
+          interaction.focusRing,
           interaction.disabled,
           buttonVariants.variant[variant],
           buttonVariants.size[size],
-          className
+          className,
         )}
         disabled={disabled || isLoading}
         {...props}
@@ -34,7 +35,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {children}
       </button>
     )
-  }
+  },
 )
 
 Button.displayName = 'Button'

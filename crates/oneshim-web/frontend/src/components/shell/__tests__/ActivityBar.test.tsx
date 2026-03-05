@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../../../__tests__/helpers/render-helpers'
 import ActivityBar from '../ActivityBar'
 
@@ -36,10 +36,9 @@ describe('ActivityBar', () => {
   it('clicking a nav button navigates', async () => {
     const user = userEvent.setup()
     const onToggleSidebar = vi.fn()
-    renderWithProviders(
-      <ActivityBar onToggleSidebar={onToggleSidebar} sidebarCollapsed={true} />,
-      { routerProps: { initialEntries: ['/'] } },
-    )
+    renderWithProviders(<ActivityBar onToggleSidebar={onToggleSidebar} sidebarCollapsed={true} />, {
+      routerProps: { initialEntries: ['/'] },
+    })
 
     const buttons = screen.getAllByRole('button')
     // Click the timeline button (2nd nav item)

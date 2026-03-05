@@ -56,7 +56,7 @@ export function formatNumber(num: number): string {
 
 export function formatHour(hourStr: string): string {
   const hour = parseInt(hourStr, 10)
-  if (isNaN(hour)) return hourStr
+  if (Number.isNaN(hour)) return hourStr
   return `${hour}시`
 }
 

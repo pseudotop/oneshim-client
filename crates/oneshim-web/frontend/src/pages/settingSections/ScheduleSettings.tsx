@@ -2,9 +2,9 @@
  *
  */
 import { useTranslation } from 'react-i18next'
+import type { ScheduleSettings as ScheduleSettingsType } from '../../api/client'
 import { Card, CardTitle, Input } from '../../components/ui'
 import { colors, form } from '../../styles/tokens'
-import type { ScheduleSettings as ScheduleSettingsType } from '../../api/client'
 import ToggleRow from './ToggleRow'
 
 interface ScheduleSettingsProps {
@@ -26,41 +26,49 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
           onChange={(v) => onChange('active_hours_enabled', v)}
         />
 
-        <div className={`space-y-4 ${!schedule.active_hours_enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`space-y-4 ${!schedule.active_hours_enabled ? 'pointer-events-none opacity-50' : ''}`}>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={form.label}>
+              <label htmlFor="schedule-start-hour" className={form.label}>
                 {t('settings.startHour')}
               </label>
               <Input
+                id="schedule-start-hour"
                 type="number"
                 min={0}
                 max={23}
                 value={schedule.active_start_hour}
-                onChange={(e) => onChange('active_start_hour', parseInt(e.target.value) || 9)}
+                onChange={(e) => onChange('active_start_hour', parseInt(e.target.value, 10) || 9)}
               />
             </div>
             <div>
-              <label className={form.label}>
+              <label htmlFor="schedule-end-hour" className={form.label}>
                 {t('settings.endHour')}
               </label>
               <Input
+                id="schedule-end-hour"
                 type="number"
                 min={0}
                 max={23}
                 value={schedule.active_end_hour}
-                onChange={(e) => onChange('active_end_hour', parseInt(e.target.value) || 18)}
+                onChange={(e) => onChange('active_end_hour', parseInt(e.target.value, 10) || 18)}
               />
             </div>
           </div>
 
           <div>
-            <label className={form.label}>
-              {t('settings.activeDays')}
-            </label>
+            <span className={form.label}>{t('settings.activeDays')}</span>
             <div className="flex flex-wrap gap-2">
               {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const).map((day) => {
-                const labels: Record<string, string> = { Mon: t('settings.days.Mon'), Tue: t('settings.days.Tue'), Wed: t('settings.days.Wed'), Thu: t('settings.days.Thu'), Fri: t('settings.days.Fri'), Sat: t('settings.days.Sat'), Sun: t('settings.days.Sun') }
+                const labels: Record<string, string> = {
+                  Mon: t('settings.days.Mon'),
+                  Tue: t('settings.days.Tue'),
+                  Wed: t('settings.days.Wed'),
+                  Thu: t('settings.days.Thu'),
+                  Fri: t('settings.days.Fri'),
+                  Sat: t('settings.days.Sat'),
+                  Sun: t('settings.days.Sun'),
+                }
                 const isActive = schedule.active_days.includes(day)
                 return (
                   <button
@@ -68,14 +76,14 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
                     type="button"
                     onClick={() => {
                       const newDays = isActive
-                        ? schedule.active_days.filter(d => d !== day)
+                        ? schedule.active_days.filter((d) => d !== day)
                         : [...schedule.active_days, day]
                       onChange('active_days', newDays)
                     }}
-                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                    className={`rounded-full px-3 py-1 font-medium text-sm transition-colors ${
                       isActive
                         ? `${colors.primary.DEFAULT} ${colors.text.inverse}`
-                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-300 dark:hover:bg-slate-600'
+                        : 'bg-hover text-content-secondary hover:bg-active'
                     }`}
                   >
                     {labels[day]}
@@ -86,7 +94,7 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
           </div>
         </div>
 
-        <div className={`pt-4 border-t ${form.sectionDivider} space-y-4`}>
+        <div className={`border-t pt-4 ${form.sectionDivider} space-y-4`}>
           <ToggleRow
             label={t('settings.pauseOnLock')}
             description={t('settings.pauseOnLockDesc')}

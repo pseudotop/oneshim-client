@@ -1,59 +1,59 @@
-import { handleStandaloneRequest, isStandaloneModeEnabled } from './standalone'
 import type {
-  DailySummary,
-  AppUsage,
-  SystemMetrics,
-  HourlyMetrics,
-  ProcessSnapshot,
-  Frame,
-  IdlePeriod,
-  Session,
-  StorageStats,
   AppSettings,
-  UpdateStatus,
-  UpdateActionResponse,
-  UpdateAction,
-  PaginatedResponse,
-  Event,
-  ProviderModelsRequest,
-  ProviderModelsResponse,
-  ProviderPresetCatalog,
-  DeleteRangeRequest,
-  DeleteResult,
-  SearchResponse,
-  SearchParams,
-  HeatmapResponse,
-  ExportFormat,
-  ExportDataType,
-  Tag,
-  CreateTagRequest,
-  UpdateTagRequest,
-  ReportResponse,
-  ReportParams,
+  AppUsage,
+  AuditEntry,
+  AutomationContracts,
+  AutomationStats,
+  AutomationStatus,
   BackupArchive,
   BackupParams,
-  RestoreResult,
-  TimelineResponse,
-  TimelineParams,
-  FocusMetricsResponse,
-  WorkSession,
-  Interruption,
-  LocalSuggestion,
-  SuggestionFeedbackAction,
-  AutomationStatus,
-  AuditEntry,
-  AutomationStats,
-  PoliciesInfo,
-  AutomationContracts,
-  WorkflowPreset,
-  PresetRunResult,
+  CreateTagRequest,
+  DailySummary,
+  DeleteRangeRequest,
+  DeleteResult,
+  Event,
   ExecuteIntentHintRequest,
   ExecuteIntentHintResponse,
   ExecuteSceneActionRequest,
   ExecuteSceneActionResponse,
-  UiScene,
+  ExportDataType,
+  ExportFormat,
+  FocusMetricsResponse,
+  Frame,
+  HeatmapResponse,
+  HourlyMetrics,
+  IdlePeriod,
+  Interruption,
+  LocalSuggestion,
+  PaginatedResponse,
+  PoliciesInfo,
+  PresetRunResult,
+  ProcessSnapshot,
+  ProviderModelsRequest,
+  ProviderModelsResponse,
+  ProviderPresetCatalog,
+  ReportParams,
+  ReportResponse,
+  RestoreResult,
   SceneCalibrationReport,
+  SearchParams,
+  SearchResponse,
+  Session,
+  StorageStats,
+  SuggestionFeedbackAction,
+  SystemMetrics,
+  Tag,
+  TimelineParams,
+  TimelineResponse,
+  UiScene,
+  UpdateAction,
+  UpdateActionResponse,
+  UpdateStatus,
+  UpdateTagRequest,
+  WorkflowPreset,
+  WorkSession,
 } from './contracts'
+import { handleStandaloneRequest, isStandaloneModeEnabled } from './standalone'
 
 export type * from './contracts'
 
@@ -62,11 +62,7 @@ const BASE_URL = '/api'
 const DEFAULT_TIMEOUT_MS = 10_000
 const MAX_RETRIES = 2
 
-async function fetchWithRetry(
-  url: string,
-  options?: RequestInit,
-  retries = MAX_RETRIES
-): Promise<Response> {
+async function fetchWithRetry(url: string, options?: RequestInit, retries = MAX_RETRIES): Promise<Response> {
   if (isStandaloneModeEnabled()) {
     const standaloneResponse = await handleStandaloneRequest(url, options)
     if (standaloneResponse) {
@@ -146,7 +142,7 @@ export async function fetchFrames(
   from?: string,
   to?: string,
   limit = 50,
-  offset = 0
+  offset = 0,
 ): Promise<PaginatedResponse<Frame>> {
   const params = new URLSearchParams()
   if (from) params.set('from', from)
@@ -162,7 +158,7 @@ export async function fetchEvents(
   from?: string,
   to?: string,
   limit = 100,
-  offset = 0
+  offset = 0,
 ): Promise<PaginatedResponse<Event>> {
   const params = new URLSearchParams()
   if (from) params.set('from', from)
@@ -231,9 +227,7 @@ export async function fetchProviderPresets(): Promise<ProviderPresetCatalog> {
   return res.json()
 }
 
-export async function discoverProviderModels(
-  request: ProviderModelsRequest
-): Promise<ProviderModelsResponse> {
+export async function discoverProviderModels(request: ProviderModelsRequest): Promise<ProviderModelsResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/ai/providers/models`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -295,14 +289,14 @@ export async function search(
   searchType?: 'all' | 'frames' | 'events',
   limit?: number,
   offset?: number,
-  tagIds?: number[]
+  tagIds?: number[],
 ): Promise<SearchResponse>
 export async function search(
   queryOrParams: string | SearchParams,
   searchType: 'all' | 'frames' | 'events' = 'all',
   limit = 50,
   offset = 0,
-  tagIds?: number[]
+  tagIds?: number[],
 ): Promise<SearchResponse> {
   let query: string
   let type: 'all' | 'frames' | 'events'
@@ -350,7 +344,7 @@ export async function exportData(
   dataType: ExportDataType,
   format: ExportFormat = 'json',
   from?: string,
-  to?: string
+  to?: string,
 ): Promise<Blob> {
   const params = new URLSearchParams()
   if (from) params.set('from', from)
@@ -541,10 +535,7 @@ export async function fetchLocalSuggestions(): Promise<LocalSuggestion[]> {
   return res.json()
 }
 
-export async function submitSuggestionFeedback(
-  id: number,
-  action: SuggestionFeedbackAction
-): Promise<void> {
+export async function submitSuggestionFeedback(id: number, action: SuggestionFeedbackAction): Promise<void> {
   const res = await fetchWithRetry(`${BASE_URL}/focus/suggestions/${id}/feedback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -629,9 +620,7 @@ export async function runPreset(id: string): Promise<PresetRunResult> {
   return res.json()
 }
 
-export async function executeIntentHint(
-  payload: ExecuteIntentHintRequest
-): Promise<ExecuteIntentHintResponse> {
+export async function executeIntentHint(payload: ExecuteIntentHintRequest): Promise<ExecuteIntentHintResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/execute-hint`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -644,9 +633,7 @@ export async function executeIntentHint(
   return res.json()
 }
 
-export async function executeSceneAction(
-  payload: ExecuteSceneActionRequest
-): Promise<ExecuteSceneActionResponse> {
+export async function executeSceneAction(payload: ExecuteSceneActionRequest): Promise<ExecuteSceneActionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/execute-scene-action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -660,7 +647,7 @@ export async function executeSceneAction(
 }
 
 export async function fetchAutomationScene(
-  params: { appName?: string; screenId?: string; frameId?: number } = {}
+  params: { appName?: string; screenId?: string; frameId?: number } = {},
 ): Promise<UiScene> {
   const query = new URLSearchParams()
   if (params.appName) query.set('app_name', params.appName)
@@ -668,9 +655,7 @@ export async function fetchAutomationScene(
   if (typeof params.frameId === 'number') query.set('frame_id', String(params.frameId))
 
   const suffix = query.toString()
-  const res = await fetchWithRetry(
-    `${BASE_URL}/automation/scene${suffix.length > 0 ? `?${suffix}` : ''}`
-  )
+  const res = await fetchWithRetry(`${BASE_URL}/automation/scene${suffix.length > 0 ? `?${suffix}` : ''}`)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Scene query failure' }))
     throw new Error(err.error || 'Scene query failure')
@@ -679,7 +664,7 @@ export async function fetchAutomationScene(
 }
 
 export async function fetchSceneCalibration(
-  params: { appName?: string; screenId?: string; frameId?: number } = {}
+  params: { appName?: string; screenId?: string; frameId?: number } = {},
 ): Promise<SceneCalibrationReport> {
   const query = new URLSearchParams()
   if (params.appName) query.set('app_name', params.appName)
@@ -687,9 +672,7 @@ export async function fetchSceneCalibration(
   if (typeof params.frameId === 'number') query.set('frame_id', String(params.frameId))
 
   const suffix = query.toString()
-  const res = await fetchWithRetry(
-    `${BASE_URL}/automation/scene/calibration${suffix.length > 0 ? `?${suffix}` : ''}`
-  )
+  const res = await fetchWithRetry(`${BASE_URL}/automation/scene/calibration${suffix.length > 0 ? `?${suffix}` : ''}`)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Scene calibration query failure' }))
     throw new Error(err.error || 'Scene calibration query failure')

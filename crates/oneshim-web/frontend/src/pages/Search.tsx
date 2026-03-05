@@ -1,33 +1,39 @@
 /**
  *
  */
-import { useState } from 'react'
+
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { FileText, Search as SearchIcon } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search as SearchIcon, FileText } from 'lucide-react'
-import { search, SearchResult, fetchTags } from '../api/client'
+import { useSearchParams } from 'react-router-dom'
+import { fetchTags, type SearchResult, search } from '../api/client'
 import { TagBadge } from '../components/TagBadge'
-import { Button, Input, Card, Spinner, Badge } from '../components/ui'
-import { formatDateTime, escapeRegex } from '../utils/formatters'
+import { Badge, Button, Card, Input, Spinner } from '../components/ui'
+import { colors, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
+import { escapeRegex, formatDateTime } from '../utils/formatters'
 
 function highlightText(text: string, query: string): JSX.Element {
   if (!query || !text) return <>{text}</>
 
   const parts = text.split(new RegExp(`(${escapeRegex(query)})`, 'gi'))
-  return (
-    <>
-      {parts.map((part, i) =>
-        part.toLowerCase() === query.toLowerCase() ? (
-          <mark key={i} className="bg-yellow-500/30 text-yellow-200 rounded px-0.5">
-            {part}
-          </mark>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      )}
-    </>
-  )
+  const elements: React.ReactNode[] = []
+  let offset = 0
+  for (const part of parts) {
+    const key = `${offset}-${part.length}`
+    if (part.toLowerCase() === query.toLowerCase()) {
+      elements.push(
+        <mark key={key} className="rounded bg-yellow-500/30 px-0.5 text-yellow-200">
+          {part}
+        </mark>,
+      )
+    } else {
+      elements.push(<span key={key}>{part}</span>)
+    }
+    offset += part.length
+  }
+  return <>{elements}</>
 }
 
 type SearchType = 'all' | 'frames' | 'events'
@@ -52,7 +58,11 @@ export default function Search() {
 
   const hasSearchCriteria = searchQuery.length > 0 || selectedTagIds.length > 0
 
-  const { data: response, isLoading, error } = useQuery({
+  const {
+    data: response,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['search', searchQuery, searchType, selectedTagIds, page],
     queryFn: () =>
       search({
@@ -84,9 +94,7 @@ export default function Search() {
   }
 
   const handleTagToggle = (tagId: number) => {
-    setSelectedTagIds((prev) =>
-      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
-    )
+    setSelectedTagIds((prev) => (prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]))
     setPage(0)
   }
 
@@ -96,9 +104,9 @@ export default function Search() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
+    <div className="h-full space-y-6 overflow-y-auto p-6">
       {/* UI note */}
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{t('search.title')}</h1>
+      <h1 className={cn(typography.h1, colors.text.primary)}>{t('search.title')}</h1>
 
       {/* UI note */}
       <form onSubmit={handleSearch} className="flex gap-2">
@@ -131,11 +139,11 @@ export default function Search() {
         </div>
 
         {/* UI note */}
-        <div className="w-px h-8 bg-slate-300 dark:bg-slate-700" />
+        <div className="h-8 w-px bg-hover" />
 
         {/* UI note */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-slate-600 dark:text-slate-400">{t('search.filterByTags')}:</span>
+          <span className="text-content-secondary text-sm">{t('search.filterByTags')}:</span>
           {allTags.map((tag) => (
             <TagBadge
               key={tag.id}
@@ -156,7 +164,7 @@ export default function Search() {
 
       {/* UI note */}
       {selectedTagIds.length > 0 && (
-        <div className="text-sm text-slate-600 dark:text-slate-400">
+        <div className="text-content-secondary text-sm">
           {t('search.selectedTags')}:{' '}
           {allTags
             .filter((tag) => selectedTagIds.includes(tag.id))
@@ -167,29 +175,29 @@ export default function Search() {
 
       {/* UI note */}
       {isLoading && (
-        <div className="flex items-center justify-center h-32">
-          <Spinner size="lg" className="text-teal-500" />
-          <span className="ml-3 text-slate-600 dark:text-slate-400">{t('common.loading')}</span>
+        <div className="flex h-32 items-center justify-center">
+          <Spinner size="lg" className="text-accent-teal" />
+          <span className="ml-3 text-content-secondary">{t('common.loading')}</span>
         </div>
       )}
 
       {error && (
         <Card variant="danger" padding="md">
-          <p className="text-red-600 dark:text-red-400">{t('search.searchError')}</p>
+          <p className="text-accent-red">{t('search.searchError')}</p>
         </Card>
       )}
 
       {response && (
         <>
           {/* UI note */}
-          <div className="text-slate-600 dark:text-slate-400">
+          <div className="text-content-secondary">
             {response.query && (
               <>
-                "<span className="text-slate-900 dark:text-white">{response.query}</span>"{' '}
+                "<span className="text-content">{response.query}</span>"{' '}
               </>
             )}
-            {t('search.results')}:{' '}
-            <span className="text-teal-600 dark:text-teal-400">{response.total}</span>{t('search.resultCount')}
+            {t('search.results')}: <span className="text-accent-teal">{response.total}</span>
+            {t('search.resultCount')}
           </div>
 
           {/* UI note */}
@@ -206,9 +214,7 @@ export default function Search() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 text-slate-600 dark:text-slate-400">
-              {t('search.noResults')}
-            </div>
+            <div className="py-12 text-center text-content-secondary">{t('search.noResults')}</div>
           )}
 
           {/* UI note */}
@@ -222,7 +228,7 @@ export default function Search() {
               >
                 {t('common.prev')}
               </Button>
-              <span className="text-slate-600 dark:text-slate-400">
+              <span className="text-content-secondary">
                 {page + 1} / {Math.ceil(response.total / pageSize)} {t('common.page')}
               </span>
               <Button
@@ -240,12 +246,10 @@ export default function Search() {
 
       {/* UI note */}
       {!hasSearchCriteria && (
-        <div className="text-center py-12">
-          <SearchIcon className="w-16 h-16 mx-auto mb-4 text-slate-400 dark:text-slate-500" />
-          <div className="text-slate-600 dark:text-slate-400">{t('search.enterQuery')}</div>
-          <div className="text-sm text-slate-500 mt-2">
-            {t('search.searchHint')}
-          </div>
+        <div className="py-12 text-center">
+          <SearchIcon className="mx-auto mb-4 h-16 w-16 text-content-muted" />
+          <div className="text-content-secondary">{t('search.enterQuery')}</div>
+          <div className="mt-2 text-content-tertiary text-sm">{t('search.searchHint')}</div>
         </div>
       )}
     </div>
@@ -267,51 +271,51 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
     <Card padding="md" className="flex gap-4">
       {/* UI note */}
       {isFrame && result.image_url && (
-        <div className="w-24 h-16 flex-shrink-0 bg-slate-200 dark:bg-slate-700 rounded overflow-hidden">
+        <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded bg-hover">
           <img
             src={result.image_url}
             alt={result.window_title || 'Screenshot'}
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
           />
         </div>
       )}
 
       {/* UI note */}
       {!isFrame && (
-        <div className="w-16 h-16 flex-shrink-0 bg-slate-200 dark:bg-slate-700 rounded flex items-center justify-center">
-          <FileText className="w-8 h-8 text-slate-500 dark:text-slate-400" />
+        <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded bg-hover">
+          <FileText className="h-8 w-8 text-content-secondary" />
         </div>
       )}
 
       {/* UI note */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
           <Badge color={isFrame ? 'info' : 'primary'} size="sm">
             {isFrame ? t('search.screenshot') : t('search.event')}
           </Badge>
-          <span className="text-sm text-slate-500 dark:text-slate-400">{formatDateTime(result.timestamp)}</span>
+          <span className="text-content-secondary text-sm">{formatDateTime(result.timestamp)}</span>
           {isFrame && result.importance && (
-            <span className="text-sm text-slate-500">
+            <span className="text-content-tertiary text-sm">
               {t('search.importance')} {(result.importance * 100).toFixed(0)}%
             </span>
           )}
         </div>
 
-        <div className="text-slate-900 dark:text-white font-medium truncate">
+        <div className="truncate font-medium text-content">
           {result.app_name && highlightText(result.app_name, query)}
           {result.app_name && result.window_title && ' - '}
           {result.window_title && highlightText(result.window_title, query)}
         </div>
 
         {result.matched_text && (
-          <div className="text-sm text-slate-600 dark:text-slate-400 mt-1 line-clamp-2">
+          <div className="mt-1 line-clamp-2 text-content-secondary text-sm">
             {highlightText(result.matched_text, query)}
           </div>
         )}
 
         {/* UI note */}
         {result.tags && result.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
+          <div className="mt-2 flex flex-wrap gap-1">
             {result.tags.map((tag) => (
               <TagBadge
                 key={tag.id}

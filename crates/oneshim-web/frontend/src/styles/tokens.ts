@@ -1,48 +1,78 @@
 /**
- *
+ * Design tokens — semantic Tailwind classes backed by CSS custom properties.
+ * Color switching between light/dark is handled entirely by CSS vars in index.css.
+ * No `dark:` prefix needed in token values.
  */
 
+/* ── Raw hex palette for charts / inline SVG (no dark-mode switching) ── */
+export const palette = {
+  teal500: '#14b8a6',
+  blue500: '#3b82f6',
+  violet500: '#8b5cf6',
+  amber500: '#f59e0b',
+  red500: '#ef4444',
+  emerald500: '#10b981',
+  indigo500: '#6366f1',
+  pink500: '#ec4899',
+  green500: '#22c55e',
+  orange500: '#f97316',
+  lime500: '#84cc16',
+  gray500: '#6B7280',
+} as const
+
+export const chartPalette = [
+  palette.teal500,
+  palette.blue500,
+  palette.violet500,
+  palette.amber500,
+  palette.red500,
+  palette.emerald500,
+  palette.indigo500,
+  palette.pink500,
+] as const
+
+/* ── Semantic color tokens ── */
 export const colors = {
   primary: {
-    DEFAULT: 'bg-teal-600 dark:bg-teal-500',
-    hover: 'hover:bg-teal-700 dark:hover:bg-teal-400',
-    text: 'text-teal-600 dark:text-teal-400',
-    signal: 'bg-teal-500 dark:bg-teal-400',
-    border: 'border-teal-500',
+    DEFAULT: 'bg-brand',
+    hover: 'hover:bg-brand-hover',
+    text: 'text-brand-text',
+    signal: 'bg-brand-signal',
+    border: 'border-brand-signal',
   },
   surface: {
-    base: 'bg-white dark:bg-slate-900',
-    elevated: 'bg-slate-100 dark:bg-slate-800',
-    muted: 'bg-slate-200 dark:bg-slate-900',
-    border: 'border-slate-300 dark:border-slate-700',
-    borderMuted: 'border-slate-200 dark:border-slate-700',
+    base: 'bg-surface-base',
+    elevated: 'bg-surface-elevated',
+    muted: 'bg-surface-muted',
+    border: 'border-DEFAULT',
+    borderMuted: 'border-muted',
   },
   text: {
-    primary: 'text-slate-900 dark:text-white',
-    secondary: 'text-slate-600 dark:text-slate-400',
-    tertiary: 'text-slate-500 dark:text-slate-500',
-    inverse: 'text-white',
+    primary: 'text-content',
+    secondary: 'text-content-secondary',
+    tertiary: 'text-content-tertiary',
+    inverse: 'text-content-inverse',
   },
   semantic: {
-    success: 'bg-green-500/20 text-green-600 dark:text-green-400',
-    warning: 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400',
-    error: 'bg-red-500/20 text-red-600 dark:text-red-400',
-    info: 'bg-blue-500/20 text-blue-600 dark:text-blue-400',
+    success: 'bg-semantic-success/20 text-semantic-success',
+    warning: 'bg-semantic-warning/20 text-semantic-warning',
+    error: 'bg-semantic-error/20 text-semantic-error',
+    info: 'bg-semantic-info/20 text-semantic-info',
   },
   status: {
-    connected: 'bg-green-500',
-    connecting: 'bg-yellow-500',
-    disconnected: 'bg-slate-500',
-    error: 'bg-red-500',
+    connected: 'bg-status-connected',
+    connecting: 'bg-status-connecting',
+    disconnected: 'bg-status-disconnected',
+    error: 'bg-status-error',
   },
   accent: {
-    teal: 'text-teal-600 dark:text-teal-400',
-    blue: 'text-blue-600 dark:text-blue-400',
-    purple: 'text-purple-600 dark:text-purple-400',
-    green: 'text-green-600 dark:text-green-400',
-    amber: 'text-amber-600 dark:text-amber-400',
-    red: 'text-red-600 dark:text-red-400',
-    slate: 'text-slate-700 dark:text-slate-300',
+    teal: 'text-accent-teal',
+    blue: 'text-accent-blue',
+    purple: 'text-accent-purple',
+    green: 'text-accent-green',
+    amber: 'text-accent-amber',
+    red: 'text-accent-red',
+    slate: 'text-accent-slate',
   },
 } as const
 
@@ -62,6 +92,8 @@ export const typography = {
   h4: 'text-base font-medium',
   body: 'text-sm',
   small: 'text-xs',
+  micro: 'text-[11px]',
+  nano: 'text-[10px]',
   stat: {
     hero: 'text-3xl font-bold',
     large: 'text-2xl font-bold',
@@ -79,78 +111,102 @@ export const radius = {
 
 export const interaction = {
   interactive: 'transition-colors',
-  focusRing: 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:border-transparent',
+  focusRing:
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:border-transparent',
   disabled: 'disabled:opacity-50 disabled:cursor-not-allowed',
 } as const
 
+export const motion = {
+  fast: 'duration-150 ease-out',
+  normal: 'duration-300 ease-out',
+  slow: 'duration-500 ease-out',
+} as const
+
+export const elevation = {
+  dropdown: 'shadow-lg z-40',
+  dialog: 'shadow-xl z-50',
+  overlay: 'shadow-2xl z-50',
+  tooltip: 'shadow-md z-[60]',
+} as const
+
+export const iconSize = {
+  xs: 'w-3 h-3',
+  sm: 'w-3.5 h-3.5',
+  base: 'w-4 h-4',
+  md: 'w-5 h-5',
+  lg: 'w-6 h-6',
+  hero: 'w-8 h-8',
+} as const
+
 export const form = {
-  label: 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2',
-  labelSm: 'block text-xs text-slate-600 dark:text-slate-400 mb-1',
-  helper: 'mt-1 text-xs text-slate-600 dark:text-slate-500',
-  checkbox: 'w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus-visible:ring-teal-500',
-  checkboxInline: 'w-5 h-5 rounded bg-slate-900 border-slate-700 text-teal-500 focus-visible:ring-teal-500 mr-3',
-  radio: 'w-4 h-4 bg-slate-900 border-slate-700 text-teal-500 focus-visible:ring-teal-500',
-  sectionDivider: 'border-slate-300 dark:border-slate-700',
+  label: 'block text-sm font-medium text-content-strong mb-2',
+  labelSm: 'block text-xs text-content-secondary mb-1',
+  helper: 'mt-1 text-xs text-content-secondary',
+  checkbox: 'w-5 h-5 rounded bg-surface-base border-DEFAULT text-brand-signal focus-visible:ring-brand-signal',
+  checkboxInline:
+    'w-5 h-5 rounded bg-surface-base border-DEFAULT text-brand-signal focus-visible:ring-brand-signal mr-3',
+  radio: 'w-4 h-4 bg-surface-base border-DEFAULT text-brand-signal focus-visible:ring-brand-signal',
+  sectionDivider: 'border-DEFAULT',
 } as const
 
 export const dataViz = {
   stroke: {
-    good: '#10b981',
-    warning: '#f59e0b',
-    critical: '#ef4444',
+    good: palette.emerald500,
+    warning: palette.amber500,
+    critical: palette.red500,
   },
 } as const
 
 export const layout = {
   titleBar: {
     height: 'h-8',
-    bg: 'bg-slate-100 dark:bg-slate-900',
-    border: 'border-b border-slate-200 dark:border-slate-800',
-    text: 'text-xs font-medium text-slate-600 dark:text-slate-400',
-    brand: 'text-sm font-bold text-teal-600 dark:text-teal-400',
+    bg: 'bg-surface-elevated',
+    border: 'border-b border-muted',
+    text: 'text-xs font-medium text-content-secondary',
+    brand: 'text-sm font-bold text-brand-text',
   },
   activityBar: {
     width: 'w-12',
-    bg: 'bg-slate-50 dark:bg-slate-950',
-    border: 'border-r border-slate-200 dark:border-slate-800',
+    bg: 'bg-surface-inset',
+    border: 'border-r border-muted',
     iconSize: 'w-5 h-5',
-    iconDefault: 'text-slate-400 dark:text-slate-500',
-    iconActive: 'text-teal-600 dark:text-teal-400',
-    indicator: 'bg-teal-500',
-    tooltip: 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 text-xs px-2 py-1 rounded shadow-lg',
+    iconDefault: 'text-content-muted',
+    iconActive: 'text-brand-text',
+    indicator: 'bg-brand-signal',
+    tooltip: 'bg-surface-overlay text-content text-xs px-2 py-1 rounded shadow-lg',
   },
   sidePanel: {
     minWidth: 200,
     maxWidth: 400,
     defaultWidth: 260,
-    bg: 'bg-white dark:bg-slate-900',
-    border: 'border-r border-slate-200 dark:border-slate-800',
-    headerBg: 'bg-slate-50 dark:bg-slate-900/50',
-    headerText: 'text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500',
-    itemBg: 'hover:bg-slate-100 dark:hover:bg-slate-800',
-    itemText: 'text-sm text-slate-700 dark:text-slate-300',
-    itemActive: 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white',
-    resizeHandle: 'w-1 cursor-col-resize hover:bg-teal-500 active:bg-teal-500 transition-colors',
+    bg: 'bg-surface-base',
+    border: 'border-r border-muted',
+    headerBg: 'bg-surface-inset',
+    headerText: 'text-[11px] font-semibold uppercase tracking-wider text-content-tertiary',
+    itemBg: 'hover:bg-hover',
+    itemText: 'text-sm text-content-strong',
+    itemActive: 'bg-surface-elevated text-content',
+    resizeHandle: 'w-1 cursor-col-resize hover:bg-brand-signal active:bg-brand-signal transition-colors',
   },
   mainContent: {
-    bg: 'bg-white dark:bg-slate-950',
+    bg: 'bg-surface-sunken',
   },
   statusBar: {
     height: 'h-6',
-    bg: 'bg-teal-600 dark:bg-teal-700',
-    text: 'text-white text-[11px]',
-    separator: 'w-px bg-teal-500/50 mx-1 h-3.5',
+    bg: 'bg-brand-bar',
+    text: 'text-content-inverse text-[11px]',
+    separator: 'w-px bg-brand-signal/50 mx-1 h-3.5',
   },
   commandPalette: {
     overlay: 'bg-black/50',
-    bg: 'bg-white dark:bg-slate-800',
-    border: 'border border-slate-200 dark:border-slate-700',
+    bg: 'bg-surface-overlay',
+    border: 'border border-muted',
     shadow: 'shadow-2xl',
     width: 'w-full max-w-xl',
-    input: 'text-base bg-transparent text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500',
-    itemBg: 'hover:bg-slate-100 dark:hover:bg-slate-700',
-    itemActive: 'bg-slate-100 dark:bg-slate-700',
-    itemText: 'text-sm text-slate-700 dark:text-slate-300',
-    badge: 'text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400',
+    input: 'text-base bg-transparent text-content placeholder-content-muted',
+    itemBg: 'hover:bg-hover',
+    itemActive: 'bg-hover',
+    itemText: 'text-sm text-content-strong',
+    badge: 'text-[10px] px-1.5 py-0.5 rounded bg-surface-elevated text-content-tertiary',
   },
 } as const

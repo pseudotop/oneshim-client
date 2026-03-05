@@ -2,9 +2,9 @@
  *
  */
 import { useTranslation } from 'react-i18next'
+import type { PrivacySettings as PrivacySettingsType } from '../../api/client'
 import { Card, CardTitle, Input, Select } from '../../components/ui'
 import { form } from '../../styles/tokens'
-import type { PrivacySettings as PrivacySettingsType } from '../../api/client'
 import ToggleRow from './ToggleRow'
 
 interface PrivacySettingsProps {
@@ -27,10 +27,11 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
         />
 
         <div>
-          <label className={form.label}>
+          <label htmlFor="privacy-pii-level" className={form.label}>
             {t('settings.piiLevel')}
           </label>
           <Select
+            id="privacy-pii-level"
             value={privacy.pii_filter_level}
             onChange={(e) => onChange('pii_filter_level', e.target.value)}
           >
@@ -43,47 +44,65 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
         </div>
 
         <div>
-          <label className={form.label}>
+          <label htmlFor="privacy-excluded-apps" className={form.label}>
             {t('settings.excludedApps')}
           </label>
           <Input
+            id="privacy-excluded-apps"
             type="text"
             value={privacy.excluded_apps.join(', ')}
-            onChange={(e) => onChange(
-              'excluded_apps',
-              e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-            )}
+            onChange={(e) =>
+              onChange(
+                'excluded_apps',
+                e.target.value
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              )
+            }
             placeholder="1Password, Discord, Slack"
           />
         </div>
 
         <div>
-          <label className={form.label}>
+          <label htmlFor="privacy-excluded-app-patterns" className={form.label}>
             {t('settings.excludedAppPatterns')}
           </label>
           <Input
+            id="privacy-excluded-app-patterns"
             type="text"
             value={privacy.excluded_app_patterns.join(', ')}
-            onChange={(e) => onChange(
-              'excluded_app_patterns',
-              e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-            )}
+            onChange={(e) =>
+              onChange(
+                'excluded_app_patterns',
+                e.target.value
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              )
+            }
             placeholder="*bank*, *wallet*, *crypto*"
           />
           <p className={form.helper}>{t('settings.wildcardHint')}</p>
         </div>
 
         <div>
-          <label className={form.label}>
+          <label htmlFor="privacy-excluded-title-patterns" className={form.label}>
             {t('settings.excludedTitlePatterns')}
           </label>
           <Input
+            id="privacy-excluded-title-patterns"
             type="text"
             value={privacy.excluded_title_patterns.join(', ')}
-            onChange={(e) => onChange(
-              'excluded_title_patterns',
-              e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-            )}
+            onChange={(e) =>
+              onChange(
+                'excluded_title_patterns',
+                e.target.value
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              )
+            }
             placeholder="*password*, *secret*, *private*"
           />
         </div>

@@ -1,10 +1,9 @@
 // i18n setup
 import i18n from 'i18next'
-import { initReactI18next } from 'react-i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
-
-import ko from './locales/ko.json'
+import { initReactI18next } from 'react-i18next'
 import en from './locales/en.json'
+import ko from './locales/ko.json'
 
 const resources = {
   ko: { translation: ko },
@@ -47,9 +46,7 @@ export const changeLanguage = (lng: SupportedLanguageCode) => {
 // Get current language
 export const getCurrentLanguage = (): SupportedLanguageCode => {
   const lng = i18n.language
-  return (['ko', 'en'] as const).includes(lng as SupportedLanguageCode)
-    ? (lng as SupportedLanguageCode)
-    : 'en'
+  return (['ko', 'en'] as const).includes(lng as SupportedLanguageCode) ? (lng as SupportedLanguageCode) : 'en'
 }
 
 // Supported language list

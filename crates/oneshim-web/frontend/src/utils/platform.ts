@@ -8,11 +8,10 @@ interface NavigatorUAData {
 }
 
 const nav = typeof navigator !== 'undefined' ? navigator : undefined
-const uaData = nav && 'userAgentData' in nav ? (nav as Navigator & { userAgentData?: NavigatorUAData }).userAgentData : undefined
+const uaData =
+  nav && 'userAgentData' in nav ? (nav as Navigator & { userAgentData?: NavigatorUAData }).userAgentData : undefined
 
-export const IS_MAC = uaData
-  ? uaData.platform === 'macOS'
-  : /mac/i.test(nav?.platform ?? '')
+export const IS_MAC = uaData ? uaData.platform === 'macOS' : /mac/i.test(nav?.platform ?? '')
 
 export const IS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 

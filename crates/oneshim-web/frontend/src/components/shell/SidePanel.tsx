@@ -1,7 +1,7 @@
-import { useMemo, useCallback, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { layout, interaction } from '../../styles/tokens'
+import { useLocation } from 'react-router-dom'
+import { interaction, layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import TreeView, { type TreeNode } from './TreeView'
 
@@ -26,11 +26,15 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
     titleKey: 'nav.timeline',
     nodes: [
       { id: 'all', labelKey: 'sidebar.allFrames' },
-      { id: 'filters', labelKey: 'sidebar.filters', children: [
-        { id: 'by-app', labelKey: 'sidebar.byApplication' },
-        { id: 'by-tag', labelKey: 'sidebar.byTag' },
-        { id: 'by-importance', labelKey: 'sidebar.byImportance' },
-      ]},
+      {
+        id: 'filters',
+        labelKey: 'sidebar.filters',
+        children: [
+          { id: 'by-app', labelKey: 'sidebar.byApplication' },
+          { id: 'by-tag', labelKey: 'sidebar.byTag' },
+          { id: 'by-importance', labelKey: 'sidebar.byImportance' },
+        ],
+      },
     ],
   },
   '/reports': {
@@ -100,17 +104,16 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
   },
 }
 
-function translateNodes(
-  nodes: SidebarConfig['nodes'],
-  t: (key: string) => string
-): TreeNode[] {
-  return nodes.map(node => ({
+function translateNodes(nodes: SidebarConfig['nodes'], t: (key: string) => string): TreeNode[] {
+  return nodes.map((node) => ({
     id: node.id,
     label: t(node.labelKey),
-    children: node.children ? node.children.map(child => ({
-      id: child.id,
-      label: t(child.labelKey),
-    })) : undefined,
+    children: node.children
+      ? node.children.map((child) => ({
+          id: child.id,
+          label: t(child.labelKey),
+        }))
+      : undefined,
   }))
 }
 
@@ -127,14 +130,12 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>()
 
   const path = location.pathname
-  const config = pageSidebarConfig[path] ?? Object.entries(pageSidebarConfig).find(
-    ([key]) => key !== '/' && path.startsWith(key)
-  )?.[1] ?? pageSidebarConfig['/']
+  const config =
+    pageSidebarConfig[path] ??
+    Object.entries(pageSidebarConfig).find(([key]) => key !== '/' && path.startsWith(key))?.[1] ??
+    pageSidebarConfig['/']
 
-  const translatedNodes = useMemo(
-    () => translateNodes(config.nodes, t),
-    [config.nodes, t]
-  )
+  const translatedNodes = useMemo(() => translateNodes(config.nodes, t), [config.nodes, t])
 
   const handleNodeSelect = useCallback((id: string) => {
     setSelectedNodeId(id)
@@ -143,23 +144,26 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
 
-  const handleResizeKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const STEP = 20
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      onResizeByKeyboard?.(-STEP)
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      onResizeByKeyboard?.(STEP)
-    }
-  }, [onResizeByKeyboard])
+  const handleResizeKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const STEP = 20
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        onResizeByKeyboard?.(-STEP)
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        onResizeByKeyboard?.(STEP)
+      }
+    },
+    [onResizeByKeyboard],
+  )
 
   if (collapsed) return null
 
   return (
     <div className="relative flex" style={{ width }}>
-      <div className={cn('flex-1 flex flex-col overflow-hidden', layout.sidePanel.bg, layout.sidePanel.border)}>
-        <div className={cn('px-4 py-2 flex-shrink-0', layout.sidePanel.headerBg)}>
+      <div className={cn('flex flex-1 flex-col overflow-hidden', layout.sidePanel.bg, layout.sidePanel.border)}>
+        <div className={cn('flex-shrink-0 px-4 py-2', layout.sidePanel.headerBg)}>
           <span className={layout.sidePanel.headerText}>{t(config.titleKey)}</span>
         </div>
 
@@ -168,6 +172,7 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
         </div>
       </div>
 
+      {/* biome-ignore lint/a11y/useSemanticElements: separator role on div is intentional for resizable panel — no native <hr> equivalent for interactive vertical separator */}
       <div
         className={cn('flex-shrink-0', layout.sidePanel.resizeHandle, interaction.focusRing)}
         onMouseDown={onResizeStart}

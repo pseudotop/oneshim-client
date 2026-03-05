@@ -2,9 +2,9 @@
  *
  */
 import { useTranslation } from 'react-i18next'
+import type { NotificationSettings as NotificationSettingsType } from '../../api/client'
 import { Card, CardTitle, Input } from '../../components/ui'
 import { colors, form } from '../../styles/tokens'
-import type { NotificationSettings as NotificationSettingsType } from '../../api/client'
 
 interface NotificationSettingsProps {
   notification: NotificationSettingsType
@@ -19,7 +19,7 @@ export default function NotificationSettings({ notification, onChange }: Notific
       <CardTitle className="mb-4">{t('settings.notifTitle')}</CardTitle>
 
       {/* UI note */}
-      <label className={`flex items-center justify-between cursor-pointer mb-6 pb-4 border-b ${form.sectionDivider}`}>
+      <label className={`mb-6 flex cursor-pointer items-center justify-between border-b pb-4 ${form.sectionDivider}`}>
         <div>
           <span className={`${colors.text.secondary} font-medium`}>{t('settings.notifEnabled')}</span>
           <p className={colors.text.tertiary}>{t('settings.notifEnabledDesc')}</p>
@@ -32,10 +32,10 @@ export default function NotificationSettings({ notification, onChange }: Notific
         />
       </label>
 
-      <div className={`space-y-6 ${!notification.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div className={`space-y-6 ${!notification.enabled ? 'pointer-events-none opacity-50' : ''}`}>
         {/* idle notification */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-          <label className="flex items-center cursor-pointer">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+          <label className="flex cursor-pointer items-center">
             <input
               type="checkbox"
               checked={notification.idle_notification}
@@ -48,23 +48,24 @@ export default function NotificationSettings({ notification, onChange }: Notific
             </div>
           </label>
           <div>
-            <label className={form.label}>
+            <label htmlFor="notif-idle-threshold" className={form.label}>
               {t('settings.notifIdleThreshold')}
             </label>
             <Input
+              id="notif-idle-threshold"
               type="number"
               min={5}
               max={120}
               value={notification.idle_notification_mins}
-              onChange={(e) => onChange('idle_notification_mins', parseInt(e.target.value) || 30)}
+              onChange={(e) => onChange('idle_notification_mins', parseInt(e.target.value, 10) || 30)}
               disabled={!notification.idle_notification}
             />
           </div>
         </div>
 
         {/* UI note */}
-        <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-4 border-t ${form.sectionDivider}`}>
-          <label className="flex items-center cursor-pointer">
+        <div className={`grid grid-cols-1 items-start gap-4 border-t pt-4 md:grid-cols-2 ${form.sectionDivider}`}>
+          <label className="flex cursor-pointer items-center">
             <input
               type="checkbox"
               checked={notification.long_session_notification}
@@ -77,23 +78,24 @@ export default function NotificationSettings({ notification, onChange }: Notific
             </div>
           </label>
           <div>
-            <label className={form.label}>
+            <label htmlFor="notif-long-session-threshold" className={form.label}>
               {t('settings.notifLongSessionThreshold')}
             </label>
             <Input
+              id="notif-long-session-threshold"
               type="number"
               min={30}
               max={240}
               value={notification.long_session_mins}
-              onChange={(e) => onChange('long_session_mins', parseInt(e.target.value) || 60)}
+              onChange={(e) => onChange('long_session_mins', parseInt(e.target.value, 10) || 60)}
               disabled={!notification.long_session_notification}
             />
           </div>
         </div>
 
         {/* UI note */}
-        <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 items-start pt-4 border-t ${form.sectionDivider}`}>
-          <label className="flex items-center cursor-pointer">
+        <div className={`grid grid-cols-1 items-start gap-4 border-t pt-4 md:grid-cols-2 ${form.sectionDivider}`}>
+          <label className="flex cursor-pointer items-center">
             <input
               type="checkbox"
               checked={notification.high_usage_notification}
@@ -106,15 +108,16 @@ export default function NotificationSettings({ notification, onChange }: Notific
             </div>
           </label>
           <div>
-            <label className={form.label}>
+            <label htmlFor="notif-high-usage-threshold" className={form.label}>
               {t('settings.notifHighUsageThreshold')}
             </label>
             <Input
+              id="notif-high-usage-threshold"
               type="number"
               min={50}
               max={99}
               value={notification.high_usage_threshold}
-              onChange={(e) => onChange('high_usage_threshold', parseInt(e.target.value) || 90)}
+              onChange={(e) => onChange('high_usage_threshold', parseInt(e.target.value, 10) || 90)}
               disabled={!notification.high_usage_notification}
             />
           </div>

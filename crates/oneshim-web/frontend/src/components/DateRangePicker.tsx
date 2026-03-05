@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { interaction } from '../styles/tokens'
+import { cn } from '../utils/cn'
 
 interface DateRangePickerProps {
   onRangeChange: (from: string | undefined, to: string | undefined) => void
@@ -9,26 +11,22 @@ interface DateRangePickerProps {
 
 type PresetRange = 'today' | '7days' | '30days' | 'custom'
 
-export default function DateRangePicker({
-  onRangeChange,
-  initialFrom,
-  initialTo,
-}: DateRangePickerProps) {
+function getToday() {
+  const now = new Date()
+  return now.toISOString().split('T')[0]
+}
+
+function getDaysAgo(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() - days)
+  return date.toISOString().split('T')[0]
+}
+
+export default function DateRangePicker({ onRangeChange, initialFrom, initialTo }: DateRangePickerProps) {
   const { t } = useTranslation()
   const [preset, setPreset] = useState<PresetRange>('today')
   const [customFrom, setCustomFrom] = useState(initialFrom || '')
   const [customTo, setCustomTo] = useState(initialTo || '')
-
-  const getToday = () => {
-    const now = new Date()
-    return now.toISOString().split('T')[0]
-  }
-
-  const getDaysAgo = (days: number) => {
-    const date = new Date()
-    date.setDate(date.getDate() - days)
-    return date.toISOString().split('T')[0]
-  }
 
   useEffect(() => {
     let from: string | undefined
@@ -36,21 +34,21 @@ export default function DateRangePicker({
 
     switch (preset) {
       case 'today':
-        from = getToday() + 'T00:00:00Z'
-        to = getToday() + 'T23:59:59Z'
+        from = `${getToday()}T00:00:00Z`
+        to = `${getToday()}T23:59:59Z`
         break
       case '7days':
-        from = getDaysAgo(7) + 'T00:00:00Z'
-        to = getToday() + 'T23:59:59Z'
+        from = `${getDaysAgo(7)}T00:00:00Z`
+        to = `${getToday()}T23:59:59Z`
         break
       case '30days':
-        from = getDaysAgo(30) + 'T00:00:00Z'
-        to = getToday() + 'T23:59:59Z'
+        from = `${getDaysAgo(30)}T00:00:00Z`
+        to = `${getToday()}T23:59:59Z`
         break
       case 'custom':
         if (customFrom && customTo) {
-          from = customFrom + 'T00:00:00Z'
-          to = customTo + 'T23:59:59Z'
+          from = `${customFrom}T00:00:00Z`
+          to = `${customTo}T23:59:59Z`
         }
         break
     }
@@ -63,45 +61,41 @@ export default function DateRangePicker({
   }
 
   return (
-    <div className="flex items-center space-x-2 flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-2 space-x-2">
       {/* UI note */}
       <div className="flex space-x-1">
         <button
+          type="button"
           onClick={() => handlePresetClick('today')}
-          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            preset === 'today'
-              ? 'bg-teal-600 text-white'
-              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+            preset === 'today' ? 'bg-teal-600 text-white' : 'bg-hover text-content-strong hover:bg-active'
           }`}
         >
           {t('dateRange.today')}
         </button>
         <button
+          type="button"
           onClick={() => handlePresetClick('7days')}
-          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            preset === '7days'
-              ? 'bg-teal-600 text-white'
-              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+            preset === '7days' ? 'bg-teal-600 text-white' : 'bg-hover text-content-strong hover:bg-active'
           }`}
         >
           {t('dateRange.week')}
         </button>
         <button
+          type="button"
           onClick={() => handlePresetClick('30days')}
-          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            preset === '30days'
-              ? 'bg-teal-600 text-white'
-              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+            preset === '30days' ? 'bg-teal-600 text-white' : 'bg-hover text-content-strong hover:bg-active'
           }`}
         >
           {t('dateRange.month')}
         </button>
         <button
+          type="button"
           onClick={() => handlePresetClick('custom')}
-          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            preset === 'custom'
-              ? 'bg-teal-600 text-white'
-              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
+          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+            preset === 'custom' ? 'bg-teal-600 text-white' : 'bg-hover text-content-strong hover:bg-active'
           }`}
         >
           {t('dateRange.custom')}
@@ -115,14 +109,20 @@ export default function DateRangePicker({
             type="date"
             value={customFrom}
             onChange={(e) => setCustomFrom(e.target.value)}
-            className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+            className={cn(
+              'rounded-lg border border-DEFAULT bg-surface-overlay px-3 py-1.5 text-content text-sm',
+              interaction.focusRing,
+            )}
           />
-          <span className="text-slate-400">~</span>
+          <span className="text-content-muted">~</span>
           <input
             type="date"
             value={customTo}
             onChange={(e) => setCustomTo(e.target.value)}
-            className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-teal-500"
+            className={cn(
+              'rounded-lg border border-DEFAULT bg-surface-overlay px-3 py-1.5 text-content text-sm',
+              interaction.focusRing,
+            )}
           />
         </div>
       )}

@@ -159,14 +159,7 @@ export interface AppSettings {
   ai_provider: AiProviderSettings
 }
 
-export type UpdatePhase =
-  | 'Idle'
-  | 'Checking'
-  | 'PendingApproval'
-  | 'Installing'
-  | 'Updated'
-  | 'Deferred'
-  | 'Error'
+export type UpdatePhase = 'Idle' | 'Checking' | 'PendingApproval' | 'Installing' | 'Updated' | 'Deferred' | 'Error'
 
 export interface PendingUpdateInfo {
   current_version: string
@@ -481,7 +474,15 @@ export interface TimelineSessionInfo {
 
 export type TimelineItem =
   | { type: 'Event'; id: string; timestamp: string; event_type: string; app_name?: string; window_title?: string }
-  | { type: 'Frame'; id: number; timestamp: string; app_name: string; window_title: string; importance: number; image_url: string }
+  | {
+      type: 'Frame'
+      id: number
+      timestamp: string
+      app_name: string
+      window_title: string
+      importance: number
+      image_url: string
+    }
   | { type: 'IdlePeriod'; start: string; end: string; duration_secs: number }
 
 export interface AppSegment {

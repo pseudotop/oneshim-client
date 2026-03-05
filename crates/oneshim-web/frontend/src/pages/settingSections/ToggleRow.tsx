@@ -12,17 +12,12 @@ export interface ToggleRowProps {
 
 export default function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
   return (
-    <label className="flex items-center justify-between cursor-pointer">
+    <label className="flex cursor-pointer items-center justify-between">
       <div>
         <span className={colors.text.secondary}>{label}</span>
         <p className={colors.text.tertiary}>{description}</p>
       </div>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className={form.checkbox}
-      />
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className={form.checkbox} />
     </label>
   )
 }

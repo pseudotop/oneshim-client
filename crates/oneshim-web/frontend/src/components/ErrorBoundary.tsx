@@ -1,4 +1,4 @@
-import { Component, ErrorInfo, ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 
 interface Props {
   children: ReactNode
@@ -26,23 +26,22 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      return this.props.fallback || (
-        <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900">
-          <div className="text-center p-8">
-            <h1 className="text-2xl font-bold text-red-600 mb-4">
-              Something went wrong
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 mb-4">
-              {this.state.error?.message}
-            </p>
-            <button
-              onClick={() => this.setState({ hasError: false, error: null })}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Try Again
-            </button>
+      return (
+        this.props.fallback || (
+          <div className="flex min-h-screen items-center justify-center bg-surface-muted">
+            <div className="p-8 text-center">
+              <h1 className="mb-4 font-bold text-2xl text-red-600">Something went wrong</h1>
+              <p className="mb-4 text-content-secondary">{this.state.error?.message}</p>
+              <button
+                type="button"
+                onClick={() => this.setState({ hasError: false, error: null })}
+                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+              >
+                Try Again
+              </button>
+            </div>
           </div>
-        </div>
+        )
       )
     }
 
