@@ -97,6 +97,7 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
         aria-current={active ? 'page' : undefined}
         aria-describedby={tooltip ? TOOLTIP_ID : undefined}
         aria-label={label}
+        title={label}
       >
         {active && (
           <div className={cn('absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r', layout.activityBar.indicator)} />

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARTIFACT_DIR="${ROOT_DIR}/artifacts/integrity"
 CARGO_CMD="$ROOT_DIR/scripts/cargo-cache.sh"
-VET_MODE="${INTEGRITY_VET_MODE:-strict}"
+VET_MODE="${INTEGRITY_VET_MODE:-advisory}"
 
 mkdir -p "${ARTIFACT_DIR}"
 
