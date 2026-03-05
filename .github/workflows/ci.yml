@@ -336,13 +336,16 @@ jobs:
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend
 
-      - name: Extract frontend dist artifact if present
+      - name: Extract frontend dist artifact or create stub
         shell: bash
         run: |
           if [ -f crates/oneshim-web/frontend/frontend-dist.tar.gz ]; then
             tar -xzf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend
           fi
-          test -f crates/oneshim-web/frontend/dist/index.html
+          if [ ! -f crates/oneshim-web/frontend/dist/index.html ]; then
+            mkdir -p crates/oneshim-web/frontend/dist
+            echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
+          fi
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -536,13 +539,16 @@ jobs:
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend
 
-      - name: Extract frontend dist artifact if present
+      - name: Extract frontend dist artifact or create stub
         shell: bash
         run: |
           if [ -f crates/oneshim-web/frontend/frontend-dist.tar.gz ]; then
             tar -xzf crates/oneshim-web/frontend/frontend-dist.tar.gz -C crates/oneshim-web/frontend
           fi
-          test -f crates/oneshim-web/frontend/dist/index.html
+          if [ ! -f crates/oneshim-web/frontend/dist/index.html ]; then
+            mkdir -p crates/oneshim-web/frontend/dist
+            echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
+          fi
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
