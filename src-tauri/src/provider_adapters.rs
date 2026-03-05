@@ -54,6 +54,11 @@ pub struct AiProviderAdapters {
     pub llm_fallback_reason: Option<String>,
 }
 
+type OcrProviderResolution =
+    Result<(Arc<dyn OcrProvider>, ProviderSource, Option<String>), CoreError>;
+type LlmProviderResolution =
+    Result<(Arc<dyn LlmProvider>, ProviderSource, Option<String>), CoreError>;
+
 #[cfg(feature = "server")]
 struct GuardedOcrProvider {
     inner: Arc<dyn OcrProvider>,
@@ -225,7 +230,7 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
 fn resolve_ocr_provider(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
-) -> Result<(Arc<dyn OcrProvider>, ProviderSource, Option<String>), CoreError> {
+) -> OcrProviderResolution {
     match config.ocr_provider {
         OcrProviderType::Local => Ok((
             Arc::new(LocalOcrProvider::new()),
@@ -263,9 +268,7 @@ fn resolve_ocr_provider(
     }
 }
 
-fn resolve_llm_provider(
-    config: &AiProviderConfig,
-) -> Result<(Arc<dyn LlmProvider>, ProviderSource, Option<String>), CoreError> {
+fn resolve_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
     match config.llm_provider {
         LlmProviderType::Local => Ok((
             Arc::new(LocalLlmProvider::new()),
