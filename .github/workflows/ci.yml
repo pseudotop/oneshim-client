@@ -291,6 +291,9 @@ jobs:
         with:
           shared-key: ci-test
 
+      - name: Create frontend dist stub for Tauri generate_context!()
+        run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
+
       - name: Run tests (standalone)
         run: ./scripts/cargo-cache.sh test --workspace
 

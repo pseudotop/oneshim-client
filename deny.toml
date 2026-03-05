@@ -27,7 +27,19 @@ db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/RustSec/advisory-db"]
 unmaintained = "workspace"
 unsound = "all"
-ignore = []
+ignore = [
+  # gtk-rs GTK3 bindings — unmaintained but required by Tauri (wry → webkit2gtk/tao)
+  # These are transitive deps we cannot control until Tauri migrates to GTK4
+  "RUSTSEC-2024-0411", # gdkwayland-sys
+  "RUSTSEC-2024-0412", # gdk
+  "RUSTSEC-2024-0413", # atk
+  "RUSTSEC-2024-0414", # gtk (or related)
+  "RUSTSEC-2024-0416", # atk-sys
+  "RUSTSEC-2024-0417", # gdkx11
+  "RUSTSEC-2024-0418", # gdk-sys
+  # fxhash — unmaintained, transitive dep from wry → kuchikiki → selectors
+  "RUSTSEC-2025-0057", # fxhash
+]
 
 [bans]
 multiple-versions = "allow"
