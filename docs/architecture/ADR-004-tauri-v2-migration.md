@@ -1,41 +1,43 @@
-# ADR-004: Tauri v2 마이그레이션 (iced → Tauri v2 + WebView)
+[English](./ADR-004-tauri-v2-migration.md) | [한국어](./ADR-004-tauri-v2-migration.ko.md)
 
-**날짜**: 2026-03-04
-**상태**: Accepted
-**결정자**: ONESHIM 팀
+# ADR-004: Tauri v2 Migration (iced → Tauri v2 + WebView)
 
-## 배경
+**Date**: 2026-03-04
+**Status**: Accepted
+**Deciders**: ONESHIM Team
 
-oneshim-ui 크레이트는 iced 0.12 기반 GUI를 구현했다. 다음 문제가 발생했다:
+## Background
 
-1. **렌더링 한계** — iced의 즉시 모드 렌더러는 복잡한 데이터 시각화(타임라인, 히트맵)에서 성능 저하
-2. **웹 대시보드 중복** — Axum + React로 이미 동일 기능의 웹 UI 존재. 두 UI 유지 비용 증가
-3. **플랫폼 일관성** — macOS/Windows/Linux 각각 다른 iced 렌더러 동작
+The `oneshim-ui` crate implemented a GUI based on iced 0.12. The following problems arose:
 
-## 결정
+1. **Rendering limitations** — iced's immediate-mode renderer shows performance degradation with complex data visualizations (timelines, heatmaps).
+2. **Duplicate web dashboard** — An equivalent web UI already existed via Axum + React. Maintaining two UIs increased cost.
+3. **Platform inconsistency** — iced renderer behaviour differed across macOS, Windows, and Linux.
 
-iced를 제거하고 Tauri v2를 사용하여 기존 React 웹 대시보드를 데스크탑 셸로 감싼다.
+## Decision
 
-## 구현
+Remove iced and use Tauri v2 to wrap the existing React web dashboard in a native desktop shell.
 
-- `src-tauri/` 디렉토리: Tauri 메인 바이너리
-- 기존 `crates/oneshim-web/` React 앱을 Tauri WebView로 임베드
-- IPC: `tauri::command` 매크로로 Rust ↔ JavaScript 통신
-- System tray: `tauri::tray` API
-- 자동 업데이트: `tauri-plugin-updater`
+## Implementation
 
-## 결과
+- `src-tauri/` directory: Tauri main binary entry point.
+- Embed the existing `crates/oneshim-web/` React app via Tauri WebView.
+- IPC: `tauri::command` macro for Rust ↔ JavaScript communication.
+- System tray: `tauri::tray` API.
+- Auto-update: `tauri-plugin-updater`.
 
-- ✅ 단일 UI 코드베이스 (React)
-- ✅ 크로스 플랫폼 일관성 (WebKit/WebView2)
-- ✅ oneshim-ui 크레이트 제거로 의존성 감소
-- ⚠️ Tauri IPC 학습 비용
-- ⚠️ WebView 메모리 오버헤드 (~50MB)
+## Consequences
 
-## 대안 검토
+- ✅ Single UI codebase (React).
+- ✅ Cross-platform consistency (WebKit/WebView2).
+- ✅ Reduced dependencies by removing the `oneshim-ui` crate.
+- ⚠️ Tauri IPC learning curve.
+- ⚠️ WebView memory overhead (~50 MB).
 
-| 대안 | 이유 기각 |
-|------|----------|
-| iced 유지 | 복잡 UI 한계, 두 UI 유지 비용 |
-| Egui | iced와 동일한 한계 |
-| Electron | 메모리/번들 크기 과다 |
+## Alternatives Considered
+
+| Alternative | Reason Rejected |
+|-------------|----------------|
+| Keep iced | Complex UI limitations; dual UI maintenance cost |
+| Egui | Same limitations as iced |
+| Electron | Excessive memory and bundle size |

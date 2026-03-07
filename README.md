@@ -108,7 +108,7 @@ Standalone mode remains the production-ready default path for release use.
 
 ## Requirements
 
-- Rust 1.75 or later
+- Rust 1.77.1 or later
 - macOS 10.15+ / Windows 10+ / Linux (X11/Wayland)
 
 ## Developer Quick Start (Build from Source)
@@ -125,10 +125,10 @@ Standalone mode remains the production-ready default path for release use.
 # Release build
 ./scripts/cargo-cache.sh build --release -p oneshim-app
 
-# Tauri 데스크탑 앱 빌드 (v0.1.5+)
+# Build desktop app (Tauri v2, v0.1.5+)
 cd src-tauri && cargo tauri build
 
-# Tauri 개발 서버 (frontend HMR 포함, v0.1.5+)
+# Start dev server with frontend HMR (v0.1.5+)
 cd src-tauri && cargo tauri dev
 ```
 
@@ -370,7 +370,7 @@ Korean companion policy/status docs: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DO
 
 1. Define port traits in `oneshim-core`
 2. Implement adapters in the relevant crate
-3. Wire up DI in `oneshim-app`
+3. Wire up DI in `src-tauri/src/main.rs`
 4. Add tests
 
 ### Building Installers

@@ -236,7 +236,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ## Coding Conventions
 
 - Comments/Documentation: **English-first** (public docs require Korean companion docs for key guides)
-- Rust edition: **2021**, Minimum version: **1.75**
+- Rust edition: **2021**, Minimum version: **1.77.1**
 - Code Formatting: `cargo fmt` (rustfmt default settings)
 - Linting: `cargo clippy` — `dead_code` warnings are allowed only for variants intended for future use
 - Testing: Write in `#[cfg(test)] mod tests` at the bottom of each module
@@ -249,7 +249,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - [ADR-001: Rust Client Architecture Patterns](docs/architecture/ADR-001-rust-client-architecture-patterns.md)
 - [ADR-002: OS GUI Interaction Boundary and Runtime Split](docs/architecture/ADR-002-os-gui-interaction-boundary.md)
 - [ADR-003: Directory Module Pattern for Large Source Files](docs/architecture/ADR-003-directory-module-pattern.md)
-- [ADR-004: Tauri v2 마이그레이션 (iced → Tauri v2 + WebView)](docs/architecture/ADR-004-tauri-v2-migration.md)
+- [ADR-004: Tauri v2 Migration (iced → Tauri v2 + WebView)](docs/architecture/ADR-004-tauri-v2-migration.md) ([한국어](docs/architecture/ADR-004-tauri-v2-migration.ko.md))
 - [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history

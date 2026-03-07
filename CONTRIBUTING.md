@@ -6,7 +6,7 @@ Thanks for your interest in the ONESHIM Rust client. This document is the Rust-s
 
 ### Prerequisites
 
-- **Rust** 1.75 or later (keep up to date with `rustup update stable`)
+- **Rust** 1.77.1 or later (keep up to date with `rustup update stable`)
 - **cargo** — Rust build system and package manager (included with Rust)
 - **pnpm** — required to build the frontend web dashboard (`oneshim-web/frontend`)
 
@@ -178,7 +178,7 @@ oneshim-core  (port definitions, models)
     <- oneshim-network   (HTTP/SSE/WebSocket adapter)
     <- oneshim-storage   (SQLite adapter)
     <- oneshim-suggestion <- oneshim-network
-    <- oneshim-ui         <- oneshim-suggestion
+    <- src-tauri          <- oneshim-suggestion
     <- oneshim-automation
     <- oneshim-app        (full DI wiring)
 ```
@@ -189,7 +189,7 @@ Direct dependencies between adapter crates are not allowed. For example, `oneshi
 
 Permitted exceptions:
 - `oneshim-suggestion` -> `oneshim-network` (SSE reception)
-- `oneshim-ui` -> `oneshim-suggestion` (suggestion display)
+- `src-tauri` -> `oneshim-suggestion` (suggestion display)
 
 ### DI Pattern
 
@@ -447,7 +447,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 Use the crate name or feature area as the scope.
 
-`core`, `network`, `suggestion`, `storage`, `monitor`, `vision`, `ui`, `web`, `automation`, `app`
+`core`, `network`, `suggestion`, `storage`, `monitor`, `vision`, `tauri`, `web`, `automation`, `app`
 
 ### Examples
 
