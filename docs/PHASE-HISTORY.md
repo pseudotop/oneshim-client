@@ -110,3 +110,24 @@ Detailed changelog of each implementation phase. For current crate structure and
 ## Phase 8 (Additional Data Storage)
 - System metrics, process snapshots, idle detection, session stats
 - Schema V3-V4, 6-loop scheduler
+
+## Phase 38: Tauri v2 마이그레이션 (v0.1.5, 2026-03-04)
+
+- iced GUI 제거, Tauri v2 + React WebView로 전환
+- `oneshim-ui` 크레이트 제거
+- `src-tauri/` 디렉토리 신설 (main binary entry point)
+- System tray: iced tray → Tauri MenuBuilder
+- 데스크탑 알림: iced notification → Tauri notification plugin
+
+## Phase 39: Desktop Shell Layout (v0.1.6)
+
+- Tauri WebView 내 React shell 레이아웃 구현
+- Sidebar navigation, command palette (Cmd+K)
+- Dark/light theme 3-mode 지원
+- 접근성 기초: skip-to-content, semantic HTML
+
+## Phase 40: Vitest Infrastructure (v0.1.7)
+
+- Frontend 테스트 인프라: Vitest + React Testing Library
+- MSW (Mock Service Worker) API mocking
+- E2E: Playwright screenshot capture
