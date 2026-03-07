@@ -392,11 +392,11 @@ pub async fn run_preset(
         Ok(Json(PresetRunResult {
             preset_id: id,
             success: true,
-                message: format!(
-                    "preset '{}' execution requested ({} steps, logging only)",
-                    preset.name,
-                    preset.steps.len()
-                ),
+            message: format!(
+                "preset '{}' execution requested ({} steps, logging only)",
+                preset.name,
+                preset.steps.len()
+            ),
             steps_executed: None,
             total_steps: Some(preset.steps.len()),
             total_elapsed_ms: None,

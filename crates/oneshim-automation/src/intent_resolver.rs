@@ -109,11 +109,7 @@ impl IntentResolver {
 
                     if let Ok(elems) = &elements {
                         if !elems.is_empty() {
-                            info!(
-                                text,
-                                elapsed_ms = start.elapsed().as_millis(),
-                                "text found"
-                            );
+                            info!(text, elapsed_ms = start.elapsed().as_millis(), "text found");
                             return Ok((true, elems.first().cloned()));
                         }
                     }
