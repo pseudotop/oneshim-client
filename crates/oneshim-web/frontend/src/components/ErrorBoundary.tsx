@@ -37,14 +37,14 @@ class ErrorBoundaryBase extends Component<Props, State> {
         fallback || (
           <div className="flex min-h-screen items-center justify-center bg-surface-muted">
             <div className="p-8 text-center">
-              <h1 className="mb-4 font-bold text-2xl text-red-600">{t('errors.boundary_title')}</h1>
+              <h1 className="mb-4 font-bold text-2xl text-red-600">{t('errors.boundaryTitle')}</h1>
               <p className="mb-4 text-content-secondary">{this.state.error?.message}</p>
               <button
                 type="button"
                 onClick={() => this.setState({ hasError: false, error: null })}
                 className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
               >
-                {t('errors.boundary_retry')}
+                {t('errors.boundaryRetry')}
               </button>
             </div>
           </div>

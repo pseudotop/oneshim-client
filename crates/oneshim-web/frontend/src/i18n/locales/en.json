@@ -657,11 +657,11 @@
     "searchShortcut": "Search ({{key}}+K)"
   },
   "errors": {
-    "boundary_title": "Something went wrong",
-    "boundary_retry": "Try Again",
-    "server_offline": "Server is offline",
-    "server_offline_desc": "Could not connect to the ONESHIM agent. Make sure the agent is running.",
-    "retry_connection": "Retry Connection"
+    "boundaryTitle": "Something went wrong",
+    "boundaryRetry": "Try Again",
+    "serverOffline": "Server is offline",
+    "serverOfflineDesc": "Could not connect to the ONESHIM agent. Make sure the agent is running.",
+    "retryConnection": "Retry Connection"
   },
   "sidebar": {
     "overview": "Overview",

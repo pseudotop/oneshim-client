@@ -651,11 +651,11 @@
     "searchShortcut": "검색 ({{key}}+K)"
   },
   "errors": {
-    "boundary_title": "오류가 발생했습니다",
-    "boundary_retry": "다시 시도",
-    "server_offline": "서버가 오프라인 상태입니다",
-    "server_offline_desc": "ONESHIM 에이전트에 연결할 수 없습니다. 에이전트가 실행 중인지 확인하세요.",
-    "retry_connection": "연결 재시도"
+    "boundaryTitle": "오류가 발생했습니다",
+    "boundaryRetry": "다시 시도",
+    "serverOffline": "서버가 오프라인 상태입니다",
+    "serverOfflineDesc": "ONESHIM 에이전트에 연결할 수 없습니다. 에이전트가 실행 중인지 확인하세요.",
+    "retryConnection": "연결 재시도"
   },
   "sidebar": {
     "overview": "개요",
