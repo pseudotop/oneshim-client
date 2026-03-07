@@ -482,10 +482,11 @@ async fn run_agent(
     #[cfg(feature = "server")]
     let token_manager = Arc::new(TokenManager::new(&config.server.base_url));
     #[cfg(feature = "server")]
-    let api_client = Arc::new(HttpApiClient::new(
+    let api_client = Arc::new(HttpApiClient::new_with_tls(
         &config.server.base_url,
         token_manager.clone(),
         config.request_timeout(),
+        &config.tls,
     )?);
     let session_id = generate_session_id();
     #[cfg(feature = "server")]

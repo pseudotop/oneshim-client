@@ -409,10 +409,11 @@ async fn main_async(args: Args) -> Result<()> {
     }
 
     #[cfg(feature = "server")]
-    let api_client = Arc::new(HttpApiClient::new(
+    let api_client = Arc::new(HttpApiClient::new_with_tls(
         &config.server.base_url,
         token_manager.clone(),
         config.request_timeout(),
+        &config.tls,
     )?);
 
     #[cfg(feature = "server")]
