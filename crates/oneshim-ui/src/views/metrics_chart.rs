@@ -143,7 +143,10 @@ impl<Message> canvas::Program<Message> for MetricsChartCanvas {
                     fill_builder.line_to(*point);
                 }
 
-                fill_builder.line_to(Point::new(points.last().unwrap().x, height));
+                fill_builder.line_to(Point::new(
+                    points.last().expect("points has at least 2 elements (checked above)").x,
+                    height,
+                ));
                 fill_builder.close();
 
                 let fill_path = fill_builder.build();

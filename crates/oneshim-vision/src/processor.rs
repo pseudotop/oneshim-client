@@ -92,7 +92,10 @@ impl FrameProcessor for EdgeFrameProcessor {
             })
         } else if importance >= 0.5 {
             debug!("(in progress {:.1})", importance);
-            let prev = self.prev_frame.lock().unwrap();
+            let prev = self
+                .prev_frame
+                .lock()
+                .map_err(|e| CoreError::Internal(format!("prev_frame lock poisoned: {e}")))?;
             if let Some(prev) = prev.as_ref() {
                 if let Some(delta_region) = delta::compute_delta(prev, &current_frame) {
                     let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::Medium)?;
@@ -130,7 +133,11 @@ impl FrameProcessor for EdgeFrameProcessor {
             None
         };
 
-        *self.prev_frame.lock().unwrap() = Some(current_frame);
+        *self
+            .prev_frame
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("prev_frame lock poisoned: {e}")))? =
+            Some(current_frame);
 
         Ok(ProcessedFrame {
             metadata,
