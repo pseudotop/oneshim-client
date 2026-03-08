@@ -73,7 +73,7 @@ impl EncryptionKey {
     }
 
     fn save_to_file(&self, path: &PathBuf) -> Result<(), CoreError> {
-        std::fs::write(path, &self.0)
+        std::fs::write(path, self.0)
             .map_err(|e| CoreError::Internal(format!("Key file write failed ({path:?}): {e}")))?;
 
         #[cfg(unix)]

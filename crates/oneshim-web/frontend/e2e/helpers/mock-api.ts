@@ -325,6 +325,11 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
       },
     }
   })
+  await mockStaticJson(page, '**/api/ai/providers/presets**', {
+    version: 2,
+    updated_at: '2026-02-25T09:20:00Z',
+    providers: [],
+  })
   await mockDynamicJson(page, '**/api/automation/execute-scene-action', (request) => {
     const payload = request.postDataJSON() as
       | {
