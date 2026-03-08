@@ -6,6 +6,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+
+- GUI V2 M4 — End-to-End Workflow Tests (10 tests)
+  Handler-level integration tests covering the complete GUI session lifecycle
+  through the Axum handler layer with a fully configured AutomationController:
+  create → get → highlight → confirm → execute → delete.
+
+  - 10 new tests in `automation_gui.rs` (mod m4):
+    - no controller returns 503 ServiceUnavailable
+    - missing token returns 401 Unauthorized
+    - create returns session + capability token (state: Proposed)
+    - get reflects Proposed state after create
+    - highlight transitions session to Highlighted
+    - confirm returns an execution ticket
+    - execute with valid ticket succeeds (outcome.succeeded=true)
+    - delete transitions to Cancelled
+    - wrong token on get returns 401 Unauthorized
+    - full lifecycle: create→get→highlight→confirm→execute (Executed state)
+  - Added `async-trait` to oneshim-web dev-dependencies (for mock impls)
+  - STATUS.md updated: 852 total tests, M4 done
+
+
+### Changed
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update to v0.2.0 — CI green, Linux smoke fix recorded
+  - Bump snapshot date to 2026-03-08
+  - Record CI run 22820191743 as success (was failure at v0.1.1)
+  - Record Release tag v0.2.0 (was v0.1.1)
+  - Add Batch 5 change summary: encryption.rs clippy fix, E2E
+    replay-scene mock, Linux smoke frontendDist stub fix
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- M3 complete — 842 tests, GUI V2 M3 SSE stream integration done
+
+- Update [Unreleased] [skip ci]
+
+
+### Fixed
+
+- Cargo fmt + ActivityBar role attribute for E2E nav selector
+  - cargo fmt: consent.rs, events.rs, privacy.rs line-length reflow
+  - ActivityBar: add explicit role="navigation" to <nav> element
+    (nav[role="navigation"] CSS selector requires explicit attribute;
+    implicit ARIA role is not matched by attribute selectors)
+
+- Clippy needless borrow in encryption + mock ai/providers/presets in E2E
+  - Remove needless `&self.0` borrow in `EncryptionKey::save_to_file` (clippy::needless_borrows_for_generic_args)
+  - Add `/api/ai/providers/presets` mock to `mockDefaultApiFallbacks` to prevent ECONNREFUSED timeout in replay-scene E2E tests
+
+- Create frontendDist stub before updater regression tests
+
+
+## [Unreleased]
 ### Changed
 
 - Update [Unreleased] [skip ci]
