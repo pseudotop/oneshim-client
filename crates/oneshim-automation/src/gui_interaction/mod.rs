@@ -1964,7 +1964,7 @@ mod tests {
         let mut events_a: Vec<String> = vec![];
         let mut events_b: Vec<String> = vec![];
 
-        let _ = tokio::time::timeout(std::time::Duration::from_millis(300), async {
+        tokio::time::timeout(std::time::Duration::from_millis(300), async {
             loop {
                 match rx.try_recv() {
                     Ok(ev) => {
@@ -1981,7 +1981,8 @@ mod tests {
                 }
             }
         })
-        .await;
+        .await
+        .expect("events for both sessions should arrive within 300 ms");
 
         // Both sessions should have their own proposed event.
         assert!(
@@ -2012,17 +2013,17 @@ mod tests {
         let mut rx = service.subscribe();
         let (sid, token) = create_and_highlight(&service).await;
 
-        // Drain earlier events (proposed + highlighted).
+        // Drain earlier events (proposed + highlighted) by collecting until
+        // the channel is transiently empty, then proceeding.  Draining by
+        // count is fragile when the service emits more than expected; draining
+        // to empty is stable because send() is synchronous in the service.
         let _ = tokio::time::timeout(std::time::Duration::from_millis(200), async {
-            let mut drained = 0usize;
             loop {
-                if rx.try_recv().is_ok() {
-                    drained += 1;
+                match rx.try_recv() {
+                    Ok(_) => {} // consume but don't break early
+                    Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
+                    Err(_) => break, // Lagged — just exit
                 }
-                if drained >= 2 {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
         })
         .await;
@@ -2061,6 +2062,79 @@ mod tests {
         .expect("confirmed event should be received within timeout");
 
         assert_eq!(event.event_type, "gui_session.confirmed");
+        assert_eq!(event.session_id, sid);
+    }
+
+    /// `complete_execution(succeeded=true)` emits a `gui_session.executed` event.
+    #[tokio::test]
+    async fn m3_complete_execution_emits_executed_event() {
+        let scene = make_scene(vec![make_element("el-1", "OK", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let mut rx = service.subscribe();
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+
+        service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .expect("prepare_execution should succeed");
+
+        service
+            .complete_execution(&sid, true, None, 1, 1)
+            .await
+            .expect("complete_execution should succeed");
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            loop {
+                if let Ok(ev) = rx.try_recv() {
+                    if ev.session_id == sid && ev.event_type == "gui_session.executed" {
+                        return ev;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("executed event should be received within timeout");
+
+        assert_eq!(event.event_type, "gui_session.executed");
+        assert_eq!(event.session_id, sid);
+    }
+
+    /// `expire_sessions()` emits a `gui_session.expired` event for sessions past their TTL.
+    #[tokio::test]
+    async fn m3_expire_sessions_emits_expired_event() {
+        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+
+        let mut rx = service.subscribe();
+
+        // The TTL clamp in create_session enforces a minimum of 30 s, so we
+        // create the session and then back-date its expires_at directly.
+        let (sid, _) = create_test_session(&service).await;
+        {
+            let mut sessions = service.sessions.write().await;
+            if let Some(stored) = sessions.get_mut(&sid) {
+                stored.session.expires_at = Utc::now() - ChronoDuration::seconds(1);
+            }
+        }
+
+        // Directly invoke the cleanup sweep (avoid waiting 30 s for the background loop).
+        service.expire_sessions().await;
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            loop {
+                if let Ok(ev) = rx.try_recv() {
+                    if ev.session_id == sid && ev.event_type == "gui_session.expired" {
+                        return ev;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("expired event should be received within timeout");
+
+        assert_eq!(event.event_type, "gui_session.expired");
         assert_eq!(event.session_id, sid);
     }
 }

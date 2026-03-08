@@ -732,7 +732,7 @@ impl GuiInteractionService {
         });
     }
 
-    async fn expire_sessions(&self) {
+    pub(super) async fn expire_sessions(&self) {
         let (expired_ids, orphaned_overlay_ids) = {
             let mut sessions = self.sessions.write().await;
             let now = Utc::now();
