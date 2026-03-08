@@ -148,3 +148,72 @@ impl SqliteStorage {
         Ok(frames)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+    use oneshim_core::models::frame::FrameMetadata;
+
+    fn make_metadata() -> FrameMetadata {
+        FrameMetadata {
+            timestamp: Utc::now(),
+            trigger_type: "manual".to_string(),
+            app_name: "TestApp".to_string(),
+            window_title: "Test Window".to_string(),
+            resolution: (1920, 1080),
+            importance: 0.5,
+        }
+    }
+
+    #[test]
+    fn count_frames_in_range_empty() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
+        let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let count = storage
+            .count_frames_in_range(&from, &to)
+            .expect("count_frames_in_range failed");
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn save_frame_metadata_and_count() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        let meta = make_metadata();
+        let frame_id = storage
+            .save_frame_metadata(&meta, None, None)
+            .expect("save_frame_metadata failed");
+        assert!(frame_id > 0);
+
+        let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
+        let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let count = storage
+            .count_frames_in_range(&from, &to)
+            .expect("count_frames_in_range failed");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn get_frame_file_path_nonexistent_returns_none() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        let path = storage
+            .get_frame_file_path(99999)
+            .expect("get_frame_file_path failed");
+        assert!(path.is_none());
+    }
+
+    #[test]
+    fn save_frame_metadata_with_file_path() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        let meta = make_metadata();
+        let frame_id = storage
+            .save_frame_metadata(&meta, Some("/tmp/frame.webp"), Some("ocr text"))
+            .expect("save_frame_metadata failed");
+
+        let path = storage
+            .get_frame_file_path(frame_id)
+            .expect("get_frame_file_path failed");
+        assert_eq!(path.as_deref(), Some("/tmp/frame.webp"));
+    }
+}

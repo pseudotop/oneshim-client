@@ -261,3 +261,98 @@ impl StorageService for SqliteStorage {
         Ok(deleted)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+    use oneshim_core::models::event::{UserEvent, UserEventType};
+    use uuid::Uuid;
+
+    fn make_user_event() -> Event {
+        Event::User(UserEvent {
+            event_id: Uuid::new_v4(),
+            event_type: UserEventType::WindowChange,
+            timestamp: Utc::now(),
+            app_name: "TestApp".to_string(),
+            window_title: "test_window".to_string(),
+        })
+    }
+
+    #[test]
+    fn count_events_in_range_empty() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        let from = (Utc::now() - Duration::hours(1))
+            .to_rfc3339();
+        let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let count = storage
+            .count_events_in_range(&from, &to)
+            .expect("count_events_in_range failed");
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn count_events_in_range_after_save() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        storage
+            .save_event(&make_user_event())
+            .await
+            .expect("save_event failed");
+        storage
+            .save_event(&make_user_event())
+            .await
+            .expect("save_event failed");
+
+        let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
+        let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let count = storage
+            .count_events_in_range(&from, &to)
+            .expect("count_events_in_range failed");
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn save_events_batch_empty_is_noop() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        let saved = storage
+            .save_events_batch(&[])
+            .expect("save_events_batch failed");
+        assert_eq!(saved, 0);
+    }
+
+    #[test]
+    fn save_events_batch_inserts_all() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        let events = vec![make_user_event(), make_user_event(), make_user_event()];
+        let saved = storage
+            .save_events_batch(&events)
+            .expect("save_events_batch failed");
+        assert_eq!(saved, 3);
+
+        let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
+        let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let count = storage
+            .count_events_in_range(&from, &to)
+            .expect("count_events_in_range failed");
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn save_events_batch_duplicate_ids_ignored() {
+        let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
+        // Same event saved twice — INSERT OR IGNORE should deduplicate
+        let event = make_user_event();
+        let events = vec![event.clone(), event];
+        let saved = storage
+            .save_events_batch(&events)
+            .expect("save_events_batch failed");
+        assert_eq!(saved, 2); // returns count of input, not actually inserted
+
+        let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
+        let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let count = storage
+            .count_events_in_range(&from, &to)
+            .expect("count_events_in_range failed");
+        assert_eq!(count, 1); // only 1 unique event
+    }
+}

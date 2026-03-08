@@ -109,7 +109,10 @@ impl InputActivityCollector {
         let now = Utc::now();
 
         let period_secs = {
-            let mut start = self.period_start.lock().unwrap();
+            let mut start = self
+                .period_start
+                .lock()
+                .expect("InputActivityCollector period_start lock was poisoned");
             let duration = (now - *start).num_seconds().max(1) as u32;
             *start = now;
             duration

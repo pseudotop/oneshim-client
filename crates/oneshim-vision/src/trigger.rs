@@ -83,7 +83,10 @@ impl SmartCaptureTrigger {
 
 impl CaptureTrigger for SmartCaptureTrigger {
     fn should_capture(&self, event: &ContextEvent) -> Option<CaptureRequest> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self
+            .state
+            .lock()
+            .expect("SmartCaptureTrigger state lock was poisoned by a panicking thread");
         let now = event.timestamp;
         let trigger_type = Self::classify_event(event, &state.prev_app_name);
         let importance = self.compute_importance(&trigger_type);
