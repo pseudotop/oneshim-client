@@ -1,0 +1,125 @@
+# CI/CD Transparency
+
+This page documents what runs on every pull request and how releases are produced. It is intended for enterprise buyers performing due diligence and for contributors reading build results.
+
+---
+
+## What Runs on Every Pull Request
+
+The CI pipeline is defined in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
+
+### Static Analysis (runs first)
+
+| Step | Command | Blocks merge on failure |
+|------|---------|------------------------|
+| Format check | `cargo fmt --all -- --check` | Yes |
+| Clippy (standalone) | `cargo clippy --workspace --all-targets -- -D warnings` | Yes |
+| Clippy (server features) | `cargo clippy --workspace --all-targets --features server` | Yes |
+| Clippy (gRPC features) | `cargo clippy --workspace --all-targets --features grpc` | Yes |
+| Web contract boundary | `scripts/verify-web-contract-boundary.sh` | Yes |
+| HTTP interface manifest | `scripts/verify-http-interface-manifest.sh` | Yes |
+| Commit message hygiene | `scripts/verify-commit-message-hygiene.sh` | Yes |
+
+`RUSTFLAGS=-Dwarnings` is set globally, so any compiler warning is a build failure.
+
+### Tests
+
+| Step | Command |
+|------|---------|
+| Standalone | `cargo test --workspace` |
+| Server features | `cargo test --workspace --features server` |
+| gRPC features | `cargo test --workspace --features grpc` |
+
+### Platform Build Smoke (PR only)
+
+After tests pass, a release build is compiled on all four targets to catch platform-specific compilation errors:
+
+| Target | Runner |
+|--------|--------|
+| `x86_64-unknown-linux-gnu` | `ubuntu-latest` |
+| `aarch64-apple-darwin` | `macos-latest` |
+| `x86_64-apple-darwin` | `macos-14` |
+| `x86_64-pc-windows-msvc` | `windows-latest` |
+
+A GUI bootstrap smoke test runs on macOS and Windows: the binary is launched for 3 seconds and inspected for Rust panics or tokio runtime failures.
+
+### Frontend (web dashboard)
+
+If frontend files change, a separate job runs:
+
+1. `pnpm install --frozen-lockfile`
+2. `pnpm build`
+3. Playwright E2E tests (Chromium headless)
+
+---
+
+## How to Read CI Output
+
+1. Open the PR on GitHub.
+2. Scroll to the "Checks" section at the bottom.
+3. Green checkmarks indicate passing jobs. Click a failing job name to open the run log.
+4. The most common failures are:
+   - **fmt**: Run `cargo fmt` locally and push.
+   - **clippy**: Read the `error[clippy::...]` line in the log and fix the lint.
+   - **test**: The failing test name is printed before the panic/assertion output.
+
+Logs are available for 90 days after a run. Artifacts (frontend dist, GUI smoke logs) are retained for 14 days.
+
+---
+
+## Release Pipeline
+
+Releases are triggered by pushing a `v*` tag (e.g., `v1.2.0`). The release workflow is defined in [`.github/workflows/release.yml`](../../.github/workflows/release.yml).
+
+### Pre-flight Checks
+
+Before any build starts, the pipeline verifies:
+
+- `Cargo.toml` workspace version matches the git tag.
+- `CHANGELOG.md` contains an entry for the version being released.
+- `tauri.conf.json` `productName` is `ONESHIM` and `identifier` is `com.oneshim.client`.
+
+### Build Matrix
+
+| Platform | Target | Artifact |
+|----------|--------|----------|
+| macOS (Apple Silicon) | `aarch64-apple-darwin` | `.dmg` (notarized) |
+| macOS (Intel) | `x86_64-apple-darwin` | `.dmg` (notarized) |
+| Windows | `x86_64-pc-windows-msvc` | `.msi` (signed) |
+| Linux (Debian) | `x86_64-unknown-linux-gnu` | `.deb` |
+| Linux (RPM) | `x86_64-unknown-linux-gnu` | `.rpm` |
+
+macOS `.dmg` files are notarized via Apple's notarization service using the workflow defined in [`.github/workflows/notarize-macos-release-assets.yml`](../../.github/workflows/notarize-macos-release-assets.yml). Gatekeeper will allow installation without warnings.
+
+### GitHub Release
+
+After all builds succeed, a GitHub Release is created automatically with:
+- Changelog entry for the version.
+- All platform artifacts attached.
+- SHA-256 checksums for each artifact.
+
+---
+
+## Self-Update Mechanism
+
+ONESHIM checks GitHub Releases for updates using the updater module in `src-tauri/src/updater/`. The update flow:
+
+1. On a configurable interval, the updater fetches the GitHub Releases API.
+2. The latest release version is compared against the running version using semver.
+3. A minimum allowed version floor (`update.min_allowed_version`) prevents downgrades below a security baseline.
+4. If a newer version is found, the user is prompted via a desktop notification.
+5. On approval, the installer is downloaded, its signature verified, and the update applied.
+
+All update downloads are verified with signature checking. Signature verification can only be disabled if `update.require_signature_verification` is explicitly set to `false` in config; the CI `integrity-gates` workflow enforces that this field remains `true` in production configurations.
+
+---
+
+## Additional CI Workflows
+
+| Workflow | Trigger | Purpose |
+|---------|---------|---------|
+| `integrity-gates.yml` | Push to main | Supply chain + dependency audit |
+| `security-compliance.yml` | Push to main | GDPR consent + privacy compliance checks |
+| `grpc-governance.yml` | Push to main | gRPC contract stability |
+| `ai-integration-smoke.yml` | Push to main | AI provider integration smoke |
+| `macos-windowserver-gui-smoke.yml` | Push to main | Full macOS GUI smoke with WindowServer |
