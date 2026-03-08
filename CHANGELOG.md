@@ -10,6 +10,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Update [Unreleased] [skip ci]
 
+- Update [Unreleased] [skip ci]
+
+
+### Fixed
+
+- Cargo fmt + ActivityBar role attribute for E2E nav selector
+  - cargo fmt: consent.rs, events.rs, privacy.rs line-length reflow
+  - ActivityBar: add explicit role="navigation" to <nav> element
+    (nav[role="navigation"] CSS selector requires explicit attribute;
+    implicit ARIA role is not matched by attribute selectors)
+
+- Clippy needless borrow in encryption + mock ai/providers/presets in E2E
+  - Remove needless `&self.0` borrow in `EncryptionKey::save_to_file` (clippy::needless_borrows_for_generic_args)
+  - Add `/api/ai/providers/presets` mock to `mockDefaultApiFallbacks` to prevent ECONNREFUSED timeout in replay-scene E2E tests
+
+
+## [Unreleased]
+### Changed
+
+- Update [Unreleased] [skip ci]
+
 
 ### Fixed
 
