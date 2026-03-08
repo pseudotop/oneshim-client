@@ -17,14 +17,10 @@ interface State {
 // 네트워크/서버 오프라인 에러 여부 판단 유틸
 function isNetworkError(error: Error | null): boolean {
   if (!error) return false
+  if (error instanceof TypeError) return true  // fetch always throws TypeError
   const msg = error.message.toLowerCase()
-  return (
-    msg.includes('network') ||
-    msg.includes('failed to fetch') ||
-    msg.includes('connection') ||
-    msg.includes('offline') ||
-    msg.includes('econnrefused') ||
-    msg.includes('timeout')
+  return ['failed to fetch', 'offline', 'econnrefused', 'timeout', 'network error'].some(
+    (kw) => msg.includes(kw)
   )
 }
 
