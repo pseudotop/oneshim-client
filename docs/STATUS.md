@@ -79,7 +79,7 @@ cargo fmt --check
 | M2-P2 | Ticket Expiry Grace Period + Partial Execution Tracking | done (10 tests, `411cd60`) |
 | M2-P3 | Execution Reliability Tracing | done (`933bfba`) |
 | M3 | SSE Event Stream Integration | done (10 tests, `b700804`) |
-| M4 | End-to-End Workflow Tests | done (10 tests, TBD) |
+| M4 | End-to-End Workflow Tests | done (10 tests, `0b0880e`) |
 
 ## Notes
 
