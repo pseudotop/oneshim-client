@@ -478,11 +478,14 @@ export default function Privacy() {
       <ConfirmModal
         isOpen={showDeleteRangeModal}
         title={t('privacy.confirmDeleteRange')}
-        message={`${fromDate} ~ ${toDate} period의 데이터를 delete합니다.\n\ndelete 대상: ${
-          selectedDataTypes.length > 0
+        message={t('privacy.confirmDeleteRangeMsg', {
+          fromDate,
+          toDate,
+          dataTypes: selectedDataTypes.length > 0
             ? selectedDataTypes.map((dt) => DATA_TYPE_LABELS[dt]).join(', ')
-            : 'all 데이터 type'
-        }\n\n이 작업은 되돌릴 수 없습니다.`}
+            : t('privacy.allDataTypes', 'All data types'),
+          defaultValue: 'Delete data from {{fromDate}} to {{toDate}}.\n\nTarget: {{dataTypes}}\n\nThis action cannot be undone.',
+        })}
         confirmText={t('privacy.deleteRange')}
         isDangerous={false}
         onConfirm={handleDeleteRange}

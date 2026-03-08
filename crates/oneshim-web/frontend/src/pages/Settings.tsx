@@ -1332,7 +1332,7 @@ export default function Settings() {
                         type="text"
                         value={formData.ai_provider.ocr_api?.endpoint ?? ''}
                         onChange={(e) => handleExternalApiChange('ocr_api', 'endpoint', e.target.value)}
-                        placeholder="https://api.example.com/ocr"
+                        placeholder={t('settingsAutomation.endpointPlaceholderOcr', 'https://api.example.com/ocr')}
                       />
                     </div>
                     <div>
@@ -1429,7 +1429,7 @@ export default function Settings() {
                         type="text"
                         value={formData.ai_provider.llm_api?.endpoint ?? ''}
                         onChange={(e) => handleExternalApiChange('llm_api', 'endpoint', e.target.value)}
-                        placeholder="https://api.example.com/llm"
+                        placeholder={t('settingsAutomation.endpointPlaceholderLlm', 'https://api.example.com/llm')}
                       />
                     </div>
                     <div>

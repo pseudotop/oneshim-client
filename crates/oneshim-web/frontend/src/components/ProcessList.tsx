@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { ProcessSnapshot } from '../api/client'
 import { formatBytes } from '../utils/formatters'
 
@@ -6,10 +7,11 @@ interface ProcessListProps {
 }
 
 export default function ProcessList({ snapshot }: ProcessListProps) {
+  const { t } = useTranslation()
   const processes = snapshot.processes.slice(0, 10)
 
   if (processes.length === 0) {
-    return <div className="py-8 text-center text-content-muted">프로세스 데이터 none</div>
+    return <div className="py-8 text-center text-content-muted">{t('common.noData', 'No data')}</div>
   }
 
   return (

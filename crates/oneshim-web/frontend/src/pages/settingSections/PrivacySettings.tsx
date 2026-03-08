@@ -60,7 +60,7 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
                   .filter(Boolean),
               )
             }
-            placeholder="1Password, Discord, Slack"
+            placeholder={t('settings.excludedAppsPlaceholder', '1Password, Discord, Slack')}
           />
         </div>
 
@@ -81,7 +81,7 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
                   .filter(Boolean),
               )
             }
-            placeholder="*bank*, *wallet*, *crypto*"
+            placeholder={t('settings.excludedAppPatternsPlaceholder', '*bank*, *wallet*, *crypto*')}
           />
           <p className={form.helper}>{t('settings.wildcardHint')}</p>
         </div>
@@ -103,7 +103,7 @@ export default function PrivacySettings({ privacy, onChange }: PrivacySettingsPr
                   .filter(Boolean),
               )
             }
-            placeholder="*password*, *secret*, *private*"
+            placeholder={t('settings.excludedTitlePatternsPlaceholder', '*password*, *secret*, *private*')}
           />
         </div>
       </div>

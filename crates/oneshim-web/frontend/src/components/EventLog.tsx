@@ -50,9 +50,9 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
   const listRef = useRef<HTMLDivElement>(null)
   const activeItemRef = useRef<HTMLButtonElement>(null)
 
-  const captureLabel = t('replay.capture', '캡처')
-  const idleLabel = t('replay.idle', 'idle')
-  const minLabel = t('dashboard.minutes', '분')
+  const captureLabel = t('replay.capture', 'Capture')
+  const idleLabel = t('replay.idle', 'Idle')
+  const minLabel = t('dashboard.minutes', 'min')
 
   const activeIndex = useMemo(() => {
     if (items.length === 0) return -1
@@ -91,9 +91,9 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
     <div className="flex h-full flex-col rounded-lg border border-muted bg-surface-overlay shadow">
       {/* UI note */}
       <div className="border-muted border-b px-4 py-3">
-        <h3 className="font-semibold text-content text-sm">{t('replay.eventLog', 'event 로그')}</h3>
+        <h3 className="font-semibold text-content text-sm">{t('replay.eventLog', 'Event Log')}</h3>
         <p className="mt-0.5 text-content-secondary text-xs">
-          {items.length} {t('replay.items', '개 항목')}
+          {items.length}{t('replay.items', ' items')}
         </p>
       </div>
 
@@ -101,7 +101,7 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
       <div ref={listRef} className="flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <div className="flex h-32 items-center justify-center text-content-secondary text-sm">
-            {t('common.noData', '데이터 none')}
+            {t('common.noData', 'No data')}
           </div>
         ) : (
           <div className="divide-y divide-border">
