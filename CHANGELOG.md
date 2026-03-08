@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-08
+
+### Added
+
+- **SQLite encryption key management**: Infrastructure for encrypted local storage key derivation and rotation ([#48](https://github.com/pseudotop/oneshim-client/pull/48))
+- **Storybook + design tokens**: Frontend design system hardening with component catalogue, semantic tokens, and Biome linter integration
+
+### Fixed
+
+- **TLS enabled by default**: Outgoing HTTP connections now require TLS; plaintext must be explicitly opted-in ([#47](https://github.com/pseudotop/oneshim-client/pull/47))
+- **ErrorBoundary i18n**: All hardcoded English strings in ErrorBoundary translated via i18n keys ([#46](https://github.com/pseudotop/oneshim-client/pull/46))
+- **Accessibility + server-down recovery**: WCAG focus-visible fixes, skip-link, and graceful degradation UI when server is unreachable ([#49](https://github.com/pseudotop/oneshim-client/pull/49))
+- **Typed error handling**: Replace `unwrap()` calls with explicit typed errors; add port adapter unit tests ([#51](https://github.com/pseudotop/oneshim-client/pull/51))
+- **PII patterns + GDPR consent audit trail**: Expand regex coverage for SSN/file-path/API-key patterns; persist consent revocation signal across restarts ([#50](https://github.com/pseudotop/oneshim-client/pull/50), [#53](https://github.com/pseudotop/oneshim-client/pull/53))
+- **E2E strict mode**: Resolve 5 Playwright strict-mode selector violations
+
+### Changed
+
+- **Enterprise deployment docs**: ADR-005/006, version migration guide, OSS on-ramp, and CI transparency documentation ([#52](https://github.com/pseudotop/oneshim-client/pull/52))
+- **Tauri v2 documentation**: All guides updated to reflect Tauri v2 migration ([#45](https://github.com/pseudotop/oneshim-client/pull/45))
+- **Dependency bumps**: xcap 0.8.3, uuid 1.22.0, tokio 1.50.0, zip 8.1.0, tauri-build 2.5.6, sysinfo 0.38.3, actions/upload-artifact v7, actions/setup-node v6, actions/attest-build-provenance v4, actions/download-artifact v8
+
 ## [0.1.7] - 2026-03-04
 
 ### Added
@@ -159,7 +181,8 @@ Each version entry must include:
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/pseudotop/oneshim-client/compare/v0.1.7...v0.2.0
 [0.1.7]: https://github.com/pseudotop/oneshim-client/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/pseudotop/oneshim-client/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/pseudotop/oneshim-client/compare/v0.1.4...v0.1.5
