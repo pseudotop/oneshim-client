@@ -42,7 +42,7 @@ export function TagBadge({ name, color, onRemove, onClick, selected = false, siz
       {onRemove && (
         <button
           type="button"
-          className="ml-0.5 rounded-sm ring-brand-signal hover:opacity-70 focus-visible:ring-2"
+          className="ml-0.5 rounded-sm hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:border-transparent"
           onClick={(e) => {
             e.stopPropagation()
             onRemove()
