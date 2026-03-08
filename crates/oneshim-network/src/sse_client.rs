@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
+use oneshim_core::config::TlsConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::api_client::{SseClient, SseEvent};
@@ -10,6 +11,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use crate::auth::TokenManager;
+use crate::http_client::build_reqwest_client;
 
 pub struct SseStreamClient {
     base_url: String,
@@ -19,6 +21,7 @@ pub struct SseStreamClient {
 }
 
 impl SseStreamClient {
+    /// 기존 생성자 — TLS 미적용 (역호환성 보장, 테스트 전용)
     pub fn new(base_url: &str, token_manager: Arc<TokenManager>, max_retry_secs: u64) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -26,6 +29,27 @@ impl SseStreamClient {
             max_retry_secs,
             http_client: reqwest::Client::new(),
         }
+    }
+
+    /// TLS 설정 적용 생성자 — 운영 환경 표준 진입점
+    ///
+    /// `tls.enabled=true` 이면 HTTPS 전용을 강제한다.
+    /// `tls.allow_self_signed=true` 이면 자체 서명 인증서를 허용한다 (개발 전용).
+    pub fn new_with_tls(
+        base_url: &str,
+        token_manager: Arc<TokenManager>,
+        max_retry_secs: u64,
+        tls: &TlsConfig,
+    ) -> Result<Self, CoreError> {
+        // SSE 스트림에도 HTTP 클라이언트와 동일한 TLS 정책 적용
+        // 전역 타임아웃 미적용(None): SSE는 장기 스트림 연결이므로 단일 타임아웃으로 끊기면 안 됨
+        let http_client = build_reqwest_client(tls, None)?;
+        Ok(Self {
+            base_url: base_url.trim_end_matches('/').to_string(),
+            token_manager,
+            max_retry_secs,
+            http_client,
+        })
     }
 
     fn parse_event(event_type: &str, data: &str) -> Option<SseEvent> {

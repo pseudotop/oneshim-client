@@ -5,6 +5,32 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+// ── TlsConfig ──────────────────────────────────────────────────────
+
+/// TLS 연결 설정 — 아웃바운드 HTTP/SSE 연결 보안 정책
+///
+/// 기본값: enabled=true (TLS 강제), allow_self_signed=false (운영 환경 표준).
+/// 개발 환경에서는 allow_self_signed=true 또는 enabled=false 로 설정 가능.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TlsConfig {
+    /// TLS 강제 여부 — false 시 http:// 연결 허용 (개발 전용)
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// 자체 서명 인증서 허용 — 운영 환경에서는 반드시 false 유지
+    #[serde(default)]
+    pub allow_self_signed: bool,
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            allow_self_signed: false,
+        }
+    }
+}
+
 // ── IntegrityConfig ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

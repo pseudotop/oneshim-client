@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use oneshim_core::config::TlsConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::event::EventBatch;
 use oneshim_core::models::frame::ContextUpload;
@@ -37,7 +38,40 @@ pub struct HttpApiClient {
     max_retries: u32,
 }
 
+/// TLS 설정을 적용하여 reqwest 클라이언트를 생성하는 헬퍼 함수
+///
+/// `tls.enabled=true` 이면 HTTPS 전용 모드(`https_only`)를 강제한다.
+/// `tls.allow_self_signed=true` 이면 자체 서명 인증서를 허용한다 (개발 전용).
+/// `timeout=None` 이면 전역 타임아웃 미적용 — SSE 등 장기 스트림 연결에 사용.
+pub fn build_reqwest_client(
+    tls: &TlsConfig,
+    timeout: Option<Duration>,
+) -> Result<reqwest::Client, CoreError> {
+    let mut builder = reqwest::Client::builder();
+    if let Some(t) = timeout {
+        builder = builder.timeout(t);
+    }
+
+    if tls.enabled {
+        // 운영 환경: HTTPS 전용 강제
+        builder = builder.https_only(true);
+    }
+
+    if tls.allow_self_signed {
+        tracing::warn!(
+            "TLS: allow_self_signed=true — 자체 서명 인증서 허용됨. 운영 환경에서 사용 금지!"
+        );
+        // 개발 전용: 자체 서명 인증서 허용 (운영에서는 사용 금지)
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+
+    builder
+        .build()
+        .map_err(|e| CoreError::Network(format!("Failed to build HTTP client: {}", e)))
+}
+
 impl HttpApiClient {
+    /// 기존 생성자 — TLS 미적용 (역호환성 보장, 테스트 전용)
     pub fn new(
         base_url: &str,
         token_manager: Arc<TokenManager>,
@@ -48,6 +82,24 @@ impl HttpApiClient {
             .build()
             .map_err(|e| CoreError::Network(format!("Failed to build HTTP client: {}", e)))?;
 
+        Ok(Self {
+            client,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            token_manager,
+            max_retries: DEFAULT_MAX_RETRIES,
+        })
+    }
+
+    /// TLS 설정 적용 생성자 — 운영 환경 표준 진입점
+    ///
+    /// `tls.enabled=true` 이면 HTTPS 전용을 강제한다.
+    pub fn new_with_tls(
+        base_url: &str,
+        token_manager: Arc<TokenManager>,
+        timeout: Duration,
+        tls: &TlsConfig,
+    ) -> Result<Self, CoreError> {
+        let client = build_reqwest_client(tls, Some(timeout))?;
         Ok(Self {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -278,6 +330,38 @@ impl ApiClient for HttpApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_reqwest_client_tls_disabled_succeeds() {
+        // TLS 비활성화 시 http:// 요청 허용 — 개발/테스트 환경
+        let tls = TlsConfig {
+            enabled: false,
+            allow_self_signed: false,
+        };
+        let result = build_reqwest_client(&tls, Some(Duration::from_secs(5)));
+        assert!(result.is_ok(), "TLS 비활성화 클라이언트 생성 성공");
+    }
+
+    #[test]
+    fn build_reqwest_client_tls_enabled_succeeds() {
+        // TLS 활성화 시 클라이언트 생성 자체는 성공 (요청 시점에 https 강제)
+        let tls = TlsConfig::default();
+        let result = build_reqwest_client(&tls, Some(Duration::from_secs(5)));
+        assert!(result.is_ok(), "TLS 활성화 클라이언트 생성 성공");
+    }
+
+    #[test]
+    fn new_with_tls_returns_client() {
+        let tls = TlsConfig {
+            enabled: false, // 테스트: http:// URL 허용
+            allow_self_signed: false,
+        };
+        let tm = Arc::new(TokenManager::new("http://localhost:8000"));
+        let client =
+            HttpApiClient::new_with_tls("http://localhost:8000", tm, Duration::from_secs(5), &tls);
+        assert!(client.is_ok());
+        assert_eq!(client.unwrap().base_url, "http://localhost:8000");
+    }
 
     #[test]
     fn http_client_creation() {

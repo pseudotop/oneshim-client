@@ -45,6 +45,9 @@ pub struct AppConfig {
     pub automation: AutomationConfig,
     #[serde(default)]
     pub ai_provider: AiProviderConfig,
+    /// 아웃바운드 TLS 설정 — 기본값: 활성화
+    #[serde(default)]
+    pub tls: TlsConfig,
 }
 
 // AppConfig impl
@@ -90,6 +93,7 @@ impl AppConfig {
             file_access: FileAccessConfig::default(),
             automation: AutomationConfig::default(),
             ai_provider: AiProviderConfig::default(),
+            tls: TlsConfig::default(),
         }
     }
 
@@ -112,6 +116,38 @@ mod tests {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
     use chrono::Utc;
     use serde_json::json;
+
+    #[test]
+    fn tls_config_default_enables_tls_and_rejects_self_signed() {
+        let config = TlsConfig::default();
+        assert!(config.enabled, "TLS 기본값은 활성화여야 함");
+        assert!(
+            !config.allow_self_signed,
+            "자체 서명 인증서는 기본값으로 비허용"
+        );
+    }
+
+    #[test]
+    fn tls_config_deserializes_from_json() {
+        let payload = json!({ "enabled": false, "allow_self_signed": true });
+        let parsed: TlsConfig = serde_json::from_value(payload).unwrap();
+        assert!(!parsed.enabled);
+        assert!(parsed.allow_self_signed);
+    }
+
+    #[test]
+    fn tls_config_empty_json_uses_defaults() {
+        let parsed: TlsConfig = serde_json::from_value(json!({})).unwrap();
+        assert!(parsed.enabled);
+        assert!(!parsed.allow_self_signed);
+    }
+
+    #[test]
+    fn app_config_default_includes_tls_enabled() {
+        let config = AppConfig::default_config();
+        assert!(config.tls.enabled, "AppConfig 기본값: TLS 활성화");
+        assert!(!config.tls.allow_self_signed);
+    }
 
     #[test]
     fn update_integrity_policy_rejects_disabled_signature_verification() {
