@@ -30,7 +30,7 @@ cargo fmt --check
 
 ## Current Snapshot
 
-### Rust Tests (2026-02-28)
+### Rust Tests (2026-03-08)
 
 | Crate | Tests | Status |
 |-------|------:|--------|
@@ -58,17 +58,17 @@ cargo fmt --check
 
 ### CI/CD
 
-- Latest CI workflow run: failure (`CI`, stale HTTP interface manifest — pre-existing) — [Run 22489514315](https://github.com/pseudotop/oneshim-client/actions/runs/22489514315) (2026-02-27)
-- Latest Release workflow run: success (`Release`, tag `v0.1.1`) — [Run 22489557639](https://github.com/pseudotop/oneshim-client/actions/runs/22489557639) (2026-02-27)
-- Latest Notarization workflow run: in progress (`Notarize macOS Release Assets`) — [Run 22512298797](https://github.com/pseudotop/oneshim-client/actions/runs/22512298797) (started 2026-02-28)
+- Latest CI workflow run: success (`CI`) — [Run 22820191743](https://github.com/pseudotop/oneshim-client/actions/runs/22820191743) (2026-03-08)
+- Latest Release workflow run: success (`Release`, tag `v0.2.0`) (2026-03-08)
 - UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc3.md` (latest tracked run evidence)
 
-### Recent Changes (Agent Review Batch 1-4, 2026-02-28)
+### Recent Changes (Agent Review Batch 1-5, 2026-03-08)
 
 - **Batch 1**: Config warn stub fix, CI expression injection hardening, script permissions, STATUS update
 - **Batch 2**: Added missing derives — `Serialize`/`Deserialize` on `ConsentStatus`/`SessionCreateResponse`/`SseEvent`, `PartialEq`/`Eq` on `AutomationAction`/`AutomationIntent`
 - **Batch 3**: `CoreError::RequestTimeout` variant, `map_reqwest_error()` timeout detection, `Swatinem/rust-cache@v2` in release.yml
 - **Batch 4**: Vision port traits `&mut self` → `&self` with interior mutability (`Mutex`), Scheduler DI simplified from `Arc<Mutex<Box<dyn T>>>` → `Arc<dyn T>`
+- **Batch 5** (v0.2.0): Clippy `needless_borrows_for_generic_args` fix in `oneshim-storage/src/encryption.rs`; E2E `replay-scene` mock added for `/api/ai/providers/presets`; Linux smoke `tauri::generate_context!()` fixed via `frontendDist` stub creation in `scripts/release-reliability-smoke.sh` (pre-existing since v0.1.6)
 
 ### GUI V2 Milestone Status (ADR-002)
 
