@@ -348,63 +348,24 @@ fn mask_api_keys(text: &str) -> String {
 }
 
 fn mask_bearer_tokens(text: &str) -> String {
-    let lower = text.to_lowercase();
+    // Rebuild `lower` from `result` on every replacement to keep byte offsets
+    // in sync with `result`.  This avoids the stale-offset bug that would
+    // occur when successive replacements change the string length.
     let mut result = text.to_string();
     let needle = "bearer ";
     let mut search_from = 0usize;
 
     loop {
-        let lower_slice = &lower[search_from..];
-        let Some(rel_pos) = lower_slice.find(needle) else {
-            break;
-        };
-        let pos = search_from + rel_pos;
-        let token_start = pos + needle.len();
-        let after = &result[token_start..];
-        let end_offset = after
-            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',' || c == ';')
-            .unwrap_or(after.len());
-
-        if end_offset >= 8 {
-            let replacement = format!("{}Bearer [API_KEY]", &result[..pos]);
-            let tail = result[token_start + end_offset..].to_string();
-            result = format!("{}{}", replacement, tail);
-            // Rebuild lower to keep in sync and advance past replacement
-            let lower_replacement = replacement.to_lowercase();
-            let new_lower = format!("{}{}", lower_replacement, tail.to_lowercase());
-            search_from = lower_replacement.len();
-            // Only update lower for subsequent iterations
-            let _ = lower_slice; // borrow released
-            // Reconstruct lower from result for correctness
-            let new_lower_full = result.to_lowercase();
-            // We use a local shadow; breaking the borrow by rebuilding
-            return mask_bearer_tokens_from(&result, &new_lower_full, search_from);
-        } else {
-            search_from = token_start + end_offset.max(1);
-        }
-    }
-
-    result
-}
-
-fn mask_bearer_tokens_from(text: &str, lower: &str, start: usize) -> String {
-    let needle = "bearer ";
-    let mut result = text.to_string();
-    let mut search_from = start;
-
-    loop {
+        // Always derive `lower` from the current `result` so offsets are correct.
+        let lower = result.to_lowercase();
         if search_from >= lower.len() {
             break;
         }
-        let lower_slice = &lower[search_from..];
-        let Some(rel_pos) = lower_slice.find(needle) else {
+        let Some(rel_pos) = lower[search_from..].find(needle) else {
             break;
         };
         let pos = search_from + rel_pos;
         let token_start = pos + needle.len();
-        if token_start > result.len() {
-            break;
-        }
         let after = &result[token_start..];
         let end_offset = after
             .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',' || c == ';')
@@ -413,6 +374,7 @@ fn mask_bearer_tokens_from(text: &str, lower: &str, start: usize) -> String {
         if end_offset >= 8 {
             let tail = result[token_start + end_offset..].to_string();
             result = format!("{}Bearer [API_KEY]{}", &result[..pos], tail);
+            // Advance past the replacement so we do not re-examine it.
             search_from = pos + "bearer [api_key]".len();
         } else {
             search_from = token_start + end_offset.max(1);
@@ -778,5 +740,78 @@ mod tests {
             elapsed_ms,
             budget_ms
         );
+    }
+
+    #[test]
+    fn mask_bearer_single_token() {
+        let input = "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9";
+        let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
+        assert!(result.contains("Bearer [API_KEY]"), "single bearer not masked: {result}");
+        assert!(!result.contains("eyJhbGci"), "raw token still present: {result}");
+    }
+
+    #[test]
+    fn mask_bearer_multiple_tokens() {
+        // Verifies that all bearer tokens in a string are masked, not just the first.
+        let input =
+            "first: Bearer eyJhbGciOiJSUzI1NiJ9 second: bearer zyxwvutsrqponmlkjih end";
+        let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
+        let count = result.matches("[API_KEY]").count();
+        assert_eq!(count, 2, "expected 2 masked tokens, got {count}: {result}");
+        assert!(!result.contains("eyJhbGci"), "first raw token still present: {result}");
+        assert!(!result.contains("zyxwvuts"), "second raw token still present: {result}");
+    }
+
+    #[test]
+    fn mask_bearer_case_insensitive() {
+        let variations = [
+            "BEARER ABCDEFGHIJKLMNOPQRST",
+            "Bearer ABCDEFGHIJKLMNOPQRST",
+            "bearer ABCDEFGHIJKLMNOPQRST",
+            "BeArEr ABCDEFGHIJKLMNOPQRST",
+        ];
+        for input in &variations {
+            let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
+            assert!(
+                result.contains("[API_KEY]"),
+                "case variant not masked: {input} => {result}"
+            );
+        }
+    }
+
+    #[test]
+    fn mask_bearer_short_token_not_masked() {
+        // Tokens shorter than 8 chars must not be replaced.
+        let input = "Authorization: Bearer short";
+        let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
+        assert!(!result.contains("[API_KEY]"), "short bearer should not be masked: {result}");
+    }
+
+    #[test]
+    fn mask_private_key_block_single() {
+        let input =
+            "key: -----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----";
+        let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
+        assert!(result.contains("[PRIVATE_KEY]"), "PEM block not masked: {result}");
+        assert!(!result.contains("MIIEowIBAAKCAQEA"), "raw key material still present: {result}");
+    }
+
+    #[test]
+    fn mask_private_key_block_non_private_unchanged() {
+        // Public key blocks must not be masked.
+        let input = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq\n-----END PUBLIC KEY-----";
+        let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
+        assert!(!result.contains("[PRIVATE_KEY]"), "public key should not be masked: {result}");
+    }
+
+    #[test]
+    fn mask_ghs_token() {
+        // ghs_ GitHub Actions token prefix added in this PR.
+        let result = sanitize_title_with_level(
+            "token: ghs_16C7e42F292c6912E7710c838347Ae178B4a",
+            PiiFilterLevel::Strict,
+        );
+        assert!(result.contains("[API_KEY]"), "ghs_ token not masked: {result}");
+        assert!(!result.contains("ghs_"), "raw ghs_ token still present: {result}");
     }
 }
