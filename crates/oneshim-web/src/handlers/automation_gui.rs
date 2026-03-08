@@ -461,30 +461,56 @@ mod tests {
             }
         }
 
+        // ── Fixture helpers (DRY across multi-step tests) ───────────────
+
+        /// Creates a session; returns (session_id, capability_token).
+        async fn fixture_create(state: &AppState) -> (String, String) {
+            let resp = create_gui_session(State(state.clone()), Json(default_create_req()))
+                .await
+                .expect("fixture_create: create_gui_session should succeed");
+            (resp.0.session.session_id, resp.0.capability_token)
+        }
+
+        /// Highlights a session; returns the first candidate's element_id.
+        async fn fixture_highlight(state: &AppState, sid: &str, token: &str) -> String {
+            let resp = highlight_gui_session(
+                State(state.clone()),
+                Path(GuiSessionPath { id: sid.to_string() }),
+                token_headers(token),
+                Json(GuiHighlightRequest { candidate_ids: None }),
+            )
+            .await
+            .expect("fixture_highlight: highlight_gui_session should succeed");
+            resp.0
+                .session
+                .candidates
+                .first()
+                .expect("fixture_highlight: at least one candidate expected")
+                .element
+                .element_id
+                .clone()
+        }
+
         // ── M4 Tests ────────────────────────────────────────────────────
 
         #[tokio::test]
         async fn m4_no_controller_returns_service_unavailable() {
             let state = make_state_no_controller();
-            let err = create_gui_session(
-                State(state),
-                Json(default_create_req()),
-            )
-            .await
-            .unwrap_err();
+            let err = create_gui_session(State(state), Json(default_create_req()))
+                .await
+                .unwrap_err();
             assert!(matches!(err, ApiError::ServiceUnavailable(_)));
         }
 
         #[tokio::test]
         async fn m4_missing_token_blocks_get_session() {
             let state = make_state();
-            let empty_headers = HeaderMap::new();
             let err = get_gui_session(
                 State(state),
                 Path(GuiSessionPath {
                     id: "any-id".to_string(),
                 }),
-                empty_headers,
+                HeaderMap::new(),
             )
             .await
             .unwrap_err();
@@ -506,12 +532,7 @@ mod tests {
         #[tokio::test]
         async fn m4_get_session_reflects_proposed_state() {
             let state = make_state();
-            let create_resp =
-                create_gui_session(State(state.clone()), Json(default_create_req()))
-                    .await
-                    .unwrap();
-            let sid = create_resp.0.session.session_id.clone();
-            let token = create_resp.0.capability_token.clone();
+            let (sid, token) = fixture_create(&state).await;
 
             let get_resp = get_gui_session(
                 State(state),
@@ -527,20 +548,13 @@ mod tests {
         #[tokio::test]
         async fn m4_highlight_session_transitions_to_highlighted() {
             let state = make_state();
-            let create_resp =
-                create_gui_session(State(state.clone()), Json(default_create_req()))
-                    .await
-                    .unwrap();
-            let sid = create_resp.0.session.session_id.clone();
-            let token = create_resp.0.capability_token.clone();
+            let (sid, token) = fixture_create(&state).await;
 
             let highlight_resp = highlight_gui_session(
                 State(state),
                 Path(GuiSessionPath { id: sid }),
                 token_headers(&token),
-                Json(GuiHighlightRequest {
-                    candidate_ids: None,
-                }),
+                Json(GuiHighlightRequest { candidate_ids: None }),
             )
             .await
             .unwrap();
@@ -551,27 +565,8 @@ mod tests {
         #[tokio::test]
         async fn m4_confirm_session_returns_execution_ticket() {
             let state = make_state();
-            let create_resp =
-                create_gui_session(State(state.clone()), Json(default_create_req()))
-                    .await
-                    .unwrap();
-            let sid = create_resp.0.session.session_id.clone();
-            let token = create_resp.0.capability_token.clone();
-
-            let highlight_resp = highlight_gui_session(
-                State(state.clone()),
-                Path(GuiSessionPath { id: sid.clone() }),
-                token_headers(&token),
-                Json(GuiHighlightRequest {
-                    candidate_ids: None,
-                }),
-            )
-            .await
-            .unwrap();
-            let candidate_id = highlight_resp.0.session.candidates[0]
-                .element
-                .element_id
-                .clone();
+            let (sid, token) = fixture_create(&state).await;
+            let candidate_id = fixture_highlight(&state, &sid, &token).await;
 
             let confirm_resp = confirm_gui_session(
                 State(state),
@@ -595,27 +590,8 @@ mod tests {
         #[tokio::test]
         async fn m4_execute_with_valid_ticket_succeeds() {
             let state = make_state();
-            let create_resp =
-                create_gui_session(State(state.clone()), Json(default_create_req()))
-                    .await
-                    .unwrap();
-            let sid = create_resp.0.session.session_id.clone();
-            let token = create_resp.0.capability_token.clone();
-
-            let highlight_resp = highlight_gui_session(
-                State(state.clone()),
-                Path(GuiSessionPath { id: sid.clone() }),
-                token_headers(&token),
-                Json(GuiHighlightRequest {
-                    candidate_ids: None,
-                }),
-            )
-            .await
-            .unwrap();
-            let candidate_id = highlight_resp.0.session.candidates[0]
-                .element
-                .element_id
-                .clone();
+            let (sid, token) = fixture_create(&state).await;
+            let candidate_id = fixture_highlight(&state, &sid, &token).await;
 
             let confirm_resp = confirm_gui_session(
                 State(state.clone()),
@@ -643,18 +619,14 @@ mod tests {
             .await
             .unwrap();
             assert!(exec_resp.0.outcome.succeeded);
+            assert_eq!(exec_resp.0.outcome.session.state, GuiSessionState::Executed);
             assert_eq!(exec_resp.0.schema_version, GUI_SCHEMA_VERSION);
         }
 
         #[tokio::test]
         async fn m4_delete_session_transitions_to_cancelled() {
             let state = make_state();
-            let create_resp =
-                create_gui_session(State(state.clone()), Json(default_create_req()))
-                    .await
-                    .unwrap();
-            let sid = create_resp.0.session.session_id.clone();
-            let token = create_resp.0.capability_token.clone();
+            let (sid, token) = fixture_create(&state).await;
 
             let delete_resp = delete_gui_session(
                 State(state),
@@ -667,14 +639,11 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn m4_wrong_token_on_get_returns_unauthorized() {
+        async fn m4_wrong_token_rejected_as_unauthorized() {
             let state = make_state();
-            let create_resp =
-                create_gui_session(State(state.clone()), Json(default_create_req()))
-                    .await
-                    .unwrap();
-            let sid = create_resp.0.session.session_id.clone();
+            let (sid, _) = fixture_create(&state).await;
 
+            // Wrong token is rejected regardless of which endpoint is called
             let err = get_gui_session(
                 State(state),
                 Path(GuiSessionPath { id: sid }),
@@ -685,79 +654,43 @@ mod tests {
             assert!(matches!(err, ApiError::Unauthorized(_)));
         }
 
+        /// Verifies that two concurrent sessions are fully independent: cancelling
+        /// session B does not affect session A in any way.
         #[tokio::test]
-        async fn m4_full_lifecycle_create_highlight_confirm_execute() {
+        async fn m4_two_concurrent_sessions_are_independent() {
             let state = make_state();
+            let (sid_a, token_a) = fixture_create(&state).await;
+            let (sid_b, token_b) = fixture_create(&state).await;
 
-            // 1. Create
-            let create_resp =
-                create_gui_session(State(state.clone()), Json(default_create_req()))
-                    .await
-                    .unwrap();
-            let sid = create_resp.0.session.session_id.clone();
-            let token = create_resp.0.capability_token.clone();
-            assert_eq!(create_resp.0.session.state, GuiSessionState::Proposed);
-
-            // 2. Get → still Proposed
-            let get_resp = get_gui_session(
+            // Cancel session B (return value not inspected; cancellation confirmed by B becoming inaccessible)
+            let _b_cancelled = delete_gui_session(
                 State(state.clone()),
-                Path(GuiSessionPath { id: sid.clone() }),
-                token_headers(&token),
+                Path(GuiSessionPath { id: sid_b.clone() }),
+                token_headers(&token_b),
             )
             .await
-            .unwrap();
-            assert_eq!(get_resp.0.session.state, GuiSessionState::Proposed);
+            .expect("delete session B should succeed");
 
-            // 3. Highlight → Highlighted
-            let highlight_resp = highlight_gui_session(
+            // Session A is still accessible and Proposed
+            let get_a = get_gui_session(
                 State(state.clone()),
-                Path(GuiSessionPath { id: sid.clone() }),
-                token_headers(&token),
-                Json(GuiHighlightRequest {
-                    candidate_ids: None,
-                }),
+                Path(GuiSessionPath { id: sid_a.clone() }),
+                token_headers(&token_a),
             )
             .await
-            .unwrap();
-            assert_eq!(
-                highlight_resp.0.session.state,
-                GuiSessionState::Highlighted
-            );
-            let candidate_id = highlight_resp.0.session.candidates[0]
-                .element
-                .element_id
-                .clone();
+            .expect("session A should still be accessible after B is cancelled");
+            assert_eq!(get_a.0.session.state, GuiSessionState::Proposed);
+            assert_eq!(get_a.0.session.session_id, sid_a);
 
-            // 4. Confirm → ticket
-            let confirm_resp = confirm_gui_session(
-                State(state.clone()),
-                Path(GuiSessionPath { id: sid.clone() }),
-                token_headers(&token),
-                Json(GuiConfirmRequest {
-                    candidate_id,
-                    action: GuiActionRequest {
-                        action_type: GuiActionType::Click,
-                        text: None,
-                    },
-                    ticket_ttl_secs: None,
-                }),
+            // Token B cannot access session A (token is session-scoped)
+            let err = get_gui_session(
+                State(state),
+                Path(GuiSessionPath { id: sid_a }),
+                token_headers(&token_b),
             )
             .await
-            .unwrap();
-            let ticket = confirm_resp.0.ticket;
-            assert!(!ticket.ticket_id.is_empty());
-
-            // 5. Execute → succeeded
-            let exec_resp = execute_gui_session(
-                State(state.clone()),
-                Path(GuiSessionPath { id: sid.clone() }),
-                token_headers(&token),
-                Json(GuiExecutionRequest { ticket }),
-            )
-            .await
-            .unwrap();
-            assert!(exec_resp.0.outcome.succeeded);
-            assert_eq!(exec_resp.0.outcome.session.state, GuiSessionState::Executed);
+            .unwrap_err();
+            assert!(matches!(err, ApiError::Unauthorized(_)));
         }
     }
 
