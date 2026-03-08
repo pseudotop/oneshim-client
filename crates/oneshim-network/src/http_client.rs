@@ -42,11 +42,15 @@ pub struct HttpApiClient {
 ///
 /// `tls.enabled=true` 이면 HTTPS 전용 모드(`https_only`)를 강제한다.
 /// `tls.allow_self_signed=true` 이면 자체 서명 인증서를 허용한다 (개발 전용).
+/// `timeout=None` 이면 전역 타임아웃 미적용 — SSE 등 장기 스트림 연결에 사용.
 pub fn build_reqwest_client(
     tls: &TlsConfig,
-    timeout: Duration,
+    timeout: Option<Duration>,
 ) -> Result<reqwest::Client, CoreError> {
-    let mut builder = reqwest::Client::builder().timeout(timeout);
+    let mut builder = reqwest::Client::builder();
+    if let Some(t) = timeout {
+        builder = builder.timeout(t);
+    }
 
     if tls.enabled {
         // 운영 환경: HTTPS 전용 강제
@@ -54,6 +58,9 @@ pub fn build_reqwest_client(
     }
 
     if tls.allow_self_signed {
+        tracing::warn!(
+            "TLS: allow_self_signed=true — 자체 서명 인증서 허용됨. 운영 환경에서 사용 금지!"
+        );
         // 개발 전용: 자체 서명 인증서 허용 (운영에서는 사용 금지)
         builder = builder.danger_accept_invalid_certs(true);
     }
@@ -92,7 +99,7 @@ impl HttpApiClient {
         timeout: Duration,
         tls: &TlsConfig,
     ) -> Result<Self, CoreError> {
-        let client = build_reqwest_client(tls, timeout)?;
+        let client = build_reqwest_client(tls, Some(timeout))?;
         Ok(Self {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -331,7 +338,7 @@ mod tests {
             enabled: false,
             allow_self_signed: false,
         };
-        let result = build_reqwest_client(&tls, Duration::from_secs(5));
+        let result = build_reqwest_client(&tls, Some(Duration::from_secs(5)));
         assert!(result.is_ok(), "TLS 비활성화 클라이언트 생성 성공");
     }
 
@@ -339,7 +346,7 @@ mod tests {
     fn build_reqwest_client_tls_enabled_succeeds() {
         // TLS 활성화 시 클라이언트 생성 자체는 성공 (요청 시점에 https 강제)
         let tls = TlsConfig::default();
-        let result = build_reqwest_client(&tls, Duration::from_secs(5));
+        let result = build_reqwest_client(&tls, Some(Duration::from_secs(5)));
         assert!(result.is_ok(), "TLS 활성화 클라이언트 생성 성공");
     }
 
