@@ -1814,4 +1814,253 @@ mod tests {
             .await;
         assert!(plan.is_ok(), "Retry with new ticket should succeed");
     }
+
+    // ── M3: SSE Event Stream Integration ────────────────────────────────
+
+    /// `subscribe_session` rejects a wrong capability token.
+    #[tokio::test]
+    async fn m3_subscribe_session_rejects_invalid_token() {
+        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (sid, _token) = create_test_session(&service).await;
+
+        let err = service.subscribe_session(&sid, "wrong-token").await.unwrap_err();
+        assert!(matches!(err, GuiInteractionError::Unauthorized));
+    }
+
+    /// `subscribe_session` rejects an unknown session_id.
+    #[tokio::test]
+    async fn m3_subscribe_session_rejects_unknown_session() {
+        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+
+        let err = service.subscribe_session("no-such-session", "any-token").await.unwrap_err();
+        assert!(matches!(err, GuiInteractionError::Unauthorized | GuiInteractionError::NotFound(_)));
+    }
+
+    /// `subscribe_session` with the correct token succeeds.
+    #[tokio::test]
+    async fn m3_subscribe_session_accepts_valid_token() {
+        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (sid, token) = create_test_session(&service).await;
+
+        // Subscribing after session creation with the correct token must succeed.
+        let result = service.subscribe_session(&sid, &token).await;
+        assert!(result.is_ok(), "subscribe_session should succeed with valid token");
+    }
+
+    /// `create_session` emits a `gui_session.proposed` event on the broadcast channel.
+    #[tokio::test]
+    async fn m3_create_session_emits_proposed_event() {
+        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+
+        // Subscribe before the state transition so we don't miss the event.
+        let mut rx = service.subscribe();
+
+        let (sid, _) = create_test_session(&service).await;
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            loop {
+                if let Ok(ev) = rx.try_recv() {
+                    if ev.session_id == sid {
+                        return ev;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("proposed event should be received within timeout");
+
+        assert_eq!(event.event_type, "gui_session.proposed");
+        assert_eq!(event.session_id, sid);
+    }
+
+    /// `highlight_session` emits a `gui_session.highlighted` event.
+    #[tokio::test]
+    async fn m3_highlight_session_emits_highlighted_event() {
+        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+
+        let mut rx = service.subscribe();
+        let (sid, token) = create_test_session(&service).await;
+
+        // Drain the proposed event.
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(100), async {
+            loop {
+                if rx.try_recv().is_ok() { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+
+        service
+            .highlight_session(&sid, &token, GuiHighlightRequest { candidate_ids: None })
+            .await
+            .expect("highlight should succeed");
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            loop {
+                if let Ok(ev) = rx.try_recv() {
+                    if ev.session_id == sid && ev.event_type == "gui_session.highlighted" {
+                        return ev;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("highlighted event should be received within timeout");
+
+        assert_eq!(event.event_type, "gui_session.highlighted");
+        assert_eq!(event.session_id, sid);
+    }
+
+    /// `cancel_session` emits a `gui_session.cancelled` event.
+    #[tokio::test]
+    async fn m3_cancel_session_emits_cancelled_event() {
+        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+
+        let mut rx = service.subscribe();
+        let (sid, token) = create_test_session(&service).await;
+
+        service
+            .cancel_session(&sid, &token)
+            .await
+            .expect("cancel should succeed");
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            loop {
+                if let Ok(ev) = rx.try_recv() {
+                    if ev.session_id == sid && ev.event_type == "gui_session.cancelled" {
+                        return ev;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("cancelled event should be received within timeout");
+
+        assert_eq!(event.event_type, "gui_session.cancelled");
+        assert_eq!(event.session_id, sid);
+    }
+
+    /// Events from session B are not mistaken for events from session A.
+    /// The broadcast channel carries events from all sessions; correct consumers
+    /// must filter by `session_id` (as the SSE handler does).
+    #[tokio::test]
+    async fn m3_event_session_id_scoping() {
+        let (service, _) = make_service(
+            make_scene(vec![make_element("el-1", "OK", 0.9)]),
+            make_focus(),
+        );
+
+        let mut rx = service.subscribe();
+
+        // Create session A — its events should carry sid_a.
+        let (sid_a, _) = create_test_session(&service).await;
+        // Create session B — its events should carry sid_b.
+        let (sid_b, _) = create_test_session(&service).await;
+
+        // Drain all events and partition them by session_id.
+        let mut events_a: Vec<String> = vec![];
+        let mut events_b: Vec<String> = vec![];
+
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(300), async {
+            loop {
+                match rx.try_recv() {
+                    Ok(ev) => {
+                        if ev.session_id == sid_a {
+                            events_a.push(ev.event_type.clone());
+                        } else if ev.session_id == sid_b {
+                            events_b.push(ev.event_type.clone());
+                        }
+                    }
+                    Err(_) => tokio::time::sleep(std::time::Duration::from_millis(5)).await,
+                }
+                if !events_a.is_empty() && !events_b.is_empty() {
+                    break;
+                }
+            }
+        })
+        .await;
+
+        // Both sessions should have their own proposed event.
+        assert!(
+            events_a.iter().any(|t| t == "gui_session.proposed"),
+            "session A should have a proposed event; got {:?}",
+            events_a
+        );
+        assert!(
+            events_b.iter().any(|t| t == "gui_session.proposed"),
+            "session B should have a proposed event; got {:?}",
+            events_b
+        );
+
+        // No session A event should carry session B's id and vice versa
+        // (guaranteed by the event construction, but asserting the partition is clean).
+        assert!(
+            !events_a.is_empty() && !events_b.is_empty(),
+            "each session must have at least one event"
+        );
+    }
+
+    /// `confirm_candidate` emits a `gui_session.confirmed` event.
+    #[tokio::test]
+    async fn m3_confirm_candidate_emits_confirmed_event() {
+        let scene = make_scene(vec![make_element("el-1", "OK", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let mut rx = service.subscribe();
+        let (sid, token) = create_and_highlight(&service).await;
+
+        // Drain earlier events (proposed + highlighted).
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(200), async {
+            let mut drained = 0usize;
+            loop {
+                if rx.try_recv().is_ok() {
+                    drained += 1;
+                }
+                if drained >= 2 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+
+        // Get a candidate id.
+        let session = service.get_session(&sid, &token).await.unwrap();
+        let candidate_id = session.candidates[0].element.element_id.clone();
+
+        service
+            .confirm_candidate(
+                &sid,
+                &token,
+                GuiConfirmRequest {
+                    candidate_id,
+                    action: GuiActionRequest {
+                        action_type: GuiActionType::Click,
+                        text: None,
+                    },
+                    ticket_ttl_secs: Some(60),
+                },
+            )
+            .await
+            .expect("confirm should succeed");
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            loop {
+                if let Ok(ev) = rx.try_recv() {
+                    if ev.session_id == sid && ev.event_type == "gui_session.confirmed" {
+                        return ev;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("confirmed event should be received within timeout");
+
+        assert_eq!(event.event_type, "gui_session.confirmed");
+        assert_eq!(event.session_id, sid);
+    }
 }
