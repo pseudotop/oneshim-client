@@ -30,7 +30,7 @@ cargo fmt --check
 
 ## Current Snapshot
 
-### Rust Tests (2026-03-08)
+### Rust Tests (2026-03-09)
 
 | Crate | Tests | Status |
 |-------|------:|--------|
@@ -41,13 +41,13 @@ cargo fmt --check
 | oneshim-monitor | 39 | pass |
 | oneshim-vision | 84 | pass |
 | oneshim-ui | 37 | pass |
-| oneshim-web | 119 | pass |
+| oneshim-web | 129 | pass |
 | oneshim-automation | 203 | pass |
 | oneshim-app (unit) | 99 | pass |
 | oneshim-app (integration) | 32 | pass (4 ignored) |
 | oneshim-api-contracts | 8 | pass |
 | language-check | 4 | pass |
-| **Total** | **842** | **0 failed** |
+| **Total** | **852** | **0 failed** |
 
 ### Build & Lint
 
@@ -79,7 +79,7 @@ cargo fmt --check
 | M2-P2 | Ticket Expiry Grace Period + Partial Execution Tracking | done (10 tests, `411cd60`) |
 | M2-P3 | Execution Reliability Tracing | done (`933bfba`) |
 | M3 | SSE Event Stream Integration | done (10 tests, `b700804`) |
-| M4 | End-to-End Workflow Tests | pending |
+| M4 | End-to-End Workflow Tests | done (10 tests, TBD) |
 
 ## Notes
 
