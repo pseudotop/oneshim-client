@@ -80,7 +80,15 @@ export default function FocusWidget() {
   useEffect(() => {
     fetchFocusMetrics()
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => {
+        if (e instanceof TypeError && e.message.toLowerCase().includes('fetch')) {
+          setError(`Network error: unable to reach agent (${e.message})`)
+        } else if (e instanceof Error) {
+          setError(`${e.message} — check that the ONESHIM agent is running`)
+        } else {
+          setError('Unknown error fetching focus metrics')
+        }
+      })
       .finally(() => setLoading(false))
   }, [])
 
