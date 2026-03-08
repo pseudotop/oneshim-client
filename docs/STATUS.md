@@ -59,7 +59,7 @@ cargo fmt --check
 ### CI/CD
 
 - Latest CI workflow run: success (`CI`) — [Run 22820191743](https://github.com/pseudotop/oneshim-client/actions/runs/22820191743) (2026-03-08)
-- Latest Release workflow run: success (`Release`, tag `v0.2.0`) (2026-03-08)
+- Latest Release workflow run: pending (`Release`, tag `v0.3.0`) (2026-03-09)
 - UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc3.md` (latest tracked run evidence)
 
 ### Recent Changes (Agent Review Batch 1-5, 2026-03-08)
