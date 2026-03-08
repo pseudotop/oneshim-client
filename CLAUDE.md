@@ -20,6 +20,12 @@ cargo run -p oneshim-app
 # Test specific crate
 cargo test -p oneshim-core
 cargo test -p oneshim-vision
+
+# Tauri 데스크탑 앱 빌드
+cd src-tauri && cargo tauri build
+
+# Tauri 개발 서버 (frontend HMR 포함)
+cd src-tauri && cargo tauri dev
 ```
 
 ## Workspace Structure
@@ -27,22 +33,28 @@ cargo test -p oneshim-vision
 ```
 client-rust/
 ├── Cargo.toml              # Workspace root (resolver = "2")
-├── .cargo/config.toml      # Build configuration
+├── src-tauri/              # Tauri v2 binary entry point (main binary)
+│   ├── src/
+│   │   ├── main.rs         # Tauri app builder + DI wiring
+│   │   ├── tray.rs         # System tray menu
+│   │   ├── commands.rs     # Tauri IPC commands
+│   │   └── scheduler/      # 9-loop background scheduler
+│   └── tauri.conf.json     # Tauri configuration
 ├── docs/
-│   ├── architecture/   # ADR-only (ADR-001, ADR-002, ADR-003)
+│   ├── architecture/   # ADR-001~ADR-004
 │   ├── guides/         # Playbooks/runbooks/how-to docs
 │   └── research/       # Exploratory notes
 └── crates/
     ├── oneshim-core/       # Domain models + port traits + errors + config
-    ├── oneshim-network/    # JWT auth, HTTP/SSE/WebSocket, compression, batch upload
+    ├── oneshim-network/    # JWT auth, HTTP/SSE/WebSocket, gRPC, batch upload
     ├── oneshim-suggestion/ # Suggestion reception (SSE), priority queue, feedback, history
     ├── oneshim-storage/    # SQLite storage + schema migration
     ├── oneshim-monitor/    # System metrics (sysinfo), active window, activity tracking
     ├── oneshim-vision/     # Screen capture, delta encoding, WebP, thumbnail, PII filter
-    ├── oneshim-ui/         # iced UI, system tray, desktop notifications
     ├── oneshim-web/        # Local web dashboard — Axum REST API + React frontend
     ├── oneshim-automation/ # Automation control — policy-based command execution, audit logging
-    └── oneshim-app/        # Binary entry point — DI wiring, scheduler, lifecycle
+    ├── oneshim-app/        # Legacy adapter crate (CLI entry, standalone mode)
+    └── oneshim-api-contracts/ # Shared API type contracts
 ```
 
 ## Core Architecture Rules
@@ -57,14 +69,14 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-network
               ←  oneshim-storage
               ←  oneshim-suggestion  ←  oneshim-network
-              ←  oneshim-ui          ←  oneshim-suggestion
               ←  oneshim-automation
               ←  oneshim-app         ←  (all)
+              ←  src-tauri           ←  (all, Tauri v2 main binary)
 ```
 
 **Forbidden**: Direct dependency between adapter crates (e.g., monitor → storage). All cross-crate communication must go through `oneshim-core` traits.
 
-**Exceptions**: `suggestion → network` (SSE reception), `ui → suggestion` (suggestion display)
+**Exceptions**: `suggestion → network` (SSE reception)
 
 ### Error Strategy (ADR-001 §1)
 
@@ -159,12 +171,6 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `privacy.rs`: PII filter levels (Off/Basic/Standard/Strict cascaded inheritance), sensitive app auto-detection, phone/API key/IP/email/credit card/SSN/file path masking
 - `timeline.rs`: In-memory frame timeline + filters
 
-### oneshim-ui (Desktop UI)
-- `tray.rs`: System tray (tray-icon)
-- `notifier.rs`: `DesktopNotifierImpl` (impl DesktopNotifier) — notify-rust
-- `theme.rs`: Dark/Light theme
-- `views/`: suggestion_popup, main_window, status_bar, context_panel, timeline_view, settings
-
 ### oneshim-web (Local Web Dashboard)
 - `lib.rs`: `WebServer` — Axum 0.8 HTTP server + graceful shutdown
 - `routes.rs`: REST API route definitions (16+ endpoints)
@@ -218,7 +224,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 | DB | rusqlite | 0.38 (bundled, fallible_uint) |
 | Monitoring | sysinfo | 0.38 |
 | Image | image + fast_image_resize + webp + xcap | 0.25 / 6 / 0.3 / 0.8 |
-| UI | iced | 0.14 |
+| **Desktop Shell** | tauri | 2 |
 | Windows API | windows-sys | 0.61 |
 | Error | thiserror / anyhow | 2 / 1 |
 | Serialization| serde + serde_json | 1 |
@@ -230,7 +236,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ## Coding Conventions
 
 - Comments/Documentation: **English-first** (public docs require Korean companion docs for key guides)
-- Rust edition: **2021**, Minimum version: **1.75**
+- Rust edition: **2021**, Minimum version: **1.77.1**
 - Code Formatting: `cargo fmt` (rustfmt default settings)
 - Linting: `cargo clippy` — `dead_code` warnings are allowed only for variants intended for future use
 - Testing: Write in `#[cfg(test)] mod tests` at the bottom of each module
@@ -243,6 +249,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - [ADR-001: Rust Client Architecture Patterns](docs/architecture/ADR-001-rust-client-architecture-patterns.md)
 - [ADR-002: OS GUI Interaction Boundary and Runtime Split](docs/architecture/ADR-002-os-gui-interaction-boundary.md)
 - [ADR-003: Directory Module Pattern for Large Source Files](docs/architecture/ADR-003-directory-module-pattern.md)
+- [ADR-004: Tauri v2 Migration (iced → Tauri v2 + WebView)](docs/architecture/ADR-004-tauri-v2-migration.md) ([한국어](docs/architecture/ADR-004-tauri-v2-migration.ko.md))
 - [Documentation Policy](docs/DOCUMENTATION_POLICY.md) — English-primary + Korean companion docs + metrics consistency rules
 - [Project Status](docs/STATUS.md) — single source of truth for mutable quality metrics
 - [Migration Overview](docs/migration/README.md) — Migration plans and history

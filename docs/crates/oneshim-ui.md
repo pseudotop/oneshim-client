@@ -1,3 +1,8 @@
+> **DEPRECATED as of v0.1.5** — `oneshim-ui` crate was removed when the project migrated from iced GUI to Tauri v2 + React WebView. This document is kept for historical reference only.
+> See: [CHANGELOG.md](../../CHANGELOG.md) for migration details.
+
+---
+
 [English](./oneshim-ui.md) | [한국어](./oneshim-ui.ko.md)
 
 # oneshim-ui

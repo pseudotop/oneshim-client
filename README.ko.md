@@ -346,7 +346,7 @@ oneshim-client/
 
 1. `oneshim-core`에서 포트 트레이트를 정의합니다
 2. 해당 크레이트에서 어댑터를 구현합니다
-3. `oneshim-app`에서 DI를 연결합니다
+3. `src-tauri/src/main.rs`에서 DI를 연결합니다
 4. 테스트를 추가합니다
 
 ### 인스톨러 빌드
