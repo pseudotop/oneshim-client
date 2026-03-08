@@ -14,6 +14,10 @@ RUN_UPDATER_TESTS="${ONESHIM_SMOKE_RUN_UPDATER_TESTS:-1}"
 ASSET_NAME="${ONESHIM_SMOKE_ASSET_NAME:-}"
 INSTALL_DIR="${ONESHIM_SMOKE_INSTALL_DIR:-}"
 
+# Path that tauri::generate_context!() validates at compile time (from tauri.conf.json).
+FRONTEND_DIST="$ROOT_DIR/crates/oneshim-web/frontend/dist"
+FRONTEND_DIST_STUB=0
+
 info() {
   printf '[SMOKE] %s\n' "$*"
 }
@@ -197,6 +201,9 @@ cleanup() {
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" >/dev/null 2>&1 || true
   fi
+  if [[ "$FRONTEND_DIST_STUB" == "1" ]]; then
+    rm -rf "$FRONTEND_DIST"
+  fi
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -237,6 +244,14 @@ fi
 
 if [[ "$RUN_UPDATER_TESTS" == "1" ]]; then
   info "Running updater reliability regression tests"
+  # tauri::generate_context!() validates frontendDist at compile time.
+  # Create a minimal stub when running outside a full frontend build (e.g. CI smoke).
+  if [[ ! -d "$FRONTEND_DIST" ]]; then
+    info "Creating frontendDist stub for tauri::generate_context!() compilation"
+    mkdir -p "$FRONTEND_DIST"
+    printf '<!doctype html><html><body></body></html>\n' > "$FRONTEND_DIST/index.html"
+    FRONTEND_DIST_STUB=1
+  fi
   "$CARGO_CMD" test --manifest-path "$ROOT_DIR/Cargo.toml" -p oneshim-app release_reliability_ -- --nocapture
 fi
 
