@@ -9,7 +9,7 @@
 
 ## Context
 
-Tauri v2 exposes Rust functions to the JavaScript frontend via the `invoke_handler!` macro. This creates a typed IPC surface between the Rust backend (`src-tauri/src/commands.rs`) and the React frontend. Without a documented contract, IPC calls become an implicit API that is difficult to audit, version, or test.
+Tauri v2 exposes Rust functions to the JavaScript frontend via the `tauri::generate_handler!` macro (registered through the `.invoke_handler()` builder method). This creates a typed IPC surface between the Rust backend (`src-tauri/src/commands.rs`) and the React frontend. Without a documented contract, IPC calls become an implicit API that is difficult to audit, version, or test.
 
 This ADR documents the current IPC surface, defines the error handling pattern, and establishes the versioning policy for breaking changes.
 
@@ -60,7 +60,7 @@ Returns the current `AppConfig` as a JSON object.
 
 ### `update_setting`
 
-Applies a partial config patch. Only whitelisted top-level keys are accepted; all others return an error.
+Applies a partial config patch. Only allowlisted top-level keys are accepted; all others return an error.
 
 **Input**:
 ```typescript

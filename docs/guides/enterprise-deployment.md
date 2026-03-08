@@ -41,7 +41,7 @@ All captured context (screen frames, window titles, activity events) is stored o
 - Windows: `%LOCALAPPDATA%\oneshim\data\`
 - Linux: `~/.local/share/oneshim/`
 
-Data is only transmitted to your ONESHIM server when `telemetry_enabled = true` (default: `false`). PII is filtered on-device before any upload, controlled by `pii_filter_level` (default: `Standard`).
+Data is only transmitted to your ONESHIM server when `telemetry.enabled` is `true` (default: `false`). PII is filtered on-device before any upload, controlled by `privacy.pii_filter_level` (default: `"Standard"`).
 
 Disabling telemetry keeps all data on the device and prevents any outbound data transfer. This satisfies data residency requirements for regions that prohibit cross-border data flows.
 
@@ -256,6 +256,8 @@ Fields not present in the deployed file retain their built-in defaults. This all
 
 ### TLS Configuration
 
-By default, TLS is enforced for all outbound connections (`tls.enabled = true`, `tls.allow_self_signed = false`). Do not disable TLS in production.
+By default, TLS is enforced for all outbound connections. The REST client uses the system trust store and does not accept self-signed certificates by default.
 
-For internal CAs, set `tls.allow_self_signed = true` and distribute your CA certificate to the system trust store using your MDM or GPO.
+For gRPC connections, the `grpc.use_tls` field (boolean, default `true`) controls whether TLS is required on the gRPC channel. Do not set this to `false` in production.
+
+For internal CAs, distribute your CA certificate to the OS trust store using your MDM or GPO. The client inherits trust from the OS trust store; no per-field CA pin configuration is exposed in the JSON config.
