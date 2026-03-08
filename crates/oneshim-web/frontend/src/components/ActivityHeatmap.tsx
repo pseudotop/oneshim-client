@@ -7,7 +7,6 @@ interface ActivityHeatmapProps {
   className?: string
 }
 const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
-const DAY_LABELS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 function getColor(ratio: number): string {
   if (ratio === 0) return 'bg-hover'
@@ -19,8 +18,8 @@ function getColor(ratio: number): string {
 }
 
 export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapProps) {
-  const { t, i18n } = useTranslation()
-  const dayLabels = i18n.language === 'en' ? DAY_LABELS_EN : (t('heatmap.days', { returnObjects: true }) as string[])
+  const { t } = useTranslation()
+  const dayLabels = t('heatmap.days', { returnObjects: true }) as string[]
   const { data, isLoading, error } = useQuery<HeatmapResponse>({
     queryKey: ['heatmap', days],
     queryFn: () => fetchHeatmap(days),

@@ -210,7 +210,7 @@
     "piiLevel": "PII 过滤级别",
     "piiOff": "关闭 - 不过滤",
     "piiBasic": "基础 - 电子邮件、电话号码",
-    "piiStandard": "标准 - + 信用卡号、SSN",
+    "piiStandard": "标准 - + 信用卡号、身份证号",
     "piiStrict": "严格 - + API 密钥、IP、路径",
     "piiDesc": "对采集数据中的个人信息进行脱敏处理",
     "excludedApps": "排除的应用（逗号分隔）",

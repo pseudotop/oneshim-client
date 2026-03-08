@@ -39,8 +39,8 @@ export default function LanguageSelector() {
         className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-content-secondary text-sm transition-colors hover:bg-hover"
         title={t('settings.language')}
       >
-        <span className="hidden sm:inline">{currentLanguage?.code.toUpperCase()}</span>
-        <span className="sm:hidden">{currentLanguage?.code.toUpperCase()}</span>
+        <span className="hidden sm:inline">{currentLanguage?.name}</span>
+        <span className="sm:hidden">{currentLanguage?.code.split('-')[0].toUpperCase()}</span>
         <svg
           className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           fill="none"
