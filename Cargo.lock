@@ -4380,6 +4380,7 @@ dependencies = [
  "chrono",
  "criterion",
  "crossbeam",
+ "getrandom 0.2.17",
  "oneshim-core",
  "parking_lot",
  "rusqlite",
