@@ -429,10 +429,12 @@ fn mask_private_key_blocks(text: &str) -> String {
     }
 
     let mut result = text.to_string();
+    let mut search_from = 0;
     loop {
-        let Some(begin_pos) = result.find("-----BEGIN ") else {
+        let Some(rel_begin) = result[search_from..].find("-----BEGIN ") else {
             break;
         };
+        let begin_pos = search_from + rel_begin;
         let header_after = &result[begin_pos + 11..];
         // Find the closing dashes of the header line
         let Some(header_end_rel) = header_after.find("-----") else {
@@ -440,9 +442,11 @@ fn mask_private_key_blocks(text: &str) -> String {
         };
         let label = &header_after[..header_end_rel];
         if !label.contains("PRIVATE KEY") {
-            // Not a private key block — skip past this marker to avoid infinite loop
-            break;
+            // Not a private key block — skip past this marker and keep searching
+            search_from = begin_pos + 11;
+            continue;
         }
+        let label = label.to_string();
         // Find the matching END marker
         let end_marker = format!("-----END {}-----", label);
         let block_end = result[begin_pos..].find(&end_marker);
@@ -454,6 +458,8 @@ fn mask_private_key_blocks(text: &str) -> String {
         };
         let tail = result[replace_end..].to_string();
         result = format!("{}[PRIVATE_KEY]{}", &result[..begin_pos], tail);
+        // After replacement, search_from stays at begin_pos (now points at [PRIVATE_KEY])
+        search_from = begin_pos + "[PRIVATE_KEY]".len();
     }
 
     result
