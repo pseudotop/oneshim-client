@@ -292,8 +292,7 @@ mod tests {
     #[test]
     fn count_events_in_range_empty() {
         let storage = SqliteStorage::open_in_memory(30).expect("open_in_memory failed");
-        let from = (Utc::now() - Duration::hours(1))
-            .to_rfc3339();
+        let from = (Utc::now() - Duration::hours(1)).to_rfc3339();
         let to = (Utc::now() + Duration::hours(1)).to_rfc3339();
         let count = storage
             .count_events_in_range(&from, &to)

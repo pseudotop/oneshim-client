@@ -352,7 +352,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("consent.json");
         let mut manager = ConsentManager::new(path);
-        manager.grant_consent(ConsentPermissions::default(), 30).unwrap();
+        manager
+            .grant_consent(ConsentPermissions::default(), 30)
+            .unwrap();
         assert!(!manager.has_pending_deletion());
     }
 
@@ -363,7 +365,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("consent.json");
         let mut manager = ConsentManager::new(path);
-        manager.grant_consent(ConsentPermissions::default(), 30).unwrap();
+        manager
+            .grant_consent(ConsentPermissions::default(), 30)
+            .unwrap();
         assert_eq!(manager.check_consent(), ConsentStatus::Valid);
 
         manager.revoke_consent().unwrap();
@@ -382,8 +386,13 @@ mod tests {
         let mut manager = ConsentManager::new(path);
 
         // 동의 부여
-        manager.grant_consent(ConsentPermissions::default(), 30).unwrap();
-        assert!(!manager.has_pending_deletion(), "동의 부여 직후에는 소거 대기가 없어야 한다");
+        manager
+            .grant_consent(ConsentPermissions::default(), 30)
+            .unwrap();
+        assert!(
+            !manager.has_pending_deletion(),
+            "동의 부여 직후에는 소거 대기가 없어야 한다"
+        );
 
         // 동의 철회
         manager.revoke_consent().unwrap();

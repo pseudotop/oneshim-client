@@ -746,20 +746,31 @@ mod tests {
     fn mask_bearer_single_token() {
         let input = "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9";
         let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
-        assert!(result.contains("Bearer [API_KEY]"), "single bearer not masked: {result}");
-        assert!(!result.contains("eyJhbGci"), "raw token still present: {result}");
+        assert!(
+            result.contains("Bearer [API_KEY]"),
+            "single bearer not masked: {result}"
+        );
+        assert!(
+            !result.contains("eyJhbGci"),
+            "raw token still present: {result}"
+        );
     }
 
     #[test]
     fn mask_bearer_multiple_tokens() {
         // Verifies that all bearer tokens in a string are masked, not just the first.
-        let input =
-            "first: Bearer eyJhbGciOiJSUzI1NiJ9 second: bearer zyxwvutsrqponmlkjih end";
+        let input = "first: Bearer eyJhbGciOiJSUzI1NiJ9 second: bearer zyxwvutsrqponmlkjih end";
         let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
         let count = result.matches("[API_KEY]").count();
         assert_eq!(count, 2, "expected 2 masked tokens, got {count}: {result}");
-        assert!(!result.contains("eyJhbGci"), "first raw token still present: {result}");
-        assert!(!result.contains("zyxwvuts"), "second raw token still present: {result}");
+        assert!(
+            !result.contains("eyJhbGci"),
+            "first raw token still present: {result}"
+        );
+        assert!(
+            !result.contains("zyxwvuts"),
+            "second raw token still present: {result}"
+        );
     }
 
     #[test]
@@ -784,7 +795,10 @@ mod tests {
         // Tokens shorter than 8 chars must not be replaced.
         let input = "Authorization: Bearer short";
         let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
-        assert!(!result.contains("[API_KEY]"), "short bearer should not be masked: {result}");
+        assert!(
+            !result.contains("[API_KEY]"),
+            "short bearer should not be masked: {result}"
+        );
     }
 
     #[test]
@@ -792,8 +806,14 @@ mod tests {
         let input =
             "key: -----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----";
         let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
-        assert!(result.contains("[PRIVATE_KEY]"), "PEM block not masked: {result}");
-        assert!(!result.contains("MIIEowIBAAKCAQEA"), "raw key material still present: {result}");
+        assert!(
+            result.contains("[PRIVATE_KEY]"),
+            "PEM block not masked: {result}"
+        );
+        assert!(
+            !result.contains("MIIEowIBAAKCAQEA"),
+            "raw key material still present: {result}"
+        );
     }
 
     #[test]
@@ -801,7 +821,10 @@ mod tests {
         // Public key blocks must not be masked.
         let input = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkq\n-----END PUBLIC KEY-----";
         let result = sanitize_title_with_level(input, PiiFilterLevel::Strict);
-        assert!(!result.contains("[PRIVATE_KEY]"), "public key should not be masked: {result}");
+        assert!(
+            !result.contains("[PRIVATE_KEY]"),
+            "public key should not be masked: {result}"
+        );
     }
 
     #[test]
@@ -811,7 +834,13 @@ mod tests {
             "token: ghs_16C7e42F292c6912E7710c838347Ae178B4a",
             PiiFilterLevel::Strict,
         );
-        assert!(result.contains("[API_KEY]"), "ghs_ token not masked: {result}");
-        assert!(!result.contains("ghs_"), "raw ghs_ token still present: {result}");
+        assert!(
+            result.contains("[API_KEY]"),
+            "ghs_ token not masked: {result}"
+        );
+        assert!(
+            !result.contains("ghs_"),
+            "raw ghs_ token still present: {result}"
+        );
     }
 }

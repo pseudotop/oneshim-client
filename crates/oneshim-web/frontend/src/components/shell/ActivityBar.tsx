@@ -112,6 +112,7 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
 
   return (
     <nav
+      role="navigation"
       className={cn(
         'flex flex-col items-center py-1',
         layout.activityBar.bg,
