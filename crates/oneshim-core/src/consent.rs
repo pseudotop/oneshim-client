@@ -83,6 +83,10 @@ pub struct DeletionResult {
 pub struct ConsentManager {
     storage_path: PathBuf,
     current_consent: Option<ConsentRecord>,
+    /// revoke_consent() 호출 후 데이터 소거가 완료되기 전까지 true를 유지한다.
+    /// current_consent = None 이후에도 GDPR Article 17 신호가 소실되지 않도록
+    /// 별도 in-memory 플래그로 관리한다.
+    pending_deletion: bool,
 }
 
 impl ConsentManager {
@@ -91,6 +95,8 @@ impl ConsentManager {
         Self {
             storage_path,
             current_consent,
+            // 신규 인스턴스 생성 시 소거 대기 플래그는 false로 초기화한다.
+            pending_deletion: false,
         }
     }
 
@@ -157,17 +163,36 @@ impl ConsentManager {
             std::fs::remove_file(&self.storage_path)?;
         }
         self.current_consent = None;
+        // current_consent를 None으로 설정한 뒤에도 소거 요청 신호가 소실되지
+        // 않도록 in-memory 플래그를 true로 유지한다 (GDPR Article 17).
+        self.pending_deletion = true;
         Ok(())
     }
 
     /// Returns true when consent was previously revoked and local data is
     /// pending erasure (GDPR Article 17).  Callers should purge stored events,
     /// frames, and metrics before the next server sync when this returns true.
+    ///
+    /// `pending_deletion` 플래그는 `revoke_consent()` 이후 `current_consent`가
+    /// None으로 바뀌더라도 true를 유지한다. 데이터 소거 완료 후에는
+    /// `clear_pending_deletion()`을 호출해 플래그를 초기화해야 한다.
     pub fn has_pending_deletion(&self) -> bool {
-        self.current_consent
-            .as_ref()
-            .map(|r| r.data_deletion_requested)
-            .unwrap_or(false)
+        // in-memory 플래그 우선 확인 — revoke 이후 current_consent가 None이어도
+        // 소거 신호가 보존된다.
+        self.pending_deletion
+            || self
+                .current_consent
+                .as_ref()
+                .map(|r| r.data_deletion_requested)
+                .unwrap_or(false)
+    }
+
+    /// 데이터 소거 완료 후 호출한다. GDPR Article 17 소거 신호를 초기화한다.
+    ///
+    /// 이 메서드는 실제 데이터 소거가 완료된 직후에만 호출해야 한다.
+    /// 소거 전에 호출하면 삭제 요청이 누락된다.
+    pub fn clear_pending_deletion(&mut self) {
+        self.pending_deletion = false;
     }
 
     pub fn is_permitted(&self, check: impl Fn(&ConsentPermissions) -> bool) -> bool {
@@ -333,9 +358,8 @@ mod tests {
 
     #[test]
     fn consent_revoke_records_audit_trail() {
-        // After revocation the manager has no active consent; verify the
-        // method completes without error and pending-deletion flag is cleared
-        // from the in-memory state (the record is removed from disk).
+        // 동의 철회 후 has_pending_deletion()은 true를 반환해야 한다
+        // (GDPR Article 17 소거 신호가 current_consent = None 이후에도 보존되는지 검증).
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("consent.json");
         let mut manager = ConsentManager::new(path);
@@ -343,9 +367,36 @@ mod tests {
         assert_eq!(manager.check_consent(), ConsentStatus::Valid);
 
         manager.revoke_consent().unwrap();
-        // Post-revocation: no active consent
+        // 철회 후: 활성 동의 없음
         assert_eq!(manager.check_consent(), ConsentStatus::NotGranted);
-        // has_pending_deletion reflects absence of a current record
-        assert!(!manager.has_pending_deletion());
+        // pending_deletion 플래그는 revoke 이후 true를 유지해야 한다
+        assert!(manager.has_pending_deletion());
+    }
+
+    #[test]
+    fn has_pending_deletion_true_after_revoke() {
+        // revoke_consent() → has_pending_deletion() == true →
+        // clear_pending_deletion() → has_pending_deletion() == false 전체 라이프사이클 검증.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("consent.json");
+        let mut manager = ConsentManager::new(path);
+
+        // 동의 부여
+        manager.grant_consent(ConsentPermissions::default(), 30).unwrap();
+        assert!(!manager.has_pending_deletion(), "동의 부여 직후에는 소거 대기가 없어야 한다");
+
+        // 동의 철회
+        manager.revoke_consent().unwrap();
+        assert!(
+            manager.has_pending_deletion(),
+            "revoke_consent() 이후 has_pending_deletion()은 true이어야 한다 (GDPR Article 17)"
+        );
+
+        // 소거 완료 후 플래그 초기화
+        manager.clear_pending_deletion();
+        assert!(
+            !manager.has_pending_deletion(),
+            "clear_pending_deletion() 이후 has_pending_deletion()은 false이어야 한다"
+        );
     }
 }
