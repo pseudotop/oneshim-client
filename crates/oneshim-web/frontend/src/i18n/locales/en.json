@@ -656,6 +656,13 @@
     "closeToTray": "Close to tray",
     "searchShortcut": "Search ({{key}}+K)"
   },
+  "errors": {
+    "boundaryTitle": "Something went wrong",
+    "boundaryRetry": "Try Again",
+    "serverOffline": "Server is offline",
+    "serverOfflineDesc": "Could not connect to the ONESHIM agent. Make sure the agent is running.",
+    "retryConnection": "Retry Connection"
+  },
   "sidebar": {
     "overview": "Overview",
     "systemMetrics": "System Metrics",
