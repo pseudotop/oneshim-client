@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+
+- Update [Unreleased] [skip ci]
+
+
+### Fixed
+
+- Cargo fmt + ActivityBar role attribute for E2E nav selector
+  - cargo fmt: consent.rs, events.rs, privacy.rs line-length reflow
+  - ActivityBar: add explicit role="navigation" to <nav> element
+    (nav[role="navigation"] CSS selector requires explicit attribute;
+    implicit ARIA role is not matched by attribute selectors)
+
+
+## [Unreleased]
 ### Added
 
 - Design system hardening — Storybook, tokens, Biome linter
