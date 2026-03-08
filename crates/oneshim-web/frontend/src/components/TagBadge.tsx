@@ -1,6 +1,8 @@
 /**
  *
  */
+import { useTranslation } from 'react-i18next'
+import { interaction } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 interface TagBadgeProps {
@@ -13,6 +15,7 @@ interface TagBadgeProps {
 }
 
 export function TagBadge({ name, color, onRemove, onClick, selected = false, size = 'md' }: TagBadgeProps) {
+  const { t } = useTranslation()
   const bgColor = `${color}20`
   const borderColor = selected ? color : `${color}60`
 
@@ -42,12 +45,12 @@ export function TagBadge({ name, color, onRemove, onClick, selected = false, siz
       {onRemove && (
         <button
           type="button"
-          className="ml-0.5 rounded-sm hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:border-transparent"
+          className={cn('ml-0.5 rounded-sm hover:opacity-70', interaction.focusRing)}
           onClick={(e) => {
             e.stopPropagation()
             onRemove()
           }}
-          aria-label={`${name} 태그 delete`}
+          aria-label={t('timeline.removeTag', { name, defaultValue: 'Remove {{name}} tag' })}
         >
           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

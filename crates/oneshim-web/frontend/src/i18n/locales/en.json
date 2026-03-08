@@ -122,7 +122,8 @@
     "createTag": "Create tag",
     "creating": "Creating...",
     "noSearchResults": "No results found",
-    "selectColor": "Select color"
+    "selectColor": "Select color",
+    "removeTag": "Remove {{name}} tag"
   },
   "settings": {
     "title": "Settings",

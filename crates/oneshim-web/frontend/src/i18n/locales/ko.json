@@ -122,7 +122,8 @@
     "createTag": "태그 생성",
     "creating": "생성 중...",
     "noSearchResults": "검색 결과 없음",
-    "selectColor": "색상 선택"
+    "selectColor": "색상 선택",
+    "removeTag": "{{name}} 태그 삭제"
   },
   "settings": {
     "title": "설정",
