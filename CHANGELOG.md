@@ -77,6 +77,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Update [Unreleased] [skip ci]
 
+- Update [Unreleased] [skip ci]
+
+
+### Fixed
+
+- Cargo fmt + ActivityBar role attribute for E2E nav selector
+  - cargo fmt: consent.rs, events.rs, privacy.rs line-length reflow
+  - ActivityBar: add explicit role="navigation" to <nav> element
+    (nav[role="navigation"] CSS selector requires explicit attribute;
+    implicit ARIA role is not matched by attribute selectors)
+
+- Clippy needless borrow in encryption + mock ai/providers/presets in E2E
+  - Remove needless `&self.0` borrow in `EncryptionKey::save_to_file` (clippy::needless_borrows_for_generic_args)
+  - Add `/api/ai/providers/presets` mock to `mockDefaultApiFallbacks` to prevent ECONNREFUSED timeout in replay-scene E2E tests
+
+- Create frontendDist stub before updater regression tests
+
+- Design bug fixes — EmptyState type="button" + TagBadge focus ring
+  Bug 4: Add type="button" to EmptyState action Button to prevent
+  default form submit behavior.
+
+  Bug 5: Fix TagBadge close button focus ring to match design system's
+  interaction.focusRing token (focus-visible:outline-none + ring-2 +
+  ring-brand-signal + border-transparent).
+
+- A11y follow-ups — i18n aria-label, token import, theme consistency
+  - TagBadge: replace mixed-language aria-label with i18n t() function
+    (en: "Remove {{name}} tag", ko: "{{name}} 태그 삭제")
+  - TagBadge: use interaction.focusRing token import instead of inline
+    string (prevents drift on future token changes)
+  - App: skip-to-content link bg-teal-600 → bg-brand-signal for dark
+    mode theme adaptation via CSS vars
+  - EmptyState: use title prop for region aria-label instead of generic
+    "Empty state" string
+
+- Resolve 10 i18n compliance issues across frontend
+
+
+## [Unreleased]
+### Added
+
+- GUI V2 M4 — End-to-End Workflow Tests (10 tests)
+  Handler-level integration tests covering the complete GUI session lifecycle
+  through the Axum handler layer with a fully configured AutomationController:
+  create → get → highlight → confirm → execute → delete.
+
+  - 10 new tests in `automation_gui.rs` (mod m4):
+    - no controller returns 503 ServiceUnavailable
+    - missing token returns 401 Unauthorized
+    - create returns session + capability token (state: Proposed)
+    - get reflects Proposed state after create
+    - highlight transitions session to Highlighted
+    - confirm returns an execution ticket
+    - execute with valid ticket succeeds (outcome.succeeded=true)
+    - delete transitions to Cancelled
+    - wrong token on get returns 401 Unauthorized
+    - full lifecycle: create→get→highlight→confirm→execute (Executed state)
+  - Added `async-trait` to oneshim-web dev-dependencies (for mock impls)
+  - STATUS.md updated: 852 total tests, M4 done
+
+
+### Changed
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update to v0.2.0 — CI green, Linux smoke fix recorded
+  - Bump snapshot date to 2026-03-08
+  - Record CI run 22820191743 as success (was failure at v0.1.1)
+  - Record Release tag v0.2.0 (was v0.1.1)
+  - Add Batch 5 change summary: encryption.rs clippy fix, E2E
+    replay-scene mock, Linux smoke frontendDist stub fix
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- M3 complete — 842 tests, GUI V2 M3 SSE stream integration done
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
+- Update M4 commit SHA in GUI V2 milestone table
+
+- Update [Unreleased] [skip ci]
+
+- Fix DRY + add session isolation test per code review
+  Address code quality review findings:
+  - Extract fixture_create() + fixture_highlight() helpers to eliminate
+    copy-paste preamble duplicated across 5 tests
+  - Add Executed state assertion to m4_execute_with_valid_ticket_succeeds
+  - Replace overlapping lifecycle test with m4_two_concurrent_sessions_are_independent
+    (unique coverage: cancelling B does not affect A; token B cannot access A)
+  - Fix bare [0] index → .first().expect() in fixture_highlight
+  - Rename m4_wrong_token_on_get → m4_wrong_token_rejected_as_unauthorized
+    (name reflects shared guard, not endpoint-specific)
+  - Fix #[must_use] warning on delete_gui_session call
+
+- Update [Unreleased] [skip ci]
+
+- Update [Unreleased] [skip ci]
+
 
 ### Fixed
 
