@@ -315,6 +315,7 @@ fn mask_api_keys(text: &str) -> String {
         "AKIA",
         "ghp_",
         "gho_",
+        "ghs_",
         "github_pat_",
         "xoxb-",
         "xoxp-",
@@ -335,6 +336,124 @@ fn mask_api_keys(text: &str) -> String {
                 break;
             }
         }
+    }
+
+    // Mask bearer tokens: "Bearer <token>" (case-insensitive)
+    result = mask_bearer_tokens(&result);
+
+    // Mask PEM private key blocks: "-----BEGIN * PRIVATE KEY-----"
+    result = mask_private_key_blocks(&result);
+
+    result
+}
+
+fn mask_bearer_tokens(text: &str) -> String {
+    let lower = text.to_lowercase();
+    let mut result = text.to_string();
+    let needle = "bearer ";
+    let mut search_from = 0usize;
+
+    loop {
+        let lower_slice = &lower[search_from..];
+        let Some(rel_pos) = lower_slice.find(needle) else {
+            break;
+        };
+        let pos = search_from + rel_pos;
+        let token_start = pos + needle.len();
+        let after = &result[token_start..];
+        let end_offset = after
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',' || c == ';')
+            .unwrap_or(after.len());
+
+        if end_offset >= 8 {
+            let replacement = format!("{}Bearer [API_KEY]", &result[..pos]);
+            let tail = result[token_start + end_offset..].to_string();
+            result = format!("{}{}", replacement, tail);
+            // Rebuild lower to keep in sync and advance past replacement
+            let lower_replacement = replacement.to_lowercase();
+            let new_lower = format!("{}{}", lower_replacement, tail.to_lowercase());
+            search_from = lower_replacement.len();
+            // Only update lower for subsequent iterations
+            let _ = lower_slice; // borrow released
+            // Reconstruct lower from result for correctness
+            let new_lower_full = result.to_lowercase();
+            // We use a local shadow; breaking the borrow by rebuilding
+            return mask_bearer_tokens_from(&result, &new_lower_full, search_from);
+        } else {
+            search_from = token_start + end_offset.max(1);
+        }
+    }
+
+    result
+}
+
+fn mask_bearer_tokens_from(text: &str, lower: &str, start: usize) -> String {
+    let needle = "bearer ";
+    let mut result = text.to_string();
+    let mut search_from = start;
+
+    loop {
+        if search_from >= lower.len() {
+            break;
+        }
+        let lower_slice = &lower[search_from..];
+        let Some(rel_pos) = lower_slice.find(needle) else {
+            break;
+        };
+        let pos = search_from + rel_pos;
+        let token_start = pos + needle.len();
+        if token_start > result.len() {
+            break;
+        }
+        let after = &result[token_start..];
+        let end_offset = after
+            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',' || c == ';')
+            .unwrap_or(after.len());
+
+        if end_offset >= 8 {
+            let tail = result[token_start + end_offset..].to_string();
+            result = format!("{}Bearer [API_KEY]{}", &result[..pos], tail);
+            search_from = pos + "bearer [api_key]".len();
+        } else {
+            search_from = token_start + end_offset.max(1);
+        }
+    }
+
+    result
+}
+
+fn mask_private_key_blocks(text: &str) -> String {
+    // Mask PEM-style private key headers: -----BEGIN * PRIVATE KEY-----
+    if !text.contains("-----BEGIN ") || !text.contains("PRIVATE KEY-----") {
+        return text.to_string();
+    }
+
+    let mut result = text.to_string();
+    loop {
+        let Some(begin_pos) = result.find("-----BEGIN ") else {
+            break;
+        };
+        let header_after = &result[begin_pos + 11..];
+        // Find the closing dashes of the header line
+        let Some(header_end_rel) = header_after.find("-----") else {
+            break;
+        };
+        let label = &header_after[..header_end_rel];
+        if !label.contains("PRIVATE KEY") {
+            // Not a private key block — skip past this marker to avoid infinite loop
+            break;
+        }
+        // Find the matching END marker
+        let end_marker = format!("-----END {}-----", label);
+        let block_end = result[begin_pos..].find(&end_marker);
+        let replace_end = if let Some(rel) = block_end {
+            begin_pos + rel + end_marker.len()
+        } else {
+            // No closing marker found — mask to end of string
+            result.len()
+        };
+        let tail = result[replace_end..].to_string();
+        result = format!("{}[PRIVATE_KEY]{}", &result[..begin_pos], tail);
     }
 
     result
