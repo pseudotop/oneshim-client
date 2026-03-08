@@ -83,9 +83,19 @@ impl SqliteStorage {
         }
     }
 
+    /// 이벤트 슬라이스를 SQLite에 일괄 저장한다. 트랜잭션 단위로 처리하여
+    /// 성능을 최적화한다.
+    ///
     /// # Arguments
     ///
+    /// * `events` - 저장할 이벤트 슬라이스. 비어 있으면 즉시 `Ok(0)`을 반환한다.
+    ///
     /// # Returns
+    ///
+    /// Returns `Ok(events.len())` — the count of events in the input slice.
+    /// Duplicate `event_id` values are silently ignored by `INSERT OR IGNORE`,
+    /// so the returned count may exceed the number of rows actually written.
+    /// 실제 삽입된 행 수가 아닌 입력 슬라이스의 길이를 반환한다는 점에 주의한다.
     pub fn save_events_batch(&self, events: &[Event]) -> Result<usize, CoreError> {
         if events.is_empty() {
             return Ok(0);
