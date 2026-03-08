@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a>
+  <a href="./README.md">English</a> | <a href="./README.ko.md">한국어</a> | <a href="./README.ja.md">日本語</a> | <a href="./README.zh-CN.md">简体中文</a> | <a href="./README.es.md">Español</a>
 </p>
 
 # ONESHIM Client
@@ -355,7 +355,7 @@ For a detailed development guide, see [CLAUDE.md](./CLAUDE.md).
 
 Current quality and release metrics are tracked in [docs/STATUS.md](./docs/STATUS.md).
 Documentation language and consistency rules are defined in [docs/DOCUMENTATION_POLICY.md](./docs/DOCUMENTATION_POLICY.md).
-Korean translation: [README.ko.md](./README.ko.md).
+Translations: [한국어](./README.ko.md) | [日本語](./README.ja.md) | [简体中文](./README.zh-CN.md) | [Español](./README.es.md).
 Korean companion policy/status docs: [docs/DOCUMENTATION_POLICY.ko.md](./docs/DOCUMENTATION_POLICY.ko.md), [docs/STATUS.ko.md](./docs/STATUS.ko.md).
 
 ## Development

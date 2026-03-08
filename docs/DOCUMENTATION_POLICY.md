@@ -5,9 +5,11 @@
 ## Language Policy
 
 - Public-facing documentation in this repository is **English-primary**.
-- Korean documentation is also required for key public guides as companion docs.
-- This includes `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, and docs entry pages.
-- Companion Korean docs should be kept semantically aligned with English primary docs.
+- Multilingual companion docs are maintained for key public guides.
+- **Supported languages**: English (primary), 한국어 (ko), 日本語 (ja), 简体中文 (zh-CN), Español (es)
+- This includes `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and docs entry pages.
+- Companion docs should be kept semantically aligned with English primary docs.
+- Naming convention: `{filename}.{lang-code}.md` (e.g., `README.ja.md`, `SECURITY.zh-CN.md`)
 
 ## Metrics Consistency Policy
 
