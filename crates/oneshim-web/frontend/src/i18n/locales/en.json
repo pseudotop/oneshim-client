@@ -661,7 +661,10 @@
     "boundaryRetry": "Try Again",
     "serverOffline": "Server is offline",
     "serverOfflineDesc": "Could not connect to the ONESHIM agent. Make sure the agent is running.",
-    "retryConnection": "Retry Connection"
+    "retryConnection": "Retry Connection",
+    "agentUnreachable": "Network error: unable to reach agent",
+    "agentCheck": "Check that the ONESHIM agent is running",
+    "unknownFetchError": "Unknown error fetching metrics"
   },
   "sidebar": {
     "overview": "Overview",

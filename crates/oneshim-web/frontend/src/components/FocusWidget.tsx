@@ -80,7 +80,15 @@ export default function FocusWidget() {
   useEffect(() => {
     fetchFocusMetrics()
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => {
+        if (e instanceof TypeError && e.message.toLowerCase().includes('fetch')) {
+          setError(t('errors.agentUnreachable'))
+        } else if (e instanceof Error) {
+          setError(`${e.message} — ${t('errors.agentCheck')}`)
+        } else {
+          setError(t('errors.unknownFetchError'))
+        }
+      })
       .finally(() => setLoading(false))
   }, [])
 
