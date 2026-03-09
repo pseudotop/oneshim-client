@@ -75,6 +75,7 @@ fn main() {
                 }
             }
         }
+        #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => {
             // macOS dock 아이콘 클릭 시 메인 윈도우 표시
             if let Some(w) = app_handle.get_webview_window("main") {
