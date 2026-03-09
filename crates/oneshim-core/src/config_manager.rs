@@ -270,4 +270,40 @@ mod tests {
         let data_dir = ConfigManager::data_dir();
         assert!(data_dir.is_ok());
     }
+
+    #[test]
+    fn reload_with_corrupted_json_returns_error() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+
+        // Create a valid config so the manager initialises successfully.
+        let manager = ConfigManager::with_path(config_path.clone()).unwrap();
+        assert!(config_path.exists());
+
+        // Overwrite the file with invalid JSON.
+        fs::write(&config_path, r#"{"invalid": }"#).unwrap();
+
+        // reload() must propagate the parse error as a CoreError::Config variant.
+        let result = manager.reload();
+        assert!(
+            result.is_err(),
+            "reload() should return Err when the config file contains invalid JSON"
+        );
+        match result.unwrap_err() {
+            CoreError::Config(msg) => {
+                assert!(
+                    msg.contains("Failed to parse config file"),
+                    "error message should describe the parse failure, got: {msg}"
+                );
+            }
+            other => panic!("expected CoreError::Config, got {other:?}"),
+        }
+
+        // The in-memory config must remain unchanged (still the original defaults).
+        let config = manager.get();
+        assert_eq!(
+            config.web.port, 9090,
+            "in-memory config should not be mutated after a failed reload"
+        );
+    }
 }

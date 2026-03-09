@@ -3,7 +3,7 @@ use oneshim_core::models::event::ContextEvent;
 use oneshim_core::ports::vision::CaptureRequest;
 use oneshim_core::ports::vision::CaptureTrigger;
 use std::sync::Mutex;
-use tracing::debug;
+use tracing::{debug, error};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TriggerType {
@@ -86,7 +86,10 @@ impl CaptureTrigger for SmartCaptureTrigger {
         let mut state = self
             .state
             .lock()
-            .expect("SmartCaptureTrigger state lock was poisoned by a panicking thread");
+            .map_err(|e| {
+                error!("SmartCaptureTrigger state lock poisoned: {e}");
+            })
+            .ok()?;
         let now = event.timestamp;
         let trigger_type = Self::classify_event(event, &state.prev_app_name);
         let importance = self.compute_importance(&trigger_type);
@@ -178,5 +181,46 @@ mod tests {
         assert_eq!(trigger.compute_importance(&TriggerType::ErrorDetected), 0.9);
         assert_eq!(trigger.compute_importance(&TriggerType::ContextSwitch), 0.7);
         assert_eq!(trigger.compute_importance(&TriggerType::Regular), 0.2);
+    }
+
+    /// Verifies that a high throttle_ms value suppresses a second capture attempt
+    /// of the same low-importance event type that arrives before the window expires.
+    ///
+    /// The trigger uses event.timestamp as the clock, so we control the apparent
+    /// wall-clock time by constructing events with explicit timestamps — no real
+    /// sleeping required.
+    #[test]
+    fn throttle_suppresses_second_capture_within_window() {
+        // 10 000 ms throttle — any same-app Regular event within 10 s is suppressed.
+        let trigger = SmartCaptureTrigger::new(10_000);
+
+        let t0 = Utc::now();
+
+        // First call: no prior capture recorded — must produce a CaptureRequest.
+        let event1 = ContextEvent {
+            app_name: "Code".to_string(),
+            window_title: "main.rs".to_string(),
+            prev_app_name: None,
+            timestamp: t0,
+        };
+        let first = trigger.should_capture(&event1);
+        assert!(
+            first.is_some(),
+            "first call with no prior capture should always return Some(CaptureRequest)"
+        );
+
+        // Second call: same app/title, timestamp only 1 ms later — well inside the
+        // 10 000 ms throttle window, importance == Regular (0.2) < 0.8 threshold.
+        let event2 = ContextEvent {
+            app_name: "Code".to_string(),
+            window_title: "main.rs".to_string(),
+            prev_app_name: None,
+            timestamp: t0 + chrono::Duration::milliseconds(1),
+        };
+        let second = trigger.should_capture(&event2);
+        assert!(
+            second.is_none(),
+            "second call within the throttle window for a low-importance event must return None"
+        );
     }
 }

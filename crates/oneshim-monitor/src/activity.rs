@@ -26,7 +26,7 @@ impl ActivityMonitor for ActivityTracker {
             timestamp: Utc::now(),
             active_window,
             processes,
-            mouse_position: get_mouse_position(),
+            mouse_position: get_mouse_position().await,
         };
 
         debug!(
@@ -45,7 +45,7 @@ impl ActivityMonitor for ActivityTracker {
 /// - macOS: Core Graphics API
 /// - Windows: Win32 GetCursorPos
 /// - Linux: xdotool getmouselocation (X11/XWayland)
-fn get_mouse_position() -> Option<MousePosition> {
+async fn get_mouse_position() -> Option<MousePosition> {
     #[cfg(target_os = "macos")]
     {
         crate::macos::get_mouse_position_macos()
@@ -58,7 +58,7 @@ fn get_mouse_position() -> Option<MousePosition> {
 
     #[cfg(target_os = "linux")]
     {
-        crate::linux::get_mouse_position_linux()
+        crate::linux::get_mouse_position_linux().await
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]

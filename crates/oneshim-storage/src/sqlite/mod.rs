@@ -8,13 +8,13 @@ mod tags;
 use oneshim_core::error::CoreError;
 use rusqlite::Connection;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tracing::info;
 
 use crate::migration;
 
 pub struct SqliteStorage {
-    pub(super) conn: Mutex<Connection>,
+    pub(super) conn: Arc<Mutex<Connection>>,
     pub(super) retention_days: u32,
 }
 
@@ -41,7 +41,7 @@ impl SqliteStorage {
         info!("SQLite save initialize: {}", path.display());
 
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
             retention_days,
         })
     }
@@ -55,9 +55,46 @@ impl SqliteStorage {
             .map_err(|e| CoreError::Internal(format!("migration failure: {e}")))?;
 
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
             retention_days,
         })
+    }
+
+    /// 동기 SQLite 읽기/단순 쓰기 연산을 spawn_blocking으로 격리한다.
+    /// 클로저는 커넥션의 공유 참조를 받는다.
+    pub(super) async fn with_conn<F, T>(&self, f: F) -> Result<T, CoreError>
+    where
+        F: FnOnce(&Connection) -> Result<T, CoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let guard = conn
+                .lock()
+                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            f(&guard)
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+    }
+
+    /// 동기 SQLite 트랜잭션 연산을 spawn_blocking으로 격리한다.
+    /// 클로저는 커넥션의 배타적(가변) 참조를 받는다.
+    #[allow(dead_code)]
+    pub(super) async fn with_conn_mut<F, T>(&self, f: F) -> Result<T, CoreError>
+    where
+        F: FnOnce(&mut Connection) -> Result<T, CoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut guard = conn
+                .lock()
+                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            f(&mut guard)
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
     }
 }
 

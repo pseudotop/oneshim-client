@@ -17,8 +17,8 @@ impl IdleTracker {
         }
     }
 
-    pub fn check_idle(&mut self) -> IdleInfo {
-        let idle_secs = get_idle_time().unwrap_or(0);
+    pub async fn check_idle(&mut self) -> IdleInfo {
+        let idle_secs = get_idle_time().await.unwrap_or(0);
         let state = if idle_secs >= self.threshold_secs {
             IdleState::Idle
         } else {
@@ -73,10 +73,10 @@ impl Default for IdleTracker {
     }
 }
 
-pub fn get_idle_time() -> Option<u64> {
+pub async fn get_idle_time() -> Option<u64> {
     #[cfg(target_os = "macos")]
     {
-        crate::macos::get_idle_time_macos()
+        crate::macos::get_idle_time_macos().await
     }
 
     #[cfg(target_os = "windows")]
@@ -86,7 +86,7 @@ pub fn get_idle_time() -> Option<u64> {
 
     #[cfg(target_os = "linux")]
     {
-        crate::linux::get_idle_time_linux()
+        crate::linux::get_idle_time_linux().await
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -112,10 +112,10 @@ mod tests {
         assert_eq!(tracker.threshold_secs(), 60);
     }
 
-    #[test]
-    fn idle_tracker_state_transitions() {
+    #[tokio::test]
+    async fn idle_tracker_state_transitions() {
         let mut tracker = IdleTracker::new(Some(0)); // idle switch
-        let info = tracker.check_idle();
+        let info = tracker.check_idle().await;
         assert!(info.state == IdleState::Idle || info.state == IdleState::Active);
     }
 

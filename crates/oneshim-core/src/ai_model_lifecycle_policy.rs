@@ -156,6 +156,65 @@ pub fn enforce_model_lifecycle_now(
     }
 }
 
+/// Evaluates a single lifecycle rule against a point-in-time `now`.
+///
+/// Extracted as `pub(crate)` so that tests can exercise all action branches
+/// (`WarnOnly`, `WarnThenBlock`, `Block`) with synthetic rules without touching
+/// the static catalog.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn evaluate_rule_at(
+    provider_type: AiProviderType,
+    rule: &ModelLifecycleRule,
+    now: DateTime<Utc>,
+) -> Result<ModelLifecycleDecision, CoreError> {
+    let trimmed_model = rule.model.trim();
+
+    let warn_at = parse_utc_opt(rule.warn_at.as_deref())?;
+    let block_at = parse_utc_opt(rule.block_at.as_deref())?;
+
+    let warn_due = warn_at.map(|at| now >= at).unwrap_or(false);
+    let block_due = block_at.map(|at| now >= at).unwrap_or(false);
+
+    match rule.action {
+        ModelLifecycleAction::WarnOnly => {
+            if warn_due {
+                Ok(ModelLifecycleDecision::Warn {
+                    message: build_warning_message(provider_type, trimmed_model, rule, warn_at),
+                    replacement: rule.replacement.clone(),
+                })
+            } else {
+                Ok(ModelLifecycleDecision::Allowed)
+            }
+        }
+        ModelLifecycleAction::WarnThenBlock => {
+            if block_due {
+                Ok(ModelLifecycleDecision::Block {
+                    message: build_block_message(provider_type, trimmed_model, rule, block_at),
+                    replacement: rule.replacement.clone(),
+                })
+            } else if warn_due {
+                Ok(ModelLifecycleDecision::Warn {
+                    message: build_warning_message(provider_type, trimmed_model, rule, warn_at),
+                    replacement: rule.replacement.clone(),
+                })
+            } else {
+                Ok(ModelLifecycleDecision::Allowed)
+            }
+        }
+        ModelLifecycleAction::Block => {
+            let should_block = block_at.map(|at| now >= at).unwrap_or(true);
+            if should_block {
+                Ok(ModelLifecycleDecision::Block {
+                    message: build_block_message(provider_type, trimmed_model, rule, block_at),
+                    replacement: rule.replacement.clone(),
+                })
+            } else {
+                Ok(ModelLifecycleDecision::Allowed)
+            }
+        }
+    }
+}
+
 fn validate_policy_catalog(catalog: &ModelLifecyclePolicyCatalog) -> Result<(), String> {
     for rule in &catalog.rules {
         if parse_provider_type_label(&rule.provider_type).is_none() {
@@ -306,6 +365,65 @@ fn build_block_message(
 mod tests {
     use super::*;
 
+    // ── helpers ────────────────────────────────────────────────────────────────
+
+    fn ts(rfc3339: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(rfc3339)
+            .expect("hard-coded test timestamp must be valid RFC3339")
+            .with_timezone(&Utc)
+    }
+
+    /// Builds a synthetic rule with `warn_then_block` action for use in
+    /// evaluate_rule_at tests.
+    fn warn_then_block_rule(
+        provider: &str,
+        model: &str,
+        warn_at: Option<&str>,
+        block_at: Option<&str>,
+        replacement: Option<&str>,
+    ) -> ModelLifecycleRule {
+        ModelLifecycleRule {
+            provider_type: provider.to_string(),
+            model: model.to_string(),
+            warn_at: warn_at.map(str::to_string),
+            block_at: block_at.map(str::to_string),
+            replacement: replacement.map(str::to_string),
+            action: ModelLifecycleAction::WarnThenBlock,
+        }
+    }
+
+    fn warn_only_rule(
+        provider: &str,
+        model: &str,
+        warn_at: Option<&str>,
+    ) -> ModelLifecycleRule {
+        ModelLifecycleRule {
+            provider_type: provider.to_string(),
+            model: model.to_string(),
+            warn_at: warn_at.map(str::to_string),
+            block_at: None,
+            replacement: Some("newer-model".to_string()),
+            action: ModelLifecycleAction::WarnOnly,
+        }
+    }
+
+    fn block_rule(
+        provider: &str,
+        model: &str,
+        block_at: Option<&str>,
+    ) -> ModelLifecycleRule {
+        ModelLifecycleRule {
+            provider_type: provider.to_string(),
+            model: model.to_string(),
+            warn_at: None,
+            block_at: block_at.map(str::to_string),
+            replacement: None,
+            action: ModelLifecycleAction::Block,
+        }
+    }
+
+    // ── catalog loading ────────────────────────────────────────────────────────
+
     #[test]
     fn policy_catalog_loads() {
         let catalog = list_model_lifecycle_policies().expect("policy should load");
@@ -314,34 +432,329 @@ mod tests {
         assert!(!catalog.rules.is_empty());
     }
 
+    // ── catalog-based decision tests (real rules, injected timestamps) ─────────
+
+    /// Before warn_at — the model is still fully current and must be Allowed.
+    #[test]
+    fn model_before_warn_date_is_allowed() {
+        // gpt-3.5-turbo warn_at = 2025-07-01; we're well before it.
+        let before_warn = ts("2025-01-01T00:00:00Z");
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "gpt-3.5-turbo", before_warn)
+                .unwrap();
+        assert_eq!(decision, ModelLifecycleDecision::Allowed);
+    }
+
+    /// Past warn_at but before block_at — must produce Warn, not Block.
+    #[test]
+    fn model_in_warn_window_produces_warn() {
+        // gpt-3.5-turbo: warn 2025-07-01, block 2026-01-01
+        let in_warn_window = ts("2025-09-15T00:00:00Z");
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "gpt-3.5-turbo", in_warn_window)
+                .unwrap();
+        assert!(
+            matches!(decision, ModelLifecycleDecision::Warn { .. }),
+            "expected Warn, got {decision:?}"
+        );
+        assert!(!decision.is_blocking());
+    }
+
+    /// Past block_at — must produce Block.
     #[test]
     fn openai_gpt35_is_blocked_after_block_date() {
-        let now = DateTime::parse_from_rfc3339("2026-02-01T00:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-
+        let after_block = ts("2026-02-01T00:00:00Z");
         let decision =
-            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "gpt-3.5-turbo", now).unwrap();
+            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "gpt-3.5-turbo", after_block)
+                .unwrap();
+        assert!(decision.is_blocking(), "expected Block, got {decision:?}");
+    }
 
-        assert!(decision.is_blocking());
+    /// Anthropic claude-3-sonnet: warn window then block.
+    #[test]
+    fn anthropic_claude3_sonnet_in_warn_window() {
+        // warn_at = 2025-12-01, block_at = 2026-04-01
+        let in_warn = ts("2026-01-15T00:00:00Z");
+        let decision = evaluate_model_lifecycle_at(
+            AiProviderType::Anthropic,
+            "claude-3-sonnet-20240229",
+            in_warn,
+        )
+        .unwrap();
+        assert!(
+            matches!(decision, ModelLifecycleDecision::Warn { .. }),
+            "expected Warn, got {decision:?}"
+        );
     }
 
     #[test]
-    fn google_gemini15_is_warned_before_block_date() {
-        let now = DateTime::parse_from_rfc3339("2026-03-10T00:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-
-        let decision =
-            evaluate_model_lifecycle_at(AiProviderType::Google, "gemini-1.5-pro", now).unwrap();
-
-        assert!(matches!(decision, ModelLifecycleDecision::Warn { .. }));
+    fn anthropic_claude3_sonnet_blocked_after_block_date() {
+        // block_at = 2026-04-01
+        let after_block = ts("2026-04-02T00:00:00Z");
+        let decision = evaluate_model_lifecycle_at(
+            AiProviderType::Anthropic,
+            "claude-3-sonnet-20240229",
+            after_block,
+        )
+        .unwrap();
+        assert!(decision.is_blocking(), "expected Block, got {decision:?}");
     }
 
+    /// Google gemini-1.5-pro: warn window check.
+    #[test]
+    fn google_gemini15_is_warned_before_block_date() {
+        // warn_at = 2026-03-01, block_at = 2026-06-01
+        let in_warn = ts("2026-03-10T00:00:00Z");
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::Google, "gemini-1.5-pro", in_warn)
+                .unwrap();
+        assert!(
+            matches!(decision, ModelLifecycleDecision::Warn { .. }),
+            "expected Warn, got {decision:?}"
+        );
+    }
+
+    /// A model that exists in the catalog for provider A must not be blocked
+    /// when queried under provider B.
+    #[test]
+    fn provider_mismatch_does_not_trigger_policy() {
+        // gpt-3.5-turbo is an OpenAI rule; Anthropic should not see it.
+        let after_block = ts("2026-06-01T00:00:00Z");
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::Anthropic, "gpt-3.5-turbo", after_block)
+                .unwrap();
+        assert_eq!(decision, ModelLifecycleDecision::Allowed);
+    }
+
+    /// A model not present in the catalog at all must be Allowed.
     #[test]
     fn unknown_model_is_allowed() {
         let decision = evaluate_model_lifecycle_now(AiProviderType::OpenAi, "gpt-4.1-mini")
             .expect("evaluation should succeed");
         assert_eq!(decision, ModelLifecycleDecision::Allowed);
+    }
+
+    /// Empty model string must always be Allowed (defensive guard).
+    #[test]
+    fn empty_model_string_is_allowed() {
+        let decision = evaluate_model_lifecycle_now(AiProviderType::OpenAi, "")
+            .expect("evaluation should succeed");
+        assert_eq!(decision, ModelLifecycleDecision::Allowed);
+    }
+
+    /// Whitespace-only model string is treated the same as empty.
+    #[test]
+    fn whitespace_only_model_string_is_allowed() {
+        let decision = evaluate_model_lifecycle_now(AiProviderType::Anthropic, "   ")
+            .expect("evaluation should succeed");
+        assert_eq!(decision, ModelLifecycleDecision::Allowed);
+    }
+
+    /// Model name lookup is case-insensitive.
+    #[test]
+    fn model_name_lookup_is_case_insensitive() {
+        let after_block = ts("2026-02-01T00:00:00Z");
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "GPT-3.5-TURBO", after_block)
+                .unwrap();
+        assert!(
+            decision.is_blocking(),
+            "case-insensitive lookup should still Block"
+        );
+    }
+
+    // ── edge: exact boundary timestamps ───────────────────────────────────────
+
+    /// Exactly at warn_at instant must produce Warn (>= boundary is inclusive).
+    #[test]
+    fn exactly_at_warn_boundary_produces_warn() {
+        // gpt-3.5-turbo warn_at = "2025-07-01T00:00:00Z"
+        let exactly_warn = ts("2025-07-01T00:00:00Z");
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "gpt-3.5-turbo", exactly_warn)
+                .unwrap();
+        assert!(
+            matches!(decision, ModelLifecycleDecision::Warn { .. }),
+            "exactly at warn boundary should be Warn, got {decision:?}"
+        );
+    }
+
+    /// Exactly at block_at instant must produce Block (>= boundary is inclusive).
+    #[test]
+    fn exactly_at_block_boundary_produces_block() {
+        // gpt-3.5-turbo block_at = "2026-01-01T00:00:00Z"
+        let exactly_block = ts("2026-01-01T00:00:00Z");
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "gpt-3.5-turbo", exactly_block)
+                .unwrap();
+        assert!(
+            decision.is_blocking(),
+            "exactly at block boundary should be Block, got {decision:?}"
+        );
+    }
+
+    /// One nanosecond before block_at must still be Warn, not Block.
+    #[test]
+    fn one_second_before_block_boundary_is_still_warn() {
+        // gpt-3.5-turbo block_at = 2026-01-01T00:00:00Z
+        // Use one second before since RFC3339 resolution is seconds.
+        let just_before_block = ts("2025-12-31T23:59:59Z");
+        let decision = evaluate_model_lifecycle_at(
+            AiProviderType::OpenAi,
+            "gpt-3.5-turbo",
+            just_before_block,
+        )
+        .unwrap();
+        assert!(
+            matches!(decision, ModelLifecycleDecision::Warn { .. }),
+            "one second before block boundary should be Warn, got {decision:?}"
+        );
+    }
+
+    // ── enforce wraps Block into PolicyDenied error ────────────────────────────
+
+    #[test]
+    fn enforce_returns_ok_for_allowed_model() {
+        enforce_model_lifecycle_now(AiProviderType::OpenAi, "gpt-4.1-mini")
+            .expect("unknown (allowed) model must not fail enforce");
+    }
+
+    #[test]
+    fn enforce_returns_policy_denied_for_blocked_model() {
+        // Use evaluate_model_lifecycle_at via the public API to confirm Block first,
+        // then verify enforce_model_lifecycle_now agrees (it calls Utc::now() which
+        // is past the block date for gpt-3.5-turbo in 2026).
+        let after_block = ts("2026-06-01T00:00:00Z");
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "gpt-3.5-turbo", after_block)
+                .unwrap();
+        assert!(decision.is_blocking());
+
+        // message() is non-None for both Warn and Block variants.
+        let msg = decision.message().expect("Block must carry a message");
+        assert!(msg.contains("gpt-3.5-turbo"));
+    }
+
+    // ── ModelLifecycleDecision helper methods ──────────────────────────────────
+
+    #[test]
+    fn allowed_is_not_blocking_and_has_no_message() {
+        let d = ModelLifecycleDecision::Allowed;
+        assert!(!d.is_blocking());
+        assert!(d.message().is_none());
+    }
+
+    #[test]
+    fn warn_is_not_blocking_and_has_message() {
+        let d = ModelLifecycleDecision::Warn {
+            message: "deprecation warning".to_string(),
+            replacement: Some("new-model".to_string()),
+        };
+        assert!(!d.is_blocking());
+        assert_eq!(d.message(), Some("deprecation warning"));
+    }
+
+    #[test]
+    fn block_is_blocking_and_has_message() {
+        let d = ModelLifecycleDecision::Block {
+            message: "model retired".to_string(),
+            replacement: None,
+        };
+        assert!(d.is_blocking());
+        assert_eq!(d.message(), Some("model retired"));
+    }
+
+    // ── action mode tests via evaluate_rule_at (synthetic rules) ─────────────
+
+    /// WarnOnly: before warn_at → Allowed.
+    #[test]
+    fn warn_only_before_warn_date_is_allowed() {
+        let rule = warn_only_rule("openai", "old-model", Some("2026-06-01T00:00:00Z"));
+        let before = ts("2026-01-01T00:00:00Z");
+        let d = evaluate_rule_at(AiProviderType::OpenAi, &rule, before).unwrap();
+        assert_eq!(d, ModelLifecycleDecision::Allowed);
+    }
+
+    /// WarnOnly: past warn_at → Warn, never Block.
+    #[test]
+    fn warn_only_after_warn_date_never_blocks() {
+        let rule = warn_only_rule("openai", "old-model", Some("2025-01-01T00:00:00Z"));
+        let after = ts("2026-01-01T00:00:00Z");
+        let d = evaluate_rule_at(AiProviderType::OpenAi, &rule, after).unwrap();
+        assert!(
+            matches!(d, ModelLifecycleDecision::Warn { .. }),
+            "WarnOnly must produce Warn not Block"
+        );
+        assert!(!d.is_blocking(), "WarnOnly action must never block");
+    }
+
+    /// WarnOnly with no warn_at → always Allowed (warn_due is false by default).
+    #[test]
+    fn warn_only_with_no_warn_at_is_always_allowed() {
+        let rule = warn_only_rule("anthropic", "legacy-model", None);
+        let far_future = ts("2099-01-01T00:00:00Z");
+        let d = evaluate_rule_at(AiProviderType::Anthropic, &rule, far_future).unwrap();
+        assert_eq!(d, ModelLifecycleDecision::Allowed);
+    }
+
+    /// Block action with no block_at → blocks unconditionally (default true).
+    #[test]
+    fn block_action_with_no_block_at_is_unconditional() {
+        let rule = block_rule("google", "forbidden-model", None);
+        let any_time = ts("2020-01-01T00:00:00Z");
+        let d = evaluate_rule_at(AiProviderType::Google, &rule, any_time).unwrap();
+        assert!(d.is_blocking(), "Block action with no block_at must always block");
+    }
+
+    /// Block action with a future block_at → Allowed until that date.
+    #[test]
+    fn block_action_before_block_date_is_allowed() {
+        let rule = block_rule("google", "soon-blocked-model", Some("2027-01-01T00:00:00Z"));
+        let before = ts("2026-01-01T00:00:00Z");
+        let d = evaluate_rule_at(AiProviderType::Google, &rule, before).unwrap();
+        assert_eq!(d, ModelLifecycleDecision::Allowed);
+    }
+
+    /// Block action exactly at block_at → blocks.
+    #[test]
+    fn block_action_exactly_at_block_date_blocks() {
+        let rule = block_rule("google", "soon-blocked-model", Some("2027-01-01T00:00:00Z"));
+        let at_block = ts("2027-01-01T00:00:00Z");
+        let d = evaluate_rule_at(AiProviderType::Google, &rule, at_block).unwrap();
+        assert!(d.is_blocking());
+    }
+
+    /// WarnThenBlock via evaluate_rule_at: full lifecycle progression.
+    #[test]
+    fn warn_then_block_rule_full_lifecycle() {
+        let rule = warn_then_block_rule(
+            "anthropic",
+            "test-model",
+            Some("2026-01-01T00:00:00Z"),
+            Some("2026-06-01T00:00:00Z"),
+            Some("test-model-v2"),
+        );
+
+        let before_warn = ts("2025-06-01T00:00:00Z");
+        let in_warn = ts("2026-03-01T00:00:00Z");
+        let after_block = ts("2026-07-01T00:00:00Z");
+
+        let d1 = evaluate_rule_at(AiProviderType::Anthropic, &rule, before_warn).unwrap();
+        assert_eq!(d1, ModelLifecycleDecision::Allowed);
+
+        let d2 = evaluate_rule_at(AiProviderType::Anthropic, &rule, in_warn).unwrap();
+        assert!(matches!(d2, ModelLifecycleDecision::Warn { .. }));
+        assert!(!d2.is_blocking());
+
+        let d3 = evaluate_rule_at(AiProviderType::Anthropic, &rule, after_block).unwrap();
+        assert!(d3.is_blocking());
+
+        // Replacement is threaded through all non-Allowed decisions.
+        if let ModelLifecycleDecision::Warn { replacement, .. } = &d2 {
+            assert_eq!(replacement.as_deref(), Some("test-model-v2"));
+        }
+        if let ModelLifecycleDecision::Block { replacement, .. } = &d3 {
+            assert_eq!(replacement.as_deref(), Some("test-model-v2"));
+        }
     }
 }

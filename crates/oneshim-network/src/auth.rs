@@ -1,9 +1,12 @@
 use chrono::{DateTime, Duration, Utc};
+use oneshim_core::config::TlsConfig;
 use oneshim_core::error::CoreError;
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
+
+use crate::http_client::build_reqwest_client;
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
@@ -27,12 +30,57 @@ pub struct TokenManager {
 }
 
 impl TokenManager {
+    /// Legacy constructor — uses a default `reqwest::Client` with no TLS policy.
+    ///
+    /// Prefer [`TokenManager::new_with_tls`] in production code so that the
+    /// same TLS settings (HTTPS-only, self-signed cert policy) are applied to
+    /// credential requests as to all other network calls.
+    ///
+    /// This constructor is retained for backward compatibility and unit tests
+    /// that talk to `mockito` HTTP servers.
     pub fn new(base_url: &str) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             client: reqwest::Client::new(),
             state: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Preferred production constructor — accepts a pre-built `reqwest::Client`
+    /// so the caller can apply the canonical TLS policy via
+    /// [`build_reqwest_client`].
+    ///
+    /// # Example
+    /// ```no_run
+    /// use oneshim_network::auth::TokenManager;
+    /// use oneshim_network::http_client::build_reqwest_client;
+    /// use oneshim_core::config::TlsConfig;
+    ///
+    /// let tls = TlsConfig::default();
+    /// let client = build_reqwest_client(&tls, None).unwrap();
+    /// let tm = TokenManager::new_with_client("https://api.example.com", client);
+    /// ```
+    pub fn new_with_client(base_url: &str, client: reqwest::Client) -> Self {
+        Self {
+            base_url: base_url.trim_end_matches('/').to_string(),
+            client,
+            state: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Convenience constructor that builds a TLS-aware `reqwest::Client`
+    /// internally using the canonical [`build_reqwest_client`] helper.
+    ///
+    /// `timeout` is applied as a per-request timeout.  Pass `None` to omit a
+    /// global timeout (not recommended for auth endpoints — they should be
+    /// short-lived).
+    pub fn new_with_tls(
+        base_url: &str,
+        tls: &TlsConfig,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<Self, CoreError> {
+        let client = build_reqwest_client(tls, timeout)?;
+        Ok(Self::new_with_client(base_url, client))
     }
 
     /// # Arguments
@@ -209,6 +257,39 @@ mod tests {
     fn token_manager_trailing_slash() {
         let tm = TokenManager::new("http://localhost:8000/");
         assert_eq!(tm.base_url, "http://localhost:8000");
+    }
+
+    #[test]
+    fn new_with_client_strips_trailing_slash() {
+        let client = reqwest::Client::new();
+        let tm = TokenManager::new_with_client("http://localhost:8000/", client);
+        assert_eq!(tm.base_url, "http://localhost:8000");
+    }
+
+    #[test]
+    fn new_with_tls_tls_disabled_succeeds() {
+        let tls = TlsConfig {
+            enabled: false,
+            allow_self_signed: false,
+        };
+        let tm = TokenManager::new_with_tls(
+            "http://localhost:8000",
+            &tls,
+            Some(std::time::Duration::from_secs(5)),
+        );
+        assert!(tm.is_ok());
+        assert_eq!(tm.unwrap().base_url, "http://localhost:8000");
+    }
+
+    #[test]
+    fn new_with_tls_tls_enabled_succeeds() {
+        let tls = TlsConfig::default();
+        let tm = TokenManager::new_with_tls(
+            "https://api.example.com",
+            &tls,
+            Some(std::time::Duration::from_secs(5)),
+        );
+        assert!(tm.is_ok());
     }
 
     #[tokio::test]

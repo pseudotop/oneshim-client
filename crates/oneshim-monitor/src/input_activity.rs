@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use oneshim_core::models::event::{InputActivityEvent, KeyboardActivity, MouseActivity};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
+use tracing::error;
 
 pub struct InputActivityCollector {
     period_start: Mutex<DateTime<Utc>>,
@@ -109,13 +110,17 @@ impl InputActivityCollector {
         let now = Utc::now();
 
         let period_secs = {
-            let mut start = self
-                .period_start
-                .lock()
-                .expect("InputActivityCollector period_start lock was poisoned");
-            let duration = (now - *start).num_seconds().max(1) as u32;
-            *start = now;
-            duration
+            match self.period_start.lock() {
+                Ok(mut start) => {
+                    let duration = (now - *start).num_seconds().max(1) as u32;
+                    *start = now;
+                    duration
+                }
+                Err(e) => {
+                    error!("InputActivityCollector period_start lock poisoned: {e}");
+                    1 // safe fallback: treat as a 1-second period
+                }
+            }
         };
 
         let app_name = self

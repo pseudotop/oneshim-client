@@ -23,9 +23,9 @@ fn is_retryable(error: &CoreError) -> bool {
     )
 }
 
-fn map_reqwest_error(e: reqwest::Error, context: &str) -> CoreError {
+fn map_reqwest_error(e: reqwest::Error, context: &str, timeout_ms: u64) -> CoreError {
     if e.is_timeout() {
-        CoreError::RequestTimeout { timeout_ms: 0 }
+        CoreError::RequestTimeout { timeout_ms }
     } else {
         CoreError::Network(format!("{context}: {e}"))
     }
@@ -36,6 +36,7 @@ pub struct HttpApiClient {
     base_url: String,
     token_manager: Arc<TokenManager>,
     max_retries: u32,
+    timeout_ms: u64,
 }
 
 /// TLS 설정을 적용하여 reqwest 클라이언트를 생성하는 헬퍼 함수
@@ -87,6 +88,7 @@ impl HttpApiClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             token_manager,
             max_retries: DEFAULT_MAX_RETRIES,
+            timeout_ms: timeout.as_millis() as u64,
         })
     }
 
@@ -105,6 +107,7 @@ impl HttpApiClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             token_manager,
             max_retries: DEFAULT_MAX_RETRIES,
+            timeout_ms: timeout.as_millis() as u64,
         })
     }
 
@@ -208,7 +211,7 @@ impl ApiClient for HttpApiClient {
                 .json(&body)
                 .send()
                 .await
-                .map_err(|e| map_reqwest_error(e, "session create request failure"))?;
+                .map_err(|e| map_reqwest_error(e, "session create request failure", self.timeout_ms))?;
 
             let resp = self.check_response(resp).await?;
             let session: SessionCreateResponse = resp.json().await.map_err(|e| {
@@ -233,7 +236,7 @@ impl ApiClient for HttpApiClient {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| map_reqwest_error(e, "session ended request failure"))?;
+                .map_err(|e| map_reqwest_error(e, "session ended request failure", self.timeout_ms))?;
 
             self.check_response(resp).await?;
             debug!("session ended success");
@@ -254,7 +257,7 @@ impl ApiClient for HttpApiClient {
                 .json(batch)
                 .send()
                 .await
-                .map_err(|e| map_reqwest_error(e, "batch upload request failure"))?;
+                .map_err(|e| map_reqwest_error(e, "batch upload request failure", self.timeout_ms))?;
 
             self.check_response(resp).await?;
             debug!("batch upload success");
@@ -275,7 +278,7 @@ impl ApiClient for HttpApiClient {
                 .json(upload)
                 .send()
                 .await
-                .map_err(|e| map_reqwest_error(e, "context upload failure"))?;
+                .map_err(|e| map_reqwest_error(e, "context upload failure", self.timeout_ms))?;
 
             self.check_response(resp).await?;
             Ok(())
@@ -298,7 +301,7 @@ impl ApiClient for HttpApiClient {
                 .json(feedback)
                 .send()
                 .await
-                .map_err(|e| map_reqwest_error(e, "feedback sent failure"))?;
+                .map_err(|e| map_reqwest_error(e, "feedback sent failure", self.timeout_ms))?;
 
             self.check_response(resp).await?;
             Ok(())
@@ -318,7 +321,7 @@ impl ApiClient for HttpApiClient {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| map_reqwest_error(e, "heartbeat sent failure"))?;
+                .map_err(|e| map_reqwest_error(e, "heartbeat sent failure", self.timeout_ms))?;
 
             self.check_response(resp).await?;
             Ok(())
