@@ -34,12 +34,12 @@ cargo fmt --check
 
 | Crate | Tests | Status |
 |-------|------:|--------|
-| oneshim-core | 74 | pass |
-| oneshim-network | 87 + 3 | pass |
+| oneshim-core | 106 | pass |
+| oneshim-network | 91 + 3 | pass |
 | oneshim-suggestion | 17 | pass |
 | oneshim-storage | 42 | pass |
 | oneshim-monitor | 39 | pass |
-| oneshim-vision | 84 | pass |
+| oneshim-vision | 85 | pass |
 | oneshim-ui | 37 | pass |
 | oneshim-web | 129 | pass |
 | oneshim-automation | 203 | pass |
@@ -47,19 +47,19 @@ cargo fmt --check
 | oneshim-app (integration) | 32 | pass (4 ignored) |
 | oneshim-api-contracts | 8 | pass |
 | language-check | 4 | pass |
-| **Total** | **852** | **0 failed** |
+| **Total** | **882** | **0 failed** |
 
 ### Build & Lint
 
 - `cargo check --workspace`: pass
-- `cargo clippy --workspace --tests`: pass (2 pre-existing `type_complexity` warnings in `oneshim-app`, 8 `assert_constant` warnings in `oneshim-automation` tests)
+- `cargo clippy --workspace --tests`: pass (0 warnings)
 - `cargo fmt --check`: pass
 - E2E tests: See latest Playwright CI report for exact count
 
 ### CI/CD
 
 - Latest CI workflow run: success (`CI`) — [Run 22820191743](https://github.com/pseudotop/oneshim-client/actions/runs/22820191743) (2026-03-08)
-- Latest Release workflow run: pending (`Release`, tag `v0.3.0`) (2026-03-09)
+- Latest Release workflow run: pending (`Release`, tag `v0.3.1`) (2026-03-09)
 - UI/UX QA run records: `docs/qa/runs/2026-02-23-uiux-qa-rc3.md` (latest tracked run evidence)
 
 ### Recent Changes (Agent Review Batch 1-5, 2026-03-08)

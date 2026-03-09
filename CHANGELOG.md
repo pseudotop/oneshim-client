@@ -6,64 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Changed
 
-- Update [Unreleased] [skip ci]
+## [0.3.1] - 2026-03-09
 
-- Add ADR-007 (async safety), ADR-008 (network resilience), update ADR-001
+### Added
 
-- Async runtime safety (ADR-007 implementation)
-  SQLite spawn_blocking:
-  - Change SqliteStorage.conn to Arc<Mutex<Connection>>
-  - Add with_conn() helper for spawn_blocking isolation
-  - Refactor all async methods in events.rs and metrics.rs
-
-- Document Hexagonal Architecture violations in oneshim-web (P4)
-  oneshim-web has adapter-to-adapter deps on oneshim-storage (1 file,
-  14 row types) and oneshim-automation (7 files, 5 types). These are
-  documented violations per ADR-001 §7, scheduled for migration when
-  port traits (AuditLogPort, AutomationPort) and row type promotion
-  to oneshim-core are implemented.
-
-  Added crate-level doc block with migration prerequisites and steps.
-
-- Split config/sections.rs (991L) into directory module (ADR-003)
-  sections.rs had 21 structs in 991 lines — the most egregious
-  ADR-003 violation. Split into 6 domain-grouped files:
-
-  - network.rs (151L): TlsConfig, ServerConfig, GrpcConfig, WebConfig
-  - monitoring.rs (173L): MonitorConfig, VisionConfig, ScheduleConfig, FileAccessConfig
-  - ai_validation.rs (243L): OcrValidationConfig, SceneActionOverride, SceneIntelligence
-  - ai.rs (146L): AiProviderConfig + validation
-  - privacy.rs (83L): PrivacyConfig, SandboxConfig, AutomationConfig
-  - storage.rs (258L): StorageConfig, IntegrityConfig, Telemetry, Notification, Update
-
-  All sub-files under 300 lines. All pub types re-exported via mod.rs.
-  Zero breaking changes — all consumers continue to compile unchanged.
-
+- **ADR-007: Async Runtime Safety Patterns**: `spawn_blocking` for blocking I/O, `tokio::process::Command` for subprocesses, lock poisoning graceful handling
+- **ADR-008: Network Resilience Patterns**: Exponential backoff with jitter, token refresh de-duplication, circuit breaker, rate limit header parsing
+- **ADR-001 update**: §7 Port Location Rules (ports must live in oneshim-core), §8 Port Contract Testing macro pattern, updated dependency diagram
+- **26 new tests**: `ai_model_lifecycle_policy` (24 tests covering Allowed/Warn/Block lifecycle), `ConfigManager::reload()` corrupted JSON, `BatchUploader` failure path with `failed_batches` counter, `SmartCaptureTrigger` throttle suppression
 
 ### Fixed
 
-- Security and error handling improvements (P2)
-  TokenManager TLS enforcement:
-  - Add new_with_tls() and new_with_client() constructors
-  - Update call sites in main.rs and setup.rs to use TLS config
-  - Credentials now respect the same TLS policy as HttpApiClient
+- **Async runtime safety (ADR-007)**: SQLite operations wrapped in `spawn_blocking` via `with_conn()` helper; `std::process::Command` → `tokio::process::Command` with 5s timeout in monitor crate; lock poisoning `.expect()` → graceful `.map_err()` in trigger.rs and input_activity.rs
+- **TokenManager TLS enforcement**: Add `new_with_tls()` constructor; credentials now respect same TLS policy as `HttpApiClient`
+- **Silent deserialization drops**: Add `tracing::warn!` for corrupt event rows in `get_events`/`get_pending_events` (previously silently dropped)
+- **RequestTimeout accuracy**: Store actual `timeout_ms` on `HttpApiClient`; `RequestTimeout` variant now reports real configured timeout instead of hardcoded 0
 
-  Silent deserialization fix:
-  - Add tracing::warn! for corrupt event rows in get_events/get_pending_events
-  - Previously silently dropped via .ok()
+### Changed
 
-  RequestTimeout accuracy:
-  - Store timeout_ms on HttpApiClient struct
-  - Pass actual timeout value to map_reqwest_error
-  - RequestTimeout variant now reports real configured timeout
-
-  856 tests pass, 0 failures (+4 new TokenManager tests).
-
-
-## [Unreleased]
-## [Unreleased]
+- **Code atomization (ADR-003)**: Split `config/sections.rs` (991L, 21 structs) into 6 domain-grouped files (83–258L each): network.rs, monitoring.rs, ai.rs, ai_validation.rs, privacy.rs, storage.rs
+- **Hex Architecture documentation**: Documented `oneshim-web` adapter-to-adapter violations with migration prerequisites (P4 — deferred to dedicated sprint)
 
 ## [0.3.0] - 2026-03-09
 
@@ -260,7 +223,9 @@ Each version entry must include:
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/pseudotop/oneshim-client/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/pseudotop/oneshim-client/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pseudotop/oneshim-client/compare/v0.1.7...v0.2.0
 [0.1.7]: https://github.com/pseudotop/oneshim-client/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/pseudotop/oneshim-client/compare/v0.1.5...v0.1.6
