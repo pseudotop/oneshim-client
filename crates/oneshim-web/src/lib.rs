@@ -19,11 +19,11 @@
 //!   `oneshim-core`:
 //!   - `AuditLogger`, `AuditStatus`, `AuditEntry`, `AuditLevel`
 //!     → blocked until an `AuditLogPort` trait is defined in
-//!       `oneshim-core/src/ports/audit_log.rs`
+//!     `oneshim-core/src/ports/audit_log.rs`
 //!   - `AutomationController` (methods: `execute_intent`, `execute_intent_hint`,
 //!     `run_workflow`, `gui_*` methods, `analyze_scene`)
 //!     → blocked until an `AutomationPort` trait is defined in
-//!       `oneshim-core/src/ports/automation.rs`
+//!     `oneshim-core/src/ports/automation.rs`
 //!   - `GuiInteractionError`, `GuiExecutionResult`
 //!     → should become associated types or `CoreError` variants in `oneshim-core`
 //!   - `builtin_presets()` function
