@@ -14,7 +14,7 @@ Expected: app starts without server/auth dependency.
 
 ## 2. Open local dashboard
 
-- URL: `http://localhost:9090`
+- URL: `http://localhost:10090`
 - Verify dashboard panels load (metrics, timeline, focus).
 
 ## 3. Keep privacy baseline

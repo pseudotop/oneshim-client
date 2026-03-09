@@ -58,7 +58,7 @@ For version pinning, signature enforcement, and uninstall:
 ./scripts/cargo-cache.sh run -p oneshim-app -- --offline
 
 # 2) Open local dashboard
-# http://localhost:9090
+# http://localhost:10090
 ```
 
 Standalone mode is available now.
@@ -92,7 +92,7 @@ Standalone mode remains the production-ready default path for release use.
 - **Auto-Update**: Automatic updates based on GitHub Releases
 - **Cross-Platform**: Supports macOS, Windows, and Linux
 
-### Local Web Dashboard (http://localhost:9090)
+### Local Web Dashboard (http://localhost:10090)
 - **Dashboard**: Real-time system metrics, CPU/memory charts, app usage time
 - **Timeline**: Screenshot timeline, tag filtering, lightbox viewer
 - **Reports**: Weekly/monthly activity reports, productivity analysis
@@ -293,7 +293,7 @@ Download from [Releases](https://github.com/pseudotop/oneshim-client/releases):
   },
   "web": {
     "enabled": true,
-    "port": 9090,
+    "port": 10090,
     "allow_external": false
   },
   "notification": {

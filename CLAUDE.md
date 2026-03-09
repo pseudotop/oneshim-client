@@ -270,7 +270,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - 32 cross-crate integration tests (`crates/oneshim-app/tests/`)
 - `cargo check/test/clippy/fmt` pass status is tracked in `docs/STATUS.md`
 - **GA Ready**: CI/CD, installers, documentation completed
-- **Web Dashboard**: Available at http://localhost:9090
+- **Web Dashboard**: Available at http://localhost:10090
 - **Notification System**: Desktop notifications (idle, long session, high usage)
 
 ### Implementation Phases

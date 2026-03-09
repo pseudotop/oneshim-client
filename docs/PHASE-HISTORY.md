@@ -35,7 +35,7 @@ Detailed changelog of each implementation phase. For current crate structure and
 - ThemeContext, Tailwind dark mode, localStorage persistence
 
 ## Phase 18 (Frontend Build Embedding + Auto Port)
-- rust-embed for SPA, auto port finding (9090-9099)
+- rust-embed for SPA, auto port finding (10090-10099)
 
 ## Phase 19 (Timeline + Keyboard Shortcuts)
 - Lightbox, keyboard navigation, global shortcuts (D/T/S/P/?)

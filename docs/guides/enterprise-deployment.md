@@ -25,9 +25,9 @@ ONESHIM requires outbound access from endpoints to:
 |------|----------|---------|----------|
 | 443 | HTTPS/TLS | REST API + SSE suggestions | Yes |
 | 50051 | gRPC/TLS | Real-time context upload (when `grpc_enabled = true`) | Conditional |
-| 9090 | HTTP | Local web dashboard (loopback only) | No — localhost only |
+| 10090 | HTTP | Local web dashboard (loopback only) | No — localhost only |
 
-Port 9090 binds to `127.0.0.1` only. No firewall rule is required for the dashboard.
+Port 10090 binds to `127.0.0.1` only. No firewall rule is required for the dashboard.
 
 gRPC fallback ports (50052, 50053) are attempted automatically if 50051 fails. Configure your firewall to permit the full range if you enable gRPC.
 

@@ -85,7 +85,7 @@ sqlite3 ~/Library/Application\ Support/oneshim/data/oneshim.db \
 1. Stop ONESHIM (quit from system tray or kill the process).
 2. Install the new version using your platform's installer.
 3. Start ONESHIM. Schema migrations run automatically at startup.
-4. Verify the application starts and the dashboard loads at `http://localhost:9090`.
+4. Verify the application starts and the dashboard loads at `http://localhost:10090`.
 
 ### Major Version Upgrade
 

@@ -7,7 +7,7 @@ A practical rollout checklist for operating ONESHIM in standalone-first mode.
 ## Day 0 (setup)
 
 1. Run `cargo run -p oneshim-app -- --offline`.
-2. Open dashboard at `http://localhost:9090`.
+2. Open dashboard at `http://localhost:10090`.
 3. In Settings:
 - keep sandbox enabled (`Standard` or `Strict`),
 - set `external_data_policy` to `PiiFilterStandard` or stricter,

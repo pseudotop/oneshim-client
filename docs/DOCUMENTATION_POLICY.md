@@ -9,7 +9,7 @@
 - **Supported languages**: English (primary), 한국어 (ko), 日本語 (ja), 简体中文 (zh-CN), Español (es)
 - This includes `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and docs entry pages.
 - Companion docs should be kept semantically aligned with English primary docs.
-- Naming convention: `{filename}.{lang-code}.md` (e.g., `README.ja.md`, `SECURITY.zh-CN.md`)
+- Naming convention: `{filename}.{lang-code}.md` (e.g., `README.ja.md`, `README.zh-CN.md`)
 
 ## Metrics Consistency Policy
 

@@ -58,7 +58,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
 ./scripts/cargo-cache.sh run -p oneshim-app -- --offline
 
 # 2) 로컬 대시보드 열기
-# http://localhost:9090
+# http://localhost:10090
 ```
 
 Standalone 모드는 현재 사용 가능합니다.
@@ -92,7 +92,7 @@ Connected 모드는 opt-in 프리뷰 경로로만 제공됩니다.
 - **자동 업데이트**: GitHub Releases 기반 자동 업데이트
 - **크로스 플랫폼**: macOS, Windows, Linux를 지원합니다
 
-### 로컬 웹 대시보드 (http://localhost:9090)
+### 로컬 웹 대시보드 (http://localhost:10090)
 - **대시보드**: 실시간 시스템 지표, CPU/메모리 차트, 앱 사용 시간
 - **타임라인**: 스크린샷 타임라인, 태그 필터링, 라이트박스 뷰어
 - **리포트**: 주간/월간 활동 리포트, 생산성 분석
@@ -278,7 +278,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
   },
   "web": {
     "enabled": true,
-    "port": 9090,
+    "port": 10090,
     "allow_external": false
   },
   "notification": {
@@ -303,7 +303,7 @@ oneshim-client/
 │   ├── oneshim-storage/    # SQLite 로컬 저장소
 │   ├── oneshim-monitor/    # 시스템 모니터링
 │   ├── oneshim-vision/     # 이미지 처리 (Edge)
-│   ├── oneshim-ui/         # 데스크톱 UI (iced)
+│   ├── ~~oneshim-ui/~~     # ~~데스크톱 UI (iced)~~ — v0.1.5에서 제거 (Tauri v2)
 │   ├── oneshim-web/        # 로컬 웹 대시보드 (Axum + React)
 │   └── oneshim-app/        # 바이너리 진입점
 └── docs/
@@ -322,7 +322,7 @@ oneshim-client/
 | oneshim-monitor | 시스템 지표, 활성 창 | [상세](./docs/crates/oneshim-monitor.md) |
 | oneshim-storage | SQLite, 오프라인 저장소 | [상세](./docs/crates/oneshim-storage.md) |
 | oneshim-suggestion | 제안 큐, 피드백 | [상세](./docs/crates/oneshim-suggestion.md) |
-| oneshim-ui | 시스템 트레이, 알림, 창 관리 | [상세](./docs/crates/oneshim-ui.md) |
+| ~~oneshim-ui~~ | ~~시스템 트레이, 알림, 창 관리~~ — v0.1.5에서 제거 (Tauri v2) | [Deprecated](./docs/crates/oneshim-ui.md) |
 | oneshim-web | 로컬 웹 대시보드, REST API | [상세](./docs/crates/oneshim-web.md) |
 | oneshim-app | DI, 스케줄러, 자동 업데이트 | [상세](./docs/crates/oneshim-app.md) |
 

@@ -98,7 +98,7 @@ Tauri v2 enforces a Content Security Policy configured in `src-tauri/tauri.conf.
 
 ```json
 "security": {
-  "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' http://127.0.0.1:9090; object-src 'none'; base-uri 'self'",
+  "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' http://127.0.0.1:10090; object-src 'none'; base-uri 'self'",
   "dangerousDisableAssetCspModification": false
 }
 ```
@@ -106,7 +106,7 @@ Tauri v2 enforces a Content Security Policy configured in `src-tauri/tauri.conf.
 Key points:
 
 - `script-src 'self'`: Only scripts bundled with the application can execute. No inline scripts, no external CDN scripts.
-- `connect-src 'self' http://127.0.0.1:9090`: The frontend may only fetch from the embedded assets and the local Axum web server. No arbitrary external connections from the WebView.
+- `connect-src 'self' http://127.0.0.1:10090`: The frontend may only fetch from the embedded assets and the local Axum web server. No arbitrary external connections from the WebView.
 - `object-src 'none'`: Plugin objects (Flash etc.) are blocked.
 - `dangerousDisableAssetCspModification: false`: Tauri enforces CSP even if the frontend tries to modify it.
 

@@ -58,7 +58,7 @@ Para fijar versiones, verificación de firmas y desinstalación:
 ./scripts/cargo-cache.sh run -p oneshim-app -- --offline
 
 # 2) Abrir el panel local
-# http://localhost:9090
+# http://localhost:10090
 ```
 
 El modo autónomo está disponible ahora.
@@ -92,7 +92,7 @@ El modo autónomo sigue siendo la ruta predeterminada lista para producción en 
 - **Actualización Automática**: Actualizaciones automáticas basadas en GitHub Releases
 - **Multiplataforma**: Compatible con macOS, Windows y Linux
 
-### Panel Web Local (http://localhost:9090)
+### Panel Web Local (http://localhost:10090)
 - **Panel de Control**: Métricas del sistema en tiempo real, gráficos de CPU/memoria, tiempo de uso de aplicaciones
 - **Cronología**: Cronología de capturas de pantalla, filtrado por etiquetas, visor lightbox
 - **Informes**: Informes de actividad semanales/mensuales, análisis de productividad
@@ -293,7 +293,7 @@ Descargue desde [Releases](https://github.com/pseudotop/oneshim-client/releases)
   },
   "web": {
     "enabled": true,
-    "port": 9090,
+    "port": 10090,
     "allow_external": false
   },
   "notification": {

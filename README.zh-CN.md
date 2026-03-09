@@ -58,7 +58,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
 ./scripts/cargo-cache.sh run -p oneshim-app -- --offline
 
 # 2) 打开本地仪表盘
-# http://localhost:9090
+# http://localhost:10090
 ```
 
 独立模式现已可用。
@@ -92,7 +92,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
 - **自动更新**: 基于 GitHub Releases 的自动更新
 - **跨平台**: 支持 macOS、Windows 和 Linux
 
-### 本地 Web 仪表盘 (http://localhost:9090)
+### 本地 Web 仪表盘 (http://localhost:10090)
 - **仪表盘**: 实时系统指标、CPU/内存图表、应用使用时长
 - **时间线**: 截图时间线、标签过滤、灯箱查看器
 - **报告**: 每周/每月活动报告、生产力分析
@@ -293,7 +293,7 @@ powershell -ExecutionPolicy Bypass -File $tmp
   },
   "web": {
     "enabled": true,
-    "port": 9090,
+    "port": 10090,
     "allow_external": false
   },
   "notification": {

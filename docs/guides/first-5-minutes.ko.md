@@ -14,7 +14,7 @@ cargo run -p oneshim-app -- --offline
 
 ## 2. 로컬 대시보드 접속
 
-- URL: `http://localhost:9090`
+- URL: `http://localhost:10090`
 - 대시보드 패널(메트릭, 타임라인, 집중도)이 정상 로드되는지 확인합니다.
 
 ## 3. 프라이버시 기본선 유지

@@ -353,7 +353,7 @@ server.run(shutdown_rx).await?;
 ```toml
 [web]
 enabled = true
-port = 9090
+port = 10090
 allow_external = false
 ```
 
