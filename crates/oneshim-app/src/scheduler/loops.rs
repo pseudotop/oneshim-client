@@ -48,7 +48,7 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        let idle_info = idle_tracker.check_idle();
+                        let idle_info = idle_tracker.check_idle().await;
                         let prev_state = idle_tracker.previous_state();
 
                         if prev_state == IdleState::Active && idle_info.state == IdleState::Idle {

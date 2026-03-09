@@ -144,19 +144,16 @@ impl StorageService for SqliteStorage {
         let timestamp = Self::extract_timestamp(event).to_rfc3339();
         let data = serde_json::to_string(event)?;
 
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
-
-        conn.execute(
-            "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![event_id, event_type, timestamp, data],
-        )
-        .map_err(|e| CoreError::Internal(format!("event save failure: {e}")))?;
-
-        debug!("event save: {event_id}");
-        Ok(())
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![event_id, event_type, timestamp, data],
+            )
+            .map_err(|e| CoreError::Internal(format!("event save failure: {e}")))?;
+            debug!("event save: {event_id}");
+            Ok(())
+        })
+        .await
     }
 
     async fn get_events(
@@ -168,51 +165,49 @@ impl StorageService for SqliteStorage {
         let from_str = from.to_rfc3339();
         let to_str = to.to_rfc3339();
 
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+        self.with_conn(move |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT data FROM events WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp DESC LIMIT ?3",
+                )
+                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
-        let mut stmt = conn
-            .prepare(
-                "SELECT data FROM events WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp DESC LIMIT ?3",
-            )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            let events = stmt
+                .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
+                    let data: String = row.get(0)?;
+                    Ok(data)
+                })
+                .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
+                .filter_map(|r| r.ok())
+                .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
+                .collect();
 
-        let events = stmt
-            .query_map(rusqlite::params![from_str, to_str, limit as i64], |row| {
-                let data: String = row.get(0)?;
-                Ok(data)
-            })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
-            .filter_map(|r| r.ok())
-            .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
-            .collect();
-
-        Ok(events)
+            Ok(events)
+        })
+        .await
     }
 
     async fn get_pending_events(&self, limit: usize) -> Result<Vec<Event>, CoreError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+        self.with_conn(move |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT data FROM events WHERE is_sent = 0 ORDER BY timestamp ASC LIMIT ?1",
+                )
+                .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
-        let mut stmt = conn
-            .prepare("SELECT data FROM events WHERE is_sent = 0 ORDER BY timestamp ASC LIMIT ?1")
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
+            let events = stmt
+                .query_map(rusqlite::params![limit as i64], |row| {
+                    let data: String = row.get(0)?;
+                    Ok(data)
+                })
+                .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
+                .filter_map(|r| r.ok())
+                .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
+                .collect();
 
-        let events = stmt
-            .query_map(rusqlite::params![limit as i64], |row| {
-                let data: String = row.get(0)?;
-                Ok(data)
-            })
-            .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
-            .filter_map(|r| r.ok())
-            .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
-            .collect();
-
-        Ok(events)
+            Ok(events)
+        })
+        .await
     }
 
     async fn mark_as_sent(&self, event_ids: &[String]) -> Result<(), CoreError> {
@@ -220,55 +215,60 @@ impl StorageService for SqliteStorage {
             return Ok(());
         }
 
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+        // Clone before moving into the 'static closure
+        let ids: Vec<String> = event_ids.to_vec();
 
-        let placeholders: Vec<String> = event_ids
-            .iter()
-            .enumerate()
-            .map(|(i, _)| format!("?{}", i + 1))
-            .collect();
-        let sql = format!(
-            "UPDATE events SET is_sent = 1 WHERE event_id IN ({})",
-            placeholders.join(", ")
-        );
+        self.with_conn(move |conn| {
+            let placeholders: Vec<String> = ids
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect();
+            let sql = format!(
+                "UPDATE events SET is_sent = 1 WHERE event_id IN ({})",
+                placeholders.join(", ")
+            );
 
-        let params: Vec<&dyn rusqlite::types::ToSql> = event_ids
-            .iter()
-            .map(|id| id as &dyn rusqlite::types::ToSql)
-            .collect();
+            let params: Vec<Box<dyn rusqlite::types::ToSql>> = ids
+                .iter()
+                .map(|id| Box::new(id.clone()) as Box<dyn rusqlite::types::ToSql>)
+                .collect();
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                params.iter().map(|p| p.as_ref()).collect();
 
-        conn.execute(&sql, params.as_slice())
-            .map_err(|e| CoreError::Internal(format!("Failed to mark as sent: {e}")))?;
+            conn.execute(&sql, param_refs.as_slice())
+                .map_err(|e| CoreError::Internal(format!("Failed to mark as sent: {e}")))?;
 
-        debug!("{}items event sent completed", event_ids.len());
-        Ok(())
+            debug!("{}items event sent completed", ids.len());
+            Ok(())
+        })
+        .await
     }
 
     async fn enforce_retention(&self) -> Result<usize, CoreError> {
-        let cutoff = (Utc::now() - Duration::days(self.retention_days as i64)).to_rfc3339();
+        let cutoff =
+            (Utc::now() - Duration::days(self.retention_days as i64)).to_rfc3339();
+        let retention_days = self.retention_days;
 
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+        self.with_conn(move |conn| {
+            let deleted = conn
+                .execute(
+                    "DELETE FROM events WHERE timestamp < ?1 AND is_sent = 1",
+                    rusqlite::params![cutoff],
+                )
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to apply retention policy: {e}"))
+                })?;
 
-        let deleted = conn
-            .execute(
-                "DELETE FROM events WHERE timestamp < ?1 AND is_sent = 1",
-                rusqlite::params![cutoff],
-            )
-            .map_err(|e| CoreError::Internal(format!("Failed to apply retention policy: {e}")))?;
-
-        if deleted > 0 {
-            info!(
-                "retention policy: deleted {deleted} events (>{} days)",
-                self.retention_days
-            );
-        }
-        Ok(deleted)
+            if deleted > 0 {
+                info!(
+                    "retention policy: deleted {deleted} events (>{} days)",
+                    retention_days
+                );
+            }
+            Ok(deleted)
+        })
+        .await
     }
 }
 

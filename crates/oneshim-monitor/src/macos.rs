@@ -2,15 +2,20 @@ use core_graphics::event::CGEvent;
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::context::{MousePosition, WindowBounds, WindowInfo};
+use std::time::Duration;
+use tokio::process::Command;
+use tokio::time::timeout;
 use tracing::debug;
 
-pub fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
-    use std::process::Command;
+const SUBPROCESS_TIMEOUT_SECS: u64 = 5;
 
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg(
-            r#"tell application "System Events"
+pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
+    let output = timeout(
+        Duration::from_secs(SUBPROCESS_TIMEOUT_SECS),
+        Command::new("osascript")
+            .arg("-e")
+            .arg(
+                r#"tell application "System Events"
             set frontApp to first application process whose frontmost is true
             set appName to name of frontApp
             set winTitle to ""
@@ -24,9 +29,12 @@ pub fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
             end try
             return appName & "|" & winTitle & "|" & (item 1 of winPos as integer) & "|" & (item 2 of winPos as integer) & "|" & (item 1 of winSize as integer) & "|" & (item 2 of winSize as integer)
         end tell"#,
-        )
-        .output()
-        .map_err(|e| CoreError::Internal(format!("osascript execution failure: {e}")))?;
+            )
+            .output(),
+    )
+    .await
+    .map_err(|_| CoreError::Internal("osascript timed out".to_string()))?
+    .map_err(|e| CoreError::Internal(format!("osascript execution failure: {e}")))?;
 
     if !output.status.success() {
         debug!("active window detection failure (osascript)");
@@ -76,13 +84,16 @@ pub fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
     }))
 }
 
-pub fn get_idle_time_macos() -> Option<u64> {
-    use std::process::Command;
-
-    let output = Command::new("ioreg")
-        .args(["-c", "IOHIDSystem", "-d", "4"])
-        .output()
-        .ok()?;
+pub async fn get_idle_time_macos() -> Option<u64> {
+    let output = timeout(
+        Duration::from_secs(SUBPROCESS_TIMEOUT_SECS),
+        Command::new("ioreg")
+            .args(["-c", "IOHIDSystem", "-d", "4"])
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
 
     if !output.status.success() {
         return None;
@@ -120,15 +131,15 @@ pub fn get_mouse_position_macos() -> Option<MousePosition> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn get_active_window_returns_result() {
-        let result = get_active_window_macos();
+    #[tokio::test]
+    async fn get_active_window_returns_result() {
+        let result = get_active_window_macos().await;
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn get_idle_time_returns_result() {
-        let idle = get_idle_time_macos();
+    #[tokio::test]
+    async fn get_idle_time_returns_result() {
+        let idle = get_idle_time_macos().await;
         if let Some(secs) = idle {
             assert!(secs < 86400 * 365); // less than 1 year
         }

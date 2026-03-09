@@ -31,7 +31,7 @@ impl ProcessMonitor for ProcessTracker {
     async fn get_active_window(&self) -> Result<Option<WindowInfo>, CoreError> {
         #[cfg(target_os = "macos")]
         {
-            crate::macos::get_active_window_macos()
+            crate::macos::get_active_window_macos().await
         }
         #[cfg(target_os = "windows")]
         {
@@ -39,7 +39,7 @@ impl ProcessMonitor for ProcessTracker {
         }
         #[cfg(target_os = "linux")]
         {
-            crate::linux::get_active_window_linux()
+            crate::linux::get_active_window_linux().await
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {

@@ -3,7 +3,7 @@ use oneshim_core::models::event::ContextEvent;
 use oneshim_core::ports::vision::CaptureRequest;
 use oneshim_core::ports::vision::CaptureTrigger;
 use std::sync::Mutex;
-use tracing::debug;
+use tracing::{debug, error};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TriggerType {
@@ -86,7 +86,10 @@ impl CaptureTrigger for SmartCaptureTrigger {
         let mut state = self
             .state
             .lock()
-            .expect("SmartCaptureTrigger state lock was poisoned by a panicking thread");
+            .map_err(|e| {
+                error!("SmartCaptureTrigger state lock poisoned: {e}");
+            })
+            .ok()?;
         let now = event.timestamp;
         let trigger_type = Self::classify_event(event, &state.prev_app_name);
         let importance = self.compute_importance(&trigger_type);
