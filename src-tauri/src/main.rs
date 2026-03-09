@@ -66,8 +66,8 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");
 
-    app.run(|app_handle, event| {
-        if let RunEvent::Exit = event {
+    app.run(|app_handle, event| match event {
+        RunEvent::Exit => {
             info!("Tauri exit: sending shutdown signal");
             if let Some(state) = app_handle.try_state::<setup::AppState>() {
                 if state.shutdown_tx.send(true).is_err() {
@@ -75,5 +75,13 @@ fn main() {
                 }
             }
         }
+        RunEvent::Reopen { .. } => {
+            // macOS dock 아이콘 클릭 시 메인 윈도우 표시
+            if let Some(w) = app_handle.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }
+        _ => {}
     });
 }

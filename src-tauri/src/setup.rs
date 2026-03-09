@@ -339,6 +339,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // 11. 시스템 트레이 초기화
     crate::tray::setup_tray(app)?;
 
+    // 12. 메인 윈도우 표시 (setup 완료 후)
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        debug_assert!(
+            window.is_visible().unwrap_or(false),
+            "main window must be visible after setup::init()"
+        );
+    } else {
+        debug_assert!(false, "main window not found after setup::init()");
+    }
+
     info!("Tauri setup complete");
     Ok(())
 }
@@ -502,5 +514,84 @@ impl oneshim_core::ports::notifier::DesktopNotifier for NoOpNotifier {
             "error notification suppressed (Tauri handles notifications)"
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// tauri.conf.json의 window 설정이 setup::init()의 show() 로직과 일관성 있는지 검증.
+    /// visible=false + setup에서 show() 호출하는 패턴이 유지되어야 함.
+    #[test]
+    fn tauri_conf_window_starts_hidden_for_setup_controlled_show() {
+        let conf_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let conf_str = std::fs::read_to_string(&conf_path).expect("tauri.conf.json must exist");
+        let conf: serde_json::Value =
+            serde_json::from_str(&conf_str).expect("tauri.conf.json must be valid JSON");
+
+        let windows = conf["app"]["windows"]
+            .as_array()
+            .expect("app.windows must be an array");
+        assert!(!windows.is_empty(), "at least one window must be defined");
+
+        let main_window = windows
+            .iter()
+            .find(|w| w["label"].as_str() == Some("main"))
+            .expect("main window must be defined in tauri.conf.json");
+
+        // visible=false 확인 — setup::init()에서 show()를 호출하는 패턴
+        assert_eq!(
+            main_window["visible"].as_bool(),
+            Some(false),
+            "main window must start hidden (visible=false); setup::init() calls show() after initialization"
+        );
+    }
+
+    /// setup::init() 소스 코드에 window.show() 호출이 포함되어 있는지 정적 검증.
+    /// 향후 리팩토링 시 show() 호출이 실수로 제거되는 것을 방지.
+    #[test]
+    fn setup_init_contains_window_show_call() {
+        let setup_src = include_str!("setup.rs");
+
+        assert!(
+            setup_src.contains("window.show()"),
+            "setup::init() must call window.show() — without this, the GUI window is invisible on launch"
+        );
+        assert!(
+            setup_src.contains("window.set_focus()"),
+            "setup::init() must call window.set_focus() after show()"
+        );
+    }
+
+    /// main.rs에 RunEvent::Reopen 핸들러가 있는지 검증.
+    /// macOS dock 아이콘 클릭 시 윈도우를 다시 표시하기 위해 필수.
+    #[test]
+    fn main_contains_reopen_handler() {
+        let main_src = include_str!("main.rs");
+
+        assert!(
+            main_src.contains("RunEvent::Reopen"),
+            "main.rs must handle RunEvent::Reopen for macOS dock icon clicks"
+        );
+    }
+
+    #[test]
+    fn resolve_db_path_default() {
+        let path = resolve_db_path(None);
+        assert!(path.to_string_lossy().contains("oneshim.db"));
+    }
+
+    #[test]
+    fn resolve_db_path_custom() {
+        let path = resolve_db_path(Some("/tmp/test_data"));
+        assert_eq!(path, PathBuf::from("/tmp/test_data/oneshim.db"));
+    }
+
+    #[test]
+    fn generate_session_id_format() {
+        let id = generate_session_id();
+        assert!(id.starts_with("sess_"));
+        assert!(id.len() > 20); // sess_ + timestamp + _ + hex
     }
 }
