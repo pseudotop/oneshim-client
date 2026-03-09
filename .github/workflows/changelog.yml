@@ -1,33 +1,35 @@
-name: Update Changelog
+name: Release Notes
 
 on:
   push:
-    branches: [main]
-    paths-ignore:
-      - 'CHANGELOG.md'   # avoid infinite loop
+    tags: ['v*']
 
 permissions:
   contents: write
 
 jobs:
-  update-changelog:
-    name: Regenerate [Unreleased]
+  release-notes:
+    name: Update GitHub Release body
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # git-cliff needs full history
+          fetch-depth: 0
 
       - name: Install git-cliff
         uses: taiki-e/install-action@v2
         with:
           tool: git-cliff
 
-      - name: Update [Unreleased] section
-        run: git-cliff --unreleased --prepend CHANGELOG.md
+      - name: Generate release notes for this tag
+        run: git-cliff --latest --strip header -o RELEASE_NOTES.md
 
-      - name: Commit if changed
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "docs(changelog): update [Unreleased] [skip ci]"
-          file_pattern: CHANGELOG.md
+      - name: Update GitHub Release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -s RELEASE_NOTES.md ]; then
+            gh release edit "$TAG_NAME" --notes-file RELEASE_NOTES.md 2>/dev/null || \
+              echo "Release for $TAG_NAME not found yet — notes will be added by release workflow"
+          fi
