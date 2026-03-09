@@ -1,4 +1,77 @@
 //! # oneshim-web
+//!
+//! ## Hexagonal Architecture Violations — ADR-001 §7 (Port Location Rules)
+//!
+//! `oneshim-web` currently holds two documented adapter-to-adapter dependency violations.
+//! Both are acknowledged in ADR-001 §6 as "scheduled for migration".
+//! They are NOT to be fixed incrementally inside handler files; the migration
+//! requires a coordinated batch that defines new port traits in `oneshim-core`.
+//!
+//! ### Violation 1 — `oneshim-automation` concrete types in AppState
+//!
+//! **Scope**: 7 production files (lib.rs, handlers/automation/helpers.rs,
+//!   handlers/automation/execution.rs, handlers/automation/scene.rs,
+//!   handlers/support.rs, handlers/automation_gui.rs, handlers/onboarding.rs)
+//!
+//! **Root cause**: `AppState` holds `Arc<RwLock<AuditLogger>>` and
+//!   `Arc<AutomationController>` as concrete types imported from `oneshim-automation`.
+//!   Handler files consume automation-specific types that do not yet exist in
+//!   `oneshim-core`:
+//!   - `AuditLogger`, `AuditStatus`, `AuditEntry`, `AuditLevel`
+//!     → blocked until an `AuditLogPort` trait is defined in
+//!       `oneshim-core/src/ports/audit_log.rs`
+//!   - `AutomationController` (methods: `execute_intent`, `execute_intent_hint`,
+//!     `run_workflow`, `gui_*` methods, `analyze_scene`)
+//!     → blocked until an `AutomationPort` trait is defined in
+//!       `oneshim-core/src/ports/automation.rs`
+//!   - `GuiInteractionError`, `GuiExecutionResult`
+//!     → should become associated types or `CoreError` variants in `oneshim-core`
+//!   - `builtin_presets()` function
+//!     → belongs in `oneshim-core::models::intent` as a pure-data function
+//!
+//! **Migration path** (do not start without owning the full batch):
+//!   1. Define `AuditLogPort` trait in `oneshim-core/src/ports/audit_log.rs` with
+//!      `pending_count()`, `recent_entries()`, `entries_by_status()`, `stats()`,
+//!      `log_event()`, `log_start_if()`, `log_complete_with_time()`.
+//!   2. Define `AutomationPort` trait in `oneshim-core/src/ports/automation.rs`
+//!      mirroring the `AutomationController` public surface called by web handlers.
+//!   3. Move `GuiInteractionError` to `oneshim-core::error` or expose it via
+//!      `CoreError` variants.
+//!   4. Move `builtin_presets()` to `oneshim-core::models::intent`.
+//!   5. Implement both traits in `oneshim-automation` with `#[async_trait]`.
+//!   6. Update `AppState` to hold `Arc<dyn AuditLogPort>` and
+//!      `Arc<dyn AutomationPort>`.
+//!   7. Remove `oneshim-automation` from this crate's `Cargo.toml`.
+//!
+//! ### Violation 2 — `oneshim-storage` concrete types
+//!
+//! **Scope**: `storage_port.rs` (1 production file); `#[cfg(test)]` usage in 5 files
+//!   (test-only use of `SqliteStorage::open_in_memory` is acceptable).
+//!
+//! **Root cause**: `WebStorage` trait in `storage_port.rs` is defined inside
+//!   `oneshim-web` rather than `oneshim-core/src/ports/web_storage.rs` (per ADR-001 §7).
+//!   Additionally, `storage_port.rs` imports 14 concrete row types from
+//!   `oneshim-storage::sqlite` (e.g., `FrameRecord`, `TagRecord`, `SearchFrameRow`)
+//!   that are not yet modeled in `oneshim-core`. These types are the blocking
+//!   dependency; `WebStorage` cannot move until its associated types are in core.
+//!
+//! **Migration path** (do not start without owning the full batch):
+//!   1. Promote the 14 row types (FrameRecord, TagRecord, SearchFrameRow, etc.)
+//!      to `oneshim-core::models::storage_records` (or keep in
+//!      `oneshim-api-contracts`).
+//!   2. Move `WebStorage` trait to `oneshim-core/src/ports/web_storage.rs`.
+//!   3. Move `impl WebStorage for SqliteStorage` to `oneshim-storage/src/web_storage_impl.rs`
+//!      behind a feature flag (e.g., `feature = "web-storage"`).
+//!   4. Remove `oneshim-storage` from this crate's `Cargo.toml`
+//!      (keep only in `[dev-dependencies]` for tests).
+//!
+//! ### Evidence commits
+//!
+//! - `892c73f1e` (2026-03-09): "chore: update client-rust submodule — CI fixes + dep bumps"
+//!   — Cargo.toml shows `oneshim-storage` and `oneshim-automation` as direct deps
+//! - `d5a7dd5ac` (2026-03-09): Merge #24 — confirms workspace dep graph unchanged
+//! - `892c73f1e` / `lib.rs` — `AppState` struct with concrete `AuditLogger` and
+//!   `AutomationController` types established as the current baseline
 
 pub mod embedded;
 pub mod error;
