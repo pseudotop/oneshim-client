@@ -381,7 +381,14 @@ async fn run_agent(
         ));
 
     #[cfg(feature = "server")]
-    let token_manager = Arc::new(TokenManager::new(&config.server.base_url));
+    let token_manager = Arc::new(
+        TokenManager::new_with_tls(
+            &config.server.base_url,
+            &config.tls,
+            Some(config.request_timeout()),
+        )
+        .map_err(|e| anyhow::anyhow!("failed to build TLS-aware TokenManager: {e}"))?,
+    );
     #[cfg(feature = "server")]
     let api_client = Arc::new(HttpApiClient::new_with_tls(
         &config.server.base_url,

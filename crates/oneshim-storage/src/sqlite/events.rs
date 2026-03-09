@@ -3,7 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::event::Event;
 use oneshim_core::ports::storage::StorageService;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use super::SqliteStorage;
 
@@ -179,7 +179,13 @@ impl StorageService for SqliteStorage {
                 })
                 .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
                 .filter_map(|r| r.ok())
-                .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
+                .filter_map(|data| {
+                    serde_json::from_str::<Event>(&data)
+                        .map_err(|e| {
+                            warn!("event deserialization failed, skipping row: {e}");
+                        })
+                        .ok()
+                })
                 .collect();
 
             Ok(events)
@@ -202,7 +208,13 @@ impl StorageService for SqliteStorage {
                 })
                 .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?
                 .filter_map(|r| r.ok())
-                .filter_map(|data| serde_json::from_str::<Event>(&data).ok())
+                .filter_map(|data| {
+                    serde_json::from_str::<Event>(&data)
+                        .map_err(|e| {
+                            warn!("event deserialization failed, skipping row: {e}");
+                        })
+                        .ok()
+                })
                 .collect();
 
             Ok(events)
