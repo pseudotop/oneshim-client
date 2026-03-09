@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-03-09
+
+### Changed
+
+- **Default WebServer port**: 9090 → 59090 (IANA ephemeral range, avoids Prometheus/Cockpit conflicts)
+- **Port centralization**: Hardcoded port references (15+ occurrences) → `DEFAULT_WEB_PORT` constant in `oneshim-core` + `constants.ts`
+- **Smoke test reliability**: Add TCP port availability check loop (replaces fixed `sleep 1`) in both bash and PowerShell smoke scripts
+
 ## [0.3.1] - 2026-03-09
 
 ### Added
@@ -225,7 +233,8 @@ Each version entry must include:
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/pseudotop/oneshim-client/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/pseudotop/oneshim-client/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/pseudotop/oneshim-client/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pseudotop/oneshim-client/compare/v0.1.7...v0.2.0

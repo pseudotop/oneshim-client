@@ -59,10 +59,28 @@ try {
         -WorkingDirectory $AssetsDir `
         -PassThru `
         -WindowStyle Hidden
-    Start-Sleep -Seconds 1
 
-    if ($serverProcess.HasExited) {
-        throw "Failed to start local HTTP server"
+    # Wait for HTTP server to start listening (up to 10 seconds)
+    $maxWait = 20
+    $waited = 0
+    $ready = $false
+    while ($waited -lt $maxWait) {
+        if ($serverProcess.HasExited) {
+            throw "Failed to start local HTTP server"
+        }
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            $tcp.Connect($ListenHost, $Port)
+            $tcp.Close()
+            $ready = $true
+            break
+        } catch {
+            Start-Sleep -Milliseconds 500
+            $waited++
+        }
+    }
+    if (-not $ready) {
+        throw "HTTP server not listening on ${ListenHost}:${Port} within 10 seconds"
     }
 
     $baseUrl = "http://$ListenHost`:$Port"

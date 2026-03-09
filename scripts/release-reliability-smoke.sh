@@ -217,13 +217,29 @@ else
   fatal "Python is required to host local release assets"
 fi
 
+wait_for_port() {
+  local host="$1" port="$2" max_wait="$3"
+  local elapsed=0
+  while [ "$elapsed" -lt "$max_wait" ]; do
+    if (echo >/dev/tcp/"$host"/"$port") 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.5
+    elapsed=$((elapsed + 1))
+  done
+  return 1
+}
+
 info "Serving assets from $ASSETS_DIR on http://$HOST:$PORT"
 (
   cd "$ASSETS_DIR"
   "$PYTHON_CMD" -m http.server "$PORT" --bind "$HOST" >"$SERVER_LOG" 2>&1
 ) &
 SERVER_PID=$!
-sleep 1
+if ! wait_for_port "$HOST" "$PORT" 10; then
+  kill -0 "$SERVER_PID" >/dev/null 2>&1 || true
+  fatal "HTTP server not listening on $HOST:$PORT within 5 seconds"
+fi
 kill -0 "$SERVER_PID" >/dev/null 2>&1 || fatal "Failed to start local HTTP server"
 
 BASE_URL="http://$HOST:$PORT"

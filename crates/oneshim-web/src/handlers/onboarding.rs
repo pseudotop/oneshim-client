@@ -31,7 +31,10 @@ fn dashboard_url_from_state(state: &AppState) -> String {
         }
         return format!("http://127.0.0.1:{}", config.web.port);
     }
-    "http://127.0.0.1:9090".to_string()
+    format!(
+        "http://127.0.0.1:{}",
+        oneshim_core::config::DEFAULT_WEB_PORT
+    )
 }
 
 pub async fn get_quickstart(State(state): State<AppState>) -> Json<OnboardingQuickstartDto> {

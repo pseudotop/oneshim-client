@@ -2,9 +2,10 @@
  *
  */
 import { defineConfig, devices } from '@playwright/test'
+import { DEFAULT_WEB_PORT } from './src/constants'
 
 const previewHost = process.env.PLAYWRIGHT_PREVIEW_HOST || '127.0.0.1'
-const previewPort = process.env.PLAYWRIGHT_PREVIEW_PORT || '9090'
+const previewPort = process.env.PLAYWRIGHT_PREVIEW_PORT || String(DEFAULT_WEB_PORT)
 const managedBaseURL = `http://${previewHost}:${previewPort}`
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || managedBaseURL
 const shouldManageWebServer = !process.env.PLAYWRIGHT_BASE_URL

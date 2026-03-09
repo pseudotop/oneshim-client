@@ -1,4 +1,5 @@
 import type { Page, Request, Route } from '@playwright/test'
+import { DEFAULT_WEB_PORT } from '../../src/constants'
 
 type RoutePattern = Parameters<Page['route']>[0]
 type JsonResolver = (request: Request) => unknown | Promise<unknown>
@@ -61,7 +62,7 @@ export async function mockBackgroundStreams(page: Page): Promise<void> {
 const fallbackSettings = {
   retention_days: 30,
   max_storage_mb: 2048,
-  web_port: 9090,
+  web_port: DEFAULT_WEB_PORT,
   allow_external: false,
   capture_enabled: true,
   idle_threshold_secs: 300,

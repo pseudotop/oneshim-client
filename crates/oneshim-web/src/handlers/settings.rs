@@ -33,7 +33,7 @@ mod tests {
         let settings = AppSettings::default();
         assert_eq!(settings.retention_days, 30);
         assert_eq!(settings.max_storage_mb, 500);
-        assert_eq!(settings.web_port, 9090);
+        assert_eq!(settings.web_port, oneshim_core::config::DEFAULT_WEB_PORT);
         assert!(!settings.allow_external);
         assert!(settings.capture_enabled);
     }

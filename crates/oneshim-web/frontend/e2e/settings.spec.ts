@@ -4,6 +4,7 @@
 import { test, expect, type Page } from './helpers/test'
 import { i18nRegex } from './helpers/i18n'
 import { mockDynamicJson, mockStaticJson } from './helpers/mock-api'
+import { DEFAULT_WEB_PORT } from '../src/constants'
 
 const settingsTitleName = i18nRegex('settings.title')
 const collectionSectionName = i18nRegex('settings.collectionTitle')
@@ -17,7 +18,7 @@ const saveSettingsName = i18nRegex('settings.saveSettings')
 const mockedSettings = {
   retention_days: 30,
   max_storage_mb: 2048,
-  web_port: 9090,
+  web_port: DEFAULT_WEB_PORT,
   allow_external: false,
   capture_enabled: true,
   idle_threshold_secs: 300,

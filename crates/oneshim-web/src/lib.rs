@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn default_config() {
         let config = WebConfig::default();
-        assert_eq!(config.port, 9090);
+        assert_eq!(config.port, oneshim_core::config::DEFAULT_WEB_PORT);
         assert!(!config.allow_external);
     }
 
@@ -289,7 +289,11 @@ mod tests {
     fn web_server_url() {
         let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
         let server = WebServer::new(storage, WebConfig::default());
-        assert_eq!(server.url(), "http://localhost:9090");
+        let expected = format!(
+            "http://localhost:{}",
+            oneshim_core::config::DEFAULT_WEB_PORT
+        );
+        assert_eq!(server.url(), expected);
     }
 
     #[test]

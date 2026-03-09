@@ -1,3 +1,4 @@
+import { DEFAULT_WEB_PORT } from '../constants'
 import type {
   AppSettings,
   AutomationSettings,
@@ -156,7 +157,7 @@ function makeDefaultSettings(): AppSettings {
   return {
     retention_days: 30,
     max_storage_mb: 2048,
-    web_port: 9090,
+    web_port: DEFAULT_WEB_PORT,
     allow_external: false,
     capture_enabled: true,
     idle_threshold_secs: 300,

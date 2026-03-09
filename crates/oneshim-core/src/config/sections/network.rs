@@ -142,10 +142,16 @@ fn default_grpc_request_timeout() -> u64 {
     30
 }
 
+/// 로컬 WebServer 기본 포트 — IANA Dynamic/Ephemeral 대역 (49152-65535)
+///
+/// 9090 등 Registered Port 대역은 Prometheus, Cockpit 등과 충돌 가능.
+/// 59090 은 ephemeral 대역으로 다른 서비스와 겹칠 확률이 가장 낮음.
+pub const DEFAULT_WEB_PORT: u16 = 59090;
+
 fn default_web_enabled() -> bool {
     true
 }
 
 fn default_web_port() -> u16 {
-    9090
+    DEFAULT_WEB_PORT
 }

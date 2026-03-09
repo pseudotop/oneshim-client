@@ -222,7 +222,7 @@ mod tests {
         assert!(config_path.exists());
 
         let config = manager.get();
-        assert_eq!(config.web.port, 9090);
+        assert_eq!(config.web.port, crate::config::DEFAULT_WEB_PORT);
     }
 
     #[test]
@@ -302,7 +302,8 @@ mod tests {
         // The in-memory config must remain unchanged (still the original defaults).
         let config = manager.get();
         assert_eq!(
-            config.web.port, 9090,
+            config.web.port,
+            crate::config::DEFAULT_WEB_PORT,
             "in-memory config should not be mutated after a failed reload"
         );
     }

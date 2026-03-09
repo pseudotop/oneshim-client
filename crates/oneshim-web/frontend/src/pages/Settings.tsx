@@ -2,6 +2,7 @@
  *
  */
 
+import { DEFAULT_WEB_PORT } from '../constants'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -740,7 +741,7 @@ export default function Settings() {
                   min={1024}
                   max={65535}
                   value={formData.web_port}
-                  onChange={(e) => handleChange('web_port', parseInt(e.target.value, 10) || 9090)}
+                  onChange={(e) => handleChange('web_port', parseInt(e.target.value, 10) || DEFAULT_WEB_PORT)}
                 />
                 <p className={form.helper}>{t('settings.portRestart')}</p>
               </div>

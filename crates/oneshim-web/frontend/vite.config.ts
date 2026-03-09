@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readFileSync } from 'node:fs'
+import { DEFAULT_WEB_PORT } from './src/constants'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
@@ -12,7 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:9090',
+        target: `http://localhost:${DEFAULT_WEB_PORT}`,
         changeOrigin: true,
       },
     },

@@ -278,7 +278,7 @@ impl Default for AppSettings {
         Self {
             retention_days: 30,
             max_storage_mb: 500,
-            web_port: 9090,
+            web_port: oneshim_core::config::DEFAULT_WEB_PORT,
             allow_external: false,
             capture_enabled: true,
             idle_threshold_secs: 300,

@@ -232,7 +232,7 @@ fn backup_settings_from_state(state: &AppState) -> SettingsBackup {
             capture_interval_secs: 60,
             idle_threshold_secs: 300,
             metrics_interval_secs: 5,
-            web_port: 9090,
+            web_port: oneshim_core::config::DEFAULT_WEB_PORT,
             notification_enabled: true,
             idle_notification_mins: 30,
             long_session_notification_mins: 60,
