@@ -6,9 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-## [Unreleased]
-## [Unreleased]
-## [Unreleased]
 
 ## [0.3.1] - 2026-03-09
 
@@ -17,10 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ADR-007: Async Runtime Safety Patterns**: `spawn_blocking` for blocking I/O, `tokio::process::Command` for subprocesses, lock poisoning graceful handling
 - **ADR-008: Network Resilience Patterns**: Exponential backoff with jitter, token refresh de-duplication, circuit breaker, rate limit header parsing
 - **ADR-001 update**: §7 Port Location Rules (ports must live in oneshim-core), §8 Port Contract Testing macro pattern, updated dependency diagram
-- **26 new tests**: `ai_model_lifecycle_policy` (24 tests covering Allowed/Warn/Block lifecycle), `ConfigManager::reload()` corrupted JSON, `BatchUploader` failure path with `failed_batches` counter, `SmartCaptureTrigger` throttle suppression
+- **32 new tests**: `ai_model_lifecycle_policy` (24 tests), `ConfigManager::reload()` corrupted JSON, `BatchUploader` failure path, `SmartCaptureTrigger` throttle suppression, 6 GUI window visibility regression tests
 
 ### Fixed
 
+- **GUI window not visible on launch**: `setup::init()` now calls `window.show()` after initialization; added `RunEvent::Reopen` handler for macOS dock icon clicks; `debug_assert` for window visibility after setup
 - **Async runtime safety (ADR-007)**: SQLite operations wrapped in `spawn_blocking` via `with_conn()` helper; `std::process::Command` → `tokio::process::Command` with 5s timeout in monitor crate; lock poisoning `.expect()` → graceful `.map_err()` in trigger.rs and input_activity.rs
 - **TokenManager TLS enforcement**: Add `new_with_tls()` constructor; credentials now respect same TLS policy as `HttpApiClient`
 - **Silent deserialization drops**: Add `tracing::warn!` for corrupt event rows in `get_events`/`get_pending_events` (previously silently dropped)
@@ -30,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Code atomization (ADR-003)**: Split `config/sections.rs` (991L, 21 structs) into 6 domain-grouped files (83–258L each): network.rs, monitoring.rs, ai.rs, ai_validation.rs, privacy.rs, storage.rs
 - **Hex Architecture documentation**: Documented `oneshim-web` adapter-to-adapter violations with migration prerequisites (P4 — deferred to dedicated sprint)
+- **CI: Changelog bot → Release Notes only**: Removed auto-commit to main (caused race conditions); now only populates GitHub Release body on tag push
 
 ## [0.3.0] - 2026-03-09
 
