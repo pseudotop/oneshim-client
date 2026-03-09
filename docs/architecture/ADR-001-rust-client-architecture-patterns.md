@@ -139,14 +139,85 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-vision
               ←  oneshim-network
               ←  oneshim-storage
-              ←  oneshim-suggestion  ←  oneshim-network
-              ←  oneshim-ui          ←  oneshim-suggestion
-              ←  oneshim-app         ←  (all)
+              ←  oneshim-suggestion
+              ←  oneshim-automation
+              ←  oneshim-web          ←  oneshim-api-contracts
+              ←  src-tauri            ←  (all crates)
 ```
 
 **Forbidden**: Direct dependencies between adapter crates (e.g., oneshim-monitor → oneshim-storage). All cross-crate communication must go through `oneshim-core` traits.
 
-**Exceptions**: `oneshim-suggestion → oneshim-network` (SSE reception needed), `oneshim-ui → oneshim-suggestion` (suggestion display needed)
+**Exceptions**: `oneshim-web → oneshim-storage` and `oneshim-web → oneshim-automation` are documented violations scheduled for migration per §7.
+
+### 7. Port Location Rules
+
+**Rule**: All port traits (interfaces) that are consumed by more than one crate MUST be defined in `oneshim-core/src/ports/`.
+
+Port traits defined inside adapter crates are only allowed when:
+- The trait is used exclusively within that single adapter crate
+- The trait represents an internal abstraction, not a cross-crate contract
+
+**Current violations** (to be migrated):
+- `WebStorage` trait in `oneshim-web/src/storage_port.rs` → should move to `oneshim-core/src/ports/web_storage.rs`
+
+**Concrete type leaks**: Adapter crate state structs (e.g., `AppState`) MUST reference port traits via `Arc<dyn PortTrait>`, never concrete adapter types from other crates.
+
+```rust
+// ❌ Wrong — leaks concrete type from another adapter
+pub struct AppState {
+    automation: Arc<AutomationController>,  // concrete from oneshim-automation
+}
+
+// ✅ Correct — references port trait from oneshim-core
+pub struct AppState {
+    automation: Arc<dyn AutomationPort>,  // trait from oneshim-core/ports/
+}
+```
+
+**Rationale**: Hexagonal Architecture requires all contracts to live in the domain core. Adapter-to-adapter dependencies through concrete types create hidden coupling that bypasses the port layer.
+
+### 8. Port Contract Testing
+
+**Rule**: Each port trait in `oneshim-core/src/ports/` SHOULD have a contract test macro that any adapter implementation can invoke.
+
+**Pattern**:
+```rust
+// In oneshim-core/src/ports/storage.rs or a dedicated test-utils module
+#[cfg(test)]
+#[macro_export]
+macro_rules! test_storage_service_contract {
+    ($create_impl:expr) => {
+        #[tokio::test]
+        async fn contract_save_and_retrieve() {
+            let storage = $create_impl;
+            let event = Event::test_fixture();
+            storage.save_event(&event).await.unwrap();
+            let retrieved = storage.get_events(None, None, 10).await.unwrap();
+            assert_eq!(retrieved.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn contract_pending_mark_sent() {
+            let storage = $create_impl;
+            // ... verify pending → mark_as_sent → no longer pending
+        }
+
+        #[tokio::test]
+        async fn contract_empty_state() {
+            let storage = $create_impl;
+            let events = storage.get_pending_events(10).await.unwrap();
+            assert!(events.is_empty());
+        }
+    };
+}
+
+// In oneshim-storage tests:
+test_storage_service_contract!(SqliteStorage::open_in_memory(30));
+```
+
+**Rationale**: When adding a new adapter for an existing port (e.g., a new storage backend), contract tests ensure the new implementation satisfies the same behavioral guarantees as the existing one. Manual mocks (§5) verify callers; contract tests verify implementors.
+
+**Scope**: Start with `StorageService` (most adapters). Extend to `ApiClient`, `SystemMonitor` as needed.
 
 ---
 
