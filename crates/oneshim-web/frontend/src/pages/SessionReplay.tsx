@@ -59,6 +59,7 @@ export default function SessionReplay() {
     message: string
   } | null>(null)
   const sceneViewportRef = useRef<HTMLDivElement | null>(null)
+  const sceneObserverRef = useRef<ResizeObserver | null>(null)
   const [sceneViewportSize, setSceneViewportSize] = useState({ width: 0, height: 0 })
 
   const playIntervalRef = useRef<number | null>(null)
@@ -167,22 +168,24 @@ export default function SessionReplay() {
     }
   }, [overlayAllowed])
 
-  useEffect(() => {
-    const target = sceneViewportRef.current
-    if (!target) return
-
-    const updateSize = () => {
-      const rect = target.getBoundingClientRect()
-      setSceneViewportSize({ width: rect.width, height: rect.height })
+  const sceneViewportCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    if (sceneObserverRef.current) {
+      sceneObserverRef.current.disconnect()
+      sceneObserverRef.current = null
     }
+    sceneViewportRef.current = node
+    if (!node) return
 
-    updateSize()
-    const observer = new ResizeObserver(updateSize)
-    observer.observe(target)
-
-    return () => {
-      observer.disconnect()
-    }
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect
+        if (width > 0 && height > 0) {
+          setSceneViewportSize({ width, height })
+        }
+      }
+    })
+    observer.observe(node)
+    sceneObserverRef.current = observer
   }, [])
 
   const projectedSceneElements = useMemo(() => {
@@ -410,7 +413,7 @@ export default function SessionReplay() {
                     <div className="space-y-4">
                       {/* UI note */}
                       <div
-                        ref={sceneViewportRef}
+                        ref={sceneViewportCallbackRef}
                         className="relative aspect-video overflow-hidden rounded-lg bg-surface-elevated"
                       >
                         {!imageLoadFailed ? (

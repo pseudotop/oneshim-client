@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Default WebServer port**: 9090 → 59090 (IANA ephemeral range, avoids Prometheus/Cockpit conflicts)
+- **Default WebServer port**: 9090 → 10090 (IANA unregistered Registered Port, avoids Prometheus/Cockpit conflicts and OS ephemeral allocation)
 - **Port centralization**: Hardcoded port references (15+ occurrences) → `DEFAULT_WEB_PORT` constant in `oneshim-core` + `constants.ts`
 - **Smoke test reliability**: Add TCP port availability check loop (replaces fixed `sleep 1`) in both bash and PowerShell smoke scripts
 
