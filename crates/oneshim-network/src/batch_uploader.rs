@@ -26,6 +26,8 @@ pub struct BatchUploader {
     /// Tracks whether we have already emitted a pressure warning for the
     /// current high-water-mark episode, so we don't spam logs every enqueue.
     pressure_warned: AtomicBool,
+    /// Total number of batches that exhausted all retries and were requeued.
+    failed_batches: AtomicUsize,
 }
 
 impl BatchUploader {
@@ -45,6 +47,7 @@ impl BatchUploader {
             dynamic_batch: true,
             max_queue_size: MAX_UPLOAD_QUEUE_SIZE,
             pressure_warned: AtomicBool::new(false),
+            failed_batches: AtomicUsize::new(0),
         }
     }
 
@@ -201,6 +204,7 @@ impl BatchUploader {
                         retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
                     } else {
                         error!("batch upload final failure: {e}");
+                        self.failed_batches.fetch_add(1, Ordering::Relaxed);
                         self.requeue_failed_events(batch.events);
                         return Err(e);
                     }
@@ -255,12 +259,17 @@ impl BatchUploader {
         self.max_queue_size
     }
 
+    pub fn failed_batches(&self) -> usize {
+        self.failed_batches.load(Ordering::Relaxed)
+    }
+
     pub fn stats(&self) -> BatchStats {
         BatchStats {
             queue_size: self.queue_size(),
             max_batch_size: self.max_batch_size,
             max_queue_size: self.max_queue_size,
             dynamic_batch_enabled: self.dynamic_batch,
+            failed_batches: self.failed_batches(),
         }
     }
 }
@@ -271,6 +280,9 @@ pub struct BatchStats {
     pub max_batch_size: usize,
     pub max_queue_size: usize,
     pub dynamic_batch_enabled: bool,
+    /// Number of batches that exhausted all retries and had their events
+    /// requeued. Monotonically increasing; never resets.
+    pub failed_batches: usize,
 }
 
 #[cfg(test)]
@@ -479,6 +491,47 @@ mod tests {
         let result = uploader.flush().await;
         assert!(result.is_err());
         assert_eq!(uploader.queue_size(), 2);
+    }
+
+    /// Verifies the complete failure path using MockApiClient { should_fail: true }:
+    /// - flush() returns Err
+    /// - enqueued events are preserved in the queue after all retries are exhausted
+    /// - stats().failed_batches is incremented by one per failed flush call
+    #[tokio::test]
+    async fn flush_failure_path_increments_failed_batches_and_preserves_events() {
+        let client = Arc::new(MockApiClient { should_fail: true });
+        // max_retries = 0 so the single attempt fails immediately without sleeping.
+        let uploader = BatchUploader::new(client, "sess_fail_path".to_string(), 100, 0);
+
+        uploader.enqueue(make_test_event());
+        uploader.enqueue(make_test_event());
+        uploader.enqueue(make_test_event());
+        assert_eq!(uploader.queue_size(), 3);
+        assert_eq!(uploader.failed_batches(), 0);
+
+        // First flush — all 3 events are drained, upload fails, they are requeued.
+        let result = uploader.flush().await;
+        assert!(result.is_err(), "flush() must return Err when the API client always fails");
+        assert_eq!(
+            uploader.queue_size(),
+            3,
+            "events must be requeued after a failed flush so no data is lost"
+        );
+        assert_eq!(
+            uploader.stats().failed_batches,
+            1,
+            "failed_batches should be 1 after the first exhausted flush"
+        );
+
+        // Second flush — same failure, counter must be 2.
+        let result2 = uploader.flush().await;
+        assert!(result2.is_err());
+        assert_eq!(uploader.queue_size(), 3);
+        assert_eq!(
+            uploader.stats().failed_batches,
+            2,
+            "failed_batches must increment monotonically with each exhausted flush"
+        );
     }
 
     #[test]
