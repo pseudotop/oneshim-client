@@ -153,7 +153,7 @@ test.describe('Search', () => {
   })
 
   test('should toggle tag filter', async ({ page }) => {
-    const workTag = page.locator('span.rounded-full').filter({ hasText: 'Work' }).first()
+    const workTag = page.locator('button.rounded-full').filter({ hasText: 'Work' }).first()
     await expect(workTag).toBeVisible()
     await workTag.click()
     await expect(page.getByText(selectedTagsName)).toBeVisible()
