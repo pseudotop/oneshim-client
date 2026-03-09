@@ -207,11 +207,9 @@ impl ApiClient for HttpApiClient {
                 .await?;
 
             let body = serde_json::json!({ "client_id": client_id });
-            let resp = req
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| map_reqwest_error(e, "session create request failure", self.timeout_ms))?;
+            let resp = req.json(&body).send().await.map_err(|e| {
+                map_reqwest_error(e, "session create request failure", self.timeout_ms)
+            })?;
 
             let resp = self.check_response(resp).await?;
             let session: SessionCreateResponse = resp.json().await.map_err(|e| {
@@ -233,10 +231,9 @@ impl ApiClient for HttpApiClient {
                 .authorized_request(reqwest::Method::DELETE, &path)
                 .await?;
 
-            let resp = req
-                .send()
-                .await
-                .map_err(|e| map_reqwest_error(e, "session ended request failure", self.timeout_ms))?;
+            let resp = req.send().await.map_err(|e| {
+                map_reqwest_error(e, "session ended request failure", self.timeout_ms)
+            })?;
 
             self.check_response(resp).await?;
             debug!("session ended success");
@@ -253,11 +250,9 @@ impl ApiClient for HttpApiClient {
                 .authorized_request(reqwest::Method::POST, "/user_context/batches")
                 .await?;
 
-            let resp = req
-                .json(batch)
-                .send()
-                .await
-                .map_err(|e| map_reqwest_error(e, "batch upload request failure", self.timeout_ms))?;
+            let resp = req.json(batch).send().await.map_err(|e| {
+                map_reqwest_error(e, "batch upload request failure", self.timeout_ms)
+            })?;
 
             self.check_response(resp).await?;
             debug!("batch upload success");

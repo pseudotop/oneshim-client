@@ -1820,37 +1820,61 @@ mod tests {
     /// `subscribe_session` rejects a wrong capability token.
     #[tokio::test]
     async fn m3_subscribe_session_rejects_invalid_token() {
-        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (service, _) = make_service(
+            make_scene(vec![make_element("el-1", "OK", 0.9)]),
+            make_focus(),
+        );
         let (sid, _token) = create_test_session(&service).await;
 
-        let err = service.subscribe_session(&sid, "wrong-token").await.unwrap_err();
+        let err = service
+            .subscribe_session(&sid, "wrong-token")
+            .await
+            .unwrap_err();
         assert!(matches!(err, GuiInteractionError::Unauthorized));
     }
 
     /// `subscribe_session` rejects an unknown session_id.
     #[tokio::test]
     async fn m3_subscribe_session_rejects_unknown_session() {
-        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (service, _) = make_service(
+            make_scene(vec![make_element("el-1", "OK", 0.9)]),
+            make_focus(),
+        );
 
-        let err = service.subscribe_session("no-such-session", "any-token").await.unwrap_err();
-        assert!(matches!(err, GuiInteractionError::Unauthorized | GuiInteractionError::NotFound(_)));
+        let err = service
+            .subscribe_session("no-such-session", "any-token")
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            GuiInteractionError::Unauthorized | GuiInteractionError::NotFound(_)
+        ));
     }
 
     /// `subscribe_session` with the correct token succeeds.
     #[tokio::test]
     async fn m3_subscribe_session_accepts_valid_token() {
-        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (service, _) = make_service(
+            make_scene(vec![make_element("el-1", "OK", 0.9)]),
+            make_focus(),
+        );
         let (sid, token) = create_test_session(&service).await;
 
         // Subscribing after session creation with the correct token must succeed.
         let result = service.subscribe_session(&sid, &token).await;
-        assert!(result.is_ok(), "subscribe_session should succeed with valid token");
+        assert!(
+            result.is_ok(),
+            "subscribe_session should succeed with valid token"
+        );
     }
 
     /// `create_session` emits a `gui_session.proposed` event on the broadcast channel.
     #[tokio::test]
     async fn m3_create_session_emits_proposed_event() {
-        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (service, _) = make_service(
+            make_scene(vec![make_element("el-1", "OK", 0.9)]),
+            make_focus(),
+        );
 
         // Subscribe before the state transition so we don't miss the event.
         let mut rx = service.subscribe();
@@ -1877,7 +1901,10 @@ mod tests {
     /// `highlight_session` emits a `gui_session.highlighted` event.
     #[tokio::test]
     async fn m3_highlight_session_emits_highlighted_event() {
-        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (service, _) = make_service(
+            make_scene(vec![make_element("el-1", "OK", 0.9)]),
+            make_focus(),
+        );
 
         let mut rx = service.subscribe();
         let (sid, token) = create_test_session(&service).await;
@@ -1885,14 +1912,22 @@ mod tests {
         // Drain the proposed event.
         let _ = tokio::time::timeout(std::time::Duration::from_millis(100), async {
             loop {
-                if rx.try_recv().is_ok() { break; }
+                if rx.try_recv().is_ok() {
+                    break;
+                }
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
         })
         .await;
 
         service
-            .highlight_session(&sid, &token, GuiHighlightRequest { candidate_ids: None })
+            .highlight_session(
+                &sid,
+                &token,
+                GuiHighlightRequest {
+                    candidate_ids: None,
+                },
+            )
             .await
             .expect("highlight should succeed");
 
@@ -1916,7 +1951,10 @@ mod tests {
     /// `cancel_session` emits a `gui_session.cancelled` event.
     #[tokio::test]
     async fn m3_cancel_session_emits_cancelled_event() {
-        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (service, _) = make_service(
+            make_scene(vec![make_element("el-1", "OK", 0.9)]),
+            make_focus(),
+        );
 
         let mut rx = service.subscribe();
         let (sid, token) = create_test_session(&service).await;
@@ -2104,7 +2142,10 @@ mod tests {
     /// `expire_sessions()` emits a `gui_session.expired` event for sessions past their TTL.
     #[tokio::test]
     async fn m3_expire_sessions_emits_expired_event() {
-        let (service, _) = make_service(make_scene(vec![make_element("el-1", "OK", 0.9)]), make_focus());
+        let (service, _) = make_service(
+            make_scene(vec![make_element("el-1", "OK", 0.9)]),
+            make_focus(),
+        );
 
         let mut rx = service.subscribe();
 

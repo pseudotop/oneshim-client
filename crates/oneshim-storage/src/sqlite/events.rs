@@ -258,8 +258,7 @@ impl StorageService for SqliteStorage {
     }
 
     async fn enforce_retention(&self) -> Result<usize, CoreError> {
-        let cutoff =
-            (Utc::now() - Duration::days(self.retention_days as i64)).to_rfc3339();
+        let cutoff = (Utc::now() - Duration::days(self.retention_days as i64)).to_rfc3339();
         let retention_days = self.retention_days;
 
         self.with_conn(move |conn| {

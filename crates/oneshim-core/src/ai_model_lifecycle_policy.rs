@@ -392,11 +392,7 @@ mod tests {
         }
     }
 
-    fn warn_only_rule(
-        provider: &str,
-        model: &str,
-        warn_at: Option<&str>,
-    ) -> ModelLifecycleRule {
+    fn warn_only_rule(provider: &str, model: &str, warn_at: Option<&str>) -> ModelLifecycleRule {
         ModelLifecycleRule {
             provider_type: provider.to_string(),
             model: model.to_string(),
@@ -407,11 +403,7 @@ mod tests {
         }
     }
 
-    fn block_rule(
-        provider: &str,
-        model: &str,
-        block_at: Option<&str>,
-    ) -> ModelLifecycleRule {
+    fn block_rule(provider: &str, model: &str, block_at: Option<&str>) -> ModelLifecycleRule {
         ModelLifecycleRule {
             provider_type: provider.to_string(),
             model: model.to_string(),
@@ -506,8 +498,7 @@ mod tests {
         // warn_at = 2026-03-01, block_at = 2026-06-01
         let in_warn = ts("2026-03-10T00:00:00Z");
         let decision =
-            evaluate_model_lifecycle_at(AiProviderType::Google, "gemini-1.5-pro", in_warn)
-                .unwrap();
+            evaluate_model_lifecycle_at(AiProviderType::Google, "gemini-1.5-pro", in_warn).unwrap();
         assert!(
             matches!(decision, ModelLifecycleDecision::Warn { .. }),
             "expected Warn, got {decision:?}"
@@ -599,12 +590,9 @@ mod tests {
         // gpt-3.5-turbo block_at = 2026-01-01T00:00:00Z
         // Use one second before since RFC3339 resolution is seconds.
         let just_before_block = ts("2025-12-31T23:59:59Z");
-        let decision = evaluate_model_lifecycle_at(
-            AiProviderType::OpenAi,
-            "gpt-3.5-turbo",
-            just_before_block,
-        )
-        .unwrap();
+        let decision =
+            evaluate_model_lifecycle_at(AiProviderType::OpenAi, "gpt-3.5-turbo", just_before_block)
+                .unwrap();
         assert!(
             matches!(decision, ModelLifecycleDecision::Warn { .. }),
             "one second before block boundary should be Warn, got {decision:?}"
@@ -703,7 +691,10 @@ mod tests {
         let rule = block_rule("google", "forbidden-model", None);
         let any_time = ts("2020-01-01T00:00:00Z");
         let d = evaluate_rule_at(AiProviderType::Google, &rule, any_time).unwrap();
-        assert!(d.is_blocking(), "Block action with no block_at must always block");
+        assert!(
+            d.is_blocking(),
+            "Block action with no block_at must always block"
+        );
     }
 
     /// Block action with a future block_at → Allowed until that date.

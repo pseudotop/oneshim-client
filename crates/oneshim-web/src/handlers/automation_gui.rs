@@ -245,8 +245,13 @@ mod tests {
 
     mod m4 {
         use super::*;
+        use crate::AppState;
         use async_trait::async_trait;
         use chrono::Utc;
+        use oneshim_api_contracts::automation_gui::{
+            GuiConfirmRequest, GuiCreateSessionRequest, GuiExecutionRequest, GuiHighlightRequest,
+            GuiSessionPath,
+        };
         use oneshim_automation::audit::AuditLogger;
         use oneshim_automation::controller::AutomationController;
         use oneshim_automation::input_driver::{NoOpElementFinder, NoOpInputDriver};
@@ -264,14 +269,9 @@ mod tests {
         use oneshim_core::ports::element_finder::ElementFinder;
         use oneshim_core::ports::focus_probe::FocusProbe;
         use oneshim_core::ports::overlay_driver::OverlayDriver;
-        use oneshim_api_contracts::automation_gui::{
-            GuiConfirmRequest, GuiCreateSessionRequest, GuiExecutionRequest, GuiHighlightRequest,
-            GuiSessionPath,
-        };
         use oneshim_storage::sqlite::SqliteStorage;
         use std::sync::Arc;
         use tokio::sync::{broadcast, RwLock};
-        use crate::AppState;
 
         const M4_HMAC_SECRET: &str = "m4-hmac-secret-32-bytes-long!!!!";
 
@@ -380,15 +380,10 @@ mod tests {
         fn make_controller() -> Arc<AutomationController> {
             let policy_client = Arc::new(PolicyClient::new());
             let audit_logger = Arc::new(RwLock::new(AuditLogger::default()));
-            let sandbox: Arc<dyn oneshim_core::ports::sandbox::Sandbox> =
-                Arc::new(NoOpSandbox);
+            let sandbox: Arc<dyn oneshim_core::ports::sandbox::Sandbox> = Arc::new(NoOpSandbox);
             let sandbox_config = SandboxConfig::default();
-            let mut controller = AutomationController::new(
-                policy_client,
-                audit_logger,
-                sandbox,
-                sandbox_config,
-            );
+            let mut controller =
+                AutomationController::new(policy_client, audit_logger, sandbox, sandbox_config);
 
             controller.set_scene_finder(Arc::new(M4MockElementFinder));
             controller
@@ -401,9 +396,8 @@ mod tests {
 
             let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
                 Arc::new(NoOpInputDriver);
-            let element_finder: Arc<
-                dyn oneshim_core::ports::element_finder::ElementFinder,
-            > = Arc::new(NoOpElementFinder);
+            let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
+                Arc::new(NoOpElementFinder);
             let resolver =
                 IntentResolver::new(element_finder, input_driver, IntentConfig::default());
             controller.set_intent_executor(Arc::new(IntentExecutor::new(
@@ -475,9 +469,13 @@ mod tests {
         async fn fixture_highlight(state: &AppState, sid: &str, token: &str) -> String {
             let resp = highlight_gui_session(
                 State(state.clone()),
-                Path(GuiSessionPath { id: sid.to_string() }),
+                Path(GuiSessionPath {
+                    id: sid.to_string(),
+                }),
                 token_headers(token),
-                Json(GuiHighlightRequest { candidate_ids: None }),
+                Json(GuiHighlightRequest {
+                    candidate_ids: None,
+                }),
             )
             .await
             .expect("fixture_highlight: highlight_gui_session should succeed");
@@ -554,7 +552,9 @@ mod tests {
                 State(state),
                 Path(GuiSessionPath { id: sid }),
                 token_headers(&token),
-                Json(GuiHighlightRequest { candidate_ids: None }),
+                Json(GuiHighlightRequest {
+                    candidate_ids: None,
+                }),
             )
             .await
             .unwrap();

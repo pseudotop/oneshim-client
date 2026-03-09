@@ -265,9 +265,7 @@ impl MetricsStorage for SqliteStorage {
                     "DELETE FROM system_metrics WHERE timestamp < ?1",
                     rusqlite::params![cutoff],
                 )
-                .map_err(|e| {
-                    CoreError::Internal(format!("Failed to delete stale metrics: {e}"))
-                })?;
+                .map_err(|e| CoreError::Internal(format!("Failed to delete stale metrics: {e}")))?;
 
             if deleted > 0 {
                 info!("{deleted}items delete");

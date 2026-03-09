@@ -511,7 +511,10 @@ mod tests {
 
         // First flush — all 3 events are drained, upload fails, they are requeued.
         let result = uploader.flush().await;
-        assert!(result.is_err(), "flush() must return Err when the API client always fails");
+        assert!(
+            result.is_err(),
+            "flush() must return Err when the API client always fails"
+        );
         assert_eq!(
             uploader.queue_size(),
             3,
