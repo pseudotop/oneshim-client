@@ -7,11 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-03-10
+
+### Fixed
+
+- **Default WebServer port**: 59090 (ephemeral) → 10090 (IANA unregistered Registered Port, avoids OS ephemeral outbound allocation)
+- **Tauri CSP**: Cover full fallback range 10090-10099 (MAX_PORT_ATTEMPTS=10)
+- **SessionReplay overlay bug**: ResizeObserver `useEffect` with `[]` deps never re-ran on conditionally rendered viewport div — replaced with callback ref pattern
+- **E2E search tag filter**: `span.rounded-full` → `button.rounded-full` (TagBadge renders `<button>` when `onClick` is provided)
+
 ## [0.3.2] - 2026-03-09
 
 ### Changed
 
-- **Default WebServer port**: 9090 → 10090 (IANA unregistered Registered Port, avoids Prometheus/Cockpit conflicts and OS ephemeral allocation)
+- **Default WebServer port**: 9090 → 59090 (IANA ephemeral range, avoids Prometheus/Cockpit conflicts)
 - **Port centralization**: Hardcoded port references (15+ occurrences) → `DEFAULT_WEB_PORT` constant in `oneshim-core` + `constants.ts`
 - **Smoke test reliability**: Add TCP port availability check loop (replaces fixed `sleep 1`) in both bash and PowerShell smoke scripts
 
@@ -233,7 +242,8 @@ Each version entry must include:
 
 ---
 
-[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/pseudotop/oneshim-client/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/pseudotop/oneshim-client/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/pseudotop/oneshim-client/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/pseudotop/oneshim-client/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/pseudotop/oneshim-client/compare/v0.2.0...v0.3.0
