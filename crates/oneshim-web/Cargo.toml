@@ -14,7 +14,6 @@ authors.workspace = true
 oneshim-core = { workspace = true }
 oneshim-api-contracts = { workspace = true }
 oneshim-storage = { workspace = true }
-oneshim-automation = { workspace = true }
 
 # 비동기 런타임
 tokio = { workspace = true }
@@ -53,6 +52,7 @@ mime_guess = { workspace = true }
 rusqlite = { workspace = true }
 
 [dev-dependencies]
+oneshim-automation = { workspace = true }
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
 async-trait = { workspace = true }

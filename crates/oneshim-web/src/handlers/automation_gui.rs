@@ -239,7 +239,6 @@ fn map_gui_error(err: GuiInteractionError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oneshim_automation::gui_interaction::GuiInteractionError;
 
     // ── M4: End-to-End Workflow Tests ───────────────────────────────────
 

@@ -7,7 +7,7 @@ use oneshim_api_contracts::support::{DiagnosticsBundleDto, DiagnosticsHealthDto}
 const SUPPORT_DIAGNOSTICS_SCHEMA_VERSION: &str = "support.diagnostics.v1";
 const SUPPORT_AUDIT_SCHEMA_VERSION: &str = "automation.audit.v1";
 
-fn to_audit_entry_dto(entry: oneshim_automation::audit::AuditEntry) -> AuditEntryDto {
+fn to_audit_entry_dto(entry: oneshim_core::models::audit::AuditEntry) -> AuditEntryDto {
     AuditEntryDto {
         schema_version: SUPPORT_AUDIT_SCHEMA_VERSION.to_string(),
         entry_id: entry.entry_id,

@@ -12,9 +12,8 @@
 //!   - `AppState` uses `Arc<dyn AuditLogPort>` and `Arc<dyn AutomationPort>`
 //!   - `AuditLogAdapter` in `oneshim-automation::audit` bridges `AuditLogger` to the port
 //!
-//! **Remaining**: Step 7 (remove `oneshim-automation` from Cargo.toml) is deferred.
-//!   `oneshim-automation` is still a direct dependency for `AuditLevel` re-export in
-//!   handlers and test-only `AutomationController` construction.
+//! **Remaining**: `oneshim-automation` moved to `[dev-dependencies]` — only used
+//!   for test-only `AutomationController` construction in `automation_gui::tests`.
 //!
 //! ### Violation 2 — `oneshim-storage` concrete types (unchanged)
 //!

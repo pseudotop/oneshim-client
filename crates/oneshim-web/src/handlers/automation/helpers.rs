@@ -4,7 +4,7 @@ use oneshim_api_contracts::automation::{
     AutomationStatusDto, ExecuteSceneActionRequest, PoliciesDto, SceneActionType,
     SceneCalibrationDto,
 };
-use oneshim_automation::audit::AuditStatus;
+use oneshim_core::models::audit::AuditStatus;
 use oneshim_core::config::{
     AiAccessMode, ExternalDataPolicy, LlmProviderType, OcrProviderType, PiiFilterLevel,
     SceneActionOverrideConfig, SceneIntelligenceConfig,

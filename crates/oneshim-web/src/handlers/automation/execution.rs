@@ -9,10 +9,9 @@ use oneshim_api_contracts::automation::{
     ExecuteIntentHintRequest, ExecuteIntentHintResponse, ExecuteSceneActionRequest,
     ExecuteSceneActionResponse, PoliciesDto, PolicyEventQuery, PresetListDto, PresetRunResult,
 };
-use oneshim_automation::policy::AuditLevel;
-use oneshim_core::models::intent::builtin_presets;
 use oneshim_core::error::CoreError;
-use oneshim_core::models::intent::{IntentCommand, IntentResult, WorkflowPreset};
+use oneshim_core::models::audit::AuditLevel;
+use oneshim_core::models::intent::{builtin_presets, IntentCommand, IntentResult, WorkflowPreset};
 use oneshim_core::models::ui_scene::UI_SCENE_SCHEMA_VERSION;
 use std::time::Instant;
 
