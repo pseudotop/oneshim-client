@@ -84,6 +84,7 @@ export default function Privacy() {
     include_frames: false,
   })
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null)
+  const [restoreError, setRestoreError] = useState<string | null>(null)
 
   const { data: storageStats, isLoading } = useQuery({
     queryKey: ['storage-stats'],
@@ -157,18 +158,20 @@ export default function Privacy() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    setRestoreError(null)
+
     try {
       const text = await file.text()
       const archive: BackupArchive = JSON.parse(text)
 
       if (!archive.metadata?.version) {
-        alert(t('backup.restoreFailed'))
+        setRestoreError(t('backup.restoreFailed'))
         return
       }
 
       restoreMutation.mutate(archive)
     } catch {
-      alert(t('backup.restoreFailed'))
+      setRestoreError(t('backup.restoreFailed'))
     }
 
     if (fileInputRef.current) {
@@ -335,6 +338,22 @@ export default function Privacy() {
         <p className="mb-4 text-content-secondary text-sm">{t('backup.description')}</p>
 
         {/* UI note */}
+        {restoreError && (
+          <div
+            role="alert"
+            className="mb-4 rounded-lg border border-status-error bg-semantic-error/20 p-4 text-semantic-error"
+          >
+            <div className="font-medium">{restoreError}</div>
+            <button
+              type="button"
+              className="mt-2 text-sm underline"
+              onClick={() => setRestoreError(null)}
+            >
+              {t('common.dismiss', 'Dismiss')}
+            </button>
+          </div>
+        )}
+
         {restoreResult && (
           <div
             className={`mb-4 rounded-lg p-4 ${

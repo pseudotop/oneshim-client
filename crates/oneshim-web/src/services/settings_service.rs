@@ -13,7 +13,7 @@ use oneshim_core::config::{
 
 use crate::error::ApiError;
 use crate::AppState;
-use tracing::warn;
+
 
 pub fn get_storage_stats(state: &AppState) -> Result<StorageStats, ApiError> {
     let stats = state
@@ -153,17 +153,13 @@ fn emit_policy_change_events(state: &AppState, previous: &AppConfig, next: &AppC
 }
 
 fn log_policy_event(state: &AppState, action_type: &str, details: String) {
-    let Some(logger) = state.audit_logger.as_ref() else {
+    let Some(logger) = state.audit_logger.clone() else {
         return;
     };
-
-    match logger.try_write() {
-        Ok(mut guard) => guard.log_event(action_type, "settings", &details),
-        Err(_) => warn!(
-            action_type = action_type,
-            "audit logger busy; policy setting change event was dropped"
-        ),
-    }
+    let action_type = action_type.to_string();
+    tokio::spawn(async move {
+        logger.log_event(&action_type, "settings", &details).await;
+    });
 }
 
 fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {

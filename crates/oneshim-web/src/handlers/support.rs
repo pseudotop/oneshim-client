@@ -47,8 +47,7 @@ pub async fn get_diagnostics(State(state): State<AppState>) -> Json<DiagnosticsB
 
     let (recent_audit_entries, recent_policy_events) =
         if let Some(logger) = state.audit_logger.as_ref() {
-            let guard = logger.read().await;
-            let recent_entries = guard.recent_entries(400);
+            let recent_entries = logger.recent_entries(400).await;
             let audit_entries = recent_entries
                 .iter()
                 .take(50)

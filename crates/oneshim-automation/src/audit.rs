@@ -1,29 +1,8 @@
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use chrono::Utc;
 use std::collections::VecDeque;
 
-use crate::policy::AuditLevel;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AuditStatus {
-    Started,
-    Completed,
-    Failed,
-    Denied,
-    Timeout,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuditEntry {
-    pub entry_id: String,
-    pub timestamp: DateTime<Utc>,
-    pub session_id: String,
-    pub command_id: String,
-    pub action_type: String,
-    pub status: AuditStatus,
-    pub details: Option<String>,
-    pub execution_time_ms: Option<u64>,
-}
+// Canonical types from oneshim-core — re-exported for backward compat
+pub use oneshim_core::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};
 
 pub struct AuditLogger {
     buffer: VecDeque<AuditEntry>,
@@ -172,22 +151,28 @@ impl AuditLogger {
             .collect()
     }
 
-    pub fn stats(&self) -> (usize, usize, usize, usize, usize) {
-        let mut success = 0;
+    pub fn stats(&self) -> AuditStats {
+        let mut completed = 0;
         let mut failed = 0;
         let mut denied = 0;
         let mut timeout = 0;
         for entry in &self.buffer {
             match entry.status {
-                AuditStatus::Completed => success += 1,
+                AuditStatus::Completed => completed += 1,
                 AuditStatus::Failed => failed += 1,
                 AuditStatus::Denied => denied += 1,
                 AuditStatus::Timeout => timeout += 1,
                 AuditStatus::Started => {}
             }
         }
-        let total = success + failed + denied + timeout;
-        (total, success, failed, denied, timeout)
+        let total = completed + failed + denied + timeout;
+        AuditStats {
+            total,
+            completed,
+            failed,
+            denied,
+            timeout,
+        }
     }
 
     fn push_entry(
@@ -249,6 +234,97 @@ impl AuditLogger {
 impl Default for AuditLogger {
     fn default() -> Self {
         Self::new(1000, 50)
+    }
+}
+
+// ── AuditLogPort adapter ──
+
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+/// `Arc<RwLock<AuditLogger>>`를 `AuditLogPort`로 래핑하는 어댑터
+///
+/// ADR-001 §2: 포트 트레잇은 `&self`, 구현체는 interior mutability 사용
+pub struct AuditLogAdapter {
+    inner: Arc<RwLock<AuditLogger>>,
+}
+
+impl AuditLogAdapter {
+    pub fn new(logger: Arc<RwLock<AuditLogger>>) -> Self {
+        Self { inner: logger }
+    }
+
+    /// 내부 `Arc<RwLock<AuditLogger>>`에 대한 참조 (직접 접근이 필요한 레거시 코드용)
+    pub fn inner(&self) -> &Arc<RwLock<AuditLogger>> {
+        &self.inner
+    }
+}
+
+#[async_trait::async_trait]
+impl oneshim_core::ports::audit_log::AuditLogPort for AuditLogAdapter {
+    async fn pending_count(&self) -> usize {
+        self.inner.read().await.pending_count()
+    }
+
+    async fn recent_entries(&self, limit: usize) -> Vec<AuditEntry> {
+        self.inner.read().await.recent_entries(limit)
+    }
+
+    async fn entries_by_status(&self, status: &AuditStatus, limit: usize) -> Vec<AuditEntry> {
+        self.inner.read().await.entries_by_status(status, limit)
+    }
+
+    async fn stats(&self) -> AuditStats {
+        self.inner.read().await.stats()
+    }
+
+    async fn has_pending_batch(&self) -> bool {
+        self.inner.read().await.has_pending_batch()
+    }
+
+    async fn log_event(&self, action_type: &str, session_id: &str, details: &str) {
+        self.inner
+            .write()
+            .await
+            .log_event(action_type, session_id, details);
+    }
+
+    async fn log_start_if(
+        &self,
+        level: AuditLevel,
+        command_id: &str,
+        session_id: &str,
+        action_type: &str,
+    ) {
+        self.inner
+            .write()
+            .await
+            .log_start_if(level, command_id, session_id, action_type);
+    }
+
+    async fn log_complete_with_time(
+        &self,
+        level: AuditLevel,
+        command_id: &str,
+        session_id: &str,
+        details: &str,
+        execution_time_ms: u64,
+    ) {
+        self.inner.write().await.log_complete_with_time(
+            level,
+            command_id,
+            session_id,
+            details,
+            execution_time_ms,
+        );
+    }
+
+    async fn drain_batch(&self) -> Vec<AuditEntry> {
+        self.inner.write().await.drain_batch()
+    }
+
+    async fn drain_all(&self) -> Vec<AuditEntry> {
+        self.inner.write().await.drain_all()
     }
 }
 
@@ -389,12 +465,12 @@ mod tests {
         logger.log_timeout("cmd-5", "s", 5000);
         logger.log_complete("cmd-6", "s", "ok2");
 
-        let (total, success, failed, denied, timeout) = logger.stats();
-        assert_eq!(total, 5); // Started is excluded
-        assert_eq!(success, 2);
-        assert_eq!(failed, 1);
-        assert_eq!(denied, 1);
-        assert_eq!(timeout, 1);
+        let stats = logger.stats();
+        assert_eq!(stats.total, 5); // Started is excluded
+        assert_eq!(stats.completed, 2);
+        assert_eq!(stats.failed, 1);
+        assert_eq!(stats.denied, 1);
+        assert_eq!(stats.timeout, 1);
     }
 
     #[test]
@@ -471,12 +547,12 @@ mod tests {
     #[test]
     fn stats_on_empty_logger() {
         let logger = AuditLogger::new(100, 10);
-        let (total, success, failed, denied, timeout) = logger.stats();
-        assert_eq!(total, 0);
-        assert_eq!(success, 0);
-        assert_eq!(failed, 0);
-        assert_eq!(denied, 0);
-        assert_eq!(timeout, 0);
+        let stats = logger.stats();
+        assert_eq!(stats.total, 0);
+        assert_eq!(stats.completed, 0);
+        assert_eq!(stats.failed, 0);
+        assert_eq!(stats.denied, 0);
+        assert_eq!(stats.timeout, 0);
     }
 
     #[test]

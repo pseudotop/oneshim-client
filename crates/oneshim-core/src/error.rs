@@ -74,3 +74,34 @@ pub enum CoreError {
     #[error("OCR error: {0}")]
     OcrError(String),
 }
+
+/// GUI 상호작용 전용 에러 (AutomationPort GUI 메서드에서 사용)
+///
+/// 이전에는 `oneshim-automation::gui_interaction::GuiInteractionError`에 정의되었으나,
+/// AutomationPort 추상화를 위해 oneshim-core로 이동 (ADR-001 §7)
+#[derive(Debug, Error)]
+pub enum GuiInteractionError {
+    #[error("GUI session token is invalid")]
+    Unauthorized,
+
+    #[error("GUI session '{0}' not found")]
+    NotFound(String),
+
+    #[error("Invalid GUI request: {0}")]
+    BadRequest(String),
+
+    #[error("GUI request forbidden: {0}")]
+    Forbidden(String),
+
+    #[error("GUI focus drift detected: {0}")]
+    FocusDrift(String),
+
+    #[error("GUI ticket is no longer valid: {0}")]
+    TicketInvalid(String),
+
+    #[error("GUI runtime unavailable: {0}")]
+    Unavailable(String),
+
+    #[error("GUI runtime failed: {0}")]
+    Internal(String),
+}

@@ -12,16 +12,12 @@ mod commands;
 #[cfg(feature = "server")]
 mod event_bus;
 mod focus_analyzer;
-#[allow(dead_code)]
 mod focus_probe_adapter;
-#[allow(dead_code)]
 mod integrity_guard;
-#[allow(dead_code)]
 mod lifecycle;
 mod memory_profiler;
 mod notification_manager;
 mod platform_accessibility;
-#[allow(dead_code)]
 mod platform_overlay;
 mod provider_adapters;
 mod scheduler;

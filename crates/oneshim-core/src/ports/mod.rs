@@ -1,4 +1,6 @@
 pub mod api_client;
+pub mod audit_log;
+pub mod automation;
 pub mod batch_sink;
 pub mod compressor;
 pub mod element_finder;

@@ -3,6 +3,7 @@ use tracing::info;
 
 pub struct LifecycleManager {
     shutdown_tx: watch::Sender<bool>,
+    #[allow(dead_code)] // used by subscribe()
     shutdown_rx: watch::Receiver<bool>,
 }
 
@@ -15,6 +16,7 @@ impl LifecycleManager {
         }
     }
 
+    #[allow(dead_code)] // available for direct subscriber wiring
     pub fn subscribe(&self) -> watch::Receiver<bool> {
         self.shutdown_rx.clone()
     }

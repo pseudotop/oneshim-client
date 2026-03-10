@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod audit;
 pub mod automation;
 pub mod context;
 pub mod event;
