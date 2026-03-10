@@ -8,14 +8,16 @@ export default function Updates() {
   const { t } = useTranslation()
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className={cn(typography.h1, colors.text.primary)}>{t('updates.title')}</h1>
       </div>
 
-      <UpdatePanel />
+      <div id="section-status">
+        <UpdatePanel />
+      </div>
 
-      <Card variant="default" padding="lg">
+      <Card id="section-history" variant="default" padding="lg">
         <CardTitle className="mb-3">{t('updates.policyTitle')}</CardTitle>
         <ul className="space-y-1 text-content-strong text-sm">
           <li>{t('updates.policyIntegrity')}</li>

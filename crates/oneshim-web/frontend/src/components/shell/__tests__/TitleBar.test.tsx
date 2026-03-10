@@ -9,14 +9,10 @@ describe('TitleBar', () => {
     expect(TitleBar.displayName).toBe('TitleBar')
   })
 
-  it('renders default title', () => {
+  it('renders current page title from route', () => {
     renderWithProviders(<TitleBar onSearchOpen={vi.fn()} />)
-    expect(screen.getByText('ONESHIM')).toBeInTheDocument()
-  })
-
-  it('renders custom title', () => {
-    renderWithProviders(<TitleBar title="Custom" onSearchOpen={vi.fn()} />)
-    expect(screen.getByText('Custom')).toBeInTheDocument()
+    // Default route "/" maps to nav.dashboard → "Dashboard"
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
   })
 
   it('search button has aria-label', () => {

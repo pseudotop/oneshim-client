@@ -305,14 +305,104 @@ fi
 mkdir -p "$INSTALL_DIR"
 TARGET_BINARY="$INSTALL_DIR/$BINARY_NAME"
 
-if install -m 0755 "$SOURCE_BINARY" "$TARGET_BINARY" 2>/dev/null; then
-  :
-else
-  cp "$SOURCE_BINARY" "$TARGET_BINARY"
-  chmod 0755 "$TARGET_BINARY"
-fi
+# macOS: create .app bundle for proper dock icon rendering (glassmorphism, shadow, squircle)
+if [[ "$OS_NAME" == "Darwin" ]]; then
+  ICON_SOURCE="$EXTRACT_DIR/icon.icns"
+  APP_DIR="${ONESHIM_APP_DIR:-$HOME/Applications}"
+  APP_BUNDLE="$APP_DIR/ONESHIM.app"
 
-info "Installed: $TARGET_BINARY"
+  if [[ -f "$ICON_SOURCE" ]]; then
+    info "Creating macOS .app bundle: $APP_BUNDLE"
+    mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+
+    if install -m 0755 "$SOURCE_BINARY" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" 2>/dev/null; then
+      :
+    else
+      cp "$SOURCE_BINARY" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME"
+      chmod 0755 "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME"
+    fi
+
+    cp "$ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/icon.icns"
+
+    # Extract version from tag for Info.plist
+    APP_VERSION="${TAG_NAME#v}"
+    if [[ "$APP_VERSION" == "latest" || -z "$APP_VERSION" ]]; then
+      APP_VERSION="0.0.0"
+    fi
+
+    cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>ONESHIM</string>
+  <key>CFBundleDisplayName</key>
+  <string>ONESHIM</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.oneshim.client</string>
+  <key>CFBundleVersion</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleExecutable</key>
+  <string>oneshim</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.15</string>
+  <key>CFBundleIconFile</key>
+  <string>icon.icns</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>127.0.0.1</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+        <key>NSIncludesSubdomains</key>
+        <false/>
+      </dict>
+      <key>localhost</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+        <key>NSIncludesSubdomains</key>
+        <false/>
+      </dict>
+    </dict>
+  </dict>
+</dict>
+</plist>
+PLIST
+
+    # Symlink binary to INSTALL_DIR for CLI access
+    mkdir -p "$INSTALL_DIR"
+    ln -sf "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" "$TARGET_BINARY"
+    info "Installed: $APP_BUNDLE"
+    info "Symlinked: $TARGET_BINARY → $APP_BUNDLE/Contents/MacOS/$BINARY_NAME"
+    info "Launch: open $APP_BUNDLE"
+  else
+    warn "icon.icns not found in archive; installing as bare binary (no .app bundle)"
+    if install -m 0755 "$SOURCE_BINARY" "$TARGET_BINARY" 2>/dev/null; then
+      :
+    else
+      cp "$SOURCE_BINARY" "$TARGET_BINARY"
+      chmod 0755 "$TARGET_BINARY"
+    fi
+    info "Installed: $TARGET_BINARY"
+  fi
+else
+  # Linux: install bare binary
+  if install -m 0755 "$SOURCE_BINARY" "$TARGET_BINARY" 2>/dev/null; then
+    :
+  else
+    cp "$SOURCE_BINARY" "$TARGET_BINARY"
+    chmod 0755 "$TARGET_BINARY"
+  fi
+  info "Installed: $TARGET_BINARY"
+fi
 
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
   warn "$INSTALL_DIR is not in PATH."

@@ -104,12 +104,12 @@ export default function Search() {
   }
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <h1 className={cn(typography.h1, colors.text.primary)}>{t('search.title')}</h1>
 
       {/* UI note */}
-      <form onSubmit={handleSearch} className="flex gap-2">
+      <form id="section-recent" onSubmit={handleSearch} className="flex gap-2">
         <Input
           type="text"
           value={inputValue}
@@ -123,7 +123,7 @@ export default function Search() {
       </form>
 
       {/* UI note */}
-      <div className="flex flex-wrap items-center gap-4">
+      <div id="section-tags" className="flex flex-wrap items-center gap-4">
         {/* UI note */}
         <div className="flex space-x-2">
           {(['all', 'frames', 'events'] as SearchType[]).map((type) => (

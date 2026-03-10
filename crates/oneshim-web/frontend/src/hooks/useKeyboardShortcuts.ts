@@ -33,6 +33,16 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
 
       // Cmd/Ctrl shortcuts — work even when focused in inputs
       if (event.metaKey || event.ctrlKey) {
+        if (event.key === 'w') {
+          event.preventDefault()
+          // Close-to-tray: hide window instead of closing the app
+          import('@tauri-apps/api/window')
+            .then((m) => m.getCurrentWindow().hide())
+            .catch(() => {
+              /* browser fallback — no-op */
+            })
+          return
+        }
         if (event.key === 'b') {
           event.preventDefault()
           h.onToggleSidebar?.()
@@ -137,6 +147,7 @@ export function getShortcutsList() {
     { key: 'ESC', descriptionKey: 'shortcuts.escape' },
     { key: '\u2190 \u2192', descriptionKey: 'shortcuts.arrows' },
     { key: 'Enter', descriptionKey: 'shortcuts.enter' },
+    { key: `${MOD_KEY}W`, descriptionKey: 'shortcuts.closeToTray' },
     { key: `${MOD_KEY}B`, descriptionKey: 'shortcuts.toggleSidebar' },
     { key: `${MOD_KEY}K`, descriptionKey: 'shortcuts.commandPalette' },
   ]

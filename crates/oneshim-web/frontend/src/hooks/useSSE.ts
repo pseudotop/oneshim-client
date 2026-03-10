@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isStandaloneModeEnabled } from '../api/standalone'
+import { SSE_STREAM_URL } from '../utils/api-base'
 
 export interface MetricsUpdate {
   timestamp: string
@@ -46,7 +47,7 @@ interface UseSSEResult {
   disconnect: () => void
 }
 
-const SSE_URL = '/api/stream'
+const SSE_URL = SSE_STREAM_URL
 const MAX_HISTORY_SIZE = 60 // 60items data ( 5min)
 /**
  *

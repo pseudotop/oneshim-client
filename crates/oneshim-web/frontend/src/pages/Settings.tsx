@@ -516,7 +516,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <div className="flex items-center justify-between">
         <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
@@ -537,7 +537,7 @@ export default function Settings() {
       )}
 
       {/* UI note */}
-      <Card variant="default" padding="lg">
+      <Card id="section-general" variant="default" padding="lg">
         <CardTitle className="mb-4">{t('settings.storageStats')}</CardTitle>
         {storageStats && (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -879,10 +879,12 @@ export default function Settings() {
           </Card>
 
           {/* UI note */}
-          <NotificationSettings notification={formData.notification} onChange={handleNotificationChange} />
+          <div id="section-notification">
+            <NotificationSettings notification={formData.notification} onChange={handleNotificationChange} />
+          </div>
 
           {/* UI note */}
-          <Card variant="default" padding="lg">
+          <Card id="section-privacy" variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.monitorTitle')}</CardTitle>
             <div className="space-y-4">
               <ToggleRow
@@ -910,10 +912,12 @@ export default function Settings() {
           <PrivacySettings privacy={formData.privacy} onChange={handlePrivacyChange} />
 
           {/* UI note */}
-          <ScheduleSettings schedule={formData.schedule} onChange={handleScheduleChange} />
+          <div id="section-schedule">
+            <ScheduleSettings schedule={formData.schedule} onChange={handleScheduleChange} />
+          </div>
 
           {/* UI note */}
-          <Card variant="default" padding="lg">
+          <Card id="section-about" variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settings.telemetryTitle')}</CardTitle>
             <p className="mb-4 text-content-secondary text-sm">{t('settings.telemetryDesc')}</p>
             <div className="space-y-4">
@@ -1000,7 +1004,7 @@ export default function Settings() {
           </Card>
 
           {/* UI note */}
-          <Card variant="default" padding="lg">
+          <Card id="section-ai" variant="default" padding="lg">
             <CardTitle className="mb-4">{t('settingsAutomation.aiTitle')}</CardTitle>
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

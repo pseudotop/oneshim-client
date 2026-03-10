@@ -103,9 +103,9 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+      <div id="section-overview" className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center space-x-4">
           <h1 className={cn(typography.h1, colors.text.primary)}>{t('dashboard.title')}</h1>
           <ConnectionIndicator status={status} t={t} />
@@ -159,9 +159,13 @@ export default function Dashboard() {
       )}
 
       {/* UI note */}
-      <FocusWidget />
+      <div id="section-focus">
+        <FocusWidget />
+      </div>
 
-      <UpdatePanel compact />
+      <div id="section-updates">
+        <UpdatePanel compact />
+      </div>
 
       {/* UI note */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -192,13 +196,13 @@ export default function Dashboard() {
       </div>
 
       {/* UI note */}
-      <Card variant="default" padding="lg">
+      <Card id="section-metrics" variant="default" padding="lg">
         <CardTitle className="mb-4">{t('dashboard.cpuMemory24h')}</CardTitle>
         <MetricsChart data={hourlyMetrics ?? []} />
       </Card>
 
       {/* UI note */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div id="section-processes" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* UI note */}
         <Card variant="default" padding="lg">
           <CardTitle className="mb-4">{t('dashboard.appUsageTime')}</CardTitle>
@@ -217,7 +221,9 @@ export default function Dashboard() {
       </div>
 
       {/* UI note */}
-      <ActivityHeatmap days={7} className={colors.surface.elevated} />
+      <div id="section-heatmap">
+        <ActivityHeatmap days={7} className={colors.surface.elevated} />
+      </div>
 
       {/* UI note */}
       <Card variant="default" padding="lg">

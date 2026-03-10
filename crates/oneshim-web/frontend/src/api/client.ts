@@ -53,11 +53,12 @@ import type {
   WorkflowPreset,
   WorkSession,
 } from './contracts'
+import { API_BASE_URL } from '../utils/api-base'
 import { handleStandaloneRequest, isStandaloneModeEnabled } from './standalone'
 
 export type * from './contracts'
 
-const BASE_URL = '/api'
+const BASE_URL = API_BASE_URL
 
 const DEFAULT_TIMEOUT_MS = 10_000
 const MAX_RETRIES = 2

@@ -146,7 +146,7 @@ export default function Focus() {
   const trend = today.focus_score - avgScore
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <div className="flex items-center justify-between">
         <h1 className={cn(typography.h1, colors.text.primary, 'flex items-center gap-2')}>
@@ -163,7 +163,7 @@ export default function Focus() {
       </div>
 
       {/* UI note */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div id="section-score" className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card variant="elevated" className="flex flex-col items-center justify-center p-6">
           <CircularGauge value={today.focus_score} />
           <div className="mt-2 flex items-center gap-1">
@@ -202,7 +202,7 @@ export default function Focus() {
       </div>
 
       {/* UI note */}
-      <Card>
+      <Card id="section-trend">
         <CardHeader>
           <CardTitle>{t('focus.weeklyTrend')}</CardTitle>
         </CardHeader>
@@ -244,7 +244,7 @@ export default function Focus() {
       {/* UI note */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* UI note */}
-        <Card>
+        <Card id="section-sessions">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Laptop className="h-5 w-5" />
@@ -281,7 +281,7 @@ export default function Focus() {
         </Card>
 
         {/* UI note */}
-        <Card>
+        <Card id="section-interruptions">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ArrowRightLeft className="h-5 w-5" />

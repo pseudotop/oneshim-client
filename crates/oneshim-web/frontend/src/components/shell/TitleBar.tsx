@@ -1,23 +1,45 @@
 import { Search } from 'lucide-react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation } from 'react-router-dom'
 import { interaction, layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
-import { IS_MAC, MOD_KEY } from '../../utils/platform'
+import { MOD_KEY } from '../../utils/platform'
+
+const IS_MAC =
+  typeof navigator !== 'undefined' &&
+  (/mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent))
+
+const pageTitleKeys: Record<string, string> = {
+  '/': 'nav.dashboard',
+  '/timeline': 'nav.timeline',
+  '/reports': 'nav.reports',
+  '/focus': 'nav.focus',
+  '/replay': 'nav.replay',
+  '/automation': 'nav.automation',
+  '/updates': 'nav.updates',
+  '/settings': 'nav.settings',
+  '/privacy': 'nav.privacy',
+  '/search': 'nav.search',
+}
 
 interface TitleBarProps {
-  title?: string
   onSearchOpen: () => void
 }
 
-export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarProps) {
+export default function TitleBar({ onSearchOpen }: TitleBarProps) {
   const { t } = useTranslation()
+  const location = useLocation()
+
+  const titleKey = pageTitleKeys[location.pathname] ?? pageTitleKeys['/']
+  const pageTitle = t(titleKey)
+
   const handleMinimize = useCallback(async () => {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
       await getCurrentWindow().minimize()
     } catch {
-      /* browser fallback — no-op */
+      /* browser fallback */
     }
   }, [])
 
@@ -31,17 +53,16 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
         await win.maximize()
       }
     } catch {
-      /* browser fallback — no-op */
+      /* browser fallback */
     }
   }, [])
 
-  // hide() instead of close() — keeps the app running in the system tray (close-to-tray pattern)
   const handleClose = useCallback(async () => {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
       await getCurrentWindow().hide()
     } catch {
-      /* browser fallback — no-op */
+      /* browser fallback */
     }
   }, [])
 
@@ -55,9 +76,14 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
       )}
       data-tauri-drag-region
     >
-      {/* Brand / Title — centered */}
+      {/* macOS: padding for native traffic lights (overlay titlebar) */}
+      {IS_MAC && <div className="w-[78px] flex-shrink-0" data-tauri-drag-region />}
+
+      {/* Page title — centered */}
       <div className="flex flex-1 items-center justify-center" data-tauri-drag-region>
-        <span className={layout.titleBar.brand}>{title}</span>
+        <span className={cn(layout.titleBar.brand, 'text-content-secondary text-xs tracking-wider')}>
+          {pageTitle}
+        </span>
       </div>
 
       {/* Search trigger */}
@@ -77,7 +103,7 @@ export default function TitleBar({ title = 'ONESHIM', onSearchOpen }: TitleBarPr
         <span className="hidden text-[11px] text-content-muted sm:inline">{MOD_KEY}K</span>
       </button>
 
-      {/* Window controls — only shown on non-macOS (macOS uses decorations:false with no traffic lights) */}
+      {/* Window controls — Windows/Linux only (macOS uses native traffic lights) */}
       {!IS_MAC && (
         <div className="flex h-full items-center">
           <button

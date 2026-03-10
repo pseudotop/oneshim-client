@@ -64,7 +64,7 @@ leptess = "0.14"
 base64 = "0.22"
 
 # Tauri v2 (iced → Tauri 마이그레이션)
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-build = "2"
 tauri-plugin-notification = "2"
 

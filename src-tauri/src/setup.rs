@@ -370,6 +370,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // 11. Tauri managed state 등록
+    let frontend_web_port = config.web.port;
     app.manage(AppState {
         runtime_handle: handle,
         config,
@@ -384,8 +385,27 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // 12. 시스템 트레이 초기화
     crate::tray::setup_tray(app)?;
 
-    // 13. 메인 윈도우 표시 (setup 완료 후)
+    // 13. macOS dock icon — bare binary (non-.app) needs runtime icon setting
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos_integration::set_dock_icon();
+        info!("macOS dock icon set from embedded icon.png");
+    }
+
+    // 14. 메인 윈도우 표시 (setup 완료 후)
     if let Some(window) = app.get_webview_window("main") {
+        // Windows/Linux: disable decorations for custom titlebar controls
+        // macOS: keep decorations=true with titleBarStyle=Overlay for native traffic lights
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = window.set_decorations(false);
+        }
+
+        // Inject web server port into frontend globals before page loads API calls.
+        // Uses Tauri's webview eval to set a simple numeric constant — no user input involved.
+        let port_js = format!("window.__ONESHIM_WEB_PORT__ = {};", frontend_web_port);
+        let _ = window.eval(&port_js);
+
         let _ = window.show();
         let _ = window.set_focus();
         debug_assert!(

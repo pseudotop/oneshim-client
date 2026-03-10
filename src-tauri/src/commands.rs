@@ -164,3 +164,9 @@ pub async fn defer_update(state: tauri::State<'_, AppState>) -> Result<(), Strin
 pub async fn get_automation_status(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     Ok(state.automation_controller.is_some())
 }
+
+/// 웹 서버 포트 조회 — 프론트엔드 API base URL 결정용
+#[command]
+pub async fn get_web_port(state: tauri::State<'_, AppState>) -> Result<u16, String> {
+    Ok(state.config.web.port)
+}
