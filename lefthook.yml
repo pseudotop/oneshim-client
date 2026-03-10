@@ -1,0 +1,32 @@
+# lefthook.yml — Git hooks for oneshim-client
+# Install: lefthook install
+
+pre-push:
+  commands:
+    pre-release-check:
+      # Runs only when pushing a version tag (v*)
+      run: |
+        # Read pushed refs from stdin
+        while read local_ref local_sha remote_ref remote_sha; do
+          # Match tag pushes: refs/tags/v*
+          case "$remote_ref" in
+            refs/tags/v*)
+              TAG_VERSION="${remote_ref#refs/tags/v}"
+              echo "🏷️  Tag push detected: v${TAG_VERSION}"
+              echo ""
+              ./scripts/pre-release-check.sh "$TAG_VERSION"
+              ;;
+          esac
+        done
+      interactive: true
+
+pre-commit:
+  parallel: true
+  commands:
+    cargo-fmt:
+      glob: "*.rs"
+      run: cargo fmt --check
+    cargo-clippy:
+      glob: "*.rs"
+      run: cargo clippy --workspace --quiet -- -D warnings
+      stage_fixed: true
