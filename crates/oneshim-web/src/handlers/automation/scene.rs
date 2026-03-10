@@ -16,7 +16,7 @@ use super::helpers::{
 
 pub(super) async fn analyze_scene_by_query(
     state: &AppState,
-    controller: &oneshim_automation::controller::AutomationController,
+    controller: &dyn oneshim_core::ports::automation::AutomationPort,
     frame_id: Option<i64>,
     app_name: Option<&str>,
     screen_id: Option<&str>,
@@ -75,7 +75,7 @@ pub async fn get_automation_scene(
     let scene_cfg = read_scene_intelligence_config(&state);
     let scene = analyze_scene_by_query(
         &state,
-        controller,
+        controller.as_ref(),
         query.frame_id,
         query.app_name.as_deref(),
         query.screen_id.as_deref(),
@@ -99,7 +99,7 @@ pub async fn get_automation_scene_calibration(
     let scene_cfg = read_scene_intelligence_config(&state);
     let scene = analyze_scene_by_query(
         &state,
-        controller,
+        controller.as_ref(),
         query.frame_id,
         query.app_name.as_deref(),
         query.screen_id.as_deref(),

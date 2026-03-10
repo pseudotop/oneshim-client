@@ -9,10 +9,9 @@ use oneshim_api_contracts::automation::{
     ExecuteIntentHintRequest, ExecuteIntentHintResponse, ExecuteSceneActionRequest,
     ExecuteSceneActionResponse, PoliciesDto, PolicyEventQuery, PresetListDto, PresetRunResult,
 };
-use oneshim_automation::policy::AuditLevel;
-use oneshim_automation::presets::builtin_presets;
 use oneshim_core::error::CoreError;
-use oneshim_core::models::intent::{IntentCommand, IntentResult, WorkflowPreset};
+use oneshim_core::models::audit::AuditLevel;
+use oneshim_core::models::intent::{builtin_presets, IntentCommand, IntentResult, WorkflowPreset};
 use oneshim_core::models::ui_scene::UI_SCENE_SCHEMA_VERSION;
 use std::time::Instant;
 
@@ -37,8 +36,7 @@ pub async fn get_automation_status(
     State(state): State<AppState>,
 ) -> Result<Json<AutomationStatusDto>, ApiError> {
     let pending = if let Some(ref logger) = state.audit_logger {
-        let guard = logger.read().await;
-        guard.pending_count()
+        logger.pending_count().await
     } else {
         0
     };
@@ -77,13 +75,11 @@ pub async fn get_audit_logs(
         return Ok(Json(Vec::new()));
     };
 
-    let guard = logger.read().await;
-
     let entries = if let Some(ref status_filter) = query.status {
         let status = parse_audit_status(status_filter)?;
-        guard.entries_by_status(&status, query.limit)
+        logger.entries_by_status(&status, query.limit).await
     } else {
-        guard.recent_entries(query.limit)
+        logger.recent_entries(query.limit).await
     };
 
     let dtos = entries
@@ -114,9 +110,9 @@ pub async fn get_policy_events(
 
     let limit = query.limit.clamp(1, 500);
     let read_limit = limit.saturating_mul(8);
-    let guard = logger.read().await;
-    let entries = guard
+    let entries = logger
         .recent_entries(read_limit)
+        .await
         .into_iter()
         .filter(|entry| entry.action_type.starts_with("policy."))
         .take(limit)
@@ -185,10 +181,11 @@ pub async fn get_automation_stats(
         }));
     };
 
-    let guard = logger.read().await;
-    let (total, success, failed, denied, timeout) = guard.stats();
+    let stats = logger.stats().await;
+    let (total, success, failed, denied, timeout) =
+        (stats.total, stats.completed, stats.failed, stats.denied, stats.timeout);
 
-    let all_entries = guard.recent_entries(1000);
+    let all_entries = logger.recent_entries(1000).await;
     let elapsed_values: Vec<u64> = all_entries
         .iter()
         .filter_map(|e| e.execution_time_ms)
@@ -484,8 +481,7 @@ pub async fn execute_scene_action(
         Ok(context) => context,
         Err(err) => {
             if let Some(logger) = state.audit_logger.as_ref() {
-                let mut guard = logger.write().await;
-                guard.log_event(
+                logger.log_event(
                     "policy.scene_action.blocked",
                     &req.session_id,
                     &format!(
@@ -495,7 +491,7 @@ pub async fn execute_scene_action(
                         req.allow_sensitive_input.unwrap_or(false),
                         err
                     ),
-                );
+                ).await;
             }
             return Err(err);
         }
@@ -514,9 +510,8 @@ pub async fn execute_scene_action(
     let started_at = Instant::now();
 
     if let Some(logger) = state.audit_logger.as_ref() {
-        let mut guard = logger.write().await;
         if policy_context.override_active {
-            guard.log_event(
+            logger.log_event(
                 "policy.scene_action_override.applied",
                 &req.session_id,
                 &format!(
@@ -529,9 +524,9 @@ pub async fn execute_scene_action(
                         .as_ref()
                         .map(|value| value.to_rfc3339()),
                 ),
-            );
+            ).await;
         } else if policy_context.override_enabled || policy_context.override_issue.is_some() {
-            guard.log_event(
+            logger.log_event(
                 "policy.scene_action_override.issue",
                 &req.session_id,
                 &format!(
@@ -545,10 +540,10 @@ pub async fn execute_scene_action(
                         .as_ref()
                         .map(|value| value.to_rfc3339()),
                 ),
-            );
+            ).await;
         }
         if req.allow_sensitive_input.unwrap_or(false) {
-            guard.log_event(
+            logger.log_event(
                 "policy.scene_action.allow_sensitive_input",
                 &req.session_id,
                 &format!(
@@ -558,9 +553,9 @@ pub async fn execute_scene_action(
                     policy_context.policy,
                     policy_context.override_active,
                 ),
-            );
+            ).await;
         }
-        guard.log_start_if(
+        logger.log_start_if(
             AuditLevel::Detailed,
             &command_id,
             &req.session_id,
@@ -582,7 +577,7 @@ pub async fn execute_scene_action(
                     .map(|value| value.to_rfc3339()),
                 policy_context.override_issue.as_deref()
             ),
-        );
+        ).await;
     }
 
     let mut last_result: Option<IntentResult> = None;
@@ -639,8 +634,7 @@ pub async fn execute_scene_action(
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
 
     if let Some(logger) = state.audit_logger.as_ref() {
-        let mut guard = logger.write().await;
-        guard.log_complete_with_time(
+        logger.log_complete_with_time(
             AuditLevel::Detailed,
             &command_id,
             &req.session_id,
@@ -655,7 +649,7 @@ pub async fn execute_scene_action(
                 result.error
             ),
             elapsed_ms,
-        );
+        ).await;
     }
 
     Ok(Json(ExecuteSceneActionResponse {

@@ -110,6 +110,8 @@ pub async fn generate_report(
             oneshim_core::models::event::Event::Input(e) => e.timestamp,
             oneshim_core::models::event::Event::Process(e) => e.timestamp,
             oneshim_core::models::event::Event::Window(e) => e.timestamp,
+            oneshim_core::models::event::Event::Clipboard(e) => e.timestamp,
+            oneshim_core::models::event::Event::FileAccess(e) => e.timestamp,
         };
         let date_str = ts.format("%Y-%m-%d").to_string();
         if let Some(stat) = daily_map.get_mut(&date_str) {
@@ -240,6 +242,8 @@ pub async fn generate_report(
             oneshim_core::models::event::Event::Input(e) => e.timestamp,
             oneshim_core::models::event::Event::Process(e) => e.timestamp,
             oneshim_core::models::event::Event::Window(e) => e.timestamp,
+            oneshim_core::models::event::Event::Clipboard(e) => e.timestamp,
+            oneshim_core::models::event::Event::FileAccess(e) => e.timestamp,
         };
         let hour = ts.hour() as usize;
         hourly[hour] += 1;

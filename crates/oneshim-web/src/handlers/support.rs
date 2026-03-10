@@ -7,7 +7,7 @@ use oneshim_api_contracts::support::{DiagnosticsBundleDto, DiagnosticsHealthDto}
 const SUPPORT_DIAGNOSTICS_SCHEMA_VERSION: &str = "support.diagnostics.v1";
 const SUPPORT_AUDIT_SCHEMA_VERSION: &str = "automation.audit.v1";
 
-fn to_audit_entry_dto(entry: oneshim_automation::audit::AuditEntry) -> AuditEntryDto {
+fn to_audit_entry_dto(entry: oneshim_core::models::audit::AuditEntry) -> AuditEntryDto {
     AuditEntryDto {
         schema_version: SUPPORT_AUDIT_SCHEMA_VERSION.to_string(),
         entry_id: entry.entry_id,
@@ -47,8 +47,7 @@ pub async fn get_diagnostics(State(state): State<AppState>) -> Json<DiagnosticsB
 
     let (recent_audit_entries, recent_policy_events) =
         if let Some(logger) = state.audit_logger.as_ref() {
-            let guard = logger.read().await;
-            let recent_entries = guard.recent_entries(400);
+            let recent_entries = logger.recent_entries(400).await;
             let audit_entries = recent_entries
                 .iter()
                 .take(50)

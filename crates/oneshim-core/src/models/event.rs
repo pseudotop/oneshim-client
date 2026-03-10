@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,6 +12,39 @@ pub enum Event {
     Input(InputActivityEvent),
     Process(ProcessSnapshotEvent),
     Window(WindowLayoutEvent),
+    Clipboard(ClipboardEvent),
+    FileAccess(FileAccessEvent),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ClipboardContentType {
+    Text,
+    Image,
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipboardEvent {
+    pub timestamp: DateTime<Utc>,
+    pub content_type: ClipboardContentType,
+    pub char_count: usize,
+    pub preview: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FileEventType {
+    Created,
+    Modified,
+    Deleted,
+    Renamed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileAccessEvent {
+    pub timestamp: DateTime<Utc>,
+    pub relative_path: PathBuf,
+    pub event_type: FileEventType,
+    pub extension: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

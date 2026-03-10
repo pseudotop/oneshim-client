@@ -1,6 +1,6 @@
 use anyhow::Result;
 use directories::ProjectDirs;
-use oneshim_automation::audit::AuditLogger;
+use oneshim_automation::audit::{AuditLogAdapter, AuditLogger};
 use oneshim_automation::controller::AutomationController;
 use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
@@ -40,8 +40,9 @@ use crate::notification_manager::NotificationManager;
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
 use crate::update_coordinator;
 
-/// Tauri managed state — tokio Handle과 공유 리소스
-#[allow(dead_code)] // fields used by IPC commands (currently todo!())
+/// Tauri managed state — tokio Handle과 공유 리소스.
+/// Fields are `pub` for current and future IPC command handlers.
+#[allow(dead_code)]
 pub struct AppState {
     pub runtime_handle: tokio::runtime::Handle,
     pub config: AppConfig,
@@ -123,6 +124,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let config = config_manager.get();
     maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
 
+    // 2b. Integrity preflight — signed policy bundle verification
+    if let Err(e) = crate::integrity_guard::run_preflight(&config, false) {
+        warn!("integrity preflight failed (non-fatal): {e}");
+    }
+
     // 3. tokio runtime — Handle만 추출, Runtime은 전용 스레드에 파킹
     let runtime = Runtime::new()?;
     let handle = runtime.handle().clone();
@@ -155,12 +161,26 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // 5. SQLite storage
+    // 5. SQLite storage (with encryption key provisioning)
+    let encryption_key = match oneshim_storage::encryption::EncryptionKey::load_or_create(&data_dir_path) {
+        Ok(key) => {
+            info!("DB encryption key ready ({})", data_dir_path.join(".db_key").display());
+            Some(key)
+        }
+        Err(e) => {
+            warn!("DB encryption key provisioning failed (non-fatal): {e}");
+            None
+        }
+    };
     let sqlite_storage = Arc::new(SqliteStorage::open(
         &db_path,
         config.storage.retention_days,
     )?);
-    info!("SQLite initialized: {}", db_path.display());
+    if encryption_key.is_some() {
+        info!("SQLite initialized: {} (encryption key provisioned, SQLCipher pending)", db_path.display());
+    } else {
+        info!("SQLite initialized: {} (plaintext)", db_path.display());
+    }
 
     // 6. broadcast channel (SSE events)
     let (event_tx, _event_rx) = broadcast::channel::<RealtimeEvent>(256);
@@ -255,6 +275,20 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     controller.set_scene_finder(runtime.element_finder.clone());
                     controller.set_intent_executor(runtime.intent_executor);
                     controller.set_intent_planner(runtime.intent_planner);
+                    // Wire GUI interaction (focus probe + overlay driver)
+                    let focus_probe: Arc<dyn oneshim_core::ports::focus_probe::FocusProbe> =
+                        Arc::new(crate::focus_probe_adapter::ProcessMonitorFocusProbe::new(
+                            Arc::new(ProcessTracker::new()),
+                        ));
+                    let overlay_driver = crate::platform_overlay::create_platform_overlay_driver();
+                    let hmac_secret = std::env::var("ONESHIM_GUI_TICKET_HMAC_SECRET").ok();
+                    if let Err(e) = controller.configure_gui_interaction(
+                        focus_probe,
+                        overlay_driver,
+                        hmac_secret,
+                    ) {
+                        warn!(error = %e, "GUI interaction setup failed (non-fatal)");
+                    }
                     Some(Arc::new(controller))
                 }
                 Err(err) => {
@@ -294,7 +328,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 .with_event_tx(web_event_tx)
                 .with_frames_dir(data_dir_path)
                 .with_config_manager(web_config_manager)
-                .with_audit_logger(web_audit_logger)
+                .with_audit_logger(Arc::new(AuditLogAdapter::new(web_audit_logger)))
                 .with_update_control(web_update_control);
             if let Some(status) = ai_runtime_status {
                 web_server = web_server.with_ai_runtime_status(status);
@@ -313,7 +347,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    // 9. 실시간 이벤트 → Tauri emit 브릿지 (main window only)
+    // 9. SIGINT/SIGTERM → shutdown 브릿지 (Tauri RunEvent::Exit 보완)
+    {
+        let signal_shutdown_tx = shutdown_tx.clone();
+        handle.spawn(async move {
+            let lifecycle = crate::lifecycle::LifecycleManager::default();
+            lifecycle.wait_for_signal().await;
+            info!("OS signal received — triggering shutdown");
+            let _ = signal_shutdown_tx.send(true);
+        });
+    }
+
+    // 10. 실시간 이벤트 → Tauri emit 브릿지 (main window only)
     let app_handle_for_events = _app_handle.clone();
     let mut event_rx = event_tx.subscribe();
     handle.spawn(async move {
@@ -324,7 +369,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // 10. Tauri managed state 등록
+    // 11. Tauri managed state 등록
     app.manage(AppState {
         runtime_handle: handle,
         config,
@@ -336,10 +381,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         shutdown_tx,
     });
 
-    // 11. 시스템 트레이 초기화
+    // 12. 시스템 트레이 초기화
     crate::tray::setup_tray(app)?;
 
-    // 12. 메인 윈도우 표시 (setup 완료 후)
+    // 13. 메인 윈도우 표시 (setup 완료 후)
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();

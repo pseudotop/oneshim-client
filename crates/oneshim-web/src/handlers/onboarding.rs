@@ -2,7 +2,7 @@ use axum::{extract::State, Json};
 use chrono::Utc;
 use oneshim_api_contracts::onboarding::{OnboardingQuickstartDto, QuickstartStepDto};
 
-use oneshim_automation::presets::builtin_presets;
+use oneshim_core::models::intent::builtin_presets;
 use oneshim_core::models::intent::WorkflowPreset;
 
 use crate::AppState;

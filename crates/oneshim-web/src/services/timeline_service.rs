@@ -73,6 +73,20 @@ pub async fn build_timeline_response(
                 Some(e.window.app_name.clone()),
                 Some(e.window.window_title.clone()),
             ),
+            Event::Clipboard(e) => (
+                format!("clip_{}", uuid::Uuid::new_v4()),
+                "ClipboardChange".to_string(),
+                e.timestamp.to_rfc3339(),
+                None,
+                None,
+            ),
+            Event::FileAccess(e) => (
+                format!("fa_{}", uuid::Uuid::new_v4()),
+                format!("FileAccess_{:?}", e.event_type),
+                e.timestamp.to_rfc3339(),
+                None,
+                None,
+            ),
         };
 
         items.push(TimelineItem::Event {

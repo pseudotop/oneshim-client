@@ -13,13 +13,15 @@ use std::time::Duration;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
-use oneshim_automation::controller::GuiExecutionResult;
-use oneshim_automation::gui_interaction::{
+use oneshim_core::error::GuiInteractionError;
+use oneshim_core::models::automation::GuiExecutionResult;
+use oneshim_core::models::gui::{
     GuiConfirmRequest as AutomationGuiConfirmRequest,
     GuiCreateSessionRequest as AutomationGuiCreateSessionRequest,
     GuiExecutionRequest as AutomationGuiExecutionRequest,
-    GuiHighlightRequest as AutomationGuiHighlightRequest, GuiInteractionError,
+    GuiHighlightRequest as AutomationGuiHighlightRequest,
 };
+use oneshim_core::ports::automation::AutomationPort;
 
 use crate::error::ApiError;
 use crate::AppState;
@@ -198,9 +200,7 @@ pub async fn gui_session_event_stream(
     ))
 }
 
-fn require_controller(
-    state: &AppState,
-) -> Result<&oneshim_automation::controller::AutomationController, ApiError> {
+fn require_controller(state: &AppState) -> Result<&dyn AutomationPort, ApiError> {
     state.automation_controller.as_deref().ok_or_else(|| {
         ApiError::ServiceUnavailable("Automation controller is disabled".to_string())
     })
@@ -239,7 +239,6 @@ fn map_gui_error(err: GuiInteractionError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oneshim_automation::gui_interaction::GuiInteractionError;
 
     // ── M4: End-to-End Workflow Tests ───────────────────────────────────
 

@@ -3,14 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use oneshim_core::config::SandboxProfile;
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AuditLevel {
-    None,
-    #[default]
-    Basic,
-    Detailed,
-    Full,
-}
+// AuditLevel — canonical definition in oneshim-core, re-exported here for backward compat
+pub use oneshim_core::models::audit::AuditLevel;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionPolicy {

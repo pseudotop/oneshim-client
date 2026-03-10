@@ -1,4 +1,6 @@
 pub mod api_client;
+pub mod audit_log;
+pub mod automation;
 pub mod batch_sink;
 pub mod compressor;
 pub mod element_finder;
@@ -12,3 +14,4 @@ pub mod overlay_driver;
 pub mod sandbox;
 pub mod storage;
 pub mod vision;
+pub mod web_storage;

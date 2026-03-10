@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod audit;
 pub mod automation;
 pub mod context;
 pub mod event;
@@ -6,6 +7,7 @@ pub mod frame;
 pub mod gui;
 pub mod intent;
 pub mod session;
+pub mod storage_records;
 pub mod suggestion;
 pub mod system;
 pub mod telemetry;

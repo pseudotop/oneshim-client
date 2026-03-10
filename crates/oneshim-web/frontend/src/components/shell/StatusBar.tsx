@@ -1,4 +1,5 @@
 import { Cpu, HardDrive, Wifi, WifiOff, Zap, ZapOff } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSSE } from '../../hooks/useSSE'
 import { layout } from '../../styles/tokens'
@@ -6,10 +7,28 @@ import { cn } from '../../utils/cn'
 
 declare const __APP_VERSION__: string
 
-// TODO: Replace with real automation status from Tauri IPC (get_automation_status)
-// For now, derive from SSE connection — connected implies agent is running with automation
+/** Query automation status via Tauri IPC; fall back to SSE-derived status in browser mode. */
 function useAutomationStatus(connected: boolean) {
-  return connected
+  const [status, setStatus] = useState(connected)
+
+  const poll = useCallback(async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const result = await invoke<boolean>('get_automation_status')
+      setStatus(result)
+    } catch {
+      // Browser fallback — derive from SSE connection
+      setStatus(connected)
+    }
+  }, [connected])
+
+  useEffect(() => {
+    poll()
+    const id = setInterval(poll, 5_000)
+    return () => clearInterval(id)
+  }, [poll])
+
+  return status
 }
 
 export default function StatusBar() {

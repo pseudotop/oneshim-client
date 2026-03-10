@@ -143,6 +143,51 @@ pub struct GuiInteractionSession {
     pub expires_at: DateTime<Utc>,
 }
 
+// ── GUI Interaction request/response types ──
+// 이전에는 oneshim-automation::gui_interaction에 있었으나, AutomationPort 추상화를 위해
+// oneshim-core로 이동 (ADR-001 §7)
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiCreateSessionRequest {
+    pub app_name: Option<String>,
+    pub screen_id: Option<String>,
+    pub min_confidence: Option<f64>,
+    pub max_candidates: Option<usize>,
+    pub session_ttl_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiCreateSessionResponse {
+    pub session: GuiInteractionSession,
+    pub capability_token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiHighlightRequest {
+    pub candidate_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiConfirmRequest {
+    pub candidate_id: String,
+    pub action: GuiActionRequest,
+    pub ticket_ttl_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiExecutionRequest {
+    pub ticket: GuiExecutionTicket,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiExecutionOutcome {
+    pub session: GuiInteractionSession,
+    pub succeeded: bool,
+    pub detail: Option<String>,
+    pub steps_completed: usize,
+    pub total_steps: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

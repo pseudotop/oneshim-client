@@ -1,23 +1,9 @@
-use chrono::{DateTime, Utc};
 use oneshim_core::config::PiiFilterLevel;
-use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ClipboardContentType {
-    Text,
-    Image,
-    Other,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClipboardEvent {
-    pub timestamp: DateTime<Utc>,
-    pub content_type: ClipboardContentType,
-    pub char_count: usize,
-    pub preview: Option<String>,
-}
+// Event types are canonical in oneshim-core; re-exported here.
+pub use oneshim_core::models::event::{ClipboardContentType, ClipboardEvent};
 
 pub struct ClipboardMonitor {
     last_content_hash: u64,
@@ -46,7 +32,7 @@ impl ClipboardMonitor {
         };
 
         Some(ClipboardEvent {
-            timestamp: Utc::now(),
+            timestamp: chrono::Utc::now(),
             content_type: ClipboardContentType::Text,
             char_count: text.len(),
             preview,

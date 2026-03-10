@@ -91,6 +91,7 @@ impl PlatformEgressPolicy {
                 user.window_title = self.sanitize_title(&title);
             }
             Event::System(_) | Event::Input(_) | Event::Process(_) => {}
+            Event::Clipboard(_) | Event::FileAccess(_) => {}
         }
 
         Some(event)

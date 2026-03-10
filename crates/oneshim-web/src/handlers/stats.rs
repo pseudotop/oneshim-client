@@ -219,6 +219,8 @@ pub async fn get_heatmap(
             oneshim_core::models::event::Event::Input(e) => e.timestamp,
             oneshim_core::models::event::Event::Process(e) => e.timestamp,
             oneshim_core::models::event::Event::Window(e) => e.timestamp,
+            oneshim_core::models::event::Event::Clipboard(e) => e.timestamp,
+            oneshim_core::models::event::Event::FileAccess(e) => e.timestamp,
         };
         let day = (ts.weekday().num_days_from_monday()) as usize;
         let hour = ts.hour() as usize;
