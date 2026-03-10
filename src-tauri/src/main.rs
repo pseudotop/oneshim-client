@@ -15,6 +15,8 @@ mod focus_analyzer;
 mod focus_probe_adapter;
 mod integrity_guard;
 mod lifecycle;
+#[cfg(target_os = "macos")]
+mod macos_integration;
 mod memory_profiler;
 mod notification_manager;
 mod platform_accessibility;
@@ -58,6 +60,7 @@ fn main() {
             commands::approve_update,
             commands::defer_update,
             commands::get_automation_status,
+            commands::get_web_port,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

@@ -167,6 +167,16 @@ body {
   grid-column: 1 / -1;
 }
 
+/* Section highlight animation for sidebar navigation */
+.section-highlight {
+  animation: section-flash 1.5s ease-out;
+}
+
+@keyframes section-flash {
+  0% { outline: 2px solid rgb(var(--brand-signal)); outline-offset: 4px; }
+  100% { outline: 2px solid transparent; outline-offset: 4px; }
+}
+
 /* Tauri drag region */
 [data-tauri-drag-region] {
   -webkit-app-region: drag;

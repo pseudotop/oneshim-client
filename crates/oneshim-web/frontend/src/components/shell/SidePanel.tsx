@@ -139,9 +139,23 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
 
   const handleNodeSelect = useCallback((id: string) => {
     setSelectedNodeId(id)
-    // Scroll the corresponding section into view on the main content area
     const el = document.getElementById(`section-${id}`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (!el) return
+
+    // Find the actual scroll container: <main id="main-content"> or nearest scrollable ancestor
+    const scrollContainer = document.getElementById('main-content')
+    if (scrollContainer) {
+      const containerRect = scrollContainer.getBoundingClientRect()
+      const elRect = el.getBoundingClientRect()
+      const scrollTop = scrollContainer.scrollTop + (elRect.top - containerRect.top) - 16
+      scrollContainer.scrollTo({ top: scrollTop, behavior: 'smooth' })
+    } else {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
+    // Brief highlight animation on the target section
+    el.classList.add('section-highlight')
+    setTimeout(() => el.classList.remove('section-highlight'), 1500)
   }, [])
 
   const handleResizeKeyDown = useCallback(

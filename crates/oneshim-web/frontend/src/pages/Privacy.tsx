@@ -196,7 +196,7 @@ export default function Privacy() {
   }
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <div>
         <h1 className={cn(typography.h1, colors.text.primary)}>{t('privacy.title')}</h1>
@@ -237,7 +237,7 @@ export default function Privacy() {
       )}
 
       {/* UI note */}
-      <Card variant="default" padding="lg">
+      <Card id="section-data" variant="default" padding="lg">
         <CardTitle className="mb-4">{t('privacy.currentData')}</CardTitle>
         {storageStats && (
           <>
@@ -324,7 +324,7 @@ export default function Privacy() {
       </Card>
 
       {/* UI note */}
-      <Card variant="danger" padding="lg">
+      <Card id="section-consent" variant="danger" padding="lg">
         <CardTitle className="mb-2 text-accent-red">{t('privacy.deleteAllTitle')}</CardTitle>
         <p className="mb-4 text-content-secondary text-sm">{t('privacy.deleteAllDesc')}</p>
         <Button variant="danger" onClick={() => setShowDeleteAllModal(true)} isLoading={deleteAllMutation.isPending}>
@@ -333,7 +333,7 @@ export default function Privacy() {
       </Card>
 
       {/* UI note */}
-      <Card variant="default" padding="lg">
+      <Card id="section-export" variant="default" padding="lg">
         <CardTitle className="mb-4">{t('backup.title')}</CardTitle>
         <p className="mb-4 text-content-secondary text-sm">{t('backup.description')}</p>
 

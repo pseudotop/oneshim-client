@@ -1,11 +1,13 @@
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager, Runtime,
 };
 use tracing::{info, warn};
 
-/// 시스템 트레이 메뉴 설정 — 기존 oneshim-ui tray.rs의 6개 메뉴 아이템 재현
+/// 시스템 트레이 메뉴 설정 — 아이콘 + 메뉴 + 이벤트 핸들러 통합.
+/// tauri.conf.json의 trayIcon은 null로 설정하고 여기서 전부 처리.
 pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let show = MenuItem::with_id(app, "show", "Toggle Window", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
@@ -28,7 +30,12 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
         ],
     )?;
 
+    let tray_icon = Image::from_bytes(include_bytes!("../icons/tray_icon.png"))
+        .expect("embedded tray_icon.png must be valid");
+
     TrayIconBuilder::new()
+        .icon(tray_icon)
+        .icon_as_template(true)
         .menu(&menu)
         .tooltip("ONESHIM")
         .show_menu_on_left_click(true)

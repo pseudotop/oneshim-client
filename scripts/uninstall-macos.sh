@@ -23,13 +23,21 @@ else
     info "plist 파일 없음 (이미 제거됨)"
 fi
 
-# 바이너리 삭제
-if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
-    info "바이너리 삭제: $INSTALL_DIR/$BINARY_NAME"
+# 심볼릭 링크 및 바이너리 삭제
+if [[ -f "$INSTALL_DIR/$BINARY_NAME" || -L "$INSTALL_DIR/$BINARY_NAME" ]]; then
+    info "바이너리/심볼릭 링크 삭제: $INSTALL_DIR/$BINARY_NAME"
     sudo rm -f "$INSTALL_DIR/$BINARY_NAME"
     ok "바이너리 삭제 완료"
 else
     info "바이너리 없음 (이미 제거됨)"
+fi
+
+# .app 번들 삭제
+APP_BUNDLE="/Applications/ONESHIM.app"
+if [[ -d "$APP_BUNDLE" ]]; then
+    info ".app 번들 삭제: $APP_BUNDLE"
+    sudo rm -rf "$APP_BUNDLE"
+    ok ".app 번들 삭제 완료"
 fi
 
 ok "ONESHIM 제거 완료!"

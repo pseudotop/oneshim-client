@@ -102,6 +102,11 @@ function detectInitialStandaloneMode(): boolean {
   if (saved === '0') return false
   if (saved === '1') return true
 
+  // Tauri webview has the Axum backend running — use real API, not standalone mock
+  if ('__TAURI_INTERNALS__' in window) {
+    return false
+  }
+
   // Standalone-first default (opt-out via ?standalone=0)
   return true
 }

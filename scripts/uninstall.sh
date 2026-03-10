@@ -45,11 +45,21 @@ done
 
 TARGET_PATH="$INSTALL_DIR/$BINARY_NAME"
 
-if [[ -f "$TARGET_PATH" ]]; then
+if [[ -f "$TARGET_PATH" || -L "$TARGET_PATH" ]]; then
   rm -f "$TARGET_PATH"
   info "Removed $TARGET_PATH"
 else
   info "No installed binary found at $TARGET_PATH"
+fi
+
+# macOS: remove .app bundle
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  APP_DIR="${ONESHIM_APP_DIR:-$HOME/Applications}"
+  APP_BUNDLE="$APP_DIR/ONESHIM.app"
+  if [[ -d "$APP_BUNDLE" ]]; then
+    rm -rf "$APP_BUNDLE"
+    info "Removed $APP_BUNDLE"
+  fi
 fi
 
 if [[ -d "$INSTALL_DIR" && -z "$(ls -A "$INSTALL_DIR")" ]]; then

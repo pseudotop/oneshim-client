@@ -205,7 +205,7 @@ function Automation() {
   }
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       <h1 className={cn(typography.h1, colors.text.primary)}>{t('automation.title')}</h1>
 
       {/* UI note */}
@@ -301,7 +301,7 @@ function Automation() {
       )}
 
       {/* UI note */}
-      <Card>
+      <Card id="section-commands">
         <CardHeader>
           <CardTitle>{t('automation.presets')}</CardTitle>
         </CardHeader>
@@ -508,7 +508,7 @@ function Automation() {
       </Card>
 
       {/* UI note */}
-      <Card>
+      <Card id="section-history">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>{t('automation.auditLog')}</CardTitle>
@@ -571,7 +571,7 @@ function Automation() {
       </Card>
 
       {/* UI note */}
-      <Card>
+      <Card id="section-policies">
         <CardHeader>
           <CardTitle>{t('automation.policies')}</CardTitle>
         </CardHeader>

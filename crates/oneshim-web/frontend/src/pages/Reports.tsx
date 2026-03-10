@@ -95,7 +95,7 @@ export default function Reports() {
   }
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <h1 className={cn(typography.h1, colors.text.primary)}>{t('reports.title')}</h1>
@@ -227,7 +227,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
       </div>
 
       {/* UI note */}
-      <Card padding="md">
+      <Card id="section-focus" padding="md">
         <CardTitle>{t('reports.productivityMetrics')}</CardTitle>
         <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
@@ -250,7 +250,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
       </Card>
 
       {/* UI note */}
-      <Card padding="md">
+      <Card id="section-activity" padding="md">
         <CardTitle>{t('reports.dailyActivity')}</CardTitle>
         <div className="mt-4 h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -342,7 +342,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
       </div>
 
       {/* UI note */}
-      <Card padding="md">
+      <Card id="section-export" padding="md">
         <CardTitle>{t('reports.systemMetrics')}</CardTitle>
         <div className="mt-4 h-48">
           <ResponsiveContainer width="100%" height="100%">

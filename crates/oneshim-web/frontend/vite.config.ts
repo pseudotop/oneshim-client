@@ -5,9 +5,21 @@ import { DEFAULT_WEB_PORT } from './src/constants'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
+// Read workspace version from Cargo.toml (single source of truth), fallback to package.json
+function resolveVersion(): string {
+  try {
+    const cargoToml = readFileSync('../../../Cargo.toml', 'utf-8')
+    const match = cargoToml.match(/^\s*version\s*=\s*"([^"]+)"/m)
+    if (match) return match[1]
+  } catch {
+    // fallback to package.json
+  }
+  return pkg.version
+}
+
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(`v${pkg.version}`),
+    __APP_VERSION__: JSON.stringify(`v${resolveVersion()}`),
   },
   plugins: [react()],
   server: {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { UpdateStatus } from '../api/client'
 import { isStandaloneModeEnabled } from '../api/standalone'
+import { UPDATE_STREAM_URL } from '../utils/api-base'
 
 export type UpdateStreamStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
@@ -28,7 +29,7 @@ export function useUpdateStream() {
       }
       setStatus('connecting')
       setLastError(null)
-      const es = new EventSource('/api/update/stream')
+      const es = new EventSource(UPDATE_STREAM_URL)
       esRef.current = es
 
       es.onopen = () => {

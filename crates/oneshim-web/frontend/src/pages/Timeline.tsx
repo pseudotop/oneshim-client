@@ -158,7 +158,7 @@ export default function Timeline() {
   }
 
   return (
-    <div className="h-full space-y-6 overflow-y-auto p-6">
+    <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center space-x-4">
@@ -172,10 +172,10 @@ export default function Timeline() {
       </div>
 
       {/* UI note */}
-      <Card variant="default" padding="md">
+      <Card id="section-filters" variant="default" padding="md">
         <div className="flex flex-wrap items-center gap-4">
           {/* UI note */}
-          <div className="flex items-center gap-2">
+          <div id="section-by-app" className="flex items-center gap-2">
             <label htmlFor="timeline-app-filter" className="text-content-secondary text-sm">
               {t('timeline.app')}:
             </label>
@@ -195,7 +195,7 @@ export default function Timeline() {
           </div>
 
           {/* UI note */}
-          <div className="flex items-center gap-2">
+          <div id="section-by-importance" className="flex items-center gap-2">
             <label htmlFor="timeline-importance-filter" className="text-content-secondary text-sm">
               {t('timeline.importance')}:
             </label>
@@ -214,7 +214,7 @@ export default function Timeline() {
 
           {/* UI note */}
           {allTags.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div id="section-by-tag" className="flex items-center gap-2">
               <label htmlFor="timeline-tag-filter" className="text-content-secondary text-sm">
                 {t('timeline.tag')}:
               </label>
@@ -276,7 +276,7 @@ export default function Timeline() {
 
       {/* UI note */}
       {viewMode === 'grid' && (
-        <Card variant="default" padding="md">
+        <Card id="section-all" variant="default" padding="md">
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
             {filteredFrames.map((frame, index) => (
               <button

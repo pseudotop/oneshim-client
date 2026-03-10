@@ -342,7 +342,7 @@ export default function SessionReplay() {
   }
 
   return (
-    <div className="h-full space-y-4 overflow-y-auto p-6">
+    <div className="min-h-full space-y-4 p-6">
       {/* UI note */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className={cn(typography.h1, colors.text.primary)}>{t('replay.title', 'session 리플레이')}</h1>
@@ -381,6 +381,7 @@ export default function SessionReplay() {
       {!loading && timeline && timeline.items.length > 0 && (
         <>
           {/* UI note */}
+          <div id="section-timeline">
           <TimelineScrubber
             startTime={startTime}
             endTime={endTime}
@@ -395,6 +396,7 @@ export default function SessionReplay() {
             onSkipToStart={handleSkipToStart}
             onSkipToEnd={handleSkipToEnd}
           />
+          </div>
 
           {/* UI note */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -697,7 +699,7 @@ export default function SessionReplay() {
                 </CardContent>
               </Card>
 
-              <div className="h-[500px]">
+              <div id="section-events" className="h-[500px]">
                 <EventLog items={timeline.items} currentTime={currentTime} onItemClick={handleTimeChange} />
               </div>
             </div>

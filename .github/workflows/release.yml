@@ -217,10 +217,19 @@ jobs:
       # ── 패키징 ──
       - name: Package (Unix)
         if: runner.os != 'Windows'
+        shell: bash
         run: |
           mkdir -p dist
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../dist/${{ matrix.artifact_name }}.${{ matrix.asset_ext }} oneshim
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            cp ../../../src-tauri/icons/icon.icns .
+            tar -czvf ../../../dist/"$ARTIFACT_NAME"."$ASSET_EXT" oneshim icon.icns
+          else
+            tar -czvf ../../../dist/"$ARTIFACT_NAME"."$ASSET_EXT" oneshim
+          fi
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact_name }}
+          ASSET_EXT: ${{ matrix.asset_ext }}
 
       - name: Package (Windows zip)
         if: runner.os == 'Windows'
@@ -352,7 +361,8 @@ jobs:
           lipo -create binaries/oneshim-arm64 binaries/oneshim-x64 -output binaries/oneshim
           file binaries/oneshim
           mkdir -p dist
-          tar -czvf dist/oneshim-macos-universal.tar.gz -C binaries oneshim
+          cp src-tauri/icons/icon.icns binaries/
+          tar -czvf dist/oneshim-macos-universal.tar.gz -C binaries oneshim icon.icns
           shasum -a 256 dist/oneshim-macos-universal.tar.gz > dist/oneshim-macos-universal.tar.gz.sha256
 
       - name: Upload universal artifact
