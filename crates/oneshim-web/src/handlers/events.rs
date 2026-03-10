@@ -104,6 +104,30 @@ fn event_response_from_event(event: Event) -> EventResponse {
                 "monitor_index": e.monitor_index,
             }),
         },
+        Event::Clipboard(e) => EventResponse {
+            event_id: format!("clip_{}", uuid::Uuid::new_v4()),
+            event_type: "Clipboard".to_string(),
+            timestamp: e.timestamp.to_rfc3339(),
+            app_name: None,
+            window_title: None,
+            data: serde_json::json!({
+                "content_type": format!("{:?}", e.content_type),
+                "char_count": e.char_count,
+                "preview": e.preview,
+            }),
+        },
+        Event::FileAccess(e) => EventResponse {
+            event_id: format!("fa_{}", uuid::Uuid::new_v4()),
+            event_type: "FileAccess".to_string(),
+            timestamp: e.timestamp.to_rfc3339(),
+            app_name: None,
+            window_title: None,
+            data: serde_json::json!({
+                "event_type": format!("{:?}", e.event_type),
+                "relative_path": e.relative_path.display().to_string(),
+                "extension": e.extension,
+            }),
+        },
     }
 }
 

@@ -1,25 +1,10 @@
-use chrono::{DateTime, Utc};
 use oneshim_core::config::FileAccessConfig;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum FileEventType {
-    Created,
-    Modified,
-    Deleted,
-    Renamed,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileAccessEvent {
-    pub timestamp: DateTime<Utc>,
-    pub relative_path: PathBuf,
-    pub event_type: FileEventType,
-    pub extension: Option<String>,
-}
+// Event types are canonical in oneshim-core; re-exported here.
+pub use oneshim_core::models::event::{FileAccessEvent, FileEventType};
 
 pub struct FileAccessFilter {
     config: FileAccessConfig,
@@ -97,7 +82,7 @@ impl FileAccessFilter {
         self.record_event();
 
         Some(FileAccessEvent {
-            timestamp: Utc::now(),
+            timestamp: chrono::Utc::now(),
             relative_path: self.to_relative_path(absolute_path),
             event_type,
             extension: absolute_path

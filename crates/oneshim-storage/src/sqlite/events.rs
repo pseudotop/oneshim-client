@@ -58,6 +58,16 @@ impl SqliteStorage {
                     window_event.event_type
                 )
             }
+            Event::Clipboard(cb) => {
+                format!("clip_{}", cb.timestamp.timestamp_millis())
+            }
+            Event::FileAccess(fa) => {
+                format!(
+                    "fa_{}_{}",
+                    fa.timestamp.timestamp_millis(),
+                    fa.relative_path.display()
+                )
+            }
         }
     }
 
@@ -69,6 +79,8 @@ impl SqliteStorage {
             Event::Input(_) => "input_activity".to_string(),
             Event::Process(_) => "process_snapshot".to_string(),
             Event::Window(w) => format!("window_{:?}", w.event_type),
+            Event::Clipboard(_) => "clipboard_change".to_string(),
+            Event::FileAccess(fa) => format!("file_{:?}", fa.event_type),
         }
     }
 
@@ -80,6 +92,8 @@ impl SqliteStorage {
             Event::Input(input_event) => input_event.timestamp,
             Event::Process(process_event) => process_event.timestamp,
             Event::Window(window_event) => window_event.timestamp,
+            Event::Clipboard(cb) => cb.timestamp,
+            Event::FileAccess(fa) => fa.timestamp,
         }
     }
 
