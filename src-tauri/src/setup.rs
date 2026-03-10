@@ -162,22 +162,29 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 5. SQLite storage (with encryption key provisioning)
-    let encryption_key = match oneshim_storage::encryption::EncryptionKey::load_or_create(&data_dir_path) {
-        Ok(key) => {
-            info!("DB encryption key ready ({})", data_dir_path.join(".db_key").display());
-            Some(key)
-        }
-        Err(e) => {
-            warn!("DB encryption key provisioning failed (non-fatal): {e}");
-            None
-        }
-    };
+    let encryption_key =
+        match oneshim_storage::encryption::EncryptionKey::load_or_create(&data_dir_path) {
+            Ok(key) => {
+                info!(
+                    "DB encryption key ready ({})",
+                    data_dir_path.join(".db_key").display()
+                );
+                Some(key)
+            }
+            Err(e) => {
+                warn!("DB encryption key provisioning failed (non-fatal): {e}");
+                None
+            }
+        };
     let sqlite_storage = Arc::new(SqliteStorage::open(
         &db_path,
         config.storage.retention_days,
     )?);
     if encryption_key.is_some() {
-        info!("SQLite initialized: {} (encryption key provisioned, SQLCipher pending)", db_path.display());
+        info!(
+            "SQLite initialized: {} (encryption key provisioned, SQLCipher pending)",
+            db_path.display()
+        );
     } else {
         info!("SQLite initialized: {} (plaintext)", db_path.display());
     }

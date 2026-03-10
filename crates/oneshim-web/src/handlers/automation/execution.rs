@@ -182,8 +182,13 @@ pub async fn get_automation_stats(
     };
 
     let stats = logger.stats().await;
-    let (total, success, failed, denied, timeout) =
-        (stats.total, stats.completed, stats.failed, stats.denied, stats.timeout);
+    let (total, success, failed, denied, timeout) = (
+        stats.total,
+        stats.completed,
+        stats.failed,
+        stats.denied,
+        stats.timeout,
+    );
 
     let all_entries = logger.recent_entries(1000).await;
     let elapsed_values: Vec<u64> = all_entries
@@ -481,17 +486,19 @@ pub async fn execute_scene_action(
         Ok(context) => context,
         Err(err) => {
             if let Some(logger) = state.audit_logger.as_ref() {
-                logger.log_event(
-                    "policy.scene_action.blocked",
-                    &req.session_id,
-                    &format!(
-                        "action_type={:?} element_id={} allow_sensitive_input={} error={}",
-                        req.action_type,
-                        req.element_id,
-                        req.allow_sensitive_input.unwrap_or(false),
-                        err
-                    ),
-                ).await;
+                logger
+                    .log_event(
+                        "policy.scene_action.blocked",
+                        &req.session_id,
+                        &format!(
+                            "action_type={:?} element_id={} allow_sensitive_input={} error={}",
+                            req.action_type,
+                            req.element_id,
+                            req.allow_sensitive_input.unwrap_or(false),
+                            err
+                        ),
+                    )
+                    .await;
             }
             return Err(err);
         }
@@ -511,49 +518,55 @@ pub async fn execute_scene_action(
 
     if let Some(logger) = state.audit_logger.as_ref() {
         if policy_context.override_active {
-            logger.log_event(
-                "policy.scene_action_override.applied",
-                &req.session_id,
-                &format!(
-                    "action_type={:?} element_id={} approved_by={:?} expires_at={:?}",
-                    req.action_type,
-                    req.element_id,
-                    policy_context.override_approved_by.as_deref(),
-                    policy_context
-                        .override_expires_at
-                        .as_ref()
-                        .map(|value| value.to_rfc3339()),
-                ),
-            ).await;
+            logger
+                .log_event(
+                    "policy.scene_action_override.applied",
+                    &req.session_id,
+                    &format!(
+                        "action_type={:?} element_id={} approved_by={:?} expires_at={:?}",
+                        req.action_type,
+                        req.element_id,
+                        policy_context.override_approved_by.as_deref(),
+                        policy_context
+                            .override_expires_at
+                            .as_ref()
+                            .map(|value| value.to_rfc3339()),
+                    ),
+                )
+                .await;
         } else if policy_context.override_enabled || policy_context.override_issue.is_some() {
-            logger.log_event(
-                "policy.scene_action_override.issue",
-                &req.session_id,
-                &format!(
-                    "action_type={:?} element_id={} issue={:?} enabled={} expires_at={:?}",
-                    req.action_type,
-                    req.element_id,
-                    policy_context.override_issue.as_deref(),
-                    policy_context.override_enabled,
-                    policy_context
-                        .override_expires_at
-                        .as_ref()
-                        .map(|value| value.to_rfc3339()),
-                ),
-            ).await;
+            logger
+                .log_event(
+                    "policy.scene_action_override.issue",
+                    &req.session_id,
+                    &format!(
+                        "action_type={:?} element_id={} issue={:?} enabled={} expires_at={:?}",
+                        req.action_type,
+                        req.element_id,
+                        policy_context.override_issue.as_deref(),
+                        policy_context.override_enabled,
+                        policy_context
+                            .override_expires_at
+                            .as_ref()
+                            .map(|value| value.to_rfc3339()),
+                    ),
+                )
+                .await;
         }
         if req.allow_sensitive_input.unwrap_or(false) {
-            logger.log_event(
-                "policy.scene_action.allow_sensitive_input",
-                &req.session_id,
-                &format!(
-                    "action_type={:?} element_id={} policy={:?} override_active={}",
-                    req.action_type,
-                    req.element_id,
-                    policy_context.policy,
-                    policy_context.override_active,
-                ),
-            ).await;
+            logger
+                .log_event(
+                    "policy.scene_action.allow_sensitive_input",
+                    &req.session_id,
+                    &format!(
+                        "action_type={:?} element_id={} policy={:?} override_active={}",
+                        req.action_type,
+                        req.element_id,
+                        policy_context.policy,
+                        policy_context.override_active,
+                    ),
+                )
+                .await;
         }
         logger.log_start_if(
             AuditLevel::Detailed,

@@ -102,9 +102,8 @@ impl SqliteStorage {
 // Record types are canonical in oneshim-core; re-exported here for backward compatibility.
 pub use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
-    FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord,
-    LocalSuggestionRecord, MetricExportRecord, SearchEventRow, SearchFrameRow,
-    StorageStatsSummaryRecord, TagRecord,
+    FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
+    MetricExportRecord, SearchEventRow, SearchFrameRow, StorageStatsSummaryRecord, TagRecord,
 };
 
 #[cfg(test)]

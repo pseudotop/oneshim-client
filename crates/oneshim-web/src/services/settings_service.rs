@@ -14,7 +14,6 @@ use oneshim_core::config::{
 use crate::error::ApiError;
 use crate::AppState;
 
-
 pub fn get_storage_stats(state: &AppState) -> Result<StorageStats, ApiError> {
     let stats = state
         .storage
