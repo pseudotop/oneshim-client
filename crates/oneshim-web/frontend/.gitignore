@@ -11,7 +11,9 @@ storybook-static/
 # Test output
 .playwright-cli/
 playwright-report/
+playwright-live-report/
 test-results/
+test-results-live/
 coverage/
 
 # Editor
