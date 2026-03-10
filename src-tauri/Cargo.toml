@@ -19,6 +19,7 @@ tauri-build = { workspace = true, features = [] }
 [dependencies]
 tauri = { workspace = true }
 tauri-plugin-notification = { workspace = true }
+tauri-plugin-webdriver = { workspace = true, optional = true }
 
 # 내부 크레이트
 oneshim-core = { workspace = true }
@@ -61,6 +62,7 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 server = ["dep:oneshim-network"]
 grpc = ["server", "oneshim-network/grpc"]
+webdriver = ["dep:tauri-plugin-webdriver"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"

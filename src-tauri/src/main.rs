@@ -1,4 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Allow `cfg(feature = "cargo-clippy")` inside `objc::msg_send!` macro from the `objc` crate.
+// See: https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html
+#![allow(unexpected_cfgs)]
 
 //! ONESHIM Desktop Agent — Tauri v2 진입점
 //!
@@ -42,8 +45,21 @@ fn main() {
         )
         .init();
 
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_notification::init())
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+
+    // WebDriver 서버 플러그인 — E2E 테스트용 (production 빌드에 절대 포함 금지)
+    #[cfg(feature = "webdriver")]
+    {
+        let port = std::env::var("TAURI_WEBDRIVER_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(4445);
+        info!("WebDriver plugin enabled on port {port}");
+        builder = builder.plugin(tauri_plugin_webdriver::init_with_port(port));
+    }
+
+    let app = builder
         .setup(setup::init)
         .on_window_event(|window, event| {
             // Close-to-tray: 윈도우 닫기 시 숨기기 (실제 종료 아님)
