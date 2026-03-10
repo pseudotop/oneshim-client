@@ -104,9 +104,21 @@ run_gui_bootstrap_smoke() {
   local pid=$!
   sleep 3
   if kill -0 "$pid" >/dev/null 2>&1; then
+    # SIGTERM first; escalate to SIGKILL if the process doesn't exit.
+    # Tauri may block on WindowServer/WKWebView init on headless macOS CI
+    # and never respond to SIGTERM, causing `wait` to hang forever.
     kill "$pid" >/dev/null 2>&1 || true
+    local grace=0
+    while kill -0 "$pid" >/dev/null 2>&1 && [[ "$grace" -lt 5 ]]; do
+      sleep 1
+      grace=$((grace + 1))
+    done
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      info "SIGTERM did not terminate process $pid after 5s — sending SIGKILL"
+      kill -9 "$pid" >/dev/null 2>&1 || true
+    fi
   fi
-  wait "$pid"
+  wait "$pid" 2>/dev/null
   local rc=$?
   set -e
 
