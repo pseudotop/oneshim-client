@@ -15,23 +15,13 @@
 //! **Remaining**: `oneshim-automation` moved to `[dev-dependencies]` — only used
 //!   for test-only `AutomationController` construction in `automation_gui::tests`.
 //!
-//! ### Violation 2 — `oneshim-storage` concrete types (unchanged)
+//! ### Violation 2 — `oneshim-storage` concrete types — RESOLVED
 //!
-//! **Scope**: `storage_port.rs` (1 production file); `#[cfg(test)]` usage in 5 files
-//!   (test-only use of `SqliteStorage::open_in_memory` is acceptable).
-//!
-//! **Root cause**: `WebStorage` trait in `storage_port.rs` is defined inside
-//!   `oneshim-web` rather than `oneshim-core/src/ports/web_storage.rs` (per ADR-001 §7).
-//!   Additionally, `storage_port.rs` imports 14 concrete row types from
-//!   `oneshim-storage::sqlite` (e.g., `FrameRecord`, `TagRecord`, `SearchFrameRow`)
-//!   that are not yet modeled in `oneshim-core`.
-//!
-//! **Migration path** (do not start without owning the full batch):
-//!   1. Promote the 14 row types to `oneshim-core::models::storage_records`.
-//!   2. Move `WebStorage` trait to `oneshim-core/src/ports/web_storage.rs`.
-//!   3. Move `impl WebStorage for SqliteStorage` to `oneshim-storage`.
-//!   4. Remove `oneshim-storage` from this crate's `Cargo.toml`
-//!      (keep only in `[dev-dependencies]` for tests).
+//! **Status**: All 4 migration steps completed.
+//!   - 14 row types promoted to `oneshim-core::models::storage_records`
+//!   - `WebStorage` trait moved to `oneshim-core/src/ports/web_storage.rs`
+//!   - `impl WebStorage for SqliteStorage` moved to `oneshim-storage::sqlite::web_storage_impl`
+//!   - `oneshim-storage` moved to `[dev-dependencies]` (test-only `SqliteStorage::open_in_memory`)
 
 pub mod embedded;
 pub mod error;

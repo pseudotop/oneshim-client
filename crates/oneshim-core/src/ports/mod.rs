@@ -14,3 +14,4 @@ pub mod overlay_driver;
 pub mod sandbox;
 pub mod storage;
 pub mod vision;
+pub mod web_storage;

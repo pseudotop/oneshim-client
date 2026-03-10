@@ -13,7 +13,6 @@ authors.workspace = true
 # 내부 크레이트
 oneshim-core = { workspace = true }
 oneshim-api-contracts = { workspace = true }
-oneshim-storage = { workspace = true }
 
 # 비동기 런타임
 tokio = { workspace = true }
@@ -48,11 +47,10 @@ futures = { workspace = true }
 rust-embed = { workspace = true }
 mime_guess = { workspace = true }
 
-# SQLite (직접 쿼리용)
-rusqlite = { workspace = true }
 
 [dev-dependencies]
 oneshim-automation = { workspace = true }
+oneshim-storage = { workspace = true }
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
 async-trait = { workspace = true }
