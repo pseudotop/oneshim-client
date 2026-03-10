@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+
+- ADR-001 audit remediation — ports to core, async trait handlers ([#56](https://github.com/pseudotop/oneshim-client/pull/56))
+  * refactor: ADR-001 audit remediation — ports to core, handlers to async traits
+
+  Hexagonal Architecture compliance (ADR-001 §7 Port Location Rules):
+
+  - Define AuditLogPort and AutomationPort traits in oneshim-core/src/ports/
+  - Move GuiInteractionError to oneshim-core::error
+  - Move AuditEntry, AuditStatus, AuditLevel, AuditStats to oneshim-core::models::audit
+  - Move GuiExecutionResult to oneshim-core::models::automation
+  - Move GUI request types to oneshim-core::models::gui
+  - Move builtin_presets(), platform_modifier(), platform_alt_modifier() to oneshim-core::models::intent
+  - Add AuditLogAdapter bridging AuditLogger to AuditLogPort
+  - Implement AutomationPort for AutomationController (port_impl.rs)
+
+  Handler migration (ADR-001 §2 Async Trait Pattern):
+
+  - Replace all RwLock guard patterns in oneshim-web handlers with direct port trait async calls
+  - Convert settings_service sync log_policy_event to tokio::spawn fire-and-forget
+  - Wire AuditLogAdapter in src-tauri/src/setup.rs
+
+  All 897 tests pass, cargo check/clippy/fmt clean.
+
+
+## [Unreleased]
 
 ## [0.3.3] - 2026-03-10
 
