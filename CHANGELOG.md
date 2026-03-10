@@ -32,10 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   All 897 tests pass, cargo check/clippy/fmt clean.
 
-- Update CHANGELOG [Unreleased] for v0.3.4
-
 
 ## [0.3.3] - 2026-03-09
+### Changed
+
+- V0.3.3 — port 10090 + ResizeObserver fix + E2E fixes
+
+
 ### Fixed
 
 - Default port 59090 → 10090 (registered range) + ResizeObserver bug
@@ -49,10 +52,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   used span.rounded-full. Fixes "should toggle tag filter" E2E failure.
 
 
-## [0.3.1] - 2026-03-09
+## [0.3.2] - 2026-03-09
 ### Changed
 
-- Update [Unreleased] [skip ci]
+- V0.3.2 — default port 59090 + centralize port constant + smoke reliability
+  - Change default WebServer port 9090 → 59090 (IANA ephemeral range)
+  - Centralize port: Rust DEFAULT_WEB_PORT const + frontend constants.ts
+  - Add TCP port availability check in smoke scripts (replaces fixed sleep)
+
+
+## [0.3.1] - 2026-03-09
+### Changed
 
 - Add ADR-007 (async safety), ADR-008 (network resilience), update ADR-001
 
@@ -85,15 +95,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   All sub-files under 300 lines. All pub types re-exported via mod.rs.
   Zero breaking changes — all consumers continue to compile unchanged.
 
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update v0.3.1 — GUI fix, regression tests, CI changelog cleanup
+- V0.3.1
+  Architecture improvements release:
+  - ADR-007 (async safety), ADR-008 (network resilience), ADR-001 update
+  - Async runtime safety: spawn_blocking, tokio::process, lock poisoning
+  - Security: TokenManager TLS, deser logging, timeout accuracy
+  - 26 new tests (882 total, 0 failures)
+  - config/sections.rs atomized into 6 domain files
 
 
 ### Fixed
@@ -160,14 +168,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
 - Update to v0.2.0 — CI green, Linux smoke fix recorded
   - Bump snapshot date to 2026-03-08
   - Record CI run 22820191743 as success (was failure at v0.1.1)
@@ -175,21 +175,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add Batch 5 change summary: encryption.rs clippy fix, E2E
     replay-scene mock, Linux smoke frontendDist stub fix
 
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
 - M3 complete — 842 tests, GUI V2 M3 SSE stream integration done
 
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
 - Update M4 commit SHA in GUI V2 milestone table
-
-- Update [Unreleased] [skip ci]
 
 - Fix DRY + add session isolation test per code review
   Address code quality review findings:
@@ -202,18 +190,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Rename m4_wrong_token_on_get → m4_wrong_token_rejected_as_unauthorized
     (name reflects shared guard, not endpoint-specific)
   - Fix #[must_use] warning on delete_gui_session call
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
-
-- Update [Unreleased] [skip ci]
 
 
 ### Fixed
@@ -284,102 +260,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Add v0.1.6 and v0.1.7 changelog entries
-
-- Bump actions/download-artifact from 7 to 8
-  Bumps [actions/download-artifact](https://github.com/actions/download-artifact) from 7 to 8.
-  - [Release notes](https://github.com/actions/download-artifact/releases)
-  - [Commits](https://github.com/actions/download-artifact/compare/v7...v8)
-
-  ---
-  updated-dependencies:
-  - dependency-name: actions/download-artifact
-    dependency-version: '8'
-    dependency-type: direct:production
-    update-type: version-update:semver-major
-  ...
-
-- Bump actions/attest-build-provenance from 2 to 4
-  Bumps [actions/attest-build-provenance](https://github.com/actions/attest-build-provenance) from 2 to 4.
-  - [Release notes](https://github.com/actions/attest-build-provenance/releases)
-  - [Changelog](https://github.com/actions/attest-build-provenance/blob/main/RELEASE.md)
-  - [Commits](https://github.com/actions/attest-build-provenance/compare/v2...v4)
-
-  ---
-  updated-dependencies:
-  - dependency-name: actions/attest-build-provenance
-    dependency-version: '4'
-    dependency-type: direct:production
-    update-type: version-update:semver-major
-  ...
-
-- Bump actions/setup-node from 4 to 6
-  Bumps [actions/setup-node](https://github.com/actions/setup-node) from 4 to 6.
-  - [Release notes](https://github.com/actions/setup-node/releases)
-  - [Commits](https://github.com/actions/setup-node/compare/v4...v6)
-
-  ---
-  updated-dependencies:
-  - dependency-name: actions/setup-node
-    dependency-version: '6'
-    dependency-type: direct:production
-    update-type: version-update:semver-major
-  ...
-
-- Bump actions/upload-artifact from 6 to 7
-  Bumps [actions/upload-artifact](https://github.com/actions/upload-artifact) from 6 to 7.
-  - [Release notes](https://github.com/actions/upload-artifact/releases)
-  - [Commits](https://github.com/actions/upload-artifact/compare/v6...v7)
-
-  ---
-  updated-dependencies:
-  - dependency-name: actions/upload-artifact
-    dependency-version: '7'
-    dependency-type: direct:production
-    update-type: version-update:semver-major
-  ...
-
-- Bump zip from 2.4.2 to 8.1.0
-  Bumps [zip](https://github.com/zip-rs/zip2) from 2.4.2 to 8.1.0.
-  - [Release notes](https://github.com/zip-rs/zip2/releases)
-  - [Changelog](https://github.com/zip-rs/zip2/blob/master/CHANGELOG.md)
-  - [Commits](https://github.com/zip-rs/zip2/compare/v2.4.2...v8.1.0)
-
-  ---
-  updated-dependencies:
-  - dependency-name: zip
-    dependency-version: 8.1.0
-    dependency-type: direct:production
-    update-type: version-update:semver-major
-  ...
-
-- Bump sysinfo from 0.38.2 to 0.38.3 ([#40](https://github.com/pseudotop/oneshim-client/pull/40))
-  Bumps [sysinfo](https://github.com/GuillaumeGomez/sysinfo) from 0.38.2 to 0.38.3.
-  - [Changelog](https://github.com/GuillaumeGomez/sysinfo/blob/main/CHANGELOG.md)
-  - [Commits](https://github.com/GuillaumeGomez/sysinfo/compare/v0.38.2...v0.38.3)
-
-  ---
-  updated-dependencies:
-  - dependency-name: sysinfo
-    dependency-version: 0.38.3
-    dependency-type: direct:production
-    update-type: version-update:semver-patch
-  ...
-
-- Bump tauri-build from 2.5.5 to 2.5.6 ([#41](https://github.com/pseudotop/oneshim-client/pull/41))
-  Bumps [tauri-build](https://github.com/tauri-apps/tauri) from 2.5.5 to 2.5.6.
-  - [Release notes](https://github.com/tauri-apps/tauri/releases)
-  - [Commits](https://github.com/tauri-apps/tauri/compare/tauri-build-v2.5.5...tauri-build-v2.5.6)
-
-  ---
-  updated-dependencies:
-  - dependency-name: tauri-build
-    dependency-version: 2.5.6
-    dependency-type: direct:production
-    update-type: version-update:semver-patch
-  ...
-
-- Bump xcap 0.8.3, uuid 1.22.0, tokio 1.50.0
-  Consolidates Dependabot PRs #42, #43, #44 into a single update.
 
 - Update all docs to reflect Tauri v2 migration ([#45](https://github.com/pseudotop/oneshim-client/pull/45))
   * docs(plan): add multi-agent audit remediation design doc
@@ -733,6 +613,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   builds succeed, regardless of smoke test results.
 
 
+## [0.1.4] - 2026-03-03
+### Changed
+
+- V0.1.4
+
+
+## [0.1.3] - 2026-03-03
+### Changed
+
+- V0.1.3
+
+
 ## [0.1.2] - 2026-03-03
 ### Changed
 
@@ -762,6 +654,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ADR-003 문서 내 server 교차 참조는 역사적 맥락으로 유지.
 
 - Document tray toggle and add macos windowserver smoke
+
+- V0.1.2
 
 
 ### Fixed
@@ -796,6 +690,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cargo → cargo-cache.sh 래퍼 일괄 적용
   CI workflows, scripts, README 전체에서 cargo 직접 호출을
   ./scripts/cargo-cache.sh 래퍼로 교체하여 빌드 캐시 최적화.
+
+- V0.1.1
+  - Fix macOS installer artifact naming (remove -unsigned suffix)
+  - Replace cargo with cargo-cache.sh wrapper across CI/scripts
 
 
 ### Fixed
@@ -953,6 +851,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   splits across 5 crates.
 
   Aligned with server-side ADR-013 (Domain Service Folder Pattern).
+
+- V0.1.0
+  First public release of ONESHIM Rust desktop client.
+  10-crate workspace, 831 tests, Hexagonal Architecture.
 
 
 ### Fixed

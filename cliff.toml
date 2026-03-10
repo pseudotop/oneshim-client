@@ -34,17 +34,22 @@ commit_preprocessors = [
   { pattern = '\(#(\d+)\)', replace = "([#${1}](https://github.com/pseudotop/oneshim-client/pull/${1}))" },
 ]
 commit_parsers = [
+  # Skip meta commits (changelog updates, version bumps, CI, style, tests)
+  { message = "^docs\\(changelog\\)", skip = true },
+  { message = "^docs: update CHANGELOG", skip = true },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^ci", skip = true },
+  { message = "^style", skip = true },
+  { message = "^test", skip = true },
+  { message = "^chore", skip = true },
+  # Group meaningful commits
   { message = "^feat", group = "Added" },
   { message = "^fix", group = "Fixed" },
   { message = "^perf", group = "Changed" },
   { message = "^refactor", group = "Changed" },
+  { message = "^release:", group = "Changed" },
   { message = "^docs", group = "Changed" },
-  { message = "^chore\\(deps\\)", group = "Changed" },
   { message = "^security", group = "Security" },
-  { message = "^chore", skip = true },
-  { message = "^ci", skip = true },
-  { message = "^style", skip = true },
-  { message = "^test", skip = true },
   { body = ".*security", group = "Security" },
 ]
 protect_breaking_commits = false
