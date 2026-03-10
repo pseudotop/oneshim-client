@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-03-10
+### Fixed
+
+- macOS desktop UX overhaul — native titlebar, sidebar nav, API connectivity
+  - Fix StatusBar "Offline" status: detect Tauri runtime to disable standalone mode in webview
+  - Fix hardcoded version "v0.1.0": read version from Cargo.toml workspace as single source of truth via vite.config.ts
+  - Fix changelog not rendering on Updates page: same standalone mode root cause returning mock data
+  - Fix API connectivity: absolute URLs for Tauri webview (relative URLs cannot reach Axum backend)
+  - Add dynamic port resolution: `api-base.ts` with 3-tier fallback (injected global, Tauri IPC `get_web_port`, DEFAULT_WEB_PORT)
+  - Add `get_web_port` Tauri IPC command for runtime port discovery
+  - Inject web port global via setup.rs before showing window
+  - CSP update: keep connect-src ports 10090-10099
+  - Sync `package.json` version 0.1.0 to 0.3.5
+
+- Add config sync CI and validation script
+  - New `scripts/check-config-sync.sh`: validates version sync (Cargo.toml / package.json / src-tauri), port sync (Rust / constants.ts / CSP), CSP port range, frontend dist existence
+  - New `.github/workflows/config-sync.yml`: CI triggered on push/PR when config files change
+  - Supports `--fix` flag for remediation suggestions
+
+- macOS native integration improvements
+  - Add native dock icon via `macos_integration.rs` (NSImage from bundled PNG)
+  - Add retina tray icon (`tray_icon@2x.png`)
+  - Add `titleBarStyle: Overlay` with `hiddenTitle: true` for native-looking titlebar
+
+- Add SIGKILL escalation for GUI bootstrap smoke on macOS CI
+
+- Fix cliff config: skip changelog/release meta commits, restore v0.3.2 section
+
+
 ## [0.3.4] - 2026-03-10
 ### Changed
 
