@@ -46,6 +46,22 @@ pre-push:
         done
       interactive: true
 
+post-checkout:
+  commands:
+    cargo-sweep:
+      run: |
+        if command -v cargo-sweep >/dev/null 2>&1 && [ -d target ]; then
+          cargo sweep --time 7 2>/dev/null
+        fi
+
+post-merge:
+  commands:
+    cargo-sweep:
+      run: |
+        if command -v cargo-sweep >/dev/null 2>&1 && [ -d target ]; then
+          cargo sweep --time 7 2>/dev/null
+        fi
+
 pre-commit:
   parallel: true
   commands:
