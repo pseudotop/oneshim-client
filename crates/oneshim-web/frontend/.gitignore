@@ -15,6 +15,7 @@ playwright-live-report/
 test-results/
 test-results-live/
 coverage/
+wdio-logs/
 
 # Editor
 .vscode/

@@ -30,6 +30,10 @@ coverage/
 # Node.js (웹 대시보드 프론트엔드)
 node_modules/
 
+# Test results / WDIO logs
+test-results/
+wdio-logs/
+
 # Local agent/tooling state
 .serena/
 .claude/worktrees/
