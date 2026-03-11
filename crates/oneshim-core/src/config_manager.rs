@@ -307,4 +307,86 @@ mod tests {
             "in-memory config should not be mutated after a failed reload"
         );
     }
+
+    // ── Task 27b: ConfigManager file I/O tests ─────────────────────
+
+    #[test]
+    fn load_creates_default_when_file_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("nonexistent_dir").join("config.json");
+
+        // The file (and parent dir) do not exist yet.
+        assert!(!config_path.exists());
+
+        let manager = ConfigManager::with_path(config_path.clone()).unwrap();
+
+        // File should have been created with defaults.
+        assert!(config_path.exists(), "config file should be created on init");
+
+        let config = manager.get();
+        assert_eq!(
+            config.web.port,
+            crate::config::DEFAULT_WEB_PORT,
+            "missing file should produce default config"
+        );
+        assert_eq!(
+            config.storage.retention_days, 30,
+            "default retention_days should be 30"
+        );
+    }
+
+    #[test]
+    fn save_then_load_round_trip() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+
+        let manager = ConfigManager::with_path(config_path.clone()).unwrap();
+
+        // Mutate several fields across different sections.
+        manager
+            .update_with(|c| {
+                c.web.port = 9999;
+                c.storage.retention_days = 90;
+                c.server.base_url = "https://prod.example.com".to_string();
+                c.monitor.idle_threshold_secs = 600;
+                c.vision.ocr_enabled = true;
+            })
+            .unwrap();
+
+        // Create a fresh manager pointing at the same file.
+        let manager2 = ConfigManager::with_path(config_path).unwrap();
+        let loaded = manager2.get();
+
+        assert_eq!(loaded.web.port, 9999);
+        assert_eq!(loaded.storage.retention_days, 90);
+        assert_eq!(loaded.server.base_url, "https://prod.example.com");
+        assert_eq!(loaded.monitor.idle_threshold_secs, 600);
+        assert!(loaded.vision.ocr_enabled);
+    }
+
+    #[test]
+    fn load_corrupt_file_returns_error_or_default() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+
+        // Write garbage content before the manager tries to load.
+        fs::write(&config_path, "<<<NOT JSON>>>").unwrap();
+
+        let result = ConfigManager::with_path(config_path);
+        assert!(
+            result.is_err(),
+            "loading a corrupt config file should return an error"
+        );
+
+        // Verify the error is a Config variant.
+        match result.unwrap_err() {
+            CoreError::Config(msg) => {
+                assert!(
+                    msg.contains("Failed to parse config file"),
+                    "error message should mention parse failure, got: {msg}"
+                );
+            }
+            other => panic!("expected CoreError::Config, got {other:?}"),
+        }
+    }
 }
