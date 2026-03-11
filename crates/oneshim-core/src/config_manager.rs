@@ -321,7 +321,10 @@ mod tests {
         let manager = ConfigManager::with_path(config_path.clone()).unwrap();
 
         // File should have been created with defaults.
-        assert!(config_path.exists(), "config file should be created on init");
+        assert!(
+            config_path.exists(),
+            "config file should be created on init"
+        );
 
         let config = manager.get();
         assert_eq!(

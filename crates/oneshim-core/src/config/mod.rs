@@ -464,14 +464,14 @@ mod tests {
     #[test]
     fn default_config_round_trips_through_json() {
         let original = AppConfig::default_config();
-        let json_str = serde_json::to_string_pretty(&original)
-            .expect("default config must serialize to JSON");
+        let json_str =
+            serde_json::to_string_pretty(&original).expect("default config must serialize to JSON");
         let restored: AppConfig =
             serde_json::from_str(&json_str).expect("serialized default config must deserialize");
 
         // Compare via re-serialisation (AppConfig does not derive PartialEq)
-        let json_restored = serde_json::to_string_pretty(&restored)
-            .expect("restored config must re-serialize");
+        let json_restored =
+            serde_json::to_string_pretty(&restored).expect("restored config must re-serialize");
         assert_eq!(
             json_str, json_restored,
             "JSON output must be identical after a serialize→deserialize→serialize round-trip"
@@ -481,8 +481,7 @@ mod tests {
     #[test]
     fn config_with_unknown_fields_deserializes_without_error() {
         let mut original = AppConfig::default_config();
-        let mut json_val =
-            serde_json::to_value(&original).expect("default config must serialize");
+        let mut json_val = serde_json::to_value(&original).expect("default config must serialize");
 
         // Inject unknown top-level field
         json_val
