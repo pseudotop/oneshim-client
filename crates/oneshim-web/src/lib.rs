@@ -131,8 +131,24 @@ impl WebServer {
 
     /// TCP 바인딩 없이 Router만 반환 — Tauri 커스텀 프로토콜 등에서 사용
     pub fn build_router(state: AppState) -> Router {
+        use axum::http::HeaderValue;
+        use tower_http::cors::AllowOrigin;
+
+        // localhost origin만 허용 (tauri:// + http://127.0.0.1:{port range})
+        let allowed_origins: Vec<HeaderValue> = (10090..=10099)
+            .flat_map(|port| {
+                [
+                    format!("http://127.0.0.1:{port}").parse().ok(),
+                    format!("http://localhost:{port}").parse().ok(),
+                ]
+                .into_iter()
+                .flatten()
+            })
+            .chain(std::iter::once("tauri://localhost".parse().unwrap()))
+            .collect();
+
         let cors = CorsLayer::new()
-            .allow_origin(Any)
+            .allow_origin(AllowOrigin::list(allowed_origins))
             .allow_methods(Any)
             .allow_headers(Any);
 
