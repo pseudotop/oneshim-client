@@ -448,7 +448,11 @@ jobs:
           TAG_REF: ${{ needs.verify-version.outputs.release_tag }}
         run: |
           EXPECTED_VERSION="${TAG_REF#v}"
-          EXPECTED_DEB_UPSTREAM="${EXPECTED_VERSION/-/~}"
+          if [[ "$EXPECTED_VERSION" == *-* ]]; then
+            EXPECTED_DEB_UPSTREAM="${EXPECTED_VERSION%%-*}~${EXPECTED_VERSION#*-}"
+          else
+            EXPECTED_DEB_UPSTREAM="$EXPECTED_VERSION"
+          fi
           DEB_FILE=$(find target -name "*.deb" -type f | head -1)
           if [ -z "$DEB_FILE" ]; then echo "No DEB file found"; exit 1; fi
           DEB_VERSION=$(dpkg-deb -f "$DEB_FILE" Version)
