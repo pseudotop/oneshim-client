@@ -69,15 +69,36 @@ Logs are available for 90 days after a run. Artifacts (frontend dist, GUI smoke 
 
 ## Release Pipeline
 
-Releases are triggered by pushing a `v*` tag (e.g., `v1.2.0`). The release workflow is defined in [`.github/workflows/release.yml`](../../.github/workflows/release.yml).
+Releases are triggered by pushing a `v*` tag, but the repository now enforces an `RC first, stable promote later` flow:
+
+- RC publish: push `vX.Y.Z-rc.N`
+- Stable publish: push `vX.Y.Z` only after a successful RC release for the same base version
+
+The release workflow is defined in [`.github/workflows/release.yml`](../../.github/workflows/release.yml). Maintainers should use:
+
+- `./scripts/release.sh <x.y.z-rc.N>` for release candidates
+- `./scripts/promote-stable.sh <x.y.z-rc.N>` to create the stable promotion commit and tag
+- [`.github/workflows/promote-stable.yml`](../../.github/workflows/promote-stable.yml) to let GitHub Actions create the stable tag and dispatch the release build without a human pushing the stable tag manually
+
+Direct stable preparation via the old `prepare-release.sh` path is intentionally blocked.
 
 ### Pre-flight Checks
 
 Before any build starts, the pipeline verifies:
 
+- The tag format is either `vX.Y.Z-rc.N` or `vX.Y.Z`.
+- The tag points to the current `main` branch head.
 - `Cargo.toml` workspace version matches the git tag.
+- `crates/oneshim-web/frontend/package.json` matches the git tag.
 - `CHANGELOG.md` contains an entry for the version being released.
 - `tauri.conf.json` `productName` is `ONESHIM` and `identifier` is `com.oneshim.client`.
+
+For stable tags, the pipeline also verifies:
+
+- A matching RC tag already exists.
+- The stable commit changes metadata files only.
+- The stable changelog section matches the latest RC section for that base version.
+- The matching RC GitHub release exists as a prerelease and already has assets.
 
 ### Build Matrix
 

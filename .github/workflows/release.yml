@@ -4,9 +4,21 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to build (for example v0.3.7)'
+        required: true
+        type: string
+      release_sha:
+        description: 'Commit SHA that the release tag points to'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+  RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
 
 permissions:
   contents: write
@@ -17,15 +29,61 @@ jobs:
   verify-version:
     name: Verify Version Consistency
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      release_version: ${{ steps.release.outputs.release_version }}
+      release_kind: ${{ steps.release.outputs.release_kind }}
+      base_version: ${{ steps.release.outputs.base_version }}
     env:
-      TAG_REF: ${{ github.ref_name }}
+      TAG_REF: ${{ env.RELEASE_TAG }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Classify release version
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/release-common.sh
+          TAG_VERSION="${TAG_REF#v}"
+          echo "release_tag=${TAG_REF}" >> "$GITHUB_OUTPUT"
+          echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          if is_rc_version "${TAG_VERSION}"; then
+            echo "release_kind=rc" >> "$GITHUB_OUTPUT"
+            echo "base_version=$(base_version "${TAG_VERSION}")" >> "$GITHUB_OUTPUT"
+          elif is_stable_version "${TAG_VERSION}"; then
+            echo "release_kind=stable" >> "$GITHUB_OUTPUT"
+            echo "base_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unsupported tag format: ${TAG_REF}. Use vX.Y.Z-rc.N or vX.Y.Z"
+            exit 1
+          fi
+
+      - name: Verify tag points at origin/main HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          MAIN_SHA="$(git rev-parse origin/main)"
+          echo "Tag commit:  ${RELEASE_SHA}"
+          echo "main commit: ${MAIN_SHA}"
+          if [ "${RELEASE_SHA}" != "${MAIN_SHA}" ]; then
+            echo "::error::Release tags must point to origin/main HEAD"
+            exit 1
+          fi
 
       - name: Verify Cargo.toml version matches tag
+        shell: bash
         run: |
+          set -euo pipefail
+          source ./scripts/release-common.sh
           TAG_VERSION="${TAG_REF#v}"
-          CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          CARGO_VERSION="$(workspace_version)"
           echo "Tag version:   $TAG_VERSION"
           echo "Cargo version: $CARGO_VERSION"
           if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
@@ -34,14 +92,100 @@ jobs:
             exit 1
           fi
 
-      - name: Verify CHANGELOG.md has entry for this version
+      - name: Verify frontend package.json version matches tag
+        shell: bash
         run: |
+          set -euo pipefail
+          source ./scripts/release-common.sh
           TAG_VERSION="${TAG_REF#v}"
-          if ! grep -q "## \[$TAG_VERSION\]" CHANGELOG.md; then
+          PKG_VERSION="$(frontend_version)"
+          echo "Tag version:      $TAG_VERSION"
+          echo "package version:  $PKG_VERSION"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Version mismatch! Tag ${TAG_REF} but frontend package.json has $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Verify CHANGELOG.md has entry for this version
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/release-common.sh
+          TAG_VERSION="${TAG_REF#v}"
+          if ! changelog_has_entry "${TAG_VERSION}"; then
             echo "::error::CHANGELOG.md missing entry for [$TAG_VERSION]"
             echo "Fix: Add ## [$TAG_VERSION] - $(date +%Y-%m-%d) section to CHANGELOG.md"
             exit 1
           fi
+
+      - name: Enforce rc-first stable promotion
+        if: steps.release.outputs.release_kind == 'stable'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./scripts/release-common.sh
+          BASE_VERSION="${{ steps.release.outputs.base_version }}"
+          RC_TAG="$(latest_rc_tag_for_base "${BASE_VERSION}")"
+          if [ -z "${RC_TAG}" ]; then
+            echo "::error::Stable release v${BASE_VERSION} requires an existing RC tag v${BASE_VERSION}-rc.N"
+            exit 1
+          fi
+
+          echo "Latest RC tag: ${RC_TAG}"
+          RC_COMMIT="$(git rev-parse "${RC_TAG}^{commit}")"
+          if [ "${RC_COMMIT}" = "${RELEASE_SHA}" ]; then
+            echo "::error::Stable tag must come from a promotion commit, not directly from ${RC_TAG}"
+            exit 1
+          fi
+
+          mapfile -t CHANGED_FILES < <(git diff --name-only "${RC_COMMIT}" "${RELEASE_SHA}")
+          if [ "${#CHANGED_FILES[@]}" -eq 0 ]; then
+            echo "::error::Stable promotion commit must change metadata relative to ${RC_TAG}"
+            exit 1
+          fi
+
+          BAD_FILES=()
+          for file in "${CHANGED_FILES[@]}"; do
+            [ -z "${file}" ] && continue
+            if ! allowed_promotion_file "${file}"; then
+              BAD_FILES+=("${file}")
+            fi
+          done
+
+          if [ "${#BAD_FILES[@]}" -gt 0 ]; then
+            printf '::error::Stable promotion changed non-metadata files: %s\n' "${BAD_FILES[*]}"
+            exit 1
+          fi
+
+          if ! changelog_section_body_matches "${BASE_VERSION}" "${RC_TAG#v}"; then
+            echo "::error::Stable CHANGELOG section [${BASE_VERSION}] must match the latest RC section [${RC_TAG#v}]"
+            exit 1
+          fi
+
+          RELEASE_JSON="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}")"
+
+          python3 - "${RC_TAG}" <<'PY' <<<"${RELEASE_JSON}"
+          import json
+          import sys
+
+          tag = sys.argv[1]
+          release = json.load(sys.stdin)
+          assets = len(release.get("assets", []))
+
+          if release.get("draft"):
+              raise SystemExit(f"Latest RC release {tag} is still a draft")
+          if not release.get("prerelease"):
+              raise SystemExit(f"Latest RC release {tag} is not marked as prerelease")
+          if assets == 0:
+              raise SystemExit(f"Latest RC release {tag} has no assets")
+
+          print(f"Verified RC release {tag}: prerelease={release.get('prerelease')} assets={assets}")
+          PY
 
       - name: Verify tauri.conf.json consistency
         run: |
@@ -64,6 +208,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.verify-version.outputs.release_sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -125,6 +271,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.verify-version.outputs.release_sha }}
 
       - name: Download frontend dist artifact
         uses: actions/download-artifact@v8
@@ -264,7 +412,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          TAG_REF: ${{ github.ref_name }}
+          TAG_REF: ${{ needs.verify-version.outputs.release_tag }}
         run: |
           $expectedVersion = $env:TAG_REF -replace '^v', ''
           $msiFile = Get-ChildItem -Path "target/wix","src-tauri/target/wix" -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -282,7 +430,7 @@ jobs:
       - name: Verify DEB version
         if: runner.os == 'Linux'
         env:
-          TAG_REF: ${{ github.ref_name }}
+          TAG_REF: ${{ needs.verify-version.outputs.release_tag }}
         run: |
           EXPECTED_VERSION="${TAG_REF#v}"
           DEB_FILE=$(find target -name "*.deb" -type f | head -1)
@@ -321,6 +469,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 120
     env:
+      TAG_REF: ${{ needs.verify-version.outputs.release_tag }}
       MACOS_APP_CERT_P12_B64: ${{ secrets.MACOS_APP_CERT_P12_B64 }}
       MACOS_APP_CERT_PASSWORD: ${{ secrets.MACOS_APP_CERT_PASSWORD }}
       MACOS_INSTALLER_CERT_P12_B64: ${{ secrets.MACOS_INSTALLER_CERT_P12_B64 }}
@@ -329,6 +478,8 @@ jobs:
       MACOS_INSTALLER_SIGNING_IDENTITY: ${{ secrets.MACOS_INSTALLER_SIGNING_IDENTITY }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.verify-version.outputs.release_sha }}
 
       - name: Download arm64 artifact
         uses: actions/download-artifact@v8
@@ -481,7 +632,7 @@ jobs:
       - name: Create macOS app bundle
         shell: bash
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${TAG_REF#v}"
           APP_BUNDLE="dist/ONESHIM.app"
           mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
           cp binaries/oneshim "$APP_BUNDLE/Contents/MacOS/oneshim"
@@ -537,7 +688,7 @@ jobs:
       - name: Verify macOS app bundle version
         shell: bash
         run: |
-          EXPECTED_VERSION="${GITHUB_REF#refs/tags/v}"
+          EXPECTED_VERSION="${TAG_REF#v}"
           BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" dist/ONESHIM.app/Contents/Info.plist)
           echo "Expected: $EXPECTED_VERSION"
           echo "Bundle:   $BUNDLE_VERSION"
@@ -582,7 +733,7 @@ jobs:
 
       - name: Create and sign PKG installer
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${TAG_REF#v}"
           UNSIGNED_PKG_TMP="dist/oneshim-macos-universal-pkgbuild-unsigned.pkg"
           pkgbuild \
             --component dist/ONESHIM.app \
@@ -641,6 +792,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.verify-version.outputs.release_sha }}
 
       - name: Download release archive for smoke
         uses: actions/download-artifact@v8
@@ -751,11 +904,13 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-release, build-macos-universal, release-reliability-smoke]
+    needs: [verify-version, build-release, build-macos-universal, release-reliability-smoke]
     if: always() && needs.build-release.result == 'success' && needs.build-macos-universal.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.verify-version.outputs.release_sha }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v8
@@ -863,16 +1018,16 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        run: echo "version=${RELEASE_TAG}" >> $GITHUB_OUTPUT
 
       - name: Extract changelog for this version
         id: changelog
         env:
-          TAG_REF: ${{ github.ref_name }}
+          TAG_REF: ${{ needs.verify-version.outputs.release_tag }}
         run: |
           VERSION="${TAG_REF#v}"
           # Extract section between ## [$VERSION] and next ## [
-          CHANGELOG_SECTION=$(sed -n "/^## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '1d;$d' | sed '/^$/d')
+          CHANGELOG_SECTION=$(sed -n "/^## \[$VERSION\]\( - .*\)\?$/,/^## \[/p" CHANGELOG.md | sed '1d;$d' | sed '/^$/d')
           if [ -z "$CHANGELOG_SECTION" ]; then
             CHANGELOG_SECTION="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)"
           fi
@@ -882,7 +1037,7 @@ jobs:
       - name: Generate release notes
         id: notes
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
+          VERSION="${RELEASE_TAG}"
           CHANGELOG_CONTENT=$(cat changelog_section.md)
 
           cat > release_notes.md <<NOTES_EOF
@@ -924,6 +1079,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.verify-version.outputs.release_tag }}
+          target_commitish: ${{ needs.verify-version.outputs.release_sha }}
           name: ONESHIM Client ${{ steps.version.outputs.version }}
           body_path: release_notes.md
           draft: false

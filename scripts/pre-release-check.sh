@@ -8,6 +8,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
+source "${REPO_ROOT}/scripts/release-common.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,6 +31,18 @@ else
   VERSION="$CARGO_VERSION"
 fi
 
+if is_rc_version "$VERSION"; then
+  RELEASE_KIND="rc"
+  BASE_VERSION="$(base_version "$VERSION")"
+elif is_stable_version "$VERSION"; then
+  RELEASE_KIND="stable"
+  BASE_VERSION="$VERSION"
+else
+  echo "Unsupported version format: $VERSION"
+  echo "Expected x.y.z-rc.N or x.y.z"
+  exit 1
+fi
+
 echo "=== Pre-Release Check: v${VERSION} ==="
 echo ""
 
@@ -41,10 +54,17 @@ else
   fail "Cargo.toml version ($CARGO_VERSION) != target ($VERSION)"
 fi
 
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT_BRANCH" = "main" ]; then
+  pass "Current branch: main"
+else
+  fail "Release tags must be created from main (current: $CURRENT_BRANCH)"
+fi
+
 # --- 2. package.json version ---
 PKG_JSON="crates/oneshim-web/frontend/package.json"
 if [ -f "$PKG_JSON" ]; then
-  PKG_VERSION=$(python3 -c "import json; print(json.load(open('$PKG_JSON'))['version'])")
+  PKG_VERSION="$(frontend_version)"
   if [ "$PKG_VERSION" = "$VERSION" ]; then
     pass "package.json version: $PKG_VERSION"
   else
@@ -73,7 +93,7 @@ echo ""
 # --- 4. CHANGELOG.md ---
 echo "[CHANGELOG]"
 if [ -f "CHANGELOG.md" ]; then
-  if grep -q "## \[$VERSION\]" CHANGELOG.md; then
+  if changelog_has_entry "$VERSION"; then
     pass "CHANGELOG.md has entry for [$VERSION]"
     # Check if it has a date
     if grep -q "## \[$VERSION\] - " CHANGELOG.md; then
@@ -104,12 +124,63 @@ fi
 
 echo ""
 
+# --- 4b. Release policy ---
+echo "[Release Policy]"
+if [ "$RELEASE_KIND" = "rc" ]; then
+  pass "Release type: release candidate"
+  if git tag -l "v$BASE_VERSION" | grep -q "^v$BASE_VERSION$"; then
+    fail "Stable tag v$BASE_VERSION already exists; new RCs for the same base version are not allowed"
+  else
+    pass "Stable tag v$BASE_VERSION does not exist yet"
+  fi
+else
+  pass "Release type: stable promotion"
+  RC_TAG="$(latest_rc_tag_for_base "$BASE_VERSION")"
+  if [ -z "$RC_TAG" ]; then
+    fail "No RC tag found for $BASE_VERSION (expected v$BASE_VERSION-rc.N first)"
+  else
+    pass "Latest RC tag: $RC_TAG"
+    RC_COMMIT="$(git rev-parse "${RC_TAG}^{commit}")"
+    HEAD_COMMIT="$(git rev-parse HEAD)"
+    if [ "$RC_COMMIT" = "$HEAD_COMMIT" ]; then
+      fail "Stable tag must be created from a promotion commit, not directly from $RC_TAG"
+    fi
+
+    mapfile -t CHANGED_FILES < <(git diff --name-only "$RC_COMMIT" "$HEAD_COMMIT")
+    if [ "${#CHANGED_FILES[@]}" -eq 0 ]; then
+      fail "Stable promotion commit must change metadata files relative to $RC_TAG"
+    else
+      pass "Files changed since $RC_TAG: ${#CHANGED_FILES[@]}"
+      BAD_FILES=()
+      for file in "${CHANGED_FILES[@]}"; do
+        [ -z "$file" ] && continue
+        if ! allowed_promotion_file "$file"; then
+          BAD_FILES+=("$file")
+        fi
+      done
+      if [ "${#BAD_FILES[@]}" -gt 0 ]; then
+        fail "Stable promotion changed non-metadata files: ${BAD_FILES[*]}"
+      else
+        pass "Stable promotion changed metadata files only"
+      fi
+    fi
+
+    if changelog_section_body_matches "$BASE_VERSION" "${RC_TAG#v}"; then
+      pass "Stable CHANGELOG entry matches the latest RC section"
+    else
+      fail "Stable CHANGELOG entry must match the latest RC section [${RC_TAG#v}]"
+    fi
+  fi
+fi
+
+echo ""
+
 # --- 5. Git status ---
 echo "[Git Status]"
-if [ -z "$(git status --porcelain -- CHANGELOG.md)" ]; then
-  pass "CHANGELOG.md is committed"
+if [ -z "$(git status --porcelain)" ]; then
+  pass "Working tree is clean"
 else
-  fail "CHANGELOG.md has uncommitted changes — commit before tagging"
+  fail "Working tree has uncommitted changes — commit or stash before tagging"
 fi
 
 if [ -z "$(git diff --cached --name-only)" ]; then
