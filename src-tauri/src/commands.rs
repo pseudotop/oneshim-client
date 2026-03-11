@@ -61,11 +61,53 @@ pub async fn get_metrics(_state: tauri::State<'_, AppState>) -> Result<MetricsRe
     })
 }
 
-/// 설정 조회
+/// WebView에 노출되는 민감 필드를 마스킹하는 키 목록
+const REDACTED_PATHS: &[(&str, &[&str])] = &[
+    ("server", &["base_url", "api_key"]),
+    ("ai_provider", &["ocr_api.api_key", "llm_api.api_key"]),
+    (
+        "tls",
+        &["ca_cert_path", "client_cert_path", "client_key_path"],
+    ),
+    ("grpc", &["server_url"]),
+];
+
+/// 설정 조회 — 민감 필드 마스킹 후 반환
 #[command]
 pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
     let config = state.config_manager.get();
-    serde_json::to_value(&config).map_err(|e| e.to_string())
+    let mut v = serde_json::to_value(&config).map_err(|e| e.to_string())?;
+    redact_sensitive_fields(&mut v);
+    Ok(v)
+}
+
+fn redact_sensitive_fields(config: &mut serde_json::Value) {
+    let redacted = serde_json::Value::String("[REDACTED]".to_string());
+    for &(section, fields) in REDACTED_PATHS {
+        if let Some(sec) = config.get_mut(section) {
+            for &field in fields {
+                // "ocr_api.api_key" 같은 중첩 경로 처리
+                let parts: Vec<&str> = field.split('.').collect();
+                let mut target = &mut *sec;
+                let mut found = true;
+                for (i, part) in parts.iter().enumerate() {
+                    if i == parts.len() - 1 {
+                        if let Some(obj) = target.as_object_mut() {
+                            if obj.contains_key(*part) {
+                                obj.insert((*part).to_string(), redacted.clone());
+                            }
+                        }
+                    } else if let Some(next) = target.get_mut(*part) {
+                        target = next;
+                    } else {
+                        found = false;
+                        break;
+                    }
+                }
+                let _ = found; // suppress unused warning
+            }
+        }
+    }
 }
 
 /// WebView에서 수정 가능한 설정 필드 — 화이트리스트 모델

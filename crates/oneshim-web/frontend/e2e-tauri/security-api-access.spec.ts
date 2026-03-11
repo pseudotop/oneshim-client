@@ -65,6 +65,35 @@ describe('S1: API Access Control', () => {
   })
 
   /**
+   * @tc_id T202
+   * @risk_id SEC-012
+   * @tauri_only_reason IPC get_settings returns real config from disk
+   */
+  it('T202: get_settings does not expose server credentials', async () => {
+    const config = await invokeIpc<Record<string, any>>('get_settings')
+
+    // server.base_url 이 마스킹되어야 함
+    if (config.server) {
+      expect(config.server.base_url).toBe('[REDACTED]')
+    }
+
+    // ai_provider API 키가 마스킹되어야 함
+    if (config.ai_provider) {
+      if (config.ai_provider.ocr_api) {
+        expect(config.ai_provider.ocr_api.api_key).toBe('[REDACTED]')
+      }
+      if (config.ai_provider.llm_api) {
+        expect(config.ai_provider.llm_api.api_key).toBe('[REDACTED]')
+      }
+    }
+
+    // tls 인증서 경로가 마스킹되어야 함
+    if (config.tls) {
+      expect(config.tls.ca_cert_path || '[REDACTED]').toBe('[REDACTED]')
+    }
+  })
+
+  /**
    * @tc_id T204
    * @risk_id SEC-014
    * @tauri_only_reason Tests CORS wildcard absence on real Axum server
