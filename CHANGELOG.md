@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7-rc.2] - 2026-03-12
+
+### Fixed
+
+- Repair the release workflow so existing RC tags can be rebuilt deterministically
+  - Remove invalid env-context usage in `workflow_dispatch`
+  - Allow reruns for existing release tags and pass verified release metadata through dependent jobs
+
+- Harden installer/package verification for prerelease artifacts
+  - Normalize Debian prerelease version checks for `-rc.N` packages
+  - Avoid shell tilde expansion corrupting expected DEB versions
+
+- Bound macOS installer smoke shutdown on headless CI
+  - Escalate from `SIGTERM` to `SIGKILL` when GUI bootstrap does not exit promptly
+  - Prevent `wait()` from hanging indefinitely during macOS installer reliability checks
+
 ## [0.3.7-rc.1] - 2026-03-11
 
 ### Added
@@ -960,5 +976,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Accept Debian revision suffix in DEB version check
   cargo-deb appends Debian revision (-1) to upstream version,
   producing 0.1.0-1 instead of 0.1.0. Strip revision before comparing.
-
 
