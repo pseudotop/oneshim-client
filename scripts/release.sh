@@ -7,7 +7,6 @@
 # 전제 조건:
 #   - 작업 디렉터리가 클린 상태일 것 (커밋되지 않은 변경 없음)
 #   - CHANGELOG.md의 [Unreleased] 섹션에 실제 내용이 있을 것
-#   - git-cliff가 PATH에 있거나 ~/.cargo/bin에 있을 것
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,20 +44,6 @@ TAG="v${VERSION}"
 BASE_VERSION="$(base_version "${VERSION}")"
 
 info "RC 릴리스 준비 시작: ${TAG}"
-
-# ── git-cliff 경로 탐색 ────────────────────────────────────────────────────────
-# CI 환경: /usr/local/bin/git-cliff (taiki-e/install-action 설치)
-# 로컬 환경: PATH 또는 ~/.cargo/bin
-if command -v git-cliff &>/dev/null; then
-    GIT_CLIFF="git-cliff"
-elif [[ -x "/Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/.cargo/bin/git-cliff" ]]; then
-    GIT_CLIFF="/Volumes/ext-PCIe4-1TB/bjsmacminim4_ext/.cargo/bin/git-cliff"
-elif [[ -x "${HOME}/.cargo/bin/git-cliff" ]]; then
-    GIT_CLIFF="${HOME}/.cargo/bin/git-cliff"
-else
-    die "git-cliff를 찾을 수 없습니다. 설치 방법: cargo install git-cliff"
-fi
-info "git-cliff 경로: ${GIT_CLIFF}"
 
 # ── 작업 디렉터리: 스크립트가 있는 레포 루트로 이동 ──────────────────────────
 cd "${REPO_ROOT}"
