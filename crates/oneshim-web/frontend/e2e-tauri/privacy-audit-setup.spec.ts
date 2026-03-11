@@ -98,4 +98,55 @@ describe('J2: Privacy & Settings Persistence', () => {
       }
     }
   })
+
+  /**
+   * @tc_id T114
+   * @risk_id A11Y-001
+   * @tauri_only_reason Focus trap behavior in real WebView environment
+   */
+  it('T114: Data deletion confirm dialog has focus trap and a11y', async () => {
+    await browser.url('tauri://localhost/privacy')
+    await browser.pause(2000)
+
+    // Delete All 버튼 클릭
+    const deleteBtn = await $('button*=Delete All')
+    if (!(await deleteBtn.isExisting())) {
+      // 한국어 UI
+      const deleteBtnKo = await $('button*=모든 데이터 삭제')
+      if (await deleteBtnKo.isExisting()) await deleteBtnKo.click()
+      else return // 버튼 없으면 skip
+    } else {
+      await deleteBtn.click()
+    }
+
+    await browser.pause(500)
+
+    // role="alertdialog" 확인
+    const dialog = await $('div[role="alertdialog"]')
+    await dialog.waitForExist({ timeout: 3000 })
+    expect(await dialog.isDisplayed()).toBe(true)
+
+    // aria-describedby 확인
+    const describedBy = await dialog.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+
+    // Focus trap: Tab을 여러 번 눌러도 다이얼로그 안에 포커스 유지
+    await browser.keys('Tab')
+    await browser.keys('Tab')
+    await browser.keys('Tab')
+    await browser.keys('Tab')
+
+    // 현재 포커스된 요소가 다이얼로그 내부인지 확인
+    const activeEl = await browser.execute(() => {
+      const active = document.activeElement
+      const dialog = document.querySelector('div[role="alertdialog"]')
+      return dialog?.contains(active) ?? false
+    })
+    expect(activeEl).toBe(true)
+
+    // Escape로 닫기
+    await browser.keys('Escape')
+    await browser.pause(500)
+    expect(await dialog.isExisting()).toBe(false)
+  })
 })

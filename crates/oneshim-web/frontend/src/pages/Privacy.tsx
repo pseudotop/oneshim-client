@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BarChart3, Calendar, Camera, FileText, HardDrive } from 'lucide-react'
-import { type ReactNode, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   type BackupArchive,
@@ -36,22 +36,84 @@ interface ConfirmModalProps {
 
 function ConfirmModal({ isOpen, title, message, confirmText, isDangerous, onConfirm, onCancel }: ConfirmModalProps) {
   const { t } = useTranslation()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const previousFocusRef = useRef<Element | null>(null)
+  const descriptionId = useId()
+
+  useEffect(() => {
+    if (!isOpen) return
+    previousFocusRef.current = document.activeElement
+
+    // 첫 번째 포커스 가능한 요소에 포커스
+    const timer = setTimeout(() => {
+      dialogRef.current?.querySelector<HTMLElement>('button')?.focus()
+    }, 50)
+
+    return () => {
+      clearTimeout(timer)
+      // 닫힐 때 이전 포커스 복원
+      if (previousFocusRef.current instanceof HTMLElement) {
+        previousFocusRef.current.focus()
+      }
+    }
+  }, [isOpen])
+
+  // Focus trap: Tab 키가 다이얼로그 밖으로 나가지 않도록
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCancel()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const dialog = dialogRef.current
+      if (!dialog) return
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onCancel])
+
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <Card variant="default" padding="lg" className={cn('mx-4 w-full max-w-md', elevation.dialog)}>
-        <CardTitle className={`mb-2 ${isDangerous ? 'text-red-400' : ''}`}>{title}</CardTitle>
-        <p className="mb-6 whitespace-pre-line text-content-secondary">{message}</p>
-        <div className="flex justify-end space-x-3">
-          <Button variant="secondary" onClick={onCancel}>
-            {t('privacy.cancel')}
-          </Button>
-          <Button variant={isDangerous ? 'danger' : 'primary'} onClick={onConfirm}>
-            {confirmText}
-          </Button>
-        </div>
-      </Card>
+      <div
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-describedby={descriptionId}
+      >
+        <Card variant="default" padding="lg" className={cn('mx-4 w-full max-w-md', elevation.dialog)}>
+          <CardTitle className={`mb-2 ${isDangerous ? 'text-red-400' : ''}`}>{title}</CardTitle>
+          <p id={descriptionId} className="mb-6 whitespace-pre-line text-content-secondary">{message}</p>
+          <div className="flex justify-end space-x-3">
+            <Button variant="secondary" onClick={onCancel}>
+              {t('privacy.cancel')}
+            </Button>
+            <Button variant={isDangerous ? 'danger' : 'primary'} onClick={onConfirm}>
+              {confirmText}
+            </Button>
+          </div>
+        </Card>
+      </div>
     </div>
   )
 }
