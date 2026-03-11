@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# release.sh — ONESHIM 클라이언트 RC 릴리스 자동화 스크립트
+# release.sh — Prepare an RC release commit for PR-based merge flow.
 #
 # 사용법: ./scripts/release.sh <버전>
 #   예시: ./scripts/release.sh 0.3.7-rc.1
 #
 # 전제 조건:
-#   - main 브랜치에 있을 것
 #   - 작업 디렉터리가 클린 상태일 것 (커밋되지 않은 변경 없음)
 #   - CHANGELOG.md의 [Unreleased] 섹션에 실제 내용이 있을 것
 #   - git-cliff가 PATH에 있거나 ~/.cargo/bin에 있을 것
@@ -82,11 +81,15 @@ fi
 success "[Unreleased] 섹션에 내용이 있습니다"
 
 # ── 현재 브랜치 검증 ──────────────────────────────────────────────────────────
-if ! require_main_branch; then
-    CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-    die "main 브랜치에서만 릴리스할 수 있습니다 (현재: ${CURRENT_BRANCH})"
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "${CURRENT_BRANCH}" == "HEAD" ]]; then
+    die "detached HEAD 상태에서는 RC 준비 커밋을 만들 수 없습니다"
 fi
-success "브랜치 확인: main"
+if [[ "${CURRENT_BRANCH}" == "main" ]]; then
+    warn "main 브랜치는 PR 보호 대상입니다. 이 커밋은 로컬에서만 준비되고, PR용 브랜치로 푸시해야 합니다"
+else
+    success "브랜치 확인: ${CURRENT_BRANCH}"
+fi
 
 # ── 작업 디렉터리 클린 상태 검증 ──────────────────────────────────────────────
 if ! require_clean_worktree; then
@@ -142,32 +145,17 @@ git add "${CHANGELOG}" Cargo.toml crates/oneshim-web/frontend/package.json
 git commit -m "chore(release): ${TAG}"
 success "커밋 완료"
 
-# ── 태그 생성 ─────────────────────────────────────────────────────────────────
-info "태그를 생성합니다: ${TAG}"
-git tag -a "${TAG}" -m "Release ${TAG}"
-success "태그 생성 완료: ${TAG}"
-
-# ── 원격 저장소에 푸시 ────────────────────────────────────────────────────────
-info "main 브랜치를 origin에 푸시합니다..."
-git push origin main
-success "main 브랜치 푸시 완료"
-
-info "태그 ${TAG}를 origin에 푸시합니다..."
-git push origin "${TAG}"
-success "태그 푸시 완료"
-
 # ── 완료 메시지 ───────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  RC 릴리스 완료: ${TAG}${NC}"
+echo -e "${GREEN}  RC 준비 커밋 완료: ${TAG}${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "  GitHub Releases (CI가 완료되면 자동 생성됩니다):"
-echo "  https://github.com/pseudotop/oneshim-client/releases/tag/${TAG}"
+echo "  다음 순서:"
+echo "  1. 현재 브랜치를 원격에 푸시하고 PR을 생성합니다"
+echo "  2. PR이 main에 머지되면 최신 main에서 아래 스크립트로 RC 태그를 발행합니다"
+echo "     ./scripts/publish-rc-tag.sh ${VERSION}"
 echo ""
-echo "  릴리스 빌드 CI 상태:"
-echo "  https://github.com/pseudotop/oneshim-client/actions"
-echo ""
-echo "  RC 검증이 끝나면 stable 승격:"
-echo "  ./scripts/promote-stable.sh ${VERSION}"
+echo "  RC 검증이 끝나면 stable 승격 workflow를 사용합니다:"
+echo "  Promote Stable Release -> ${TAG}"
 echo ""
