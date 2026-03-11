@@ -23,6 +23,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure stable release deploy key
+        shell: bash
+        env:
+          STABLE_RELEASE_DEPLOY_KEY: ${{ secrets.STABLE_RELEASE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${STABLE_RELEASE_DEPLOY_KEY:-}" ]]; then
+            echo "::error::Missing secret STABLE_RELEASE_DEPLOY_KEY"
+            exit 1
+          fi
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${STABLE_RELEASE_DEPLOY_KEY}" > ~/.ssh/stable_release_key
+          chmod 600 ~/.ssh/stable_release_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'EOF'
+          Host github.com
+            IdentityFile ~/.ssh/stable_release_key
+            IdentitiesOnly yes
+          EOF
+          chmod 600 ~/.ssh/config
+          git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
+
       - name: Fetch latest main and tags
         run: git fetch origin main --tags --force
 
