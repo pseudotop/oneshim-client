@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7-rc.1] - 2026-03-11
+
 ### Added
 
 - Multi-layer quality infrastructure across the Rust core, Tauri IPC layer, and browser UI
