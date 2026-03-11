@@ -80,6 +80,7 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
       <button
         type="button"
         key={item.id}
+        data-testid={`nav-${item.id}`}
         onClick={() => handleClick(item)}
         onMouseEnter={(e) => {
           setTooltip(label)

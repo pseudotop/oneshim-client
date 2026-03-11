@@ -311,6 +311,7 @@ function Automation() {
               <button
                 type="button"
                 key={tab}
+                data-testid={`tab-${tab.toLowerCase()}`}
                 onClick={() => setPresetTab(tab)}
                 className={cn(
                   'rounded-md px-3 py-1.5 font-medium text-sm transition-colors',
@@ -426,6 +427,7 @@ function Automation() {
 
                   <div className="mt-auto flex items-center space-x-2 pt-3">
                     <Button
+                      data-testid={`run-preset-${preset.id}`}
                       variant="primary"
                       size="sm"
                       isLoading={runningPreset === preset.id}
@@ -435,7 +437,7 @@ function Automation() {
                       {t('automation.run')}
                     </Button>
                     {!preset.builtin && (
-                      <Button variant="danger" size="sm" onClick={() => deletePresetMutation.mutate(preset.id)}>
+                      <Button data-testid={`delete-preset-${preset.id}`} variant="danger" size="sm" onClick={() => deletePresetMutation.mutate(preset.id)}>
                         {t('common.delete')}
                       </Button>
                     )}

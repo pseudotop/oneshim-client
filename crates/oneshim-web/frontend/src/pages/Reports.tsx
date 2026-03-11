@@ -103,6 +103,7 @@ export default function Reports() {
         {/* UI note */}
         <div className="flex flex-wrap items-center gap-2">
           <Button
+            data-testid="period-week"
             variant={period === 'week' ? 'primary' : 'secondary'}
             size="sm"
             onClick={() => handlePeriodChange('week')}
@@ -110,6 +111,7 @@ export default function Reports() {
             {t('reports.week')}
           </Button>
           <Button
+            data-testid="period-month"
             variant={period === 'month' ? 'primary' : 'secondary'}
             size="sm"
             onClick={() => handlePeriodChange('month')}
@@ -117,6 +119,7 @@ export default function Reports() {
             {t('reports.month')}
           </Button>
           <Button
+            data-testid="period-custom"
             variant={period === 'custom' ? 'primary' : 'secondary'}
             size="sm"
             onClick={() => handlePeriodChange('custom')}
@@ -141,7 +144,7 @@ export default function Reports() {
                 onChange={(e) => setCustomTo(e.target.value)}
                 className="w-36"
               />
-              <Button variant="primary" size="sm" onClick={handleCustomSearch}>
+              <Button data-testid="generate-report" variant="primary" size="sm" onClick={handleCustomSearch}>
                 {t('reports.generate')}
               </Button>
             </div>

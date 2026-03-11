@@ -534,6 +534,7 @@ export default function SessionReplay() {
                           )}
                         </div>
                         <Button
+                          data-testid="overlay-toggle"
                           variant="secondary"
                           size="sm"
                           onClick={() => setShowSceneOverlay((prev) => !prev)}
@@ -632,6 +633,7 @@ export default function SessionReplay() {
 
                       <div className="flex flex-wrap gap-2">
                         <Button
+                          data-testid="execute-action"
                           size="sm"
                           isLoading={executeSceneActionMutation.isPending}
                           onClick={() => {
