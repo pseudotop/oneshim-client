@@ -11,9 +11,8 @@ test.describe('Replay Actions', () => {
   })
 
   test('P080: speed buttons exist', async ({ page }) => {
-    const speed = page.locator('[data-testid^="replay-speed"]')
-    const count = await speed.count()
-    expect(count).toBeGreaterThanOrEqual(1)
+    const speed = page.getByRole('combobox')
+    await expect(speed).toBeVisible()
   })
 
   test('P081: skip to start button exists', async ({ page }) => {

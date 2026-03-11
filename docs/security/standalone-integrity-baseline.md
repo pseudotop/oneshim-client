@@ -38,6 +38,11 @@ The goal is to keep the standalone trust model strict today, while making future
 - SBOM: `cargo cyclonedx --workspace`
 - Provenance attestation: GitHub artifact attestation on release artifacts
 
+Documented exception:
+
+- `RUSTSEC-2024-0429` (`glib 0.18.5`) is currently accepted only because it is a Linux-only GTK3 / `webkit2gtk` / `wry` / Tauri transitive dependency outside direct project control.
+- This exception must remain explicit in repository policy (`deny.toml`, integrity workflow/script) and must be removed once the upstream stack ships patched `glib` / `gtk-rs-core`.
+
 ### 3) Runtime Boundary Rules
 
 - Web handlers MUST not access SQLite internals directly (`conn_ref` forbidden in handlers).

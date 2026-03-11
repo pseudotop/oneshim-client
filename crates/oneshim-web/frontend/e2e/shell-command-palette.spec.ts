@@ -1,17 +1,22 @@
 import { test, expect } from './helpers/test'
 
+async function openPalette(page: import('@playwright/test').Page) {
+  await page.getByTestId('titlebar-search').click()
+  await expect(page.locator('[aria-modal="true"]')).toBeVisible()
+}
+
 test.describe('CommandPalette Actions', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
+    await expect(page.getByTestId('titlebar-search')).toBeVisible()
   })
 
-  test('P013: Cmd+K opens command palette', async ({ page }) => {
-    await page.keyboard.press('Meta+k')
-    await expect(page.locator('[aria-modal="true"]')).toBeVisible()
+  test('P013: search button opens command palette', async ({ page }) => {
+    await openPalette(page)
   })
 
   test('P014: search input filters commands', async ({ page }) => {
-    await page.keyboard.press('Meta+k')
+    await openPalette(page)
     const input = page.locator('input[role="combobox"]')
     await input.fill('settings')
     const options = page.locator('[id^="palette-option-"]')
@@ -21,14 +26,13 @@ test.describe('CommandPalette Actions', () => {
   })
 
   test('P015: Escape closes palette', async ({ page }) => {
-    await page.keyboard.press('Meta+k')
-    await expect(page.locator('[aria-modal="true"]')).toBeVisible()
+    await openPalette(page)
     await page.keyboard.press('Escape')
     await expect(page.locator('[aria-modal="true"]')).not.toBeVisible()
   })
 
   test('P016: Enter on item navigates', async ({ page }) => {
-    await page.keyboard.press('Meta+k')
+    await openPalette(page)
     const input = page.locator('input[role="combobox"]')
     await input.fill('privacy')
     await page.keyboard.press('Enter')
@@ -36,7 +40,7 @@ test.describe('CommandPalette Actions', () => {
   })
 
   test('P017: Arrow Down selects next', async ({ page }) => {
-    await page.keyboard.press('Meta+k')
+    await openPalette(page)
     await page.keyboard.press('ArrowDown')
     const input = page.locator('input[role="combobox"]')
     const activedesc = await input.getAttribute('aria-activedescendant')
@@ -44,7 +48,7 @@ test.describe('CommandPalette Actions', () => {
   })
 
   test('P018: focus trap keeps Tab within dialog', async ({ page }) => {
-    await page.keyboard.press('Meta+k')
+    await openPalette(page)
     for (let i = 0; i < 10; i++) {
       await page.keyboard.press('Tab')
     }

@@ -306,12 +306,16 @@ function Automation() {
           <CardTitle>{t('automation.presets')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex space-x-2">
+          <div className="mb-4 flex space-x-2" role="tablist" aria-label={t('automation.presets')}>
             {(['Productivity', 'AppManagement', 'Workflow', 'Custom'] as PresetTab[]).map((tab) => (
               <button
                 type="button"
                 key={tab}
+                id={`tab-${tab.toLowerCase()}`}
                 data-testid={`tab-${tab.toLowerCase()}`}
+                role="tab"
+                aria-selected={presetTab === tab}
+                aria-controls={`tabpanel-${tab.toLowerCase()}`}
                 onClick={() => setPresetTab(tab)}
                 className={cn(
                   'rounded-md px-3 py-1.5 font-medium text-sm transition-colors',
@@ -323,7 +327,13 @@ function Automation() {
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <div
+            id={`tabpanel-${presetTab.toLowerCase()}`}
+            data-testid={`tabpanel-${presetTab.toLowerCase()}`}
+            role="tabpanel"
+            aria-labelledby={`tab-${presetTab.toLowerCase()}`}
+            className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3"
+          >
             {filteredPresets.map((preset: WorkflowPreset) => {
               const feedback = getFeedback(preset.id)
               const isExpanded = expandedPreset === preset.id

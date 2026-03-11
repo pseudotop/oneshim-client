@@ -30,9 +30,11 @@ The CI pipeline is defined in [`.github/workflows/ci.yml`](../../.github/workflo
 | Server features | `cargo test --workspace --features server` |
 | gRPC features | `cargo test --workspace --features grpc` |
 
-### Platform Build Smoke (PR only)
+### Release Smoke (post-merge / manual)
 
-After tests pass, a release build is compiled on all four targets to catch platform-specific compilation errors:
+Release-grade desktop smoke is intentionally separated from the fast PR lane. The workflow lives in [`.github/workflows/release-smoke.yml`](../../.github/workflows/release-smoke.yml) and runs on pushes to `main` / `develop` or via manual dispatch.
+
+After the fast PR lane merges, a release build is compiled on all four targets to catch platform-specific compilation errors:
 
 | Target | Runner |
 |--------|--------|
@@ -42,6 +44,8 @@ After tests pass, a release build is compiled on all four targets to catch platf
 | `x86_64-pc-windows-msvc` | `windows-latest` |
 
 A GUI bootstrap smoke test runs on macOS and Windows: the binary is launched for 3 seconds and inspected for Rust panics or tokio runtime failures.
+
+This split keeps the merge-blocking PR checks focused on fast feedback while preserving release-grade platform coverage after merge and before promotion.
 
 ### Frontend (web dashboard)
 
@@ -69,16 +73,19 @@ Logs are available for 90 days after a run. Artifacts (frontend dist, GUI smoke 
 
 ## Release Pipeline
 
-Releases are triggered by pushing a `v*` tag, but the repository now enforces an `RC first, stable promote later` flow:
+Releases are driven by tags, but the repository now enforces an `RC first, stable promote later` flow:
 
-- RC publish: push `vX.Y.Z-rc.N`
-- Stable publish: push `vX.Y.Z` only after a successful RC release for the same base version
+- RC publish: push `vX.Y.Z-rc.N` after the RC preparation PR is merged
+- Stable publish: run `Promote Stable Release` for that validated RC; maintainers do not push `vX.Y.Z` manually
 
 The release workflow is defined in [`.github/workflows/release.yml`](../../.github/workflows/release.yml). Maintainers should use:
 
-- `./scripts/release.sh <x.y.z-rc.N>` for release candidates
-- `./scripts/promote-stable.sh <x.y.z-rc.N>` to create the stable promotion commit and tag
+- `./scripts/release.sh <x.y.z-rc.N>` to prepare the RC version/changelog commit on a PR branch
+- merge that PR into `main`
+- `./scripts/publish-rc-tag.sh <x.y.z-rc.N>` on the merged `main` commit to publish the RC tag
+- `./scripts/promote-stable.sh <x.y.z-rc.N>` to create the stable promotion commit and tag locally for verification or by CI with `PROMOTE_STABLE_NO_PUSH=1`
 - [`.github/workflows/promote-stable.yml`](../../.github/workflows/promote-stable.yml) to let GitHub Actions create the stable tag and dispatch the release build without a human pushing the stable tag manually
+- [`.github/workflows/release-guard.yml`](../../.github/workflows/release-guard.yml) automatically deletes manual GitHub releases that bypass the workflow path or publish without assets
 
 Direct stable preparation via the old `prepare-release.sh` path is intentionally blocked.
 
@@ -140,7 +147,8 @@ All update downloads are verified with signature checking. Signature verificatio
 | Workflow | Trigger | Purpose |
 |---------|---------|---------|
 | `integrity-gates.yml` | Push to main | Supply chain + dependency audit |
-| `security-compliance.yml` | Push to main | GDPR consent + privacy compliance checks |
+| `security-compliance.yml` | Push to main / manual / schedule | Supply-chain controls + SBOM |
+| `release-smoke.yml` | Push to main / manual | Cross-platform desktop release smoke |
 | `grpc-governance.yml` | Push to main | gRPC contract stability |
 | `ai-integration-smoke.yml` | Push to main | AI provider integration smoke |
 | `macos-windowserver-gui-smoke.yml` | Push to main | Full macOS GUI smoke with WindowServer |

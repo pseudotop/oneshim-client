@@ -321,15 +321,30 @@ mod tests {
     #[test]
     fn allowed_keys_matches_expected_set() {
         let expected: Vec<&str> = vec![
-            "monitoring", "capture", "notification", "web", "schedule",
-            "telemetry", "privacy", "update", "language", "theme",
+            "monitoring",
+            "capture",
+            "notification",
+            "web",
+            "schedule",
+            "telemetry",
+            "privacy",
+            "update",
+            "language",
+            "theme",
         ];
         assert_eq!(ALLOWED_KEYS, expected.as_slice());
     }
 
     #[test]
     fn allowed_keys_excludes_sensitive_sections() {
-        let forbidden = ["server", "ai_provider", "tls", "grpc", "sandbox", "file_access"];
+        let forbidden = [
+            "server",
+            "ai_provider",
+            "tls",
+            "grpc",
+            "sandbox",
+            "file_access",
+        ];
         for key in &forbidden {
             assert!(
                 !ALLOWED_KEYS.contains(key),

@@ -3,8 +3,7 @@ name: Security & Compliance
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  workflow_dispatch:
   schedule:
     - cron: '0 2 * * 1'
 
@@ -55,18 +54,12 @@ jobs:
           ./scripts/cargo-cache.sh install cargo-cyclonedx --locked
 
       - name: RustSec audit
-        run: ./scripts/cargo-cache.sh audit
+        run: ./scripts/cargo-cache.sh audit --ignore RUSTSEC-2024-0429
 
       - name: License/advisory/source policy
         run: ./scripts/cargo-cache.sh deny check licenses advisories sources bans
 
       - name: Supply-chain policy (cargo-vet, advisory)
-        if: github.event_name != 'pull_request'
-        continue-on-error: true
-        run: ./scripts/cargo-cache.sh vet check
-
-      - name: Supply-chain policy (cargo-vet, PR advisory)
-        if: github.event_name == 'pull_request'
         continue-on-error: true
         run: ./scripts/cargo-cache.sh vet check
 

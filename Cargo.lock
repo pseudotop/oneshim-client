@@ -4313,7 +4313,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "oneshim-api-contracts"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "chrono",
  "oneshim-core",
@@ -4323,7 +4323,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-app"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4372,7 +4372,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-automation"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4391,7 +4391,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-core"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -4408,14 +4408,14 @@ dependencies = [
 
 [[package]]
 name = "oneshim-lint"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "oneshim-monitor"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4430,7 +4430,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-network"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -4462,7 +4462,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-storage"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4482,7 +4482,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-suggestion"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4495,7 +4495,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-vision"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -4521,7 +4521,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-web"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "async-trait",
  "axum",
@@ -5257,9 +5257,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.13"
+version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1906b49b0c3bc04b5fe5d86a77925ae6524a19b816ae38ce1e426255f1d8a31"
+checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
 dependencies = [
  "bytes",
  "getrandom 0.3.4",

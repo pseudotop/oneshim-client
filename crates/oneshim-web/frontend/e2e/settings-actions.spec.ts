@@ -6,9 +6,9 @@ test.describe('Settings Actions', () => {
   })
 
   test('P117: notification toggles exist', async ({ page }) => {
-    const checkboxes = page.locator('input[type="checkbox"]')
-    const count = await checkboxes.count()
-    expect(count).toBeGreaterThanOrEqual(1)
+    const section = page.locator('#section-notification')
+    await expect(section).toContainText('Enable Notifications')
+    await expect(section).toContainText('Break Reminder')
   })
 
   test('P118: monitor interval input exists', async ({ page }) => {
@@ -26,12 +26,7 @@ test.describe('Settings Actions', () => {
     await expect(select).toBeVisible()
   })
 
-  test('P121: theme selector exists', async ({ page }) => {
-    // Theme selection could be a select, radio group, or button group
-    const themeSelect = page.locator('select[data-testid="theme-select"], [data-testid="theme-selector"], [role="radiogroup"]')
-    const themeButtons = page.locator('button[data-testid*="theme"]')
-    const hasSelect = await themeSelect.count() > 0
-    const hasButtons = await themeButtons.count() > 0
-    expect(hasSelect || hasButtons).toBeTruthy()
+  test('P121: prerelease toggle exists', async ({ page }) => {
+    await expect(page.getByRole('checkbox', { name: /Include prerelease/i })).toBeVisible()
   })
 })

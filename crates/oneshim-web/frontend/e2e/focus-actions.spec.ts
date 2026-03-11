@@ -10,7 +10,7 @@ test.describe('Focus Actions', () => {
   })
 
   test('P109: gauge SVG renders', async ({ page }) => {
-    const svg = page.locator('#section-score svg')
+    const svg = page.locator('#section-score svg[viewBox="0 0 100 100"]')
     await expect(svg).toBeVisible()
   })
 
