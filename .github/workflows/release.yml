@@ -35,13 +35,11 @@ jobs:
       release_version: ${{ steps.release.outputs.release_version }}
       release_kind: ${{ steps.release.outputs.release_kind }}
       base_version: ${{ steps.release.outputs.base_version }}
-    env:
-      TAG_REF: ${{ env.RELEASE_TAG }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ env.RELEASE_SHA }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
 
       - name: Classify release version
         id: release
@@ -49,8 +47,8 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-common.sh
-          TAG_VERSION="${TAG_REF#v}"
-          echo "release_tag=${TAG_REF}" >> "$GITHUB_OUTPUT"
+          TAG_VERSION="${RELEASE_TAG#v}"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
           echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
           echo "release_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           if is_rc_version "${TAG_VERSION}"; then
@@ -60,7 +58,7 @@ jobs:
             echo "release_kind=stable" >> "$GITHUB_OUTPUT"
             echo "base_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::Unsupported tag format: ${TAG_REF}. Use vX.Y.Z-rc.N or vX.Y.Z"
+            echo "::error::Unsupported tag format: ${RELEASE_TAG}. Use vX.Y.Z-rc.N or vX.Y.Z"
             exit 1
           fi
 
@@ -82,12 +80,12 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-common.sh
-          TAG_VERSION="${TAG_REF#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
           CARGO_VERSION="$(workspace_version)"
           echo "Tag version:   $TAG_VERSION"
           echo "Cargo version: $CARGO_VERSION"
           if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
-            echo "::error::Version mismatch! Tag ${TAG_REF} but Cargo.toml has $CARGO_VERSION"
+            echo "::error::Version mismatch! Tag ${RELEASE_TAG} but Cargo.toml has $CARGO_VERSION"
             echo "Fix: Update [workspace.package] version in Cargo.toml to \"$TAG_VERSION\""
             exit 1
           fi
@@ -97,12 +95,12 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-common.sh
-          TAG_VERSION="${TAG_REF#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
           PKG_VERSION="$(frontend_version)"
           echo "Tag version:      $TAG_VERSION"
           echo "package version:  $PKG_VERSION"
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Version mismatch! Tag ${TAG_REF} but frontend package.json has $PKG_VERSION"
+            echo "::error::Version mismatch! Tag ${RELEASE_TAG} but frontend package.json has $PKG_VERSION"
             exit 1
           fi
 
@@ -111,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-common.sh
-          TAG_VERSION="${TAG_REF#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
           if ! changelog_has_entry "${TAG_VERSION}"; then
             echo "::error::CHANGELOG.md missing entry for [$TAG_VERSION]"
             echo "Fix: Add ## [$TAG_VERSION] - $(date +%Y-%m-%d) section to CHANGELOG.md"
@@ -168,13 +166,15 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}")"
+          export RELEASE_JSON
 
-          python3 - "${RC_TAG}" <<'PY' <<<"${RELEASE_JSON}"
+          python3 - "${RC_TAG}" <<'PY'
           import json
+          import os
           import sys
 
           tag = sys.argv[1]
-          release = json.load(sys.stdin)
+          release = json.loads(os.environ["RELEASE_JSON"])
           assets = len(release.get("assets", []))
 
           if release.get("draft"):
