@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7-rc.1] - 2026-03-11
+
+### Added
+
+- Multi-layer quality infrastructure across the Rust core, Tauri IPC layer, and browser UI
+  - Add Rust-side unit and regression harness coverage
+  - Add mock IPC tests for frontend Tauri command contracts
+  - Add Playwright page-matrix coverage for interactive UI actions
+  - Add `data-testid` hooks for stable browser automation selectors
+
+### Changed
+
+- Enforce an RC-first release flow for desktop builds
+  - Prepare RCs on PR branches, publish RC tags only from protected `main`, and promote stable releases through workflow automation
+  - Guard manual release paths so stable tags and GitHub release metadata stay reproducible
+
+- Shorten the PR fast lane by moving release-grade smoke and integrity work off pull requests
+  - Keep `Test` emitted on every PR so branch protection can require it consistently
+  - Run release smoke, supply-chain, and integrity workflows post-merge, on schedule, or via manual dispatch
+
+### Fixed
+
+- Stabilize browser E2E fixtures and selectors to reduce false failures in dashboard, replay, reports, settings, and command-palette flows
+- Replace vacuous regression smoke assertions with real checks and restore version metadata sync in the release pipeline
+- Patch the `quinn-proto` advisory path and document the scoped GTK advisory exception used by the current Tauri stack
+
 ## [0.3.5] - 2026-03-10
 ### Fixed
 
@@ -934,6 +960,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Accept Debian revision suffix in DEB version check
   cargo-deb appends Debian revision (-1) to upstream version,
   producing 0.1.0-1 instead of 0.1.0. Strip revision before comparing.
-
 
 
