@@ -62,17 +62,32 @@ jobs:
             exit 1
           fi
 
-      - name: Verify tag points at origin/main HEAD
+      - name: Verify release tag matches the requested commit
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main --depth=1
-          MAIN_SHA="$(git rev-parse origin/main)"
-          echo "Tag commit:  ${RELEASE_SHA}"
-          echo "main commit: ${MAIN_SHA}"
-          if [ "${RELEASE_SHA}" != "${MAIN_SHA}" ]; then
-            echo "::error::Release tags must point to origin/main HEAD"
+          git fetch origin main --tags --depth=1
+          if ! TAG_COMMIT="$(git rev-parse "${RELEASE_TAG}^{commit}" 2>/dev/null)"; then
+            echo "::error::Release tag ${RELEASE_TAG} does not exist in the fetched repository state"
             exit 1
+          fi
+
+          echo "Tag commit:     ${TAG_COMMIT}"
+          echo "Requested SHA:  ${RELEASE_SHA}"
+          if [ "${TAG_COMMIT}" != "${RELEASE_SHA}" ]; then
+            echo "::error::Release SHA must match the commit pointed to by ${RELEASE_TAG}"
+            exit 1
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            MAIN_SHA="$(git rev-parse origin/main)"
+            echo "main commit:    ${MAIN_SHA}"
+            if [ "${RELEASE_SHA}" != "${MAIN_SHA}" ]; then
+              echo "::error::Release tags must point to origin/main HEAD when first pushed"
+              exit 1
+            fi
+          else
+            echo "workflow_dispatch rerun detected; skipping origin/main HEAD check"
           fi
 
       - name: Verify Cargo.toml version matches tag
