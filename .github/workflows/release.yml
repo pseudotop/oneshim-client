@@ -262,7 +262,7 @@ jobs:
 
   build-release:
     name: Build Release (${{ matrix.target }})
-    needs: build-frontend-assets
+    needs: [verify-version, build-frontend-assets]
     strategy:
       fail-fast: false
       matrix:
@@ -480,7 +480,7 @@ jobs:
 
   build-macos-universal:
     name: Build macOS Universal Binary
-    needs: build-release
+    needs: [verify-version, build-release]
     runs-on: macos-latest
     timeout-minutes: 120
     env:
@@ -787,7 +787,7 @@ jobs:
 
   release-reliability-smoke:
     name: Release Reliability Smoke (${{ matrix.name }})
-    needs: [build-release, build-macos-universal]
+    needs: [verify-version, build-release, build-macos-universal]
     strategy:
       fail-fast: false
       matrix:
