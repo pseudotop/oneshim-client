@@ -170,24 +170,28 @@ export default function Dashboard() {
       {/* UI note */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard
+          data-testid="metric-card-active-time"
           title={t('dashboard.activeTime')}
           value={formatDuration(summary?.total_active_secs ?? 0)}
           icon={<Clock className="h-5 w-5" />}
           color="teal"
         />
         <StatCard
+          data-testid="metric-card-idle-time"
           title={t('dashboard.idleTime')}
           value={formatDuration(summary?.total_idle_secs ?? 0)}
           icon={<Moon className="h-5 w-5" />}
           color="slate"
         />
         <StatCard
+          data-testid="metric-card-captures"
           title={t('dashboard.captures')}
           value={summary?.frames_captured?.toLocaleString() ?? '0'}
           icon={<Camera className="h-5 w-5" />}
           color="blue"
         />
         <StatCard
+          data-testid="metric-card-events"
           title={t('dashboard.events')}
           value={summary?.events_logged?.toLocaleString() ?? '0'}
           icon={<BarChart3 className="h-5 w-5" />}

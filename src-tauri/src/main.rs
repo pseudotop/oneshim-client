@@ -77,6 +77,7 @@ fn main() {
             commands::defer_update,
             commands::get_automation_status,
             commands::get_web_port,
+            commands::get_allowed_setting_keys,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

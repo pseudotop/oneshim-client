@@ -258,6 +258,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        data-testid="command-palette"
         aria-label={t('commandPalette.dialogLabel', 'Command Palette')}
         className={cn(
           layout.commandPalette.width,
@@ -273,6 +274,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
           <input
             ref={inputRef}
             type="text"
+            data-testid="command-palette-input"
             role="combobox"
             aria-expanded={true}
             aria-haspopup="listbox"

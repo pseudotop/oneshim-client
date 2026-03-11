@@ -864,6 +864,7 @@ export default function Settings() {
 
                 <div className="mt-4 flex justify-end">
                   <Button
+                    data-testid="settings-save-updates"
                     type="button"
                     variant="primary"
                     size="sm"
@@ -1494,7 +1495,7 @@ export default function Settings() {
 
           {/* UI note */}
           <div className="flex justify-end">
-            <Button type="submit" variant="primary" size="lg" isLoading={mutation.isPending}>
+            <Button data-testid="settings-save" type="submit" variant="primary" size="lg" isLoading={mutation.isPending}>
               {mutation.isPending ? t('settings.saving') : t('settings.saveSettings')}
             </Button>
           </div>
