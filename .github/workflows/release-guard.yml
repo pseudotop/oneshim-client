@@ -2,7 +2,7 @@ name: Release Guard
 
 on:
   release:
-    types: [published, prereleased, released]
+    types: [published]
 
 permissions:
   contents: write
@@ -15,7 +15,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG_NAME: ${{ github.event.release.tag_name }}
       RELEASE_ID: ${{ github.event.release.id }}
-      EVENT_ACTOR: ${{ github.actor }}
     steps:
       - name: Fetch release state
         id: release
@@ -30,15 +29,15 @@ jobs:
 
           release = json.load(__import__("sys").stdin)
           tag = os.environ["TAG_NAME"]
-          actor = os.environ["EVENT_ACTOR"]
+          author = (release.get("author") or {}).get("login")
           expected_prerelease = "-" in tag
 
           is_valid = True
           reasons = []
 
-          if actor != "github-actions[bot]":
+          if author != "github-actions[bot]":
               is_valid = False
-              reasons.append(f"release event actor must be github-actions[bot], got {actor}")
+              reasons.append(f"release author must be github-actions[bot], got {author}")
 
           if release.get("prerelease") != expected_prerelease:
               is_valid = False
