@@ -17,9 +17,13 @@
 /// Placeholder — verifies the regression harness is discovered by cargo test.
 #[test]
 fn regression_harness_is_wired() {
-    // This test ensures `cargo test --test regressions` finds this file.
-    // Remove this once real regression tests are added.
-    assert!(true, "regression test harness is reachable");
+    let regression_file =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/regressions.rs");
+    assert!(
+        regression_file.is_file(),
+        "regression harness file should exist at {}",
+        regression_file.display()
+    );
 }
 
 // Future regression tests go below. Example:
