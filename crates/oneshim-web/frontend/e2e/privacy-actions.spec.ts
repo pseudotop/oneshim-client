@@ -61,11 +61,12 @@ test.describe('Privacy Actions', () => {
     await expect(btn).toBeVisible()
   })
 
-  test('P141: backup toggle checkboxes exist', async ({ page }) => {
+  test('P141: backup option buttons exist', async ({ page }) => {
     const section = page.locator('#section-export')
-    const checkboxes = section.locator('input[type="checkbox"]')
-    const count = await checkboxes.count()
-    expect(count).toBeGreaterThanOrEqual(1)
+    await expect(section.getByRole('button', { name: 'Settings' })).toBeVisible()
+    await expect(section.getByRole('button', { name: 'Tags' })).toBeVisible()
+    await expect(section.getByRole('button', { name: 'Events' })).toBeVisible()
+    await expect(section.getByRole('button', { name: 'Frame Metadata' })).toBeVisible()
   })
 
   test('P142: #section-consent exists', async ({ page }) => {

@@ -3,7 +3,17 @@ import { test, expect } from './helpers/test'
 test.describe('Cross-Page Actions', () => {
   test('P160: Cmd+K works from any page', async ({ page }) => {
     await page.goto('/settings')
-    await page.keyboard.press('Meta+k')
+    await expect(page.locator('h1').first()).toBeVisible()
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'k',
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+    })
     await expect(page.locator('[aria-modal="true"]')).toBeVisible()
   })
 

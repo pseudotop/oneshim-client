@@ -21,6 +21,7 @@ test.describe('Reports Actions', () => {
   })
 
   test('P072: generate-report button exists', async ({ page }) => {
+    await page.getByTestId('period-custom').click()
     const btn = page.getByTestId('generate-report')
     await expect(btn).toBeVisible()
   })
@@ -28,11 +29,7 @@ test.describe('Reports Actions', () => {
   test('P073: clicking period button changes active state', async ({ page }) => {
     const btn = page.getByTestId('period-month')
     await btn.click()
-    // Verify active state via aria-pressed or data-active attribute
-    const isActive = await btn.getAttribute('aria-pressed') === 'true'
-      || await btn.getAttribute('data-active') === 'true'
-      || await btn.evaluate(el => el.classList.contains('active'))
-    expect(isActive).toBeTruthy()
+    await expect(btn).toHaveClass(/bg-brand/)
   })
 
   test('P074: #section-activity exists', async ({ page }) => {
