@@ -37,8 +37,7 @@ test.describe('ActivityBar Actions', () => {
     const btn = page.getByTestId('nav-settings')
     await btn.hover()
     const tooltip = page.locator('#activity-bar-tooltip')
-    if (await tooltip.isVisible()) {
-      await expect(tooltip).toHaveText(/.+/)
-    }
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toHaveText(/.+/)
   })
 })

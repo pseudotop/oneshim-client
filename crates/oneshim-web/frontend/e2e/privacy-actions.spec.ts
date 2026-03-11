@@ -11,9 +11,7 @@ test.describe('Privacy Actions', () => {
 
   test('P132: date inputs exist', async ({ page }) => {
     const startDate = page.locator('#privacy-start-date')
-    if (await startDate.isVisible()) {
-      await expect(startDate).toBeVisible()
-    }
+    await expect(startDate).toBeVisible()
   })
 
   test('P133: data type toggle buttons exist', async ({ page }) => {

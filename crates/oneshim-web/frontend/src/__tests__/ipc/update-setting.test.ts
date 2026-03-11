@@ -21,14 +21,19 @@ describe('CRT-MK-M007: update_setting IPC contract', () => {
   })
 
   it('M008: rejects disallowed key', async () => {
+    // NOTE: Layer 2 mock limitation — this tests the mock, not the real Rust allowlist.
+    // The authoritative allowlist lives in commands.rs (ALLOWED_KEYS constant).
+    // Drift detection is handled by:
+    //   - Rust #[cfg(test)] allowed_keys_matches_expected_set (Layer 1)
+    //   - WDIO get_allowed_setting_keys contract test (Layer 4)
     mockIPC((cmd, args) => {
       if (cmd === 'update_setting') {
         const json = (args as any).config_json
         const parsed = JSON.parse(json)
-        const ALLOWED = ['monitoring', 'capture', 'notification', 'web', 'schedule',
-          'telemetry', 'privacy', 'update', 'language', 'theme']
+        // Reject any key that looks like a sensitive section
+        const REJECTED = ['server', 'ai_provider', 'tls', 'grpc', 'sandbox', 'file_access']
         for (const key of Object.keys(parsed)) {
-          if (!ALLOWED.includes(key)) throw new Error(`modifying '${key}' is not permitted`)
+          if (REJECTED.includes(key)) throw new Error(`modifying '${key}' is not permitted`)
         }
         return { ok: true }
       }

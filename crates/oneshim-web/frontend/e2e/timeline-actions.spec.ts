@@ -7,30 +7,24 @@ test.describe('Timeline Actions', () => {
 
   test('P039: app filter select exists', async ({ page }) => {
     const filter = page.locator('#timeline-app-filter')
-    if (await filter.isVisible()) {
-      await expect(filter).toBeVisible()
-    }
+    await expect(filter).toBeVisible()
   })
 
   test('P040: importance filter exists', async ({ page }) => {
     const filter = page.locator('#timeline-importance-filter')
-    if (await filter.isVisible()) {
-      await expect(filter).toBeVisible()
-    }
+    await expect(filter).toBeVisible()
   })
 
   test('P041: grid view button toggles layout', async ({ page }) => {
     const btn = page.getByTestId('view-grid')
-    if (await btn.isVisible()) {
-      await btn.click()
-    }
+    await expect(btn).toBeVisible()
+    await btn.click()
   })
 
   test('P042: list view button toggles layout', async ({ page }) => {
     const btn = page.getByTestId('view-list')
-    if (await btn.isVisible()) {
-      await btn.click()
-    }
+    await expect(btn).toBeVisible()
+    await btn.click()
   })
 
   test('P043: keyboard hints visible', async ({ page }) => {

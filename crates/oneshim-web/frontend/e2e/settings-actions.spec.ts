@@ -23,9 +23,7 @@ test.describe('Settings Actions', () => {
 
   test('P120: language selector exists', async ({ page }) => {
     const select = page.locator('select').first()
-    if (await select.isVisible()) {
-      await expect(select).toBeVisible()
-    }
+    await expect(select).toBeVisible()
   })
 
   test('P121: theme selector exists', async ({ page }) => {

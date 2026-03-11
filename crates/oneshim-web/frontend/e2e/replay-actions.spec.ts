@@ -28,15 +28,11 @@ test.describe('Replay Actions', () => {
 
   test('P083: overlay toggle exists', async ({ page }) => {
     const btn = page.getByTestId('overlay-toggle')
-    if (await btn.isVisible()) {
-      await expect(btn).toBeVisible()
-    }
+    await expect(btn).toBeVisible()
   })
 
   test('P084: #section-events exists', async ({ page }) => {
     const section = page.locator('#section-events')
-    if (await section.isVisible()) {
-      await expect(section).toBeVisible()
-    }
+    await expect(section).toBeVisible()
   })
 })

@@ -18,23 +18,17 @@ test.describe('Search Actions', () => {
 
   test('P058: filter-all button exists', async ({ page }) => {
     const btn = page.getByTestId('filter-all')
-    if (await btn.isVisible()) {
-      await expect(btn).toBeVisible()
-    }
+    await expect(btn).toBeVisible()
   })
 
   test('P059: filter-frames button exists', async ({ page }) => {
     const btn = page.getByTestId('filter-frames')
-    if (await btn.isVisible()) {
-      await expect(btn).toBeVisible()
-    }
+    await expect(btn).toBeVisible()
   })
 
   test('P060: filter-events button exists', async ({ page }) => {
     const btn = page.getByTestId('filter-events')
-    if (await btn.isVisible()) {
-      await expect(btn).toBeVisible()
-    }
+    await expect(btn).toBeVisible()
   })
 
   test('P061: submit button exists', async ({ page }) => {
