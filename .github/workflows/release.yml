@@ -448,15 +448,17 @@ jobs:
           TAG_REF: ${{ needs.verify-version.outputs.release_tag }}
         run: |
           EXPECTED_VERSION="${TAG_REF#v}"
+          EXPECTED_DEB_UPSTREAM="${EXPECTED_VERSION/-/~}"
           DEB_FILE=$(find target -name "*.deb" -type f | head -1)
           if [ -z "$DEB_FILE" ]; then echo "No DEB file found"; exit 1; fi
           DEB_VERSION=$(dpkg-deb -f "$DEB_FILE" Version)
           echo "DEB file: $(basename $DEB_FILE)"
           echo "DEB version: $DEB_VERSION"
-          echo "Expected: $EXPECTED_VERSION"
+          echo "Expected tag version: $EXPECTED_VERSION"
+          echo "Expected DEB upstream: $EXPECTED_DEB_UPSTREAM"
           DEB_UPSTREAM="${DEB_VERSION%%-*}"
-          if [ "$DEB_UPSTREAM" != "$EXPECTED_VERSION" ]; then
-            echo "::error::DEB version mismatch: got $DEB_VERSION (upstream $DEB_UPSTREAM), expected $EXPECTED_VERSION"
+          if [ "$DEB_UPSTREAM" != "$EXPECTED_DEB_UPSTREAM" ]; then
+            echo "::error::DEB version mismatch: got $DEB_VERSION (upstream $DEB_UPSTREAM), expected upstream $EXPECTED_DEB_UPSTREAM from tag $EXPECTED_VERSION"
             exit 1
           fi
 
