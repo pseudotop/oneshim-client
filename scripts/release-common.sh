@@ -87,6 +87,55 @@ changelog_has_entry() {
   grep -q "^## \[${1}\]" "${CHANGELOG_PATH}"
 }
 
+promote_unreleased_section() {
+  python3 - "${CHANGELOG_PATH}" "${1}" "$(date +%Y-%m-%d)" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+target_version = sys.argv[2]
+target_date = sys.argv[3]
+lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+target_header = re.compile(rf"^## \[{re.escape(target_version)}\](?: - .*)?\n?$")
+if any(target_header.match(line) for line in lines):
+    raise SystemExit(f"CHANGELOG.md already has [{target_version}]")
+
+unreleased_idx = None
+for idx, line in enumerate(lines):
+    if line.startswith("## [Unreleased]"):
+        unreleased_idx = idx
+        break
+
+if unreleased_idx is None:
+    raise SystemExit("CHANGELOG.md is missing the [Unreleased] header")
+
+next_section_idx = len(lines)
+for idx in range(unreleased_idx + 1, len(lines)):
+    if lines[idx].startswith("## ["):
+        next_section_idx = idx
+        break
+
+body = "".join(lines[unreleased_idx + 1:next_section_idx]).strip()
+if not body:
+    raise SystemExit("[Unreleased] section is empty")
+
+insert_block = [f"## [{target_version}] - {target_date}\n"]
+insert_block.extend(lines[unreleased_idx + 1:next_section_idx])
+if insert_block[-1].strip():
+    insert_block.append("\n")
+
+new_lines = []
+new_lines.extend(lines[: unreleased_idx + 1])
+new_lines.append("\n")
+new_lines.extend(insert_block)
+new_lines.extend(lines[next_section_idx:])
+
+path.write_text("".join(new_lines), encoding="utf-8")
+PY
+}
+
 copy_changelog_section() {
   python3 - "${CHANGELOG_PATH}" "${1}" "${2}" "$(date +%Y-%m-%d)" <<'PY'
 import re

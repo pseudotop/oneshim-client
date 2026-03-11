@@ -105,21 +105,10 @@ if git rev-parse "v${BASE_VERSION}" &>/dev/null; then
     die "stable 태그 'v${BASE_VERSION}'가 이미 존재합니다. stable 이후에는 새 RC를 만들 수 없습니다"
 fi
 
-# ── CHANGELOG.md 생성 (git-cliff로 전체 재생성) ───────────────────────────────
-info "CHANGELOG.md를 git-cliff로 갱신합니다 (태그: ${TAG})..."
-"${GIT_CLIFF}" --tag "${TAG}" -o "${CHANGELOG}"
-success "CHANGELOG.md 갱신 완료"
-
-# ── [Unreleased] 헤더가 상단에 유지되는지 확인 ───────────────────────────────
-# git-cliff는 전체 파일을 재생성하므로 [Unreleased] 섹션을 앞에 추가
-# cliff.toml 설정에 따라 이미 포함되어 있어야 하지만 안전을 위해 확인
-if ! grep -q "## \[Unreleased\]" "${CHANGELOG}"; then
-    warn "[Unreleased] 헤더가 없습니다. 수동으로 추가합니다..."
-    # 첫 번째 버전 헤딩 앞에 [Unreleased] 삽입
-    sed -i.bak "s/^## \[${VERSION}\]/## [Unreleased]\n\n## [${VERSION}]/" "${CHANGELOG}"
-    rm -f "${CHANGELOG}.bak"
-    success "[Unreleased] 헤더 추가 완료"
-fi
+# ── CHANGELOG.md 승격 ([Unreleased] -> [VERSION]) ────────────────────────────
+info "[Unreleased] 섹션을 ${VERSION} 릴리스 항목으로 승격합니다..."
+promote_unreleased_section "${VERSION}"
+success "CHANGELOG.md 승격 완료"
 
 # ── 버전 파일 동기화 ──────────────────────────────────────────────────────────
 info "버전 파일을 ${VERSION}으로 동기화합니다..."
