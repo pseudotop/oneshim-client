@@ -40,6 +40,11 @@
 - SBOM: `cargo cyclonedx --workspace`
 - Provenance: 릴리즈 아티팩트 Attestation 생성
 
+문서화된 예외:
+
+- `RUSTSEC-2024-0429` (`glib 0.18.5`)는 Linux 전용 GTK3 / `webkit2gtk` / `wry` / Tauri 전이 의존성이라 현재 프로젝트가 직접 해소할 수 없어 한시적으로 허용합니다.
+- 이 예외는 저장소 정책(`deny.toml`, integrity workflow/script)에 명시적으로 남아 있어야 하며, upstream desktop stack이 패치된 `glib` / `gtk-rs-core`로 이동하면 즉시 제거해야 합니다.
+
 ### 3) 런타임 경계 규칙
 
 - Web 핸들러에서 SQLite 내부 직접 접근(`conn_ref`)을 금지합니다.

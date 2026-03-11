@@ -32,7 +32,11 @@ db-urls = ["https://github.com/RustSec/advisory-db"]
 unmaintained = "none"
 unsound = "workspace"
 yanked = "deny"
-ignore = []
+ignore = [
+  # glib 0.18.5 is pulled in through the Linux GTK3/webkit2gtk stack used by Tauri/wry.
+  # Upstream fix requires moving to gtk-rs-core >= 0.20, which is outside our direct control.
+  "RUSTSEC-2024-0429",
+]
 
 [bans]
 multiple-versions = "allow"

@@ -55,7 +55,7 @@ jobs:
           ./scripts/cargo-cache.sh install cargo-cyclonedx --locked
 
       - name: RustSec audit
-        run: ./scripts/cargo-cache.sh audit
+        run: ./scripts/cargo-cache.sh audit --ignore RUSTSEC-2024-0429
 
       - name: License/advisory/source policy
         run: ./scripts/cargo-cache.sh deny check licenses advisories sources bans

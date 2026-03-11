@@ -29,6 +29,13 @@ The following workflows enforce integrity in CI:
 
 PRs must not bypass these workflows. Even in PR mode, `audit`/`deny` stay blocking and `cargo vet` findings are surfaced as advisory output.
 
+Current documented exception:
+
+- `RUSTSEC-2024-0429` (`glib 0.18.5`) is ignored in `cargo audit` and `cargo deny`.
+- Scope is limited to the Linux GTK3 / `webkit2gtk` / `wry` / Tauri transitive chain.
+- Exit criterion: remove the exception once the upstream desktop stack moves to patched `gtk-rs-core` / `glib` releases.
+- Treat any new advisory outside this documented exception as a release blocker.
+
 ## 3. Release Procedure
 
 Release workflow (`.github/workflows/release.yml`) performs:
