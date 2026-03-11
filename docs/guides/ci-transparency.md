@@ -30,9 +30,11 @@ The CI pipeline is defined in [`.github/workflows/ci.yml`](../../.github/workflo
 | Server features | `cargo test --workspace --features server` |
 | gRPC features | `cargo test --workspace --features grpc` |
 
-### Platform Build Smoke (PR only)
+### Release Smoke (post-merge / manual)
 
-After tests pass, a release build is compiled on all four targets to catch platform-specific compilation errors:
+Release-grade desktop smoke is intentionally separated from the fast PR lane. The workflow lives in [`.github/workflows/release-smoke.yml`](../../.github/workflows/release-smoke.yml) and runs on pushes to `main` / `develop` or via manual dispatch.
+
+After the fast PR lane merges, a release build is compiled on all four targets to catch platform-specific compilation errors:
 
 | Target | Runner |
 |--------|--------|
@@ -42,6 +44,8 @@ After tests pass, a release build is compiled on all four targets to catch platf
 | `x86_64-pc-windows-msvc` | `windows-latest` |
 
 A GUI bootstrap smoke test runs on macOS and Windows: the binary is launched for 3 seconds and inspected for Rust panics or tokio runtime failures.
+
+This split keeps the merge-blocking PR checks focused on fast feedback while preserving release-grade platform coverage after merge and before promotion.
 
 ### Frontend (web dashboard)
 
@@ -143,7 +147,8 @@ All update downloads are verified with signature checking. Signature verificatio
 | Workflow | Trigger | Purpose |
 |---------|---------|---------|
 | `integrity-gates.yml` | Push to main | Supply chain + dependency audit |
-| `security-compliance.yml` | Push to main | GDPR consent + privacy compliance checks |
+| `security-compliance.yml` | Push to main / manual / schedule | Supply-chain controls + SBOM |
+| `release-smoke.yml` | Push to main / manual | Cross-platform desktop release smoke |
 | `grpc-governance.yml` | Push to main | gRPC contract stability |
 | `ai-integration-smoke.yml` | Push to main | AI provider integration smoke |
 | `macos-windowserver-gui-smoke.yml` | Push to main | Full macOS GUI smoke with WindowServer |

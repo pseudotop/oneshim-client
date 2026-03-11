@@ -3,8 +3,7 @@ name: Security & Compliance
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  workflow_dispatch:
   schedule:
     - cron: '0 2 * * 1'
 
@@ -61,12 +60,6 @@ jobs:
         run: ./scripts/cargo-cache.sh deny check licenses advisories sources bans
 
       - name: Supply-chain policy (cargo-vet, advisory)
-        if: github.event_name != 'pull_request'
-        continue-on-error: true
-        run: ./scripts/cargo-cache.sh vet check
-
-      - name: Supply-chain policy (cargo-vet, PR advisory)
-        if: github.event_name == 'pull_request'
         continue-on-error: true
         run: ./scripts/cargo-cache.sh vet check
 
