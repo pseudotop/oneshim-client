@@ -29,8 +29,11 @@ test.describe('Settings Actions', () => {
   })
 
   test('P121: theme selector exists', async ({ page }) => {
-    // Theme selection could be a select or buttons
-    const body = page.locator('body')
-    await expect(body).toBeVisible()
+    // Theme selection could be a select, radio group, or button group
+    const themeSelect = page.locator('select[data-testid="theme-select"], [data-testid="theme-selector"], [role="radiogroup"]')
+    const themeButtons = page.locator('button[data-testid*="theme"]')
+    const hasSelect = await themeSelect.count() > 0
+    const hasButtons = await themeButtons.count() > 0
+    expect(hasSelect || hasButtons).toBeTruthy()
   })
 })

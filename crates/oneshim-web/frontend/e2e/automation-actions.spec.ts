@@ -28,7 +28,9 @@ test.describe('Automation Actions', () => {
   test('P097: clicking tab changes content', async ({ page }) => {
     const tab = page.getByTestId('tab-workflow')
     await tab.click()
-    // Content should change (tab-specific assertion)
+    // Verify workflow tab content appears after click
+    const tabPanel = page.locator('[role="tabpanel"], [data-testid="tabpanel-workflow"], #section-workflow')
+    await expect(tabPanel.first()).toBeVisible({ timeout: 3000 })
   })
 
   test('P098: #section-history exists', async ({ page }) => {

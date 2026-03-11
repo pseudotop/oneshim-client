@@ -36,6 +36,8 @@ test.describe('Timeline Actions', () => {
   test('P043: keyboard hints visible', async ({ page }) => {
     const kbd = page.locator('kbd')
     const count = await kbd.count()
-    expect(count).toBeGreaterThanOrEqual(0) // Optional feature
+    // Skip if keyboard hints feature is not yet implemented
+    test.skip(count === 0, 'Keyboard hints feature not implemented yet')
+    expect(count).toBeGreaterThan(0)
   })
 })
