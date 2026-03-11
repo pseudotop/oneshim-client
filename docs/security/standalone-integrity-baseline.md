@@ -34,7 +34,7 @@ The goal is to keep the standalone trust model strict today, while making future
 
 - RustSec scan: `cargo audit`
 - Dependency policy: `cargo deny check licenses advisories sources bans`
-- Vet policy: `cargo vet check` (advisory on PR workflows, blocking on push/schedule workflows)
+- Vet policy: `cargo vet check` (blocking on post-merge, scheduled, and manually dispatched integrity workflows)
 - SBOM: `cargo cyclonedx --workspace`
 - Provenance attestation: GitHub artifact attestation on release artifacts
 

@@ -30,6 +30,8 @@ The CI pipeline is defined in [`.github/workflows/ci.yml`](../../.github/workflo
 | Server features | `cargo test --workspace --features server` |
 | gRPC features | `cargo test --workspace --features grpc` |
 
+The `Test` check is always emitted on pull requests so branch protection can require it consistently. When a PR only changes frontend files, the job exits quickly with a no-op success instead of running the full Rust suite.
+
 ### Release Smoke (post-merge / manual)
 
 Release-grade desktop smoke is intentionally separated from the fast PR lane. The workflow lives in [`.github/workflows/release-smoke.yml`](../../.github/workflows/release-smoke.yml) and runs on pushes to `main` / `develop` or via manual dispatch.
@@ -146,7 +148,7 @@ All update downloads are verified with signature checking. Signature verificatio
 
 | Workflow | Trigger | Purpose |
 |---------|---------|---------|
-| `integrity-gates.yml` | Push to main | Supply chain + dependency audit |
+| `integrity-gates.yml` | Push to main / manual / schedule | Integrity policy + dependency audit |
 | `security-compliance.yml` | Push to main / manual / schedule | Supply-chain controls + SBOM |
 | `release-smoke.yml` | Push to main / manual | Cross-platform desktop release smoke |
 | `grpc-governance.yml` | Push to main | gRPC contract stability |

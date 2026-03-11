@@ -25,10 +25,10 @@ The following workflows enforce integrity in CI:
 
 - `CI` (`.github/workflows/ci.yml`): lint + tests for the fast PR lane
 - `Security & Compliance` (`.github/workflows/security-compliance.yml`): supply-chain checks + SBOM on `main`/`develop`, schedule, or manual dispatch
-- `Integrity Gates` (`.github/workflows/integrity-gates.yml`): policy + signature + supply-chain checks (`cargo vet` is advisory on PRs, blocking on push/schedule)
+- `Integrity Gates` (`.github/workflows/integrity-gates.yml`): policy + signature + supply-chain checks on `main`/`develop`, schedule, or manual dispatch
 - `Release Smoke` (`.github/workflows/release-smoke.yml`): cross-platform desktop release smoke on `main`/`develop` or manual dispatch
 
-PRs must not bypass the fast-lane workflows. Full supply-chain and release smoke validation continues after merge, on schedule, and before release promotion.
+PRs must not bypass the fast-lane workflows. Full integrity, supply-chain, and release smoke validation continues after merge, on schedule, and before release promotion.
 
 Current documented exception:
 

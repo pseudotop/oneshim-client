@@ -36,7 +36,7 @@
 
 - RustSec: `cargo audit`
 - 의존성 정책: `cargo deny check licenses advisories sources bans`
-- vet 정책: `cargo vet check` (PR 워크플로에서는 advisory, push/schedule 워크플로에서는 blocking)
+- vet 정책: `cargo vet check` (post-merge, schedule, manual dispatch 무결성 워크플로에서는 blocking)
 - SBOM: `cargo cyclonedx --workspace`
 - Provenance: 릴리즈 아티팩트 Attestation 생성
 
