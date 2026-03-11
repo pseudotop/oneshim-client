@@ -69,17 +69,17 @@ Logs are available for 90 days after a run. Artifacts (frontend dist, GUI smoke 
 
 ## Release Pipeline
 
-Releases are triggered by pushing a `v*` tag, but the repository now enforces an `RC first, stable promote later` flow:
+Releases are driven by tags, but the repository now enforces an `RC first, stable promote later` flow:
 
-- RC publish: push `vX.Y.Z-rc.N`
-- Stable publish: push `vX.Y.Z` only after a successful RC release for the same base version
+- RC publish: push `vX.Y.Z-rc.N` after the RC preparation PR is merged
+- Stable publish: run `Promote Stable Release` for that validated RC; maintainers do not push `vX.Y.Z` manually
 
 The release workflow is defined in [`.github/workflows/release.yml`](../../.github/workflows/release.yml). Maintainers should use:
 
 - `./scripts/release.sh <x.y.z-rc.N>` to prepare the RC version/changelog commit on a PR branch
 - merge that PR into `main`
 - `./scripts/publish-rc-tag.sh <x.y.z-rc.N>` on the merged `main` commit to publish the RC tag
-- `./scripts/promote-stable.sh <x.y.z-rc.N>` to create the stable promotion commit and tag
+- `./scripts/promote-stable.sh <x.y.z-rc.N>` to create the stable promotion commit and tag locally for verification or by CI with `PROMOTE_STABLE_NO_PUSH=1`
 - [`.github/workflows/promote-stable.yml`](../../.github/workflows/promote-stable.yml) to let GitHub Actions create the stable tag and dispatch the release build without a human pushing the stable tag manually
 - [`.github/workflows/release-guard.yml`](../../.github/workflows/release-guard.yml) automatically deletes manual GitHub releases that bypass the workflow path or publish without assets
 
