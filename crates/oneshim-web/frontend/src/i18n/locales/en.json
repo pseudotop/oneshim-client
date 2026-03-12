@@ -610,6 +610,8 @@
     "weeklyTrend": "Weekly Trend",
     "sessions": "Work Sessions",
     "interruptionList": "Interruption Events",
+    "loadMoreRemaining_one": "More ({{count}} remaining)",
+    "loadMoreRemaining_other": "More ({{count}} remaining)",
     "active": "Active",
     "completed": "Completed",
     "suggestions": {

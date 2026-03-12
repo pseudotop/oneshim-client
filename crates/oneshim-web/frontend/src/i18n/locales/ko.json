@@ -610,6 +610,8 @@
     "weeklyTrend": "주간 트렌드",
     "sessions": "작업 세션",
     "interruptionList": "중단 이벤트",
+    "loadMoreRemaining_one": "더 보기 ({{count}}개 남음)",
+    "loadMoreRemaining_other": "더 보기 ({{count}}개 남음)",
     "active": "활성",
     "completed": "완료",
     "suggestions": {

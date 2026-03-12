@@ -610,6 +610,8 @@
     "weeklyTrend": "周趋势",
     "sessions": "工作会话",
     "interruptionList": "中断事件",
+    "loadMoreRemaining_one": "更多（剩余 {{count}} 项）",
+    "loadMoreRemaining_other": "更多（剩余 {{count}} 项）",
     "active": "进行中",
     "completed": "已完成",
     "suggestions": {
