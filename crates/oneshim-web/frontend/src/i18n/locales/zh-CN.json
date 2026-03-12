@@ -90,7 +90,14 @@
     "policyTitle": "更新安全策略",
     "policyIntegrity": "安装前所有构件必须通过校验和验证。",
     "policySignature": "发布构件需要通过 Ed25519 签名验证。",
-    "policyRollback": "重启失败时将自动回滚到上一版本。"
+    "policyRollback": "重启失败时将自动回滚到上一版本。",
+    "checkSuccess": "已是最新版本！",
+    "featuresTitle": "更新功能",
+    "featureAuto": "后台自动检查",
+    "featureIntegrity": "完整性验证（哈希 + 签名）",
+    "featureRollback": "失败时安全回滚",
+    "featureMinimal": "最小停机时间更新",
+    "version": "版本"
   },
   "timeline": {
     "title": "时间线",

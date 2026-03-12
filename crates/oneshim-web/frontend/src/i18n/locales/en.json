@@ -90,7 +90,14 @@
     "policyTitle": "Update Security Policy",
     "policyIntegrity": "All artifacts must pass checksum verification before install.",
     "policySignature": "Ed25519 signature verification is required for release artifacts.",
-    "policyRollback": "Failed restarts trigger automatic rollback to the previous binary."
+    "policyRollback": "Failed restarts trigger automatic rollback to the previous binary.",
+    "checkSuccess": "You're up to date!",
+    "featuresTitle": "Update Features",
+    "featureAuto": "Automatic background checking",
+    "featureIntegrity": "Integrity verification (hash + signature)",
+    "featureRollback": "Safe rollback on failure",
+    "featureMinimal": "Minimal downtime updates",
+    "version": "Version"
   },
   "timeline": {
     "title": "Timeline",

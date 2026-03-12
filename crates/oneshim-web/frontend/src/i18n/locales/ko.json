@@ -90,7 +90,14 @@
     "policyTitle": "업데이트 보안 정책",
     "policyIntegrity": "설치 전 모든 아티팩트는 체크섬 검증을 통과해야 합니다.",
     "policySignature": "릴리즈 아티팩트는 Ed25519 서명 검증이 필수입니다.",
-    "policyRollback": "재시작 실패 시 이전 바이너리로 자동 롤백합니다."
+    "policyRollback": "재시작 실패 시 이전 바이너리로 자동 롤백합니다.",
+    "checkSuccess": "최신 상태입니다!",
+    "featuresTitle": "업데이트 기능",
+    "featureAuto": "백그라운드 자동 확인",
+    "featureIntegrity": "무결성 검증 (해시 + 서명)",
+    "featureRollback": "실패 시 안전한 롤백",
+    "featureMinimal": "최소 중단 시간 업데이트",
+    "version": "버전"
   },
   "timeline": {
     "title": "타임라인",
