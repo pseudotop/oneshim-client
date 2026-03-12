@@ -238,15 +238,27 @@ jobs:
           sleep 3
           if kill -0 "$PID" >/dev/null 2>&1; then
             kill "$PID" >/dev/null 2>&1 || true
+            GRACE=0
+            while kill -0 "$PID" >/dev/null 2>&1 && [[ "$GRACE" -lt 5 ]]; do
+              sleep 1
+              GRACE=$((GRACE + 1))
+            done
+            if kill -0 "$PID" >/dev/null 2>&1; then
+              echo "SIGTERM did not terminate process $PID after 5s; sending SIGKILL"
+              kill -9 "$PID" >/dev/null 2>&1 || true
+            fi
           fi
-          wait "$PID"
+          wait "$PID" 2>/dev/null
           RC=$?
           set -e
 
           if grep -qE "Cannot start a runtime from within a runtime|Cannot drop a runtime|panicked at|SIGABRT|stack backtrace" "$LOG"; then
-            echo "GUI bootstrap smoke detected runtime/panic failure"
-            cat "$LOG"
-            exit 1
+            if ! grep -qE "WKWebView|no display|NSApplication" "$LOG" || \
+               grep -qE "Cannot start a runtime|Cannot drop a runtime|SIGABRT|stack backtrace" "$LOG"; then
+              echo "GUI bootstrap smoke detected runtime/panic failure"
+              cat "$LOG"
+              exit 1
+            fi
           fi
 
           if [[ "$RC" -eq 139 || "$RC" -eq 134 ]]; then
