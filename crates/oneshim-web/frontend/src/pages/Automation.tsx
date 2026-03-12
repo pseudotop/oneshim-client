@@ -21,6 +21,7 @@ import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
+import { addToast } from '../hooks/useToast'
 import { colors, interaction, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -115,11 +116,13 @@ function Automation() {
         ...prev.filter((f) => f.presetId !== id),
         { presetId: id, result, timestamp: Date.now() },
       ])
+      addToast(result.success ? 'success' : 'error', result.message)
       setTimeout(() => {
         setRunFeedbacks((prev) => prev.filter((f) => f.presetId !== id))
       }, 8000)
     } catch (error) {
       const message = error instanceof Error ? error.message : t('automation.runError')
+      addToast('error', message)
       setRunFeedbacks((prev) => [
         ...prev.filter((f) => f.presetId !== id),
         {
@@ -447,7 +450,12 @@ function Automation() {
                       {t('automation.run')}
                     </Button>
                     {!preset.builtin && (
-                      <Button data-testid={`delete-preset-${preset.id}`} variant="danger" size="sm" onClick={() => deletePresetMutation.mutate(preset.id)}>
+                      <Button
+                        data-testid={`delete-preset-${preset.id}`}
+                        variant="danger"
+                        size="sm"
+                        onClick={() => deletePresetMutation.mutate(preset.id)}
+                      >
                         {t('common.delete')}
                       </Button>
                     )}
