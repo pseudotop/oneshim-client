@@ -2,24 +2,30 @@ use std::sync::Arc;
 
 #[cfg(feature = "server")]
 use async_trait::async_trait;
+use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::local_llm::LocalLlmProvider;
+use oneshim_core::config::PrivacyConfig;
 use oneshim_core::config::{
     AiAccessMode, AiProviderConfig, LlmProviderType, OcrProviderType, PiiFilterLevel,
 };
 #[cfg(feature = "server")]
 use oneshim_core::config::{ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig};
+#[cfg(not(feature = "server"))]
+use oneshim_core::config::{ExternalDataPolicy, OcrValidationConfig};
+use oneshim_core::consent::ConsentManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::LlmProvider;
+use oneshim_core::ports::monitor::ProcessMonitor;
 use oneshim_core::ports::ocr_provider::OcrProvider;
-#[cfg(feature = "server")]
 use oneshim_core::ports::ocr_provider::OcrResult;
 #[cfg(feature = "server")]
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
 #[cfg(feature = "server")]
 use oneshim_network::ai_ocr_client::RemoteOcrProvider;
 use oneshim_vision::local_ocr_provider::LocalOcrProvider;
-#[cfg(feature = "server")]
-use oneshim_vision::privacy_gateway::PrivacyGateway;
+use oneshim_vision::privacy_gateway::{PrivacyGateway, SanitizedImage};
+use std::path::PathBuf;
+use tokio::sync::RwLock;
 #[cfg(feature = "server")]
 use tracing::{debug, warn};
 
@@ -59,28 +65,131 @@ type OcrProviderResolution =
 type LlmProviderResolution =
     Result<(Arc<dyn LlmProvider>, ProviderSource, Option<String>), CoreError>;
 
-#[cfg(feature = "server")]
-struct GuardedOcrProvider {
-    inner: Arc<dyn OcrProvider>,
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
+#[derive(Clone)]
+pub struct ExternalOcrPrivacyGuard {
+    consent_path: PathBuf,
     pii_filter_level: PiiFilterLevel,
     external_data_policy: ExternalDataPolicy,
+    privacy_config: PrivacyConfig,
+    process_monitor: Arc<dyn ProcessMonitor>,
+    audit_logger: Option<Arc<RwLock<AuditLogger>>>,
+}
+
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
+impl ExternalOcrPrivacyGuard {
+    pub fn new(
+        consent_path: PathBuf,
+        pii_filter_level: PiiFilterLevel,
+        external_data_policy: ExternalDataPolicy,
+        privacy_config: PrivacyConfig,
+        process_monitor: Arc<dyn ProcessMonitor>,
+        audit_logger: Option<Arc<RwLock<AuditLogger>>>,
+    ) -> Self {
+        Self {
+            consent_path,
+            pii_filter_level,
+            external_data_policy,
+            privacy_config,
+            process_monitor,
+            audit_logger,
+        }
+    }
+
+    async fn prepare_image_for_external(
+        &self,
+        image_data: &[u8],
+        provider_name: &str,
+        allow_unredacted_external_ocr: bool,
+    ) -> Result<SanitizedImage, CoreError> {
+        let active_window = match self.process_monitor.get_active_window().await? {
+            Some(window) => window,
+            None => {
+                let message = "External OCR blocked: active window context unavailable".to_string();
+                self.log_event(
+                    "privacy.external_ocr.denied",
+                    &format!("provider={provider_name} reason=no_active_window"),
+                )
+                .await;
+                return Err(CoreError::PolicyDenied(message));
+            }
+        };
+
+        let gateway = PrivacyGateway::new(
+            Arc::new(ConsentManager::new(self.consent_path.clone())),
+            self.pii_filter_level,
+            self.external_data_policy,
+            self.privacy_config.clone(),
+        );
+
+        match gateway
+            .prepare_image_for_external_with_override(
+                image_data,
+                &active_window.app_name,
+                &active_window.title,
+                allow_unredacted_external_ocr,
+            )
+            .await
+        {
+            Ok(sanitized) => {
+                self.log_event(
+                    "privacy.external_ocr.allowed",
+                    &format!(
+                        "provider={provider_name} app={} title={} redacted_regions={} metadata_stripped={}",
+                        active_window.app_name,
+                        active_window.title,
+                        sanitized.redacted_regions,
+                        sanitized.metadata_stripped
+                    ),
+                )
+                .await;
+                Ok(sanitized)
+            }
+            Err(err) => {
+                self.log_event(
+                    "privacy.external_ocr.denied",
+                    &format!(
+                        "provider={provider_name} app={} title={} reason={}",
+                        active_window.app_name, active_window.title, err
+                    ),
+                )
+                .await;
+                Err(CoreError::PolicyDenied(format!(
+                    "External OCR blocked: {err}"
+                )))
+            }
+        }
+    }
+
+    async fn log_event(&self, action_type: &str, details: &str) {
+        let Some(audit_logger) = self.audit_logger.as_ref() else {
+            return;
+        };
+
+        let mut logger = audit_logger.write().await;
+        logger.log_event(action_type, "runtime-ocr", details);
+    }
+}
+
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
+struct GuardedOcrProvider {
+    inner: Arc<dyn OcrProvider>,
+    privacy_guard: ExternalOcrPrivacyGuard,
     allow_unredacted_external_ocr: bool,
     ocr_validation: OcrValidationConfig,
 }
 
-#[cfg(feature = "server")]
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
 impl GuardedOcrProvider {
     fn new(
         inner: Arc<dyn OcrProvider>,
-        pii_filter_level: PiiFilterLevel,
-        external_data_policy: ExternalDataPolicy,
+        privacy_guard: ExternalOcrPrivacyGuard,
         allow_unredacted_external_ocr: bool,
         ocr_validation: OcrValidationConfig,
     ) -> Self {
         Self {
             inner,
-            pii_filter_level,
-            external_data_policy,
+            privacy_guard,
             allow_unredacted_external_ocr,
             ocr_validation,
         }
@@ -139,13 +248,14 @@ impl OcrProvider for GuardedOcrProvider {
             return self.inner.extract_elements(image, image_format).await;
         }
 
-        let sanitized = PrivacyGateway::sanitize_image_for_external_policy(
-            image,
-            self.pii_filter_level,
-            self.external_data_policy,
-            self.allow_unredacted_external_ocr,
-        )
-        .await;
+        let sanitized = self
+            .privacy_guard
+            .prepare_image_for_external(
+                image,
+                self.inner.provider_name(),
+                self.allow_unredacted_external_ocr,
+            )
+            .await?;
 
         debug!(
             redacted_regions = sanitized.redacted_regions,
@@ -172,6 +282,7 @@ impl OcrProvider for GuardedOcrProvider {
 pub fn resolve_ai_provider_adapters(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
 ) -> Result<AiProviderAdapters, CoreError> {
     match config.access_mode {
         AiAccessMode::LocalModel => Ok(AiProviderAdapters {
@@ -192,7 +303,7 @@ pub fn resolve_ai_provider_adapters(
         }),
         AiAccessMode::ProviderApiKey => {
             let (ocr, ocr_source, ocr_fallback_reason) =
-                resolve_ocr_provider(config, pii_filter_level)?;
+                resolve_ocr_provider(config, pii_filter_level, external_ocr_privacy_guard.clone())?;
             let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
             Ok(AiProviderAdapters {
                 ocr,
@@ -205,7 +316,7 @@ pub fn resolve_ai_provider_adapters(
         }
         AiAccessMode::PlatformConnected => {
             let (ocr, ocr_source, ocr_fallback_reason) =
-                resolve_ocr_provider(config, pii_filter_level)?;
+                resolve_ocr_provider(config, pii_filter_level, external_ocr_privacy_guard.clone())?;
             let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
             Ok(AiProviderAdapters {
                 ocr,
@@ -230,6 +341,7 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
 fn resolve_ocr_provider(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
 ) -> OcrProviderResolution {
     match config.ocr_provider {
         OcrProviderType::Local => Ok((
@@ -245,12 +357,18 @@ fn resolve_ocr_provider(
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
+                        let privacy_guard =
+                            external_ocr_privacy_guard.clone().ok_or_else(|| {
+                                CoreError::Config(
+                                    "Remote OCR provider requires a runtime privacy guard"
+                                        .to_string(),
+                                )
+                            })?;
                         let remote =
                             Arc::new(RemoteOcrProvider::new(endpoint)?) as Arc<dyn OcrProvider>;
                         Ok(Arc::new(GuardedOcrProvider::new(
                             remote,
-                            pii_filter_level,
-                            config.external_data_policy,
+                            privacy_guard,
                             config.allow_unredacted_external_ocr,
                             config.ocr_validation.clone(),
                         )) as Arc<dyn OcrProvider>)
@@ -373,10 +491,19 @@ fn format_fallback_reason(err: &CoreError) -> String {
 #[cfg(all(test, feature = "server"))]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use oneshim_automation::audit::AuditLogger;
     use oneshim_core::config::{
         AiAccessMode, AiProviderType, ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig,
+        PrivacyConfig,
     };
+    use oneshim_core::consent::{ConsentManager, ConsentPermissions};
+    use oneshim_core::models::context::{ProcessInfo, WindowInfo};
+    use oneshim_core::models::event::ProcessDetail;
+    use oneshim_core::ports::monitor::ProcessMonitor;
     use oneshim_core::ports::ocr_provider::OcrResult;
+    use tempfile::TempDir;
+    use tokio::sync::RwLock;
 
     fn remote_endpoint() -> ExternalApiEndpoint {
         ExternalApiEndpoint {
@@ -388,10 +515,73 @@ mod tests {
         }
     }
 
+    struct StaticProcessMonitor {
+        active_window: Option<WindowInfo>,
+    }
+
+    #[async_trait]
+    impl ProcessMonitor for StaticProcessMonitor {
+        async fn get_active_window(&self) -> Result<Option<WindowInfo>, CoreError> {
+            Ok(self.active_window.clone())
+        }
+
+        async fn get_top_processes(&self, _limit: usize) -> Result<Vec<ProcessInfo>, CoreError> {
+            Ok(vec![])
+        }
+
+        async fn get_detailed_processes(
+            &self,
+            _foreground_pid: Option<u32>,
+            _top_n: usize,
+        ) -> Result<Vec<ProcessDetail>, CoreError> {
+            Ok(vec![])
+        }
+    }
+
+    fn write_consent(path: &std::path::Path, ocr_permitted: bool) {
+        let mut consent_manager = ConsentManager::new(path.to_path_buf());
+        if !ocr_permitted {
+            return;
+        }
+
+        consent_manager
+            .grant_consent(
+                ConsentPermissions {
+                    ocr_processing: true,
+                    screen_capture: true,
+                    ..Default::default()
+                },
+                30,
+            )
+            .expect("Failed to write consent");
+    }
+
+    fn make_external_ocr_guard(
+        ocr_permitted: bool,
+        active_window: Option<WindowInfo>,
+        audit_logger: Option<Arc<RwLock<AuditLogger>>>,
+    ) -> (ExternalOcrPrivacyGuard, TempDir) {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let consent_path = temp_dir.path().join("consent.json");
+        write_consent(&consent_path, ocr_permitted);
+
+        (
+            ExternalOcrPrivacyGuard::new(
+                consent_path,
+                PiiFilterLevel::Standard,
+                ExternalDataPolicy::PiiFilterStandard,
+                PrivacyConfig::default(),
+                Arc::new(StaticProcessMonitor { active_window }),
+                audit_logger,
+            ),
+            temp_dir,
+        )
+    }
+
     #[test]
     fn resolves_local_providers_by_default() {
         let config = AiProviderConfig::default();
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None)
             .expect("Failed to resolve default configuration");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
@@ -415,8 +605,19 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("Failed to resolve remote configuration");
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "main.rs".to_string(),
+                app_name: "Code".to_string(),
+                pid: 7,
+                bounds: None,
+            }),
+            None,
+        );
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, Some(privacy_guard))
+                .expect("Failed to resolve remote configuration");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Remote);
         assert_eq!(adapters.llm_source, ProviderSource::Remote);
@@ -437,7 +638,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None)
             .expect("Fallback configuration resolution should not fail");
 
         assert_eq!(adapters.ocr_source, ProviderSource::LocalFallback);
@@ -465,7 +666,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard) {
+        match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None) {
             Ok(_) => panic!("Expected an error"),
             Err(CoreError::Config(msg)) => assert!(msg.contains("ocr_api")),
             Err(other) => panic!("Unexpected error type: {other}"),
@@ -484,7 +685,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None)
             .expect("Failed to resolve local mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
@@ -501,7 +702,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
+        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None)
             .expect("Failed to resolve CLI mode");
         assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
         assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
@@ -523,8 +724,19 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
-            .expect("Failed to resolve platform mode");
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "mail".to_string(),
+                app_name: "Code".to_string(),
+                pid: 9,
+                bounds: None,
+            }),
+            None,
+        );
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, Some(privacy_guard))
+                .expect("Failed to resolve platform mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Platform);
         assert_eq!(adapters.llm_source, ProviderSource::Platform);
         assert!(adapters.ocr_fallback_reason.is_none());
@@ -554,6 +766,25 @@ mod tests {
         fn is_external(&self) -> bool {
             true
         }
+    }
+
+    #[test]
+    fn remote_ocr_requires_runtime_privacy_guard() {
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Local,
+            ocr_api: Some(remote_endpoint()),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let result = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None);
+        assert!(
+            result.is_err(),
+            "Expected remote OCR resolution to require a privacy guard"
+        );
+        let err = result.err().unwrap();
+        assert!(err.to_string().contains("runtime privacy guard"));
     }
 
     #[tokio::test]
@@ -586,10 +817,19 @@ mod tests {
                 },
             ],
         }) as Arc<dyn OcrProvider>;
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "main.rs".to_string(),
+                app_name: "Code".to_string(),
+                pid: 11,
+                bounds: None,
+            }),
+            None,
+        );
         let guarded = GuardedOcrProvider::new(
             inner,
-            PiiFilterLevel::Standard,
-            ExternalDataPolicy::PiiFilterStandard,
+            privacy_guard,
             true,
             OcrValidationConfig {
                 enabled: true,
@@ -625,10 +865,20 @@ mod tests {
                 },
             ],
         }) as Arc<dyn OcrProvider>;
+        let audit_logger = Arc::new(RwLock::new(AuditLogger::new(32, 8)));
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "main.rs".to_string(),
+                app_name: "Code".to_string(),
+                pid: 12,
+                bounds: None,
+            }),
+            Some(audit_logger.clone()),
+        );
         let guarded = GuardedOcrProvider::new(
             inner,
-            PiiFilterLevel::Standard,
-            ExternalDataPolicy::PiiFilterStrict,
+            privacy_guard,
             true,
             OcrValidationConfig {
                 enabled: true,
@@ -639,5 +889,71 @@ mod tests {
 
         let err = guarded.extract_elements(b"dummy", "png").await.unwrap_err();
         assert!(err.to_string().contains("invalid_ratio"));
+    }
+
+    #[tokio::test]
+    async fn guarded_ocr_provider_denies_without_ocr_consent_and_audits_it() {
+        let inner = Arc::new(FakeExternalOcrProvider {
+            responses: vec![OcrResult {
+                text: "save".to_string(),
+                x: 1,
+                y: 1,
+                width: 10,
+                height: 10,
+                confidence: 0.9,
+            }],
+        }) as Arc<dyn OcrProvider>;
+        let audit_logger = Arc::new(RwLock::new(AuditLogger::new(32, 8)));
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            false,
+            Some(WindowInfo {
+                title: "main.rs".to_string(),
+                app_name: "Code".to_string(),
+                pid: 13,
+                bounds: None,
+            }),
+            Some(audit_logger.clone()),
+        );
+        let guarded =
+            GuardedOcrProvider::new(inner, privacy_guard, false, OcrValidationConfig::default());
+
+        let err = guarded.extract_elements(b"dummy", "png").await.unwrap_err();
+        assert!(err.to_string().contains("OCR consent is required"));
+
+        let logger = audit_logger.read().await;
+        assert_eq!(logger.pending_count(), 1);
+        assert!(logger.recent_entries(1)[0]
+            .details
+            .as_deref()
+            .is_some_and(|details| details.contains("reason=OCR consent is required")));
+    }
+
+    #[tokio::test]
+    async fn guarded_ocr_provider_denies_sensitive_apps() {
+        let inner = Arc::new(FakeExternalOcrProvider {
+            responses: vec![OcrResult {
+                text: "save".to_string(),
+                x: 1,
+                y: 1,
+                width: 10,
+                height: 10,
+                confidence: 0.9,
+            }],
+        }) as Arc<dyn OcrProvider>;
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "Vault".to_string(),
+                app_name: "1Password".to_string(),
+                pid: 14,
+                bounds: None,
+            }),
+            None,
+        );
+        let guarded =
+            GuardedOcrProvider::new(inner, privacy_guard, false, OcrValidationConfig::default());
+
+        let err = guarded.extract_elements(b"dummy", "png").await.unwrap_err();
+        assert!(err.to_string().contains("Blocked sensitive app"));
     }
 }

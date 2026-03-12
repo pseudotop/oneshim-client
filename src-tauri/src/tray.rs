@@ -6,12 +6,20 @@ use tauri::{
 };
 use tracing::{info, warn};
 
+fn focus_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        window.show().unwrap_or_default();
+        window.set_focus().unwrap_or_default();
+    }
+}
+
 /// 시스템 트레이 메뉴 설정 — 아이콘 + 메뉴 + 이벤트 핸들러 통합.
 /// tauri.conf.json의 trayIcon은 null로 설정하고 여기서 전부 처리.
 pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let show = MenuItem::with_id(app, "show", "Toggle Window", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let automation = MenuItem::with_id(app, "automation", "Toggle Automation", true, None::<&str>)?;
+    let automation =
+        MenuItem::with_id(app, "automation", "Automation Settings", true, None::<&str>)?;
     let approve = MenuItem::with_id(app, "approve_update", "Apply Update", true, None::<&str>)?;
     let defer = MenuItem::with_id(app, "defer_update", "Defer Update", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -51,19 +59,17 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                 }
             }
             "settings" => {
-                if let Some(w) = app.get_webview_window("main") {
-                    w.show().unwrap_or_default();
-                    w.set_focus().unwrap_or_default();
-                    // React router 네비게이션
-                    app.emit_to("main", "navigate", "/settings")
-                        .unwrap_or_default();
-                }
+                focus_main_window(app);
+                app.emit_to("main", "navigate", "/settings")
+                    .unwrap_or_default();
             }
             "automation" => {
+                focus_main_window(app);
                 app.emit_to("main", "tray-toggle-automation", ())
                     .unwrap_or_default();
             }
             "approve_update" => {
+                focus_main_window(app);
                 if let Some(state) = app.try_state::<crate::setup::AppState>() {
                     use oneshim_web::update_control::UpdateAction;
                     if let Err(e) = state.update_action_tx.send(UpdateAction::Approve) {
@@ -74,6 +80,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                     .unwrap_or_default();
             }
             "defer_update" => {
+                focus_main_window(app);
                 if let Some(state) = app.try_state::<crate::setup::AppState>() {
                     use oneshim_web::update_control::UpdateAction;
                     if let Err(e) = state.update_action_tx.send(UpdateAction::Defer) {

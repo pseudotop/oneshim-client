@@ -173,8 +173,31 @@ body {
 }
 
 @keyframes section-flash {
-  0% { outline: 2px solid rgb(var(--brand-signal)); outline-offset: 4px; }
-  100% { outline: 2px solid transparent; outline-offset: 4px; }
+  0% {
+    outline: 2px solid rgb(var(--brand-signal));
+    outline-offset: 4px;
+  }
+
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 4px;
+  }
+}
+
+@keyframes toast-in {
+  0% {
+    transform: translate3d(0, 12px, 0) scale(0.98);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Tauri drag region */

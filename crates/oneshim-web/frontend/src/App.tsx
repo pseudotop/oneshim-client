@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import ErrorBoundary from './components/ErrorBoundary'
 import { ActivityBar, CommandPalette, ShortcutsHelp, SidePanel, StatusBar, TitleBar } from './components/shell'
-import { Spinner } from './components/ui'
+import { Spinner, ToastContainer } from './components/ui'
 import { useCommandPalette } from './hooks/useCommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useShellLayout } from './hooks/useShellLayout'
+import { useTauriEventBridge } from './hooks/useTauriEventBridge'
 import { layout } from './styles/tokens'
 import { cn } from './utils/cn'
 
@@ -43,6 +44,7 @@ function App() {
   )
 
   useKeyboardShortcuts(shortcutHandlers)
+  useTauriEventBridge()
 
   return (
     <div className="app-shell bg-surface-sunken text-content">
@@ -95,6 +97,7 @@ function App() {
 
       <CommandPalette isOpen={isPaletteOpen} onClose={closePalette} onToggleSidebar={toggleSidebar} />
       {isHelpOpen && <ShortcutsHelp onClose={closeHelp} />}
+      <ToastContainer />
     </div>
   )
 }

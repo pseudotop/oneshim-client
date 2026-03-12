@@ -178,6 +178,20 @@ impl IntentExecutor {
         Self { resolver, config }
     }
 
+    pub fn with_overrides(
+        &self,
+        input_driver: Option<Arc<dyn InputDriver>>,
+        config: Option<IntentConfig>,
+    ) -> Self {
+        let config = config.unwrap_or_else(|| self.config.clone());
+        let resolver = IntentResolver::new(
+            self.resolver.element_finder.clone(),
+            input_driver.unwrap_or_else(|| self.resolver.input_driver.clone()),
+            config.clone(),
+        );
+        Self::new(resolver, config)
+    }
+
     pub async fn execute(&self, intent: &AutomationIntent) -> Result<IntentResult, CoreError> {
         let start = Instant::now();
         let mut retry_count = 0u32;

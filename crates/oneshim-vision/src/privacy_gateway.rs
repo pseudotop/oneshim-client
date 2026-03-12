@@ -92,6 +92,17 @@ impl PrivacyGateway {
         active_app: &str,
         window_title: &str,
     ) -> Result<SanitizedImage, PrivacyDenied> {
+        self.prepare_image_for_external_with_override(image_data, active_app, window_title, false)
+            .await
+    }
+
+    pub async fn prepare_image_for_external_with_override(
+        &self,
+        image_data: &[u8],
+        active_app: &str,
+        window_title: &str,
+        allow_unredacted_external_ocr: bool,
+    ) -> Result<SanitizedImage, PrivacyDenied> {
         if !self.consent_manager.is_permitted(|p| p.ocr_processing) {
             return Err(PrivacyDenied::NoConsent);
         }
@@ -111,7 +122,11 @@ impl PrivacyGateway {
             return Err(PrivacyDenied::ExcludedByPolicy);
         }
 
-        let filter_level = self.effective_filter_level();
+        let filter_level = Self::resolve_filter_level(
+            self.pii_filter_level,
+            self.external_data_policy,
+            allow_unredacted_external_ocr,
+        );
         let (sanitized_data, redacted_regions) = if filter_level == PiiFilterLevel::Off {
             (image_data.to_vec(), 0)
         } else {
