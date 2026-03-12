@@ -186,6 +186,15 @@ body {
   animation: slide-in-from-right 0.2s ease-out;
 }
 
+/* Dialog zoom-in animation */
+@keyframes zoom-in-95 {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.animate-in.zoom-in-95 {
+  animation: zoom-in-95 0.15s ease-out;
+}
+
 /* Tauri drag region */
 [data-tauri-drag-region] {
   -webkit-app-region: drag;
