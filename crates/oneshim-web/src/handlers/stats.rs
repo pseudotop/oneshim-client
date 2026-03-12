@@ -22,7 +22,7 @@ pub async fn get_summary(
     let from = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         .map_err(|_| ApiError::BadRequest(format!("Invalid date format: {date_str}")))?
         .and_hms_opt(0, 0, 0)
-        .unwrap()
+        .expect("00:00:00 is always valid")
         .and_utc();
 
     let to = from + Duration::days(1);
@@ -137,7 +137,7 @@ pub async fn get_app_usage(
     let from = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         .map_err(|_| ApiError::BadRequest(format!("Invalid date format: {date_str}")))?
         .and_hms_opt(0, 0, 0)
-        .unwrap()
+        .expect("00:00:00 is always valid")
         .and_utc();
 
     let to = from + Duration::days(1);

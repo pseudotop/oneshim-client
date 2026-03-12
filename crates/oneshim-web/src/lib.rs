@@ -144,7 +144,11 @@ impl WebServer {
                 .into_iter()
                 .flatten()
             })
-            .chain(std::iter::once("tauri://localhost".parse().unwrap()))
+            .chain(std::iter::once(
+                "tauri://localhost"
+                    .parse()
+                    .expect("static tauri URL is valid"),
+            ))
             .collect();
 
         let cors = CorsLayer::new()

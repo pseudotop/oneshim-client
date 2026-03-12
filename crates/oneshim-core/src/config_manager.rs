@@ -51,12 +51,12 @@ impl ConfigManager {
     }
 
     pub fn get(&self) -> AppConfig {
-        self.config.read().unwrap().clone()
+        self.config.read().expect("config RwLock poisoned").clone()
     }
 
     pub fn update(&self, new_config: AppConfig) -> Result<(), CoreError> {
         {
-            let mut config = self.config.write().unwrap();
+            let mut config = self.config.write().expect("config RwLock poisoned");
             *config = new_config.clone();
         }
 
@@ -82,7 +82,7 @@ impl ConfigManager {
 
     pub fn reload(&self) -> Result<(), CoreError> {
         let config = Self::load_from_file(&self.config_path)?;
-        let mut current = self.config.write().unwrap();
+        let mut current = self.config.write().expect("config RwLock poisoned");
         *current = config;
         info!("settings load complete");
         Ok(())
