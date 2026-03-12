@@ -528,16 +528,18 @@ export default function Settings() {
           hidden={activeTab !== 'general'}
           aria-hidden={activeTab !== 'general'}
         >
-          <GeneralTab
-            formData={formData}
-            updateStatus={updateStatus}
-            updateActionPending={updateActionMutation.isPending}
-            onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
-            onNotificationChange={handleNotificationChange}
-            onScheduleChange={handleScheduleChange}
-            onUpdateChange={handleUpdateChange}
-            onUpdateAction={(action) => updateActionMutation.mutate(action)}
-          />
+          <fieldset disabled={activeTab !== 'general'} className="m-0 min-w-0 border-0 p-0">
+            <GeneralTab
+              formData={formData}
+              updateStatus={updateStatus}
+              updateActionPending={updateActionMutation.isPending}
+              onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
+              onNotificationChange={handleNotificationChange}
+              onScheduleChange={handleScheduleChange}
+              onUpdateChange={handleUpdateChange}
+              onUpdateAction={(action) => updateActionMutation.mutate(action)}
+            />
+          </fieldset>
         </div>
 
         <div
@@ -547,7 +549,9 @@ export default function Settings() {
           hidden={activeTab !== 'privacy'}
           aria-hidden={activeTab !== 'privacy'}
         >
-          <PrivacyTab formData={formData} onPrivacyChange={handlePrivacyChange} />
+          <fieldset disabled={activeTab !== 'privacy'} className="m-0 min-w-0 border-0 p-0">
+            <PrivacyTab formData={formData} onPrivacyChange={handlePrivacyChange} />
+          </fieldset>
         </div>
 
         <div
@@ -557,11 +561,13 @@ export default function Settings() {
           hidden={activeTab !== 'monitoring'}
           aria-hidden={activeTab !== 'monitoring'}
         >
-          <MonitoringTab
-            formData={formData}
-            onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
-            onMonitorChange={handleMonitorChange}
-          />
+          <fieldset disabled={activeTab !== 'monitoring'} className="m-0 min-w-0 border-0 p-0">
+            <MonitoringTab
+              formData={formData}
+              onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
+              onMonitorChange={handleMonitorChange}
+            />
+          </fieldset>
         </div>
 
         <div
@@ -571,23 +577,25 @@ export default function Settings() {
           hidden={activeTab !== 'ai-automation'}
           aria-hidden={activeTab !== 'ai-automation'}
         >
-          <AiAutomationTab
-            formData={formData}
-            providerPresets={providerPresets}
-            modelCatalogNotice={modelCatalogNotice}
-            modelCatalogLoading={modelCatalogLoading}
-            onAutomationChange={handleAutomationChange}
-            onSandboxChange={handleSandboxChange}
-            onAiProviderChange={handleAiProviderChange}
-            onOcrValidationChange={handleOcrValidationChange}
-            onSceneActionOverrideChange={handleSceneActionOverrideChange}
-            onSceneIntelligenceChange={handleSceneIntelligenceChange}
-            onExternalApiChange={handleExternalApiChange}
-            resolveProviderType={resolveProviderType}
-            onProviderTypeChange={handleProviderTypeChange}
-            onDiscoverModels={(which) => void discoverModels(which)}
-            getModelOptions={getModelOptions}
-          />
+          <fieldset disabled={activeTab !== 'ai-automation'} className="m-0 min-w-0 border-0 p-0">
+            <AiAutomationTab
+              formData={formData}
+              providerPresets={providerPresets}
+              modelCatalogNotice={modelCatalogNotice}
+              modelCatalogLoading={modelCatalogLoading}
+              onAutomationChange={handleAutomationChange}
+              onSandboxChange={handleSandboxChange}
+              onAiProviderChange={handleAiProviderChange}
+              onOcrValidationChange={handleOcrValidationChange}
+              onSceneActionOverrideChange={handleSceneActionOverrideChange}
+              onSceneIntelligenceChange={handleSceneIntelligenceChange}
+              onExternalApiChange={handleExternalApiChange}
+              resolveProviderType={resolveProviderType}
+              onProviderTypeChange={handleProviderTypeChange}
+              onDiscoverModels={(which) => void discoverModels(which)}
+              getModelOptions={getModelOptions}
+            />
+          </fieldset>
         </div>
 
         <div
@@ -597,17 +605,19 @@ export default function Settings() {
           hidden={activeTab !== 'data'}
           aria-hidden={activeTab !== 'data'}
         >
-          <DataStorageTab
-            formData={formData}
-            storageStats={storageStats}
-            storageLoading={storageLoading}
-            exportFormat={exportFormat}
-            exportLoading={exportLoading}
-            onExportFormatChange={setExportFormat}
-            onExport={(dataType) => void handleExport(dataType)}
-            onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
-            onTelemetryChange={handleTelemetryChange}
-          />
+          <fieldset disabled={activeTab !== 'data'} className="m-0 min-w-0 border-0 p-0">
+            <DataStorageTab
+              formData={formData}
+              storageStats={storageStats}
+              storageLoading={storageLoading}
+              exportFormat={exportFormat}
+              exportLoading={exportLoading}
+              onExportFormatChange={setExportFormat}
+              onExport={(dataType) => void handleExport(dataType)}
+              onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
+              onTelemetryChange={handleTelemetryChange}
+            />
+          </fieldset>
         </div>
 
         <div className="flex justify-end">
