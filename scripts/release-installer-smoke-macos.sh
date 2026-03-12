@@ -149,17 +149,50 @@ run_gui_bootstrap_smoke() {
   info "GUI bootstrap smoke OK (rc=$rc, ${label})"
 }
 
+find_existing_app_path() {
+  local candidate
+  for candidate in "$SYSTEM_APP_INSTALL_PATH" "$USER_APP_INSTALL_PATH"; do
+    if [[ -d "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+find_installed_app_path() {
+  local candidate
+  for candidate in "$SYSTEM_APP_INSTALL_PATH" "$USER_APP_INSTALL_PATH"; do
+    if [[ -x "$candidate/Contents/MacOS/oneshim" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+
+  local found_path
+  found_path="$(find /Applications "$HOME/Applications" -maxdepth 1 -type d -name "$APP_NAME" 2>/dev/null | head -n1 || true)"
+  if [[ -n "$found_path" && -x "$found_path/Contents/MacOS/oneshim" ]]; then
+    printf '%s' "$found_path"
+    return 0
+  fi
+
+  return 1
+}
+
 DMG_PATH="$(resolve_asset "$DMG_NAME")"
 PKG_PATH="$(resolve_asset "$PKG_NAME")"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/oneshim-installer-smoke.XXXXXX")"
 MOUNT_DIR="$TMP_DIR/mount"
 LOG_DIR="${ONESHIM_SMOKE_LOG_DIR:-${RUNNER_TEMP:-$TMP_DIR}/oneshim-installer-smoke}"
-APP_INSTALL_PATH="/Applications/$APP_NAME"
+SYSTEM_APP_INSTALL_PATH="/Applications/$APP_NAME"
+USER_APP_INSTALL_PATH="${HOME}/Applications/$APP_NAME"
+APP_INSTALL_PATH="$SYSTEM_APP_INSTALL_PATH"
 APP_BINARY_PATH="$APP_INSTALL_PATH/Contents/MacOS/oneshim"
 APP_BACKUP_PATH="$TMP_DIR/${APP_NAME}.backup"
 MOUNTED=0
 APP_WAS_PRESENT=0
+APP_RESTORE_PATH=""
 
 mkdir -p "$LOG_DIR"
 
@@ -168,12 +201,18 @@ cleanup() {
     hdiutil detach "$MOUNT_DIR" -quiet || true
   fi
 
-  if [[ -d "$APP_INSTALL_PATH" ]]; then
-    run_as_root rm -rf "$APP_INSTALL_PATH" || true
-  fi
+  local candidate
+  for candidate in "$SYSTEM_APP_INSTALL_PATH" "$USER_APP_INSTALL_PATH"; do
+    if [[ "$APP_WAS_PRESENT" == "1" && "$candidate" == "$APP_RESTORE_PATH" ]]; then
+      continue
+    fi
+    if [[ -d "$candidate" ]]; then
+      run_as_root rm -rf "$candidate" || true
+    fi
+  done
 
-  if [[ "$APP_WAS_PRESENT" == "1" && -d "$APP_BACKUP_PATH" ]]; then
-    run_as_root mv "$APP_BACKUP_PATH" "$APP_INSTALL_PATH" || true
+  if [[ "$APP_WAS_PRESENT" == "1" && -n "$APP_RESTORE_PATH" && -d "$APP_BACKUP_PATH" ]]; then
+    run_as_root mv "$APP_BACKUP_PATH" "$APP_RESTORE_PATH" || true
   fi
 
   rm -rf "$TMP_DIR"
@@ -183,10 +222,12 @@ trap cleanup EXIT
 info "Using DMG: $DMG_PATH"
 info "Using PKG: $PKG_PATH"
 
-if [[ -d "$APP_INSTALL_PATH" ]]; then
-  info "Backing up existing app at $APP_INSTALL_PATH"
-  run_as_root mv "$APP_INSTALL_PATH" "$APP_BACKUP_PATH"
+EXISTING_APP_PATH="$(find_existing_app_path || true)"
+if [[ -n "$EXISTING_APP_PATH" ]]; then
+  info "Backing up existing app at $EXISTING_APP_PATH"
+  run_as_root mv "$EXISTING_APP_PATH" "$APP_BACKUP_PATH"
   APP_WAS_PRESENT=1
+  APP_RESTORE_PATH="$EXISTING_APP_PATH"
 fi
 
 mkdir -p "$MOUNT_DIR"
@@ -205,7 +246,11 @@ run_gui_bootstrap_smoke "$DMG_BINARY_PATH" "dmg"
 
 info "Installing PKG"
 run_as_root installer -pkg "$PKG_PATH" -target / >/dev/null
+APP_INSTALL_PATH="$(find_installed_app_path || true)"
+[[ -n "$APP_INSTALL_PATH" ]] || fatal "Installed app bundle missing under /Applications or ~/Applications"
+APP_BINARY_PATH="$APP_INSTALL_PATH/Contents/MacOS/oneshim"
 [[ -x "$APP_BINARY_PATH" ]] || fatal "Installed app binary missing: $APP_BINARY_PATH"
+info "Detected installed app at $APP_INSTALL_PATH"
 
 info "Validating binary from PKG installation"
 validate_binary_format "$APP_BINARY_PATH"
