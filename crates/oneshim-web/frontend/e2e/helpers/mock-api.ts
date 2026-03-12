@@ -164,25 +164,28 @@ const fallbackUpdateStatus = {
 }
 
 const fallbackStorageStats = {
-  db_size_bytes: 0,
-  frames_size_bytes: 0,
-  total_size_bytes: 0,
-  frame_count: 0,
-  event_count: 0,
+  db_size_bytes: 524288,
+  frames_size_bytes: 262144,
+  total_size_bytes: 786432,
+  frame_count: 1,
+  event_count: 3,
   metric_count: 0,
-  oldest_data_date: null,
-  newest_data_date: null,
+  oldest_data_date: '2026-02-23T09:55:00Z',
+  newest_data_date: '2026-02-23T10:05:00Z',
 }
 
 const fallbackSummary = {
   date: '2026-02-23',
-  total_active_secs: 0,
-  total_idle_secs: 0,
-  top_apps: [],
-  cpu_avg: 0,
-  memory_avg_percent: 0,
-  frames_captured: 0,
-  events_logged: 0,
+  total_active_secs: 14400,
+  total_idle_secs: 1800,
+  top_apps: [
+    { name: 'VS Code', duration_secs: 7200, event_count: 42, frame_count: 18 },
+    { name: 'Chrome', duration_secs: 3600, event_count: 24, frame_count: 12 },
+  ],
+  cpu_avg: 21.5,
+  memory_avg_percent: 48.2,
+  frames_captured: 36,
+  events_logged: 128,
 }
 
 const fallbackReport = {
@@ -208,29 +211,164 @@ const fallbackReport = {
   },
 }
 
+const fallbackPreviewImage =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9sWwaP8AAAAASUVORK5CYII='
+
 const fallbackFrames = {
-  data: [],
+  data: [
+    {
+      id: 101,
+      timestamp: '2026-02-23T09:55:00Z',
+      trigger_type: 'active_window',
+      app_name: 'VS Code',
+      window_title: 'release-flow-hardening.ts',
+      importance: 0.82,
+      resolution: '1280x720',
+      file_path: null,
+      ocr_text: 'Release flow hardening draft',
+      image_url: fallbackPreviewImage,
+      tag_ids: [],
+    },
+  ],
   pagination: {
-    total: 0,
+    total: 1,
     offset: 0,
     limit: 50,
     has_more: false,
   },
 }
 
+const fallbackTimeline = {
+  session: {
+    start: '2026-02-23T09:55:00Z',
+    end: '2026-02-23T10:15:00Z',
+    duration_secs: 1200,
+    total_events: 2,
+    total_frames: 1,
+    total_idle_secs: 0,
+  },
+  items: [
+    {
+      type: 'Event',
+      id: 'evt-101',
+      timestamp: '2026-02-23T10:00:00Z',
+      event_type: 'app_switch',
+      app_name: 'VS Code',
+      window_title: 'release-flow-hardening.ts',
+    },
+    {
+      type: 'Frame',
+      id: 101,
+      timestamp: '2026-02-23T09:55:00Z',
+      app_name: 'VS Code',
+      window_title: 'release-flow-hardening.ts',
+      importance: 0.82,
+      image_url: fallbackPreviewImage,
+    },
+  ],
+  segments: [
+    {
+      app_name: 'VS Code',
+      start: '2026-02-23T09:55:00Z',
+      end: '2026-02-23T10:15:00Z',
+      color: '#14b8a6',
+    },
+  ],
+}
+
 const fallbackFocusMetrics = {
   today: {
     date: '2026-02-23',
-    total_active_secs: 0,
-    deep_work_secs: 0,
-    communication_secs: 0,
-    context_switches: 0,
-    interruption_count: 0,
-    avg_focus_duration_secs: 0,
-    max_focus_duration_secs: 0,
-    focus_score: 0,
+    total_active_secs: 12600,
+    deep_work_secs: 5400,
+    communication_secs: 1800,
+    context_switches: 6,
+    interruption_count: 3,
+    avg_focus_duration_secs: 2100,
+    max_focus_duration_secs: 4200,
+    focus_score: 78,
   },
-  history: [],
+  history: [
+    {
+      date: '2026-02-21',
+      total_active_secs: 10800,
+      deep_work_secs: 4200,
+      communication_secs: 2400,
+      context_switches: 9,
+      interruption_count: 4,
+      avg_focus_duration_secs: 1800,
+      max_focus_duration_secs: 3600,
+      focus_score: 68,
+    },
+    {
+      date: '2026-02-22',
+      total_active_secs: 11700,
+      deep_work_secs: 4800,
+      communication_secs: 2100,
+      context_switches: 7,
+      interruption_count: 3,
+      avg_focus_duration_secs: 1950,
+      max_focus_duration_secs: 3900,
+      focus_score: 72,
+    },
+  ],
+}
+
+const fallbackAutomationStatus = {
+  enabled: true,
+  sandbox_enabled: true,
+  sandbox_profile: 'balanced',
+  ocr_provider: 'local',
+  llm_provider: 'local',
+  ocr_source: 'local',
+  llm_source: 'local',
+  ocr_fallback_reason: null,
+  llm_fallback_reason: null,
+  external_data_policy: 'disabled',
+  pending_audit_entries: 0,
+}
+
+const fallbackAuditLogs = []
+
+const fallbackAutomationPresets = {
+  presets: [
+    {
+      id: 'preset-productivity',
+      name: 'Focus Session',
+      description: 'Start a focused productivity workflow.',
+      category: 'Productivity',
+      steps: [{ name: 'Start focus timer', intent: { action: 'focus.start' }, delay_ms: 0, stop_on_failure: true }],
+      builtin: true,
+      platform: null,
+    },
+    {
+      id: 'preset-app-management',
+      name: 'Close Distracting Apps',
+      description: 'Close a predefined set of distracting apps.',
+      category: 'AppManagement',
+      steps: [{ name: 'Close social apps', intent: { action: 'apps.close_social' }, delay_ms: 0, stop_on_failure: true }],
+      builtin: true,
+      platform: null,
+    },
+    {
+      id: 'preset-workflow',
+      name: 'Daily Review',
+      description: 'Open the daily review checklist workflow.',
+      category: 'Workflow',
+      steps: [{ name: 'Open review checklist', intent: { action: 'workflow.review' }, delay_ms: 0, stop_on_failure: true }],
+      builtin: true,
+      platform: null,
+    },
+    {
+      id: 'preset-custom',
+      name: 'Custom Macro',
+      description: 'Run a user-defined custom macro.',
+      category: 'Custom',
+      steps: [{ name: 'Execute custom macro', intent: { action: 'custom.run' }, delay_ms: 0, stop_on_failure: true }],
+      builtin: false,
+      platform: null,
+    },
+  ],
 }
 
 export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
@@ -240,15 +378,69 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
   await mockStaticJson(page, '**/api/update/status**', fallbackUpdateStatus)
   await mockStaticJson(page, '**/api/storage/stats**', fallbackStorageStats)
   await mockStaticJson(page, '**/api/stats/summary**', fallbackSummary)
-  await mockStaticJson(page, '**/api/metrics/hourly**', [])
-  await mockStaticJson(page, '**/api/processes**', [])
+  await mockStaticJson(page, '**/api/metrics/hourly**', [
+    { hour: '2026-02-23T09:00:00Z', cpu_avg: 18, cpu_max: 26, memory_avg: 42, memory_max: 48, sample_count: 6 },
+    { hour: '2026-02-23T10:00:00Z', cpu_avg: 22, cpu_max: 31, memory_avg: 47, memory_max: 53, sample_count: 6 },
+    { hour: '2026-02-23T11:00:00Z', cpu_avg: 19, cpu_max: 28, memory_avg: 45, memory_max: 50, sample_count: 6 },
+  ])
+  await mockStaticJson(page, '**/api/stats/heatmap**', {
+    from_date: '2026-02-17',
+    to_date: '2026-02-23',
+    max_value: 9,
+    cells: [
+      { day: 0, hour: 9, value: 4 },
+      { day: 1, hour: 10, value: 6 },
+      { day: 2, hour: 11, value: 8 },
+      { day: 3, hour: 13, value: 9 },
+      { day: 4, hour: 15, value: 7 },
+      { day: 5, hour: 16, value: 5 },
+    ],
+  })
+  await mockStaticJson(page, '**/api/processes**', [
+    {
+      timestamp: '2026-02-23T10:00:00Z',
+      processes: [
+        { pid: 101, name: 'Code Helper', cpu_usage: 12.4, memory_bytes: 734003200 },
+        { pid: 102, name: 'Google Chrome', cpu_usage: 8.1, memory_bytes: 524288000 },
+      ],
+    },
+  ])
   await mockStaticJson(page, '**/api/tags**', [])
   await mockStaticJson(page, '**/api/frames**', fallbackFrames)
+  await mockStaticJson(page, '**/api/timeline**', fallbackTimeline)
+  await mockStaticJson(page, '**/api/frames/*/tags**', [])
+  await mockStaticJson(page, '**/api/frames/*/tags/*', {})
   await mockStaticJson(page, '**/api/reports**', fallbackReport)
   await mockStaticJson(page, '**/api/focus/metrics**', fallbackFocusMetrics)
-  await mockStaticJson(page, '**/api/focus/sessions**', [])
-  await mockStaticJson(page, '**/api/focus/interruptions**', [])
+  await mockStaticJson(page, '**/api/focus/sessions**', [
+    {
+      id: 1,
+      started_at: '2026-02-23T09:00:00Z',
+      ended_at: '2026-02-23T10:15:00Z',
+      primary_app: 'VS Code',
+      category: 'Development',
+      state: 'completed',
+      interruption_count: 1,
+      deep_work_secs: 3600,
+      duration_secs: 4500,
+    },
+  ])
+  await mockStaticJson(page, '**/api/focus/interruptions**', [
+    {
+      id: 1,
+      interrupted_at: '2026-02-23T10:20:00Z',
+      from_app: 'VS Code',
+      from_category: 'Development',
+      to_app: 'Slack',
+      to_category: 'Communication',
+      resumed_at: '2026-02-23T10:24:00Z',
+      resumed_to_app: 'VS Code',
+      duration_secs: 240,
+    },
+  ])
   await mockStaticJson(page, '**/api/focus/suggestions**', [])
+  await mockStaticJson(page, '**/api/automation/status**', fallbackAutomationStatus)
+  await mockStaticJson(page, '**/api/automation/audit**', fallbackAuditLogs)
   await mockStaticJson(page, '**/api/automation/stats**', {
     total_executions: 0,
     successful: 0,
@@ -279,6 +471,7 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
     scene_schema_version: 'ui_scene.v1',
     scene_action_schema_version: 'automation.scene_action.v1',
   })
+  await mockStaticJson(page, '**/api/automation/presets', fallbackAutomationPresets)
   await mockStaticJson(page, '**/api/automation/scene**', {
     schema_version: 'ui_scene.v1',
     scene_id: 'scene-e2e',

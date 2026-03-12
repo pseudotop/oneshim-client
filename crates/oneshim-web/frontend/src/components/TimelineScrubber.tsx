@@ -99,6 +99,7 @@ export default function TimelineScrubber({
           {/* UI note */}
           <button
             type="button"
+            data-testid="replay-start"
             onClick={onSkipToStart}
             className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-hover"
             title={t('replay.skipToStart', '처음으로')}
@@ -109,6 +110,7 @@ export default function TimelineScrubber({
           {/* UI note */}
           <button
             type="button"
+            data-testid="replay-play"
             onClick={onPlayPause}
             className="rounded-lg bg-teal-500 p-2 text-white transition-colors hover:bg-teal-600"
             title={isPlaying ? t('replay.pause', '일시정지') : t('replay.play', '재생')}
@@ -119,6 +121,7 @@ export default function TimelineScrubber({
           {/* UI note */}
           <button
             type="button"
+            data-testid="replay-end"
             onClick={onSkipToEnd}
             className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-hover"
             title={t('replay.skipToEnd', '끝으로')}
@@ -134,13 +137,14 @@ export default function TimelineScrubber({
         <div className="flex items-center space-x-2">
           <span className="text-content-secondary text-xs">{t('replay.speed', '재생 속도')}:</span>
           <Select
+            data-testid="replay-speed"
             value={playbackSpeed}
             selectSize="sm"
             onChange={(e) => onSpeedChange(Number(e.target.value))}
             className="w-auto"
           >
             {PLAYBACK_SPEEDS.map((speed) => (
-              <option key={speed} value={speed}>
+              <option key={speed} value={speed} data-testid={`replay-speed-${speed}x`}>
                 {speed}x
               </option>
             ))}

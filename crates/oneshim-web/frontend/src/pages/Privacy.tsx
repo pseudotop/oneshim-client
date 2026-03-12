@@ -376,6 +376,7 @@ export default function Privacy() {
         </div>
 
         <Button
+          data-testid="delete-range"
           variant="warning"
           onClick={() => setShowDeleteRangeModal(true)}
           disabled={!fromDate || !toDate}
@@ -389,7 +390,7 @@ export default function Privacy() {
       <Card id="section-consent" variant="danger" padding="lg">
         <CardTitle className="mb-2 text-accent-red">{t('privacy.deleteAllTitle')}</CardTitle>
         <p className="mb-4 text-content-secondary text-sm">{t('privacy.deleteAllDesc')}</p>
-        <Button variant="danger" onClick={() => setShowDeleteAllModal(true)} isLoading={deleteAllMutation.isPending}>
+        <Button data-testid="delete-all" variant="danger" onClick={() => setShowDeleteAllModal(true)} isLoading={deleteAllMutation.isPending}>
           {deleteAllMutation.isPending ? t('privacy.deleting') : t('privacy.deleteAllButton')}
         </Button>
       </Card>
@@ -503,7 +504,7 @@ export default function Privacy() {
 
         {/* UI note */}
         <div className="flex flex-wrap gap-3">
-          <Button variant="primary" onClick={handleBackup} isLoading={backupMutation.isPending}>
+          <Button data-testid="download-backup" variant="primary" onClick={handleBackup} isLoading={backupMutation.isPending}>
             {backupMutation.isPending ? t('backup.creating') : t('backup.download')}
           </Button>
 

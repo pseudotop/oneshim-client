@@ -10,6 +10,7 @@ on:
         type: string
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TERM_COLOR: always
 
 permissions:
@@ -33,9 +34,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: macos-windowserver-gui-smoke
+          key: macos-windowserver-gui-smoke
 
       - name: Build release binary
         run: ./scripts/cargo-cache.sh build --release -p oneshim-app

@@ -50,7 +50,9 @@ cd "${ROOT_DIR}"
 "$CARGO_CMD" test -p oneshim-core update_integrity_policy
 "$CARGO_CMD" test -p oneshim-app integrity_guard
 "$CARGO_CMD" test -p oneshim-app verify_signature_
-"$CARGO_CMD" audit
+# RUSTSEC-2024-0429 is a GTK3/glib transitive advisory from the Linux Tauri stack.
+# We cannot remediate it without an upstream stack migration, so keep it explicit.
+"$CARGO_CMD" audit --ignore RUSTSEC-2024-0429
 "$CARGO_CMD" deny check licenses advisories sources bans
 if [[ "$VET_MODE" == "strict" ]]; then
   "$CARGO_CMD" vet check

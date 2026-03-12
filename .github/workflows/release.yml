@@ -16,6 +16,7 @@ on:
         type: string
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TERM_COLOR: always
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
   RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
@@ -35,13 +36,11 @@ jobs:
       release_version: ${{ steps.release.outputs.release_version }}
       release_kind: ${{ steps.release.outputs.release_kind }}
       base_version: ${{ steps.release.outputs.base_version }}
-    env:
-      TAG_REF: ${{ env.RELEASE_TAG }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ env.RELEASE_SHA }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || github.sha }}
 
       - name: Classify release version
         id: release
@@ -49,8 +48,8 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-common.sh
-          TAG_VERSION="${TAG_REF#v}"
-          echo "release_tag=${TAG_REF}" >> "$GITHUB_OUTPUT"
+          TAG_VERSION="${RELEASE_TAG#v}"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
           echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
           echo "release_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           if is_rc_version "${TAG_VERSION}"; then
@@ -60,21 +59,36 @@ jobs:
             echo "release_kind=stable" >> "$GITHUB_OUTPUT"
             echo "base_version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::Unsupported tag format: ${TAG_REF}. Use vX.Y.Z-rc.N or vX.Y.Z"
+            echo "::error::Unsupported tag format: ${RELEASE_TAG}. Use vX.Y.Z-rc.N or vX.Y.Z"
             exit 1
           fi
 
-      - name: Verify tag points at origin/main HEAD
+      - name: Verify release tag matches the requested commit
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main --depth=1
-          MAIN_SHA="$(git rev-parse origin/main)"
-          echo "Tag commit:  ${RELEASE_SHA}"
-          echo "main commit: ${MAIN_SHA}"
-          if [ "${RELEASE_SHA}" != "${MAIN_SHA}" ]; then
-            echo "::error::Release tags must point to origin/main HEAD"
+          git fetch origin main --tags --depth=1
+          if ! TAG_COMMIT="$(git rev-parse "${RELEASE_TAG}^{commit}" 2>/dev/null)"; then
+            echo "::error::Release tag ${RELEASE_TAG} does not exist in the fetched repository state"
             exit 1
+          fi
+
+          echo "Tag commit:     ${TAG_COMMIT}"
+          echo "Requested SHA:  ${RELEASE_SHA}"
+          if [ "${TAG_COMMIT}" != "${RELEASE_SHA}" ]; then
+            echo "::error::Release SHA must match the commit pointed to by ${RELEASE_TAG}"
+            exit 1
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            MAIN_SHA="$(git rev-parse origin/main)"
+            echo "main commit:    ${MAIN_SHA}"
+            if [ "${RELEASE_SHA}" != "${MAIN_SHA}" ]; then
+              echo "::error::Release tags must point to origin/main HEAD when first pushed"
+              exit 1
+            fi
+          else
+            echo "workflow_dispatch rerun detected; skipping origin/main HEAD check"
           fi
 
       - name: Verify Cargo.toml version matches tag
@@ -82,12 +96,12 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-common.sh
-          TAG_VERSION="${TAG_REF#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
           CARGO_VERSION="$(workspace_version)"
           echo "Tag version:   $TAG_VERSION"
           echo "Cargo version: $CARGO_VERSION"
           if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
-            echo "::error::Version mismatch! Tag ${TAG_REF} but Cargo.toml has $CARGO_VERSION"
+            echo "::error::Version mismatch! Tag ${RELEASE_TAG} but Cargo.toml has $CARGO_VERSION"
             echo "Fix: Update [workspace.package] version in Cargo.toml to \"$TAG_VERSION\""
             exit 1
           fi
@@ -97,12 +111,12 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-common.sh
-          TAG_VERSION="${TAG_REF#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
           PKG_VERSION="$(frontend_version)"
           echo "Tag version:      $TAG_VERSION"
           echo "package version:  $PKG_VERSION"
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Version mismatch! Tag ${TAG_REF} but frontend package.json has $PKG_VERSION"
+            echo "::error::Version mismatch! Tag ${RELEASE_TAG} but frontend package.json has $PKG_VERSION"
             exit 1
           fi
 
@@ -111,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           source ./scripts/release-common.sh
-          TAG_VERSION="${TAG_REF#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
           if ! changelog_has_entry "${TAG_VERSION}"; then
             echo "::error::CHANGELOG.md missing entry for [$TAG_VERSION]"
             echo "Fix: Add ## [$TAG_VERSION] - $(date +%Y-%m-%d) section to CHANGELOG.md"
@@ -168,13 +182,15 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}")"
+          export RELEASE_JSON
 
-          python3 - "${RC_TAG}" <<'PY' <<<"${RELEASE_JSON}"
+          python3 - "${RC_TAG}" <<'PY'
           import json
+          import os
           import sys
 
           tag = sys.argv[1]
-          release = json.load(sys.stdin)
+          release = json.loads(os.environ["RELEASE_JSON"])
           assets = len(release.get("assets", []))
 
           if release.get("draft"):
@@ -211,18 +227,17 @@ jobs:
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-          run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '22'
-          cache: pnpm
-          cache-dependency-path: crates/oneshim-web/frontend/pnpm-lock.yaml
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          version: '10'
+          lockfile-path: crates/oneshim-web/frontend/pnpm-lock.yaml
 
       - name: Install frontend dependencies
         working-directory: crates/oneshim-web/frontend
@@ -247,7 +262,7 @@ jobs:
 
   build-release:
     name: Build Release (${{ matrix.target }})
-    needs: build-frontend-assets
+    needs: [verify-version, build-frontend-assets]
     strategy:
       fail-fast: false
       matrix:
@@ -274,9 +289,16 @@ jobs:
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Download frontend dist artifact
-        uses: actions/download-artifact@v8
+      - name: Checkout workflow tools
+        uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .workflow-tools
+
+      - name: Download frontend dist artifact
+        uses: ./.workflow-tools/.github/actions/download-artifact
+        with:
+          github-token: ${{ github.token }}
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend
 
@@ -322,7 +344,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
+        with:
+          key: release-build-${{ matrix.target }}
 
       - name: Build release
         shell: bash
@@ -433,15 +457,21 @@ jobs:
           TAG_REF: ${{ needs.verify-version.outputs.release_tag }}
         run: |
           EXPECTED_VERSION="${TAG_REF#v}"
+          if [[ "$EXPECTED_VERSION" == *-* ]]; then
+            EXPECTED_DEB_UPSTREAM="${EXPECTED_VERSION%%-*}~${EXPECTED_VERSION#*-}"
+          else
+            EXPECTED_DEB_UPSTREAM="$EXPECTED_VERSION"
+          fi
           DEB_FILE=$(find target -name "*.deb" -type f | head -1)
           if [ -z "$DEB_FILE" ]; then echo "No DEB file found"; exit 1; fi
           DEB_VERSION=$(dpkg-deb -f "$DEB_FILE" Version)
           echo "DEB file: $(basename $DEB_FILE)"
           echo "DEB version: $DEB_VERSION"
-          echo "Expected: $EXPECTED_VERSION"
+          echo "Expected tag version: $EXPECTED_VERSION"
+          echo "Expected DEB upstream: $EXPECTED_DEB_UPSTREAM"
           DEB_UPSTREAM="${DEB_VERSION%%-*}"
-          if [ "$DEB_UPSTREAM" != "$EXPECTED_VERSION" ]; then
-            echo "::error::DEB version mismatch: got $DEB_VERSION (upstream $DEB_UPSTREAM), expected $EXPECTED_VERSION"
+          if [ "$DEB_UPSTREAM" != "$EXPECTED_DEB_UPSTREAM" ]; then
+            echo "::error::DEB version mismatch: got $DEB_VERSION (upstream $DEB_UPSTREAM), expected upstream $EXPECTED_DEB_UPSTREAM from tag $EXPECTED_VERSION"
             exit 1
           fi
 
@@ -465,7 +495,7 @@ jobs:
 
   build-macos-universal:
     name: Build macOS Universal Binary
-    needs: build-release
+    needs: [verify-version, build-release]
     runs-on: macos-latest
     timeout-minutes: 120
     env:
@@ -481,15 +511,23 @@ jobs:
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Download arm64 artifact
-        uses: actions/download-artifact@v8
+      - name: Checkout workflow tools
+        uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .workflow-tools
+
+      - name: Download arm64 artifact
+        uses: ./.workflow-tools/.github/actions/download-artifact
+        with:
+          github-token: ${{ github.token }}
           name: oneshim-macos-arm64-archive
           path: artifacts/arm64
 
       - name: Download x64 artifact
-        uses: actions/download-artifact@v8
+        uses: ./.workflow-tools/.github/actions/download-artifact
         with:
+          github-token: ${{ github.token }}
           name: oneshim-macos-x64-archive
           path: artifacts/x64
 
@@ -772,7 +810,7 @@ jobs:
 
   release-reliability-smoke:
     name: Release Reliability Smoke (${{ matrix.name }})
-    needs: [build-release, build-macos-universal]
+    needs: [verify-version, build-release, build-macos-universal]
     strategy:
       fail-fast: false
       matrix:
@@ -795,9 +833,16 @@ jobs:
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Download release archive for smoke
-        uses: actions/download-artifact@v8
+      - name: Checkout workflow tools
+        uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .workflow-tools
+
+      - name: Download release archive for smoke
+        uses: ./.workflow-tools/.github/actions/download-artifact
+        with:
+          github-token: ${{ github.token }}
           name: ${{ matrix.artifact_name }}
           path: smoke-assets
 
@@ -809,15 +854,17 @@ jobs:
 
       - name: Download macOS installer artifacts for smoke
         if: matrix.name == 'macos'
-        uses: actions/download-artifact@v8
+        uses: ./.workflow-tools/.github/actions/download-artifact
         with:
+          github-token: ${{ github.token }}
           name: oneshim-macos-universal-dmg
           path: smoke-installers
 
       - name: Download macOS PKG artifact for smoke
         if: matrix.name == 'macos'
-        uses: actions/download-artifact@v8
+        uses: ./.workflow-tools/.github/actions/download-artifact
         with:
+          github-token: ${{ github.token }}
           name: oneshim-macos-universal-pkg
           path: smoke-installers
 
@@ -859,38 +906,40 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: release-reliability-smoke-${{ matrix.name }}
+          key: release-reliability-smoke-${{ matrix.name }}
 
       - name: Run smoke script (macOS/Linux)
         if: runner.os != 'Windows'
         run: |
-          chmod +x ./scripts/release-reliability-smoke.sh
+          chmod +x ./.workflow-tools/scripts/release-reliability-smoke.sh
           export ONESHIM_SMOKE_LOG_DIR="$RUNNER_TEMP/oneshim-release-smoke"
+          export ONESHIM_SMOKE_REPO_ROOT="$GITHUB_WORKSPACE"
           if [[ "${{ matrix.run_updater_tests }}" == "true" ]]; then
-            ./scripts/release-reliability-smoke.sh --assets-dir smoke-assets
+            ./.workflow-tools/scripts/release-reliability-smoke.sh --assets-dir smoke-assets
           else
-            ./scripts/release-reliability-smoke.sh --assets-dir smoke-assets --skip-updater-tests
+            ./.workflow-tools/scripts/release-reliability-smoke.sh --assets-dir smoke-assets --skip-updater-tests
           fi
 
       - name: Run smoke script (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $env:ONESHIM_SMOKE_REPO_ROOT = $env:GITHUB_WORKSPACE
           if ("${{ matrix.run_updater_tests }}" -eq "true") {
-            .\scripts\release-reliability-smoke.ps1 -AssetsDir smoke-assets
+            .\.workflow-tools\scripts\release-reliability-smoke.ps1 -AssetsDir smoke-assets
           } else {
-            .\scripts\release-reliability-smoke.ps1 -AssetsDir smoke-assets -SkipUpdaterTests
+            .\.workflow-tools\scripts\release-reliability-smoke.ps1 -AssetsDir smoke-assets -SkipUpdaterTests
           }
 
       - name: Run macOS installer smoke script
         if: matrix.name == 'macos'
         shell: bash
         run: |
-          chmod +x ./scripts/release-installer-smoke-macos.sh
+          chmod +x ./.workflow-tools/scripts/release-installer-smoke-macos.sh
           ONESHIM_SMOKE_LOG_DIR="$RUNNER_TEMP/oneshim-installer-smoke" \
-            ./scripts/release-installer-smoke-macos.sh --assets-dir smoke-installers
+            ./.workflow-tools/scripts/release-installer-smoke-macos.sh --assets-dir smoke-installers
 
       - name: Upload macOS release smoke logs
         if: failure() && matrix.name == 'macos'
@@ -905,16 +954,23 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [verify-version, build-release, build-macos-universal, release-reliability-smoke]
-    if: always() && needs.build-release.result == 'success' && needs.build-macos-universal.result == 'success'
+    if: needs.build-release.result == 'success' && needs.build-macos-universal.result == 'success' && needs.release-reliability-smoke.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8
+      - name: Checkout workflow tools
+        uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .workflow-tools
+
+      - name: Download all artifacts
+        uses: ./.workflow-tools/.github/actions/download-artifact
+        with:
+          github-token: ${{ github.token }}
           pattern: oneshim-*
           path: dist
           merge-multiple: true
@@ -1076,16 +1132,39 @@ jobs:
           **Full changelog:** [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
           NOTES_EOF
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.verify-version.outputs.release_tag }}
-          target_commitish: ${{ needs.verify-version.outputs.release_sha }}
-          name: ONESHIM Client ${{ steps.version.outputs.version }}
-          body_path: release_notes.md
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
-          files: |
-            dist/*
+      - name: Create or update Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG_NAME: ${{ needs.verify-version.outputs.release_tag }}
+          RELEASE_TARGET_SHA: ${{ needs.verify-version.outputs.release_sha }}
+          RELEASE_NAME: ONESHIM Client ${{ steps.version.outputs.version }}
+          RELEASE_IS_PRERELEASE: ${{ contains(steps.version.outputs.version, '-') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$RELEASE_TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG_NAME} already exists; updating notes and assets"
+            gh release edit "$RELEASE_TAG_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_NAME" \
+              --notes-file release_notes.md
+            gh release upload "$RELEASE_TAG_NAME" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            exit 0
+          fi
+
+          create_args=(
+            "$RELEASE_TAG_NAME"
+            --repo "$GITHUB_REPOSITORY"
+            --target "$RELEASE_TARGET_SHA"
+            --title "$RELEASE_NAME"
+            --notes-file release_notes.md
+          )
+
+          if [[ "$RELEASE_IS_PRERELEASE" == "true" ]]; then
+            create_args+=(--prerelease)
+          fi
+
+          gh release create "${create_args[@]}" dist/*
