@@ -20,6 +20,7 @@ import {
   restoreBackup,
 } from '../api/client'
 import { Button, Card, CardTitle, Input, Spinner } from '../components/ui'
+import { addToast } from '../hooks/useToast'
 import { colors, elevation, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatBytes, formatNumber } from '../utils/formatters'
@@ -70,7 +71,7 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDangerous, onConf
       const dialog = dialogRef.current
       if (!dialog) return
       const focusable = dialog.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       )
       if (focusable.length === 0) return
       const first = focusable[0]
@@ -95,15 +96,12 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDangerous, onConf
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div
-        ref={dialogRef}
-        role="alertdialog"
-        aria-modal="true"
-        aria-describedby={descriptionId}
-      >
+      <div ref={dialogRef} role="alertdialog" aria-modal="true" aria-describedby={descriptionId}>
         <Card variant="default" padding="lg" className={cn('mx-4 w-full max-w-md', elevation.dialog)}>
           <CardTitle className={`mb-2 ${isDangerous ? 'text-red-400' : ''}`}>{title}</CardTitle>
-          <p id={descriptionId} className="mb-6 whitespace-pre-line text-content-secondary">{message}</p>
+          <p id={descriptionId} className="mb-6 whitespace-pre-line text-content-secondary">
+            {message}
+          </p>
           <div className="flex justify-end space-x-3">
             <Button variant="secondary" onClick={onCancel}>
               {t('privacy.cancel')}
@@ -157,6 +155,7 @@ export default function Privacy() {
     mutationFn: deleteDataRange,
     onSuccess: (result) => {
       setDeleteResult(result)
+      addToast('success', result.message)
       queryClient.invalidateQueries({ queryKey: ['storage-stats'] })
       queryClient.invalidateQueries({ queryKey: ['frames'] })
       queryClient.invalidateQueries({ queryKey: ['metrics'] })
@@ -165,14 +164,21 @@ export default function Privacy() {
       setToDate('')
       setSelectedDataTypes([])
     },
+    onError: (error: Error) => {
+      addToast('error', error.message)
+    },
   })
 
   const deleteAllMutation = useMutation({
     mutationFn: deleteAllData,
     onSuccess: (result) => {
       setDeleteResult(result)
+      addToast('success', result.message)
       queryClient.invalidateQueries()
       setShowDeleteAllModal(false)
+    },
+    onError: (error: Error) => {
+      addToast('error', error.message)
     },
   })
 
@@ -181,6 +187,10 @@ export default function Privacy() {
     onSuccess: (blob) => {
       const now = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '_')
       downloadBlob(blob, `oneshim_backup_${now}.json`)
+      addToast('success', t('backup.downloadComplete'))
+    },
+    onError: (error: Error) => {
+      addToast('error', `${t('backup.downloadFailed')}: ${error.message}`)
     },
   })
 
@@ -188,7 +198,14 @@ export default function Privacy() {
     mutationFn: restoreBackup,
     onSuccess: (result) => {
       setRestoreResult(result)
+      addToast(
+        result.success ? 'success' : 'error',
+        result.success ? t('backup.restoreSuccess') : t('backup.restoreFailed'),
+      )
       queryClient.invalidateQueries()
+    },
+    onError: (error: Error) => {
+      addToast('error', `${t('backup.restoreFailed')}: ${error.message}`)
     },
   })
 
@@ -390,7 +407,12 @@ export default function Privacy() {
       <Card id="section-consent" variant="danger" padding="lg">
         <CardTitle className="mb-2 text-accent-red">{t('privacy.deleteAllTitle')}</CardTitle>
         <p className="mb-4 text-content-secondary text-sm">{t('privacy.deleteAllDesc')}</p>
-        <Button data-testid="delete-all" variant="danger" onClick={() => setShowDeleteAllModal(true)} isLoading={deleteAllMutation.isPending}>
+        <Button
+          data-testid="delete-all"
+          variant="danger"
+          onClick={() => setShowDeleteAllModal(true)}
+          isLoading={deleteAllMutation.isPending}
+        >
           {deleteAllMutation.isPending ? t('privacy.deleting') : t('privacy.deleteAllButton')}
         </Button>
       </Card>
@@ -407,11 +429,7 @@ export default function Privacy() {
             className="mb-4 rounded-lg border border-status-error bg-semantic-error/20 p-4 text-semantic-error"
           >
             <div className="font-medium">{restoreError}</div>
-            <button
-              type="button"
-              className="mt-2 text-sm underline"
-              onClick={() => setRestoreError(null)}
-            >
+            <button type="button" className="mt-2 text-sm underline" onClick={() => setRestoreError(null)}>
               {t('common.dismiss', 'Dismiss')}
             </button>
           </div>
@@ -504,7 +522,12 @@ export default function Privacy() {
 
         {/* UI note */}
         <div className="flex flex-wrap gap-3">
-          <Button data-testid="download-backup" variant="primary" onClick={handleBackup} isLoading={backupMutation.isPending}>
+          <Button
+            data-testid="download-backup"
+            variant="primary"
+            onClick={handleBackup}
+            isLoading={backupMutation.isPending}
+          >
             {backupMutation.isPending ? t('backup.creating') : t('backup.download')}
           </Button>
 
@@ -563,10 +586,12 @@ export default function Privacy() {
         message={t('privacy.confirmDeleteRangeMsg', {
           fromDate,
           toDate,
-          dataTypes: selectedDataTypes.length > 0
-            ? selectedDataTypes.map((dt) => DATA_TYPE_LABELS[dt]).join(', ')
-            : t('privacy.allDataTypes', 'All data types'),
-          defaultValue: 'Delete data from {{fromDate}} to {{toDate}}.\n\nTarget: {{dataTypes}}\n\nThis action cannot be undone.',
+          dataTypes:
+            selectedDataTypes.length > 0
+              ? selectedDataTypes.map((dt) => DATA_TYPE_LABELS[dt]).join(', ')
+              : t('privacy.allDataTypes', 'All data types'),
+          defaultValue:
+            'Delete data from {{fromDate}} to {{toDate}}.\n\nTarget: {{dataTypes}}\n\nThis action cannot be undone.',
         })}
         confirmText={t('privacy.deleteRange')}
         isDangerous={false}

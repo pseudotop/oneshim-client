@@ -12,7 +12,7 @@ import DateRangePicker from '../components/DateRangePicker'
 import Lightbox from '../components/Lightbox'
 import { TagBadge } from '../components/TagBadge'
 import { TagInput } from '../components/TagInput'
-import { Badge, Button, Card, CardTitle, EmptyState, Select, Spinner } from '../components/ui'
+import { Badge, Button, Card, CardTitle, EmptyState, Select, Skeleton } from '../components/ui'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { colors, interaction, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
@@ -139,9 +139,21 @@ export default function Timeline() {
   })
 
   if (isLoading) {
+    const skeletonIds = Array.from({ length: 8 }, (_, index) => `timeline-skeleton-${index}`)
+
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Spinner size="lg" className="text-accent-teal" />
+      <div className="min-h-full space-y-6 p-6">
+        <Skeleton className="h-8 w-40" />
+        <div className="flex gap-4">
+          <Skeleton className="h-10 w-40" />
+          <Skeleton className="h-10 w-40" />
+          <Skeleton className="h-10 w-40" />
+        </div>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+          {skeletonIds.map((skeletonId) => (
+            <Skeleton key={skeletonId} className="h-40 rounded-lg" />
+          ))}
+        </div>
       </div>
     )
   }
