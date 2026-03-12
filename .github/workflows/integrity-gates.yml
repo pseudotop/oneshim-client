@@ -47,9 +47,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: integrity-gates
+          key: integrity-gates
 
       - name: Install tooling
         run: |
