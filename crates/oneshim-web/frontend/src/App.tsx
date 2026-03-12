@@ -7,6 +7,7 @@ import { Spinner } from './components/ui'
 import { useCommandPalette } from './hooks/useCommandPalette'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useShellLayout } from './hooks/useShellLayout'
+import { useTauriEventBridge } from './hooks/useTauriEventBridge'
 import { layout } from './styles/tokens'
 import { cn } from './utils/cn'
 
@@ -43,6 +44,7 @@ function App() {
   )
 
   useKeyboardShortcuts(shortcutHandlers)
+  useTauriEventBridge()
 
   return (
     <div className="app-shell bg-surface-sunken text-content">
