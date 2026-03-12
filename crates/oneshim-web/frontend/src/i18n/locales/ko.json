@@ -620,6 +620,7 @@
     "interruptionList": "중단 이벤트",
     "active": "활성",
     "completed": "완료",
+    "remaining": "남음",
     "suggestions": {
       "needFocusTime": "{minutes}분 집중 시간이 필요합니다",
       "takeBreak": "{minutes}분 연속 작업 후 휴식을 권장합니다",

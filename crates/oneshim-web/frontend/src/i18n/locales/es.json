@@ -620,6 +620,7 @@
     "interruptionList": "Eventos de interrupción",
     "active": "Activa",
     "completed": "Completada",
+    "remaining": "restantes",
     "suggestions": {
       "needFocusTime": "Necesita {minutes} minutos de tiempo de concentración",
       "takeBreak": "Considere tomar un descanso después de {minutes} minutos de trabajo continuo",

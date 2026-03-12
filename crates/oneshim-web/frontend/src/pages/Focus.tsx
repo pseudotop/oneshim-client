@@ -16,10 +16,9 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { fetchFocusMetrics, fetchInterruptions, fetchWorkSessions } from '../api/client'
 import DateRangePicker from '../components/DateRangePicker'
 import StatCard from '../components/StatCard'
-import { EmptyState } from '../components/ui'
+import { ChartSkeleton, EmptyState, ListSkeleton, Skeleton, StatCardsSkeleton } from '../components/ui'
 import { Badge } from '../components/ui/Badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
-import { Spinner } from '../components/ui/Spinner'
 import { useTheme } from '../contexts/ThemeContext'
 import { colors, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
@@ -81,9 +80,11 @@ export default function Focus() {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
     to: new Date(),
   })
+  const [sessionLimit, setSessionLimit] = useState(10)
+  const [interruptionLimit, setInterruptionLimit] = useState(10)
 
   const {
     data: metrics,
@@ -106,8 +107,17 @@ export default function Focus() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Spinner size="lg" />
+      <div className="min-h-full space-y-6 p-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-10 w-64" />
+        </div>
+        <StatCardsSkeleton count={4} />
+        <ChartSkeleton />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ListSkeleton rows={5} />
+          <ListSkeleton rows={5} />
+        </div>
       </div>
     )
   }
@@ -254,7 +264,7 @@ export default function Focus() {
           <CardContent>
             {sessions.length > 0 ? (
               <div className="max-h-80 space-y-3 overflow-y-auto">
-                {sessions.slice(0, 10).map((session) => (
+                {sessions.slice(0, sessionLimit).map((session) => (
                   <div key={session.id} className="flex items-center justify-between rounded-lg bg-surface-inset p-3">
                     <div className="flex items-center gap-3">
                       <div
@@ -273,6 +283,14 @@ export default function Focus() {
                     </div>
                   </div>
                 ))}
+                {sessions.length > sessionLimit && (
+                  <button
+                    onClick={() => setSessionLimit((l) => l + 10)}
+                    className="mt-2 w-full rounded-lg py-2 text-sm font-medium text-content-secondary hover:bg-surface-muted transition-colors"
+                  >
+                    {t('common.more')} ({sessions.length - sessionLimit} {t('focus.remaining')})
+                  </button>
+                )}
               </div>
             ) : (
               <p className="py-8 text-center text-content-tertiary">{t('common.noData')}</p>
@@ -291,7 +309,7 @@ export default function Focus() {
           <CardContent>
             {interruptions.length > 0 ? (
               <div className="max-h-80 space-y-3 overflow-y-auto">
-                {interruptions.slice(0, 10).map((int) => (
+                {interruptions.slice(0, interruptionLimit).map((int) => (
                   <div key={int.id} className="flex items-center justify-between rounded-lg bg-surface-inset p-3">
                     <div className="flex items-center gap-2 text-sm">
                       <span className="max-w-[80px] truncate font-medium text-content">{int.from_app}</span>
@@ -311,6 +329,14 @@ export default function Focus() {
                     </div>
                   </div>
                 ))}
+                {interruptions.length > interruptionLimit && (
+                  <button
+                    onClick={() => setInterruptionLimit((l) => l + 10)}
+                    className="mt-2 w-full rounded-lg py-2 text-sm font-medium text-content-secondary hover:bg-surface-muted transition-colors"
+                  >
+                    {t('common.more')} ({interruptions.length - interruptionLimit} {t('focus.remaining')})
+                  </button>
+                )}
               </div>
             ) : (
               <p className="py-8 text-center text-content-tertiary">{t('common.noData')}</p>

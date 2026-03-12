@@ -620,6 +620,7 @@
     "interruptionList": "中断事件",
     "active": "进行中",
     "completed": "已完成",
+    "remaining": "剩余",
     "suggestions": {
       "needFocusTime": "您需要 {minutes} 分钟的专注时间",
       "takeBreak": "连续工作 {minutes} 分钟后建议休息一下",

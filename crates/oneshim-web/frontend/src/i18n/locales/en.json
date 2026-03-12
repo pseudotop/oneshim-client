@@ -620,6 +620,7 @@
     "interruptionList": "Interruption Events",
     "active": "Active",
     "completed": "Completed",
+    "remaining": "remaining",
     "suggestions": {
       "needFocusTime": "You need {minutes} minutes of focus time",
       "takeBreak": "Consider taking a break after {minutes} minutes of continuous work",
