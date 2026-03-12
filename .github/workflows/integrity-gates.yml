@@ -3,12 +3,12 @@ name: Integrity Gates
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  workflow_dispatch:
   schedule:
     - cron: '0 3 * * 2'
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -47,9 +47,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: integrity-gates
+          key: integrity-gates
 
       - name: Install tooling
         run: |
@@ -62,14 +62,7 @@ jobs:
       - name: Create frontend dist stub for Tauri generate_context!()
         run: mkdir -p crates/oneshim-web/frontend/dist && echo '<html></html>' > crates/oneshim-web/frontend/dist/index.html
 
-      - name: Run integrity verification script (blocking)
-        if: github.event_name != 'pull_request'
-        run: ./scripts/verify-integrity.sh
-
-      - name: Run integrity verification script (PR advisory vet)
-        if: github.event_name == 'pull_request'
-        env:
-          INTEGRITY_VET_MODE: advisory
+      - name: Run integrity verification script
         run: ./scripts/verify-integrity.sh
 
       - name: Run key rotation rehearsal script

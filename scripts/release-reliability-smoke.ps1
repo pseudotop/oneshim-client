@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$AssetsDir = $(if ($env:ONESHIM_SMOKE_ASSETS_DIR) { $env:ONESHIM_SMOKE_ASSETS_DIR } else { "dist" }),
-    [string]$InstallScript = $(if ($env:ONESHIM_INSTALL_SCRIPT) { $env:ONESHIM_INSTALL_SCRIPT } else { "scripts/install.ps1" }),
+    [string]$InstallScript = "",
     [string]$AssetName = $(if ($env:ONESHIM_SMOKE_ASSET_NAME) { $env:ONESHIM_SMOKE_ASSET_NAME } else { "oneshim-windows-x64.zip" }),
     [string]$InstallDir = $(if ($env:ONESHIM_SMOKE_INSTALL_DIR) { $env:ONESHIM_SMOKE_INSTALL_DIR } else { "" }),
     [string]$ListenHost = $(if ($env:ONESHIM_SMOKE_HOST) { $env:ONESHIM_SMOKE_HOST } else { "127.0.0.1" }),
@@ -10,7 +10,19 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$repoRoot = if ($env:ONESHIM_SMOKE_REPO_ROOT) {
+    Resolve-Path $env:ONESHIM_SMOKE_REPO_ROOT
+} else {
+    Resolve-Path (Join-Path $PSScriptRoot "..")
+}
+
+if ([string]::IsNullOrWhiteSpace($InstallScript)) {
+    if ($env:ONESHIM_INSTALL_SCRIPT) {
+        $InstallScript = $env:ONESHIM_INSTALL_SCRIPT
+    } else {
+        $InstallScript = Join-Path $repoRoot "scripts/install.ps1"
+    }
+}
 
 function Write-Info {
     param([string]$Message)

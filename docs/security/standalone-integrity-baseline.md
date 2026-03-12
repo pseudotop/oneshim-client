@@ -34,9 +34,14 @@ The goal is to keep the standalone trust model strict today, while making future
 
 - RustSec scan: `cargo audit`
 - Dependency policy: `cargo deny check licenses advisories sources bans`
-- Vet policy: `cargo vet check` (advisory on PR workflows, blocking on push/schedule workflows)
+- Vet policy: `cargo vet check` (blocking on post-merge, scheduled, and manually dispatched integrity workflows)
 - SBOM: `cargo cyclonedx --workspace`
 - Provenance attestation: GitHub artifact attestation on release artifacts
+
+Documented exception:
+
+- `RUSTSEC-2024-0429` (`glib 0.18.5`) is currently accepted only because it is a Linux-only GTK3 / `webkit2gtk` / `wry` / Tauri transitive dependency outside direct project control.
+- This exception must remain explicit in repository policy (`deny.toml`, integrity workflow/script) and must be removed once the upstream stack ships patched `glib` / `gtk-rs-core`.
 
 ### 3) Runtime Boundary Rules
 

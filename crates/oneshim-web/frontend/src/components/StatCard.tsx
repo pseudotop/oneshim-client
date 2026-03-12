@@ -12,11 +12,12 @@ export interface StatCardProps {
   value: string
   icon: ReactNode
   color: keyof typeof statColorMap
+  'data-testid'?: string
 }
 
-export default function StatCard({ title, value, icon, color }: StatCardProps) {
+export default function StatCard({ title, value, icon, color, 'data-testid': testId }: StatCardProps) {
   return (
-    <Card variant="default" padding="md">
+    <Card variant="default" padding="md" data-testid={testId}>
       <div className="flex items-center space-x-3">
         <div className={cn('p-2', radius.md, statColorMap[color])}>{icon}</div>
         <div>
