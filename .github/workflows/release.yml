@@ -231,13 +231,13 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
-          cache: pnpm
-          cache-dependency-path: crates/oneshim-web/frontend/pnpm-lock.yaml
+          package-manager-cache: false
 
       - name: Setup pnpm
         uses: ./.github/actions/setup-pnpm
         with:
           version: '10'
+          lockfile-path: crates/oneshim-web/frontend/pnpm-lock.yaml
 
       - name: Install frontend dependencies
         working-directory: crates/oneshim-web/frontend
