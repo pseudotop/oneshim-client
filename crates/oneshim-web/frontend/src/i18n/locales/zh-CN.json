@@ -460,6 +460,7 @@
     "creating": "正在创建备份...",
     "restoring": "恢复中...",
     "downloadFailed": "备份下载失败",
+    "downloadComplete": "备份下载完成",
     "restoreSuccess": "恢复已完成",
     "restoreFailed": "恢复失败",
     "settingsRestored": "设置已恢复",

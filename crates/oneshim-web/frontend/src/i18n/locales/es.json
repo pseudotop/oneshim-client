@@ -460,6 +460,7 @@
     "creating": "Creando copia de seguridad...",
     "restoring": "Restaurando...",
     "downloadFailed": "Error en la descarga de la copia de seguridad",
+    "downloadComplete": "Copia de seguridad descargada correctamente",
     "restoreSuccess": "Restauración completada correctamente",
     "restoreFailed": "Error en la restauración",
     "settingsRestored": "Configuración restaurada",
