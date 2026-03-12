@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7-rc.3] - 2026-03-12
+
+### Fixed
+
+- Make macOS installer smoke detect the actual PKG install root
+  - Accept installs under either `/Applications` or `~/Applications`
+  - Back up and restore a preexisting app bundle from whichever location was active on the runner
+
 ## [0.3.7-rc.2] - 2026-03-12
 
 ### Fixed
@@ -976,4 +984,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Accept Debian revision suffix in DEB version check
   cargo-deb appends Debian revision (-1) to upstream version,
   producing 0.1.0-1 instead of 0.1.0. Strip revision before comparing.
-
