@@ -1,6 +1,6 @@
 {
   "name": "oneshim-dashboard",
-  "version": "0.3.7-rc.4",
+  "version": "0.3.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
