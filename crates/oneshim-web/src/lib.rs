@@ -38,9 +38,10 @@ use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::{broadcast, oneshot, watch};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
@@ -70,6 +71,8 @@ pub struct AppState {
 pub struct WebServer {
     config: WebConfig,
     state: AppState,
+    bound_port_state: Option<Arc<AtomicU16>>,
+    bound_port_notifier: Option<oneshot::Sender<u16>>,
 }
 
 impl WebServer {
@@ -87,6 +90,8 @@ impl WebServer {
                 ai_runtime_status: None,
                 update_control: None,
             },
+            bound_port_state: None,
+            bound_port_notifier: None,
         }
     }
 
@@ -129,6 +134,16 @@ impl WebServer {
         self
     }
 
+    pub fn with_bound_port_state(mut self, bound_port_state: Arc<AtomicU16>) -> Self {
+        self.bound_port_state = Some(bound_port_state);
+        self
+    }
+
+    pub fn with_bound_port_notifier(mut self, bound_port_notifier: oneshot::Sender<u16>) -> Self {
+        self.bound_port_notifier = Some(bound_port_notifier);
+        self
+    }
+
     /// TCP 바인딩 없이 Router만 반환 — Tauri 커스텀 프로토콜 등에서 사용
     pub fn build_router(state: AppState) -> Router {
         use axum::http::HeaderValue;
@@ -161,15 +176,22 @@ impl WebServer {
     }
 
     pub async fn run(self, mut shutdown_rx: watch::Receiver<bool>) -> Result<(), std::io::Error> {
-        let host = if self.config.allow_external {
+        let Self {
+            config,
+            state,
+            bound_port_state,
+            mut bound_port_notifier,
+        } = self;
+
+        let host = if config.allow_external {
             "0.0.0.0"
         } else {
             "127.0.0.1"
         };
 
-        let app = Self::build_router(self.state);
+        let app = Self::build_router(state);
 
-        let base_port = self.config.port;
+        let base_port = config.port;
         let mut last_error = None;
 
         for attempt in 0..MAX_PORT_ATTEMPTS {
@@ -191,6 +213,12 @@ impl WebServer {
                 Ok(listener) => {
                     if attempt > 0 {
                         warn!("port {} not-available, port {}", base_port, port);
+                    }
+                    if let Some(shared_port) = &bound_port_state {
+                        shared_port.store(port, Ordering::Relaxed);
+                    }
+                    if let Some(port_tx) = bound_port_notifier.take() {
+                        let _ = port_tx.send(port);
                     }
                     info!("server started: http://{}", addr);
 
@@ -235,7 +263,12 @@ impl WebServer {
     }
 
     pub fn url(&self) -> String {
-        format!("http://localhost:{}", self.config.port)
+        let port = self
+            .bound_port_state
+            .as_ref()
+            .map(|shared_port| shared_port.load(Ordering::Relaxed))
+            .unwrap_or(self.config.port);
+        format!("http://localhost:{port}")
     }
 }
 
@@ -260,6 +293,51 @@ mod tests {
             oneshim_core::config::DEFAULT_WEB_PORT
         );
         assert_eq!(server.url(), expected);
+    }
+
+    #[test]
+    fn web_server_url_prefers_bound_port_state() {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let bound_port_state = Arc::new(AtomicU16::new(11091));
+        let server =
+            WebServer::new(storage, WebConfig::default()).with_bound_port_state(bound_port_state);
+
+        assert_eq!(server.url(), "http://localhost:11091");
+    }
+
+    #[tokio::test]
+    async fn web_server_fallback_updates_bound_port_state() {
+        let reserved_listener =
+            TcpListener::bind(("127.0.0.1", oneshim_core::config::DEFAULT_WEB_PORT))
+                .await
+                .unwrap();
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let config = WebConfig::default();
+        let bound_port_state = Arc::new(AtomicU16::new(config.port));
+        let (bound_port_tx, bound_port_rx) = oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let server = WebServer::new(storage, config)
+            .with_bound_port_state(bound_port_state.clone())
+            .with_bound_port_notifier(bound_port_tx);
+
+        let server_handle = tokio::spawn(async move { server.run(shutdown_rx).await });
+
+        let fallback_port = tokio::time::timeout(std::time::Duration::from_secs(3), bound_port_rx)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_ne!(fallback_port, oneshim_core::config::DEFAULT_WEB_PORT);
+        assert_eq!(bound_port_state.load(Ordering::Relaxed), fallback_port);
+
+        let _ = shutdown_tx.send(true);
+        let server_result = tokio::time::timeout(std::time::Duration::from_secs(3), server_handle)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(server_result.is_ok());
+        drop(reserved_listener);
     }
 
     #[test]

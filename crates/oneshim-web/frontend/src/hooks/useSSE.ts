@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isStandaloneModeEnabled } from '../api/standalone'
-import { SSE_STREAM_URL } from '../utils/api-base'
+import { resolveApiUrl } from '../utils/api-base'
 
 export interface MetricsUpdate {
   timestamp: string
@@ -47,7 +47,6 @@ interface UseSSEResult {
   disconnect: () => void
 }
 
-const SSE_URL = SSE_STREAM_URL
 const MAX_HISTORY_SIZE = 60 // 60items data ( 5min)
 /**
  *
@@ -64,6 +63,7 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
   const eventSourceRef = useRef<EventSource | null>(null)
   const retryCountRef = useRef(0)
   const reconnectTimeoutRef = useRef<number | null>(null)
+  const connectTokenRef = useRef(0)
 
   const handleEvent = useCallback((event: MessageEvent) => {
     try {
@@ -96,20 +96,35 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
   const handleEventRef = useRef(handleEvent)
   handleEventRef.current = handleEvent
 
-  const connect = useCallback(() => {
+  const connectInternal = useCallback(async () => {
     if (eventSourceRef.current?.readyState === EventSource.OPEN) {
       return
     }
+
+    const connectToken = ++connectTokenRef.current
 
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
     }
 
     setStatus('connecting')
-    const eventSource = new EventSource(SSE_URL)
+    const streamUrl = await resolveApiUrl('/api/stream')
+    if (connectToken !== connectTokenRef.current) {
+      return
+    }
+
+    const eventSource = new EventSource(streamUrl)
+    if (connectToken !== connectTokenRef.current) {
+      eventSource.close()
+      return
+    }
     eventSourceRef.current = eventSource
 
     eventSource.onopen = () => {
+      if (connectToken !== connectTokenRef.current) {
+        eventSource.close()
+        return
+      }
       setStatus('connected')
       retryCountRef.current = 0
     }
@@ -121,13 +136,20 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
     eventSource.addEventListener('ping', handler)
 
     eventSource.onerror = () => {
+      if (connectToken !== connectTokenRef.current) {
+        eventSource.close()
+        return
+      }
       setStatus('error')
       eventSource.close()
+      if (eventSourceRef.current === eventSource) {
+        eventSourceRef.current = null
+      }
 
       if (autoReconnect && retryCountRef.current < maxRetries) {
         retryCountRef.current++
         reconnectTimeoutRef.current = window.setTimeout(() => {
-          connect()
+          void connectInternal()
         }, reconnectDelay)
       } else {
         setStatus('disconnected')
@@ -135,7 +157,13 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
     }
   }, [autoReconnect, reconnectDelay, maxRetries])
 
+  const connect = useCallback(() => {
+    void connectInternal()
+  }, [connectInternal])
+
   const disconnect = useCallback(() => {
+    connectTokenRef.current += 1
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null

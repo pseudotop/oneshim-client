@@ -53,19 +53,21 @@ import type {
   WorkflowPreset,
   WorkSession,
 } from './contracts'
-import { API_BASE_URL } from '../utils/api-base'
+import { resolveApiUrl } from '../utils/api-base'
 import { handleStandaloneRequest, isStandaloneModeEnabled } from './standalone'
 
 export type * from './contracts'
 
-const BASE_URL = API_BASE_URL
+const BASE_URL = '/api'
 
 const DEFAULT_TIMEOUT_MS = 10_000
 const MAX_RETRIES = 2
 
 async function fetchWithRetry(url: string, options?: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+  const resolvedUrl = await resolveApiUrl(url)
+
   if (isStandaloneModeEnabled()) {
-    const standaloneResponse = await handleStandaloneRequest(url, options)
+    const standaloneResponse = await handleStandaloneRequest(resolvedUrl, options)
     if (standaloneResponse) {
       return standaloneResponse
     }
@@ -75,7 +77,7 @@ async function fetchWithRetry(url: string, options?: RequestInit, retries = MAX_
   const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(resolvedUrl, {
       ...options,
       signal: controller.signal,
     })
@@ -84,7 +86,7 @@ async function fetchWithRetry(url: string, options?: RequestInit, retries = MAX_
         await new Promise((r) => setTimeout(r, 1000 * (MAX_RETRIES - retries + 1)))
         return fetchWithRetry(url, options, retries - 1)
       }
-      const standaloneResponse = await handleStandaloneRequest(url, options, true)
+      const standaloneResponse = await handleStandaloneRequest(resolvedUrl, options, true)
       if (standaloneResponse) {
         return standaloneResponse
       }
@@ -95,7 +97,7 @@ async function fetchWithRetry(url: string, options?: RequestInit, retries = MAX_
       await new Promise((r) => setTimeout(r, 1000 * (MAX_RETRIES - retries + 1)))
       return fetchWithRetry(url, options, retries - 1)
     }
-    const standaloneResponse = await handleStandaloneRequest(url, options, true)
+    const standaloneResponse = await handleStandaloneRequest(resolvedUrl, options, true)
     if (standaloneResponse) {
       return standaloneResponse
     }
