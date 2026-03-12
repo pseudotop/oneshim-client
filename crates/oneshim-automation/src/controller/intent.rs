@@ -5,7 +5,9 @@ use std::time::Instant;
 use async_trait::async_trait;
 use tokio::sync::broadcast;
 
-use crate::controller::gate::{GUI_SESSION_POLICY_TOKEN, INTENT_HINT_POLICY_TOKEN};
+use crate::controller::gate::{
+    CommandExecutionGate, GUI_SESSION_POLICY_TOKEN, INTENT_HINT_POLICY_TOKEN,
+};
 use crate::gui_interaction::{
     GuiConfirmRequest, GuiCreateSessionRequest, GuiCreateSessionResponse, GuiExecutionRequest,
     GuiHighlightRequest, GuiInteractionError,
@@ -61,11 +63,12 @@ impl GatedInputDriver {
 
     async fn dispatch_action(&self, action: AutomationAction) -> Result<(), CoreError> {
         let command = self.build_command(action);
+        let effective_timeout_ms = self.gate.effective_timeout_ms(&command).await;
         match self.gate.execute(&command).await? {
             CommandResult::Success => Ok(()),
             CommandResult::Failed(message) => Err(CoreError::Internal(message)),
             CommandResult::Timeout => Err(CoreError::ExecutionTimeout {
-                timeout_ms: command.timeout_ms.unwrap_or_default(),
+                timeout_ms: effective_timeout_ms.unwrap_or_default(),
             }),
             CommandResult::Denied => Err(CoreError::PolicyDenied(
                 "Intent action denied by policy".to_string(),
@@ -129,7 +132,12 @@ impl AutomationController {
         cmd: &IntentCommand,
     ) -> Result<crate::intent_resolver::IntentExecutor, CoreError> {
         let template = self.require_intent_executor()?;
-        let intent_config = cmd.config.clone().unwrap_or_default();
+        if !CommandExecutionGate::uses_internal_policy_token(&cmd.policy_token) {
+            // Intent-scoped external policy tokens do not have a stable low-level action scope,
+            // so retain the template executor until intent-native policy tokens exist.
+            return Ok(template.with_overrides(None, cmd.config.clone()));
+        }
+
         let input_driver: Arc<dyn InputDriver> = Arc::new(GatedInputDriver::new(
             self.command_execution_gate(),
             cmd.command_id.clone(),
@@ -137,7 +145,7 @@ impl AutomationController {
             cmd.policy_token.clone(),
             cmd.timeout_ms,
         ));
-        Ok(template.with_input_driver(input_driver, intent_config))
+        Ok(template.with_overrides(Some(input_driver), cmd.config.clone()))
     }
 
     pub async fn execute_intent(&self, cmd: &IntentCommand) -> Result<IntentResult, CoreError> {

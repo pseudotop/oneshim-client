@@ -39,7 +39,7 @@ impl CommandExecutionGate {
         }
     }
 
-    fn uses_internal_policy_token(policy_token: &str) -> bool {
+    pub(super) fn uses_internal_policy_token(policy_token: &str) -> bool {
         matches!(
             policy_token,
             GUI_SESSION_POLICY_TOKEN
@@ -74,6 +74,15 @@ impl CommandExecutionGate {
                 (config, AuditLevel::Basic)
             }
         }
+    }
+
+    pub(super) async fn effective_timeout_ms(&self, cmd: &AutomationCommand) -> Option<u64> {
+        let (resolved_config, _) = self.resolve_for_command(cmd).await;
+        cmd.timeout_ms.or(if resolved_config.max_cpu_time_ms > 0 {
+            Some(resolved_config.max_cpu_time_ms)
+        } else {
+            None
+        })
     }
 
     pub(super) async fn execute(

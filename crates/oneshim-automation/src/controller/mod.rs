@@ -166,11 +166,13 @@ mod tests {
     use crate::policy::{AuditLevel, ExecutionPolicy};
     use crate::sandbox::NoOpSandbox;
     use oneshim_core::models::intent::{
-        AutomationIntent, IntentConfig, PresetCategory, WorkflowPreset, WorkflowStep,
+        AutomationIntent, FinderSource, IntentConfig, PresetCategory, UiElement, WorkflowPreset,
+        WorkflowStep,
     };
     use oneshim_core::models::ui_scene::{
         NormalizedBounds, UiScene, UiSceneElement, UI_SCENE_SCHEMA_VERSION,
     };
+    use oneshim_core::ports::sandbox::SandboxCapabilities;
 
     fn make_controller() -> AutomationController {
         let policy_client = Arc::new(PolicyClient::new());
@@ -276,6 +278,69 @@ mod tests {
 
         fn name(&self) -> &str {
             "stub-scene"
+        }
+    }
+
+    struct MatchingElementFinder;
+
+    #[async_trait::async_trait]
+    impl ElementFinder for MatchingElementFinder {
+        async fn find_element(
+            &self,
+            text: Option<&str>,
+            role: Option<&str>,
+            _region: Option<&oneshim_core::models::intent::ElementBounds>,
+        ) -> Result<Vec<UiElement>, CoreError> {
+            Ok(vec![UiElement {
+                text: text.unwrap_or("matched").to_string(),
+                bounds: oneshim_core::models::intent::ElementBounds {
+                    x: 40,
+                    y: 60,
+                    width: 120,
+                    height: 30,
+                },
+                role: role.map(str::to_string),
+                confidence: 0.95,
+                source: FinderSource::Accessibility,
+            }])
+        }
+
+        fn name(&self) -> &str {
+            "matching"
+        }
+    }
+
+    struct SlowSandbox {
+        delay_ms: u64,
+    }
+
+    #[async_trait::async_trait]
+    impl Sandbox for SlowSandbox {
+        fn platform(&self) -> &str {
+            "slow"
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn execute_sandboxed(
+            &self,
+            _action: &AutomationAction,
+            _config: &SandboxConfig,
+        ) -> Result<(), CoreError> {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+            Ok(())
+        }
+
+        fn capabilities(&self) -> SandboxCapabilities {
+            SandboxCapabilities {
+                filesystem_isolation: false,
+                syscall_filtering: false,
+                network_isolation: false,
+                resource_limits: true,
+                process_isolation: false,
+            }
         }
     }
 
@@ -616,6 +681,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_intent_with_external_policy_token_preserves_multi_action_execution() {
+        use crate::input_driver::NoOpInputDriver;
+        use crate::intent_resolver::{IntentExecutor, IntentResolver};
+
+        let policy = make_policy(AuditLevel::Basic, 5000);
+        let (mut controller, policy_client, _) = make_controller_with_policy(policy.clone());
+        controller.set_enabled(true);
+        policy_client.update_policies(vec![policy]).await;
+
+        let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
+            Arc::new(NoOpInputDriver);
+        let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
+            Arc::new(MatchingElementFinder);
+        let resolver = IntentResolver::new(element_finder, input_driver, IntentConfig::default());
+        controller.set_intent_executor(Arc::new(IntentExecutor::new(
+            resolver,
+            IntentConfig::default(),
+        )));
+
+        let cmd = oneshim_core::models::intent::IntentCommand {
+            command_id: "intent-external".to_string(),
+            session_id: "sess-1".to_string(),
+            intent: AutomationIntent::TypeIntoElement {
+                element_text: Some("Search".to_string()),
+                role: Some("textbox".to_string()),
+                text: "hello".to_string(),
+            },
+            config: None,
+            timeout_ms: None,
+            policy_token: "test-pol:nonce_external_01".to_string(),
+        };
+
+        let result = controller.execute_intent(&cmd).await.unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
     async fn execute_intent_hint_requires_planner() {
         use crate::input_driver::{NoOpElementFinder, NoOpInputDriver};
         use crate::intent_resolver::{IntentExecutor, IntentResolver};
@@ -676,6 +778,42 @@ mod tests {
             AutomationIntent::ExecuteHotkey { .. }
         ));
         assert!(result.result.success);
+    }
+
+    #[tokio::test]
+    async fn execute_intent_hint_preserves_template_executor_config() {
+        use crate::input_driver::{NoOpElementFinder, NoOpInputDriver};
+        use crate::intent_resolver::{IntentExecutor, IntentResolver};
+
+        let mut controller = make_controller();
+        controller.set_enabled(true);
+        controller.set_intent_planner(Arc::new(StubPlanner {
+            planned: AutomationIntent::ClickElement {
+                text: Some("Save".to_string()),
+                role: Some("button".to_string()),
+                app_name: None,
+                button: "left".to_string(),
+            },
+        }));
+
+        let template_config = IntentConfig {
+            max_retries: 0,
+            ..IntentConfig::default()
+        };
+        let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
+            Arc::new(NoOpInputDriver);
+        let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
+            Arc::new(NoOpElementFinder);
+        let resolver = IntentResolver::new(element_finder, input_driver, template_config.clone());
+        controller.set_intent_executor(Arc::new(IntentExecutor::new(resolver, template_config)));
+
+        let result = controller
+            .execute_intent_hint("hint-config", "sess-1", "save button")
+            .await
+            .unwrap();
+
+        assert!(!result.result.success);
+        assert_eq!(result.result.retry_count, 0);
     }
 
     #[tokio::test]
@@ -798,6 +936,103 @@ mod tests {
         assert_eq!(result.step_results.len(), 3);
         assert!(result.step_results.iter().all(|s| s.success));
         assert!(result.total_elapsed_ms >= 20); // includes delay
+    }
+
+    #[tokio::test]
+    async fn run_workflow_preserves_template_executor_config() {
+        use crate::input_driver::NoOpInputDriver;
+        use crate::intent_resolver::{IntentExecutor, IntentResolver};
+
+        let mut controller = make_controller();
+        controller.set_enabled(true);
+
+        let template_config = IntentConfig {
+            min_confidence: 0.99,
+            ..IntentConfig::default()
+        };
+        let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
+            Arc::new(NoOpInputDriver);
+        let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
+            Arc::new(MatchingElementFinder);
+        let resolver = IntentResolver::new(element_finder, input_driver, template_config.clone());
+        controller.set_intent_executor(Arc::new(IntentExecutor::new(resolver, template_config)));
+
+        let preset = WorkflowPreset {
+            id: "retry-preserve".to_string(),
+            name: "Retry Preserve".to_string(),
+            description: String::new(),
+            category: PresetCategory::Productivity,
+            steps: vec![WorkflowStep {
+                name: "Missing Save Button".to_string(),
+                intent: AutomationIntent::ClickElement {
+                    text: Some("Save".to_string()),
+                    role: Some("button".to_string()),
+                    app_name: None,
+                    button: "left".to_string(),
+                },
+                delay_ms: 0,
+                stop_on_failure: true,
+            }],
+            builtin: false,
+            platform: None,
+        };
+
+        let result = controller.run_workflow(&preset).await.unwrap();
+        assert!(!result.success);
+        assert_eq!(result.steps_executed, 1);
+        assert!(result.step_results[0]
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("99%")));
+    }
+
+    #[tokio::test]
+    async fn execute_intent_internal_timeout_reports_effective_limit() {
+        use super::gate::SCENE_ACTION_POLICY_TOKEN;
+        use crate::input_driver::{NoOpElementFinder, NoOpInputDriver};
+        use crate::intent_resolver::{IntentExecutor, IntentResolver};
+
+        let policy_client = Arc::new(PolicyClient::new());
+        let audit_logger = Arc::new(RwLock::new(AuditLogger::new(100, 10)));
+        let sandbox: Arc<dyn Sandbox> = Arc::new(SlowSandbox { delay_ms: 25 });
+        let sandbox_config = SandboxConfig {
+            max_cpu_time_ms: 10,
+            ..SandboxConfig::default()
+        };
+        let mut controller =
+            AutomationController::new(policy_client, audit_logger, sandbox, sandbox_config);
+        controller.set_enabled(true);
+
+        let input_driver: Arc<dyn oneshim_core::ports::input_driver::InputDriver> =
+            Arc::new(NoOpInputDriver);
+        let element_finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder> =
+            Arc::new(NoOpElementFinder);
+        let resolver = IntentResolver::new(element_finder, input_driver, IntentConfig::default());
+        controller.set_intent_executor(Arc::new(IntentExecutor::new(
+            resolver,
+            IntentConfig::default(),
+        )));
+
+        let cmd = oneshim_core::models::intent::IntentCommand {
+            command_id: "intent-timeout".to_string(),
+            session_id: "sess-1".to_string(),
+            intent: AutomationIntent::ExecuteHotkey {
+                keys: vec!["Ctrl".to_string(), "S".to_string()],
+            },
+            config: Some(IntentConfig {
+                max_retries: 0,
+                ..IntentConfig::default()
+            }),
+            timeout_ms: None,
+            policy_token: SCENE_ACTION_POLICY_TOKEN.to_string(),
+        };
+
+        let result = controller.execute_intent(&cmd).await.unwrap();
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Execution timeout exceeded: 10ms")
+        );
     }
 
     #[tokio::test]
