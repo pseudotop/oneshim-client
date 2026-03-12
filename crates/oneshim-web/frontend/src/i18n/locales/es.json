@@ -127,6 +127,13 @@
   },
   "settings": {
     "title": "Configuración",
+    "tabs": {
+      "general": "General",
+      "privacy": "Privacidad",
+      "monitoring": "Monitoreo",
+      "aiAutomation": "IA y Automatización",
+      "dataStorage": "Datos y Almacenamiento"
+    },
     "dataCollection": "Recopilación de datos",
     "enableCapture": "Habilitar captura de pantalla",
     "idleThreshold": "Umbral de detección de inactividad (min)",

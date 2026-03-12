@@ -127,6 +127,13 @@
   },
   "settings": {
     "title": "設定",
+    "tabs": {
+      "general": "一般",
+      "privacy": "プライバシー",
+      "monitoring": "モニタリング",
+      "aiAutomation": "AI & 自動化",
+      "dataStorage": "データ & ストレージ"
+    },
     "dataCollection": "データ収集",
     "enableCapture": "スクリーンショットキャプチャを有効化",
     "idleThreshold": "アイドル検出しきい値 (分)",
