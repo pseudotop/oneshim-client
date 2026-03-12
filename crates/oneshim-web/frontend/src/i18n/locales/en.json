@@ -465,6 +465,7 @@
     "creating": "Creating backup...",
     "restoring": "Restoring...",
     "downloadFailed": "Backup download failed",
+    "downloadComplete": "Backup downloaded successfully",
     "restoreSuccess": "Restore completed successfully",
     "restoreFailed": "Restore failed",
     "settingsRestored": "Settings restored",

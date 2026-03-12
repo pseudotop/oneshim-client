@@ -16,11 +16,10 @@ import {
   runPreset,
   type WorkflowPreset,
 } from '../api/client'
-import { EmptyState, Select } from '../components/ui'
+import { EmptyState, ListSkeleton, Select, Skeleton, StatCardsSkeleton } from '../components/ui'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
-import { Spinner } from '../components/ui/Spinner'
 import { colors, interaction, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -187,8 +186,11 @@ function Automation() {
 
   if (statusLoading) {
     return (
-      <div className="flex justify-center py-12">
-        <Spinner size="lg" />
+      <div className="min-h-full space-y-6 p-6">
+        <Skeleton className="h-8 w-48" />
+        <StatCardsSkeleton count={3} />
+        <Skeleton className="h-10 w-full" />
+        <ListSkeleton rows={5} />
       </div>
     )
   }
@@ -447,7 +449,12 @@ function Automation() {
                       {t('automation.run')}
                     </Button>
                     {!preset.builtin && (
-                      <Button data-testid={`delete-preset-${preset.id}`} variant="danger" size="sm" onClick={() => deletePresetMutation.mutate(preset.id)}>
+                      <Button
+                        data-testid={`delete-preset-${preset.id}`}
+                        variant="danger"
+                        size="sm"
+                        onClick={() => deletePresetMutation.mutate(preset.id)}
+                      >
                         {t('common.delete')}
                       </Button>
                     )}

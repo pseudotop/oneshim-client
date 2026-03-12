@@ -465,6 +465,7 @@
     "creating": "バックアップ作成中...",
     "restoring": "復元中...",
     "downloadFailed": "バックアップのダウンロードに失敗しました",
+    "downloadComplete": "バックアップのダウンロードが完了しました",
     "restoreSuccess": "復元が完了しました",
     "restoreFailed": "復元に失敗しました",
     "settingsRestored": "設定を復元しました",

@@ -465,6 +465,7 @@
     "creating": "백업 생성 중...",
     "restoring": "복원 중...",
     "downloadFailed": "백업 다운로드 실패",
+    "downloadComplete": "백업이 다운로드되었습니다",
     "restoreSuccess": "복원이 완료되었습니다",
     "restoreFailed": "복원 실패",
     "settingsRestored": "설정이 복원되었습니다",
