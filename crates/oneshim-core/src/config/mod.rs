@@ -48,6 +48,9 @@ pub struct AppConfig {
     /// 아웃바운드 TLS 설정 — 기본값: 활성화
     #[serde(default)]
     pub tls: TlsConfig,
+    /// UI 테마 설정 — "light" | "dark" | "system" (기본값: "system")
+    #[serde(default)]
+    pub theme: Option<String>,
 }
 
 // AppConfig impl
@@ -94,6 +97,7 @@ impl AppConfig {
             automation: AutomationConfig::default(),
             ai_provider: AiProviderConfig::default(),
             tls: TlsConfig::default(),
+            theme: None,
         }
     }
 

@@ -212,3 +212,22 @@ pub async fn get_automation_status(state: tauri::State<'_, AppState>) -> Result<
 pub async fn get_web_port(state: tauri::State<'_, AppState>) -> Result<u16, String> {
     Ok(state.config.web.port)
 }
+
+/// GET current theme preference from config.
+#[command]
+pub async fn get_theme(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let config = state.config_manager.get();
+    Ok(config.theme.clone().unwrap_or_else(|| "system".to_string()))
+}
+
+/// SET theme preference and persist to config file.
+#[command]
+pub async fn set_theme(state: tauri::State<'_, AppState>, theme: String) -> Result<(), String> {
+    state
+        .config_manager
+        .update_with(|c| {
+            c.theme = Some(theme);
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
