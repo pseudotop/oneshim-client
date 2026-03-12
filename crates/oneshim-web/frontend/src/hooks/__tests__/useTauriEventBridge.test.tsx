@@ -6,17 +6,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 type EventCallback = (event: { payload?: unknown }) => void
 
-async function renderBridgeHarness() {
+type RenderBridgeHarnessOptions = {
+  expectedListenCalls?: number
+  listenImpl?: (eventName: string, callback: EventCallback) => Promise<() => void>
+}
+
+async function renderBridgeHarness({ expectedListenCalls = 4, listenImpl }: RenderBridgeHarnessOptions = {}) {
   const listeners = new Map<string, EventCallback>()
   const unlistenCallbacks: Array<ReturnType<typeof vi.fn>> = []
-  const listen = vi.fn(async (eventName: string, callback: EventCallback) => {
+  const defaultListenImpl = async (eventName: string, callback: EventCallback) => {
     listeners.set(eventName, callback)
     const unlisten = vi.fn(() => {
       listeners.delete(eventName)
     })
     unlistenCallbacks.push(unlisten)
     return unlisten
-  })
+  }
+  const listen = vi.fn(listenImpl ?? defaultListenImpl)
 
   vi.doMock('../../utils/platform', () => ({
     IS_TAURI: true,
@@ -49,7 +55,7 @@ async function renderBridgeHarness() {
   }
 
   const rendered = render(<LocationProbe />, { wrapper })
-  await waitFor(() => expect(listen).toHaveBeenCalledTimes(4))
+  await waitFor(() => expect(listen).toHaveBeenCalledTimes(expectedListenCalls))
 
   return {
     ...rendered,
@@ -90,7 +96,7 @@ describe('useTauriEventBridge', () => {
       listeners.get('tray-toggle-automation')?.({})
     })
 
-    expect(screen.getByTestId('path')).toHaveTextContent('/automation')
+    expect(screen.getByTestId('path')).toHaveTextContent('/settings')
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['automationStatus'] })
 
     act(() => {
@@ -106,5 +112,34 @@ describe('useTauriEventBridge', () => {
 
     expect(screen.getByTestId('path')).toHaveTextContent('/updates')
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['update-status'] })
+  })
+
+  it('cleans up earlier listeners when a later registration fails', async () => {
+    let callCount = 0
+    const listenerMap = new Map<string, EventCallback>()
+    const unlistenCallbacks: Array<ReturnType<typeof vi.fn>> = []
+
+    await renderBridgeHarness({
+      expectedListenCalls: 3,
+      listenImpl: async (eventName, callback) => {
+        callCount += 1
+        if (callCount === 3) {
+          throw new Error('listen failed')
+        }
+
+        listenerMap.set(eventName, callback)
+        const unlisten = vi.fn(() => {
+          listenerMap.delete(eventName)
+        })
+        unlistenCallbacks.push(unlisten)
+        return unlisten
+      },
+    })
+
+    await waitFor(() => expect(unlistenCallbacks).toHaveLength(2))
+    expect(listenerMap.size).toBe(0)
+    unlistenCallbacks.forEach((unlisten) => {
+      expect(unlisten).toHaveBeenCalledTimes(1)
+    })
   })
 })

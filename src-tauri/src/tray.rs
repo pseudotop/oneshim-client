@@ -18,7 +18,8 @@ fn focus_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
 pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let show = MenuItem::with_id(app, "show", "Toggle Window", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let automation = MenuItem::with_id(app, "automation", "Toggle Automation", true, None::<&str>)?;
+    let automation =
+        MenuItem::with_id(app, "automation", "Automation Settings", true, None::<&str>)?;
     let approve = MenuItem::with_id(app, "approve_update", "Apply Update", true, None::<&str>)?;
     let defer = MenuItem::with_id(app, "defer_update", "Defer Update", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

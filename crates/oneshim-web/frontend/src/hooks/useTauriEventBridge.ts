@@ -47,35 +47,65 @@ export function useTauriEventBridge() {
     }
 
     const registerListeners = async () => {
+      let pendingUnlistenCallbacks: Array<() => void> = []
+
       try {
         const { listen } = await import('@tauri-apps/api/event')
-        const listeners = await Promise.all([
-          listen('navigate', (event: TauriEventPayload) => {
+
+        const registerListener = async (
+          eventName: string,
+          handler: (event: TauriEventPayload) => void,
+        ): Promise<boolean> => {
+          const unlisten = await listen(eventName, handler)
+          if (disposed) {
+            unlisten()
+            return false
+          }
+          pendingUnlistenCallbacks.push(unlisten)
+          return true
+        }
+
+        if (
+          !(await registerListener('navigate', (event: TauriEventPayload) => {
             if (isRoutePath(event.payload)) {
               navigateTo(event.payload)
             }
-          }),
-          listen('tray-toggle-automation', () => {
-            refreshAutomationStatus()
-            navigateTo('/automation')
-          }),
-          listen('tray-approve-update', () => {
-            refreshUpdateStatus()
-            navigateTo('/updates')
-          }),
-          listen('tray-defer-update', () => {
-            refreshUpdateStatus()
-            navigateTo('/updates')
-          }),
-        ])
-
-        if (disposed) {
-          listeners.forEach((unlisten) => unlisten())
+          }))
+        ) {
           return
         }
 
-        unlistenCallbacks = listeners
+        if (
+          !(await registerListener('tray-toggle-automation', () => {
+            refreshAutomationStatus()
+            navigateTo('/settings')
+          }))
+        ) {
+          return
+        }
+
+        if (
+          !(await registerListener('tray-approve-update', () => {
+            refreshUpdateStatus()
+            navigateTo('/updates')
+          }))
+        ) {
+          return
+        }
+
+        if (
+          !(await registerListener('tray-defer-update', () => {
+            refreshUpdateStatus()
+            navigateTo('/updates')
+          }))
+        ) {
+          return
+        }
+
+        unlistenCallbacks = pendingUnlistenCallbacks
       } catch {
+        pendingUnlistenCallbacks.forEach((unlisten) => unlisten())
+        pendingUnlistenCallbacks = []
         // Browser mode or unavailable Tauri event bridge.
       }
     }
