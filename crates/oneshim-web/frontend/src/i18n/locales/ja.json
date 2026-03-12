@@ -132,7 +132,9 @@
     "selectColor": "色を選択",
     "removeTag": "{{name}} タグを削除",
     "copyOcr": "コピー",
-    "ocrCopied": "OCRテキストがコピーされました！"
+    "ocrCopied": "OCRテキストがコピーされました！",
+    "tagAdded": "タグが追加されました",
+    "tagRemoved": "タグが削除されました"
   },
   "settings": {
     "title": "設定",
@@ -476,6 +478,7 @@
     "creating": "バックアップ作成中...",
     "restoring": "復元中...",
     "downloadFailed": "バックアップのダウンロードに失敗しました",
+    "downloadComplete": "バックアップがダウンロードされました",
     "restoreSuccess": "復元が完了しました",
     "restoreFailed": "復元に失敗しました",
     "settingsRestored": "設定を復元しました",

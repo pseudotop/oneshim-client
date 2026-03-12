@@ -132,7 +132,9 @@
     "selectColor": "색상 선택",
     "removeTag": "{{name}} 태그 삭제",
     "copyOcr": "복사",
-    "ocrCopied": "OCR 텍스트가 복사되었습니다!"
+    "ocrCopied": "OCR 텍스트가 복사되었습니다!",
+    "tagAdded": "태그가 추가되었습니다",
+    "tagRemoved": "태그가 제거되었습니다"
   },
   "settings": {
     "title": "설정",
@@ -476,6 +478,7 @@
     "creating": "백업 생성 중...",
     "restoring": "복원 중...",
     "downloadFailed": "백업 다운로드 실패",
+    "downloadComplete": "백업이 다운로드되었습니다",
     "restoreSuccess": "복원이 완료되었습니다",
     "restoreFailed": "복원 실패",
     "settingsRestored": "설정이 복원되었습니다",

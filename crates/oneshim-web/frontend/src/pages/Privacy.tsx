@@ -20,6 +20,7 @@ import {
   restoreBackup,
 } from '../api/client'
 import { Button, Card, CardTitle, Input, Spinner } from '../components/ui'
+import { addToast } from '../hooks/useToast'
 import { colors, elevation, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatBytes, formatNumber } from '../utils/formatters'
@@ -157,6 +158,7 @@ export default function Privacy() {
     mutationFn: deleteDataRange,
     onSuccess: (result) => {
       setDeleteResult(result)
+      addToast('success', result.message)
       queryClient.invalidateQueries({ queryKey: ['storage-stats'] })
       queryClient.invalidateQueries({ queryKey: ['frames'] })
       queryClient.invalidateQueries({ queryKey: ['metrics'] })
@@ -165,14 +167,21 @@ export default function Privacy() {
       setToDate('')
       setSelectedDataTypes([])
     },
+    onError: (error: Error) => {
+      addToast('error', error.message)
+    },
   })
 
   const deleteAllMutation = useMutation({
     mutationFn: deleteAllData,
     onSuccess: (result) => {
       setDeleteResult(result)
+      addToast('success', result.message)
       queryClient.invalidateQueries()
       setShowDeleteAllModal(false)
+    },
+    onError: (error: Error) => {
+      addToast('error', error.message)
     },
   })
 
@@ -181,6 +190,10 @@ export default function Privacy() {
     onSuccess: (blob) => {
       const now = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '_')
       downloadBlob(blob, `oneshim_backup_${now}.json`)
+      addToast('success', t('backup.downloadComplete'))
+    },
+    onError: (error: Error) => {
+      addToast('error', `${t('backup.downloadFailed')}: ${error.message}`)
     },
   })
 
@@ -188,7 +201,11 @@ export default function Privacy() {
     mutationFn: restoreBackup,
     onSuccess: (result) => {
       setRestoreResult(result)
+      addToast(result.success ? 'success' : 'error', result.success ? t('backup.restoreSuccess') : t('backup.restoreFailed'))
       queryClient.invalidateQueries()
+    },
+    onError: (error: Error) => {
+      addToast('error', `${t('backup.restoreFailed')}: ${error.message}`)
     },
   })
 

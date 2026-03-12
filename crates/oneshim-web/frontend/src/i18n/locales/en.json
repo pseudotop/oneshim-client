@@ -132,7 +132,9 @@
     "selectColor": "Select color",
     "removeTag": "Remove {{name}} tag",
     "copyOcr": "Copy",
-    "ocrCopied": "OCR text copied!"
+    "ocrCopied": "OCR text copied!",
+    "tagAdded": "Tag added",
+    "tagRemoved": "Tag removed"
   },
   "settings": {
     "title": "Settings",
@@ -476,6 +478,7 @@
     "creating": "Creating backup...",
     "restoring": "Restoring...",
     "downloadFailed": "Backup download failed",
+    "downloadComplete": "Backup downloaded successfully",
     "restoreSuccess": "Restore completed successfully",
     "restoreFailed": "Restore failed",
     "settingsRestored": "Settings restored",

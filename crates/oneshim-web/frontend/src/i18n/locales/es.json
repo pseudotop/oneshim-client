@@ -132,7 +132,9 @@
     "selectColor": "Seleccionar color",
     "removeTag": "Eliminar etiqueta {{name}}",
     "copyOcr": "Copiar",
-    "ocrCopied": "¡Texto OCR copiado!"
+    "ocrCopied": "¡Texto OCR copiado!",
+    "tagAdded": "Etiqueta agregada",
+    "tagRemoved": "Etiqueta eliminada"
   },
   "settings": {
     "title": "Configuración",
@@ -476,6 +478,7 @@
     "creating": "Creando copia de seguridad...",
     "restoring": "Restaurando...",
     "downloadFailed": "Error en la descarga de la copia de seguridad",
+    "downloadComplete": "Copia de seguridad descargada correctamente",
     "restoreSuccess": "Restauración completada correctamente",
     "restoreFailed": "Error en la restauración",
     "settingsRestored": "Configuración restaurada",

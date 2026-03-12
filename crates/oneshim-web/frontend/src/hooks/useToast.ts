@@ -31,7 +31,7 @@ function emitChange(): void {
 
 let nextId = 0
 
-function addToast(type: Toast['type'], message: string, duration = 4000): string {
+export function addToast(type: Toast['type'], message: string, duration = 4000): string {
   const id = `toast-${Date.now()}-${nextId++}`
   const toast: Toast = { id, type, message, duration }
   toasts = [...toasts, toast]

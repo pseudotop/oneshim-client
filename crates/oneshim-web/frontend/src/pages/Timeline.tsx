@@ -64,6 +64,7 @@ export default function Timeline() {
     mutationFn: ({ frameId, tagId }: { frameId: number; tagId: number }) => addTagToFrame(frameId, tagId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frame-tags', selectedFrame?.id] })
+      toast.show('success', t('timeline.tagAdded'))
     },
   })
 
@@ -71,6 +72,7 @@ export default function Timeline() {
     mutationFn: ({ frameId, tagId }: { frameId: number; tagId: number }) => removeTagFromFrame(frameId, tagId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['frame-tags', selectedFrame?.id] })
+      toast.show('info', t('timeline.tagRemoved'))
     },
   })
 
