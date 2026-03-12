@@ -130,7 +130,9 @@
     "creating": "创建中...",
     "noSearchResults": "未找到结果",
     "selectColor": "选择颜色",
-    "removeTag": "移除 {{name}} 标签"
+    "removeTag": "移除 {{name}} 标签",
+    "copyOcr": "复制",
+    "ocrCopied": "OCR文本已复制！"
   },
   "settings": {
     "title": "设置",

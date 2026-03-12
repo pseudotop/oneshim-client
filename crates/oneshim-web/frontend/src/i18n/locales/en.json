@@ -130,7 +130,9 @@
     "creating": "Creating...",
     "noSearchResults": "No results found",
     "selectColor": "Select color",
-    "removeTag": "Remove {{name}} tag"
+    "removeTag": "Remove {{name}} tag",
+    "copyOcr": "Copy",
+    "ocrCopied": "OCR text copied!"
   },
   "settings": {
     "title": "Settings",

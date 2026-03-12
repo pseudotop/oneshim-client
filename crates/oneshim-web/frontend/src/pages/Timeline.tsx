@@ -3,7 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera } from 'lucide-react'
+import { Camera, Copy } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -14,6 +14,7 @@ import { TagBadge } from '../components/TagBadge'
 import { TagInput } from '../components/TagInput'
 import { Badge, Button, Card, CardTitle, EmptyState, Select, Spinner } from '../components/ui'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { useToast } from '../hooks/useToast'
 import { colors, interaction, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDate, formatTime } from '../utils/formatters'
@@ -31,6 +32,7 @@ export default function Timeline() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const toast = useToast()
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number>(-1)
   const [page, setPage] = useState(0)
@@ -525,10 +527,22 @@ export default function Timeline() {
               {/* UI note */}
               {selectedFrame.ocr_text && (
                 <div>
-                  <h4 className="mb-2 font-medium text-content-secondary text-sm">{t('timeline.ocrText')}</h4>
-                  <div className="max-h-32 overflow-y-auto rounded bg-surface-muted p-3 font-mono text-content-strong text-sm">
-                    {selectedFrame.ocr_text}
+                  <div className="flex items-center justify-between mb-1">
+                    <h4 className="font-semibold text-sm text-content">{t('timeline.ocrText')}</h4>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedFrame.ocr_text!)
+                        toast.show('success', t('timeline.ocrCopied'))
+                      }}
+                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-content-secondary hover:bg-surface-muted transition-colors"
+                    >
+                      <Copy className="h-3 w-3" />
+                      {t('timeline.copyOcr')}
+                    </button>
                   </div>
+                  <pre className="max-h-48 overflow-y-auto rounded bg-surface-muted p-3 font-mono text-xs select-all whitespace-pre-wrap break-words">
+                    {selectedFrame.ocr_text}
+                  </pre>
                 </div>
               )}
 

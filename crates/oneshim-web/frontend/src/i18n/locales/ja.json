@@ -130,7 +130,9 @@
     "creating": "作成中...",
     "noSearchResults": "結果が見つかりません",
     "selectColor": "色を選択",
-    "removeTag": "{{name}} タグを削除"
+    "removeTag": "{{name}} タグを削除",
+    "copyOcr": "コピー",
+    "ocrCopied": "OCRテキストがコピーされました！"
   },
   "settings": {
     "title": "設定",
