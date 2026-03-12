@@ -604,7 +604,8 @@
     "weeklyTrend": "週間トレンド",
     "sessions": "作業セッション",
     "interruptionList": "中断イベント",
-    "remainingCount": "残り{{count}}件",
+    "loadMoreRemaining_one": "もっと見る (残り{{count}}件)",
+    "loadMoreRemaining_other": "もっと見る (残り{{count}}件)",
     "active": "アクティブ",
     "completed": "完了",
     "suggestions": {

@@ -604,7 +604,8 @@
     "weeklyTrend": "Tendencia semanal",
     "sessions": "Sesiones de trabajo",
     "interruptionList": "Eventos de interrupción",
-    "remainingCount": "{{count}} restantes",
+    "loadMoreRemaining_one": "Más ({{count}} restante)",
+    "loadMoreRemaining_other": "Más ({{count}} restantes)",
     "active": "Activa",
     "completed": "Completada",
     "suggestions": {

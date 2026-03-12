@@ -292,7 +292,7 @@ export default function Focus() {
                     onClick={() => setSessionLimit((limit) => limit + 10)}
                     className="mt-2 w-full rounded-lg py-2 font-medium text-content-secondary text-sm transition-colors hover:bg-surface-muted"
                   >
-                    {t('common.more')} ({t('focus.remainingCount', { count: sessions.length - sessionLimit })})
+                    {t('focus.loadMoreRemaining', { count: sessions.length - sessionLimit })}
                   </button>
                 )}
               </div>
@@ -339,8 +339,7 @@ export default function Focus() {
                     onClick={() => setInterruptionLimit((limit) => limit + 10)}
                     className="mt-2 w-full rounded-lg py-2 font-medium text-content-secondary text-sm transition-colors hover:bg-surface-muted"
                   >
-                    {t('common.more')} ({t('focus.remainingCount', { count: interruptions.length - interruptionLimit })}
-                    )
+                    {t('focus.loadMoreRemaining', { count: interruptions.length - interruptionLimit })}
                   </button>
                 )}
               </div>
