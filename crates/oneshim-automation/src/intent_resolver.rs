@@ -178,6 +178,19 @@ impl IntentExecutor {
         Self { resolver, config }
     }
 
+    pub fn with_input_driver(
+        &self,
+        input_driver: Arc<dyn InputDriver>,
+        config: IntentConfig,
+    ) -> Self {
+        let resolver = IntentResolver::new(
+            self.resolver.element_finder.clone(),
+            input_driver,
+            config.clone(),
+        );
+        Self::new(resolver, config)
+    }
+
     pub async fn execute(&self, intent: &AutomationIntent) -> Result<IntentResult, CoreError> {
         let start = Instant::now();
         let mut retry_count = 0u32;

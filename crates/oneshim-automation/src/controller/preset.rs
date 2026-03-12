@@ -1,10 +1,11 @@
 use std::time::Instant;
 
+use crate::controller::gate::WORKFLOW_STEP_POLICY_TOKEN;
 use crate::policy::AuditLevel;
-use crate::resolver;
+#[cfg(test)]
 use oneshim_core::config::SandboxConfig;
 use oneshim_core::error::CoreError;
-use oneshim_core::models::intent::WorkflowPreset;
+use oneshim_core::models::intent::{IntentCommand, WorkflowPreset};
 
 use super::types::{AutomationCommand, CommandResult, WorkflowResult, WorkflowStepResult};
 use super::AutomationController;
@@ -12,7 +13,6 @@ use super::AutomationController;
 impl AutomationController {
     pub async fn run_workflow(&self, preset: &WorkflowPreset) -> Result<WorkflowResult, CoreError> {
         self.ensure_enabled()?;
-        let executor = self.require_intent_executor()?;
 
         let total_steps = preset.steps.len();
         let mut step_results = Vec::with_capacity(total_steps);
@@ -31,6 +31,16 @@ impl AutomationController {
             }
 
             let step_cmd_id = format!("{}:step-{}", preset.id, idx);
+            let intent_command = IntentCommand {
+                command_id: step_cmd_id.clone(),
+                session_id: preset.id.clone(),
+                intent: step.intent.clone(),
+                config: None,
+                timeout_ms: None,
+                policy_token: WORKFLOW_STEP_POLICY_TOKEN.to_string(),
+            };
+            let executor = self.scoped_intent_executor(&intent_command)?;
+
             {
                 let mut logger = self.audit_logger.write().await;
                 logger.log_start_if(
@@ -42,7 +52,7 @@ impl AutomationController {
             }
 
             let step_start = Instant::now();
-            let result = executor.execute(&step.intent).await;
+            let result = executor.execute(&intent_command.intent).await;
             let step_elapsed = step_start.elapsed().as_millis() as u64;
 
             match result {
@@ -154,24 +164,12 @@ impl AutomationController {
         })
     }
 
+    #[cfg(test)]
     pub(super) async fn resolve_for_command(
         &self,
         cmd: &AutomationCommand,
     ) -> (SandboxConfig, AuditLevel) {
-        match self
-            .policy_client
-            .get_policy_for_token(&cmd.policy_token)
-            .await
-        {
-            Some(policy) => {
-                let config = resolver::resolve_sandbox_config(&policy, &self.base_sandbox_config);
-                (config, policy.audit_level)
-            }
-            None => {
-                let config = resolver::default_strict_config(&self.base_sandbox_config);
-                (config, AuditLevel::Basic)
-            }
-        }
+        self.command_execution_gate().resolve_for_command(cmd).await
     }
 
     pub async fn execute_command(
@@ -179,72 +177,6 @@ impl AutomationController {
         cmd: &AutomationCommand,
     ) -> Result<CommandResult, CoreError> {
         self.ensure_enabled()?;
-
-        if !self.policy_client.validate_command(cmd).await? {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_denied(
-                &cmd.command_id,
-                &cmd.session_id,
-                &format!("{:?}", cmd.action),
-            );
-            return Ok(CommandResult::Denied);
-        }
-
-        let (resolved_config, audit_level) = self.resolve_for_command(cmd).await;
-
-        {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_start_if(
-                audit_level,
-                &cmd.command_id,
-                &cmd.session_id,
-                &format!("{:?}", cmd.action),
-            );
-        }
-
-        let timeout_ms = cmd.timeout_ms.or(if resolved_config.max_cpu_time_ms > 0 {
-            Some(resolved_config.max_cpu_time_ms)
-        } else {
-            None
-        });
-
-        let start = Instant::now();
-
-        let result = if let Some(timeout) = timeout_ms {
-            let duration = std::time::Duration::from_millis(timeout);
-            match tokio::time::timeout(
-                duration,
-                self.action_dispatcher
-                    .dispatch(&cmd.action, &resolved_config),
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(_elapsed) => {
-                    let mut logger = self.audit_logger.write().await;
-                    logger.log_timeout(&cmd.command_id, &cmd.session_id, timeout);
-                    return Ok(CommandResult::Timeout);
-                }
-            }
-        } else {
-            self.action_dispatcher
-                .dispatch(&cmd.action, &resolved_config)
-                .await
-        };
-
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-
-        {
-            let mut logger = self.audit_logger.write().await;
-            logger.log_complete_with_time(
-                audit_level,
-                &cmd.command_id,
-                &cmd.session_id,
-                &format!("{:?}", result),
-                elapsed_ms,
-            );
-        }
-
-        Ok(result)
+        self.command_execution_gate().execute(cmd).await
     }
 }

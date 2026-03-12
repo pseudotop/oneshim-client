@@ -1,3 +1,4 @@
+mod gate;
 mod intent;
 mod port_impl;
 mod preset;
@@ -17,6 +18,7 @@ use crate::gui_interaction::{GuiInteractionError, GuiInteractionService};
 use crate::intent_planner::IntentPlanner;
 use crate::intent_resolver::IntentExecutor;
 use crate::policy::PolicyClient;
+use gate::CommandExecutionGate;
 use oneshim_core::config::SandboxConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::element_finder::ElementFinder;
@@ -145,6 +147,15 @@ impl AutomationController {
                 "GUI interaction service is not configured".to_string(),
             )
         })
+    }
+
+    fn command_execution_gate(&self) -> CommandExecutionGate {
+        CommandExecutionGate::new(
+            self.policy_client.clone(),
+            self.audit_logger.clone(),
+            self.action_dispatcher.clone(),
+            self.base_sandbox_config.clone(),
+        )
     }
 }
 
@@ -463,7 +474,14 @@ mod tests {
             name: "test".to_string(),
             description: String::new(),
             category: PresetCategory::Productivity,
-            steps: vec![],
+            steps: vec![WorkflowStep {
+                name: "Step1".to_string(),
+                intent: AutomationIntent::ExecuteHotkey {
+                    keys: vec!["Ctrl".to_string(), "A".to_string()],
+                },
+                delay_ms: 0,
+                stop_on_failure: true,
+            }],
             builtin: true,
             platform: None,
         };
@@ -558,6 +576,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_intent_success_with_audit_log() {
+        use super::gate::SCENE_ACTION_POLICY_TOKEN;
         use crate::input_driver::{NoOpElementFinder, NoOpInputDriver};
         use crate::intent_resolver::{IntentExecutor, IntentResolver};
 
@@ -587,13 +606,13 @@ mod tests {
             },
             config: None,
             timeout_ms: None,
-            policy_token: "token".to_string(),
+            policy_token: SCENE_ACTION_POLICY_TOKEN.to_string(),
         };
         let result = controller.execute_intent(&cmd).await.unwrap();
         assert!(result.success);
 
         let logger = audit_logger.read().await;
-        assert_eq!(logger.pending_count(), 2);
+        assert_eq!(logger.pending_count(), 4);
     }
 
     #[tokio::test]

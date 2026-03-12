@@ -1,24 +1,148 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
+use async_trait::async_trait;
 use tokio::sync::broadcast;
 
+use crate::controller::gate::{GUI_SESSION_POLICY_TOKEN, INTENT_HINT_POLICY_TOKEN};
 use crate::gui_interaction::{
     GuiConfirmRequest, GuiCreateSessionRequest, GuiCreateSessionResponse, GuiExecutionRequest,
     GuiHighlightRequest, GuiInteractionError,
 };
 use crate::policy::AuditLevel;
 use oneshim_core::error::CoreError;
+use oneshim_core::models::automation::{AutomationAction, AutomationCommand, CommandResult};
 use oneshim_core::models::gui::{GuiExecutionTicket, GuiInteractionSession, GuiSessionEvent};
 use oneshim_core::models::intent::{AutomationIntent, IntentCommand, IntentResult};
 use oneshim_core::models::ui_scene::UiScene;
+use oneshim_core::ports::input_driver::InputDriver;
 
 use super::types::{GuiExecutionResult, PlannedIntentResult};
 use super::{AutomationController, GUI_ACTION_TIMEOUT_SECS, GUI_EXECUTE_TIMEOUT_SECS};
 
+struct GatedInputDriver {
+    gate: super::gate::CommandExecutionGate,
+    command_id_prefix: String,
+    session_id: String,
+    policy_token: String,
+    timeout_ms: Option<u64>,
+    next_action_index: AtomicUsize,
+}
+
+impl GatedInputDriver {
+    fn new(
+        gate: super::gate::CommandExecutionGate,
+        command_id_prefix: String,
+        session_id: String,
+        policy_token: String,
+        timeout_ms: Option<u64>,
+    ) -> Self {
+        Self {
+            gate,
+            command_id_prefix,
+            session_id,
+            policy_token,
+            timeout_ms,
+            next_action_index: AtomicUsize::new(0),
+        }
+    }
+
+    fn build_command(&self, action: AutomationAction) -> AutomationCommand {
+        let action_index = self.next_action_index.fetch_add(1, Ordering::Relaxed);
+        AutomationCommand {
+            command_id: format!("{}:action-{}", self.command_id_prefix, action_index),
+            session_id: self.session_id.clone(),
+            action,
+            timeout_ms: self.timeout_ms,
+            policy_token: self.policy_token.clone(),
+        }
+    }
+
+    async fn dispatch_action(&self, action: AutomationAction) -> Result<(), CoreError> {
+        let command = self.build_command(action);
+        match self.gate.execute(&command).await? {
+            CommandResult::Success => Ok(()),
+            CommandResult::Failed(message) => Err(CoreError::Internal(message)),
+            CommandResult::Timeout => Err(CoreError::ExecutionTimeout {
+                timeout_ms: command.timeout_ms.unwrap_or_default(),
+            }),
+            CommandResult::Denied => Err(CoreError::PolicyDenied(
+                "Intent action denied by policy".to_string(),
+            )),
+        }
+    }
+}
+
+#[async_trait]
+impl InputDriver for GatedInputDriver {
+    async fn mouse_move(&self, x: i32, y: i32) -> Result<(), CoreError> {
+        self.dispatch_action(AutomationAction::MouseMove { x, y })
+            .await
+    }
+
+    async fn mouse_click(&self, button: &str, x: i32, y: i32) -> Result<(), CoreError> {
+        self.dispatch_action(AutomationAction::MouseClick {
+            button: button.to_string(),
+            x,
+            y,
+        })
+        .await
+    }
+
+    async fn type_text(&self, text: &str) -> Result<(), CoreError> {
+        self.dispatch_action(AutomationAction::KeyType {
+            text: text.to_string(),
+        })
+        .await
+    }
+
+    async fn key_press(&self, key: &str) -> Result<(), CoreError> {
+        self.dispatch_action(AutomationAction::KeyPress {
+            key: key.to_string(),
+        })
+        .await
+    }
+
+    async fn key_release(&self, key: &str) -> Result<(), CoreError> {
+        self.dispatch_action(AutomationAction::KeyRelease {
+            key: key.to_string(),
+        })
+        .await
+    }
+
+    async fn hotkey(&self, keys: &[String]) -> Result<(), CoreError> {
+        self.dispatch_action(AutomationAction::Hotkey {
+            keys: keys.to_vec(),
+        })
+        .await
+    }
+
+    fn platform(&self) -> &str {
+        "gated"
+    }
+}
+
 impl AutomationController {
+    pub(super) fn scoped_intent_executor(
+        &self,
+        cmd: &IntentCommand,
+    ) -> Result<crate::intent_resolver::IntentExecutor, CoreError> {
+        let template = self.require_intent_executor()?;
+        let intent_config = cmd.config.clone().unwrap_or_default();
+        let input_driver: Arc<dyn InputDriver> = Arc::new(GatedInputDriver::new(
+            self.command_execution_gate(),
+            cmd.command_id.clone(),
+            cmd.session_id.clone(),
+            cmd.policy_token.clone(),
+            cmd.timeout_ms,
+        ));
+        Ok(template.with_input_driver(input_driver, intent_config))
+    }
+
     pub async fn execute_intent(&self, cmd: &IntentCommand) -> Result<IntentResult, CoreError> {
         self.ensure_enabled()?;
-        let executor = self.require_intent_executor()?;
+        let executor = self.scoped_intent_executor(cmd)?;
 
         {
             let mut logger = self.audit_logger.write().await;
@@ -55,7 +179,6 @@ impl AutomationController {
         intent_hint: &str,
     ) -> Result<PlannedIntentResult, CoreError> {
         self.ensure_enabled()?;
-        let executor = self.require_intent_executor()?;
         let planner = self.require_intent_planner()?;
 
         {
@@ -70,6 +193,15 @@ impl AutomationController {
 
         let start = Instant::now();
         let planned_intent = planner.plan(intent_hint).await?;
+        let intent_command = IntentCommand {
+            command_id: command_id.to_string(),
+            session_id: session_id.to_string(),
+            intent: planned_intent.clone(),
+            config: None,
+            timeout_ms: None,
+            policy_token: INTENT_HINT_POLICY_TOKEN.to_string(),
+        };
+        let executor = self.scoped_intent_executor(&intent_command)?;
         let result = executor.execute(&planned_intent).await?;
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
@@ -217,7 +349,7 @@ impl AutomationController {
                     intent: AutomationIntent::Raw(action.clone()),
                     config: None,
                     timeout_ms: None,
-                    policy_token: "gui-session".to_string(),
+                    policy_token: GUI_SESSION_POLICY_TOKEN.to_string(),
                 };
 
                 match tokio::time::timeout(action_timeout, self.execute_intent(&intent_command))
