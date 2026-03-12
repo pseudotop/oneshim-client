@@ -61,7 +61,7 @@ export default function DateRangePicker({ onRangeChange, initialFrom, initialTo 
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 space-x-2">
+    <div data-testid="date-range-picker" className="flex flex-wrap items-center gap-2 space-x-2">
       {/* UI note */}
       <div className="flex space-x-1">
         <button

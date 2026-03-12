@@ -23,11 +23,19 @@ Expected output:
 
 The following workflows enforce integrity in CI:
 
-- `CI` (`.github/workflows/ci.yml`): lint, tests, cross-platform build sanity
-- `Security & Compliance` (`.github/workflows/security-compliance.yml`): supply-chain checks + SBOM (`cargo vet` is advisory on PRs, blocking on push/schedule)
-- `Integrity Gates` (`.github/workflows/integrity-gates.yml`): policy + signature + supply-chain checks (`cargo vet` is advisory on PRs, blocking on push/schedule)
+- `CI` (`.github/workflows/ci.yml`): lint + tests for the fast PR lane
+- `Security & Compliance` (`.github/workflows/security-compliance.yml`): supply-chain checks + SBOM on `main`/`develop`, schedule, or manual dispatch
+- `Integrity Gates` (`.github/workflows/integrity-gates.yml`): policy + signature + supply-chain checks on `main`/`develop`, schedule, or manual dispatch
+- `Release Smoke` (`.github/workflows/release-smoke.yml`): cross-platform desktop release smoke on `main`/`develop` or manual dispatch
 
-PRs must not bypass these workflows. Even in PR mode, `audit`/`deny` stay blocking and `cargo vet` findings are surfaced as advisory output.
+PRs must not bypass the fast-lane workflows. Full integrity, supply-chain, and release smoke validation continues after merge, on schedule, and before release promotion.
+
+Current documented exception:
+
+- `RUSTSEC-2024-0429` (`glib 0.18.5`) is ignored in `cargo audit` and `cargo deny`.
+- Scope is limited to the Linux GTK3 / `webkit2gtk` / `wry` / Tauri transitive chain.
+- Exit criterion: remove the exception once the upstream desktop stack moves to patched `gtk-rs-core` / `glib` releases.
+- Treat any new advisory outside this documented exception as a release blocker.
 
 ## 3. Release Procedure
 

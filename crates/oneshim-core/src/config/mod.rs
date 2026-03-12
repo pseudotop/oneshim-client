@@ -458,4 +458,172 @@ mod tests {
             .scene_action_override
             .is_active_at(Utc::now() + chrono::Duration::minutes(1)));
     }
+
+    // ── Task 27a: AppConfig serde round-trip tests ──────────────────
+
+    #[test]
+    fn default_config_round_trips_through_json() {
+        let original = AppConfig::default_config();
+        let json_str =
+            serde_json::to_string_pretty(&original).expect("default config must serialize to JSON");
+        let restored: AppConfig =
+            serde_json::from_str(&json_str).expect("serialized default config must deserialize");
+
+        // Compare via re-serialisation (AppConfig does not derive PartialEq)
+        let json_restored =
+            serde_json::to_string_pretty(&restored).expect("restored config must re-serialize");
+        assert_eq!(
+            json_str, json_restored,
+            "JSON output must be identical after a serialize→deserialize→serialize round-trip"
+        );
+    }
+
+    #[test]
+    fn config_with_unknown_fields_deserializes_without_error() {
+        let mut original = AppConfig::default_config();
+        let mut json_val = serde_json::to_value(&original).expect("default config must serialize");
+
+        // Inject unknown top-level field
+        json_val
+            .as_object_mut()
+            .unwrap()
+            .insert("unknown_future_section".into(), json!({ "beta": true }));
+
+        // Inject unknown field inside an existing section
+        json_val
+            .get_mut("server")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert("experimental_flag".into(), json!(42));
+
+        let parsed: AppConfig =
+            serde_json::from_value(json_val).expect("unknown fields should be silently ignored");
+
+        // Verify known fields survived
+        original.server.base_url = parsed.server.base_url.clone(); // avoid lifetime issues
+        assert_eq!(
+            parsed.server.request_timeout_ms,
+            original.server.request_timeout_ms
+        );
+    }
+
+    #[test]
+    fn each_section_has_sensible_defaults() {
+        let config = AppConfig::default_config();
+
+        // Server
+        assert!(
+            !config.server.base_url.is_empty(),
+            "server.base_url must not be empty"
+        );
+        assert!(
+            config.server.request_timeout_ms > 0,
+            "server.request_timeout_ms must be positive"
+        );
+        assert!(
+            config.server.sse_max_retry_secs > 0,
+            "server.sse_max_retry_secs must be positive"
+        );
+
+        // Monitor
+        assert!(
+            config.monitor.poll_interval_ms > 0,
+            "monitor.poll_interval_ms must be positive"
+        );
+        assert!(
+            config.monitor.sync_interval_ms > 0,
+            "monitor.sync_interval_ms must be positive"
+        );
+        assert!(
+            config.monitor.heartbeat_interval_ms > 0,
+            "monitor.heartbeat_interval_ms must be positive"
+        );
+        assert!(
+            config.monitor.idle_threshold_secs > 0,
+            "monitor.idle_threshold_secs must be positive"
+        );
+
+        // Storage
+        assert!(
+            config.storage.retention_days > 0,
+            "storage.retention_days must be positive"
+        );
+        assert!(
+            config.storage.max_storage_mb > 0,
+            "storage.max_storage_mb must be positive"
+        );
+
+        // Vision
+        assert!(
+            config.vision.thumbnail_width > 0,
+            "vision.thumbnail_width must be positive"
+        );
+        assert!(
+            config.vision.thumbnail_height > 0,
+            "vision.thumbnail_height must be positive"
+        );
+        assert!(
+            config.vision.capture_throttle_ms > 0,
+            "vision.capture_throttle_ms must be positive"
+        );
+
+        // Web
+        assert!(
+            config.web.port > 0,
+            "web.port must be a valid non-zero port"
+        );
+
+        // Update
+        assert!(
+            !config.update.repo_owner.is_empty(),
+            "update.repo_owner must not be empty"
+        );
+        assert!(
+            !config.update.repo_name.is_empty(),
+            "update.repo_name must not be empty"
+        );
+        assert!(
+            config.update.check_interval_hours > 0,
+            "update.check_interval_hours must be positive"
+        );
+
+        // Notification
+        assert!(
+            config.notification.idle_notification_mins > 0,
+            "notification.idle_notification_mins must be positive"
+        );
+        assert!(
+            config.notification.long_session_mins > 0,
+            "notification.long_session_mins must be positive"
+        );
+
+        // gRPC
+        assert!(
+            !config.grpc.grpc_endpoint.is_empty(),
+            "grpc.grpc_endpoint must not be empty"
+        );
+        assert!(
+            config.grpc.connect_timeout_secs > 0,
+            "grpc.connect_timeout_secs must be positive"
+        );
+        assert!(
+            config.grpc.request_timeout_secs > 0,
+            "grpc.request_timeout_secs must be positive"
+        );
+
+        // Duration helpers
+        assert!(
+            config.request_timeout().as_millis() > 0,
+            "request_timeout() must be non-zero"
+        );
+        assert!(
+            config.poll_interval().as_millis() > 0,
+            "poll_interval() must be non-zero"
+        );
+        assert!(
+            config.sync_interval().as_millis() > 0,
+            "sync_interval() must be non-zero"
+        );
+    }
 }

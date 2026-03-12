@@ -237,6 +237,7 @@ export default function Timeline() {
           {/* UI note */}
           <div className="ml-auto flex items-center gap-1">
             <Button
+              data-testid="view-grid"
               variant={viewMode === 'grid' ? 'primary' : 'secondary'}
               size="icon"
               onClick={() => setViewMode('grid')}
@@ -252,6 +253,7 @@ export default function Timeline() {
               </svg>
             </Button>
             <Button
+              data-testid="view-list"
               variant={viewMode === 'list' ? 'primary' : 'secondary'}
               size="icon"
               onClick={() => setViewMode('list')}
@@ -282,6 +284,7 @@ export default function Timeline() {
               <button
                 type="button"
                 key={frame.id}
+                data-testid={`frame-card-${frame.id}`}
                 onClick={() => selectFrame(frame, index)}
                 onDoubleClick={() => {
                   selectFrame(frame, index)
@@ -328,6 +331,7 @@ export default function Timeline() {
                 <button
                   type="button"
                   key={frame.id}
+                  data-testid={`frame-row-${frame.id}`}
                   onClick={() => selectFrame(frame, index)}
                   onDoubleClick={() => {
                     selectFrame(frame, index)

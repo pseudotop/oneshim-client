@@ -89,6 +89,7 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
       {/* Search trigger */}
       <button
         type="button"
+        data-testid="titlebar-search"
         onClick={onSearchOpen}
         aria-label={t('shell.searchShortcut', { key: MOD_KEY, defaultValue: `Search (${MOD_KEY}+K)` })}
         className={cn(
@@ -108,6 +109,7 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
         <div className="flex h-full items-center">
           <button
             type="button"
+            data-testid="titlebar-minimize"
             onClick={handleMinimize}
             className={cn('h-full px-3 text-content-secondary transition-colors hover:bg-hover', interaction.focusRing)}
             aria-label={t('shell.minimize', 'Minimize')}
@@ -118,6 +120,7 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
           </button>
           <button
             type="button"
+            data-testid="titlebar-maximize"
             onClick={handleMaximize}
             className={cn('h-full px-3 text-content-secondary transition-colors hover:bg-hover', interaction.focusRing)}
             aria-label={t('shell.maximize', 'Maximize')}
@@ -128,6 +131,7 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
           </button>
           <button
             type="button"
+            data-testid="titlebar-close"
             onClick={handleClose}
             className={cn(
               'h-full px-3 text-content-secondary transition-colors hover:bg-red-500 hover:text-white',

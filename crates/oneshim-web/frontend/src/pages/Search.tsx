@@ -111,6 +111,7 @@ export default function Search() {
       {/* UI note */}
       <form id="section-recent" onSubmit={handleSearch} className="flex gap-2">
         <Input
+          data-testid="search-input"
           type="text"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
@@ -129,6 +130,7 @@ export default function Search() {
           {(['all', 'frames', 'events'] as SearchType[]).map((type) => (
             <Button
               key={type}
+              data-testid={`filter-${type}`}
               variant={searchType === type ? 'primary' : 'secondary'}
               size="sm"
               onClick={() => handleTypeChange(type)}

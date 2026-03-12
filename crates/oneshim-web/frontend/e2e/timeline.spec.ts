@@ -93,11 +93,9 @@ test.describe('Timeline', () => {
 
   test('should filter by importance', async ({ page }) => {
     const selects = page.locator('select')
-    const count = await selects.count()
-    if (count >= 2) {
-      await selects.nth(1).selectOption({ index: 1 })
-      await expect(selects.nth(1)).toHaveValue('high')
-    }
+    await expect(selects.nth(1)).toBeVisible()
+    await selects.nth(1).selectOption({ index: 1 })
+    await expect(selects.nth(1)).toHaveValue('high')
   })
 
   test('should support keyboard navigation', async ({ page }) => {

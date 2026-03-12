@@ -3,11 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT_DIR="${ONESHIM_SMOKE_REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 CARGO_CMD="$ROOT_DIR/scripts/cargo-cache.sh"
 
 ASSETS_DIR="${ONESHIM_SMOKE_ASSETS_DIR:-dist}"
-INSTALL_SCRIPT="${ONESHIM_INSTALL_SCRIPT:-scripts/install.sh}"
+INSTALL_SCRIPT="${ONESHIM_INSTALL_SCRIPT:-$ROOT_DIR/scripts/install.sh}"
 HOST="${ONESHIM_SMOKE_HOST:-127.0.0.1}"
 PORT="${ONESHIM_SMOKE_PORT:-18090}"
 RUN_UPDATER_TESTS="${ONESHIM_SMOKE_RUN_UPDATER_TESTS:-1}"
