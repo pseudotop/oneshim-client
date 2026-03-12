@@ -10,14 +10,11 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   promote:
     name: Promote RC To Stable
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -104,18 +101,9 @@ jobs:
           git push origin HEAD:main
           git push origin "${{ steps.versions.outputs.stable_tag }}"
 
-      - name: Dispatch release workflow
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh workflow run release.yml \
-            -R "${GITHUB_REPOSITORY}" \
-            -f tag_name="${{ steps.versions.outputs.stable_tag }}" \
-            -f release_sha="$(git rev-parse HEAD)"
-
       - name: Print summary
         run: |
           echo "Stable promotion pushed:"
           echo "  RC tag:     ${{ steps.versions.outputs.rc_tag }}"
           echo "  Stable tag: ${{ steps.versions.outputs.stable_tag }}"
-          echo "Release workflow was dispatched separately to build and publish assets."
+          echo "The stable tag push will trigger release.yml to build and publish assets."
