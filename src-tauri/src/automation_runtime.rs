@@ -505,8 +505,12 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let err = build_automation_runtime(&config, PiiFilterLevel::Standard, None, None)
-            .expect_err("Remote OCR should require a runtime privacy guard");
+        let result = build_automation_runtime(&config, PiiFilterLevel::Standard, None, None);
+        assert!(
+            result.is_err(),
+            "Remote OCR should require a runtime privacy guard"
+        );
+        let err = result.err().unwrap();
         assert!(err.to_string().contains("runtime privacy guard"));
     }
 }

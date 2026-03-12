@@ -778,8 +778,12 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let err = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None)
-            .expect_err("Expected remote OCR resolution to require a privacy guard");
+        let result = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None);
+        assert!(
+            result.is_err(),
+            "Expected remote OCR resolution to require a privacy guard"
+        );
+        let err = result.err().unwrap();
         assert!(err.to_string().contains("runtime privacy guard"));
     }
 
