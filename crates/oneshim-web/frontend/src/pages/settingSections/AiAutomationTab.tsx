@@ -47,6 +47,7 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
     field: keyof ExternalApiSettings,
     value: string | number | null,
   ) => void
+  resolveProviderType: (raw: string | null | undefined) => string
   onProviderTypeChange: (which: 'ocr_api' | 'llm_api', rawProviderType: string) => void
   onDiscoverModels: (which: 'ocr_api' | 'llm_api') => void
   getModelOptions: (which: 'ocr_api' | 'llm_api') => string[]
@@ -64,6 +65,7 @@ export default function AiAutomationTab({
   onSceneActionOverrideChange,
   onSceneIntelligenceChange,
   onExternalApiChange,
+  resolveProviderType,
   onProviderTypeChange,
   onDiscoverModels,
   getModelOptions,
@@ -403,7 +405,7 @@ export default function AiAutomationTab({
                   </label>
                   <Select
                     id="settings-ocr-provider-type"
-                    value={formData.ai_provider.ocr_api?.provider_type ?? 'Generic'}
+                    value={resolveProviderType(formData.ai_provider.ocr_api?.provider_type)}
                     onChange={(e) => onProviderTypeChange('ocr_api', e.target.value)}
                   >
                     {providerPresets.map((preset) => (
@@ -497,7 +499,7 @@ export default function AiAutomationTab({
                   </label>
                   <Select
                     id="settings-llm-provider-type"
-                    value={formData.ai_provider.llm_api?.provider_type ?? 'Generic'}
+                    value={resolveProviderType(formData.ai_provider.llm_api?.provider_type)}
                     onChange={(e) => onProviderTypeChange('llm_api', e.target.value)}
                   >
                     {providerPresets.map((preset) => (

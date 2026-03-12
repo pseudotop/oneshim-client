@@ -489,6 +489,14 @@ export default function Settings() {
   const saveDisabled =
     !settings || !formData || saveMutation.isPending || JSON.stringify(formData) === JSON.stringify(settings)
 
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!formData) {
+      return
+    }
+    saveMutation.mutate(formData)
+  }
+
   if (settingsLoading || !formData) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -509,10 +517,17 @@ export default function Settings() {
         activeTab={activeTab}
         onTabChange={(tab) => setActiveTab(tab as SettingsTabId)}
         ariaLabel={t('settings.title')}
+        idBase="settings"
       />
 
-      <div className="space-y-6">
-        <div hidden={activeTab !== 'general'} aria-hidden={activeTab !== 'general'}>
+      <form className="space-y-6" onSubmit={handleSubmit}>
+        <div
+          id="settings-panel-general"
+          role="tabpanel"
+          aria-labelledby="settings-tab-general"
+          hidden={activeTab !== 'general'}
+          aria-hidden={activeTab !== 'general'}
+        >
           <GeneralTab
             formData={formData}
             updateStatus={updateStatus}
@@ -525,11 +540,23 @@ export default function Settings() {
           />
         </div>
 
-        <div hidden={activeTab !== 'privacy'} aria-hidden={activeTab !== 'privacy'}>
+        <div
+          id="settings-panel-privacy"
+          role="tabpanel"
+          aria-labelledby="settings-tab-privacy"
+          hidden={activeTab !== 'privacy'}
+          aria-hidden={activeTab !== 'privacy'}
+        >
           <PrivacyTab formData={formData} onPrivacyChange={handlePrivacyChange} />
         </div>
 
-        <div hidden={activeTab !== 'monitoring'} aria-hidden={activeTab !== 'monitoring'}>
+        <div
+          id="settings-panel-monitoring"
+          role="tabpanel"
+          aria-labelledby="settings-tab-monitoring"
+          hidden={activeTab !== 'monitoring'}
+          aria-hidden={activeTab !== 'monitoring'}
+        >
           <MonitoringTab
             formData={formData}
             onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
@@ -537,7 +564,13 @@ export default function Settings() {
           />
         </div>
 
-        <div hidden={activeTab !== 'ai-automation'} aria-hidden={activeTab !== 'ai-automation'}>
+        <div
+          id="settings-panel-ai-automation"
+          role="tabpanel"
+          aria-labelledby="settings-tab-ai-automation"
+          hidden={activeTab !== 'ai-automation'}
+          aria-hidden={activeTab !== 'ai-automation'}
+        >
           <AiAutomationTab
             formData={formData}
             providerPresets={providerPresets}
@@ -550,13 +583,20 @@ export default function Settings() {
             onSceneActionOverrideChange={handleSceneActionOverrideChange}
             onSceneIntelligenceChange={handleSceneIntelligenceChange}
             onExternalApiChange={handleExternalApiChange}
+            resolveProviderType={resolveProviderType}
             onProviderTypeChange={handleProviderTypeChange}
             onDiscoverModels={(which) => void discoverModels(which)}
             getModelOptions={getModelOptions}
           />
         </div>
 
-        <div hidden={activeTab !== 'data'} aria-hidden={activeTab !== 'data'}>
+        <div
+          id="settings-panel-data"
+          role="tabpanel"
+          aria-labelledby="settings-tab-data"
+          hidden={activeTab !== 'data'}
+          aria-hidden={activeTab !== 'data'}
+        >
           <DataStorageTab
             formData={formData}
             storageStats={storageStats}
@@ -569,21 +609,20 @@ export default function Settings() {
             onTelemetryChange={handleTelemetryChange}
           />
         </div>
-      </div>
 
-      <div className="flex justify-end">
-        <Button
-          data-testid="settings-save"
-          type="button"
-          variant="primary"
-          size="lg"
-          isLoading={saveMutation.isPending}
-          disabled={saveDisabled}
-          onClick={() => saveMutation.mutate(formData)}
-        >
-          {saveMutation.isPending ? t('settings.saving') : t('settings.saveSettings')}
-        </Button>
-      </div>
+        <div className="flex justify-end">
+          <Button
+            data-testid="settings-save"
+            type="submit"
+            variant="primary"
+            size="lg"
+            isLoading={saveMutation.isPending}
+            disabled={saveDisabled}
+          >
+            {saveMutation.isPending ? t('settings.saving') : t('settings.saveSettings')}
+          </Button>
+        </div>
+      </form>
     </div>
   )
 }

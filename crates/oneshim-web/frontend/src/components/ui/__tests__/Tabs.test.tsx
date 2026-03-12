@@ -61,4 +61,13 @@ describe('Tabs', () => {
     expect(overviewTab).toHaveAttribute('tabindex', '0')
     expect(automationTab).toHaveAttribute('aria-selected', 'false')
   })
+
+  it('links tabs to tab panels when an id base is provided', () => {
+    renderWithProviders(
+      <Tabs tabs={tabs} activeTab="overview" onTabChange={vi.fn()} ariaLabel="Settings sections" idBase="settings" />,
+    )
+
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('id', 'settings-tab-overview')
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-controls', 'settings-panel-overview')
+  })
 })
