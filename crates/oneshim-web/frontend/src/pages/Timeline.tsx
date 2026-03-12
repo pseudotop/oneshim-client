@@ -3,7 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera } from 'lucide-react'
+import { Camera, Copy } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
@@ -14,6 +14,7 @@ import { TagBadge } from '../components/TagBadge'
 import { TagInput } from '../components/TagInput'
 import { Badge, Button, Card, CardTitle, EmptyState, Select, Skeleton } from '../components/ui'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { addToast } from '../hooks/useToast'
 import { colors, interaction, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDate, formatTime } from '../utils/formatters'
@@ -122,6 +123,24 @@ export default function Timeline() {
       setLightboxOpen(true)
     }
   }, [selectedFrame])
+
+  const handleCopyOcr = useCallback(async () => {
+    const ocrText = selectedFrame?.ocr_text
+    if (!ocrText) {
+      return
+    }
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard API is unavailable')
+      }
+
+      await navigator.clipboard.writeText(ocrText)
+      addToast('success', t('timeline.ocrCopied'))
+    } catch {
+      addToast('error', t('timeline.ocrCopyFailed'))
+    }
+  }, [selectedFrame, t])
 
   useKeyboardShortcuts({
     onEscape: () => {
@@ -541,10 +560,22 @@ export default function Timeline() {
               {/* UI note */}
               {selectedFrame.ocr_text && (
                 <div>
-                  <h4 className="mb-2 font-medium text-content-secondary text-sm">{t('timeline.ocrText')}</h4>
-                  <div className="max-h-32 overflow-y-auto rounded bg-surface-muted p-3 font-mono text-content-strong text-sm">
-                    {selectedFrame.ocr_text}
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h4 className="font-medium text-content-secondary text-sm">{t('timeline.ocrText')}</h4>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => void handleCopyOcr()}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      {t('timeline.copyOcr')}
+                    </Button>
                   </div>
+                  <pre className="max-h-48 select-all overflow-y-auto whitespace-pre-wrap break-words rounded bg-surface-muted p-3 font-mono text-content-strong text-xs">
+                    {selectedFrame.ocr_text}
+                  </pre>
                 </div>
               )}
 
