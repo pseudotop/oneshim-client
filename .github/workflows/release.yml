@@ -289,9 +289,16 @@ jobs:
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Download frontend dist artifact
-        uses: actions/download-artifact@v8
+      - name: Checkout workflow tools
+        uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .workflow-tools
+
+      - name: Download frontend dist artifact
+        uses: ./.workflow-tools/.github/actions/download-artifact
+        with:
+          github-token: ${{ github.token }}
           name: frontend-dist-bundle
           path: crates/oneshim-web/frontend
 
@@ -504,15 +511,23 @@ jobs:
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Download arm64 artifact
-        uses: actions/download-artifact@v8
+      - name: Checkout workflow tools
+        uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .workflow-tools
+
+      - name: Download arm64 artifact
+        uses: ./.workflow-tools/.github/actions/download-artifact
+        with:
+          github-token: ${{ github.token }}
           name: oneshim-macos-arm64-archive
           path: artifacts/arm64
 
       - name: Download x64 artifact
-        uses: actions/download-artifact@v8
+        uses: ./.workflow-tools/.github/actions/download-artifact
         with:
+          github-token: ${{ github.token }}
           name: oneshim-macos-x64-archive
           path: artifacts/x64
 
@@ -825,8 +840,9 @@ jobs:
           path: .workflow-tools
 
       - name: Download release archive for smoke
-        uses: actions/download-artifact@v8
+        uses: ./.workflow-tools/.github/actions/download-artifact
         with:
+          github-token: ${{ github.token }}
           name: ${{ matrix.artifact_name }}
           path: smoke-assets
 
@@ -838,15 +854,17 @@ jobs:
 
       - name: Download macOS installer artifacts for smoke
         if: matrix.name == 'macos'
-        uses: actions/download-artifact@v8
+        uses: ./.workflow-tools/.github/actions/download-artifact
         with:
+          github-token: ${{ github.token }}
           name: oneshim-macos-universal-dmg
           path: smoke-installers
 
       - name: Download macOS PKG artifact for smoke
         if: matrix.name == 'macos'
-        uses: actions/download-artifact@v8
+        uses: ./.workflow-tools/.github/actions/download-artifact
         with:
+          github-token: ${{ github.token }}
           name: oneshim-macos-universal-pkg
           path: smoke-installers
 
@@ -943,9 +961,16 @@ jobs:
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8
+      - name: Checkout workflow tools
+        uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
+          path: .workflow-tools
+
+      - name: Download all artifacts
+        uses: ./.workflow-tools/.github/actions/download-artifact
+        with:
+          github-token: ${{ github.token }}
           pattern: oneshim-*
           path: dist
           merge-multiple: true
