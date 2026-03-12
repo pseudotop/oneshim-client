@@ -7,6 +7,7 @@ interface DateRangePickerProps {
   onRangeChange: (from: string | undefined, to: string | undefined) => void
   initialFrom?: string
   initialTo?: string
+  initialPreset?: PresetRange
 }
 
 type PresetRange = 'today' | '7days' | '30days' | 'custom'
@@ -22,9 +23,38 @@ function getDaysAgo(days: number) {
   return date.toISOString().split('T')[0]
 }
 
-export default function DateRangePicker({ onRangeChange, initialFrom, initialTo }: DateRangePickerProps) {
+function inferInitialPreset(initialFrom?: string, initialTo?: string): PresetRange {
+  if (!initialFrom && !initialTo) {
+    return 'today'
+  }
+
+  const today = getToday()
+  const weekStart = getDaysAgo(7)
+  const monthStart = getDaysAgo(30)
+
+  if (initialFrom === today && initialTo === today) {
+    return 'today'
+  }
+
+  if (initialFrom === weekStart && initialTo === today) {
+    return '7days'
+  }
+
+  if (initialFrom === monthStart && initialTo === today) {
+    return '30days'
+  }
+
+  return 'custom'
+}
+
+export default function DateRangePicker({
+  onRangeChange,
+  initialFrom,
+  initialTo,
+  initialPreset,
+}: DateRangePickerProps) {
   const { t } = useTranslation()
-  const [preset, setPreset] = useState<PresetRange>('today')
+  const [preset, setPreset] = useState<PresetRange>(initialPreset ?? inferInitialPreset(initialFrom, initialTo))
   const [customFrom, setCustomFrom] = useState(initialFrom || '')
   const [customTo, setCustomTo] = useState(initialTo || '')
 

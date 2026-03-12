@@ -15,7 +15,7 @@ import MetricsChart from '../components/MetricsChart'
 import ProcessList from '../components/ProcessList'
 import StatCard from '../components/StatCard'
 import UpdatePanel from '../components/UpdatePanel'
-import { Badge, Card, CardTitle, EmptyState, Spinner } from '../components/ui'
+import { Badge, Card, CardTitle, ChartSkeleton, EmptyState, Skeleton, StatCardsSkeleton } from '../components/ui'
 import { type ConnectionStatus, useSSE } from '../hooks/useSSE'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
@@ -80,9 +80,14 @@ export default function Dashboard() {
 
   if (summaryLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Spinner size="lg" className={colors.primary.text} />
-        <span className={cn('ml-3', colors.text.secondary)}>{t('common.loading')}</span>
+      <div className="min-h-full space-y-6 p-6">
+        <Skeleton className="h-8 w-48" />
+        <StatCardsSkeleton count={4} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ChartSkeleton />
+          <ChartSkeleton />
+        </div>
+        <ChartSkeleton height="h-40" />
       </div>
     )
   }
