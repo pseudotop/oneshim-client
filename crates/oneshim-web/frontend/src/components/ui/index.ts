@@ -7,5 +7,6 @@ export { Card, CardContent, CardHeader, type CardProps, CardTitle } from './Card
 export { EmptyState, type EmptyStateProps } from './EmptyState'
 export { Input, type InputProps } from './Input'
 export { Select, type SelectProps } from './Select'
+export { Skeleton, StatCardsSkeleton, ChartSkeleton, ListSkeleton } from './Skeleton'
 export { Spinner, type SpinnerProps } from './Spinner'
 export { ToastContainer } from './Toast'
