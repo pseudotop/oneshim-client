@@ -38,6 +38,7 @@ use crate::cli_subscription_bridge::{
 };
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
+use crate::provider_adapters::ExternalOcrPrivacyGuard;
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
 use crate::update_coordinator;
 
@@ -255,10 +256,20 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
         let mut ai_runtime_status: Option<AiRuntimeStatus> = None;
         let automation_controller = if config.automation.enabled {
+            let process_monitor = Arc::new(ProcessTracker::new());
+            let external_ocr_privacy_guard = ExternalOcrPrivacyGuard::new(
+                data_dir_path.join("consent.json"),
+                config.privacy.pii_filter_level,
+                config.ai_provider.external_data_policy,
+                config.privacy.clone(),
+                process_monitor.clone(),
+                Some(web_audit_logger.clone()),
+            );
             let runtime = build_automation_runtime(
                 &config.ai_provider,
                 config.privacy.pii_filter_level,
                 automation_frame_storage,
+                Some(external_ocr_privacy_guard),
             );
             match runtime {
                 Ok(runtime) => {
@@ -289,7 +300,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     // Wire GUI interaction (focus probe + overlay driver)
                     let focus_probe: Arc<dyn oneshim_core::ports::focus_probe::FocusProbe> =
                         Arc::new(crate::focus_probe_adapter::ProcessMonitorFocusProbe::new(
-                            Arc::new(ProcessTracker::new()),
+                            process_monitor,
                         ));
                     let overlay_driver = crate::platform_overlay::create_platform_overlay_driver();
                     let hmac_secret = std::env::var("ONESHIM_GUI_TICKET_HMAC_SECRET").ok();

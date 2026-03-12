@@ -14,7 +14,9 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use crate::platform_accessibility::create_platform_accessibility_finder;
-use crate::provider_adapters::{resolve_ai_provider_adapters, ProviderSource};
+use crate::provider_adapters::{
+    resolve_ai_provider_adapters, ExternalOcrPrivacyGuard, ProviderSource,
+};
 
 pub struct AutomationRuntime {
     pub element_finder: Arc<dyn ElementFinder>,
@@ -123,8 +125,10 @@ pub fn build_automation_runtime(
     ai_config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
     frame_storage: Option<Arc<FrameFileStorage>>,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
 ) -> Result<AutomationRuntime, CoreError> {
-    let adapters = resolve_ai_provider_adapters(ai_config, pii_filter_level)?;
+    let adapters =
+        resolve_ai_provider_adapters(ai_config, pii_filter_level, external_ocr_privacy_guard)?;
 
     let ocr_provider_name = adapters.ocr.provider_name().to_string();
     let llm_provider_name = adapters.llm.provider_name().to_string();
@@ -254,10 +258,20 @@ impl ElementFinder for LatestFrameOcrElementFinder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "server")]
+    use async_trait::async_trait;
     use chrono::Utc;
     #[cfg(feature = "server")]
-    use oneshim_core::config::{AiAccessMode, AiProviderType, ExternalApiEndpoint};
+    use oneshim_core::config::{AiAccessMode, AiProviderType, ExternalApiEndpoint, PrivacyConfig};
     use oneshim_core::config::{AiProviderConfig, LlmProviderType, OcrProviderType};
+    #[cfg(feature = "server")]
+    use oneshim_core::consent::{ConsentManager, ConsentPermissions};
+    #[cfg(feature = "server")]
+    use oneshim_core::models::context::{ProcessInfo, WindowInfo};
+    #[cfg(feature = "server")]
+    use oneshim_core::models::event::ProcessDetail;
+    #[cfg(feature = "server")]
+    use oneshim_core::ports::monitor::ProcessMonitor;
     use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -306,6 +320,63 @@ mod tests {
             .expect("Failed to create test frame storage")
     }
 
+    #[cfg(feature = "server")]
+    struct StaticProcessMonitor {
+        active_window: Option<WindowInfo>,
+    }
+
+    #[cfg(feature = "server")]
+    #[async_trait]
+    impl ProcessMonitor for StaticProcessMonitor {
+        async fn get_active_window(&self) -> Result<Option<WindowInfo>, CoreError> {
+            Ok(self.active_window.clone())
+        }
+
+        async fn get_top_processes(&self, _limit: usize) -> Result<Vec<ProcessInfo>, CoreError> {
+            Ok(vec![])
+        }
+
+        async fn get_detailed_processes(
+            &self,
+            _foreground_pid: Option<u32>,
+            _top_n: usize,
+        ) -> Result<Vec<ProcessDetail>, CoreError> {
+            Ok(vec![])
+        }
+    }
+
+    #[cfg(feature = "server")]
+    fn remote_ocr_guard(temp_dir: &TempDir) -> ExternalOcrPrivacyGuard {
+        let consent_path = temp_dir.path().join("consent.json");
+        let mut consent_manager = ConsentManager::new(consent_path.clone());
+        consent_manager
+            .grant_consent(
+                ConsentPermissions {
+                    ocr_processing: true,
+                    screen_capture: true,
+                    ..Default::default()
+                },
+                30,
+            )
+            .expect("Failed to write consent");
+
+        ExternalOcrPrivacyGuard::new(
+            consent_path,
+            PiiFilterLevel::Standard,
+            oneshim_core::config::ExternalDataPolicy::PiiFilterStandard,
+            PrivacyConfig::default(),
+            Arc::new(StaticProcessMonitor {
+                active_window: Some(WindowInfo {
+                    title: "main.rs".to_string(),
+                    app_name: "Code".to_string(),
+                    pid: 42,
+                    bounds: None,
+                }),
+            }),
+            None,
+        )
+    }
+
     #[tokio::test]
     async fn latest_frame_finder_reads_frame_and_matches_text() {
         let temp_dir = TempDir::new().unwrap();
@@ -350,7 +421,8 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let runtime = build_automation_runtime(&config, PiiFilterLevel::Standard, None).unwrap();
+        let runtime =
+            build_automation_runtime(&config, PiiFilterLevel::Standard, None, None).unwrap();
         assert_eq!(runtime.access_mode, AiAccessMode::ProviderApiKey);
         assert_eq!(runtime.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(runtime.llm_source, ProviderSource::LocalFallback);
@@ -375,7 +447,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        match build_automation_runtime(&config, PiiFilterLevel::Standard, None) {
+        match build_automation_runtime(&config, PiiFilterLevel::Standard, None, None) {
             Ok(_) => panic!("Expected an error"),
             Err(err) => assert!(matches!(err, CoreError::Config(_))),
         }
@@ -400,11 +472,41 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let runtime = build_automation_runtime(&config, PiiFilterLevel::Standard, None).unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let runtime = build_automation_runtime(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            Some(remote_ocr_guard(&temp_dir)),
+        )
+        .unwrap();
         assert_eq!(runtime.ocr_source, ProviderSource::Remote);
         assert_eq!(runtime.llm_source, ProviderSource::Remote);
         assert!(runtime.ocr_fallback_reason.is_none());
         assert!(runtime.llm_fallback_reason.is_none());
         assert_eq!(runtime.ocr_provider_name, "remote-ocr");
+    }
+
+    #[test]
+    #[cfg(feature = "server")]
+    fn build_runtime_requires_external_ocr_privacy_guard_for_remote_ocr() {
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.example.com/v1".to_string(),
+            api_key: "test-key".to_string(),
+            model: Some("model-test".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Generic,
+        };
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Local,
+            ocr_api: Some(endpoint),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let err = build_automation_runtime(&config, PiiFilterLevel::Standard, None, None)
+            .expect_err("Remote OCR should require a runtime privacy guard");
+        assert!(err.to_string().contains("runtime privacy guard"));
     }
 }
