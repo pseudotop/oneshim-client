@@ -20,36 +20,64 @@ declare global {
 let resolvedPort =
   (typeof window !== 'undefined' && window.__ONESHIM_WEB_PORT__) || DEFAULT_WEB_PORT
 
-function buildApiUrl(): string {
+let webPortPromise: Promise<number> | null = null
+
+function setResolvedPort(port: number): number {
+  if (!Number.isFinite(port) || port <= 0) {
+    return resolvedPort
+  }
+  resolvedPort = port
+  if (typeof window !== 'undefined') {
+    window.__ONESHIM_WEB_PORT__ = port
+  }
+  return resolvedPort
+}
+
+export function getResolvedWebPort(): number {
+  return resolvedPort
+}
+
+export function getApiBaseUrl(): string {
   return IS_TAURI ? `http://127.0.0.1:${resolvedPort}/api` : '/api'
 }
 
-function buildSseUrl(): string {
+export function getSseStreamUrl(): string {
   return IS_TAURI ? `http://127.0.0.1:${resolvedPort}/api/stream` : '/api/stream'
 }
 
-function buildUpdateStreamUrl(): string {
+export function getUpdateStreamUrl(): string {
   return IS_TAURI ? `http://127.0.0.1:${resolvedPort}/api/update/stream` : '/api/update/stream'
 }
 
-// Mutable exports — updated when Tauri IPC resolves the actual port
-export let API_BASE_URL = buildApiUrl()
-export let SSE_STREAM_URL = buildSseUrl()
-export let UPDATE_STREAM_URL = buildUpdateStreamUrl()
+export async function resolveWebPort(): Promise<number> {
+  if (!IS_TAURI) {
+    return resolvedPort
+  }
 
-// Async port resolution via Tauri IPC (runs once at startup)
+  if (!webPortPromise) {
+    webPortPromise = import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke<number>('get_web_port'))
+      .then(setResolvedPort)
+      .catch(() => {
+        webPortPromise = null
+        return resolvedPort
+      })
+  }
+
+  return webPortPromise
+}
+
+export async function resolveApiUrl(url: string): Promise<string> {
+  if (!IS_TAURI || !url.startsWith('/api')) {
+    return url
+  }
+
+  const port = await resolveWebPort()
+  return `http://127.0.0.1:${port}${url}`
+}
+
 if (IS_TAURI) {
-  import('@tauri-apps/api/core')
-    .then(({ invoke }) => invoke<number>('get_web_port'))
-    .then((port) => {
-      if (port && port !== resolvedPort) {
-        resolvedPort = port
-        API_BASE_URL = buildApiUrl()
-        SSE_STREAM_URL = buildSseUrl()
-        UPDATE_STREAM_URL = buildUpdateStreamUrl()
-      }
-    })
-    .catch(() => {
-      /* fallback to eval-injected or default port */
-    })
+  void resolveWebPort().catch(() => {
+    /* fallback to eval-injected or default port */
+  })
 }

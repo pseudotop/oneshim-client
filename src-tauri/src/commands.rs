@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::sync::atomic::Ordering;
 use sysinfo::System;
 use tauri::command;
 
@@ -210,5 +211,5 @@ pub async fn get_automation_status(state: tauri::State<'_, AppState>) -> Result<
 /// 웹 서버 포트 조회 — 프론트엔드 API base URL 결정용
 #[command]
 pub async fn get_web_port(state: tauri::State<'_, AppState>) -> Result<u16, String> {
-    Ok(state.config.web.port)
+    Ok(state.web_port.load(Ordering::Relaxed))
 }

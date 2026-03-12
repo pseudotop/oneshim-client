@@ -23,6 +23,7 @@ use oneshim_vision::trigger::SmartCaptureTrigger;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use oneshim_web::{AiRuntimeStatus, RealtimeEvent, WebServer};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{App, Emitter, Manager};
@@ -46,6 +47,7 @@ use crate::update_coordinator;
 pub struct AppState {
     pub runtime_handle: tokio::runtime::Handle,
     pub config: AppConfig,
+    pub web_port: Arc<AtomicU16>,
     pub storage: Arc<SqliteStorage>,
     pub config_manager: ConfigManager,
     pub update_control: Option<UpdateControl>,
@@ -122,6 +124,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     info!("settings file: {:?}", config_manager.config_path());
 
     let config = config_manager.get();
+    let web_port = Arc::new(AtomicU16::new(config.web.port));
     maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
 
     // 2b. Integrity preflight — signed policy bundle verification
@@ -228,11 +231,12 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         let web_storage = sqlite_storage.clone();
         let web_config = config.web.clone();
         let web_shutdown_rx = shutdown_tx.subscribe();
-        let web_port = web_config.port;
         let web_event_tx = event_tx.clone();
         let web_config_manager = config_manager.clone();
         let web_audit_logger = Arc::new(tokio::sync::RwLock::new(AuditLogger::default()));
         let web_update_control = update_control.clone();
+        let web_port_state = web_port.clone();
+        let (bound_port_tx, bound_port_rx) = tokio::sync::oneshot::channel::<u16>();
 
         let automation_frame_storage = match handle.block_on(async {
             FrameFileStorage::new(
@@ -336,7 +340,9 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 .with_frames_dir(data_dir_path)
                 .with_config_manager(web_config_manager)
                 .with_audit_logger(Arc::new(AuditLogAdapter::new(web_audit_logger)))
-                .with_update_control(web_update_control);
+                .with_update_control(web_update_control)
+                .with_bound_port_state(web_port_state)
+                .with_bound_port_notifier(bound_port_tx);
             if let Some(status) = ai_runtime_status {
                 web_server = web_server.with_ai_runtime_status(status);
             }
@@ -347,7 +353,14 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 error!("WebServer error: {e}");
             }
         });
-        info!("WebServer: http://localhost:{}", web_port);
+        let frontend_web_port = handle.block_on(async {
+            tokio::time::timeout(Duration::from_secs(3), bound_port_rx)
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .unwrap_or_else(|| web_port.load(Ordering::Relaxed))
+        });
+        info!("WebServer: http://localhost:{}", frontend_web_port);
 
         automation_controller_for_state
     } else {
@@ -377,10 +390,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // 11. Tauri managed state 등록
-    let frontend_web_port = config.web.port;
+    let frontend_web_port = web_port.load(Ordering::Relaxed);
     app.manage(AppState {
         runtime_handle: handle,
         config,
+        web_port,
         storage: sqlite_storage,
         config_manager,
         update_control: Some(update_control),
