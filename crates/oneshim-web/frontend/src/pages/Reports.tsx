@@ -20,7 +20,7 @@ import {
   YAxis,
 } from 'recharts'
 import { fetchReport, type ReportPeriod, type ReportResponse } from '../api/client'
-import { Badge, Button, Card, CardTitle, EmptyState, Input, Spinner } from '../components/ui'
+import { Badge, Button, Card, CardTitle, ChartSkeleton, EmptyState, Input, Skeleton, StatCardsSkeleton } from '../components/ui'
 import { useTheme } from '../contexts/ThemeContext'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
@@ -87,9 +87,16 @@ export default function Reports() {
 
   if (isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Spinner size="lg" className="text-accent-teal" />
-        <span className="ml-3 text-content-secondary">{t('common.loading')}</span>
+      <div className="min-h-full space-y-6 p-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-10 w-64" />
+        </div>
+        <StatCardsSkeleton count={4} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ChartSkeleton />
+          <ChartSkeleton />
+        </div>
       </div>
     )
   }
