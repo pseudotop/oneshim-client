@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7-rc.4] - 2026-03-12
+
 ### Changed
 
 - Force GitHub JavaScript actions onto the Node 24 runtime across CI, release, smoke, integrity, and governance workflows
