@@ -23,24 +23,15 @@ jobs:
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            rust:
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'crates/**'
-              - '!crates/oneshim-web/frontend/**'
-              - 'src-tauri/**'
-              - 'scripts/**'
-              - 'debian/**'
-            frontend:
-              - 'crates/oneshim-web/frontend/**'
-            ci:
-              - '.github/workflows/**'
-              - '.github/actions/**'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: ./scripts/gha-detect-changes.sh
 
   frontend-assets:
     name: Build Release Smoke Frontend Assets
@@ -53,18 +44,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-          run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: pnpm
           cache-dependency-path: crates/oneshim-web/frontend/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          version: '10'
 
       - name: Install frontend dependencies
         working-directory: crates/oneshim-web/frontend
@@ -171,9 +161,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: release-smoke-${{ matrix.target }}
+          key: release-smoke-${{ matrix.target }}
 
       - name: Build release smoke
         shell: bash

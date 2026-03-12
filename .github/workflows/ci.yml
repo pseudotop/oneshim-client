@@ -26,24 +26,15 @@ jobs:
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            rust:
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'crates/**'
-              - '!crates/oneshim-web/frontend/**'
-              - 'src-tauri/**'
-              - 'scripts/**'
-              - 'debian/**'
-            frontend:
-              - 'crates/oneshim-web/frontend/**'
-            ci:
-              - '.github/workflows/**'
-              - '.github/actions/**'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before || '' }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: ./scripts/gha-detect-changes.sh
 
   frontend:
     name: Frontend (build + e2e)
@@ -56,18 +47,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-          run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: pnpm
           cache-dependency-path: crates/oneshim-web/frontend/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          version: '10'
 
       - name: Install frontend dependencies
         working-directory: crates/oneshim-web/frontend
@@ -153,9 +143,9 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: ci-check
+          key: ci-check
 
       - name: Check formatting
         run: ./scripts/cargo-cache.sh fmt --all -- --check
@@ -238,9 +228,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: ci-perf-gates
+          key: ci-perf-gates
 
       - name: Run automation perf gate tests
         run: ./scripts/cargo-cache.sh test --release -p oneshim-automation perf_budget_ -- --nocapture
@@ -300,9 +290,9 @@ jobs:
 
       - name: Cache Rust build artifacts
         if: env.RUN_HEAVY_TESTS == 'true'
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: ci-test
+          key: ci-test
 
       - name: Create frontend dist stub for Tauri generate_context!()
         if: env.RUN_HEAVY_TESTS == 'true'
@@ -402,9 +392,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: ci-build-${{ matrix.target }}
+          key: ci-build-${{ matrix.target }}
 
       - name: Build release
         shell: bash

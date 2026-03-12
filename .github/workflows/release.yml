@@ -227,18 +227,17 @@ jobs:
         with:
           ref: ${{ needs.verify-version.outputs.release_sha }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-          run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: pnpm
           cache-dependency-path: crates/oneshim-web/frontend/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          version: '10'
 
       - name: Install frontend dependencies
         working-directory: crates/oneshim-web/frontend
@@ -338,7 +337,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
+        with:
+          key: release-build-${{ matrix.target }}
 
       - name: Build release
         shell: bash
@@ -887,9 +888,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: ./.github/actions/rust-cache
         with:
-          shared-key: release-reliability-smoke-${{ matrix.name }}
+          key: release-reliability-smoke-${{ matrix.name }}
 
       - name: Run smoke script (macOS/Linux)
         if: runner.os != 'Windows'
@@ -1106,16 +1107,39 @@ jobs:
           **Full changelog:** [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
           NOTES_EOF
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.verify-version.outputs.release_tag }}
-          target_commitish: ${{ needs.verify-version.outputs.release_sha }}
-          name: ONESHIM Client ${{ steps.version.outputs.version }}
-          body_path: release_notes.md
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
-          files: |
-            dist/*
+      - name: Create or update Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG_NAME: ${{ needs.verify-version.outputs.release_tag }}
+          RELEASE_TARGET_SHA: ${{ needs.verify-version.outputs.release_sha }}
+          RELEASE_NAME: ONESHIM Client ${{ steps.version.outputs.version }}
+          RELEASE_IS_PRERELEASE: ${{ contains(steps.version.outputs.version, '-') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$RELEASE_TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG_NAME} already exists; updating notes and assets"
+            gh release edit "$RELEASE_TAG_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_NAME" \
+              --notes-file release_notes.md
+            gh release upload "$RELEASE_TAG_NAME" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            exit 0
+          fi
+
+          create_args=(
+            "$RELEASE_TAG_NAME"
+            --repo "$GITHUB_REPOSITORY"
+            --target "$RELEASE_TARGET_SHA"
+            --title "$RELEASE_NAME"
+            --notes-file release_notes.md
+          )
+
+          if [[ "$RELEASE_IS_PRERELEASE" == "true" ]]; then
+            create_args+=(--prerelease)
+          fi
+
+          gh release create "${create_args[@]}" dist/*

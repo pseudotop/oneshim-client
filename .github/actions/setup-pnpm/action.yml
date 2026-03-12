@@ -1,0 +1,19 @@
+name: Setup pnpm
+description: Enable a pinned pnpm version via Corepack without pnpm/action-setup.
+
+inputs:
+  version:
+    description: pnpm version to activate
+    required: false
+    default: "10"
+
+runs:
+  using: composite
+  steps:
+    - name: Enable pnpm with Corepack
+      shell: bash
+      run: |
+        set -euo pipefail
+        corepack enable
+        corepack prepare "pnpm@${{ inputs.version }}" --activate
+        pnpm --version
