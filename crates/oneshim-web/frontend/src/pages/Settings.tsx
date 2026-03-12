@@ -2,7 +2,6 @@
  *
  */
 
-import { DEFAULT_WEB_PORT } from '../constants'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -38,6 +37,8 @@ import {
 } from '../api/client'
 import LanguageSelector from '../components/LanguageSelector'
 import { Button, Card, CardTitle, Input, Select, Spinner } from '../components/ui'
+import { DEFAULT_WEB_PORT } from '../constants'
+import { useToast } from '../hooks/useToast'
 import { colors, form, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatBytes, formatNumber } from '../utils/formatters'
@@ -94,7 +95,7 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
 export default function Settings() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const { show: showToast } = useToast()
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
   const [exportLoading, setExportLoading] = useState<ExportDataType | null>(null)
   const [modelCatalog, setModelCatalog] = useState<Record<'ocr_api' | 'llm_api', string[]>>({
@@ -160,12 +161,10 @@ export default function Settings() {
     mutationFn: updateSettings,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-      setSaveMessage({ type: 'success', text: t('settings.savedFull') })
-      setTimeout(() => setSaveMessage(null), 5000)
+      showToast('success', t('settings.savedFull'), 5000)
     },
     onError: (error: Error) => {
-      setSaveMessage({ type: 'error', text: error.message })
-      setTimeout(() => setSaveMessage(null), 5000)
+      showToast('error', error.message, 5000)
     },
   })
 
@@ -173,12 +172,10 @@ export default function Settings() {
     mutationFn: (action: UpdateAction) => postUpdateAction(action),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['update-status'] })
-      setSaveMessage({ type: 'success', text: t('settings.updateActionSuccess') })
-      setTimeout(() => setSaveMessage(null), 3000)
+      showToast('success', t('settings.updateActionSuccess'), 3000)
     },
     onError: (error: Error) => {
-      setSaveMessage({ type: 'error', text: error.message })
-      setTimeout(() => setSaveMessage(null), 5000)
+      showToast('error', error.message, 5000)
     },
   })
 
@@ -206,14 +203,9 @@ export default function Settings() {
       const timestamp = new Date().toISOString().split('T')[0]
       downloadBlob(blob, `${dataType}_${timestamp}.${ext}`)
 
-      setSaveMessage({ type: 'success', text: t('settings.exportDone') })
-      setTimeout(() => setSaveMessage(null), 3000)
+      showToast('success', t('settings.exportDone'), 3000)
     } catch (error) {
-      setSaveMessage({
-        type: 'error',
-        text: `${t('settings.saveFailed')}: ${error instanceof Error ? error.message : String(error)}`,
-      })
-      setTimeout(() => setSaveMessage(null), 5000)
+      showToast('error', `${t('settings.saveFailed')}: ${error instanceof Error ? error.message : String(error)}`, 5000)
     } finally {
       setExportLoading(null)
     }
@@ -454,11 +446,11 @@ export default function Settings() {
     if (!formData) return
     const current = formData.ai_provider[which]
     if (!current) {
-      setSaveMessage({ type: 'error', text: t('settingsAutomation.modelDiscoveryMissingConfig') })
+      showToast('error', t('settingsAutomation.modelDiscoveryMissingConfig'), 5000)
       return
     }
     if (!current.api_key_masked?.trim()) {
-      setSaveMessage({ type: 'error', text: t('settingsAutomation.modelDiscoveryMissingKey') })
+      showToast('error', t('settingsAutomation.modelDiscoveryMissingKey'), 5000)
       return
     }
 
@@ -480,8 +472,7 @@ export default function Settings() {
         ...prev,
         [which]: message,
       }))
-      setSaveMessage({ type: 'error', text: message })
-      setTimeout(() => setSaveMessage(null), 5000)
+      showToast('error', message, 5000)
     } finally {
       setModelCatalogLoading(null)
     }
@@ -522,19 +513,6 @@ export default function Settings() {
         <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
         <LanguageSelector />
       </div>
-
-      {/* UI note */}
-      {saveMessage && (
-        <div
-          className={`rounded-lg p-4 ${
-            saveMessage.type === 'success'
-              ? 'border border-status-connected bg-semantic-success/20 text-semantic-success'
-              : 'border border-status-error bg-semantic-error/20 text-semantic-error'
-          }`}
-        >
-          {saveMessage.text}
-        </div>
-      )}
 
       {/* UI note */}
       <Card id="section-general" variant="default" padding="lg">
