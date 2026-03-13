@@ -428,14 +428,29 @@ mod tests {
         }
     }
 
+    /// Counter for unique test ports to avoid parallel test conflicts.
+    static TEST_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(19400);
+
+    fn next_test_port() -> u16 {
+        TEST_PORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Create a client that does NOT bind to real port 1455 in tests.
     fn make_client(secret_store: Arc<dyn SecretStoreTrait>) -> OAuthClient {
         OAuthClient::new(secret_store, vec![OAuthProviderConfig::openai_codex()])
+    }
+
+    /// Create a client with a unique test port for tests that call `start_flow`.
+    fn make_client_with_test_port(secret_store: Arc<dyn SecretStoreTrait>) -> OAuthClient {
+        let mut config = OAuthProviderConfig::openai_codex();
+        config.callback_port = next_test_port();
+        OAuthClient::new(secret_store, vec![config])
     }
 
     #[tokio::test]
     async fn start_flow_returns_valid_handle() {
         let store = Arc::new(TestSecretStore::new());
-        let client = make_client(store);
+        let client = make_client_with_test_port(store);
         let handle = client.start_flow("openai").await.unwrap();
 
         assert!(!handle.flow_id.is_empty());
@@ -543,7 +558,7 @@ mod tests {
     #[tokio::test]
     async fn flow_status_returns_pending() {
         let store = Arc::new(TestSecretStore::new());
-        let client = make_client(store);
+        let client = make_client_with_test_port(store);
         let handle = client.start_flow("openai").await.unwrap();
 
         let status = client.flow_status(&handle.flow_id).await.unwrap();
@@ -555,7 +570,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_flow_sets_cancelled() {
         let store = Arc::new(TestSecretStore::new());
-        let client = make_client(store);
+        let client = make_client_with_test_port(store);
         let handle = client.start_flow("openai").await.unwrap();
 
         client.cancel_flow(&handle.flow_id).await.unwrap();

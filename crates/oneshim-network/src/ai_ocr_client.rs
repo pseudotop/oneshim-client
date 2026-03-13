@@ -6,19 +6,30 @@ use tracing::{debug, warn};
 use oneshim_core::ai_model_lifecycle_policy::{self, ModelLifecycleDecision};
 use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
+use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 
 /// - Claude Vision (Anthropic): `POST /v1/messages` + image content block
 /// - Google Cloud Vision: `POST /v1/images:annotate` + TEXT_DETECTION
-#[derive(Debug)]
 pub struct RemoteOcrProvider {
     http_client: reqwest::Client,
     endpoint: String,
-    api_key: String,
+    credential: CredentialSource,
     model: Option<String>,
     provider_type: AiProviderType,
     #[allow(dead_code)]
     timeout_secs: u64,
+}
+
+impl std::fmt::Debug for RemoteOcrProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteOcrProvider")
+            .field("endpoint", &self.endpoint)
+            .field("credential", &self.credential)
+            .field("model", &self.model)
+            .field("provider_type", &self.provider_type)
+            .finish()
+    }
 }
 
 const OCR_LINE_INSTRUCTION: &str =
@@ -134,7 +145,7 @@ impl RemoteOcrProvider {
                 "AI OCR API key is not configured. Set it in Settings.".into(),
             ));
         }
-        let api_key = config.api_key.clone();
+        let credential = CredentialSource::ApiKey(config.api_key.clone());
 
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
@@ -179,7 +190,55 @@ impl RemoteOcrProvider {
         Ok(Self {
             http_client,
             endpoint: config.endpoint.clone(),
-            api_key,
+            credential,
+            model: config.model.clone(),
+            provider_type: config.provider_type,
+            timeout_secs: config.timeout_secs,
+        })
+    }
+
+    /// Create a provider with a managed credential source (e.g., OAuth).
+    pub fn new_with_credential(
+        config: &ExternalApiEndpoint,
+        credential: CredentialSource,
+    ) -> Result<Self, CoreError> {
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(config.timeout_secs))
+            .build()
+            .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+
+        if let Some(model) = config
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(
+                config.provider_type,
+                model,
+            )? {
+                ModelLifecycleDecision::Allowed => {}
+                ModelLifecycleDecision::Warn {
+                    message,
+                    replacement,
+                } => {
+                    warn!(
+                        provider = ?config.provider_type,
+                        model = %model,
+                        replacement = ?replacement,
+                        "{}", message
+                    );
+                }
+                ModelLifecycleDecision::Block { message, .. } => {
+                    return Err(CoreError::PolicyDenied(message));
+                }
+            }
+        }
+
+        Ok(Self {
+            http_client,
+            endpoint: config.endpoint.clone(),
+            credential,
             model: config.model.clone(),
             provider_type: config.provider_type,
             timeout_secs: config.timeout_secs,
@@ -379,7 +438,8 @@ impl OcrProvider for RemoteOcrProvider {
             .header("Content-Type", "application/json")
             .json(&request_body);
 
-        builder = strategy.apply_auth_headers(builder, &self.api_key);
+        let bearer_token = self.credential.resolve_bearer_token().await?;
+        builder = strategy.apply_auth_headers(builder, &bearer_token);
 
         let response = builder
             .send()
