@@ -50,6 +50,7 @@ pub enum AiAccessMode {
     LocalModel,
     ProviderSubscriptionCli,
     PlatformConnected,
+    ProviderOAuth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

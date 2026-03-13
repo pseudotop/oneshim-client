@@ -17,6 +17,8 @@ use crate::platform_accessibility::create_platform_accessibility_finder;
 use crate::provider_adapters::{
     resolve_ai_provider_adapters, ExternalOcrPrivacyGuard, ProviderSource,
 };
+#[cfg(feature = "server")]
+use oneshim_core::ports::oauth::OAuthPort;
 
 pub struct AutomationRuntime {
     pub element_finder: Arc<dyn ElementFinder>,
@@ -126,9 +128,15 @@ pub fn build_automation_runtime(
     pii_filter_level: PiiFilterLevel,
     frame_storage: Option<Arc<FrameFileStorage>>,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AutomationRuntime, CoreError> {
-    let adapters =
-        resolve_ai_provider_adapters(ai_config, pii_filter_level, external_ocr_privacy_guard)?;
+    let adapters = resolve_ai_provider_adapters(
+        ai_config,
+        pii_filter_level,
+        external_ocr_privacy_guard,
+        #[cfg(feature = "server")]
+        oauth_port,
+    )?;
 
     let ocr_provider_name = adapters.ocr.provider_name().to_string();
     let llm_provider_name = adapters.llm.provider_name().to_string();
@@ -421,8 +429,15 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let runtime =
-            build_automation_runtime(&config, PiiFilterLevel::Standard, None, None).unwrap();
+        let runtime = build_automation_runtime(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            #[cfg(feature = "server")]
+            None,
+        )
+        .unwrap();
         assert_eq!(runtime.access_mode, AiAccessMode::ProviderApiKey);
         assert_eq!(runtime.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(runtime.llm_source, ProviderSource::LocalFallback);
@@ -447,7 +462,14 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        match build_automation_runtime(&config, PiiFilterLevel::Standard, None, None) {
+        match build_automation_runtime(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            #[cfg(feature = "server")]
+            None,
+        ) {
             Ok(_) => panic!("Expected an error"),
             Err(err) => assert!(matches!(err, CoreError::Config(_))),
         }
@@ -478,6 +500,8 @@ mod tests {
             PiiFilterLevel::Standard,
             None,
             Some(remote_ocr_guard(&temp_dir)),
+            #[cfg(feature = "server")]
+            None,
         )
         .unwrap();
         assert_eq!(runtime.ocr_source, ProviderSource::Remote);
@@ -505,7 +529,14 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let result = build_automation_runtime(&config, PiiFilterLevel::Standard, None, None);
+        let result = build_automation_runtime(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            #[cfg(feature = "server")]
+            None,
+        );
         assert!(
             result.is_err(),
             "Remote OCR should require a runtime privacy guard"

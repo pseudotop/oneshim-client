@@ -6,6 +6,8 @@ use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
 use oneshim_core::config::{AiAccessMode, AppConfig};
 use oneshim_core::config_manager::ConfigManager;
+#[cfg(feature = "server")]
+use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::storage::StorageService;
 use oneshim_monitor::activity::ActivityTracker;
 use oneshim_monitor::process::ProcessTracker;
@@ -16,7 +18,11 @@ use oneshim_network::auth::TokenManager;
 use oneshim_network::batch_uploader::BatchUploader;
 #[cfg(feature = "server")]
 use oneshim_network::http_client::HttpApiClient;
+#[cfg(feature = "server")]
+use oneshim_network::oauth::{provider_config::OAuthProviderConfig, OAuthClient};
 use oneshim_storage::frame_storage::FrameFileStorage;
+#[cfg(feature = "server")]
+use oneshim_storage::keychain::{KeychainOps, KeychainSecretStore};
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
@@ -102,6 +108,75 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
     }
 }
 
+/// Build the OAuth runtime port without probing the OS keychain at startup.
+///
+/// Keychain availability is determined lazily when OAuth is actually used,
+/// which avoids write/delete prompts during normal app boot.
+#[cfg(feature = "server")]
+fn create_oauth_port(config_dir: &std::path::Path) -> Option<Arc<dyn OAuthPort>> {
+    let registry_path = config_dir.join("oneshim-keychain-registry.json");
+    match KeychainOps::new(registry_path) {
+        Ok(ops) => {
+            let secret_store = Arc::new(KeychainSecretStore::new(Arc::new(ops)));
+            let providers = vec![OAuthProviderConfig::openai_codex()];
+            Some(Arc::new(OAuthClient::new(secret_store, providers)) as Arc<dyn OAuthPort>)
+        }
+        Err(e) => {
+            warn!("Failed to initialize OAuth secret store: {e}");
+            None
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+fn preflight_provider_oauth_connection(
+    handle: &tokio::runtime::Handle,
+    ai_config: &oneshim_core::config::AiProviderConfig,
+    oauth_port: Option<Arc<dyn OAuthPort>>,
+) -> std::result::Result<Option<Arc<dyn OAuthPort>>, oneshim_core::error::CoreError> {
+    if ai_config.access_mode != AiAccessMode::ProviderOAuth {
+        return Ok(oauth_port);
+    }
+
+    let oauth = oauth_port.ok_or_else(|| {
+        oneshim_core::error::CoreError::Config(
+            "ProviderOAuth mode requires an available OS secret store".to_string(),
+        )
+    })?;
+    let provider = OAuthProviderConfig::openai_codex();
+    let status = handle
+        .block_on(oauth.connection_status(&provider.provider_id))
+        .map_err(|e| oneshim_core::error::CoreError::Config(e.to_string()))?;
+
+    if !status.connected {
+        return Err(oneshim_core::error::CoreError::Config(
+            "ProviderOAuth mode requires an active OpenAI OAuth connection".to_string(),
+        ));
+    }
+
+    Ok(Some(oauth))
+}
+
+fn oauth_runtime_error_status(
+    ai_config: &oneshim_core::config::AiProviderConfig,
+    reason: String,
+) -> AiRuntimeStatus {
+    let ocr_source = match ai_config.ocr_provider {
+        oneshim_core::config::OcrProviderType::Remote => "remote",
+        oneshim_core::config::OcrProviderType::Local => "local",
+    };
+
+    AiRuntimeStatus {
+        ocr_source: ocr_source.to_string(),
+        llm_source: "oauth".to_string(),
+        ocr_fallback_reason: Some(reason.clone()),
+        llm_fallback_reason: Some(reason),
+    }
+}
+
+fn should_fallback_to_noop(ai_config: &oneshim_core::config::AiProviderConfig) -> bool {
+    ai_config.fallback_to_local && ai_config.access_mode != AiAccessMode::ProviderOAuth
+}
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
 pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let _app_handle = app.handle().clone();
@@ -136,6 +211,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // 3. tokio runtime — Handle만 추출, Runtime은 전용 스레드에 파킹
     let runtime = Runtime::new()?;
     let handle = runtime.handle().clone();
+    #[cfg(feature = "server")]
+    let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
+        .unwrap_or_else(|_| data_dir_path.clone());
+    #[cfg(feature = "server")]
+    let oauth_port = create_oauth_port(&config_dir);
     std::thread::spawn(move || {
         runtime.block_on(std::future::pending::<()>());
     });
@@ -265,6 +345,22 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 process_monitor.clone(),
                 Some(web_audit_logger.clone()),
             );
+            #[cfg(feature = "server")]
+            let runtime = preflight_provider_oauth_connection(
+                &handle,
+                &config.ai_provider,
+                oauth_port.clone(),
+            )
+            .and_then(|validated_oauth_port| {
+                build_automation_runtime(
+                    &config.ai_provider,
+                    config.privacy.pii_filter_level,
+                    automation_frame_storage.clone(),
+                    Some(external_ocr_privacy_guard.clone()),
+                    validated_oauth_port,
+                )
+            });
+            #[cfg(not(feature = "server"))]
             let runtime = build_automation_runtime(
                 &config.ai_provider,
                 config.privacy.pii_filter_level,
@@ -314,7 +410,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     Some(Arc::new(controller))
                 }
                 Err(err) => {
-                    if config.ai_provider.fallback_to_local {
+                    if should_fallback_to_noop(&config.ai_provider) {
                         let fallback_reason = err.to_string();
                         ai_runtime_status = Some(AiRuntimeStatus {
                             ocr_source: "local-fallback".to_string(),
@@ -335,6 +431,12 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                         controller.set_intent_executor(build_noop_intent_executor());
                         Some(Arc::new(controller))
                     } else {
+                        if config.ai_provider.access_mode == AiAccessMode::ProviderOAuth {
+                            ai_runtime_status = Some(oauth_runtime_error_status(
+                                &config.ai_provider,
+                                err.to_string(),
+                            ));
+                        }
                         error!(error = %err, "AI provider failed, automation disabled");
                         None
                     }
@@ -690,5 +792,32 @@ mod tests {
         let id = generate_session_id();
         assert!(id.starts_with("sess_"));
         assert!(id.len() > 20); // sess_ + timestamp + _ + hex
+    }
+
+    #[test]
+    fn provider_oauth_never_uses_noop_fallback() {
+        let config = oneshim_core::config::AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            fallback_to_local: true,
+            ..oneshim_core::config::AiProviderConfig::default()
+        };
+
+        assert!(!should_fallback_to_noop(&config));
+    }
+
+    #[test]
+    fn oauth_runtime_error_status_reports_oauth_source() {
+        let config = oneshim_core::config::AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            ..oneshim_core::config::AiProviderConfig::default()
+        };
+
+        let status = oauth_runtime_error_status(&config, "not authenticated".to_string());
+        assert_eq!(status.ocr_source, "local");
+        assert_eq!(status.llm_source, "oauth");
+        assert_eq!(
+            status.llm_fallback_reason.as_deref(),
+            Some("not authenticated")
+        );
     }
 }
