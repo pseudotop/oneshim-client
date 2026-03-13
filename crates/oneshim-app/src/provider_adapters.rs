@@ -31,6 +31,7 @@ pub enum ProviderSource {
     LocalFallback,
     CliSubscription,
     Platform,
+    OAuth,
 }
 
 impl ProviderSource {
@@ -41,6 +42,7 @@ impl ProviderSource {
             Self::LocalFallback => "local-fallback",
             Self::CliSubscription => "cli-subscription",
             Self::Platform => "platform",
+            Self::OAuth => "oauth",
         }
     }
 }
@@ -211,6 +213,10 @@ pub fn resolve_ai_provider_adapters(
                 llm_fallback_reason,
             })
         }
+        AiAccessMode::ProviderOAuth => Err(CoreError::Config(
+            "ProviderOAuth mode requires the desktop app (Tauri runtime with OS keychain)"
+                .to_string(),
+        )),
     }
 }
 
@@ -528,6 +534,20 @@ mod tests {
         assert!(adapters.llm_fallback_reason.is_none());
         assert!(adapters.ocr.is_external());
         assert!(adapters.llm.is_external());
+    }
+
+    #[test]
+    fn oauth_mode_rejected_in_cli_mode() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            ..AiProviderConfig::default()
+        };
+
+        match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard) {
+            Ok(_) => panic!("ProviderOAuth should not work in CLI mode"),
+            Err(CoreError::Config(msg)) => assert!(msg.contains("desktop app")),
+            Err(other) => panic!("Unexpected error type: {other}"),
+        }
     }
 
     struct FakeExternalOcrProvider {

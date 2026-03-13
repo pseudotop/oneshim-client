@@ -16,6 +16,8 @@ use oneshim_network::auth::TokenManager;
 use oneshim_network::batch_uploader::BatchUploader;
 #[cfg(feature = "server")]
 use oneshim_network::http_client::HttpApiClient;
+#[cfg(feature = "server")]
+use oneshim_network::oauth::{provider_config::OAuthProviderConfig, OAuthClient};
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::keychain::{KeychainOps, KeychainSecretStore, NullSecretStore};
 use oneshim_storage::sqlite::SqliteStorage;
@@ -162,7 +164,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // Secret store for OAuth credentials
     let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
         .unwrap_or_else(|_| data_dir_path.clone());
-    let (_secret_store, oauth_available) = create_secret_store(&config_dir);
+    let (secret_store, oauth_available) = create_secret_store(&config_dir);
+
+    // OAuthClient — built only when keychain is available and server feature enabled
+    #[cfg(feature = "server")]
+    let oauth_port: Option<Arc<dyn oneshim_core::ports::oauth::OAuthPort>> = if oauth_available {
+        let providers = vec![OAuthProviderConfig::openai_codex()];
+        Some(Arc::new(OAuthClient::new(secret_store.clone(), providers)))
+    } else {
+        None
+    };
+    #[cfg(not(feature = "server"))]
+    let _secret_store = secret_store; // suppress unused warning
 
     // 2b. Integrity preflight — signed policy bundle verification
     if let Err(e) = crate::integrity_guard::run_preflight(&config, false) {
@@ -306,6 +319,8 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 config.privacy.pii_filter_level,
                 automation_frame_storage,
                 Some(external_ocr_privacy_guard),
+                #[cfg(feature = "server")]
+                oauth_port.clone(),
             );
             match runtime {
                 Ok(runtime) => {

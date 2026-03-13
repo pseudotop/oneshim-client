@@ -78,6 +78,13 @@ impl AiProviderConfig {
                     ));
                 }
             }
+            AiAccessMode::ProviderOAuth => {
+                // OAuth mode: LLM uses managed OAuth credentials (no API key needed).
+                // OCR still respects its own provider setting (local/remote with API key).
+                if self.ocr_provider == OcrProviderType::Remote {
+                    validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;
+                }
+            }
         }
         Ok(())
     }
