@@ -96,6 +96,17 @@ impl InputActivityCollector {
         }
     }
 
+    /// Returns a normalized activity score (0.0–1.0) without resetting counters.
+    /// Used by the capture trigger to boost importance when input activity is high.
+    pub fn peek_activity_level(&self) -> f32 {
+        let clicks = self.click_count.load(Ordering::Relaxed);
+        let keys = self.total_keystrokes.load(Ordering::Relaxed);
+        let scrolls = self.scroll_count.load(Ordering::Relaxed);
+        // 10+ clicks or 50+ keystrokes or 20+ scrolls in a period = max activity
+        let score = clicks as f32 / 10.0 + keys as f32 / 50.0 + scrolls as f32 / 20.0;
+        score.min(1.0)
+    }
+
     pub fn estimate_from_idle_change(&self, prev_idle_secs: u64, curr_idle_secs: u64) {
         if curr_idle_secs < prev_idle_secs {
             let estimated_keystrokes = (prev_idle_secs - curr_idle_secs).min(10) as u32;
@@ -225,6 +236,38 @@ mod tests {
 
         assert_eq!(second.mouse.click_count, 0);
         assert_eq!(second.keyboard.total_keystrokes, 0);
+    }
+
+    #[test]
+    fn peek_activity_level_no_activity() {
+        let collector = InputActivityCollector::new();
+        assert!((collector.peek_activity_level() - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn peek_activity_level_moderate() {
+        let collector = InputActivityCollector::new();
+        for _ in 0..5 {
+            collector.record_click();
+        }
+        for _ in 0..25 {
+            collector.record_keystroke(false, false);
+        }
+        // 5/10 + 25/50 = 0.5 + 0.5 = 1.0 (capped)
+        let level = collector.peek_activity_level();
+        assert!((level - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn peek_does_not_reset_counters() {
+        let collector = InputActivityCollector::new();
+        collector.record_click();
+        collector.record_click();
+
+        let level1 = collector.peek_activity_level();
+        let level2 = collector.peek_activity_level();
+        assert!((level1 - level2).abs() < f32::EPSILON);
+        assert!(level1 > 0.0);
     }
 
     #[test]

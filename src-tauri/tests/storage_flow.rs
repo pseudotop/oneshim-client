@@ -9,6 +9,7 @@ fn make_context_event(app: &str, title: &str) -> Event {
         window_title: title.to_string(),
         prev_app_name: None,
         timestamp: Utc::now(),
+        ..Default::default()
     })
 }
 
@@ -78,6 +79,7 @@ async fn multiple_event_types() {
         window_title: "test.rs".to_string(),
         prev_app_name: Some("Firefox".to_string()),
         timestamp: Utc::now(),
+        ..Default::default()
     });
     let user = Event::User(UserEvent {
         event_id: Uuid::new_v4(),

@@ -19,6 +19,7 @@ fn make_event(app: &str, title: &str, prev: Option<&str>) -> ContextEvent {
         window_title: title.to_string(),
         prev_app_name: prev.map(String::from),
         timestamp: Utc::now(),
+        ..Default::default()
     }
 }
 

@@ -87,6 +87,10 @@ pub struct ContextEvent {
     pub window_title: String,
     pub prev_app_name: Option<String>,
     pub timestamp: DateTime<Utc>,
+    /// Normalized input activity level (0.0–1.0) from InputActivityCollector.
+    /// Used by capture trigger to boost importance when user is actively interacting.
+    #[serde(default)]
+    pub input_activity_level: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -144,6 +144,17 @@ impl FrameProcessor for EdgeFrameProcessor {
             image_payload,
         })
     }
+
+    async fn capture_thumbnail(&self) -> Result<Vec<u8>, CoreError> {
+        let frame = self.capture.capture_primary()?;
+        let thumb = thumbnail::fast_resize(&frame, self.thumbnail_width, self.thumbnail_height)?;
+        let encoded = encoder::encode_webp_base64(&thumb, WebPQuality::Low)?;
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&encoded)
+            .map_err(|e| CoreError::Internal(format!("base64 decode failed: {e}")))?;
+        Ok(bytes)
+    }
 }
 
 #[cfg(test)]

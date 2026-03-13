@@ -135,6 +135,7 @@ mod tests {
             window_title: "ONESHIM".to_string(),
             prev_app_name: Some("Code".to_string()),
             timestamp: Utc::now(),
+            ..Default::default()
         })
     }
 
