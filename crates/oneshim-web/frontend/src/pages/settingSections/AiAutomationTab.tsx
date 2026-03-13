@@ -11,6 +11,7 @@ import type {
 } from '../../api/client'
 import { Button, Card, CardTitle, Input, Select } from '../../components/ui'
 import { form } from '../../styles/tokens'
+import OAuthConnectionPanel from './OAuthConnectionPanel'
 import ToggleRow from './ToggleRow'
 import type { SettingsFormTabProps } from './types'
 
@@ -394,6 +395,10 @@ export default function AiAutomationTab({
             checked={formData.ai_provider.fallback_to_local}
             onChange={(value) => onAiProviderChange('fallback_to_local', value)}
           />
+
+          {formData.ai_provider.access_mode === 'provider_oauth' && (
+            <OAuthConnectionPanel providerId="openai" providerName="OpenAI" />
+          )}
 
           {formData.ai_provider.ocr_provider === 'Remote' && (
             <div className="space-y-3 rounded-lg border border-muted p-4">

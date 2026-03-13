@@ -608,6 +608,21 @@
     "modelDiscoveryMissingConfig": "Configure remote endpoint, provider, and API key first.",
     "modelDiscoveryMissingKey": "Enter full API key to discover models."
   },
+  "settingsOAuth": {
+    "title": "Connection",
+    "experimental": "Experimental",
+    "loading": "Checking connection status…",
+    "disconnectedDescription": "Connect your account to enable OAuth-based access. No API key required.",
+    "connect": "Connect",
+    "connecting": "Waiting for authorization in your browser…",
+    "cancel": "Cancel",
+    "connected": "Connected",
+    "expiresAt": "Expires",
+    "disconnect": "Disconnect",
+    "retry": "Retry",
+    "disclaimer": "Tokens are stored in your OS keychain and never leave this device.",
+    "portConflict": "Could not start the authorization server — the callback port is already in use. Close other instances and try again."
+  },
   "focus": {
     "title": "Focus",
     "pageTitle": "Focus Analysis",

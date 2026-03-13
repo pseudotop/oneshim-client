@@ -88,6 +88,11 @@ fn main() {
             commands::get_automation_status,
             commands::get_web_port,
             commands::get_allowed_setting_keys,
+            commands::oauth_start_flow,
+            commands::oauth_flow_status,
+            commands::oauth_cancel_flow,
+            commands::oauth_revoke,
+            commands::oauth_connection_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

@@ -61,6 +61,10 @@ pub struct AppState {
     pub oauth_available: bool,
 }
 
+/// Separate managed state for OAuthPort — kept outside AppState to avoid
+/// conditional compilation in the main struct definition.
+pub struct OAuthState(pub Option<Arc<dyn oneshim_core::ports::oauth::OAuthPort>>);
+
 fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
     data_dir
         .map(|d| PathBuf::from(d).join("oneshim.db"))
@@ -453,6 +457,12 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
     // 11. Tauri managed state 등록
     let frontend_web_port = web_port.load(Ordering::Relaxed);
+
+    #[cfg(feature = "server")]
+    let oauth_state = OAuthState(oauth_port);
+    #[cfg(not(feature = "server"))]
+    let oauth_state = OAuthState(None);
+
     app.manage(AppState {
         runtime_handle: handle,
         config,
@@ -465,6 +475,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         shutdown_tx,
         oauth_available,
     });
+    app.manage(oauth_state);
 
     // 12. 시스템 트레이 초기화
     crate::tray::setup_tray(app)?;

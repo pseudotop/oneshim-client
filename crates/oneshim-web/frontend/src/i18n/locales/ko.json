@@ -608,6 +608,21 @@
     "modelDiscoveryMissingConfig": "원격 엔드포인트, 프로바이더, API 키를 먼저 설정하세요.",
     "modelDiscoveryMissingKey": "모델 조회를 위해 전체 API 키를 입력하세요."
   },
+  "settingsOAuth": {
+    "title": "연결",
+    "experimental": "실험적",
+    "loading": "연결 상태 확인 중…",
+    "disconnectedDescription": "OAuth 기반 접근을 위해 계정을 연결하세요. API 키가 필요 없습니다.",
+    "connect": "연결",
+    "connecting": "브라우저에서 인증 대기 중…",
+    "cancel": "취소",
+    "connected": "연결됨",
+    "expiresAt": "만료",
+    "disconnect": "연결 해제",
+    "retry": "재시도",
+    "disclaimer": "토큰은 OS 키체인에 저장되며 이 기기를 벗어나지 않습니다.",
+    "portConflict": "인증 서버를 시작할 수 없습니다 — 콜백 포트가 이미 사용 중입니다. 다른 인스턴스를 종료하고 다시 시도하세요."
+  },
   "focus": {
     "title": "집중도",
     "pageTitle": "집중도 분석",
