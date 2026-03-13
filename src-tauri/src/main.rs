@@ -28,6 +28,7 @@ mod platform_overlay;
 mod provider_adapters;
 mod scheduler;
 mod setup;
+mod skill_loader;
 mod tray;
 mod update_coordinator;
 mod updater;

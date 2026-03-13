@@ -8,6 +8,7 @@ use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
 use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
+use oneshim_core::ports::skill_loader::SkillLoader;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::element_finder::OcrElementFinder;
 use std::sync::Arc;
@@ -128,6 +129,7 @@ pub fn build_automation_runtime(
     pii_filter_level: PiiFilterLevel,
     frame_storage: Option<Arc<FrameFileStorage>>,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    skill_loader: Option<Arc<dyn SkillLoader>>,
     #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AutomationRuntime, CoreError> {
     let adapters = resolve_ai_provider_adapters(
@@ -164,10 +166,12 @@ pub fn build_automation_runtime(
         IntentConfig::default(),
     );
     let intent_executor = Arc::new(IntentExecutor::new(resolver, IntentConfig::default()));
-    let intent_planner: Arc<dyn IntentPlanner> = Arc::new(LlmIntentPlanner::new(
-        adapters.llm.clone(),
-        element_finder.clone(),
-    ));
+    let planner = LlmIntentPlanner::new(adapters.llm.clone(), element_finder.clone());
+    let intent_planner: Arc<dyn IntentPlanner> = if let Some(loader) = skill_loader {
+        Arc::new(planner.with_skill_loader(loader))
+    } else {
+        Arc::new(planner)
+    };
 
     Ok(AutomationRuntime {
         element_finder,
@@ -434,6 +438,7 @@ mod tests {
             PiiFilterLevel::Standard,
             None,
             None,
+            None,
             #[cfg(feature = "server")]
             None,
         )
@@ -465,6 +470,7 @@ mod tests {
         match build_automation_runtime(
             &config,
             PiiFilterLevel::Standard,
+            None,
             None,
             None,
             #[cfg(feature = "server")]
@@ -500,6 +506,7 @@ mod tests {
             PiiFilterLevel::Standard,
             None,
             Some(remote_ocr_guard(&temp_dir)),
+            None,
             #[cfg(feature = "server")]
             None,
         )
@@ -532,6 +539,7 @@ mod tests {
         let result = build_automation_runtime(
             &config,
             PiiFilterLevel::Standard,
+            None,
             None,
             None,
             #[cfg(feature = "server")]

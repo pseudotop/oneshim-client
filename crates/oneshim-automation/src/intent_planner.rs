@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::intent::AutomationIntent;
 use oneshim_core::ports::element_finder::ElementFinder;
-use oneshim_core::ports::llm_provider::{InterpretedAction, LlmProvider, ScreenContext};
+use oneshim_core::ports::llm_provider::{
+    InterpretedAction, LlmProvider, ScreenContext, SkillContext,
+};
+use oneshim_core::ports::skill_loader::SkillLoader;
 use std::sync::Arc;
 
 #[async_trait]
@@ -13,6 +16,7 @@ pub trait IntentPlanner: Send + Sync {
 pub struct LlmIntentPlanner {
     llm_provider: Arc<dyn LlmProvider>,
     element_finder: Arc<dyn ElementFinder>,
+    skill_loader: Option<Arc<dyn SkillLoader>>,
     wait_timeout_ms: u64,
 }
 
@@ -21,8 +25,15 @@ impl LlmIntentPlanner {
         Self {
             llm_provider,
             element_finder,
+            skill_loader: None,
             wait_timeout_ms: 5_000,
         }
+    }
+
+    /// Attach a skill loader for progressive skill disclosure.
+    pub fn with_skill_loader(mut self, loader: Arc<dyn SkillLoader>) -> Self {
+        self.skill_loader = Some(loader);
+        self
     }
 
     async fn build_screen_context(&self) -> ScreenContext {
@@ -103,10 +114,21 @@ impl LlmIntentPlanner {
 impl IntentPlanner for LlmIntentPlanner {
     async fn plan(&self, intent_hint: &str) -> Result<AutomationIntent, CoreError> {
         let screen_context = self.build_screen_context().await;
-        let interpreted = self
-            .llm_provider
-            .interpret_intent(&screen_context, intent_hint)
-            .await?;
+
+        let interpreted = if let Some(ref loader) = self.skill_loader {
+            let skill_ctx = SkillContext {
+                available_skills: loader.list_skills(),
+                active_skill_body: None,
+            };
+            self.llm_provider
+                .interpret_intent_with_skills(&screen_context, intent_hint, &skill_ctx)
+                .await?
+        } else {
+            self.llm_provider
+                .interpret_intent(&screen_context, intent_hint)
+                .await?
+        };
+
         self.action_to_intent(interpreted, intent_hint)
     }
 }

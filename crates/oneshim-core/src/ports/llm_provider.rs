@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
+use crate::models::skill::SkillMeta;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScreenContext {
@@ -19,6 +20,15 @@ pub struct InterpretedAction {
     pub confidence: f64,
 }
 
+/// Optional skill context injected into the system prompt.
+#[derive(Debug, Clone, Default)]
+pub struct SkillContext {
+    /// Available skill summaries (progressive disclosure — names only).
+    pub available_skills: Vec<SkillMeta>,
+    /// Activated skill body to inject fully into the prompt.
+    pub active_skill_body: Option<String>,
+}
+
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn interpret_intent(
@@ -26,6 +36,17 @@ pub trait LlmProvider: Send + Sync {
         screen_context: &ScreenContext,
         intent_hint: &str,
     ) -> Result<InterpretedAction, CoreError>;
+
+    /// Interpret intent with optional skill context injected into the prompt.
+    async fn interpret_intent_with_skills(
+        &self,
+        screen_context: &ScreenContext,
+        intent_hint: &str,
+        _skill_ctx: &SkillContext,
+    ) -> Result<InterpretedAction, CoreError> {
+        // Default: ignore skill context, delegate to base method.
+        self.interpret_intent(screen_context, intent_hint).await
+    }
 
     fn provider_name(&self) -> &str;
 

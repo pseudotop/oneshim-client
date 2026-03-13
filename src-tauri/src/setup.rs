@@ -8,6 +8,7 @@ use oneshim_core::config::{AiAccessMode, AppConfig};
 use oneshim_core::config_manager::ConfigManager;
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
+use oneshim_core::ports::skill_loader::SkillLoader;
 use oneshim_core::ports::storage::StorageService;
 use oneshim_monitor::activity::ActivityTracker;
 use oneshim_monitor::process::ProcessTracker;
@@ -349,6 +350,21 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 process_monitor.clone(),
                 Some(web_audit_logger.clone()),
             );
+
+            // Discover skill definitions from user's home directory.
+            let skill_loader: Option<Arc<dyn oneshim_core::ports::skill_loader::SkillLoader>> = {
+                let mut roots = Vec::new();
+                if let Some(home) = directories::BaseDirs::new() {
+                    roots.push(home.home_dir().to_path_buf());
+                }
+                let loader = crate::skill_loader::FileSkillLoader::new(roots);
+                if loader.list_skills().is_empty() {
+                    None
+                } else {
+                    Some(Arc::new(loader))
+                }
+            };
+
             #[cfg(feature = "server")]
             let runtime = preflight_provider_oauth_connection(
                 &handle,
@@ -361,6 +377,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     config.privacy.pii_filter_level,
                     automation_frame_storage.clone(),
                     Some(external_ocr_privacy_guard.clone()),
+                    skill_loader.clone(),
                     validated_oauth_port,
                 )
             });
@@ -370,6 +387,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 config.privacy.pii_filter_level,
                 automation_frame_storage,
                 Some(external_ocr_privacy_guard),
+                skill_loader,
             );
             match runtime {
                 Ok(runtime) => {
