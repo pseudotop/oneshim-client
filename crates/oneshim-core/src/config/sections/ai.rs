@@ -79,7 +79,22 @@ impl AiProviderConfig {
                 }
             }
             AiAccessMode::ProviderOAuth => {
-                // OAuth mode: LLM uses managed OAuth credentials (no API key needed).
+                // OAuth mode is currently implemented only for OpenAI-backed remote LLM calls.
+                if self.llm_provider != LlmProviderType::Remote {
+                    return Err(CoreError::Config(
+                        "ProviderOAuth mode requires llm_provider=Remote.".to_string(),
+                    ));
+                }
+
+                if let Some(endpoint) = self.llm_api.as_ref() {
+                    if endpoint.provider_type != AiProviderType::OpenAi {
+                        return Err(CoreError::Config(
+                            "ProviderOAuth mode currently supports only llm_api.provider_type=OpenAi."
+                                .to_string(),
+                        ));
+                    }
+                }
+
                 // OCR still respects its own provider setting (local/remote with API key).
                 if self.ocr_provider == OcrProviderType::Remote {
                     validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;

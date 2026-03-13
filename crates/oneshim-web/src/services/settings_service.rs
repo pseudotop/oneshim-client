@@ -446,6 +446,7 @@ fn parse_ai_access_mode(value: &str) -> Result<AiAccessMode, ApiError> {
         "platformconnected" | "platform_connected" | "platform" => {
             Ok(AiAccessMode::PlatformConnected)
         }
+        "provideroauth" | "provider_oauth" | "oauth" => Ok(AiAccessMode::ProviderOAuth),
         _ => Err(ApiError::BadRequest(format!(
             "유효하지 않은 ai_provider.access_mode 값: {value}"
         ))),
@@ -741,6 +742,17 @@ mod tests {
     fn update_settings_accepts_valid_defaults_without_config_manager() {
         let state = test_state_without_config_manager();
         let settings = AppSettings::default();
+
+        let result = update_settings(&state, &settings);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn update_settings_accepts_provider_oauth_roundtrip_without_config_manager() {
+        let state = test_state_without_config_manager();
+        let mut settings = AppSettings::default();
+        settings.ai_provider.access_mode = "ProviderOAuth".to_string();
+        settings.ai_provider.llm_provider = "Remote".to_string();
 
         let result = update_settings(&state, &settings);
         assert!(result.is_ok());

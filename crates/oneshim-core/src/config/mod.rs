@@ -319,6 +319,61 @@ mod tests {
     }
 
     #[test]
+    fn ai_provider_validation_rejects_local_llm_in_oauth_mode() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Local,
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("llm_provider=Remote"));
+    }
+
+    #[test]
+    fn ai_provider_validation_rejects_non_openai_llm_in_oauth_mode() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Remote,
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.anthropic.com/v1/messages".to_string(),
+                api_key: "".to_string(),
+                model: Some("claude-sonnet-4-5".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::Anthropic,
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("OpenAi"));
+    }
+
+    #[test]
+    fn ai_provider_validation_accepts_openai_remote_llm_in_oauth_mode() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Remote,
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.openai.com/v1".to_string(),
+                api_key: "".to_string(),
+                model: Some("gpt-4.1-mini".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn ai_provider_validation_rejects_invalid_ocr_min_confidence() {
         let config = AiProviderConfig {
             ocr_validation: OcrValidationConfig {
