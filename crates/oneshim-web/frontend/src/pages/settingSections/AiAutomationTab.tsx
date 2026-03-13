@@ -12,6 +12,7 @@ import type {
 import { Button, Card, CardTitle, Input, Select } from '../../components/ui'
 import { form } from '../../styles/tokens'
 import OAuthConnectionPanel from './OAuthConnectionPanel'
+import { isProviderOAuthAccessMode } from './oauth-panel-support'
 import ToggleRow from './ToggleRow'
 import type { SettingsFormTabProps } from './types'
 
@@ -396,7 +397,7 @@ export default function AiAutomationTab({
             onChange={(value) => onAiProviderChange('fallback_to_local', value)}
           />
 
-          {formData.ai_provider.access_mode === 'provider_oauth' && (
+          {isProviderOAuthAccessMode(formData.ai_provider.access_mode) && (
             <OAuthConnectionPanel providerId="openai" providerName="OpenAI" />
           )}
 

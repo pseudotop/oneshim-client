@@ -1,24 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { OAuthConnectionStatus, OAuthFlowStatus } from '../../api/client'
-import {
-  oauthCancelFlow,
-  oauthConnectionStatus,
-  oauthFlowStatus,
-  oauthRevoke,
-  oauthStartFlow,
-} from '../../api/client'
-import { isStandaloneModeEnabled } from '../../api/standalone'
+import { oauthCancelFlow, oauthConnectionStatus, oauthFlowStatus, oauthRevoke, oauthStartFlow } from '../../api/client'
 import { Button, Card } from '../../components/ui'
+import { isOAuthPanelAvailable } from './oauth-panel-support'
 
 type PanelState =
+  | { phase: 'unavailable' }
   | { phase: 'loading' }
   | { phase: 'disconnected' }
-  | { phase: 'connecting'; flowId: string }
+  | { phase: 'connecting'; authUrl: string; flowId: string }
   | { phase: 'connected'; status: OAuthConnectionStatus }
-  | { phase: 'error'; message: string }
+  | { phase: 'error'; detail?: string; message: string }
 
 const POLL_INTERVAL_MS = 1500
+const POLL_TIMEOUT_MS = 120000
 
 interface OAuthConnectionPanelProps {
   providerId: string
@@ -37,9 +33,33 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
     }
   }, [])
 
+  const toErrorState = useCallback(
+    (error: unknown): PanelState => {
+      const detail = error instanceof Error ? error.message : String(error)
+      if (detail.includes('1455') || detail.includes('already in use')) {
+        return { phase: 'error', detail, message: t('settingsOAuth.portConflict') }
+      }
+      if (detail.includes('not available') || detail.includes('unavailable')) {
+        return { phase: 'error', detail, message: t('settingsOAuth.unavailable') }
+      }
+      return { phase: 'error', detail, message: t('settingsOAuth.genericError') }
+    },
+    [t],
+  )
+
+  const openAuthorizationPage = useCallback(
+    (authUrl: string) => {
+      const opened = window.open(authUrl, '_blank', 'noopener,noreferrer')
+      if (!opened) {
+        setState({ phase: 'error', message: t('settingsOAuth.openBrowserFailed') })
+      }
+    },
+    [t],
+  )
+
   const refreshStatus = useCallback(async () => {
-    if (isStandaloneModeEnabled()) {
-      setState({ phase: 'disconnected' })
+    if (!isOAuthPanelAvailable()) {
+      setState({ phase: 'unavailable' })
       return
     }
     try {
@@ -50,9 +70,9 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
         setState({ phase: 'disconnected' })
       }
     } catch (err) {
-      setState({ phase: 'error', message: String(err) })
+      setState(toErrorState(err))
     }
-  }, [providerId])
+  }, [providerId, toErrorState])
 
   useEffect(() => {
     refreshStatus()
@@ -62,13 +82,23 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
   const handleConnect = useCallback(async () => {
     try {
       const handle = await oauthStartFlow(providerId)
-      setState({ phase: 'connecting', flowId: handle.flow_id })
+      setState({ phase: 'connecting', authUrl: handle.auth_url, flowId: handle.flow_id })
 
-      // Open auth URL in system browser
-      window.open(handle.auth_url, '_blank', 'noopener')
+      const startedAt = Date.now()
 
       // Poll for completion
       pollRef.current = setInterval(async () => {
+        if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
+          clearPoll()
+          try {
+            await oauthCancelFlow(handle.flow_id)
+          } catch {
+            // ignore timeout cleanup errors
+          }
+          setState({ phase: 'error', message: t('settingsOAuth.timeout') })
+          return
+        }
+
         try {
           const flowState: OAuthFlowStatus = await oauthFlowStatus(handle.flow_id)
           if (flowState.status === 'completed') {
@@ -76,25 +106,20 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
             await refreshStatus()
           } else if (flowState.status === 'failed') {
             clearPoll()
-            setState({ phase: 'error', message: flowState.error })
+            setState(toErrorState(flowState.error))
           } else if (flowState.status === 'cancelled') {
             clearPoll()
             setState({ phase: 'disconnected' })
           }
-        } catch {
+        } catch (err) {
           clearPoll()
-          setState({ phase: 'error', message: 'Failed to check flow status' })
+          setState(toErrorState(err))
         }
       }, POLL_INTERVAL_MS)
     } catch (err) {
-      const msg = String(err)
-      if (msg.includes('1455') || msg.includes('already in use')) {
-        setState({ phase: 'error', message: t('settingsOAuth.portConflict') })
-      } else {
-        setState({ phase: 'error', message: msg })
-      }
+      setState(toErrorState(err))
     }
-  }, [providerId, clearPoll, refreshStatus, t])
+  }, [providerId, clearPoll, refreshStatus, t, toErrorState])
 
   const handleCancel = useCallback(async () => {
     if (state.phase === 'connecting') {
@@ -113,9 +138,9 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
       await oauthRevoke(providerId)
       setState({ phase: 'disconnected' })
     } catch (err) {
-      setState({ phase: 'error', message: String(err) })
+      setState(toErrorState(err))
     }
-  }, [providerId])
+  }, [providerId, toErrorState])
 
   return (
     <Card variant="default" padding="md" className="space-y-3">
@@ -128,8 +153,10 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
         </span>
       </div>
 
-      {state.phase === 'loading' && (
-        <p className="text-content-secondary text-sm">{t('settingsOAuth.loading')}</p>
+      {state.phase === 'loading' && <p className="text-content-secondary text-sm">{t('settingsOAuth.loading')}</p>}
+
+      {state.phase === 'unavailable' && (
+        <p className="text-content-secondary text-sm">{t('settingsOAuth.desktopOnly')}</p>
       )}
 
       {state.phase === 'disconnected' && (
@@ -147,9 +174,15 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
             <p className="text-content-secondary text-sm">{t('settingsOAuth.connecting')}</p>
           </div>
-          <Button type="button" variant="secondary" size="sm" onClick={handleCancel}>
-            {t('settingsOAuth.cancel')}
-          </Button>
+          <p className="text-content-muted text-xs">{t('settingsOAuth.openBrowserHint')}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="primary" size="sm" onClick={() => openAuthorizationPage(state.authUrl)}>
+              {t('settingsOAuth.openBrowser')}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={handleCancel}>
+              {t('settingsOAuth.cancel')}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -172,7 +205,8 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
 
       {state.phase === 'error' && (
         <div className="space-y-2">
-          <p className="text-sm text-red-600 dark:text-red-400">{state.message}</p>
+          <p className="text-red-600 text-sm dark:text-red-400">{state.message}</p>
+          {state.detail && <p className="text-content-muted text-xs">{state.detail}</p>}
           <Button type="button" variant="secondary" size="sm" onClick={refreshStatus}>
             {t('settingsOAuth.retry')}
           </Button>
