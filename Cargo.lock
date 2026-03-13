@@ -4433,6 +4433,7 @@ name = "oneshim-network"
 version = "0.3.8"
 dependencies = [
  "async-trait",
+ "axum",
  "base64 0.22.1",
  "chrono",
  "criterion",
@@ -4446,9 +4447,11 @@ dependencies = [
  "parking_lot",
  "prost",
  "prost-types",
+ "rand 0.8.5",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tokio-test",
  "tokio-tungstenite",
@@ -4457,6 +4460,8 @@ dependencies = [
  "tonic-prost",
  "tracing",
  "tracing-subscriber",
+ "url",
+ "uuid",
  "zstd",
 ]
 
@@ -5634,6 +5639,7 @@ dependencies = [
  "rustls-pki-types",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-native-tls",

@@ -73,6 +73,9 @@ pub enum CoreError {
 
     #[error("OCR error: {0}")]
     OcrError(String),
+
+    #[error("OAuth error for provider {provider}: {message}")]
+    OAuthError { provider: String, message: String },
 }
 
 /// GUI 상호작용 전용 에러 (AutomationPort GUI 메서드에서 사용)
