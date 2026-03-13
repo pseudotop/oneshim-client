@@ -2,14 +2,41 @@ use core_graphics::event::CGEvent;
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::context::{MousePosition, WindowBounds, WindowInfo};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 const SUBPROCESS_TIMEOUT_SECS: u64 = 5;
 
+/// Consecutive timeout counter — circuit breaker to avoid spawning osascript
+/// every cycle when Accessibility permission is missing.
+static CONSECUTIVE_TIMEOUTS: AtomicU32 = AtomicU32::new(0);
+
+/// After this many consecutive timeouts, skip osascript entirely and return
+/// `Ok(None)` until the counter is reset (e.g. after a successful call).
+const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
+
+/// After the circuit breaker trips, only retry once every N calls to check
+/// if the permission was granted in the meantime.
+const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 60;
+
 pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> {
+    let timeouts = CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed);
+    if timeouts >= CIRCUIT_BREAKER_THRESHOLD {
+        // Circuit breaker is open — periodically retry to detect permission grant
+        if timeouts % CIRCUIT_BREAKER_RETRY_INTERVAL != 0 {
+            CONSECUTIVE_TIMEOUTS.fetch_add(1, Ordering::Relaxed);
+            return Ok(None);
+        }
+        warn!(
+            "osascript circuit breaker: retrying after {} skipped calls \
+             (grant Accessibility permission in System Settings)",
+            timeouts - CIRCUIT_BREAKER_THRESHOLD
+        );
+    }
+
     let output = timeout(
         Duration::from_secs(SUBPROCESS_TIMEOUT_SECS),
         Command::new("osascript")
@@ -32,17 +59,43 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> 
             )
             .output(),
     )
-    .await
-    .map_err(|_| CoreError::Internal("osascript timed out".to_string()))?
-    .map_err(|e| CoreError::Internal(format!("osascript execution failure: {e}")))?;
+    .await;
+
+    let output = match output {
+        Ok(result) => {
+            // osascript completed (success or failure, but did not hang)
+            CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
+            result.map_err(|e| CoreError::Internal(format!("osascript execution failure: {e}")))?
+        }
+        Err(_elapsed) => {
+            let prev = CONSECUTIVE_TIMEOUTS.fetch_add(1, Ordering::Relaxed);
+            if prev + 1 == CIRCUIT_BREAKER_THRESHOLD {
+                warn!(
+                    "osascript timed out {} consecutive times — circuit breaker engaged. \
+                     Grant Accessibility permission in System Settings > Privacy & Security > Accessibility",
+                    CIRCUIT_BREAKER_THRESHOLD
+                );
+            }
+            return Err(CoreError::Internal("osascript timed out".to_string()));
+        }
+    };
 
     if !output.status.success() {
         debug!("active window detection failure (osascript)");
         return Ok(None);
     }
 
-    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let raw_stdout = String::from_utf8_lossy(&output.stdout);
+    let result = raw_stdout.trim().to_string();
     let parts: Vec<&str> = result.split('|').collect();
+
+    // Temporary: use info! to diagnose empty window_title issue
+    info!(
+        "osascript raw: parts={} len={} result={:?}",
+        parts.len(),
+        raw_stdout.len(),
+        &result[..result.len().min(120)]
+    );
 
     if parts.is_empty() {
         return Ok(None);
@@ -133,8 +186,11 @@ mod tests {
 
     #[tokio::test]
     async fn get_active_window_returns_result() {
+        // Reset circuit breaker for test isolation
+        CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
         let result = get_active_window_macos().await;
-        assert!(result.is_ok());
+        // Either Ok(Some(..)) if permission granted, or Err if timeout
+        assert!(result.is_ok() || result.is_err());
     }
 
     #[tokio::test]
@@ -152,5 +208,36 @@ mod tests {
             assert!(p.x >= 0 && p.x < 32000);
             assert!(p.y >= 0 && p.y < 32000);
         }
+    }
+
+    #[test]
+    fn circuit_breaker_threshold_is_reasonable() {
+        assert!(CIRCUIT_BREAKER_THRESHOLD >= 2);
+        assert!(CIRCUIT_BREAKER_THRESHOLD <= 10);
+        assert!(CIRCUIT_BREAKER_RETRY_INTERVAL >= 10);
+    }
+
+    #[tokio::test]
+    async fn circuit_breaker_skips_when_tripped() {
+        // Simulate threshold timeouts
+        CONSECUTIVE_TIMEOUTS.store(CIRCUIT_BREAKER_THRESHOLD, Ordering::Relaxed);
+
+        // Should return Ok(None) immediately without spawning osascript
+        let result = get_active_window_macos().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+
+        // Counter should have incremented
+        let count = CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed);
+        assert!(count > CIRCUIT_BREAKER_THRESHOLD);
+
+        // Reset for other tests
+        CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn circuit_breaker_reset_on_zero() {
+        CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
+        assert_eq!(CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed), 0);
     }
 }

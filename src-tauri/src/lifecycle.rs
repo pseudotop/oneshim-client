@@ -1,5 +1,8 @@
 use tokio::sync::watch;
-use tracing::info;
+use tracing::{info, warn};
+
+/// Grace period for second Ctrl+C to force exit.
+const FORCE_EXIT_GRACE_SECS: u64 = 3;
 
 pub struct LifecycleManager {
     shutdown_tx: watch::Sender<bool>,
@@ -27,6 +30,15 @@ impl LifecycleManager {
     }
 
     pub async fn wait_for_signal(&self) {
+        self.wait_first_signal().await;
+        info!("Shutting down gracefully... press Ctrl+C again to force exit");
+        self.shutdown();
+
+        // Wait for second signal → force exit
+        self.wait_second_signal().await;
+    }
+
+    async fn wait_first_signal(&self) {
         #[cfg(unix)]
         {
             use tokio::signal::unix::{signal, SignalKind};
@@ -52,8 +64,47 @@ impl LifecycleManager {
                 .expect("Failed to register Ctrl+C handler");
             info!("Ctrl+C received");
         }
+    }
 
-        self.shutdown();
+    async fn wait_second_signal(&self) {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sigint =
+                signal(SignalKind::interrupt()).expect("Failed to register SIGINT handler");
+            let mut sigterm =
+                signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
+
+            tokio::select! {
+                _ = sigint.recv() => {
+                    warn!("Second SIGINT received — force exit");
+                    std::process::exit(1);
+                }
+                _ = sigterm.recv() => {
+                    warn!("SIGTERM received during shutdown — force exit");
+                    std::process::exit(1);
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_secs(FORCE_EXIT_GRACE_SECS)) => {
+                    // Grace period expired without second signal — exit cleanly
+                    info!("Graceful shutdown completed");
+                    std::process::exit(0);
+                }
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    warn!("Second Ctrl+C received — force exit");
+                    std::process::exit(1);
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_secs(FORCE_EXIT_GRACE_SECS)) => {
+                    info!("Graceful shutdown completed");
+                    std::process::exit(0);
+                }
+            }
+        }
     }
 }
 
