@@ -220,6 +220,7 @@ function makeDefaultSettings(): AppSettings {
       max_cpu_time_ms: 30000,
     },
     ai_provider: {
+      access_mode: 'provider_api_key',
       ocr_provider: 'local',
       llm_provider: 'local',
       external_data_policy: 'disabled',

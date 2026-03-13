@@ -25,6 +25,7 @@ fn create_test_context_event(i: usize) -> Event {
         window_title: format!("Window {}", i),
         prev_app_name: Some(format!("PrevApp{}", (i + 1) % 5)),
         timestamp: chrono::Utc::now(),
+        input_activity_level: 0.0,
     })
 }
 

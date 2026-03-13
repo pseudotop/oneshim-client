@@ -5,18 +5,29 @@ use tracing::{debug, warn};
 use oneshim_core::ai_model_lifecycle_policy::{self, ModelLifecycleDecision};
 use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
+use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::llm_provider::{InterpretedAction, LlmProvider, ScreenContext};
 
 /// - Claude (Anthropic): `POST /v1/messages`
-#[derive(Debug)]
 pub struct RemoteLlmProvider {
     http_client: reqwest::Client,
     endpoint: String,
-    api_key: String,
+    credential: CredentialSource,
     model: String,
     provider_type: AiProviderType,
     #[allow(dead_code)]
     timeout_secs: u64,
+}
+
+impl std::fmt::Debug for RemoteLlmProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteLlmProvider")
+            .field("endpoint", &self.endpoint)
+            .field("credential", &self.credential)
+            .field("model", &self.model)
+            .field("provider_type", &self.provider_type)
+            .finish()
+    }
 }
 
 impl RemoteLlmProvider {
@@ -26,7 +37,7 @@ impl RemoteLlmProvider {
                 "AI LLM API key is not configured. Set it in Settings.".into(),
             ));
         }
-        let api_key = config.api_key.clone();
+        let credential = CredentialSource::ApiKey(config.api_key.clone());
 
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
@@ -67,7 +78,62 @@ impl RemoteLlmProvider {
         Ok(Self {
             http_client,
             endpoint: config.endpoint.clone(),
-            api_key,
+            credential,
+            model,
+            provider_type: config.provider_type,
+            timeout_secs: config.timeout_secs,
+        })
+    }
+
+    /// Create a provider with a managed credential source (e.g., OAuth).
+    ///
+    /// When the credential is `ManagedOAuth`, the API base URL from the
+    /// credential is used instead of the config endpoint (ChatGPT OAuth
+    /// uses `chatgpt.com/backend-api/codex`, not `api.openai.com/v1`).
+    pub fn new_with_credential(
+        config: &ExternalApiEndpoint,
+        credential: CredentialSource,
+    ) -> Result<Self, CoreError> {
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(config.timeout_secs))
+            .build()
+            .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+
+        let model = config
+            .model
+            .clone()
+            .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
+
+        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
+        {
+            ModelLifecycleDecision::Allowed => {}
+            ModelLifecycleDecision::Warn {
+                message,
+                replacement,
+            } => {
+                warn!(
+                    provider = ?config.provider_type,
+                    model = %model,
+                    replacement = ?replacement,
+                    "{}", message
+                );
+            }
+            ModelLifecycleDecision::Block { message, .. } => {
+                return Err(CoreError::PolicyDenied(message));
+            }
+        }
+
+        // Use OAuth-provided base URL when available (ChatGPT OAuth uses
+        // a different endpoint than the standard OpenAI API).
+        let endpoint = credential
+            .api_base_url()
+            .map(String::from)
+            .unwrap_or_else(|| config.endpoint.clone());
+
+        Ok(Self {
+            http_client,
+            endpoint,
+            credential,
             model,
             provider_type: config.provider_type,
             timeout_secs: config.timeout_secs,
@@ -317,17 +383,23 @@ impl LlmProvider for RemoteLlmProvider {
             .header("Content-Type", "application/json")
             .json(&request_body);
 
+        let bearer_token = self.credential.resolve_bearer_token().await?;
         match self.provider_type {
             AiProviderType::Anthropic => {
                 builder = builder
-                    .header("x-api-key", &self.api_key)
+                    .header("x-api-key", &bearer_token)
                     .header("anthropic-version", "2023-06-01");
             }
             AiProviderType::Google => {
-                builder = builder.header("x-goog-api-key", &self.api_key);
+                builder = builder.header("x-goog-api-key", &bearer_token);
             }
             AiProviderType::OpenAi | AiProviderType::Generic => {
-                builder = builder.header("Authorization", format!("Bearer {}", self.api_key));
+                builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
+                // ChatGPT OAuth requires a version header for model access (GPT-5.4 etc.).
+                // Ref: openai/codex codex-rs/core/src/model_provider_info.rs
+                if self.credential.is_managed() {
+                    builder = builder.header("version", env!("CARGO_PKG_VERSION"));
+                }
             }
         }
 

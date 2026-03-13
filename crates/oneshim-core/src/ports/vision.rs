@@ -22,4 +22,12 @@ pub trait FrameProcessor: Send + Sync {
         &self,
         capture_request: &CaptureRequest,
     ) -> Result<ProcessedFrame, CoreError>;
+
+    /// Capture a lightweight thumbnail for ring buffer use.
+    /// Returns raw WebP bytes at low quality. Default returns unsupported error.
+    async fn capture_thumbnail(&self) -> Result<Vec<u8>, CoreError> {
+        Err(CoreError::Internal(
+            "thumbnail capture not supported".to_string(),
+        ))
+    }
 }

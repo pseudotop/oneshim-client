@@ -573,6 +573,7 @@ export interface SandboxSettings {
 }
 
 export interface AiProviderSettings {
+  access_mode: string
   ocr_provider: string
   llm_provider: string
   external_data_policy: string

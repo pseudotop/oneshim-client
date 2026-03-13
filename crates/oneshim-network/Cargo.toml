@@ -32,6 +32,13 @@ crossbeam = { workspace = true }
 parking_lot = { workspace = true }
 base64 = { workspace = true }
 
+# OAuth (Phase: ChatGPT/Codex OAuth Integration)
+sha2 = { workspace = true }
+rand = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+axum = { workspace = true }
+
 # gRPC (Phase 34 - 선택적 의존성)
 tonic = { workspace = true, optional = true }
 prost = { workspace = true, optional = true }

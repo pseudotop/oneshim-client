@@ -14,6 +14,7 @@ pub mod batch_uploader;
 pub mod compression;
 pub mod connectivity;
 pub mod http_client;
+pub mod oauth;
 pub mod sse_client;
 pub mod ws_client;
 
