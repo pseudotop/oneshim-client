@@ -149,6 +149,13 @@ pub async fn wait_for_callback(
                 message: "flow cancelled by user".into(),
             })
         }
+        _ = tokio::time::sleep(std::time::Duration::from_secs(300)) => {
+            debug!("OAuth callback server timed out after 5 minutes");
+            Err(CoreError::OAuthError {
+                provider: "callback".into(),
+                message: "OAuth flow timed out — no browser callback received within 5 minutes".into(),
+            })
+        }
     };
 
     // Shut down the server

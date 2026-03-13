@@ -450,8 +450,15 @@ impl OcrProvider for RemoteOcrProvider {
         let bearer_token = self.credential.resolve_bearer_token().await?;
         builder = strategy.apply_auth_headers(builder, &bearer_token);
 
-        // ChatGPT OAuth requires a version header for model access.
-        if self.credential.is_managed() {
+        // ChatGPT OAuth requires a version header for model access (GPT-5.4 etc.).
+        // Only applies to OpenAI-compatible providers, matching LLM client behaviour.
+        // Ref: openai/codex codex-rs/core/src/model_provider_info.rs
+        if self.credential.is_managed()
+            && matches!(
+                self.provider_type,
+                AiProviderType::OpenAi | AiProviderType::Generic
+            )
+        {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));
         }
 
