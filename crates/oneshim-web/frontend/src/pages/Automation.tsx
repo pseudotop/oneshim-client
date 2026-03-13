@@ -20,6 +20,7 @@ import { EmptyState, ListSkeleton, Select, Skeleton, StatCardsSkeleton } from '.
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
+import { addToast } from '../hooks/useToast'
 import { colors, interaction, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -114,11 +115,13 @@ function Automation() {
         ...prev.filter((f) => f.presetId !== id),
         { presetId: id, result, timestamp: Date.now() },
       ])
+      addToast(result.success ? 'success' : 'error', result.message)
       setTimeout(() => {
         setRunFeedbacks((prev) => prev.filter((f) => f.presetId !== id))
       }, 8000)
     } catch (error) {
       const message = error instanceof Error ? error.message : t('automation.runError')
+      addToast('error', message)
       setRunFeedbacks((prev) => [
         ...prev.filter((f) => f.presetId !== id),
         {
