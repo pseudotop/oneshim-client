@@ -36,6 +36,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   Other: 'bg-status-disconnected',
 }
 
+function createInitialWeekRange() {
+  const to = new Date()
+  const from = new Date()
+  from.setDate(from.getDate() - 7)
+
+  return {
+    from: new Date(`${from.toISOString().split('T')[0]}T00:00:00Z`),
+    to: new Date(`${to.toISOString().split('T')[0]}T23:59:59Z`),
+  }
+}
+
 function CircularGauge({ value, size = 120 }: { value: number; size?: number }) {
   const { t } = useTranslation()
   const percentage = Math.min(value / 100, 1)
@@ -80,10 +91,9 @@ export default function Focus() {
   const { t } = useTranslation()
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    to: new Date(),
-  })
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>(() => createInitialWeekRange())
+  const [sessionLimit, setSessionLimit] = useState(10)
+  const [interruptionLimit, setInterruptionLimit] = useState(10)
 
   const {
     data: metrics,
@@ -154,9 +164,12 @@ export default function Focus() {
           {t('focus.pageTitle')}
         </h1>
         <DateRangePicker
+          initialPreset="7days"
           onRangeChange={(from, to) => {
             if (from && to) {
               setDateRange({ from: new Date(from), to: new Date(to) })
+              setSessionLimit(10)
+              setInterruptionLimit(10)
             }
           }}
         />
@@ -254,7 +267,7 @@ export default function Focus() {
           <CardContent>
             {sessions.length > 0 ? (
               <div className="max-h-80 space-y-3 overflow-y-auto">
-                {sessions.slice(0, 10).map((session) => (
+                {sessions.slice(0, sessionLimit).map((session) => (
                   <div key={session.id} className="flex items-center justify-between rounded-lg bg-surface-inset p-3">
                     <div className="flex items-center gap-3">
                       <div
@@ -273,6 +286,15 @@ export default function Focus() {
                     </div>
                   </div>
                 ))}
+                {sessions.length > sessionLimit && (
+                  <button
+                    type="button"
+                    onClick={() => setSessionLimit((limit) => limit + 10)}
+                    className="mt-2 w-full rounded-lg py-2 font-medium text-content-secondary text-sm transition-colors hover:bg-surface-muted"
+                  >
+                    {t('focus.loadMoreRemaining', { count: sessions.length - sessionLimit })}
+                  </button>
+                )}
               </div>
             ) : (
               <p className="py-8 text-center text-content-tertiary">{t('common.noData')}</p>
@@ -291,7 +313,7 @@ export default function Focus() {
           <CardContent>
             {interruptions.length > 0 ? (
               <div className="max-h-80 space-y-3 overflow-y-auto">
-                {interruptions.slice(0, 10).map((int) => (
+                {interruptions.slice(0, interruptionLimit).map((int) => (
                   <div key={int.id} className="flex items-center justify-between rounded-lg bg-surface-inset p-3">
                     <div className="flex items-center gap-2 text-sm">
                       <span className="max-w-[80px] truncate font-medium text-content">{int.from_app}</span>
@@ -311,6 +333,15 @@ export default function Focus() {
                     </div>
                   </div>
                 ))}
+                {interruptions.length > interruptionLimit && (
+                  <button
+                    type="button"
+                    onClick={() => setInterruptionLimit((limit) => limit + 10)}
+                    className="mt-2 w-full rounded-lg py-2 font-medium text-content-secondary text-sm transition-colors hover:bg-surface-muted"
+                  >
+                    {t('focus.loadMoreRemaining', { count: interruptions.length - interruptionLimit })}
+                  </button>
+                )}
               </div>
             ) : (
               <p className="py-8 text-center text-content-tertiary">{t('common.noData')}</p>
