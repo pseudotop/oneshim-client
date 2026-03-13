@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::secret_store::SecretStore;
 use serde::{Deserialize, Serialize};
@@ -22,9 +23,6 @@ const KNOWN_OAUTH_KEYS: &[&str] = &[
     "expires_at",
     "id_token",
 ];
-
-/// Known OAuth provider IDs (matches OAuthProviderConfig presets).
-pub const KNOWN_PROVIDERS: &[&str] = &["openai"];
 
 /// JSON enumeration cache — tracks which namespace/key combinations exist
 /// in the OS keychain. NOT source of truth; keychain is authoritative.
@@ -63,6 +61,9 @@ impl KeychainRegistry {
     pub fn save(&self, path: &std::path::Path) -> Result<(), CoreError> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| CoreError::SecretStoreError(format!("registry serialization: {e}")))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let tmp = path.with_extension("tmp");
         std::fs::write(&tmp, &json)?;
         std::fs::rename(&tmp, path)?;
@@ -83,11 +84,6 @@ impl KeychainRegistry {
                 self.namespaces.remove(namespace);
             }
         }
-    }
-
-    /// Remove namespace, returning its key set for keychain deletion.
-    pub fn remove_namespace(&mut self, namespace: &str) -> BTreeSet<String> {
-        self.namespaces.remove(namespace).unwrap_or_default()
     }
 
     pub fn keys_for(&self, namespace: &str) -> BTreeSet<String> {
@@ -119,6 +115,9 @@ impl KeychainOps {
     /// Create ops with the given registry file path.
     /// The caller (setup.rs) resolves the config directory.
     pub fn new(registry_path: PathBuf) -> Result<Self, CoreError> {
+        if let Some(parent) = registry_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let registry = KeychainRegistry::load_or_default(&registry_path);
         Ok(Self {
             service_name: "oneshim".into(),
@@ -185,19 +184,29 @@ impl KeychainOps {
         }
 
         let mut errors = Vec::new();
+        let mut failed_keys = BTreeSet::new();
         for key in &all_keys {
             match self.entry(namespace, key) {
                 Ok(entry) => match entry.delete_credential() {
                     Ok(()) | Err(keyring::Error::NoEntry) => {}
-                    Err(e) => errors.push(format!("{key}: {e}")),
+                    Err(e) => {
+                        failed_keys.insert(key.clone());
+                        errors.push(format!("{key}: {e}"));
+                    }
                 },
-                Err(e) => errors.push(format!("{key}: {e}")),
+                Err(e) => {
+                    failed_keys.insert(key.clone());
+                    errors.push(format!("{key}: {e}"));
+                }
             }
         }
 
-        // Update registry regardless of individual errors
+        let deleted_keys: BTreeSet<String> = all_keys.difference(&failed_keys).cloned().collect();
+
         let mut reg = self.registry.lock();
-        reg.remove_namespace(namespace);
+        for key in deleted_keys {
+            reg.remove_key(namespace, &key);
+        }
         if let Err(e) = reg.save(&self.registry_path) {
             warn!("Failed to persist keychain registry: {e}");
         }
@@ -210,15 +219,6 @@ impl KeychainOps {
                 errors.join("; ")
             )))
         }
-    }
-
-    /// Probe keychain availability by writing and deleting a test entry.
-    pub fn probe_availability(&self) -> Result<(), CoreError> {
-        let entry = keyring::Entry::new(&self.service_name, "__probe__")
-            .map_err(|e| CoreError::SecretStoreError(format!("keyring probe entry: {e}")))?;
-        entry.set_password("probe").map_err(Self::map_keyring_err)?;
-        let _ = entry.delete_credential();
-        Ok(())
     }
 
     pub fn all_namespaces(&self) -> Vec<String> {
@@ -239,12 +239,34 @@ impl KeychainOps {
             }
         }
 
+        let connected = access_token_is_connected(&keys_found, expires_at.as_deref(), Utc::now());
+
         NamespaceStatus {
-            connected: keys_found.contains(&"access_token".to_owned()),
+            connected,
             keys_found,
             expires_at,
         }
     }
+}
+
+fn access_token_is_connected(
+    keys_found: &[String],
+    expires_at: Option<&str>,
+    now: DateTime<Utc>,
+) -> bool {
+    if !keys_found.iter().any(|key| key == "access_token") {
+        return false;
+    }
+
+    let Some(expires_at) = expires_at else {
+        return false;
+    };
+
+    let Ok(expires_at) = DateTime::parse_from_rfc3339(expires_at) else {
+        return false;
+    };
+
+    now < expires_at.with_timezone(&Utc) - chrono::Duration::seconds(60)
 }
 
 /// Async adapter — wraps KeychainOps via spawn_blocking to implement SecretStore.
@@ -297,31 +319,6 @@ impl SecretStore for KeychainSecretStore {
     }
 }
 
-/// No-op secret store for headless environments where OS keychain is unavailable.
-/// Write operations return errors; reads return None.
-pub struct NullSecretStore;
-
-#[async_trait]
-impl SecretStore for NullSecretStore {
-    async fn store(&self, _ns: &str, _key: &str, _val: &str) -> Result<(), CoreError> {
-        Err(CoreError::SecretStoreError(
-            "OS keychain unavailable — OAuth credentials cannot be stored".into(),
-        ))
-    }
-
-    async fn retrieve(&self, _ns: &str, _key: &str) -> Result<Option<String>, CoreError> {
-        Ok(None)
-    }
-
-    async fn delete(&self, _ns: &str, _key: &str) -> Result<(), CoreError> {
-        Ok(())
-    }
-
-    async fn delete_namespace(&self, _ns: &str) -> Result<(), CoreError> {
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,14 +341,13 @@ mod tests {
     }
 
     #[test]
-    fn registry_remove_namespace_returns_keys() {
+    fn registry_remove_key_keeps_other_keys_in_namespace() {
         let mut reg = KeychainRegistry::new();
         reg.add_key("openai", "access_token");
         reg.add_key("openai", "refresh_token");
-        let keys = reg.remove_namespace("openai");
-        assert_eq!(keys.len(), 2);
-        assert!(keys.contains("access_token"));
-        assert!(reg.all_namespaces().is_empty());
+        reg.remove_key("openai", "access_token");
+        assert_eq!(reg.keys_for("openai").len(), 1);
+        assert!(reg.keys_for("openai").contains("refresh_token"));
     }
 
     #[test]
@@ -366,6 +362,18 @@ mod tests {
 
         let loaded = KeychainRegistry::load_or_default(&path);
         assert_eq!(loaded.keys_for("openai").len(), 2);
+    }
+
+    #[test]
+    fn registry_save_creates_parent_directories() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("nested").join("registry.json");
+
+        let mut reg = KeychainRegistry::new();
+        reg.add_key("openai", "access_token");
+        reg.save(&path).unwrap();
+
+        assert!(path.exists());
     }
 
     #[test]
@@ -397,24 +405,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn null_store_rejects_writes() {
-        let store = NullSecretStore;
-        let result = store.store("openai", "token", "val").await;
-        assert!(result.is_err());
+    async fn access_token_requires_valid_future_expiry() {
+        let now = Utc::now();
+        let keys = vec!["access_token".to_string()];
+
+        let valid = access_token_is_connected(
+            &keys,
+            Some(&(now + chrono::Duration::minutes(5)).to_rfc3339()),
+            now,
+        );
+        assert!(valid);
     }
 
-    #[tokio::test]
-    async fn null_store_returns_none() {
-        let store = NullSecretStore;
-        let result = store.retrieve("openai", "token").await.unwrap();
-        assert_eq!(result, None);
+    #[test]
+    fn access_token_without_expiry_is_not_connected() {
+        let keys = vec!["access_token".to_string()];
+        assert!(!access_token_is_connected(&keys, None, Utc::now()));
     }
 
-    #[tokio::test]
-    async fn null_store_delete_is_noop() {
-        let store = NullSecretStore;
-        store.delete("openai", "token").await.unwrap();
-        store.delete_namespace("openai").await.unwrap();
+    #[test]
+    fn access_token_with_expired_expiry_is_not_connected() {
+        let now = Utc::now();
+        let keys = vec!["access_token".to_string()];
+
+        let valid = access_token_is_connected(
+            &keys,
+            Some(&(now - chrono::Duration::minutes(1)).to_rfc3339()),
+            now,
+        );
+        assert!(!valid);
     }
 
     /// Integration tests — require OS keychain. Run with:
@@ -462,13 +481,6 @@ mod tests {
             ops.delete_namespace_sync(ns).unwrap();
             assert_eq!(ops.retrieve_sync(ns, "access_token").unwrap(), None);
             assert_eq!(ops.retrieve_sync(ns, "refresh_token").unwrap(), None);
-        }
-
-        #[test]
-        #[ignore]
-        fn keychain_probe_availability() {
-            let (ops, _dir) = make_ops();
-            ops.probe_availability().unwrap();
         }
     }
 }
