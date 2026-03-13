@@ -17,6 +17,7 @@ use oneshim_network::batch_uploader::BatchUploader;
 #[cfg(feature = "server")]
 use oneshim_network::http_client::HttpApiClient;
 use oneshim_storage::frame_storage::FrameFileStorage;
+use oneshim_storage::keychain::{KeychainOps, KeychainSecretStore, NullSecretStore};
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
@@ -55,6 +56,7 @@ pub struct AppState {
     pub update_action_tx: tokio::sync::mpsc::UnboundedSender<UpdateAction>,
     pub automation_controller: Option<Arc<AutomationController>>,
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
+    pub oauth_available: bool,
 }
 
 fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
@@ -102,6 +104,35 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
     }
 }
 
+/// Create the secret store adapter with keychain availability detection.
+/// Returns (store, oauth_available) — if keychain is unavailable, returns
+/// NullSecretStore and false.
+fn create_secret_store(
+    config_dir: &std::path::Path,
+) -> (
+    Arc<dyn oneshim_core::ports::secret_store::SecretStore>,
+    bool,
+) {
+    let registry_path = config_dir.join("oneshim-keychain-registry.json");
+    match KeychainOps::new(registry_path) {
+        Ok(ops) => match ops.probe_availability() {
+            Ok(()) => {
+                info!("OS keychain available — OAuth credentials will be persisted");
+                let ops = Arc::new(ops);
+                (Arc::new(KeychainSecretStore::new(ops)), true)
+            }
+            Err(e) => {
+                warn!("OS keychain unavailable: {e}. OAuth features disabled.");
+                (Arc::new(NullSecretStore), false)
+            }
+        },
+        Err(e) => {
+            warn!("Failed to init keychain store: {e}. OAuth features disabled.");
+            (Arc::new(NullSecretStore), false)
+        }
+    }
+}
+
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
 pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let _app_handle = app.handle().clone();
@@ -127,6 +158,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let config = config_manager.get();
     let web_port = Arc::new(AtomicU16::new(config.web.port));
     maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
+
+    // Secret store for OAuth credentials
+    let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
+        .unwrap_or_else(|_| data_dir_path.clone());
+    let (_secret_store, oauth_available) = create_secret_store(&config_dir);
 
     // 2b. Integrity preflight — signed policy bundle verification
     if let Err(e) = crate::integrity_guard::run_preflight(&config, false) {
@@ -412,6 +448,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         update_action_tx,
         automation_controller,
         shutdown_tx,
+        oauth_available,
     });
 
     // 12. 시스템 트레이 초기화

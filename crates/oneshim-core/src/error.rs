@@ -76,6 +76,9 @@ pub enum CoreError {
 
     #[error("OAuth error for provider {provider}: {message}")]
     OAuthError { provider: String, message: String },
+
+    #[error("secret store error: {0}")]
+    SecretStoreError(String),
 }
 
 /// GUI 상호작용 전용 에러 (AutomationPort GUI 메서드에서 사용)

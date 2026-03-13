@@ -8,6 +8,7 @@
 //! iced GUI에서 Tauri v2로 마이그레이션된 데스크톱 에이전트.
 //! 시스템 트레이, WebView 대시보드, IPC 커맨드를 통합 관리합니다.
 
+mod auth_cli;
 mod automation_runtime;
 mod autostart;
 mod cli_subscription_bridge;
@@ -44,6 +45,15 @@ fn main() {
             }),
         )
         .init();
+
+    // CLI pre-dispatch: handle "auth" subcommand before Tauri boot
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 && args[1] == "auth" {
+        let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let exit_code = auth_cli::run(&args[2..], &config_dir);
+        std::process::exit(exit_code);
+    }
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
