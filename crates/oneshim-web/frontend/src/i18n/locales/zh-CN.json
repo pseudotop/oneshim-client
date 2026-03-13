@@ -135,6 +135,13 @@
   },
   "settings": {
     "title": "设置",
+    "tabs": {
+      "general": "常规",
+      "privacy": "隐私",
+      "monitoring": "监控",
+      "aiAutomation": "AI与自动化",
+      "dataStorage": "数据与存储"
+    },
     "dataCollection": "数据采集",
     "enableCapture": "启用截图捕获",
     "idleThreshold": "空闲检测阈值（分钟）",

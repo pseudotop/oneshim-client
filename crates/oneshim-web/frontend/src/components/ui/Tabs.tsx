@@ -15,6 +15,7 @@ export interface TabsProps {
   onTabChange: (id: string) => void
   className?: string
   ariaLabel?: string
+  idBase?: string
 }
 
 function getEnabledIndexes(tabs: Tab[]) {
@@ -27,7 +28,7 @@ function getEnabledIndexes(tabs: Tab[]) {
   }, [])
 }
 
-export function Tabs({ tabs, activeTab, onTabChange, className, ariaLabel }: TabsProps) {
+export function Tabs({ tabs, activeTab, onTabChange, className, ariaLabel, idBase }: TabsProps) {
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([])
   const enabledIndexes = getEnabledIndexes(tabs)
   const activeIndex = tabs.findIndex((tab) => tab.id === activeTab && !tab.disabled)
@@ -90,16 +91,20 @@ export function Tabs({ tabs, activeTab, onTabChange, className, ariaLabel }: Tab
     >
       {tabs.map((tab, index) => {
         const isActive = index === activeIndex || (activeIndex === -1 && index === focusableIndex)
+        const tabId = idBase ? `${idBase}-tab-${tab.id}` : undefined
+        const panelId = idBase ? `${idBase}-panel-${tab.id}` : undefined
 
         return (
           <button
             key={tab.id}
+            id={tabId}
             ref={(node) => {
               buttonRefs.current[index] = node
             }}
             type="button"
             role="tab"
             aria-selected={isActive}
+            aria-controls={panelId}
             tabIndex={isActive ? 0 : -1}
             disabled={tab.disabled}
             onClick={() => {

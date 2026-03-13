@@ -135,6 +135,13 @@
   },
   "settings": {
     "title": "Settings",
+    "tabs": {
+      "general": "General",
+      "privacy": "Privacy",
+      "monitoring": "Monitoring",
+      "aiAutomation": "AI & Automation",
+      "dataStorage": "Data & Storage"
+    },
     "dataCollection": "Data Collection",
     "enableCapture": "Enable Screenshot Capture",
     "idleThreshold": "Idle Detection Threshold (min)",

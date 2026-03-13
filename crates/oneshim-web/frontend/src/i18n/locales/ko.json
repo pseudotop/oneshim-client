@@ -135,6 +135,13 @@
   },
   "settings": {
     "title": "설정",
+    "tabs": {
+      "general": "일반",
+      "privacy": "개인정보",
+      "monitoring": "모니터링",
+      "aiAutomation": "AI & 자동화",
+      "dataStorage": "데이터 & 저장소"
+    },
     "dataCollection": "데이터 수집",
     "enableCapture": "스크린샷 캡처 활성화",
     "idleThreshold": "유휴 감지 임계값 (분)",

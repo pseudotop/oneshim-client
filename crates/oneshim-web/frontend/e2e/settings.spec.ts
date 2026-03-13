@@ -1,12 +1,16 @@
 /**
  *
  */
-import { test, expect, type Page } from './helpers/test'
+
+import { DEFAULT_WEB_PORT } from '../src/constants'
 import { i18nRegex } from './helpers/i18n'
 import { mockDynamicJson, mockStaticJson } from './helpers/mock-api'
-import { DEFAULT_WEB_PORT } from '../src/constants'
+import { expect, type Page, test } from './helpers/test'
 
 const settingsTitleName = i18nRegex('settings.title')
+const generalTabName = i18nRegex('settings.tabs.general')
+const monitoringTabName = i18nRegex('settings.tabs.monitoring')
+const dataTabName = i18nRegex('settings.tabs.dataStorage')
 const collectionSectionName = i18nRegex('settings.collectionTitle')
 const notificationSectionName = i18nRegex('settings.notifTitle')
 const webDashboardSectionName = i18nRegex('settings.webTitle')
@@ -131,11 +135,14 @@ const mockedUpdateStatus = {
 }
 
 async function mockSettingsApis(page: Page) {
+  let currentSettings = structuredClone(mockedSettings)
+
   await mockDynamicJson(page, '**/api/settings', (request) => {
     if (request.method() === 'POST') {
-      return request.postDataJSON() ?? mockedSettings
+      currentSettings = request.postDataJSON() ?? currentSettings
+      return currentSettings
     }
-    return mockedSettings
+    return currentSettings
   })
 
   await mockStaticJson(page, '**/api/storage/stats**', mockedStorageStats)
@@ -144,6 +151,12 @@ async function mockSettingsApis(page: Page) {
 
 function settingsHeading(page: Page) {
   return page.locator('h1').filter({ hasText: settingsTitleName })
+}
+
+async function openSettingsTab(page: Page, tabName: RegExp) {
+  const tab = page.getByRole('tab', { name: tabName })
+  await tab.click()
+  await expect(tab).toHaveAttribute('aria-selected', 'true')
 }
 
 test.describe('Settings', () => {
@@ -158,45 +171,54 @@ test.describe('Settings', () => {
   })
 
   test('should display data collection section', async ({ page }) => {
+    await openSettingsTab(page, monitoringTabName)
     await expect(page.getByText(collectionSectionName)).toBeVisible()
   })
 
   test('should display capture enable checkbox', async ({ page }) => {
-    const captureCheckbox = page.locator('input[type="checkbox"]').first()
+    await openSettingsTab(page, monitoringTabName)
+    const captureCheckbox = page.locator('#settings-panel-monitoring input[type="checkbox"]').first()
     await expect(captureCheckbox).toBeVisible()
   })
 
   test('should display idle threshold input', async ({ page }) => {
-    const idleInput = page.locator('input[type="number"]').first()
+    await openSettingsTab(page, monitoringTabName)
+    const idleInput = page.locator('#settings-idle-threshold')
     await expect(idleInput).toBeVisible()
   })
 
   test('should display notification settings', async ({ page }) => {
+    await openSettingsTab(page, generalTabName)
     await expect(page.getByText(notificationSectionName)).toBeVisible()
   })
 
   test('should display web dashboard port setting', async ({ page }) => {
+    await openSettingsTab(page, generalTabName)
     await expect(page.getByText(webDashboardSectionName)).toBeVisible()
   })
 
   test('should display data export section', async ({ page }) => {
+    await openSettingsTab(page, dataTabName)
     await expect(page.getByText(exportSectionName)).toBeVisible()
   })
 
   test('should display export format selector', async ({ page }) => {
+    await openSettingsTab(page, dataTabName)
     await expect(page.locator('span').filter({ hasText: exportFormatLabelName }).first()).toBeVisible()
   })
 
   test('should display export buttons', async ({ page }) => {
+    await openSettingsTab(page, dataTabName)
     const exportSection = page.getByText(exportSectionName)
     await exportSection.scrollIntoViewIfNeeded()
 
-    const buttons = page.locator('button')
+    const buttons = page.locator('#settings-panel-data button')
     const count = await buttons.count()
     expect(count).toBeGreaterThan(0)
   })
 
   test('should display language selector', async ({ page }) => {
+    await openSettingsTab(page, generalTabName)
     const languageButton = page.getByTitle(languageSelectorName)
     await expect(languageButton).toBeVisible()
   })
@@ -207,15 +229,29 @@ test.describe('Settings', () => {
   })
 
   test('should save settings', async ({ page }) => {
-    const captureCheckbox = page.locator('input[type="checkbox"]').first()
+    await openSettingsTab(page, monitoringTabName)
+    const captureCheckbox = page.locator('#settings-panel-monitoring input[type="checkbox"]').first()
     await captureCheckbox.uncheck()
 
+    let saveRequests = 0
+    await page.route('**/api/settings', async (route) => {
+      if (route.request().method() === 'POST') {
+        saveRequests += 1
+      }
+      await route.fallback()
+    })
+
     const saveButton = page.locator('button[type="submit"]').filter({ hasText: saveSettingsName })
+    await expect(saveButton).toBeEnabled()
+
     await saveButton.click()
-    await expect(saveButton).toBeVisible()
+
+    await expect.poll(() => saveRequests).toBe(1)
+    await expect(saveButton).toBeDisabled()
   })
 
   test('should validate port number', async ({ page }) => {
+    await openSettingsTab(page, generalTabName)
     const saveButton = page.locator('button[type="submit"]').filter({ hasText: saveSettingsName })
     await expect(saveButton).toBeVisible()
   })
