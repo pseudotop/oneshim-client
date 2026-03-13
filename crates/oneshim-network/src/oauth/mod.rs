@@ -119,30 +119,7 @@ impl OAuthClient {
         provider_id: &str,
         result: &token_exchange::TokenExchangeResult,
     ) -> Result<(), CoreError> {
-        self.secret_store
-            .store(provider_id, KEY_ACCESS_TOKEN, &result.access_token)
-            .await?;
-
-        if let Some(ref rt) = result.refresh_token {
-            self.secret_store
-                .store(provider_id, KEY_REFRESH_TOKEN, rt)
-                .await?;
-        }
-
-        if let Some(expires_in) = result.expires_in {
-            let expires_at = Utc::now() + chrono::Duration::seconds(expires_in as i64);
-            self.secret_store
-                .store(provider_id, KEY_EXPIRES_AT, &expires_at.to_rfc3339())
-                .await?;
-        }
-
-        if let Some(ref scope) = result.scope {
-            self.secret_store
-                .store(provider_id, KEY_SCOPES, scope)
-                .await?;
-        }
-
-        Ok(())
+        store_tokens_static(&*self.secret_store, provider_id, result).await
     }
 }
 
@@ -253,14 +230,26 @@ impl OAuthPort for OAuthClient {
     }
 
     async fn flow_status(&self, flow_id: &str) -> Result<OAuthFlowStatus, CoreError> {
-        let flows = self.active_flows.lock().await;
-        flows
+        let mut flows = self.active_flows.lock().await;
+        let status = flows
             .get(flow_id)
             .map(|f| f.status.clone())
             .ok_or_else(|| CoreError::OAuthError {
                 provider: "unknown".into(),
                 message: format!("flow {flow_id} not found"),
-            })
+            })?;
+
+        // Evict terminal flows to prevent memory leaks over long sessions.
+        if matches!(
+            status,
+            OAuthFlowStatus::Completed
+                | OAuthFlowStatus::Failed { .. }
+                | OAuthFlowStatus::Cancelled
+        ) {
+            flows.remove(flow_id);
+        }
+
+        Ok(status)
     }
 
     async fn cancel_flow(&self, flow_id: &str) -> Result<(), CoreError> {
