@@ -9,7 +9,9 @@ use oneshim_core::config::{
     AiAccessMode, AiProviderConfig, LlmProviderType, OcrProviderType, PiiFilterLevel,
 };
 #[cfg(feature = "server")]
-use oneshim_core::config::{ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig};
+use oneshim_core::config::{
+    AiProviderType, ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig,
+};
 #[cfg(not(feature = "server"))]
 use oneshim_core::config::{ExternalDataPolicy, OcrValidationConfig};
 use oneshim_core::consent::ConsentManager;
@@ -24,6 +26,8 @@ use oneshim_core::ports::ocr_provider::OcrResult;
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
 #[cfg(feature = "server")]
 use oneshim_network::ai_ocr_client::RemoteOcrProvider;
+#[cfg(feature = "server")]
+use oneshim_network::oauth::provider_config::OAuthProviderConfig;
 use oneshim_vision::local_ocr_provider::LocalOcrProvider;
 use oneshim_vision::privacy_gateway::{PrivacyGateway, SanitizedImage};
 use std::path::PathBuf;
@@ -68,6 +72,9 @@ type OcrProviderResolution =
     Result<(Arc<dyn OcrProvider>, ProviderSource, Option<String>), CoreError>;
 type LlmProviderResolution =
     Result<(Arc<dyn LlmProvider>, ProviderSource, Option<String>), CoreError>;
+
+#[cfg(feature = "server")]
+const DEFAULT_OPENAI_OAUTH_MODEL: &str = "gpt-4.1-mini";
 
 #[cfg_attr(not(feature = "server"), allow(dead_code))]
 #[derive(Clone)]
@@ -339,10 +346,14 @@ pub fn resolve_ai_provider_adapters(
             // would hide the misconfiguration.
             #[cfg(feature = "server")]
             {
+                if config.llm_provider != LlmProviderType::Remote {
+                    return Err(CoreError::Config(
+                        "ProviderOAuth mode requires llm_provider=Remote.".to_string(),
+                    ));
+                }
                 let oauth = oauth_port.ok_or_else(|| {
                     CoreError::Config(
-                        "ProviderOAuth mode requires OAuth support (OS keychain unavailable)"
-                            .to_string(),
+                        "ProviderOAuth mode requires an initialized OAuth runtime.".to_string(),
                     )
                 })?;
                 let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
@@ -468,9 +479,7 @@ fn resolve_llm_provider_oauth(
     config: &AiProviderConfig,
     oauth_port: Arc<dyn OAuthPort>,
 ) -> LlmProviderResolution {
-    use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
     use oneshim_core::ports::credential_source::CredentialSource;
-    use oneshim_network::oauth::provider_config::OAuthProviderConfig;
 
     // Currently the only supported OAuth provider. When adding more providers,
     // this should be derived from config (e.g., config.oauth_provider_id).
@@ -483,14 +492,7 @@ fn resolve_llm_provider_oauth(
         api_base_url,
     };
 
-    // Use llm_api config if provided (for model/timeout), otherwise a sensible default.
-    let endpoint = config.llm_api.clone().unwrap_or(ExternalApiEndpoint {
-        endpoint: OAuthProviderConfig::OPENAI_API_BASE_URL.to_string(),
-        api_key: String::new(), // not used — credential provides the bearer token
-        model: None,            // RemoteLlmProvider picks a default model
-        timeout_secs: 30,
-        provider_type: AiProviderType::OpenAi,
-    });
+    let endpoint = oauth_llm_endpoint(config);
 
     let provider = RemoteLlmProvider::new_with_credential(&endpoint, credential)?;
     debug!(
@@ -502,6 +504,35 @@ fn resolve_llm_provider_oauth(
         ProviderSource::OAuth,
         None,
     ))
+}
+
+#[cfg(feature = "server")]
+fn oauth_llm_endpoint(config: &AiProviderConfig) -> ExternalApiEndpoint {
+    let mut endpoint = config.llm_api.clone().unwrap_or(ExternalApiEndpoint {
+        endpoint: OAuthProviderConfig::OPENAI_API_BASE_URL.to_string(),
+        api_key: String::new(),
+        model: Some(DEFAULT_OPENAI_OAUTH_MODEL.to_string()),
+        timeout_secs: 30,
+        provider_type: AiProviderType::OpenAi,
+    });
+
+    if endpoint.endpoint.trim().is_empty() {
+        endpoint.endpoint = OAuthProviderConfig::OPENAI_API_BASE_URL.to_string();
+    }
+    if endpoint.timeout_secs == 0 {
+        endpoint.timeout_secs = 30;
+    }
+    if endpoint
+        .model
+        .as_deref()
+        .map(|model| model.trim().is_empty())
+        .unwrap_or(true)
+    {
+        endpoint.model = Some(DEFAULT_OPENAI_OAUTH_MODEL.to_string());
+    }
+    endpoint.provider_type = AiProviderType::OpenAi;
+    endpoint.api_key.clear();
+    endpoint
 }
 
 #[cfg(feature = "server")]
@@ -589,6 +620,9 @@ mod tests {
     use oneshim_core::models::context::{ProcessInfo, WindowInfo};
     use oneshim_core::models::event::ProcessDetail;
     use oneshim_core::ports::monitor::ProcessMonitor;
+    use oneshim_core::ports::oauth::{
+        OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort,
+    };
     use oneshim_core::ports::ocr_provider::OcrResult;
     use tempfile::TempDir;
     use tokio::sync::RwLock;
@@ -845,6 +879,49 @@ mod tests {
         responses: Vec<OcrResult>,
     }
 
+    struct FakeOAuthPort {
+        connected: bool,
+    }
+
+    #[async_trait]
+    impl OAuthPort for FakeOAuthPort {
+        async fn start_flow(&self, _provider_id: &str) -> Result<OAuthFlowHandle, CoreError> {
+            Ok(OAuthFlowHandle {
+                flow_id: "flow-1".to_string(),
+                auth_url: "https://example.com/oauth".to_string(),
+            })
+        }
+
+        async fn flow_status(&self, _flow_id: &str) -> Result<OAuthFlowStatus, CoreError> {
+            Ok(OAuthFlowStatus::Completed)
+        }
+
+        async fn cancel_flow(&self, _flow_id: &str) -> Result<(), CoreError> {
+            Ok(())
+        }
+
+        async fn get_access_token(&self, _provider_id: &str) -> Result<Option<String>, CoreError> {
+            Ok(self.connected.then(|| "token".to_string()))
+        }
+
+        async fn revoke(&self, _provider_id: &str) -> Result<(), CoreError> {
+            Ok(())
+        }
+
+        async fn connection_status(
+            &self,
+            provider_id: &str,
+        ) -> Result<OAuthConnectionStatus, CoreError> {
+            Ok(OAuthConnectionStatus {
+                provider_id: provider_id.to_string(),
+                connected: self.connected,
+                expires_at: None,
+                scopes: vec![],
+                api_base_url: None,
+            })
+        }
+    }
+
     #[async_trait]
     impl OcrProvider for FakeExternalOcrProvider {
         async fn extract_elements(
@@ -887,6 +964,7 @@ mod tests {
     fn oauth_mode_requires_oauth_port() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Remote,
             ..AiProviderConfig::default()
         };
 
@@ -896,7 +974,40 @@ mod tests {
             "ProviderOAuth mode should require an OAuth port"
         );
         let err = result.err().unwrap();
-        assert!(err.to_string().contains("keychain"));
+        assert!(err.to_string().contains("OAuth runtime"));
+    }
+
+    #[test]
+    fn oauth_mode_rejects_local_llm_configuration() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Local,
+            ..AiProviderConfig::default()
+        };
+
+        let oauth = Arc::new(FakeOAuthPort { connected: true }) as Arc<dyn OAuthPort>;
+        let result =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, Some(oauth));
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.to_string().contains("llm_provider=Remote"));
+    }
+
+    #[test]
+    fn oauth_mode_defaults_to_openai_model() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Remote,
+            ..AiProviderConfig::default()
+        };
+
+        let oauth = Arc::new(FakeOAuthPort { connected: true }) as Arc<dyn OAuthPort>;
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, Some(oauth))
+                .expect("OAuth mode should resolve when a port is provided");
+
+        assert_eq!(adapters.llm_source, ProviderSource::OAuth);
+        assert_eq!(adapters.llm.provider_name(), DEFAULT_OPENAI_OAUTH_MODEL);
     }
 
     #[tokio::test]
