@@ -340,6 +340,7 @@ mod tests {
             window_title: "Test".to_string(),
             prev_app_name: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         })
     }
 

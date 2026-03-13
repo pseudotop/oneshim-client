@@ -196,6 +196,7 @@ mod tests {
             window_title: "Inbox user@example.com".to_string(),
             prev_app_name: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         });
 
         let uploaded = policy.prepare_event_for_upload(event);
@@ -224,6 +225,7 @@ mod tests {
             window_title: "Inbox user@example.com".to_string(),
             prev_app_name: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         });
 
         let uploaded = policy.prepare_event_for_upload(event);
@@ -247,6 +249,7 @@ mod tests {
             window_title: "Vault".to_string(),
             prev_app_name: None,
             timestamp: chrono::Utc::now(),
+            ..Default::default()
         });
 
         assert!(policy.prepare_event_for_upload(event).is_none());

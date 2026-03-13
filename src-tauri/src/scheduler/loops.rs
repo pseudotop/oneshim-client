@@ -5,6 +5,7 @@ use oneshim_core::models::frame::ImagePayload;
 use oneshim_monitor::idle::IdleTracker;
 use oneshim_monitor::input_activity::InputActivityCollector;
 use oneshim_monitor::window_layout::WindowLayoutTracker;
+use oneshim_vision::ring_buffer::{CaptureRingBuffer, RingFrame};
 use oneshim_web::{MetricsUpdate, RealtimeEvent};
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,6 +45,9 @@ impl Scheduler {
 
             let window_tracker = WindowLayoutTracker::new();
             let input_collector = input_collector1;
+            // Dashcam ring buffer: 6 slots (~18s at 3s poll), flush on importance >= 0.5,
+            // capture 2 post-event frames after each flush.
+            let ring_buffer = CaptureRingBuffer::new(6, 2, 0.5);
 
             loop {
                 tokio::select! {
@@ -110,10 +114,47 @@ impl Scheduler {
                                     window_title,
                                     prev_app_name: prev_app.clone(),
                                     timestamp: Utc::now(),
+                                    input_activity_level: input_collector.peek_activity_level(),
                                 };
 
+                                // --- Ring buffer: capture thumbnail every cycle ---
+                                if let Ok(thumb_data) = processor.capture_thumbnail().await {
+                                    ring_buffer.push(RingFrame {
+                                        timestamp: Utc::now(),
+                                        thumbnail_data: thumb_data,
+                                        app_name: app_name.clone(),
+                                        window_title: event.window_title.clone(),
+                                    });
+                                }
+
                                 {
-                                    if let Some(capture_req) = trigger.should_capture(&event) {
+                                    let capture_req = trigger.should_capture(&event);
+
+                                    // Force capture during post-event window (dashcam "after" frames)
+                                    let force_post = ring_buffer.should_force_post_capture();
+
+                                    if let Some(capture_req) = capture_req {
+                                        // --- Ring buffer: flush pre-event frames on significant capture ---
+                                        if let Some(ref fs) = frame_storage1 {
+                                            let flush_frame = RingFrame {
+                                                timestamp: Utc::now(),
+                                                thumbnail_data: vec![],
+                                                app_name: capture_req.app_name.clone(),
+                                                window_title: capture_req.window_title.clone(),
+                                            };
+                                            if let Some(flush) = ring_buffer.check_and_flush(capture_req.importance, flush_frame) {
+                                                let batch: Vec<_> = flush.pre_event_frames
+                                                    .into_iter()
+                                                    .filter(|f| !f.thumbnail_data.is_empty())
+                                                    .map(|f| (f.timestamp, f.thumbnail_data))
+                                                    .collect();
+                                                if !batch.is_empty() {
+                                                    debug!("ring buffer: saving {} pre-event frames", batch.len());
+                                                    let _ = fs.save_frames_batch(batch).await;
+                                                }
+                                            }
+                                        }
+
                                         match processor.capture_and_process(&capture_req).await {
                                             Ok(frame) => {
                                                 debug!("frame completed: {:?}", frame.metadata.trigger_type);
@@ -164,6 +205,14 @@ impl Scheduler {
                                             }
                                             Err(e) => {
                                                 warn!("frame failure: {e}");
+                                            }
+                                        }
+                                    } else if force_post {
+                                        // Post-event forced capture (dashcam "after" frames)
+                                        if let Some(ref fs) = frame_storage1 {
+                                            if let Ok(thumb_data) = processor.capture_thumbnail().await {
+                                                debug!("ring buffer: post-event forced capture");
+                                                let _ = fs.save_frame(Utc::now(), &thumb_data).await;
                                             }
                                         }
                                     }
