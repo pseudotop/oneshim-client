@@ -177,7 +177,6 @@ fn oauth_runtime_error_status(
 fn should_fallback_to_noop(ai_config: &oneshim_core::config::AiProviderConfig) -> bool {
     ai_config.fallback_to_local && ai_config.access_mode != AiAccessMode::ProviderOAuth
 }
-
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
 pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let _app_handle = app.handle().clone();
