@@ -200,6 +200,99 @@ Return JSON only."#
         self.credential.is_managed() && matches!(self.provider_type, AiProviderType::OpenAi)
     }
 
+    /// Build the provider-specific request body given a system and user prompt.
+    fn build_chat_body(&self, system_prompt: &str, user_prompt: &str) -> serde_json::Value {
+        if self.use_responses_api() {
+            return self.build_responses_api_body(system_prompt, user_prompt);
+        }
+        match self.provider_type {
+            AiProviderType::Anthropic => serde_json::json!({
+                "model": self.model,
+                "max_tokens": 512,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_prompt}]
+            }),
+            AiProviderType::Google => serde_json::json!({
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                "system_instruction": {"parts": [{"text": system_prompt}]},
+                "generationConfig": {"maxOutputTokens": 512}
+            }),
+            AiProviderType::OpenAi | AiProviderType::Generic => serde_json::json!({
+                "model": self.model,
+                "max_tokens": 512,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+            }),
+        }
+    }
+
+    /// Send a request body to the LLM API, authenticate, and parse the response.
+    async fn send_and_parse(
+        &self,
+        request_body: &serde_json::Value,
+    ) -> Result<InterpretedAction, CoreError> {
+        let mut builder = self
+            .http_client
+            .post(&self.endpoint)
+            .header("Content-Type", "application/json")
+            .json(request_body);
+
+        let bearer_token = self.credential.resolve_bearer_token().await?;
+        match self.provider_type {
+            AiProviderType::Anthropic => {
+                builder = builder
+                    .header("x-api-key", &bearer_token)
+                    .header("anthropic-version", "2023-06-01");
+            }
+            AiProviderType::Google => {
+                builder = builder.header("x-goog-api-key", &bearer_token);
+            }
+            AiProviderType::OpenAi | AiProviderType::Generic => {
+                builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
+                if self.credential.is_managed() {
+                    builder = builder.header("version", env!("CARGO_PKG_VERSION"));
+                }
+            }
+        }
+
+        let response = builder
+            .send()
+            .await
+            .map_err(|e| CoreError::Network(format!("LLM API request failed: {}", e)))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| CoreError::Network(format!("LLM API response read failure: {}", e)))?;
+
+        if !status.is_success() {
+            warn!(status = %status, "LLM API error response");
+            return Err(CoreError::Network(format!(
+                "LLM API error ({}): {}",
+                status,
+                body.chars().take(200).collect::<String>()
+            )));
+        }
+
+        let action = match self.provider_type {
+            AiProviderType::Anthropic => Self::parse_claude_response(&body)?,
+            AiProviderType::Google => Self::parse_google_response(&body)?,
+            AiProviderType::OpenAi | AiProviderType::Generic => Self::parse_openai_response(&body)?,
+        };
+
+        debug!(
+            action_type = %action.action_type,
+            target = ?action.target_text,
+            confidence = action.confidence,
+            "LLM intent interpretation completed"
+        );
+
+        Ok(action)
+    }
+
     fn build_user_prompt(screen_context: &ScreenContext, intent_hint: &str) -> String {
         let mut prompt = String::new();
         prompt.push_str(&format!("Active app: {}\n", screen_context.active_app));
@@ -381,106 +474,8 @@ impl LlmProvider for RemoteLlmProvider {
             "Calling external LLM API"
         );
 
-        let request_body = match self.provider_type {
-            AiProviderType::Anthropic => serde_json::json!({
-                "model": self.model,
-                "max_tokens": 512,
-                "system": Self::system_prompt(),
-                "messages": [{
-                    "role": "user",
-                    "content": user_prompt
-                }]
-            }),
-            AiProviderType::Google => serde_json::json!({
-                "contents": [{
-                    "role": "user",
-                    "parts": [{"text": user_prompt}]
-                }],
-                "system_instruction": {
-                    "parts": [{"text": Self::system_prompt()}]
-                },
-                "generationConfig": {
-                    "maxOutputTokens": 512
-                }
-            }),
-            AiProviderType::OpenAi | AiProviderType::Generic => {
-                serde_json::json!({
-                    "model": self.model,
-                    "max_tokens": 512,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": Self::system_prompt()
-                        },
-                        {
-                            "role": "user",
-                            "content": user_prompt
-                        }
-                    ]
-                })
-            }
-        };
-
-        let mut builder = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
-        let bearer_token = self.credential.resolve_bearer_token().await?;
-        match self.provider_type {
-            AiProviderType::Anthropic => {
-                builder = builder
-                    .header("x-api-key", &bearer_token)
-                    .header("anthropic-version", "2023-06-01");
-            }
-            AiProviderType::Google => {
-                builder = builder.header("x-goog-api-key", &bearer_token);
-            }
-            AiProviderType::OpenAi | AiProviderType::Generic => {
-                builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
-                // ChatGPT OAuth requires a version header for model access (GPT-5.4 etc.).
-                // Ref: openai/codex codex-rs/core/src/model_provider_info.rs
-                if self.credential.is_managed() {
-                    builder = builder.header("version", env!("CARGO_PKG_VERSION"));
-                }
-            }
-        }
-
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API request failed: {}", e)))?;
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API response read failure: {}", e)))?;
-
-        if !status.is_success() {
-            warn!(status = %status, "LLM API error response");
-            return Err(CoreError::Network(format!(
-                "LLM API error ({}): {}",
-                status,
-                body.chars().take(200).collect::<String>()
-            )));
-        }
-
-        let action = match self.provider_type {
-            AiProviderType::Anthropic => Self::parse_claude_response(&body)?,
-            AiProviderType::Google => Self::parse_google_response(&body)?,
-            AiProviderType::OpenAi | AiProviderType::Generic => Self::parse_openai_response(&body)?,
-        };
-
-        debug!(
-            action_type = %action.action_type,
-            target = ?action.target_text,
-            confidence = action.confidence,
-            "LLM intent interpretation completed"
-        );
-
-        Ok(action)
+        let request_body = self.build_chat_body(Self::system_prompt(), &user_prompt);
+        self.send_and_parse(&request_body).await
     }
 
     async fn interpret_intent_with_skills(
@@ -502,102 +497,8 @@ impl LlmProvider for RemoteLlmProvider {
             "Calling external LLM API (with skills)"
         );
 
-        let request_body = if self.use_responses_api() {
-            self.build_responses_api_body(&system_prompt, &user_prompt)
-        } else {
-            match self.provider_type {
-                AiProviderType::Anthropic => serde_json::json!({
-                    "model": self.model,
-                    "max_tokens": 512,
-                    "system": system_prompt,
-                    "messages": [{
-                        "role": "user",
-                        "content": user_prompt
-                    }]
-                }),
-                AiProviderType::Google => serde_json::json!({
-                    "contents": [{
-                        "role": "user",
-                        "parts": [{"text": user_prompt}]
-                    }],
-                    "system_instruction": {
-                        "parts": [{"text": system_prompt}]
-                    },
-                    "generationConfig": {
-                        "maxOutputTokens": 512
-                    }
-                }),
-                AiProviderType::OpenAi | AiProviderType::Generic => {
-                    serde_json::json!({
-                        "model": self.model,
-                        "max_tokens": 512,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ]
-                    })
-                }
-            }
-        };
-
-        let mut builder = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
-        let bearer_token = self.credential.resolve_bearer_token().await?;
-        match self.provider_type {
-            AiProviderType::Anthropic => {
-                builder = builder
-                    .header("x-api-key", &bearer_token)
-                    .header("anthropic-version", "2023-06-01");
-            }
-            AiProviderType::Google => {
-                builder = builder.header("x-goog-api-key", &bearer_token);
-            }
-            AiProviderType::OpenAi | AiProviderType::Generic => {
-                builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
-                if self.credential.is_managed() {
-                    builder = builder.header("version", env!("CARGO_PKG_VERSION"));
-                }
-            }
-        }
-
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API request failed: {}", e)))?;
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API response read failure: {}", e)))?;
-
-        if !status.is_success() {
-            warn!(status = %status, "LLM API error response");
-            return Err(CoreError::Network(format!(
-                "LLM API error ({}): {}",
-                status,
-                body.chars().take(200).collect::<String>()
-            )));
-        }
-
-        let action = match self.provider_type {
-            AiProviderType::Anthropic => Self::parse_claude_response(&body)?,
-            AiProviderType::Google => Self::parse_google_response(&body)?,
-            AiProviderType::OpenAi | AiProviderType::Generic => Self::parse_openai_response(&body)?,
-        };
-
-        debug!(
-            action_type = %action.action_type,
-            target = ?action.target_text,
-            confidence = action.confidence,
-            "LLM intent interpretation completed (with skills)"
-        );
-
-        Ok(action)
+        let request_body = self.build_chat_body(&system_prompt, &user_prompt);
+        self.send_and_parse(&request_body).await
     }
 
     fn provider_name(&self) -> &str {

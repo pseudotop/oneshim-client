@@ -144,7 +144,11 @@ impl KeychainOps {
         // 2. Update registry cache
         let mut reg = self.registry.lock();
         reg.add_key(namespace, key);
-        // 3. Persist (best-effort — keychain already has the value)
+        // 3. Persist registry (best-effort — the keychain already holds the
+        //    authoritative value). If this save fails, the registry may miss
+        //    the key on next boot, but `delete_namespace` compensates via
+        //    KNOWN_OAUTH_KEYS fallback, so OAuth credentials are still cleaned
+        //    up correctly.
         if let Err(e) = reg.save(&self.registry_path) {
             warn!("Failed to persist keychain registry: {e}");
         }
