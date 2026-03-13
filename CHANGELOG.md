@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-03-13
+
+### Added
+
+- Shared skeleton loading states across dashboard, reports, automation, and timeline views
+- Toast-based operation feedback for privacy actions, automation preset runs, and timeline OCR copy
+- Accessible tab primitives and a sectioned Settings layout for faster navigation
+
+### Changed
+
+- Rework Settings into focused sections while preserving shared save flow and validation behavior
+- Default Focus browsing to a rolling 7-day range and add incremental load-more navigation
+- Enrich the Updates page with clearer release metadata and status context
+
+### Fixed
+
+- Resolve the actual Tauri web port after fallback binding and keep frontend API routing aligned
+- Bridge tray navigation/update events back into the frontend and align automation tray actions
+- Route automation intents through the command policy gate and enforce consent for external OCR flows
+- Harden release reliability around artifact downloads and macOS release smoke shutdown
+
 ## [0.3.8-rc.1] - 2026-03-13
 
 ### Added
