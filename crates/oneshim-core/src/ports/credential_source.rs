@@ -15,9 +15,15 @@ pub enum CredentialSource {
     ApiKey(String),
 
     /// Managed OAuth token resolved at request time via OAuthPort.
+    ///
+    /// `api_base_url` is the provider's API endpoint for OAuth-authenticated
+    /// requests. For OpenAI ChatGPT OAuth this is `chatgpt.com/backend-api/codex`,
+    /// NOT the standard `api.openai.com/v1`.
     ManagedOAuth {
         provider_id: String,
         oauth_port: Arc<dyn OAuthPort>,
+        /// API base URL for authenticated requests (differs per auth mode).
+        api_base_url: String,
     },
 }
 
@@ -32,6 +38,7 @@ impl CredentialSource {
             Self::ManagedOAuth {
                 provider_id,
                 oauth_port,
+                ..
             } => oauth_port
                 .get_access_token(provider_id)
                 .await?
@@ -45,6 +52,17 @@ impl CredentialSource {
     /// Whether this source is a managed OAuth credential.
     pub fn is_managed(&self) -> bool {
         matches!(self, Self::ManagedOAuth { .. })
+    }
+
+    /// API base URL for the credential source.
+    ///
+    /// Returns `Some(url)` for `ManagedOAuth`, `None` for `ApiKey`
+    /// (API key users configure their own endpoint).
+    pub fn api_base_url(&self) -> Option<&str> {
+        match self {
+            Self::ApiKey(_) => None,
+            Self::ManagedOAuth { api_base_url, .. } => Some(api_base_url),
+        }
     }
 }
 

@@ -32,6 +32,9 @@ pub struct OAuthConnectionStatus {
     pub connected: bool,
     pub expires_at: Option<String>,
     pub scopes: Vec<String>,
+    /// API base URL for authenticated requests (e.g., `chatgpt.com/backend-api/codex`).
+    #[serde(default)]
+    pub api_base_url: Option<String>,
 }
 
 /// OAuth runtime port.
@@ -103,6 +106,7 @@ mod tests {
             connected: true,
             expires_at: Some("2026-03-14T00:00:00Z".to_string()),
             scopes: vec!["openid".to_string(), "offline_access".to_string()],
+            api_base_url: Some("https://chatgpt.com/backend-api/codex".to_string()),
         };
         let json = serde_json::to_string(&status).unwrap();
         let parsed: OAuthConnectionStatus = serde_json::from_str(&json).unwrap();

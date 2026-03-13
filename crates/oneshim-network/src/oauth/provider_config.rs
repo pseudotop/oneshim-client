@@ -1,4 +1,7 @@
 //! OAuth provider configurations — verified presets for each supported provider.
+//!
+//! Provider config includes both the auth endpoints (for token exchange) and
+//! the API base URL (for making authenticated requests after login).
 
 /// OAuth provider configuration.
 #[derive(Debug, Clone)]
@@ -11,6 +14,14 @@ pub struct OAuthProviderConfig {
     pub scopes: Vec<String>,
     pub callback_port: u16,
     pub callback_path: String,
+    /// API base URL for authenticated requests.
+    ///
+    /// OpenAI Codex uses different base URLs depending on auth mode:
+    /// - ChatGPT OAuth: `https://chatgpt.com/backend-api/codex`
+    /// - API key:       `https://api.openai.com/v1`
+    ///
+    /// Ref: `openai/codex` `codex-rs/core/src/model_provider_info.rs`
+    pub api_base_url: String,
 }
 
 impl OAuthProviderConfig {
@@ -20,6 +31,9 @@ impl OAuthProviderConfig {
     /// - Client ID: `codex-rs/core/src/auth.rs:744`
     /// - Issuer: `https://auth.openai.com`
     /// - PKCE: S256
+    /// - API base URL: `codex-rs/core/src/model_provider_info.rs` (ChatGPT auth path)
+    /// - Version header: `codex-rs/core/src/model_provider_info.rs:create_openai_provider()`
+    /// - Plan gating: GPT-5.4/5.3-codex restricted to paid ChatGPT subscriptions
     pub fn openai_codex() -> Self {
         Self {
             provider_id: "openai".into(),
@@ -35,8 +49,14 @@ impl OAuthProviderConfig {
             ],
             callback_port: 1455,
             callback_path: "/auth/callback".into(),
+            // ChatGPT OAuth tokens use the ChatGPT backend, not the standard API.
+            // Ref: model_provider_info.rs → AuthMode::Chatgpt → chatgpt.com/backend-api/codex
+            api_base_url: "https://chatgpt.com/backend-api/codex".into(),
         }
     }
+
+    /// Standard OpenAI API base URL (for API key authentication).
+    pub const OPENAI_API_BASE_URL: &'static str = "https://api.openai.com/v1";
 
     /// Construct the full redirect URI.
     pub fn redirect_uri(&self) -> String {
@@ -108,5 +128,19 @@ mod tests {
     fn scopes_include_offline_access() {
         let config = OAuthProviderConfig::openai_codex();
         assert!(config.scopes.contains(&"offline_access".to_string()));
+    }
+
+    #[test]
+    fn openai_preset_has_chatgpt_api_base_url() {
+        let config = OAuthProviderConfig::openai_codex();
+        assert_eq!(config.api_base_url, "https://chatgpt.com/backend-api/codex");
+    }
+
+    #[test]
+    fn openai_api_key_base_url_constant() {
+        assert_eq!(
+            OAuthProviderConfig::OPENAI_API_BASE_URL,
+            "https://api.openai.com/v1"
+        );
     }
 }

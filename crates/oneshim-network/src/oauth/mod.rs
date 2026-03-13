@@ -348,11 +348,17 @@ impl OAuthPort for OAuthClient {
 
         let connected = has_token && self.is_token_valid(provider_id).await;
 
+        let api_base_url = self
+            .providers
+            .get(provider_id)
+            .map(|p| p.api_base_url.clone());
+
         Ok(OAuthConnectionStatus {
             provider_id: provider_id.to_string(),
             connected,
             expires_at,
             scopes,
+            api_base_url,
         })
     }
 }

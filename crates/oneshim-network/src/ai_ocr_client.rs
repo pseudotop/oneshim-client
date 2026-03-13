@@ -198,6 +198,9 @@ impl RemoteOcrProvider {
     }
 
     /// Create a provider with a managed credential source (e.g., OAuth).
+    ///
+    /// When the credential is `ManagedOAuth`, the API base URL from the
+    /// credential is used instead of the config endpoint.
     pub fn new_with_credential(
         config: &ExternalApiEndpoint,
         credential: CredentialSource,
@@ -235,9 +238,15 @@ impl RemoteOcrProvider {
             }
         }
 
+        // Use OAuth-provided base URL when available.
+        let endpoint = credential
+            .api_base_url()
+            .map(String::from)
+            .unwrap_or_else(|| config.endpoint.clone());
+
         Ok(Self {
             http_client,
-            endpoint: config.endpoint.clone(),
+            endpoint,
             credential,
             model: config.model.clone(),
             provider_type: config.provider_type,
@@ -440,6 +449,11 @@ impl OcrProvider for RemoteOcrProvider {
 
         let bearer_token = self.credential.resolve_bearer_token().await?;
         builder = strategy.apply_auth_headers(builder, &bearer_token);
+
+        // ChatGPT OAuth requires a version header for model access.
+        if self.credential.is_managed() {
+            builder = builder.header("version", env!("CARGO_PKG_VERSION"));
+        }
 
         let response = builder
             .send()
