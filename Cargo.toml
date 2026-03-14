@@ -119,7 +119,7 @@ prost-types = "0.14"
 enigo = { version = "0.6", features = ["serde"] }
 
 # 자동 업데이트 (native-tls로 ring 의존성 회피)
-self_update = { version = "0.43", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2"] }
+self_update = { version = "0.42", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2"] }
 tar = "0.4"
 zip = "8"
 

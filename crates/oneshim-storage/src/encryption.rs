@@ -51,7 +51,7 @@ impl EncryptionKey {
 
     fn generate() -> Result<Self, CoreError> {
         let mut key = [0u8; 32];
-        getrandom::getrandom(&mut key)
+        getrandom::fill(&mut key)
             .map_err(|e| CoreError::Internal(format!("OS random number generation failed: {e}")))?;
         Ok(Self(key))
     }
