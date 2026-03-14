@@ -12,6 +12,8 @@ use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
 use oneshim_core::ports::storage::StorageService;
 use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
+#[cfg(feature = "server")]
+use oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_web::RealtimeEvent;
 use std::sync::Arc;
@@ -38,6 +40,8 @@ pub struct Scheduler {
     pub(super) event_tx: Option<broadcast::Sender<RealtimeEvent>>,
     pub(super) notification_manager: Option<Arc<NotificationManager>>,
     pub(super) focus_analyzer: Option<Arc<FocusAnalyzer>>,
+    #[cfg(feature = "server")]
+    pub(super) oauth_coordinator: Option<Arc<TokenRefreshCoordinator>>,
 }
 
 impl Scheduler {
@@ -72,6 +76,8 @@ impl Scheduler {
             event_tx: None,
             notification_manager: None,
             focus_analyzer: None,
+            #[cfg(feature = "server")]
+            oauth_coordinator: None,
         }
     }
 
@@ -87,6 +93,12 @@ impl Scheduler {
 
     pub fn with_focus_analyzer(mut self, analyzer: Arc<FocusAnalyzer>) -> Self {
         self.focus_analyzer = Some(analyzer);
+        self
+    }
+
+    #[cfg(feature = "server")]
+    pub fn with_oauth_coordinator(mut self, coordinator: Arc<TokenRefreshCoordinator>) -> Self {
+        self.oauth_coordinator = Some(coordinator);
         self
     }
 
