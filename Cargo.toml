@@ -59,7 +59,7 @@ lz4_flex = "0.12"
 image = "0.25"
 fast_image_resize = "6"
 webp = "0.3"
-xcap = "0.8"
+xcap = "0.9"
 leptess = "0.14"
 base64 = "0.22"
 
