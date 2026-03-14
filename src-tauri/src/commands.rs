@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 use sysinfo::System;
 use tauri::command;
 
-use crate::setup::{AppState, OAuthState};
+use crate::setup::{AppState, OAuthCoordinatorState, OAuthState};
 use oneshim_web::update_control::UpdateAction;
 
 /// Recursively merge `patch` into `base`.
@@ -247,15 +247,32 @@ pub async fn oauth_start_flow(
 }
 
 /// OAuth 플로우 상태 조회 — 프론트엔드 폴링용
+///
+/// When the flow completes successfully, the coordinator's backoff state
+/// is reset so background refresh resumes immediately.
 #[command]
 pub async fn oauth_flow_status(
     flow_id: String,
     oauth: tauri::State<'_, OAuthState>,
+    coordinator: tauri::State<'_, OAuthCoordinatorState>,
 ) -> Result<OAuthFlowStatus, String> {
     let port = require_oauth(&oauth)?;
-    port.flow_status(&flow_id)
+    let status = port
+        .flow_status(&flow_id)
         .await
-        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+
+    // Reset coordinator backoff after successful re-authentication so the
+    // background refresh loop resumes normal operation immediately.
+    #[cfg(feature = "server")]
+    if matches!(status, OAuthFlowStatus::Completed) {
+        if let Some(ref coord) = coordinator.0 {
+            coord.reset().await;
+        }
+    }
+    let _ = &coordinator; // suppress unused-variable warning when server feature is off
+
+    Ok(status)
 }
 
 /// OAuth 플로우 취소

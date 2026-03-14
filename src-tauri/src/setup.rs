@@ -75,6 +75,11 @@ pub struct AppState {
 /// conditional compilation in the main struct definition.
 pub struct OAuthState(pub Option<Arc<dyn oneshim_core::ports::oauth::OAuthPort>>);
 
+/// Managed state for the OAuth refresh coordinator — enables IPC commands
+/// to reset backoff state after successful manual re-authentication.
+#[allow(dead_code)] // Field is used via #[cfg(feature = "server")] in commands.rs
+pub struct OAuthCoordinatorState(pub OAuthCoordinator);
+
 fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
     data_dir
         .map(|d| PathBuf::from(d).join("oneshim.db"))
@@ -160,9 +165,9 @@ fn preflight_provider_oauth_connection(
         .block_on(oauth.connection_status(&provider.provider_id))
         .map_err(|e| oneshim_core::error::CoreError::Config(e.to_string()))?;
 
-    if !status.connected {
+    if !status.connected && !status.has_refresh_token {
         return Err(oneshim_core::error::CoreError::Config(
-            "ProviderOAuth mode requires an active OpenAI OAuth connection".to_string(),
+            "ProviderOAuth mode requires an active OAuth connection or a refresh token".to_string(),
         ));
     }
 
@@ -560,6 +565,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "server"))]
     let oauth_state = OAuthState(None);
 
+    #[cfg(feature = "server")]
+    let oauth_coordinator_state = OAuthCoordinatorState(oauth_coordinator);
+    #[cfg(not(feature = "server"))]
+    let oauth_coordinator_state = OAuthCoordinatorState(None);
+
     app.manage(AppState {
         runtime_handle: handle,
         config,
@@ -572,6 +582,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         shutdown_tx,
     });
     app.manage(oauth_state);
+    app.manage(oauth_coordinator_state);
 
     // 12. 시스템 트레이 초기화
     crate::tray::setup_tray(app)?;
