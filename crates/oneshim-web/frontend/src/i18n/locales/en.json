@@ -631,6 +631,7 @@
     "genericError": "OAuth request failed. Try again.",
     "statusExpiringSoon": "Token expiring soon",
     "statusExpired": "Token expired",
+    "noRefreshToken": "No refresh token — manual re-authentication will be required when token expires",
     "reauthRequired": "Re-authentication required",
     "reauthDescription": "Your OAuth session has expired. Please reconnect."
   },
