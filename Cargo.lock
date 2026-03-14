@@ -4519,7 +4519,7 @@ dependencies = [
  "chrono",
  "criterion",
  "crossbeam",
- "getrandom 0.2.17",
+ "getrandom 0.4.1",
  "keyring",
  "oneshim-core",
  "parking_lot",
