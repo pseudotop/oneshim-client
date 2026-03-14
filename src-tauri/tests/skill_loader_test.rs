@@ -3,7 +3,6 @@
 use std::fs;
 use std::path::Path;
 
-use oneshim_core::ports::skill_loader::SkillLoader;
 use tempfile::TempDir;
 
 const SKILLS_DIR: &str = ".agents/skills";
@@ -89,7 +88,7 @@ fn skill_directory_discovery() {
     let mut found = Vec::new();
     for entry in fs::read_dir(&skills_dir).unwrap() {
         let path = entry.unwrap().path();
-        if path.extension().map_or(false, |ext| ext == "md") {
+        if path.extension().is_some_and(|ext| ext == "md") {
             let content = fs::read_to_string(&path).unwrap();
             if let Some((name, _, _)) = parse_frontmatter(&content) {
                 found.push(name);
