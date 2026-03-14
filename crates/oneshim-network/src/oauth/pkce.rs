@@ -23,7 +23,7 @@ pub struct PkceChallenge {
 /// The challenge is the SHA-256 hash of the verifier, base64url-encoded.
 pub fn generate_pkce() -> PkceChallenge {
     let mut verifier_bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut verifier_bytes);
+    rand::rng().fill_bytes(&mut verifier_bytes);
     let verifier = URL_SAFE_NO_PAD.encode(verifier_bytes);
 
     let mut hasher = Sha256::new();
@@ -39,7 +39,7 @@ pub fn generate_pkce() -> PkceChallenge {
 /// Generate a random state parameter for CSRF protection.
 pub fn generate_state() -> String {
     let mut state_bytes = [0u8; 16];
-    rand::thread_rng().fill_bytes(&mut state_bytes);
+    rand::rng().fill_bytes(&mut state_bytes);
     URL_SAFE_NO_PAD.encode(state_bytes)
 }
 
