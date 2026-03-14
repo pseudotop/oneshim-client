@@ -39,6 +39,10 @@ pub(super) fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 
 pub(super) const REDACTED_WINDOW_TITLE: &str = "[REDACTED_WINDOW_TITLE]";
 
+/// OAuth token refresh check interval (seconds).
+#[cfg(feature = "server")]
+pub(super) const OAUTH_REFRESH_INTERVAL_SECS: u64 = 120;
+
 #[derive(Clone)]
 pub(super) struct PlatformEgressPolicy {
     enabled: bool,

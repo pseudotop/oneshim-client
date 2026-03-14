@@ -621,7 +621,7 @@ mod tests {
     use oneshim_core::models::event::ProcessDetail;
     use oneshim_core::ports::monitor::ProcessMonitor;
     use oneshim_core::ports::oauth::{
-        OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort,
+        OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort, RefreshResult,
     };
     use oneshim_core::ports::ocr_provider::OcrResult;
     use tempfile::TempDir;
@@ -918,7 +918,22 @@ mod tests {
                 expires_at: None,
                 scopes: vec![],
                 api_base_url: None,
+                has_refresh_token: false,
             })
+        }
+
+        async fn refresh_access_token(
+            &self,
+            _provider_id: &str,
+            _min_valid_for_secs: i64,
+        ) -> Result<RefreshResult, CoreError> {
+            if self.connected {
+                Ok(RefreshResult::AlreadyFresh {
+                    expires_at: chrono::Utc::now().to_rfc3339(),
+                })
+            } else {
+                Ok(RefreshResult::NotAuthenticated)
+            }
         }
     }
 

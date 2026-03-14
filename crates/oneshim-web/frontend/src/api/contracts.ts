@@ -637,6 +637,7 @@ export interface OAuthConnectionStatus {
   expires_at: string | null
   scopes: string[]
   api_base_url: string | null
+  has_refresh_token?: boolean
 }
 
 export interface AutomationStatus {
