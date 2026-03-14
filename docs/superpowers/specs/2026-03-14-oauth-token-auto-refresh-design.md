@@ -42,19 +42,26 @@ Three components layered on the existing `OAuthClient`:
 │    └── calls coordinator.check_and_refresh()        │
 ├─────────────────────────────────────────────────────┤
 │ TokenRefreshCoordinator (oneshim-network)            │
-│  - Mutex<RefreshState> (concurrent guard)            │
-│  - Exponential backoff (30s → 60s → 120s)            │
+│  - Mutex<RefreshState> (coordinator-owned)            │
+│  - Exponential backoff (2 min → 5 min → 10 min)      │
 │  - 3 consecutive failures → ReauthRequired event     │
 │  - tokio::broadcast for TokenEvent emission          │
+│  NOTE: The coordinator is an orchestration utility,   │
+│  not a port adapter. Direct dependency from scheduler │
+│  is intentional — it coordinates refresh logic that   │
+│  doesn't map to a single port responsibility.         │
 ├─────────────────────────────────────────────────────┤
 │ OAuthClient (existing)                               │
 │  - try_refresh() → token_exchange::refresh_token()   │
-│  - get_access_token() → now shares RefreshState      │
+│  - get_access_token() — on-demand path unchanged     │
+│  - AtomicBool refresh_in_progress guard (new, at      │
+│    construction time) prevents concurrent refreshes   │
 │  - store_tokens_static() → keychain persistence      │
 ├─────────────────────────────────────────────────────┤
 │ UI Layer                                             │
 │  - Desktop toast: ReauthRequired only (5 min cooldown)│
-│  - Dashboard: expiry badge (yellow <5min, red expired)│
+│  - Dashboard: expiry badge based on expires_at field  │
+│    (independent of `connected` flag)                  │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -64,13 +71,13 @@ Three components layered on the existing `OAuthClient`:
 
 **Location**: `crates/oneshim-network/src/oauth/refresh_coordinator.rs` (new file)
 
-**Responsibility**: Orchestrate proactive token refresh with concurrency protection and event emission.
+**Responsibility**: Orchestrate proactive token refresh with concurrency protection and event emission. This is an orchestration utility, not a port adapter — the scheduler depends on it directly (concrete type, not behind a trait). This is intentional: the coordinator wraps existing port interactions and does not itself represent a domain boundary.
 
 **Struct**:
 
 ```rust
 pub struct TokenRefreshCoordinator {
-    oauth_client: Arc<OAuthClient>,
+    oauth_port: Arc<dyn OAuthPort>,  // trait object for testability
     state: Mutex<RefreshState>,
     event_tx: broadcast::Sender<TokenEvent>,
 }
@@ -85,7 +92,7 @@ struct RefreshState {
 
 **Public API**:
 
-- `new(oauth_client, event_tx)` — constructor
+- `new(oauth_port: Arc<dyn OAuthPort>, event_tx)` — constructor (takes trait object, not concrete `OAuthClient`)
 - `check_and_refresh(provider_id) -> Result<RefreshOutcome, CoreError>` — main entry point
 - `subscribe() -> broadcast::Receiver<TokenEvent>` — event subscription
 - `reset_failure_state(provider_id)` — called on successful manual re-auth
@@ -95,17 +102,23 @@ struct RefreshState {
 1. Acquire `RefreshState` lock
 2. If `in_progress == true`, return `RefreshOutcome::AlreadyInProgress`
 3. If `now < backoff_until`, return `RefreshOutcome::BackingOff`
-4. Call `oauth_client.connection_status(provider_id)`
-5. If `expires_at` is more than 5 minutes away, return `RefreshOutcome::NotNeeded`
+4. Call `oauth_port.connection_status(provider_id)` — retrieve `expires_at` (RFC3339 `Option<String>`)
+5. Parse `expires_at` to `chrono::DateTime<Utc>`, compute duration until expiry. If more than 5 minutes away, return `RefreshOutcome::NotNeeded`
 6. Set `in_progress = true`, release lock
-7. Call `oauth_client.get_access_token(provider_id)` (triggers internal refresh)
+7. Call `oauth_port.get_access_token(provider_id)` (triggers internal refresh if expired)
 8. Re-acquire lock:
-   - **Success**: reset `consecutive_failures` to 0, emit `TokenEvent::Refreshed`
-   - **Failure**: increment `consecutive_failures`, calculate backoff, emit `TokenEvent::RefreshFailed`
-   - **3 consecutive failures**: emit `TokenEvent::ReauthRequired`
+   - **Success** (returned `Some(token)`): reset `consecutive_failures` to 0, emit `TokenEvent::Refreshed`
+   - **Failure** (returned `None`): increment `consecutive_failures`, calculate backoff, emit `TokenEvent::RefreshFailed`
+   - **3 consecutive failures**: emit `TokenEvent::ReauthRequired`, set `backoff_until` far in the future (effectively stop retrying)
 9. Set `in_progress = false`
 
-**Backoff schedule**: 30s after 1st failure, 60s after 2nd, 120s after 3rd.
+**Backoff schedule** (aligned with 2-minute loop interval):
+
+| Consecutive Failures | Backoff Duration | Effect |
+|---------------------|-----------------|--------|
+| 1 | 2 minutes | Skip 1 scheduler tick |
+| 2 | 5 minutes | Skip ~2 ticks |
+| 3 | Stop | Emit `ReauthRequired`, no more retries until `reset_failure_state()` |
 
 ### 2. TokenEvent
 
@@ -132,7 +145,29 @@ pub enum TokenEvent {
 }
 ```
 
-### 3. Scheduler Loop
+### 3. OAuthClient Concurrent Refresh Guard
+
+**Location**: `crates/oneshim-network/src/oauth/mod.rs` (modify existing)
+
+**Problem**: Without a guard, the scheduler's `check_and_refresh` and an on-demand `get_access_token()` call can both trigger `try_refresh()` simultaneously, causing duplicate token endpoint requests.
+
+**Solution**: Add an `AtomicBool` field to `OAuthClient` at construction time (no post-construction injection):
+
+```rust
+pub struct OAuthClient {
+    // ... existing fields ...
+    refresh_in_progress: AtomicBool,  // NEW — initialized as `false` in constructor
+}
+```
+
+In `try_refresh()`:
+1. `compare_exchange(false, true)` — if already `true`, return `Ok(false)` (another refresh in progress)
+2. Perform the actual refresh
+3. `store(false)` in a `Drop` guard or explicit finally block
+
+This is lightweight, requires no `Mutex`, and works with the existing `Arc<OAuthClient>` pattern. The coordinator's `Mutex<RefreshState>` handles higher-level concerns (backoff, failure counting); the `AtomicBool` is a low-level dedup guard.
+
+### 4. Scheduler Loop
 
 **Location**: `src-tauri/src/scheduler/loops.rs` (add 10th loop)
 
@@ -141,31 +176,26 @@ pub enum TokenEvent {
 **Parameters**: `coordinator: Arc<TokenRefreshCoordinator>`, `provider_id: String`, `shutdown_rx`
 
 **Behavior**:
-- `tokio::time::interval(Duration::from_secs(120))` — 2-minute cycle
+- `tokio::time::interval(Duration::from_secs(OAUTH_REFRESH_INTERVAL_SECS))` — 2-minute cycle
 - Each tick: call `coordinator.check_and_refresh(&provider_id)`
-- Log outcome at `debug!` level (success) or `warn!` level (failure)
+- Log outcome at `debug!` level (success/not-needed) or `warn!` level (failure)
 - `tokio::select!` with shutdown signal for clean exit
 
 **Activation condition**: Only spawned when `AiAccessMode::ProviderOAuth` is configured.
 
 **Config constant**: `OAUTH_REFRESH_INTERVAL_SECS: u64 = 120` in `scheduler/config.rs`
 
-### 4. OAuthClient Integration
-
-**Location**: `crates/oneshim-network/src/oauth/mod.rs` (modify existing)
-
-**Changes**:
-- `get_access_token()` delegates to the same `RefreshState` mutex when triggering on-demand refresh
-- This prevents the scheduler's proactive refresh and an on-demand refresh from racing
-- Implementation: `OAuthClient` gains an `Option<Arc<Mutex<RefreshState>>>` field, set by coordinator after construction
-- If `RefreshState` is `None` (no coordinator attached), behaves exactly as today (backward compatible)
+**Scheduler struct changes**:
+- Add `Option<Arc<TokenRefreshCoordinator>>` field to `Scheduler`
+- Add `with_oauth_coordinator(self, coordinator: Arc<TokenRefreshCoordinator>) -> Self` builder method (follows `with_notification_manager()` pattern)
+- In `run_scheduler_loops()`: conditionally spawn the 10th task, conditionally abort on shutdown
 
 ### 5. UI: Desktop Toast
 
-**Location**: `src-tauri/src/scheduler/loops.rs` (within the refresh loop, or a separate event listener task)
+**Location**: `src-tauri/src/scheduler/loops.rs` (within the refresh loop)
 
 **Behavior**:
-- Subscribe to `TokenEvent` broadcast channel
+- The refresh loop also subscribes to `TokenEvent` broadcast channel
 - On `ReauthRequired`: send desktop notification via `DesktopNotifier` port
 - Message: "OAuth authentication expired — please re-login" (i18n key: `oauthReauthRequired`)
 - Cooldown: 5 minutes between repeated notifications (reuse existing `NotificationManager` cooldown pattern)
@@ -176,11 +206,12 @@ pub enum TokenEvent {
 
 **Changes**:
 - Read `expires_at` from existing `connection_status()` API response
-- Compute time remaining:
+- Badge logic uses `expires_at` independently of the `connected` flag (since `connected` flips to `false` at 60s before expiry, which is too late for the yellow warning badge)
+- Compute time remaining from `expires_at`:
   - `> 5 min`: green (connected, normal)
   - `1-5 min`: yellow badge ("expiring soon")
-  - `< 1 min` or expired: red badge ("expired")
-  - Not connected: gray ("not connected")
+  - `< 1 min` or expired: red badge ("expired / re-auth required")
+  - No `expires_at` or not connected: gray ("not connected")
 - Auto-refresh status every 60 seconds via `setInterval`
 - No new API endpoint needed — uses existing `GET /api/settings/oauth/status` → Tauri IPC `get_oauth_status`
 
@@ -198,11 +229,11 @@ pub enum TokenEvent {
 | Scenario | Behavior |
 |----------|----------|
 | Refresh succeeds | Silent. Reset failure counter. Emit `Refreshed` event. |
-| Transient failure (network) | Increment counter, backoff, warn log. Emit `RefreshFailed`. |
+| Transient failure (network) | Increment counter, backoff (2 min / 5 min), warn log. Emit `RefreshFailed`. |
 | 3 consecutive failures | Emit `ReauthRequired`. Desktop toast. Stop retrying until manual re-auth. |
 | `refresh_token` itself expired | Server returns 401/error. Treated as failure → eventually `ReauthRequired`. |
 | New `refresh_token` in response | Store in keychain (rotation support, already handled by `try_refresh`). |
-| Concurrent refresh attempts | Second caller gets `AlreadyInProgress`, does not trigger duplicate request. |
+| Concurrent refresh attempts | `AtomicBool` guard on `OAuthClient` deduplicates at the low level; coordinator `Mutex<RefreshState>` deduplicates at the scheduling level. |
 | OAuth not configured | Refresh loop not spawned. Zero overhead. |
 
 ## Data Flow
@@ -211,23 +242,23 @@ pub enum TokenEvent {
 [Every 2 min]
 Scheduler tick
   → coordinator.check_and_refresh("openai")
-    → lock RefreshState
-    → check in_progress, backoff, expiry
-    → oauth_client.get_access_token("openai")
-      → try_refresh()
+    → lock RefreshState (coordinator-owned Mutex)
+    → check in_progress, backoff, parse expires_at (RFC3339 → chrono)
+    → oauth_port.get_access_token("openai")
+      → OAuthClient.try_refresh() (guarded by AtomicBool)
         → POST https://auth.openai.com/oauth/token
         → store new tokens in keychain
-    → unlock, emit TokenEvent
+    → unlock, emit TokenEvent via broadcast
 
 [On request]
 RemoteLlmProvider.send_and_parse()
   → credential.resolve_bearer_token()
-    → oauth_client.get_access_token("openai")
-      → shares same RefreshState mutex
-      → if refresh already in_progress, waits briefly or returns cached token
+    → oauth_port.get_access_token("openai")
+      → OAuthClient.try_refresh() (AtomicBool prevents if coordinator already refreshing)
+      → returns cached token if refresh in progress
 
 [On ReauthRequired]
-Event listener
+Event listener (in refresh loop)
   → DesktopNotifier.notify("Re-auth required")
   → Dashboard polls connection_status() → shows red badge
   → User clicks "Reconnect" → start_flow() → new OAuth flow
@@ -238,8 +269,10 @@ Event listener
 
 ### Unit Tests
 
+All coordinator tests go in `refresh_coordinator.rs` within `#[cfg(test)] mod tests` (per project convention). Mock `OAuthPort` is a manual trait implementation (not mockall, per ADR-001 §5).
+
 - **RefreshState transitions**: 0→1→2→3 failures, backoff calculation, reset on success
-- **Coordinator.check_and_refresh**: mock OAuthClient
+- **Coordinator.check_and_refresh** (mock `OAuthPort`):
   - Token not expiring → `NotNeeded`
   - Token expiring → triggers refresh → `Refreshed`
   - Refresh fails → increments counter → `RefreshFailed`
@@ -247,15 +280,16 @@ Event listener
   - Concurrent call → `AlreadyInProgress`
   - Backoff period → `BackingOff`
 - **TokenEvent emission**: verify correct events on broadcast channel
+- **AtomicBool guard**: verify `try_refresh()` is a no-op when guard is already set
 
 ### Integration Tests
 
-- Scheduler loop spawns and calls coordinator (mock OAuthClient)
+- Scheduler loop spawns and calls coordinator (mock OAuthPort)
 - Desktop notification fires on `ReauthRequired` (mock DesktopNotifier)
 
 ### Frontend Tests
 
-- Expiry badge color logic: green/yellow/red/gray based on `expires_at`
+- Expiry badge color logic: green/yellow/red/gray based on `expires_at` (independent of `connected` flag)
 - i18n keys present in both `en.json` and `ko.json`
 
 ## Files Changed
@@ -263,13 +297,13 @@ Event listener
 | File | Change Type | Description |
 |------|-------------|-------------|
 | `crates/oneshim-network/src/oauth/refresh_coordinator.rs` | **NEW** | Coordinator, RefreshState, RefreshOutcome |
-| `crates/oneshim-network/src/oauth/mod.rs` | Modify | Export coordinator, integrate RefreshState into get_access_token |
+| `crates/oneshim-network/src/oauth/mod.rs` | Modify | Add `AtomicBool` refresh guard to `OAuthClient`, export coordinator module |
 | `crates/oneshim-core/src/ports/oauth.rs` | Modify | Add `TokenEvent` enum |
-| `src-tauri/src/scheduler/loops.rs` | Modify | Add `spawn_oauth_refresh_loop` |
-| `src-tauri/src/scheduler/mod.rs` | Modify | Register 10th loop |
+| `src-tauri/src/scheduler/loops.rs` | Modify | Add `spawn_oauth_refresh_loop` (10th loop) |
+| `src-tauri/src/scheduler/mod.rs` | Modify | Add `Option<Arc<TokenRefreshCoordinator>>` field + `with_oauth_coordinator()` builder + conditional spawn/abort |
 | `src-tauri/src/scheduler/config.rs` | Modify | Add `OAUTH_REFRESH_INTERVAL_SECS` constant |
-| `src-tauri/src/setup.rs` | Modify | Create coordinator, wire DI |
-| `crates/oneshim-web/frontend/.../OAuthConnectionPanel.tsx` | Modify | Expiry badge + auto-refresh |
+| `src-tauri/src/setup.rs` | Modify | Create coordinator with `Arc<dyn OAuthPort>`, wire into scheduler via builder |
+| `crates/oneshim-web/frontend/.../OAuthConnectionPanel.tsx` | Modify | Expiry badge (uses `expires_at` independent of `connected` flag) + auto-refresh |
 | `crates/oneshim-web/frontend/.../locales/en.json` | Modify | Add 4 i18n keys |
 | `crates/oneshim-web/frontend/.../locales/ko.json` | Modify | Add 4 i18n keys |
 
