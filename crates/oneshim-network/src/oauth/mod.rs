@@ -9,6 +9,7 @@ pub mod provider_config;
 pub mod token_exchange;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -18,7 +19,7 @@ use tracing::{debug, info, warn};
 
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::oauth::{
-    OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort,
+    OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort, RefreshResult,
 };
 use oneshim_core::ports::secret_store::SecretStore;
 
@@ -45,6 +46,7 @@ pub struct OAuthClient {
     secret_store: Arc<dyn SecretStore>,
     providers: HashMap<String, OAuthProviderConfig>,
     active_flows: Arc<Mutex<HashMap<String, ActiveFlow>>>,
+    refresh_in_progress: AtomicBool,
 }
 
 impl OAuthClient {
@@ -60,6 +62,7 @@ impl OAuthClient {
             secret_store,
             providers: provider_map,
             active_flows: Arc::new(Mutex::new(HashMap::new())),
+            refresh_in_progress: AtomicBool::new(false),
         }
     }
 
@@ -88,7 +91,25 @@ impl OAuthClient {
     }
 
     /// Try to refresh the access token using the stored refresh token.
+    ///
+    /// Uses an `AtomicBool` guard to prevent concurrent refresh attempts.
     async fn try_refresh(&self, provider_id: &str) -> Result<bool, CoreError> {
+        if self
+            .refresh_in_progress
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            debug!("Refresh already in progress for {provider_id}, skipping");
+            return Ok(false);
+        }
+        struct RefreshGuard<'a>(&'a AtomicBool);
+        impl<'a> Drop for RefreshGuard<'a> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::Release);
+            }
+        }
+        let _guard = RefreshGuard(&self.refresh_in_progress);
+
         let config = self.get_provider(provider_id)?;
         let refresh_tok = self
             .secret_store
@@ -335,6 +356,12 @@ impl OAuthPort for OAuthClient {
             .map(|s| s.split_whitespace().map(String::from).collect())
             .unwrap_or_default();
 
+        let has_refresh_token = self
+            .secret_store
+            .retrieve(provider_id, KEY_REFRESH_TOKEN)
+            .await?
+            .is_some();
+
         let connected = has_token && self.is_token_valid(provider_id).await;
 
         let api_base_url = self
@@ -348,7 +375,77 @@ impl OAuthPort for OAuthClient {
             expires_at,
             scopes,
             api_base_url,
+            has_refresh_token,
         })
+    }
+
+    async fn refresh_access_token(
+        &self,
+        provider_id: &str,
+        min_valid_for_secs: i64,
+    ) -> Result<RefreshResult, CoreError> {
+        // 1. Check if we have a stored access token at all.
+        let token = self
+            .secret_store
+            .retrieve(provider_id, KEY_ACCESS_TOKEN)
+            .await?;
+        if token.is_none() {
+            return Ok(RefreshResult::NotAuthenticated);
+        }
+
+        // 2. Check if the token is still valid for the requested duration.
+        if let Ok(Some(expires_str)) = self
+            .secret_store
+            .retrieve(provider_id, KEY_EXPIRES_AT)
+            .await
+        {
+            if let Ok(expires_at) = chrono::DateTime::parse_from_rfc3339(&expires_str) {
+                let remaining = expires_at.with_timezone(&Utc) - Utc::now();
+                if remaining > chrono::Duration::seconds(min_valid_for_secs) {
+                    return Ok(RefreshResult::AlreadyFresh {
+                        expires_at: expires_str,
+                    });
+                }
+            }
+        }
+
+        // 3. Check for refresh token.
+        let config = self.get_provider(provider_id)?;
+        let refresh_tok = self
+            .secret_store
+            .retrieve(provider_id, KEY_REFRESH_TOKEN)
+            .await?;
+        let Some(refresh_tok) = refresh_tok else {
+            return Ok(RefreshResult::ReauthRequired {
+                reason: "no refresh token available".into(),
+            });
+        };
+
+        // 4. Attempt the refresh.
+        match token_exchange::refresh_token(&self.http, config, &refresh_tok).await {
+            Ok(result) => {
+                self.store_tokens(provider_id, &result).await?;
+                let new_expires = self
+                    .secret_store
+                    .retrieve(provider_id, KEY_EXPIRES_AT)
+                    .await?
+                    .unwrap_or_default();
+                info!("access token refreshed for {provider_id}");
+                Ok(RefreshResult::Refreshed {
+                    expires_at: new_expires,
+                })
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("invalid_grant") || msg.contains("invalid_client") {
+                    warn!("token refresh terminal failure for {provider_id}: {msg}");
+                    Ok(RefreshResult::ReauthRequired { reason: msg })
+                } else {
+                    warn!("token refresh transient failure for {provider_id}: {msg}");
+                    Ok(RefreshResult::TransientFailure { message: msg })
+                }
+            }
+        }
     }
 }
 
@@ -525,6 +622,7 @@ mod tests {
         let status = client.connection_status("openai").await.unwrap();
         assert!(!status.connected);
         assert_eq!(status.provider_id, "openai");
+        assert!(!status.has_refresh_token);
     }
 
     #[tokio::test]
@@ -543,11 +641,16 @@ mod tests {
             .store("openai", KEY_SCOPES, "openid profile")
             .await
             .unwrap();
+        store
+            .store("openai", KEY_REFRESH_TOKEN, "rt_test")
+            .await
+            .unwrap();
 
         let client = make_client(store);
         let status = client.connection_status("openai").await.unwrap();
         assert!(status.connected);
         assert_eq!(status.scopes, vec!["openid", "profile"]);
+        assert!(status.has_refresh_token);
     }
 
     #[tokio::test]
@@ -575,5 +678,77 @@ mod tests {
 
         let status = client.flow_status(&handle.flow_id).await.unwrap();
         assert_eq!(status, OAuthFlowStatus::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn refresh_guard_prevents_concurrent_refresh() {
+        let store = Arc::new(TestSecretStore::new());
+        let client = make_client(store);
+
+        // Manually set the guard to simulate an in-progress refresh.
+        client.refresh_in_progress.store(true, Ordering::Release);
+        let result = client.try_refresh("openai").await.unwrap();
+        assert!(
+            !result,
+            "try_refresh should return false when guard is held"
+        );
+
+        // Release the guard.
+        client.refresh_in_progress.store(false, Ordering::Release);
+    }
+
+    #[tokio::test]
+    async fn refresh_access_token_returns_not_authenticated_when_no_token() {
+        let store = Arc::new(TestSecretStore::new());
+        let client = make_client(store);
+        let result = client.refresh_access_token("openai", 300).await.unwrap();
+        assert_eq!(result, RefreshResult::NotAuthenticated);
+    }
+
+    #[tokio::test]
+    async fn refresh_access_token_returns_already_fresh_when_not_expiring() {
+        let store = Arc::new(TestSecretStore::new());
+        let expires = (Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        store
+            .store("openai", KEY_ACCESS_TOKEN, "tok")
+            .await
+            .unwrap();
+        store
+            .store("openai", KEY_EXPIRES_AT, &expires)
+            .await
+            .unwrap();
+
+        let client = make_client(store);
+        let result = client.refresh_access_token("openai", 300).await.unwrap();
+        match result {
+            RefreshResult::AlreadyFresh { expires_at } => {
+                assert_eq!(expires_at, expires);
+            }
+            other => panic!("expected AlreadyFresh, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn refresh_access_token_returns_reauth_when_no_refresh_token() {
+        let store = Arc::new(TestSecretStore::new());
+        // Token exists but is about to expire, no refresh token.
+        let expires = (Utc::now() + chrono::Duration::seconds(30)).to_rfc3339();
+        store
+            .store("openai", KEY_ACCESS_TOKEN, "tok")
+            .await
+            .unwrap();
+        store
+            .store("openai", KEY_EXPIRES_AT, &expires)
+            .await
+            .unwrap();
+
+        let client = make_client(store);
+        let result = client.refresh_access_token("openai", 300).await.unwrap();
+        match result {
+            RefreshResult::ReauthRequired { reason } => {
+                assert!(reason.contains("no refresh token"));
+            }
+            other => panic!("expected ReauthRequired, got {other:?}"),
+        }
     }
 }
