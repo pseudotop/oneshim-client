@@ -77,6 +77,13 @@ pub enum CoreError {
     #[error("OAuth error for provider {provider}: {message}")]
     OAuthError { provider: String, message: String },
 
+    #[error("OAuth refresh error for provider {provider}: [{kind:?}] {message}")]
+    OAuthRefreshError {
+        provider: String,
+        kind: crate::ports::oauth::OAuthErrorKind,
+        message: String,
+    },
+
     #[error("secret store error: {0}")]
     SecretStoreError(String),
 }
