@@ -49,6 +49,13 @@ use crate::provider_adapters::ExternalOcrPrivacyGuard;
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
 use crate::update_coordinator;
 
+/// Type alias to avoid referencing oneshim_network when server feature is off.
+#[cfg(feature = "server")]
+type OAuthCoordinator =
+    Option<Arc<oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator>>;
+#[cfg(not(feature = "server"))]
+type OAuthCoordinator = Option<()>;
+
 /// Tauri managed state — tokio Handle과 공유 리소스.
 /// Fields are `pub` for current and future IPC command handlers.
 #[allow(dead_code)]
@@ -67,6 +74,11 @@ pub struct AppState {
 /// Separate managed state for OAuthPort — kept outside AppState to avoid
 /// conditional compilation in the main struct definition.
 pub struct OAuthState(pub Option<Arc<dyn oneshim_core::ports::oauth::OAuthPort>>);
+
+/// Managed state for the OAuth refresh coordinator — enables IPC commands
+/// to reset backoff state after successful manual re-authentication.
+#[allow(dead_code)] // Field is used via #[cfg(feature = "server")] in commands.rs
+pub struct OAuthCoordinatorState(pub OAuthCoordinator);
 
 fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
     data_dir
@@ -153,9 +165,9 @@ fn preflight_provider_oauth_connection(
         .block_on(oauth.connection_status(&provider.provider_id))
         .map_err(|e| oneshim_core::error::CoreError::Config(e.to_string()))?;
 
-    if !status.connected {
+    if !status.connected && !status.has_refresh_token {
         return Err(oneshim_core::error::CoreError::Config(
-            "ProviderOAuth mode requires an active OpenAI OAuth connection".to_string(),
+            "ProviderOAuth mode requires an active OAuth connection or a refresh token".to_string(),
         ));
     }
 
@@ -221,6 +233,22 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| data_dir_path.clone());
     #[cfg(feature = "server")]
     let oauth_port = create_oauth_port(&config_dir);
+    #[cfg(feature = "server")]
+    let oauth_coordinator: OAuthCoordinator = {
+        use oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator;
+
+        if matches!(config.ai_provider.access_mode, AiAccessMode::ProviderOAuth) {
+            oauth_port.as_ref().map(|port| {
+                let (token_event_tx, _) = tokio::sync::broadcast::channel(32);
+                Arc::new(TokenRefreshCoordinator::new(
+                    Arc::clone(port),
+                    token_event_tx,
+                ))
+            })
+        } else {
+            None
+        }
+    };
     std::thread::spawn(move || {
         runtime.block_on(std::future::pending::<()>());
     });
@@ -293,6 +321,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    #[cfg(feature = "server")]
+    let agent_oauth_coordinator = oauth_coordinator.clone();
+    #[cfg(not(feature = "server"))]
+    let agent_oauth_coordinator: OAuthCoordinator = None;
 
     handle.spawn(async move {
         if let Err(e) = run_agent(
@@ -304,6 +336,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             false, // offline_mode — Tauri 모드는 항상 online
             shutdown_rx,
             agent_event_tx,
+            agent_oauth_coordinator,
         )
         .await
         {
@@ -532,6 +565,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "server"))]
     let oauth_state = OAuthState(None);
 
+    #[cfg(feature = "server")]
+    let oauth_coordinator_state = OAuthCoordinatorState(oauth_coordinator);
+    #[cfg(not(feature = "server"))]
+    let oauth_coordinator_state = OAuthCoordinatorState(None);
+
     app.manage(AppState {
         runtime_handle: handle,
         config,
@@ -544,6 +582,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         shutdown_tx,
     });
     app.manage(oauth_state);
+    app.manage(oauth_coordinator_state);
 
     // 12. 시스템 트레이 초기화
     crate::tray::setup_tray(app)?;
@@ -594,6 +633,7 @@ async fn run_agent(
     offline_mode: bool,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
     event_tx: Option<broadcast::Sender<RealtimeEvent>>,
+    _oauth_coordinator: OAuthCoordinator,
 ) -> Result<()> {
     info!("Agent initializing");
 
@@ -699,6 +739,11 @@ async fn run_agent(
     )
     .with_notification_manager(notification_manager)
     .with_focus_analyzer(focus_analyzer);
+
+    #[cfg(feature = "server")]
+    if let Some(coord) = _oauth_coordinator {
+        scheduler = scheduler.with_oauth_coordinator(coord);
+    }
 
     if let Some(tx) = event_tx {
         scheduler = scheduler.with_event_tx(tx);

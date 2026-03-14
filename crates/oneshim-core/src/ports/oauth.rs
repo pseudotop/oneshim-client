@@ -35,6 +35,19 @@ pub struct OAuthConnectionStatus {
     /// API base URL for authenticated requests (e.g., `chatgpt.com/backend-api/codex`).
     #[serde(default)]
     pub api_base_url: Option<String>,
+    /// Whether a refresh token is stored for this provider.
+    #[serde(default)]
+    pub has_refresh_token: bool,
+}
+
+/// Result of an access-token refresh attempt.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RefreshResult {
+    AlreadyFresh { expires_at: String },
+    Refreshed { expires_at: String },
+    NotAuthenticated,
+    ReauthRequired { reason: String },
+    TransientFailure { message: String },
 }
 
 /// OAuth runtime port.
@@ -65,6 +78,33 @@ pub trait OAuthPort: Send + Sync {
         &self,
         provider_id: &str,
     ) -> Result<OAuthConnectionStatus, CoreError>;
+
+    /// Refresh the access token for a provider if it is expiring soon.
+    ///
+    /// `min_valid_for_secs` specifies how many seconds of remaining validity
+    /// are required — if the token expires sooner, a refresh is attempted.
+    async fn refresh_access_token(
+        &self,
+        provider_id: &str,
+        min_valid_for_secs: i64,
+    ) -> Result<RefreshResult, CoreError>;
+}
+
+/// Events emitted during token lifecycle operations.
+#[derive(Clone, Debug)]
+pub enum TokenEvent {
+    Refreshed {
+        provider_id: String,
+        expires_at: String,
+    },
+    RefreshFailed {
+        provider_id: String,
+        attempt: u8,
+        max_attempts: u8,
+    },
+    ReauthRequired {
+        provider_id: String,
+    },
 }
 
 #[cfg(test)]
@@ -107,11 +147,20 @@ mod tests {
             expires_at: Some("2026-03-14T00:00:00Z".to_string()),
             scopes: vec!["openid".to_string(), "offline_access".to_string()],
             api_base_url: Some("https://chatgpt.com/backend-api/codex".to_string()),
+            has_refresh_token: true,
         };
         let json = serde_json::to_string(&status).unwrap();
         let parsed: OAuthConnectionStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.provider_id, "openai");
         assert!(parsed.connected);
         assert_eq!(parsed.scopes.len(), 2);
+        assert!(parsed.has_refresh_token);
+    }
+
+    #[test]
+    fn connection_status_deserializes_without_has_refresh_token() {
+        let json = r#"{"provider_id":"openai","connected":false,"expires_at":null,"scopes":[]}"#;
+        let parsed: OAuthConnectionStatus = serde_json::from_str(json).unwrap();
+        assert!(!parsed.has_refresh_token);
     }
 }
