@@ -644,6 +644,53 @@ impl Scheduler {
         })
     }
 
+    /// Periodically check and refresh OAuth tokens.
+    #[cfg(feature = "server")]
+    pub(super) fn spawn_oauth_refresh_loop(
+        &self,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        use super::config::OAUTH_REFRESH_INTERVAL_SECS;
+        use oneshim_core::ports::oauth::TokenEvent;
+        use std::time::Duration;
+
+        let coordinator = self.oauth_coordinator.as_ref()?.clone();
+
+        Some(tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(OAUTH_REFRESH_INTERVAL_SECS));
+            let mut event_rx = coordinator.subscribe();
+            let mut last_reauth_notify: Option<tokio::time::Instant> = None;
+            let provider_id = "openai".to_string();
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let outcome = coordinator.check_and_refresh(&provider_id).await;
+                        debug!(provider_id = %provider_id, ?outcome, "OAuth refresh tick");
+                    }
+                    event = event_rx.recv() => {
+                        if let Ok(TokenEvent::ReauthRequired { ref provider_id }) = event {
+                            let should_notify = last_reauth_notify
+                                .map_or(true, |t| t.elapsed() > Duration::from_secs(300));
+                            if should_notify {
+                                warn!(
+                                    provider_id = %provider_id,
+                                    "OAuth re-authentication required — user must reconnect"
+                                );
+                                last_reauth_notify = Some(tokio::time::Instant::now());
+                            }
+                        }
+                    }
+                    _ = shutdown_rx.changed() => {
+                        debug!("OAuth refresh loop shutting down");
+                        break;
+                    }
+                }
+            }
+        }))
+    }
+
     pub(super) async fn run_scheduler_loops(
         &self,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
@@ -706,6 +753,10 @@ impl Scheduler {
             shutdown_rx.clone(),
         );
 
+        // 10. OAuth token refresh (conditional — returns None if no coordinator)
+        #[cfg(feature = "server")]
+        let oauth_task = self.spawn_oauth_refresh_loop(shutdown_rx.clone());
+
         let _ = shutdown_rx.changed().await;
         info!("ended received");
 
@@ -723,5 +774,9 @@ impl Scheduler {
         notification_task.abort();
         focus_task.abort();
         event_snapshot_task.abort();
+        #[cfg(feature = "server")]
+        if let Some(task) = oauth_task {
+            task.abort();
+        }
     }
 }
