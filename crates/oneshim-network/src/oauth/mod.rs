@@ -394,6 +394,25 @@ impl OAuthPort for OAuthClient {
             return Ok(RefreshResult::NotAuthenticated);
         }
 
+        // Prevent concurrent refresh attempts (shared with try_refresh).
+        if self
+            .refresh_in_progress
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            debug!("Refresh already in progress for {provider_id}, skipping");
+            return Ok(RefreshResult::AlreadyFresh {
+                expires_at: String::new(),
+            });
+        }
+        struct RefreshGuard<'a>(&'a AtomicBool);
+        impl<'a> Drop for RefreshGuard<'a> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::Release);
+            }
+        }
+        let _guard = RefreshGuard(&self.refresh_in_progress);
+
         // 2. Check if the token is still valid for the requested duration.
         if let Ok(Some(expires_str)) = self
             .secret_store

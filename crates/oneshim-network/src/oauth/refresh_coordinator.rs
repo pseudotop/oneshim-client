@@ -89,6 +89,18 @@ impl TokenRefreshCoordinator {
         self.event_tx.subscribe()
     }
 
+    /// Reset internal state after successful manual re-authentication.
+    ///
+    /// Clears backoff timers and failure counters so the background
+    /// refresh loop resumes normal operation immediately.
+    pub async fn reset(&self) {
+        let mut state = self.state.lock().await;
+        state.in_progress = false;
+        state.consecutive_transient_failures = 0;
+        state.last_attempt = None;
+        state.backoff_until = None;
+    }
+
     /// Check whether a refresh is needed and perform it if so.
     ///
     /// This is the main entry point called by the scheduler loop.
@@ -150,7 +162,13 @@ impl TokenRefreshCoordinator {
                 RefreshOutcome::Refreshed
             }
 
-            Ok(RefreshResult::NotAuthenticated) => RefreshOutcome::ReauthRequired,
+            Ok(RefreshResult::NotAuthenticated) => {
+                state.backoff_until = Some(Instant::now() + Duration::from_secs(86400 * 365));
+                let _ = self.event_tx.send(TokenEvent::ReauthRequired {
+                    provider_id: provider_id.to_string(),
+                });
+                RefreshOutcome::ReauthRequired
+            }
 
             Ok(RefreshResult::ReauthRequired { .. }) => {
                 // Terminal — set backoff far into the future to prevent retries.
