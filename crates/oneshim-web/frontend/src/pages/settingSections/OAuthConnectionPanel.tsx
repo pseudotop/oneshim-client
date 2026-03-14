@@ -5,6 +5,24 @@ import { oauthCancelFlow, oauthConnectionStatus, oauthFlowStatus, oauthRevoke, o
 import { Button, Card } from '../../components/ui'
 import { isOAuthPanelAvailable } from './oauth-panel-support'
 
+type ExpiryLevel = 'ok' | 'warning' | 'critical' | 'none';
+
+function getExpiryLevel(expiresAt: string | null | undefined): ExpiryLevel {
+  if (!expiresAt) return 'none';
+  const remaining = new Date(expiresAt).getTime() - Date.now();
+  const minutes = remaining / 60_000;
+  if (minutes < 1) return 'critical';
+  if (minutes <= 5) return 'warning';
+  return 'ok';
+}
+
+const EXPIRY_BADGE_STYLES: Record<ExpiryLevel, string> = {
+  ok: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  warning: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+  critical: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  none: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+};
+
 type PanelState =
   | { phase: 'unavailable' }
   | { phase: 'loading' }
@@ -78,6 +96,13 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
     refreshStatus()
     return clearPoll
   }, [refreshStatus, clearPoll])
+
+  // Auto-refresh status every 60s to update expiry badge
+  useEffect(() => {
+    if (state.phase !== 'connected') return;
+    const timer = setInterval(() => refreshStatus(), 60_000);
+    return () => clearInterval(timer);
+  }, [state.phase, refreshStatus]);
 
   const handleConnect = useCallback(async () => {
     try {
@@ -197,6 +222,18 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
               {t('settingsOAuth.expiresAt')}: {new Date(state.status.expires_at).toLocaleString()}
             </p>
           )}
+          {state.status.expires_at && (() => {
+            const level = getExpiryLevel(state.status.expires_at);
+            if (level === 'ok') return null;
+            const label = level === 'critical'
+              ? t('settingsOAuth.statusExpired')
+              : t('settingsOAuth.statusExpiringSoon');
+            return (
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${EXPIRY_BADGE_STYLES[level]}`}>
+                {label}
+              </span>
+            );
+          })()}
           <Button type="button" variant="secondary" size="sm" onClick={handleDisconnect}>
             {t('settingsOAuth.disconnect')}
           </Button>
