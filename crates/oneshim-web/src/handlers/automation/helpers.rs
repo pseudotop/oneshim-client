@@ -66,6 +66,7 @@ pub(super) fn infer_runtime_source(
                 "local"
             }
         }
+        AiAccessMode::ProviderOAuth => "oauth",
     }
 }
 

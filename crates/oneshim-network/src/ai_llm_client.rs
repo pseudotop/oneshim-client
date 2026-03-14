@@ -6,7 +6,9 @@ use oneshim_core::ai_model_lifecycle_policy::{self, ModelLifecycleDecision};
 use oneshim_core::config::{AiProviderType, ExternalApiEndpoint};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::credential_source::CredentialSource;
-use oneshim_core::ports::llm_provider::{InterpretedAction, LlmProvider, ScreenContext};
+use oneshim_core::ports::llm_provider::{
+    InterpretedAction, LlmProvider, ScreenContext, SkillContext,
+};
 
 /// - Claude (Anthropic): `POST /v1/messages`
 pub struct RemoteLlmProvider {
@@ -154,6 +156,141 @@ Response schema:
 
 Decide based on visible screen text and the user intent.
 Return JSON only."#
+    }
+
+    /// Build system prompt with optional skill context (progressive disclosure).
+    fn build_system_prompt(skill_ctx: &SkillContext) -> String {
+        let mut prompt = String::from(Self::system_prompt());
+
+        if !skill_ctx.available_skills.is_empty() {
+            prompt.push_str("\n\nAvailable skills:");
+            for skill in &skill_ctx.available_skills {
+                prompt.push_str(&format!("\n  - {}: {}", skill.name, skill.description));
+            }
+        }
+
+        if let Some(ref body) = skill_ctx.active_skill_body {
+            prompt.push_str("\n\n--- Active Skill ---\n");
+            prompt.push_str(body);
+            prompt.push_str("\n--- End Skill ---");
+        }
+
+        prompt
+    }
+
+    /// Build request body for OpenAI Responses API (`/v1/responses`).
+    ///
+    /// Used when credential is ManagedOAuth (Codex CLI OAuth path).
+    /// Ref: <https://platform.openai.com/docs/api-reference/responses>
+    fn build_responses_api_body(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "model": self.model,
+            "instructions": system_prompt,
+            "input": user_prompt,
+            "max_output_tokens": 512,
+        })
+    }
+
+    /// Whether this provider should use the OpenAI Responses API format.
+    fn use_responses_api(&self) -> bool {
+        self.credential.is_managed() && matches!(self.provider_type, AiProviderType::OpenAi)
+    }
+
+    /// Build the provider-specific request body given a system and user prompt.
+    fn build_chat_body(&self, system_prompt: &str, user_prompt: &str) -> serde_json::Value {
+        if self.use_responses_api() {
+            return self.build_responses_api_body(system_prompt, user_prompt);
+        }
+        match self.provider_type {
+            AiProviderType::Anthropic => serde_json::json!({
+                "model": self.model,
+                "max_tokens": 512,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_prompt}]
+            }),
+            AiProviderType::Google => serde_json::json!({
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                "system_instruction": {"parts": [{"text": system_prompt}]},
+                "generationConfig": {"maxOutputTokens": 512}
+            }),
+            AiProviderType::OpenAi | AiProviderType::Generic => serde_json::json!({
+                "model": self.model,
+                "max_tokens": 512,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+            }),
+        }
+    }
+
+    /// Send a request body to the LLM API, authenticate, and parse the response.
+    async fn send_and_parse(
+        &self,
+        request_body: &serde_json::Value,
+    ) -> Result<InterpretedAction, CoreError> {
+        let mut builder = self
+            .http_client
+            .post(&self.endpoint)
+            .header("Content-Type", "application/json")
+            .json(request_body);
+
+        let bearer_token = self.credential.resolve_bearer_token().await?;
+        match self.provider_type {
+            AiProviderType::Anthropic => {
+                builder = builder
+                    .header("x-api-key", &bearer_token)
+                    .header("anthropic-version", "2023-06-01");
+            }
+            AiProviderType::Google => {
+                builder = builder.header("x-goog-api-key", &bearer_token);
+            }
+            AiProviderType::OpenAi | AiProviderType::Generic => {
+                builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
+                if self.credential.is_managed() {
+                    builder = builder.header("version", env!("CARGO_PKG_VERSION"));
+                }
+            }
+        }
+
+        let response = builder
+            .send()
+            .await
+            .map_err(|e| CoreError::Network(format!("LLM API request failed: {}", e)))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| CoreError::Network(format!("LLM API response read failure: {}", e)))?;
+
+        if !status.is_success() {
+            warn!(status = %status, "LLM API error response");
+            return Err(CoreError::Network(format!(
+                "LLM API error ({}): {}",
+                status,
+                body.chars().take(200).collect::<String>()
+            )));
+        }
+
+        let action = match self.provider_type {
+            AiProviderType::Anthropic => Self::parse_claude_response(&body)?,
+            AiProviderType::Google => Self::parse_google_response(&body)?,
+            AiProviderType::OpenAi | AiProviderType::Generic => Self::parse_openai_response(&body)?,
+        };
+
+        debug!(
+            action_type = %action.action_type,
+            target = ?action.target_text,
+            confidence = action.confidence,
+            "LLM intent interpretation completed"
+        );
+
+        Ok(action)
     }
 
     fn build_user_prompt(screen_context: &ScreenContext, intent_hint: &str) -> String {
@@ -337,106 +474,31 @@ impl LlmProvider for RemoteLlmProvider {
             "Calling external LLM API"
         );
 
-        let request_body = match self.provider_type {
-            AiProviderType::Anthropic => serde_json::json!({
-                "model": self.model,
-                "max_tokens": 512,
-                "system": Self::system_prompt(),
-                "messages": [{
-                    "role": "user",
-                    "content": user_prompt
-                }]
-            }),
-            AiProviderType::Google => serde_json::json!({
-                "contents": [{
-                    "role": "user",
-                    "parts": [{"text": user_prompt}]
-                }],
-                "system_instruction": {
-                    "parts": [{"text": Self::system_prompt()}]
-                },
-                "generationConfig": {
-                    "maxOutputTokens": 512
-                }
-            }),
-            AiProviderType::OpenAi | AiProviderType::Generic => {
-                serde_json::json!({
-                    "model": self.model,
-                    "max_tokens": 512,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": Self::system_prompt()
-                        },
-                        {
-                            "role": "user",
-                            "content": user_prompt
-                        }
-                    ]
-                })
-            }
-        };
+        let request_body = self.build_chat_body(Self::system_prompt(), &user_prompt);
+        self.send_and_parse(&request_body).await
+    }
 
-        let mut builder = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
-        let bearer_token = self.credential.resolve_bearer_token().await?;
-        match self.provider_type {
-            AiProviderType::Anthropic => {
-                builder = builder
-                    .header("x-api-key", &bearer_token)
-                    .header("anthropic-version", "2023-06-01");
-            }
-            AiProviderType::Google => {
-                builder = builder.header("x-goog-api-key", &bearer_token);
-            }
-            AiProviderType::OpenAi | AiProviderType::Generic => {
-                builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
-                // ChatGPT OAuth requires a version header for model access (GPT-5.4 etc.).
-                // Ref: openai/codex codex-rs/core/src/model_provider_info.rs
-                if self.credential.is_managed() {
-                    builder = builder.header("version", env!("CARGO_PKG_VERSION"));
-                }
-            }
-        }
-
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API request failed: {}", e)))?;
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API response read failure: {}", e)))?;
-
-        if !status.is_success() {
-            warn!(status = %status, "LLM API error response");
-            return Err(CoreError::Network(format!(
-                "LLM API error ({}): {}",
-                status,
-                body.chars().take(200).collect::<String>()
-            )));
-        }
-
-        let action = match self.provider_type {
-            AiProviderType::Anthropic => Self::parse_claude_response(&body)?,
-            AiProviderType::Google => Self::parse_google_response(&body)?,
-            AiProviderType::OpenAi | AiProviderType::Generic => Self::parse_openai_response(&body)?,
-        };
+    async fn interpret_intent_with_skills(
+        &self,
+        screen_context: &ScreenContext,
+        intent_hint: &str,
+        skill_ctx: &SkillContext,
+    ) -> Result<InterpretedAction, CoreError> {
+        let user_prompt = Self::build_user_prompt(screen_context, intent_hint);
+        let system_prompt = Self::build_system_prompt(skill_ctx);
 
         debug!(
-            action_type = %action.action_type,
-            target = ?action.target_text,
-            confidence = action.confidence,
-            "LLM intent interpretation completed"
+            endpoint = %self.endpoint,
+            model = %self.model,
+            hint = %intent_hint,
+            skills = skill_ctx.available_skills.len(),
+            has_active_skill = skill_ctx.active_skill_body.is_some(),
+            responses_api = self.use_responses_api(),
+            "Calling external LLM API (with skills)"
         );
 
-        Ok(action)
+        let request_body = self.build_chat_body(&system_prompt, &user_prompt);
+        self.send_and_parse(&request_body).await
     }
 
     fn provider_name(&self) -> &str {
@@ -587,5 +649,81 @@ mod tests {
         let body = r#"{"choices": []}"#;
         let result = RemoteLlmProvider::parse_openai_response(body);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_system_prompt_no_skills() {
+        let ctx = SkillContext::default();
+        let prompt = RemoteLlmProvider::build_system_prompt(&ctx);
+        assert!(prompt.contains("UI automation agent"));
+        assert!(!prompt.contains("Available skills"));
+    }
+
+    #[test]
+    fn build_system_prompt_with_available_skills() {
+        let ctx = SkillContext {
+            available_skills: vec![
+                oneshim_core::models::skill::SkillMeta {
+                    name: "coding".into(),
+                    description: "Write code".into(),
+                },
+                oneshim_core::models::skill::SkillMeta {
+                    name: "review".into(),
+                    description: "Review code".into(),
+                },
+            ],
+            active_skill_body: None,
+        };
+        let prompt = RemoteLlmProvider::build_system_prompt(&ctx);
+        assert!(prompt.contains("Available skills:"));
+        assert!(prompt.contains("coding: Write code"));
+        assert!(prompt.contains("review: Review code"));
+        assert!(!prompt.contains("Active Skill"));
+    }
+
+    #[test]
+    fn build_system_prompt_with_active_skill() {
+        let ctx = SkillContext {
+            available_skills: vec![],
+            active_skill_body: Some("# Do the thing\nStep 1: click.".into()),
+        };
+        let prompt = RemoteLlmProvider::build_system_prompt(&ctx);
+        assert!(prompt.contains("--- Active Skill ---"));
+        assert!(prompt.contains("Do the thing"));
+        assert!(prompt.contains("--- End Skill ---"));
+    }
+
+    #[test]
+    fn responses_api_body_format() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://chatgpt.com/backend-api/codex".to_string(),
+            api_key: "test-key".to_string(),
+            model: Some("gpt-4o".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+        };
+        let provider = RemoteLlmProvider::new(&config).unwrap();
+        let body = provider.build_responses_api_body("system prompt", "user input");
+
+        assert_eq!(body["model"], "gpt-4o");
+        assert_eq!(body["instructions"], "system prompt");
+        assert_eq!(body["input"], "user input");
+        assert_eq!(body["max_output_tokens"], 512);
+        // Responses API should NOT have "messages" field.
+        assert!(body.get("messages").is_none());
+    }
+
+    #[test]
+    fn use_responses_api_only_for_managed_openai() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            api_key: "test-key".to_string(),
+            model: Some("gpt-4o".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+        };
+        // API key credential → should NOT use Responses API.
+        let provider = RemoteLlmProvider::new(&config).unwrap();
+        assert!(!provider.use_responses_api());
     }
 }

@@ -618,6 +618,27 @@ export interface ExternalApiSettings {
   timeout_secs: number
 }
 
+// ── OAuth types ──────────────────────────────────────────────
+
+export interface OAuthFlowHandle {
+  flow_id: string
+  auth_url: string
+}
+
+export type OAuthFlowStatus =
+  | { status: 'pending' }
+  | { status: 'completed' }
+  | { status: 'failed'; error: string }
+  | { status: 'cancelled' }
+
+export interface OAuthConnectionStatus {
+  provider_id: string
+  connected: boolean
+  expires_at: string | null
+  scopes: string[]
+  api_base_url: string | null
+}
+
 export interface AutomationStatus {
   enabled: boolean
   sandbox_enabled: boolean

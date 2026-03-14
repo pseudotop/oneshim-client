@@ -15,6 +15,7 @@ pub mod ocr_provider;
 pub mod overlay_driver;
 pub mod sandbox;
 pub mod secret_store;
+pub mod skill_loader;
 pub mod storage;
 pub mod vision;
 pub mod web_storage;

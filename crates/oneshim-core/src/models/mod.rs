@@ -7,6 +7,7 @@ pub mod frame;
 pub mod gui;
 pub mod intent;
 pub mod session;
+pub mod skill;
 pub mod storage_records;
 pub mod suggestion;
 pub mod system;

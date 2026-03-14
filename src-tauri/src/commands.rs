@@ -1,9 +1,10 @@
+use oneshim_core::ports::oauth::{OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus};
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use sysinfo::System;
 use tauri::command;
 
-use crate::setup::AppState;
+use crate::setup::{AppState, OAuthState};
 use oneshim_web::update_control::UpdateAction;
 
 /// Recursively merge `patch` into `base`.
@@ -221,6 +222,76 @@ pub async fn get_allowed_setting_keys() -> Vec<String> {
 #[command]
 pub async fn get_web_port(state: tauri::State<'_, AppState>) -> Result<u16, String> {
     Ok(state.web_port.load(Ordering::Relaxed))
+}
+
+// ── OAuth IPC commands ──────────────────────────────────────
+
+fn require_oauth(
+    state: &OAuthState,
+) -> Result<std::sync::Arc<dyn oneshim_core::ports::oauth::OAuthPort>, String> {
+    state.0.clone().ok_or_else(|| {
+        "OAuth is not available (OS keychain unavailable or feature disabled)".into()
+    })
+}
+
+/// OAuth 인증 플로우 시작 — auth_url을 프론트엔드에 반환
+#[command]
+pub async fn oauth_start_flow(
+    provider_id: String,
+    oauth: tauri::State<'_, OAuthState>,
+) -> Result<OAuthFlowHandle, String> {
+    let port = require_oauth(&oauth)?;
+    port.start_flow(&provider_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+}
+
+/// OAuth 플로우 상태 조회 — 프론트엔드 폴링용
+#[command]
+pub async fn oauth_flow_status(
+    flow_id: String,
+    oauth: tauri::State<'_, OAuthState>,
+) -> Result<OAuthFlowStatus, String> {
+    let port = require_oauth(&oauth)?;
+    port.flow_status(&flow_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+}
+
+/// OAuth 플로우 취소
+#[command]
+pub async fn oauth_cancel_flow(
+    flow_id: String,
+    oauth: tauri::State<'_, OAuthState>,
+) -> Result<(), String> {
+    let port = require_oauth(&oauth)?;
+    port.cancel_flow(&flow_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+}
+
+/// OAuth 연결 해제 — stored credentials 삭제
+#[command]
+pub async fn oauth_revoke(
+    provider_id: String,
+    oauth: tauri::State<'_, OAuthState>,
+) -> Result<(), String> {
+    let port = require_oauth(&oauth)?;
+    port.revoke(&provider_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+}
+
+/// OAuth 연결 상태 조회
+#[command]
+pub async fn oauth_connection_status(
+    provider_id: String,
+    oauth: tauri::State<'_, OAuthState>,
+) -> Result<OAuthConnectionStatus, String> {
+    let port = require_oauth(&oauth)?;
+    port.connection_status(&provider_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
 }
 
 #[cfg(test)]

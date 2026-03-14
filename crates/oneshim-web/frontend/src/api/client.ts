@@ -5,6 +5,9 @@ import type {
   AutomationContracts,
   AutomationStats,
   AutomationStatus,
+  OAuthConnectionStatus,
+  OAuthFlowHandle,
+  OAuthFlowStatus,
   BackupArchive,
   BackupParams,
   CreateTagRequest,
@@ -681,4 +684,31 @@ export async function fetchSceneCalibration(
     throw new Error(err.error || 'Scene calibration query failure')
   }
   return res.json()
+}
+
+// ── OAuth IPC (Tauri invoke) ─────────────────────────────────
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<T>(cmd, args)
+}
+
+export async function oauthStartFlow(providerId: string): Promise<OAuthFlowHandle> {
+  return tauriInvoke<OAuthFlowHandle>('oauth_start_flow', { providerId })
+}
+
+export async function oauthFlowStatus(flowId: string): Promise<OAuthFlowStatus> {
+  return tauriInvoke<OAuthFlowStatus>('oauth_flow_status', { flowId })
+}
+
+export async function oauthCancelFlow(flowId: string): Promise<void> {
+  return tauriInvoke<void>('oauth_cancel_flow', { flowId })
+}
+
+export async function oauthRevoke(providerId: string): Promise<void> {
+  return tauriInvoke<void>('oauth_revoke', { providerId })
+}
+
+export async function oauthConnectionStatus(providerId: string): Promise<OAuthConnectionStatus> {
+  return tauriInvoke<OAuthConnectionStatus>('oauth_connection_status', { providerId })
 }
