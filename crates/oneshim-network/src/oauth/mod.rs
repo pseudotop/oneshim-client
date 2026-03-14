@@ -6,6 +6,7 @@
 pub mod callback_server;
 pub mod pkce;
 pub mod provider_config;
+pub mod refresh_coordinator;
 pub mod token_exchange;
 
 use std::collections::HashMap;
