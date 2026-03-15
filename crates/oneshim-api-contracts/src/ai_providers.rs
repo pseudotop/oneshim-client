@@ -23,6 +23,41 @@ pub struct ProviderModelCatalogTransportSpec {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderHealthTransportSpec {
+    pub method: String,
+    pub url: String,
+    pub auth_scheme: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderModelSupportStatus {
+    Supported,
+    Unsupported,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct ProviderModelCapabilityRules {
+    #[serde(default)]
+    pub llm: ProviderModelCapabilityProfile,
+    #[serde(default)]
+    pub ocr: ProviderModelCapabilityProfile,
+    #[serde(default)]
+    pub image_input: ProviderModelCapabilityProfile,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct ProviderModelCapabilityProfile {
+    #[serde(default)]
+    pub default_support: String,
+    #[serde(default)]
+    pub allow_patterns: Vec<String>,
+    #[serde(default)]
+    pub deny_patterns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProviderParameterSet {
     pub llm: ProviderParameterProfile,
     pub ocr: ProviderParameterProfile,
@@ -55,9 +90,28 @@ pub struct ProviderModelsRequest {
     pub use_saved_secret: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderDiscoveredModel {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_support: Option<ProviderModelSupportStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_ocr: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr_support: Option<ProviderModelSupportStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_input_support: Option<ProviderModelSupportStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability_source: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ProviderModelsResponse {
     pub models: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_details: Vec<ProviderDiscoveredModel>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notice: Option<String>,
 }

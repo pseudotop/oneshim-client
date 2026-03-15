@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use oneshim_api_contracts::ai_providers::{ProviderModelsRequest, ProviderModelsResponse};
+use oneshim_api_contracts::ai_providers::{
+    ProviderDiscoveredModel, ProviderModelSupportStatus, ProviderModelsRequest,
+    ProviderModelsResponse,
+};
 use oneshim_api_contracts::provider_specs::{
     default_surface_id_for_access_mode as default_surface_id_from_catalog, SurfaceCapabilityKind,
 };
@@ -48,6 +51,7 @@ pub async fn fetch_provider_models(
     )? {
         return Ok(ProviderModelsResponse {
             models: Vec::new(),
+            model_details: Vec::new(),
             notice: Some(notice),
         });
     }
@@ -92,17 +96,27 @@ pub async fn fetch_provider_models(
         )));
     }
 
-    let mut models = parse_models(
+    let mut discovered_models = parse_models(
         ai_provider_spec_service::model_catalog_response_shape_for_surface(
             provider_type,
             requested_surface_id.as_deref(),
         )?,
         &body,
     )?;
-    models.sort_unstable();
-    models.dedup();
+    discovered_models.sort_by(|left, right| left.id.cmp(&right.id));
+    discovered_models.dedup_by(|left, right| left.id == right.id);
+    let model_details = build_model_details(
+        provider_type,
+        requested_surface_id.as_deref(),
+        &discovered_models,
+    )?;
+    let models = discovered_models
+        .iter()
+        .map(|model| model.id.clone())
+        .collect::<Vec<_>>();
 
     Ok(ProviderModelsResponse {
+        model_details,
         notice: if models.is_empty() {
             Some("Provider returned no models for this configuration.".to_string())
         } else {
@@ -112,7 +126,16 @@ pub async fn fetch_provider_models(
     })
 }
 
-fn parse_models(shape: ModelCatalogResponseShape, body: &str) -> Result<Vec<String>, ApiError> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedModelRecord {
+    id: String,
+    display_name: Option<String>,
+}
+
+fn parse_models(
+    shape: ModelCatalogResponseShape,
+    body: &str,
+) -> Result<Vec<ParsedModelRecord>, ApiError> {
     let value: Value = serde_json::from_str(body)
         .map_err(|e| ApiError::BadRequest(format!("Invalid model catalog response JSON: {e}")))?;
 
@@ -122,7 +145,7 @@ fn parse_models(shape: ModelCatalogResponseShape, body: &str) -> Result<Vec<Stri
     }
 }
 
-fn parse_google_models(value: &Value) -> Result<Vec<String>, ApiError> {
+fn parse_google_models(value: &Value) -> Result<Vec<ParsedModelRecord>, ApiError> {
     let Some(entries) = value.get("models").and_then(|m| m.as_array()) else {
         return Err(ApiError::BadRequest(
             "Google model catalog response missing `models`.".to_string(),
@@ -145,7 +168,17 @@ fn parse_google_models(value: &Value) -> Result<Vec<String>, ApiError> {
             .strip_prefix("models/")
             .unwrap_or(raw_name)
             .to_string();
-        fallback_models.push(normalized.clone());
+        let display_name = entry
+            .get("displayName")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let record = ParsedModelRecord {
+            id: normalized.clone(),
+            display_name,
+        };
+        fallback_models.push(record.clone());
 
         let supports_generation = entry
             .get("supportedGenerationMethods")
@@ -158,7 +191,7 @@ fn parse_google_models(value: &Value) -> Result<Vec<String>, ApiError> {
             })
             .unwrap_or(false);
         if supports_generation {
-            generation_models.push(normalized);
+            generation_models.push(record);
         }
     }
 
@@ -168,7 +201,7 @@ fn parse_google_models(value: &Value) -> Result<Vec<String>, ApiError> {
     Ok(fallback_models)
 }
 
-fn parse_standard_models(value: &Value) -> Result<Vec<String>, ApiError> {
+fn parse_standard_models(value: &Value) -> Result<Vec<ParsedModelRecord>, ApiError> {
     let entries = value
         .get("data")
         .and_then(|d| d.as_array())
@@ -182,17 +215,93 @@ fn parse_standard_models(value: &Value) -> Result<Vec<String>, ApiError> {
     let models = entries
         .iter()
         .filter_map(|entry| {
-            entry
+            let id = entry
                 .get("id")
                 .and_then(|v| v.as_str())
                 .or_else(|| entry.get("name").and_then(|v| v.as_str()))
                 .map(str::trim)
                 .filter(|v| !v.is_empty())
-                .map(ToString::to_string)
+                .map(ToString::to_string)?;
+            let display_name = entry
+                .get("display_name")
+                .and_then(|v| v.as_str())
+                .or_else(|| entry.get("displayName").and_then(|v| v.as_str()))
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string);
+            Some(ParsedModelRecord { id, display_name })
         })
         .collect::<Vec<_>>();
 
     Ok(models)
+}
+
+fn build_model_details(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    models: &[ParsedModelRecord],
+) -> Result<Vec<ProviderDiscoveredModel>, ApiError> {
+    let Some(surface_id) = surface_id else {
+        return Ok(Vec::new());
+    };
+
+    models
+        .iter()
+        .map(|model| {
+            let known = oneshim_api_contracts::provider_specs::known_model_spec_for_surface(
+                surface_id, &model.id,
+            )
+            .map_err(ApiError::Internal)?;
+            let (llm_support, ocr_support, capability_source) = match known {
+                Some(known) => (
+                    Some(if known.capabilities.llm {
+                        ProviderModelSupportStatus::Supported
+                    } else {
+                        ProviderModelSupportStatus::Unsupported
+                    }),
+                    Some(if known.capabilities.ocr {
+                        ProviderModelSupportStatus::Supported
+                    } else {
+                        ProviderModelSupportStatus::Unsupported
+                    }),
+                    Some("known_model_catalog".to_string()),
+                ),
+                None => (
+                    Some(ProviderModelSupportStatus::Unknown),
+                    Some(ProviderModelSupportStatus::Unknown),
+                    Some("surface_unknown".to_string()),
+                ),
+            };
+
+            let image_input_support = match known {
+                Some(known) => Some(if known.capabilities.image_input {
+                    ProviderModelSupportStatus::Supported
+                } else {
+                    ProviderModelSupportStatus::Unsupported
+                }),
+                None => {
+                    if provider_type == AiProviderType::Google
+                        && llm_support == Some(ProviderModelSupportStatus::Supported)
+                    {
+                        Some(ProviderModelSupportStatus::Supported)
+                    } else {
+                        Some(ProviderModelSupportStatus::Unknown)
+                    }
+                }
+            };
+
+            Ok(ProviderDiscoveredModel {
+                id: model.id.clone(),
+                display_name: model.display_name.clone(),
+                llm_support,
+                supports_ocr: ocr_support
+                    .map(|status| status == ProviderModelSupportStatus::Supported),
+                ocr_support,
+                image_input_support,
+                capability_source,
+            })
+        })
+        .collect()
 }
 
 async fn resolve_model_discovery_api_key(
@@ -690,6 +799,7 @@ mod tests {
           "models": [
             {
               "name": "models/gemini-2.5-flash",
+              "displayName": "Gemini 2.5 Flash",
               "supportedGenerationMethods": ["generateContent"]
             },
             {
@@ -700,7 +810,9 @@ mod tests {
         }"#;
         let value: Value = serde_json::from_str(body).unwrap();
         let parsed = parse_google_models(&value).unwrap();
-        assert_eq!(parsed, vec!["gemini-2.5-flash".to_string()]);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, "gemini-2.5-flash");
+        assert_eq!(parsed[0].display_name.as_deref(), Some("Gemini 2.5 Flash"));
     }
 
     #[test]
@@ -714,6 +826,57 @@ mod tests {
         let value: Value = serde_json::from_str(body).unwrap();
         let parsed = parse_standard_models(&value).unwrap();
         assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].id, "gpt-5.4");
+        assert_eq!(parsed[1].id, "gpt-5.2");
+    }
+
+    #[test]
+    fn builds_model_details_from_known_surface_models() {
+        let details = build_model_details(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.direct_api"),
+            &[ParsedModelRecord {
+                id: "text-embedding-3-small".to_string(),
+                display_name: Some("Text Embedding 3 Small".to_string()),
+            }],
+        )
+        .expect("model details should build");
+        assert_eq!(details.len(), 1);
+        assert_eq!(
+            details[0].llm_support,
+            Some(ProviderModelSupportStatus::Unsupported)
+        );
+        assert_eq!(
+            details[0].ocr_support,
+            Some(ProviderModelSupportStatus::Unsupported)
+        );
+        assert_eq!(details[0].supports_ocr, Some(false));
+        assert_eq!(
+            details[0].image_input_support,
+            Some(ProviderModelSupportStatus::Unsupported)
+        );
+    }
+
+    #[test]
+    fn builds_google_image_input_support_from_known_models() {
+        let details = build_model_details(
+            AiProviderType::Google,
+            Some("provider_surface.google.direct_api"),
+            &[ParsedModelRecord {
+                id: "gemini-2.5-flash".to_string(),
+                display_name: Some("Gemini 2.5 Flash".to_string()),
+            }],
+        )
+        .expect("google model details should build");
+        assert_eq!(details.len(), 1);
+        assert_eq!(
+            details[0].image_input_support,
+            Some(ProviderModelSupportStatus::Supported)
+        );
+        assert_eq!(
+            details[0].ocr_support,
+            Some(ProviderModelSupportStatus::Unsupported)
+        );
     }
 
     #[tokio::test]

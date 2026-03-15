@@ -243,9 +243,7 @@ pub async fn get_feature_capabilities(
     state: tauri::State<'_, FeatureCapabilityState>,
 ) -> Result<FeatureCapabilitySnapshot, String> {
     let secret_backend = state.0.clone();
-    tokio::task::spawn_blocking(move || build_feature_capability_snapshot(&secret_backend))
-        .await
-        .map_err(|err| format!("Failed to collect feature capabilities: {err}"))
+    Ok(build_feature_capability_snapshot(&secret_backend).await)
 }
 
 // ── OAuth IPC commands ──────────────────────────────────────

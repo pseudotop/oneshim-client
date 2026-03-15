@@ -1,6 +1,7 @@
 import type {
   FeatureAvailability,
   FeatureCapabilitySnapshot,
+  ProviderKnownModelSpec,
   ProviderSurfaceCatalog,
   ProviderSurfaceSpec,
 } from '../api/contracts'
@@ -55,16 +56,16 @@ function featureAvailabilityScore(
   surface: ProviderSurfaceSpec,
   snapshot: FeatureCapabilitySnapshot | null | undefined,
 ): number {
+  const feature = snapshot?.features.find((candidate) => candidate.feature_id === surface.surface_id)
+  if (feature) {
+    return AVAILABILITY_RANK[feature.availability]
+  }
+
   if (surface.execution_kind === 'direct_http') {
     return AVAILABILITY_RANK.available
   }
 
-  const feature = snapshot?.features.find((candidate) => candidate.feature_id === surface.surface_id)
-  if (!feature) {
-    return AVAILABILITY_RANK.partially_available
-  }
-
-  return AVAILABILITY_RANK[feature.availability]
+  return AVAILABILITY_RANK.partially_available
 }
 
 function compareProviderSurfaces(
@@ -242,4 +243,87 @@ export function defaultSurfaceModel(
 
   const models = endpointKind === 'ocr_api' ? surface.default_models.ocr_models : surface.default_models.llm_models
   return models[0] ?? null
+}
+
+export function surfaceSupportsParameter(
+  surface: ProviderSurfaceSpec | undefined,
+  endpointKind: EndpointSurfaceKind,
+  parameter: string,
+): boolean {
+  if (!surface) {
+    return false
+  }
+
+  const normalized = parameter.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+
+  const profile = endpointKind === 'ocr_api' ? surface.parameter_profiles.ocr : surface.parameter_profiles.llm
+  return profile.supported.some((candidate) => candidate.toLowerCase() === normalized)
+}
+
+export function surfaceSupportsModelSelection(
+  surface: ProviderSurfaceSpec | undefined,
+  endpointKind: EndpointSurfaceKind,
+): boolean {
+  if (!surface) {
+    return false
+  }
+
+  const defaults =
+    endpointKind === 'ocr_api' ? surface.default_models.ocr_models : surface.default_models.llm_models
+  const modelCatalogSupported = endpointKind === 'ocr_api'
+    ? (surface.model_catalog_transport?.ocr_supported ?? false)
+    : (surface.model_catalog_transport?.llm_supported ?? false)
+  const knownModels = surface.known_models.some((model) =>
+    endpointKind === 'ocr_api' ? model.capabilities.ocr : model.capabilities.llm,
+  )
+
+  return defaults.length > 0 || modelCatalogSupported || knownModels
+}
+
+function matchesKnownModel(model: ProviderKnownModelSpec, value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+
+  if (model.id.toLowerCase() === normalized) {
+    return true
+  }
+
+  if (model.aliases.some((alias) => alias.toLowerCase() === normalized)) {
+    return true
+  }
+
+  return model.id_prefixes.some((prefix) => {
+    const normalizedPrefix = prefix.trim().toLowerCase()
+    return normalizedPrefix.length > 0 && (normalized === normalizedPrefix || normalized.startsWith(normalizedPrefix))
+  })
+}
+
+export function surfaceKnownModel(
+  surface: ProviderSurfaceSpec | undefined,
+  model: string | null | undefined,
+): ProviderKnownModelSpec | undefined {
+  const candidate = (model ?? '').trim()
+  if (!surface || !candidate) {
+    return undefined
+  }
+
+  return surface.known_models.find((entry) => matchesKnownModel(entry, candidate))
+}
+
+export function surfaceModelSupportsCapability(
+  surface: ProviderSurfaceSpec | undefined,
+  endpointKind: EndpointSurfaceKind,
+  model: string | null | undefined,
+): boolean | null {
+  const known = surfaceKnownModel(surface, model)
+  if (!known) {
+    return null
+  }
+
+  return endpointKind === 'ocr_api' ? known.capabilities.ocr : known.capabilities.llm
 }

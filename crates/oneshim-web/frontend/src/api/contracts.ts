@@ -217,8 +217,21 @@ export interface ProviderModelsRequest {
   use_saved_secret?: boolean
 }
 
+export type ProviderModelSupportStatus = 'supported' | 'unsupported' | 'unknown'
+
+export interface ProviderDiscoveredModel {
+  id: string
+  display_name?: string | null
+  llm_support?: ProviderModelSupportStatus | null
+  supports_ocr?: boolean | null
+  ocr_support?: ProviderModelSupportStatus | null
+  image_input_support?: ProviderModelSupportStatus | null
+  capability_source?: string | null
+}
+
 export interface ProviderModelsResponse {
   models: string[]
+  model_details?: ProviderDiscoveredModel[]
   notice?: string | null
 }
 
@@ -232,6 +245,21 @@ export interface ProviderSurfaceSupports {
 export interface SurfaceDefaultModels {
   llm_models: string[]
   ocr_models: string[]
+}
+
+export interface ProviderKnownModelCapabilities {
+  llm: boolean
+  ocr: boolean
+  image_input: boolean
+}
+
+export interface ProviderKnownModelSpec {
+  id: string
+  display_name?: string | null
+  aliases: string[]
+  id_prefixes: string[]
+  capabilities: ProviderKnownModelCapabilities
+  notes: string[]
 }
 
 export interface SubprocessTransportSpec {
@@ -258,6 +286,7 @@ export interface ProviderSurfaceSpec {
   catalog_strategy: string
   supports: ProviderSurfaceSupports
   default_models: SurfaceDefaultModels
+  known_models: ProviderKnownModelSpec[]
   parameter_profiles: {
     llm: {
       supported: string[]
@@ -290,6 +319,11 @@ export interface ProviderSurfaceSpec {
     llm_supported: boolean
     ocr_supported: boolean
     ocr_notice?: string | null
+  } | null
+  availability_probe?: {
+    method: string
+    url: string
+    auth_scheme: string
   } | null
   subprocess_transport?: SubprocessTransportSpec | null
   references: string[]

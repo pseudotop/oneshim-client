@@ -22,6 +22,8 @@ import {
 import {
   type EndpointSurfaceKind,
   preferredRelatedProviderSurfaceFromList,
+  surfaceModelSupportsCapability,
+  surfaceSupportsModelSelection,
 } from '../../features/providerSurfaces'
 import { form } from '../../styles/tokens'
 import OAuthConnectionPanel from './OAuthConnectionPanel'
@@ -165,8 +167,20 @@ function requirementLabel(
     return t('settingsAutomation.requirementOsSecretStore')
   }
 
+  if (requirement.startsWith('local_server:')) {
+    return t('settingsAutomation.requirementLocalServer', { service: requirement.slice(13) })
+  }
+
   if (requirement.startsWith('cli:')) {
     return t('settingsAutomation.requirementCli', { tool: requirement.slice(4) })
+  }
+
+  if (requirement.startsWith('local_service:')) {
+    return t('settingsAutomation.requirementLocalService', { service: requirement.slice(14) })
+  }
+
+  if (requirement.startsWith('endpoint:')) {
+    return t('settingsAutomation.requirementEndpoint', { target: requirement.slice(9) })
   }
 
   return requirement
@@ -197,6 +211,7 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
   featureCapabilities?: FeatureCapabilitySnapshot | null
   secretBackendCapabilities?: SecretBackendCapabilities | null
   modelCatalogNotice: Record<'ocr_api' | 'llm_api', string | null>
+  modelCompatibilityNotice: Record<'ocr_api' | 'llm_api', string | null>
   modelCatalogLoading: 'ocr_api' | 'llm_api' | null
   onAutomationChange: (field: keyof AutomationSettings, value: boolean) => void
   onSandboxChange: (field: keyof SandboxSettings, value: boolean | string | number | string[]) => void
@@ -226,6 +241,7 @@ export default function AiAutomationTab({
   featureCapabilities,
   secretBackendCapabilities,
   modelCatalogNotice,
+  modelCompatibilityNotice,
   modelCatalogLoading,
   onAutomationChange,
   onSandboxChange,
@@ -269,6 +285,18 @@ export default function AiAutomationTab({
     currentLlmSurface?.surface_id !== preferredCliSurface?.surface_id
   const currentOcrUsesNoAuth = surfaceUsesNoAuth(currentOcrSurface, 'ocr_api')
   const currentLlmUsesNoAuth = surfaceUsesNoAuth(currentLlmSurface, 'llm_api')
+  const currentOcrSupportsModelSelection = surfaceSupportsModelSelection(currentOcrSurface, 'ocr_api')
+  const currentLlmSupportsModelSelection = surfaceSupportsModelSelection(currentLlmSurface, 'llm_api')
+  const currentOcrModelSupport = surfaceModelSupportsCapability(
+    currentOcrSurface,
+    'ocr_api',
+    formData.ai_provider.ocr_api?.model,
+  )
+  const currentLlmModelSupport = surfaceModelSupportsCapability(
+    currentLlmSurface,
+    'llm_api',
+    formData.ai_provider.llm_api?.model,
+  )
 
   const handleSwitchToPreferredCli = () => {
     onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
@@ -927,25 +955,36 @@ export default function AiAutomationTab({
                     )}
                   </>
                 )}
-                <div>
-                  <label htmlFor="settings-ocr-model" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.model')}
-                  </label>
-                  <Input
-                    id="settings-ocr-model"
-                    type="text"
-                    list="ocr-model-catalog"
-                    value={formData.ai_provider.ocr_api?.model ?? ''}
-                    onChange={(e) => onExternalApiChange('ocr_api', 'model', e.target.value || null)}
-                  />
-                  {getModelOptions('ocr_api').length > 0 && (
-                    <datalist id="ocr-model-catalog">
-                      {getModelOptions('ocr_api').map((modelName) => (
-                        <option key={modelName} value={modelName} />
-                      ))}
-                    </datalist>
-                  )}
-                </div>
+                {currentOcrSupportsModelSelection ? (
+                  <div>
+                    <label htmlFor="settings-ocr-model" className="mb-1 block text-content-secondary text-xs">
+                      {t('settingsAutomation.model')}
+                    </label>
+                    <Input
+                      id="settings-ocr-model"
+                      type="text"
+                      list="ocr-model-catalog"
+                      value={formData.ai_provider.ocr_api?.model ?? ''}
+                      onChange={(e) => onExternalApiChange('ocr_api', 'model', e.target.value || null)}
+                    />
+                    {getModelOptions('ocr_api').length > 0 && (
+                      <datalist id="ocr-model-catalog">
+                        {getModelOptions('ocr_api').map((modelName) => (
+                          <option key={modelName} value={modelName} />
+                        ))}
+                      </datalist>
+                    )}
+                    {(modelCompatibilityNotice.ocr_api || currentOcrModelSupport === false) && (
+                      <p className="mt-1 text-semantic-warning text-xs">
+                        {modelCompatibilityNotice.ocr_api ?? t('settingsAutomation.ocrModelUnsupported')}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs">
+                    {t('settingsAutomation.modelSelectionUnsupportedSurface')}
+                  </div>
+                )}
                 <div>
                   <label htmlFor="settings-ocr-timeout" className="mb-1 block text-content-secondary text-xs">
                     {t('settingsAutomation.timeoutSecs')}
@@ -1086,25 +1125,36 @@ export default function AiAutomationTab({
                     ) : null}
                   </div>
                 )}
-                <div>
-                  <label htmlFor="settings-llm-model" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.model')}
-                  </label>
-                  <Input
-                    id="settings-llm-model"
-                    type="text"
-                    list="llm-model-catalog"
-                    value={formData.ai_provider.llm_api?.model ?? ''}
-                    onChange={(e) => onExternalApiChange('llm_api', 'model', e.target.value || null)}
-                  />
-                  {getModelOptions('llm_api').length > 0 && (
-                    <datalist id="llm-model-catalog">
-                      {getModelOptions('llm_api').map((modelName) => (
-                        <option key={modelName} value={modelName} />
-                      ))}
-                    </datalist>
-                  )}
-                </div>
+                {currentLlmSupportsModelSelection ? (
+                  <div>
+                    <label htmlFor="settings-llm-model" className="mb-1 block text-content-secondary text-xs">
+                      {t('settingsAutomation.model')}
+                    </label>
+                    <Input
+                      id="settings-llm-model"
+                      type="text"
+                      list="llm-model-catalog"
+                      value={formData.ai_provider.llm_api?.model ?? ''}
+                      onChange={(e) => onExternalApiChange('llm_api', 'model', e.target.value || null)}
+                    />
+                    {getModelOptions('llm_api').length > 0 && (
+                      <datalist id="llm-model-catalog">
+                        {getModelOptions('llm_api').map((modelName) => (
+                          <option key={modelName} value={modelName} />
+                        ))}
+                      </datalist>
+                    )}
+                    {(modelCompatibilityNotice.llm_api || currentLlmModelSupport === false) && (
+                      <p className="mt-1 text-semantic-warning text-xs">
+                        {modelCompatibilityNotice.llm_api ?? t('settingsAutomation.llmModelUnsupported')}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs">
+                    {t('settingsAutomation.modelSelectionUnsupportedSurface')}
+                  </div>
+                )}
                 <div>
                   <label htmlFor="settings-llm-timeout" className="mb-1 block text-content-secondary text-xs">
                     {t('settingsAutomation.timeoutSecs')}

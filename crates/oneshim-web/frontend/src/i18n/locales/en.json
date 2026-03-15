@@ -581,7 +581,10 @@
     "pathRequirementsNone": "No extra prerequisites",
     "pathNextStepLabel": "Readiness",
     "requirementOsSecretStore": "OS secret store",
+    "requirementLocalServer": "{{service}} local server",
     "requirementCli": "{{tool}} CLI",
+    "requirementLocalService": "{{service}} local service",
+    "requirementEndpoint": "{{target}} endpoint",
     "preferredCliTitle": "Recommended product-backed path",
     "preferredCliDescription": "Use {{surface}} when you want provider-managed auth and subscription entitlements to stay with the installed CLI.",
     "switchToPreferredCli": "Use preferred CLI path",
@@ -654,6 +657,9 @@
     "backendLegacyConfig": "config file",
     "backendUnavailable": "unavailable backend",
     "model": "Model",
+    "modelSelectionUnsupportedSurface": "This surface does not support selecting a model explicitly. ONESHIM will use the surface's built-in OCR or provider default path.",
+    "ocrModelUnsupported": "The selected model is not known to support image-based OCR on this surface. Choose a compatible multimodal model.",
+    "llmModelUnsupported": "The selected model is not known to support this LLM surface. Choose a compatible model for the selected execution path.",
     "timeoutSecs": "Timeout (sec)",
     "providerType": "Provider Type",
     "providerSurfaceLabel": "Provider Surface",
@@ -736,6 +742,13 @@
             "auth_required": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
             "partially_available": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
             "unavailable": "Gemini CLI is not installed or not available on PATH."
+          }
+        },
+        "ollama": {
+          "local_http": {
+            "available": "Ollama appears reachable on the configured local HTTP port. ONESHIM can call the self-hosted endpoint directly.",
+            "partially_available": "ONESHIM could not complete the local readiness probe for Ollama. Verify the local server and endpoint configuration.",
+            "unavailable": "Ollama was not reachable on the configured local HTTP port. Start the local server before using this self-hosted surface."
           }
         }
       }

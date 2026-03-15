@@ -22,6 +22,7 @@ import {
   type NotificationSettings as NotificationSettingsType,
   type OcrValidationSettings as OcrValidationSettingsType,
   type PrivacySettings as PrivacySettingsType,
+  type ProviderDiscoveredModel,
   type ProviderModelsResponse,
   type ProviderSurfaceSpec,
   postUpdateAction,
@@ -45,6 +46,7 @@ import {
   providerSurfaceById,
   resolveProviderTypeForSurface,
   sortProviderSurfaces,
+  surfaceSupportsModelSelection,
   type EndpointSurfaceKind,
 } from '../features/providerSurfaces'
 import { useToast } from '../hooks/useToast'
@@ -74,6 +76,12 @@ export default function Settings() {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
   const [exportLoading, setExportLoading] = useState<ExportDataType | null>(null)
   const [modelCatalog, setModelCatalog] = useState<Record<'ocr_api' | 'llm_api', string[]>>({
+    ocr_api: [],
+    llm_api: [],
+  })
+  const [modelCatalogDetails, setModelCatalogDetails] = useState<
+    Record<'ocr_api' | 'llm_api', ProviderDiscoveredModel[]>
+  >({
     ocr_api: [],
     llm_api: [],
   })
@@ -230,6 +238,7 @@ export default function Settings() {
     const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, endpointKind)
     const previousDefaultModel = defaultSurfaceModel(previousSurface, endpointKind)
     const nextDefaultModel = defaultSurfaceModel(nextSurface, endpointKind)
+    const supportsModelSelection = surfaceSupportsModelSelection(nextSurface, endpointKind)
     const authMode = deriveEndpointAuthMode(accessMode, endpointKind, nextSurface)
     const backendKind = deriveEndpointBackendKind(authMode)
 
@@ -237,7 +246,11 @@ export default function Settings() {
       ...seed,
       endpoint:
         !seed.endpoint.trim() || seed.endpoint === previousDefaultEndpoint ? nextDefaultEndpoint : seed.endpoint,
-      model: !seed.model?.trim() || seed.model === previousDefaultModel ? nextDefaultModel : seed.model,
+      model: !supportsModelSelection
+        ? null
+        : !seed.model?.trim() || seed.model === previousDefaultModel
+          ? nextDefaultModel
+          : seed.model,
       provider_type: providerType,
       surface_id: surfaceId,
       auth_mode: authMode,
@@ -573,10 +586,64 @@ export default function Settings() {
     return which === 'ocr_api' ? (surface.default_models.ocr_models ?? []) : (surface.default_models.llm_models ?? [])
   }
 
+  const isOcrModelExplicitlyUnsupported = (detail: ProviderDiscoveredModel | undefined): boolean =>
+    Boolean(
+      detail &&
+        (detail.supports_ocr === false ||
+          detail.ocr_support === 'unsupported' ||
+          detail.image_input_support === 'unsupported'),
+    )
+
+  const isLlmModelExplicitlyUnsupported = (detail: ProviderDiscoveredModel | undefined): boolean =>
+    Boolean(detail && detail.llm_support === 'unsupported')
+
+  const normalizeModelId = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase()
+
+  const findModelDetail = (
+    which: 'ocr_api' | 'llm_api',
+    modelId: string | null | undefined,
+  ): ProviderDiscoveredModel | undefined => {
+    const normalized = normalizeModelId(modelId)
+    if (!normalized) return undefined
+    return modelCatalogDetails[which].find((detail) => normalizeModelId(detail.id) === normalized)
+  }
+
   const getModelOptions = (which: 'ocr_api' | 'llm_api'): string[] => {
     const surfaceModels = getSurfaceModels(which)
-    const discoveredModels = modelCatalog[which]
-    return Array.from(new Set([...discoveredModels, ...surfaceModels]))
+    const discoveredModels =
+      modelCatalogDetails[which].length > 0
+        ? modelCatalogDetails[which]
+            .filter((detail) =>
+              which === 'ocr_api'
+                ? !isOcrModelExplicitlyUnsupported(detail)
+                : !isLlmModelExplicitlyUnsupported(detail),
+            )
+            .map((detail) => detail.id)
+        : modelCatalog[which]
+    const allowedSurfaceModels =
+      which === 'ocr_api'
+        ? surfaceModels.filter((model) => !isOcrModelExplicitlyUnsupported(findModelDetail(which, model)))
+        : surfaceModels.filter((model) => !isLlmModelExplicitlyUnsupported(findModelDetail(which, model)))
+    return Array.from(new Set([...discoveredModels, ...allowedSurfaceModels]))
+  }
+
+  const getModelCompatibilityNotice = (which: 'ocr_api' | 'llm_api'): string | null => {
+    const currentModel = formData?.ai_provider[which]?.model
+    const detail = findModelDetail(which, currentModel)
+    if (!detail) {
+      return null
+    }
+    if (which === 'ocr_api' && isOcrModelExplicitlyUnsupported(detail)) {
+      return t('settingsAutomation.ocrModelUnsupported', {
+        model: detail.display_name ?? detail.id,
+      })
+    }
+    if (which === 'llm_api' && isLlmModelExplicitlyUnsupported(detail)) {
+      return t('settingsAutomation.llmModelUnsupported', {
+        model: detail.display_name ?? detail.id,
+      })
+    }
+    return null
   }
 
   const canDiscoverModels = (which: 'ocr_api' | 'llm_api'): boolean => {
@@ -616,9 +683,18 @@ export default function Settings() {
       ...current,
       [which]: result.notice ?? (result.models.length === 0 ? t('settingsAutomation.modelDiscoveryNoModels') : null),
     }))
+    setModelCatalogDetails((current) => ({
+      ...current,
+      [which]: result.model_details ?? [],
+    }))
 
-    if ((!currentModel || !currentModel.trim()) && result.models.length > 0) {
-      handleExternalApiChange(which, 'model', result.models[0])
+    const preferredDiscoveredModel =
+      which === 'ocr_api'
+        ? (result.model_details ?? []).find((detail) => !isOcrModelExplicitlyUnsupported(detail))?.id
+        : (result.model_details ?? []).find((detail) => !isLlmModelExplicitlyUnsupported(detail))?.id
+
+    if ((!currentModel || !currentModel.trim()) && (preferredDiscoveredModel || result.models.length > 0)) {
+      handleExternalApiChange(which, 'model', preferredDiscoveredModel ?? result.models[0])
     }
   }
 
@@ -633,8 +709,13 @@ export default function Settings() {
       showToast('error', t('settingsAutomation.modelDiscoveryUnsupportedSurface'), 5000)
       return
     }
+    const surface = resolveEndpointSurface(which)
+    const usesNoAuth =
+      which === 'ocr_api'
+        ? surface?.ocr_transport?.auth_scheme === 'none'
+        : surface?.llm_transport?.auth_scheme === 'none'
     const useSavedSecret = current.has_secret && !current.api_key_masked?.trim()
-    if (!current.api_key_masked?.trim() && !useSavedSecret) {
+    if (!usesNoAuth && !current.api_key_masked?.trim() && !useSavedSecret) {
       showToast('error', t('settingsAutomation.modelDiscoveryMissingKey'), 5000)
       return
     }
@@ -654,6 +735,10 @@ export default function Settings() {
       const message = error instanceof Error ? error.message : String(error)
       setModelCatalog((currentCatalog) => ({
         ...currentCatalog,
+        [which]: [],
+      }))
+      setModelCatalogDetails((currentDetails) => ({
+        ...currentDetails,
         [which]: [],
       }))
       setModelCatalogNotice((currentNotice) => ({
@@ -793,6 +878,10 @@ export default function Settings() {
               featureCapabilities={featureCapabilities}
               secretBackendCapabilities={secretBackendCapabilities}
               modelCatalogNotice={modelCatalogNotice}
+              modelCompatibilityNotice={{
+                ocr_api: getModelCompatibilityNotice('ocr_api'),
+                llm_api: getModelCompatibilityNotice('llm_api'),
+              }}
               modelCatalogLoading={modelCatalogLoading}
               onAutomationChange={handleAutomationChange}
               onSandboxChange={handleSandboxChange}

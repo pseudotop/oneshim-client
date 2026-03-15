@@ -48,6 +48,45 @@ impl RemoteLlmProvider {
         }
     }
 
+    fn resolved_runtime_endpoint(
+        config: &ExternalApiEndpoint,
+        model: &str,
+    ) -> Result<String, CoreError> {
+        let shape = provider_specs::resolved_request_shape(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+
+        Ok(match shape {
+            ProviderRequestShape::GoogleGenerateContent => {
+                Self::rewrite_google_generate_content_endpoint(&config.endpoint, model)
+            }
+            _ => config.endpoint.clone(),
+        })
+    }
+
+    fn rewrite_google_generate_content_endpoint(endpoint: &str, model: &str) -> String {
+        let model = model.trim();
+        if model.is_empty() {
+            return endpoint.to_string();
+        }
+
+        let Some(models_idx) = endpoint.find("/models/") else {
+            return endpoint.to_string();
+        };
+        let prefix_end = models_idx + "/models/".len();
+        let rest = &endpoint[prefix_end..];
+        let Some(action_idx) = rest.find(':') else {
+            return endpoint.to_string();
+        };
+
+        let prefix = &endpoint[..prefix_end];
+        let suffix = &rest[action_idx..];
+        format!("{prefix}{model}{suffix}")
+    }
+
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
         let auth_scheme = provider_specs::resolved_auth_scheme(
             config.provider_type,
@@ -85,6 +124,19 @@ impl RemoteLlmProvider {
             })
             .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
 
+        let supports_model = provider_specs::resolved_surface_supports_model_selection(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+        if !supports_model {
+            return Err(CoreError::Config(
+                "The selected LLM provider surface does not support configurable model selection."
+                    .to_string(),
+            ));
+        }
+
         match ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
             config.provider_type,
             config.surface_id.as_deref(),
@@ -106,6 +158,13 @@ impl RemoteLlmProvider {
                 return Err(CoreError::PolicyDenied(message));
             }
         }
+        provider_specs::validate_known_model_capability(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            &model,
+        )
+        .map_err(CoreError::Config)?;
 
         debug!(
             endpoint = %config.endpoint,
@@ -114,9 +173,11 @@ impl RemoteLlmProvider {
             "RemoteLlmProvider initialize"
         );
 
+        let endpoint = Self::resolved_runtime_endpoint(config, &model)?;
+
         Ok(Self {
             http_client,
-            endpoint: config.endpoint.clone(),
+            endpoint,
             credential,
             model,
             provider_type: config.provider_type,
@@ -153,6 +214,19 @@ impl RemoteLlmProvider {
             })
             .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
 
+        let supports_model = provider_specs::resolved_surface_supports_model_selection(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+        if !supports_model {
+            return Err(CoreError::Config(
+                "The selected LLM provider surface does not support configurable model selection."
+                    .to_string(),
+            ));
+        }
+
         match ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
             config.provider_type,
             config.surface_id.as_deref(),
@@ -174,13 +248,23 @@ impl RemoteLlmProvider {
                 return Err(CoreError::PolicyDenied(message));
             }
         }
+        provider_specs::validate_known_model_capability(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            &model,
+        )
+        .map_err(CoreError::Config)?;
 
         // Use OAuth-provided base URL when available (ChatGPT OAuth uses
         // a different endpoint than the standard OpenAI API).
         let endpoint = credential
             .api_base_url()
             .map(String::from)
-            .unwrap_or_else(|| config.endpoint.clone());
+            .unwrap_or_else(|| {
+                Self::resolved_runtime_endpoint(config, &model)
+                    .unwrap_or_else(|_| config.endpoint.clone())
+            });
 
         Ok(Self {
             http_client,
@@ -690,6 +774,24 @@ mod tests {
     }
 
     #[test]
+    fn new_remote_llm_rejects_known_non_llm_model() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: "test-api-key".to_string(),
+            model: Some("text-embedding-3-small".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: Some("provider_surface.openai.direct_api".to_string()),
+            credential: None,
+        };
+
+        let result = RemoteLlmProvider::new(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("not marked as LLM-capable"));
+    }
+
+    #[test]
     fn ollama_llm_initializes_without_api_key() {
         let config = ExternalApiEndpoint {
             endpoint: "http://localhost:11434/v1/responses".to_string(),
@@ -706,6 +808,26 @@ mod tests {
         assert_eq!(
             provider.llm_request_shape().expect("shape should resolve"),
             ProviderRequestShape::OpenAiResponses
+        );
+    }
+
+    #[test]
+    fn google_llm_rewrites_endpoint_for_selected_model() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                .to_string(),
+            api_key: "goog-api-key".to_string(),
+            model: Some("gemini-2.5-pro".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Google,
+            surface_id: Some("provider_surface.google.direct_api".to_string()),
+            credential: None,
+        };
+
+        let provider = RemoteLlmProvider::new(&config).expect("google llm should initialize");
+        assert_eq!(
+            provider.endpoint,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
         );
     }
 

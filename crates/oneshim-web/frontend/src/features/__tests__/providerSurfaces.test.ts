@@ -5,6 +5,9 @@ import {
   deriveDefaultProviderSurfaceId,
   getCompatibleProviderSurfaces,
   preferredRelatedProviderSurface,
+  surfaceKnownModel,
+  surfaceModelSupportsCapability,
+  surfaceSupportsModelSelection,
   sortProviderSurfaces,
 } from '../providerSurfaces'
 
@@ -113,5 +116,48 @@ describe('provider surface defaults', () => {
         snapshot,
       ),
     ).toBe('provider_surface.openai.subprocess_cli')
+  })
+
+  it('treats self-hosted direct surfaces as unavailable when feature snapshot says so', () => {
+    const snapshot: FeatureCapabilitySnapshot = {
+      features: [
+        {
+          feature_id: 'provider_surface.ollama.local_http',
+          maturity: 'stable',
+          availability: 'unavailable',
+          preferred: false,
+          requires: ['local_service:ollama'],
+          status_reason: 'service_unreachable',
+          status_copy_key: 'featureCapability.surface.provider_surface.ollama.local_http.unavailable',
+        },
+      ],
+    }
+
+    expect(
+      deriveDefaultProviderSurfaceId(
+        DEFAULT_PROVIDER_SURFACE_CATALOG,
+        'ProviderApiKey',
+        'llm_api',
+        'Generic',
+        snapshot,
+      ),
+    ).toBe('provider_surface.generic.direct_api')
+  })
+
+  it('derives model-selection support from surface catalog semantics', () => {
+    const google = DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces.find(
+      (surface) => surface.surface_id === 'provider_surface.google.direct_api',
+    )
+    expect(surfaceSupportsModelSelection(google, 'ocr_api')).toBe(false)
+    expect(surfaceSupportsModelSelection(google, 'llm_api')).toBe(true)
+  })
+
+  it('matches known Ollama model capabilities by prefix', () => {
+    const ollama = DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces.find(
+      (surface) => surface.surface_id === 'provider_surface.ollama.local_http',
+    )
+    expect(surfaceKnownModel(ollama, 'qwen3-vl:8b-instruct-q4_K_M')?.id).toBe('qwen3-vl:8b')
+    expect(surfaceModelSupportsCapability(ollama, 'ocr_api', 'qwen3-vl:8b-instruct-q4_K_M')).toBe(true)
+    expect(surfaceModelSupportsCapability(ollama, 'ocr_api', 'qwen3:8b')).toBe(false)
   })
 })

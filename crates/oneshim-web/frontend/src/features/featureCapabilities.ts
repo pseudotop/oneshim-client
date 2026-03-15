@@ -50,11 +50,16 @@ export function providerSurfaceAvailability(
     return 'unavailable'
   }
 
+  const feature = findFeatureCapability(snapshot, surface.surface_id)
+  if (feature) {
+    return feature.availability
+  }
+
   if (surface.execution_kind === 'direct_http') {
     return 'available'
   }
 
-  return findFeatureCapability(snapshot, surface.surface_id)?.availability ?? 'partially_available'
+  return 'partially_available'
 }
 
 export function providerSurfaceMaturity(
@@ -72,7 +77,7 @@ export function providerSurfaceStatusCopyKey(
   surface: ProviderSurfaceSpec | null | undefined,
   snapshot: FeatureCapabilitySnapshot | null | undefined,
 ): string | null {
-  if (!surface || surface.execution_kind === 'direct_http') {
+  if (!surface) {
     return null
   }
 

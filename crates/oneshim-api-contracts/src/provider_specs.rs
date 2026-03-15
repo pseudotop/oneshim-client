@@ -54,11 +54,15 @@ pub struct ProviderSurfaceSpec {
     pub default_models: SurfaceDefaultModels,
     pub parameter_profiles: ProviderParameterSet,
     #[serde(default)]
+    pub known_models: Vec<ProviderKnownModelSpec>,
+    #[serde(default)]
     pub llm_transport: Option<ProviderTransportSpec>,
     #[serde(default)]
     pub ocr_transport: Option<ProviderTransportSpec>,
     #[serde(default)]
     pub model_catalog_transport: Option<ProviderModelCatalogTransportSpec>,
+    #[serde(default)]
+    pub availability_probe: Option<ProviderAvailabilityProbeSpec>,
     #[serde(default)]
     pub subprocess_transport: Option<SubprocessTransportSpec>,
     #[serde(default)]
@@ -83,6 +87,37 @@ pub struct SurfaceDefaultModels {
     pub llm_models: Vec<String>,
     #[serde(default)]
     pub ocr_models: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ProviderKnownModelSpec {
+    pub id: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub id_prefixes: Vec<String>,
+    pub capabilities: ProviderKnownModelCapabilities,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ProviderKnownModelCapabilities {
+    #[serde(default = "default_true")]
+    pub llm: bool,
+    #[serde(default)]
+    pub ocr: bool,
+    #[serde(default)]
+    pub image_input: bool,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ProviderAvailabilityProbeSpec {
+    pub method: String,
+    pub url: String,
+    pub auth_scheme: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -173,6 +208,10 @@ pub enum SubprocessAuthProbeMode {
     None,
     CodexLoginStatusText,
     ClaudeAuthStatusJson,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 pub fn list_provider_surface_specs() -> Result<ProviderSurfaceCatalog, String> {
@@ -579,11 +618,155 @@ pub fn validate_supported_surface_parameters(
     validate_parameter_usage(profile, parameters)
 }
 
+pub fn surface_supports_parameter(
+    surface_id: &str,
+    capability: SurfaceCapabilityKind,
+    parameter: &str,
+) -> Result<bool, String> {
+    let normalized = parameter.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Ok(false);
+    }
+
+    let profile = parameter_profile_for_surface(surface_id, capability)?;
+    Ok(profile
+        .supported
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(&normalized)))
+}
+
+pub fn surface_supports_model_selection(
+    surface_id: &str,
+    capability: SurfaceCapabilityKind,
+) -> Result<bool, String> {
+    let surface = provider_surface_spec(surface_id)?;
+    let has_default_models = match capability {
+        SurfaceCapabilityKind::Llm => !surface.default_models.llm_models.is_empty(),
+        SurfaceCapabilityKind::Ocr => !surface.default_models.ocr_models.is_empty(),
+    };
+    let model_catalog_support = surface
+        .model_catalog_transport
+        .as_ref()
+        .map(|transport| match capability {
+            SurfaceCapabilityKind::Llm => transport.llm_supported,
+            SurfaceCapabilityKind::Ocr => transport.ocr_supported,
+        })
+        .unwrap_or(false);
+    let known_models = surface.known_models.iter().any(|model| match capability {
+        SurfaceCapabilityKind::Llm => model.capabilities.llm,
+        SurfaceCapabilityKind::Ocr => model.capabilities.ocr,
+    });
+
+    Ok(has_default_models || model_catalog_support || known_models)
+}
+
+pub fn resolved_surface_supports_model_selection(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceCapabilityKind,
+) -> Result<bool, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    surface_supports_model_selection(&surface.surface_id, capability)
+}
+
+pub fn resolved_surface_supports_parameter(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceCapabilityKind,
+    parameter: &str,
+) -> Result<bool, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    surface_supports_parameter(&surface.surface_id, capability, parameter)
+}
+
+pub fn availability_probe(
+    surface_id: &str,
+) -> Result<Option<&'static ProviderAvailabilityProbeSpec>, String> {
+    Ok(provider_surface_spec(surface_id)?
+        .availability_probe
+        .as_ref())
+}
+
+pub fn known_model_spec_for_surface(
+    surface_id: &str,
+    model_id: &str,
+) -> Result<Option<&'static ProviderKnownModelSpec>, String> {
+    let normalized = model_id.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+
+    let surface = provider_surface_spec(surface_id)?;
+    Ok(surface
+        .known_models
+        .iter()
+        .find(|model| known_model_matches(model, &normalized)))
+}
+
+pub fn validate_known_model_capability(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceCapabilityKind,
+    model_id: &str,
+) -> Result<(), String> {
+    let normalized = model_id.trim();
+    if normalized.is_empty() {
+        return Ok(());
+    }
+
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    let Some(model) = known_model_spec_for_surface(&surface.surface_id, normalized)? else {
+        return Ok(());
+    };
+
+    let supported = match capability {
+        SurfaceCapabilityKind::Llm => model.capabilities.llm,
+        SurfaceCapabilityKind::Ocr => model.capabilities.ocr,
+    };
+
+    if supported {
+        return Ok(());
+    }
+
+    let capability_label = match capability {
+        SurfaceCapabilityKind::Llm => "LLM",
+        SurfaceCapabilityKind::Ocr => "OCR",
+    };
+    let replacement = default_surface_model(&surface.surface_id, capability)?
+        .unwrap_or_else(|| "a compatible default model".to_string());
+
+    Err(format!(
+        "Model '{}' is not marked as {}-capable for surface '{}'. Choose a compatible model such as '{}'.",
+        normalized, capability_label, surface.surface_id, replacement
+    ))
+}
+
 fn surface_catalog() -> Result<&'static ProviderSurfaceCatalog, String> {
     match SURFACE_CATALOG.get_or_init(load_surface_catalog) {
         Ok(catalog) => Ok(catalog),
         Err(message) => Err(message.clone()),
     }
+}
+
+fn known_model_matches(model: &ProviderKnownModelSpec, normalized_model_id: &str) -> bool {
+    if model.id.eq_ignore_ascii_case(normalized_model_id) {
+        return true;
+    }
+
+    if model
+        .aliases
+        .iter()
+        .any(|alias| alias.eq_ignore_ascii_case(normalized_model_id))
+    {
+        return true;
+    }
+
+    model.id_prefixes.iter().any(|prefix| {
+        let normalized_prefix = prefix.trim().to_ascii_lowercase();
+        !normalized_prefix.is_empty()
+            && (normalized_model_id == normalized_prefix
+                || normalized_model_id.starts_with(&normalized_prefix))
+    })
 }
 
 fn load_surface_catalog() -> Result<ProviderSurfaceCatalog, String> {
@@ -681,6 +864,40 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                 "Surface '{}' must include at least one reference URL.",
                 surface.surface_id
             ));
+        }
+        for model in &surface.known_models {
+            if model.id.trim().is_empty() {
+                return Err(format!(
+                    "Surface '{}' contains a known model with an empty id.",
+                    surface.surface_id
+                ));
+            }
+            if model
+                .display_name
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "Surface '{}' known model '{}' has an empty display_name.",
+                    surface.surface_id, model.id
+                ));
+            }
+            if model.aliases.iter().any(|alias| alias.trim().is_empty()) {
+                return Err(format!(
+                    "Surface '{}' known model '{}' contains an empty alias.",
+                    surface.surface_id, model.id
+                ));
+            }
+            if model
+                .id_prefixes
+                .iter()
+                .any(|prefix| prefix.trim().is_empty())
+            {
+                return Err(format!(
+                    "Surface '{}' known model '{}' contains an empty id_prefix.",
+                    surface.surface_id, model.id
+                ));
+            }
         }
         if surface
             .related_surface_ids
@@ -802,6 +1019,22 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                         return Err(format!(
                             "Surface '{}' must include an OCR notice when model catalog OCR is unsupported.",
                             surface.surface_id
+                        ));
+                    }
+                }
+                if let Some(probe) = surface.availability_probe.as_ref() {
+                    validate_transport_spec(
+                        &surface.surface_id,
+                        "availability_probe",
+                        &probe.url,
+                        &probe.auth_scheme,
+                        None,
+                    )?;
+                    let method = probe.method.trim().to_ascii_uppercase();
+                    if method != "GET" && method != "HEAD" {
+                        return Err(format!(
+                            "Surface '{}' availability_probe method '{}' is unsupported.",
+                            surface.surface_id, probe.method
                         ));
                     }
                 }
@@ -1315,5 +1548,37 @@ mod tests {
         let placement =
             parse_surface_placement_kind(&surface.placement_kind).expect("placement should parse");
         assert_eq!(placement, SurfacePlacementKind::SelfHosted);
+    }
+
+    #[test]
+    fn matches_known_ollama_vision_model_by_prefix() {
+        let known = known_model_spec_for_surface(
+            "provider_surface.ollama.local_http",
+            "qwen3-vl:8b-instruct-q4_K_M",
+        )
+        .expect("known model lookup should succeed")
+        .expect("vision model should match by prefix");
+        assert!(known.capabilities.ocr);
+    }
+
+    #[test]
+    fn rejects_known_non_vision_ocr_model() {
+        let err = validate_known_model_capability(
+            AiProviderType::Ollama,
+            Some("provider_surface.ollama.local_http"),
+            SurfaceCapabilityKind::Ocr,
+            "qwen3:8b",
+        )
+        .expect_err("text-only model should be rejected for OCR");
+        assert!(err.contains("not marked as OCR-capable"));
+    }
+
+    #[test]
+    fn resolves_ollama_availability_probe() {
+        let probe = availability_probe("provider_surface.ollama.local_http")
+            .expect("availability probe should resolve")
+            .expect("ollama probe should exist");
+        assert_eq!(probe.url, "http://localhost:11434/api/version");
+        assert_eq!(probe.auth_scheme, "none");
     }
 }

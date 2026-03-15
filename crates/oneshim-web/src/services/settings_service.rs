@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
 use oneshim_api_contracts::provider_specs::{
     default_surface_id_for_access_mode as default_surface_id_from_catalog,
-    surface_supports_capability as surface_supports_capability_from_catalog, SurfaceCapabilityKind,
+    resolved_surface_supports_model_selection,
+    surface_supports_capability as surface_supports_capability_from_catalog,
+    validate_known_model_capability, SurfaceCapabilityKind,
 };
 use oneshim_api_contracts::settings::{
     AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
@@ -919,8 +921,21 @@ fn api_settings_to_endpoint(
         settings.api_key_masked.clone()
     };
 
+    validate_surface_model_selection(
+        provider_type,
+        surface_id.as_deref(),
+        endpoint_kind,
+        settings.model.as_deref(),
+    )?;
+
     let credential =
         updated_credential_binding(settings, existing_endpoint, surface_id.as_deref())?;
+    validate_endpoint_model_compatibility(
+        provider_type,
+        surface_id.as_deref(),
+        endpoint_kind,
+        settings.model.as_deref(),
+    )?;
 
     Ok(ExternalApiEndpoint {
         endpoint: settings.endpoint.clone(),
@@ -931,6 +946,39 @@ fn api_settings_to_endpoint(
         surface_id,
         credential,
     })
+}
+
+fn validate_surface_model_selection(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    endpoint_kind: ApiEndpointKind,
+    model: Option<&str>,
+) -> Result<(), ApiError> {
+    let Some(model) = model.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+
+    let capability = match endpoint_kind {
+        ApiEndpointKind::Ocr => SurfaceCapabilityKind::Ocr,
+        ApiEndpointKind::Llm => SurfaceCapabilityKind::Llm,
+    };
+
+    let supports_model =
+        resolved_surface_supports_model_selection(provider_type, surface_id, capability)
+            .map_err(ApiError::BadRequest)?;
+    if !supports_model {
+        let target = match endpoint_kind {
+            ApiEndpointKind::Ocr => "OCR",
+            ApiEndpointKind::Llm => "LLM",
+        };
+        let surface_label = surface_id.unwrap_or("default surface");
+        return Err(ApiError::BadRequest(format!(
+            "Provider surface '{surface_label}' does not support configurable {target} model selection."
+        )));
+    }
+
+    validate_known_model_capability(provider_type, surface_id, capability, model)
+        .map_err(ApiError::BadRequest)
 }
 
 fn default_surface_id_for_endpoint(
@@ -1074,6 +1122,24 @@ fn derive_credential_auth_mode(
         }
         _ => CredentialAuthMode::ApiKey,
     }
+}
+
+fn validate_endpoint_model_compatibility(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    endpoint_kind: ApiEndpointKind,
+    model: Option<&str>,
+) -> Result<(), ApiError> {
+    let Some(model) = model.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+
+    let capability = match endpoint_kind {
+        ApiEndpointKind::Ocr => SurfaceCapabilityKind::Ocr,
+        ApiEndpointKind::Llm => SurfaceCapabilityKind::Llm,
+    };
+    validate_known_model_capability(provider_type, surface_id, capability, model)
+        .map_err(ApiError::BadRequest)
 }
 
 fn transport_for_auth_mode(auth_mode: CredentialAuthMode) -> ProviderSurfaceTransport {
@@ -1965,6 +2031,72 @@ mod tests {
 
         let err = apply_settings_to_config(&mut config, &settings).expect_err("ocr surface guard");
         assert!(matches!(err, ApiError::BadRequest(_)));
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_text_only_ollama_model_for_ocr() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderApiKey;
+        config.ai_provider.ocr_provider = OcrProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: "http://localhost:11434/v1/chat/completions".to_string(),
+            api_key_masked: String::new(),
+            model: Some("qwen3:8b".to_string()),
+            provider_type: "Ollama".to_string(),
+            surface_id: Some("provider_surface.ollama.local_http".to_string()),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "unavailable".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err =
+            apply_settings_to_config(&mut config, &settings).expect_err("ollama OCR model guard");
+        match err {
+            ApiError::BadRequest(message) => {
+                assert!(message.contains("OCR-capable"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_google_ocr_model_override() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderApiKey;
+        config.ai_provider.ocr_provider = OcrProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: "https://vision.googleapis.com/v1/images:annotate".to_string(),
+            api_key_masked: "goog-key-123456".to_string(),
+            model: Some("gemini-2.5-flash".to_string()),
+            provider_type: "Google".to_string(),
+            surface_id: Some("provider_surface.google.direct_api".to_string()),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "legacy_config".to_string(),
+            has_secret: true,
+            can_edit_secret: true,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err =
+            apply_settings_to_config(&mut config, &settings).expect_err("google OCR model guard");
+        match err {
+            ApiError::BadRequest(message) => {
+                assert!(message.contains("does not support configurable OCR model selection"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[test]

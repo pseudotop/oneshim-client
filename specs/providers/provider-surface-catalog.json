@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated_at": "2026-03-16T00:30:00Z",
+  "updated_at": "2026-03-16T03:40:00Z",
   "vendors": [
     {
       "vendor_id": "anthropic",
@@ -55,6 +55,32 @@
         "llm_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"],
         "ocr_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"]
       },
+      "known_models": [
+        {
+          "id": "claude-sonnet-4-20250514",
+          "display_name": "Claude Sonnet 4",
+          "aliases": ["claude-sonnet-4"],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Known multimodal Anthropic model."]
+        },
+        {
+          "id": "claude-opus-4-1-20250805",
+          "display_name": "Claude Opus 4.1",
+          "aliases": ["claude-opus-4-1"],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Known multimodal Anthropic model."]
+        },
+        {
+          "id": "claude-opus-4-20250514",
+          "display_name": "Claude Opus 4",
+          "aliases": ["claude-opus-4", "opus"],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Known multimodal Anthropic model."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["model", "messages", "system", "max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "stop_sequences", "thinking", "metadata"],
@@ -113,6 +139,48 @@
         "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
         "ocr_models": ["gpt-5.4", "gpt-5-mini"]
       },
+      "known_models": [
+        {
+          "id": "gpt-5.4",
+          "display_name": "GPT-5.4",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Preferred multimodal OpenAI surface in ONESHIM."]
+        },
+        {
+          "id": "gpt-5.2",
+          "display_name": "GPT-5.2",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["General-purpose OpenAI direct API model."]
+        },
+        {
+          "id": "gpt-5-mini",
+          "display_name": "GPT-5 Mini",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Cost-sensitive OpenAI multimodal model."]
+        },
+        {
+          "id": "text-embedding",
+          "display_name": "Embedding models",
+          "aliases": [],
+          "id_prefixes": ["text-embedding-", "text-similarity-", "text-search-"],
+          "capabilities": { "llm": false, "ocr": false, "image_input": false },
+          "notes": ["Embedding models must not be used as ONESHIM LLM or OCR engines."]
+        },
+        {
+          "id": "moderation-and-audio",
+          "display_name": "Moderation and audio models",
+          "aliases": [],
+          "id_prefixes": ["omni-moderation-", "text-moderation-", "whisper-", "tts-", "gpt-image-", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+          "capabilities": { "llm": false, "ocr": false, "image_input": false },
+          "notes": ["Moderation, transcription, speech, and image-generation endpoints are not valid ONESHIM LLM/OCR backends."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["model", "input", "instructions", "max_output_tokens", "temperature", "top_p", "tools", "tool_choice", "text", "reasoning", "metadata", "parallel_tool_calls", "store"],
@@ -173,6 +241,40 @@
         "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
         "ocr_models": []
       },
+      "known_models": [
+        {
+          "id": "gpt-5.4",
+          "display_name": "GPT-5.4",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Managed OAuth surface is currently LLM-only in ONESHIM."]
+        },
+        {
+          "id": "gpt-5.2",
+          "display_name": "GPT-5.2",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Managed OAuth surface is currently LLM-only in ONESHIM."]
+        },
+        {
+          "id": "gpt-5-mini",
+          "display_name": "GPT-5 Mini",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Managed OAuth surface is currently LLM-only in ONESHIM."]
+        },
+        {
+          "id": "text-embedding",
+          "display_name": "Embedding models",
+          "aliases": [],
+          "id_prefixes": ["text-embedding-", "text-similarity-", "text-search-", "omni-moderation-", "text-moderation-", "whisper-", "tts-", "gpt-image-"],
+          "capabilities": { "llm": false, "ocr": false, "image_input": false },
+          "notes": ["Embedding, moderation, audio, and image generation models are not valid managed OAuth LLM targets in ONESHIM."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["model", "input", "instructions", "max_output_tokens", "temperature", "top_p", "tools", "tool_choice", "text", "reasoning", "metadata"],
@@ -216,6 +318,32 @@
         "llm_models": ["gpt-5.4", "gpt-5.2-codex", "gpt-5.2"],
         "ocr_models": []
       },
+      "known_models": [
+        {
+          "id": "gpt-5.4",
+          "display_name": "GPT-5.4",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Codex CLI surface is LLM-only in ONESHIM."]
+        },
+        {
+          "id": "gpt-5.2-codex",
+          "display_name": "GPT-5.2 Codex",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Codex CLI surface is LLM-only in ONESHIM."]
+        },
+        {
+          "id": "gpt-5.2",
+          "display_name": "GPT-5.2",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Codex CLI surface is LLM-only in ONESHIM."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["model", "prompt", "json_schema", "cwd", "sandbox", "approval_policy"],
@@ -262,6 +390,24 @@
         "llm_models": ["claude-opus-4-6", "claude-sonnet-4", "sonnet", "opus"],
         "ocr_models": []
       },
+      "known_models": [
+        {
+          "id": "claude-opus-4-6",
+          "display_name": "Claude Opus 4.6",
+          "aliases": ["opus"],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Claude Code subprocess surface is LLM-only in ONESHIM."]
+        },
+        {
+          "id": "claude-sonnet-4",
+          "display_name": "Claude Sonnet 4",
+          "aliases": ["sonnet"],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Claude Code subprocess surface is LLM-only in ONESHIM."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["model", "prompt", "cwd", "output_format"],
@@ -308,6 +454,48 @@
         "llm_models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-3-pro-preview"],
         "ocr_models": []
       },
+      "known_models": [
+        {
+          "id": "gemini-2.5-flash",
+          "display_name": "Gemini 2.5 Flash",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": true },
+          "notes": ["Google OCR in ONESHIM uses the Vision API, not a model-selectable Gemini OCR surface."]
+        },
+        {
+          "id": "gemini-2.5-pro",
+          "display_name": "Gemini 2.5 Pro",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": true },
+          "notes": ["Google OCR in ONESHIM uses the Vision API, not a model-selectable Gemini OCR surface."]
+        },
+        {
+          "id": "gemini-2.5-flash-lite",
+          "display_name": "Gemini 2.5 Flash Lite",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": true },
+          "notes": ["Google OCR in ONESHIM uses the Vision API, not a model-selectable Gemini OCR surface."]
+        },
+        {
+          "id": "gemini-3-flash-preview",
+          "display_name": "Gemini 3 Flash Preview",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": true },
+          "notes": ["Google OCR in ONESHIM uses the Vision API, not a model-selectable Gemini OCR surface."]
+        },
+        {
+          "id": "gemini-3-pro-preview",
+          "display_name": "Gemini 3 Pro Preview",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": true },
+          "notes": ["Google OCR in ONESHIM uses the Vision API, not a model-selectable Gemini OCR surface."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["contents", "system_instruction", "tools", "toolConfig", "safetySettings", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.topP", "generationConfig.topK", "generationConfig.stopSequences", "generationConfig.responseMimeType", "generationConfig.responseSchema", "generationConfig.thinkingConfig", "generationConfig.seed"],
@@ -364,9 +552,51 @@
         "context_bridge": false
       },
       "default_models": {
-        "llm_models": ["qwen3:8b", "gpt-oss:20b", "gemma3"],
-        "ocr_models": ["qwen3-vl:8b", "gemma3"]
+        "llm_models": ["qwen3:8b", "gpt-oss:20b", "gemma3:4b"],
+        "ocr_models": ["qwen3-vl:8b", "gemma3:4b", "gemma3:12b"]
       },
+      "known_models": [
+        {
+          "id": "qwen3:8b",
+          "display_name": "Qwen3 8B",
+          "aliases": [],
+          "id_prefixes": ["qwen3:8b"],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Text-only Ollama model."]
+        },
+        {
+          "id": "gpt-oss:20b",
+          "display_name": "GPT-OSS 20B",
+          "aliases": [],
+          "id_prefixes": ["gpt-oss:20b"],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Text-only Ollama model."]
+        },
+        {
+          "id": "qwen3-vl:8b",
+          "display_name": "Qwen3-VL 8B",
+          "aliases": [],
+          "id_prefixes": ["qwen3-vl", "qwen3-vl:8b"],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Vision-capable Ollama model suitable for OCR."]
+        },
+        {
+          "id": "gemma3:4b",
+          "display_name": "Gemma 3 4B",
+          "aliases": ["gemma3"],
+          "id_prefixes": ["gemma3:4b", "gemma3:12b", "gemma3:27b"],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Gemma 3 multimodal models can process images in Ollama."]
+        },
+        {
+          "id": "embedding-models",
+          "display_name": "Embedding models",
+          "aliases": [],
+          "id_prefixes": ["nomic-embed", "mxbai-embed", "bge-", "snowflake-arctic-embed"],
+          "capabilities": { "llm": false, "ocr": false, "image_input": false },
+          "notes": ["Embedding-focused Ollama models are not valid ONESHIM LLM/OCR backends."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["model", "input", "instructions", "max_output_tokens", "temperature", "top_p", "text", "reasoning"],
@@ -399,6 +629,11 @@
         "llm_supported": true,
         "ocr_supported": true
       },
+      "availability_probe": {
+        "method": "GET",
+        "url": "http://localhost:11434/api/version",
+        "auth_scheme": "none"
+      },
       "references": [
         "https://docs.ollama.com/api/authentication",
         "https://docs.ollama.com/api/openai-compatibility",
@@ -427,6 +662,32 @@
         "llm_models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
         "ocr_models": []
       },
+      "known_models": [
+        {
+          "id": "gemini-2.5-pro",
+          "display_name": "Gemini 2.5 Pro",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Gemini CLI surface is LLM-only in ONESHIM."]
+        },
+        {
+          "id": "gemini-2.5-flash",
+          "display_name": "Gemini 2.5 Flash",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Gemini CLI surface is LLM-only in ONESHIM."]
+        },
+        {
+          "id": "gemini-3-flash-preview",
+          "display_name": "Gemini 3 Flash Preview",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": false, "image_input": false },
+          "notes": ["Gemini CLI surface is LLM-only in ONESHIM."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["model", "prompt"],
@@ -473,6 +734,40 @@
         "llm_models": ["gpt-5-mini", "gpt-5.4"],
         "ocr_models": ["gpt-5-mini"]
       },
+      "known_models": [
+        {
+          "id": "gpt-5-mini",
+          "display_name": "GPT-5 Mini",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Reasonable OpenAI-compatible default for both LLM and multimodal OCR."]
+        },
+        {
+          "id": "gpt-5.4",
+          "display_name": "GPT-5.4",
+          "aliases": [],
+          "id_prefixes": [],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["OpenAI-compatible advanced model when the upstream supports it."]
+        },
+        {
+          "id": "vision-compatible-gateways",
+          "display_name": "Known multimodal OpenAI-compatible models",
+          "aliases": [],
+          "id_prefixes": ["gpt-4o", "claude-", "qwen2.5-vl", "qwen3-vl", "llava", "bakllava", "moondream", "gemma3"],
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Common multimodal models exposed through OpenAI-compatible gateways."]
+        },
+        {
+          "id": "non-generative-models",
+          "display_name": "Embedding and utility models",
+          "aliases": [],
+          "id_prefixes": ["text-embedding-", "text-similarity-", "text-search-", "omni-moderation-", "text-moderation-", "whisper-", "tts-", "gpt-image-"],
+          "capabilities": { "llm": false, "ocr": false, "image_input": false },
+          "notes": ["Embedding, moderation, transcription, and image-generation models must not be used as ONESHIM LLM/OCR backends."]
+        }
+      ],
       "parameter_profiles": {
         "llm": {
           "supported": ["model", "messages", "temperature", "top_p", "max_tokens", "tools", "tool_choice", "response_format"],

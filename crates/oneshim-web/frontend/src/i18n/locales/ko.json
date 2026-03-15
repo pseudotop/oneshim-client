@@ -581,7 +581,10 @@
     "pathRequirementsNone": "추가 필수 조건 없음",
     "pathNextStepLabel": "준비 상태",
     "requirementOsSecretStore": "OS 비밀 저장소",
+    "requirementLocalServer": "{{service}} 로컬 서버",
     "requirementCli": "{{tool}} CLI",
+    "requirementLocalService": "{{service}} 로컬 서비스",
+    "requirementEndpoint": "{{target}} 엔드포인트",
     "preferredCliTitle": "권장 product-backed 경로",
     "preferredCliDescription": "인증과 구독 권한을 설치된 provider CLI에 계속 맡기려면 {{surface}}를 사용하세요.",
     "switchToPreferredCli": "권장 CLI 경로 사용",
@@ -654,6 +657,9 @@
     "backendLegacyConfig": "config 파일",
     "backendUnavailable": "사용할 수 없는 백엔드",
     "model": "모델",
+    "modelSelectionUnsupportedSurface": "이 surface는 모델을 명시적으로 선택하지 않습니다. ONESHIM은 surface의 기본 OCR 또는 provider 기본 경로를 사용합니다.",
+    "ocrModelUnsupported": "선택한 모델은 이 surface에서 이미지 기반 OCR을 지원하는 것으로 확인되지 않았습니다. 호환되는 멀티모달 모델을 선택하세요.",
+    "llmModelUnsupported": "선택한 모델은 이 LLM surface와 호환되는 것으로 확인되지 않았습니다. 선택한 실행 경로에 맞는 모델을 고르세요.",
     "timeoutSecs": "타임아웃 (초)",
     "providerType": "프로바이더 유형",
     "providerSurfaceLabel": "프로바이더 surface",
@@ -736,6 +742,13 @@
             "auth_required": "Gemini CLI는 설치되어 있지만 아직 인증되지 않았습니다. 먼저 provider-owned CLI 로그인 흐름을 완료한 뒤 이 패널로 돌아오세요.",
             "partially_available": "Gemini CLI가 감지되었습니다. CLI가 인증되어 있고 요청한 workflow가 지원되면 ONESHIM은 설치된 provider-owned CLI 경로를 우선 사용할 수 있습니다.",
             "unavailable": "Gemini CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다."
+          }
+        },
+        "ollama": {
+          "local_http": {
+            "available": "구성된 로컬 HTTP 포트에서 Ollama에 접근할 수 있습니다. ONESHIM은 이 self-hosted 엔드포인트를 직접 호출할 수 있습니다.",
+            "partially_available": "Ollama에 대한 로컬 준비 상태 점검을 완료하지 못했습니다. 로컬 서버와 엔드포인트 구성을 확인하세요.",
+            "unavailable": "구성된 로컬 HTTP 포트에서 Ollama에 접근할 수 없습니다. 이 self-hosted surface를 사용하기 전에 로컬 서버를 시작하세요."
           }
         }
       }
