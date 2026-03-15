@@ -656,6 +656,24 @@ export interface SecretBackendCapabilities {
   fallback_backend_kind: string
 }
 
+export type FeatureMaturity = 'stable' | 'beta' | 'experimental' | 'deprecated'
+
+export type FeatureAvailability = 'available' | 'unavailable' | 'partially_available'
+
+export interface FeatureCapability {
+  feature_id: string
+  maturity: FeatureMaturity
+  availability: FeatureAvailability
+  preferred: boolean
+  requires: string[]
+  status_reason: string | null
+  status_copy_key: string | null
+}
+
+export interface FeatureCapabilitySnapshot {
+  features: FeatureCapability[]
+}
+
 export interface AutomationStatus {
   enabled: boolean
   sandbox_enabled: boolean

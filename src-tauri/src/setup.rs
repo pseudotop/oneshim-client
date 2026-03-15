@@ -44,6 +44,7 @@ use crate::cli_subscription_bridge::{
     default_context_export_path, should_autoinstall_bridge_files, should_include_user_scope,
     sync_bridge_files,
 };
+use crate::feature_capabilities::{build_feature_capability_snapshot, FeatureCapabilityState};
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
 use crate::provider_adapters::ExternalOcrPrivacyGuard;
@@ -664,6 +665,8 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         CredentialBackendKind::Unavailable,
         CredentialBackendKind::LegacyConfig,
     ));
+    let feature_capability_state =
+        FeatureCapabilityState(build_feature_capability_snapshot(&secret_backend_state.0));
 
     app.manage(AppState {
         runtime_handle: handle,
@@ -679,6 +682,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(oauth_state);
     app.manage(oauth_coordinator_state);
     app.manage(secret_backend_state);
+    app.manage(feature_capability_state);
 
     // 12. 시스템 트레이 초기화
     crate::tray::setup_tray(app)?;

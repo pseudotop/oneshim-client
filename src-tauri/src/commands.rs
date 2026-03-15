@@ -4,6 +4,7 @@ use std::sync::atomic::Ordering;
 use sysinfo::System;
 use tauri::command;
 
+use crate::feature_capabilities::{FeatureCapabilitySnapshot, FeatureCapabilityState};
 use crate::setup::{
     AppState, OAuthCoordinatorState, OAuthState, SecretBackendCapabilities, SecretBackendState,
 };
@@ -231,6 +232,14 @@ pub async fn get_web_port(state: tauri::State<'_, AppState>) -> Result<u16, Stri
 pub async fn get_secret_backend_capabilities(
     state: tauri::State<'_, SecretBackendState>,
 ) -> Result<SecretBackendCapabilities, String> {
+    Ok(state.0.clone())
+}
+
+/// Generic feature capability + maturity snapshot for desktop runtime surfaces.
+#[command]
+pub async fn get_feature_capabilities(
+    state: tauri::State<'_, FeatureCapabilityState>,
+) -> Result<FeatureCapabilitySnapshot, String> {
     Ok(state.0.clone())
 }
 

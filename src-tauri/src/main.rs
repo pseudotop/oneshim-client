@@ -18,6 +18,7 @@ mod commands;
 mod credential_migration;
 #[cfg(feature = "server")]
 mod event_bus;
+mod feature_capabilities;
 mod focus_analyzer;
 mod focus_probe_adapter;
 mod integrity_guard;
@@ -106,6 +107,7 @@ fn main() {
             commands::get_automation_status,
             commands::get_web_port,
             commands::get_secret_backend_capabilities,
+            commands::get_feature_capabilities,
             commands::get_allowed_setting_keys,
             commands::oauth_start_flow,
             commands::oauth_flow_status,

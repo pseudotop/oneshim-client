@@ -645,6 +645,38 @@
     "reauthRequired": "Re-authentication required",
     "reauthDescription": "Your OAuth session has expired. Please reconnect."
   },
+  "featureCapability": {
+    "preferredPath": "Preferred path",
+    "availability": {
+      "available": "Available",
+      "unavailable": "Unavailable",
+      "partially_available": "Partially available"
+    },
+    "maturity": {
+      "stable": "Stable",
+      "beta": "Beta",
+      "experimental": "Experimental",
+      "deprecated": "Deprecated"
+    },
+    "providerSurface": {
+      "openaiManagedOAuth": {
+        "available": "This compatibility path is available on this device. It is not the preferred setup path.",
+        "unavailable": "Direct OAuth compatibility is unavailable on this device. Desktop keychain support is required."
+      },
+      "openaiSubprocessCli": {
+        "partiallyAvailable": "Codex CLI was detected. ONESHIM will prefer provider-owned CLI integration for product-backed access as subprocess support is completed.",
+        "unavailable": "Codex CLI is not installed or not available on PATH. Install and sign in through the provider CLI for the preferred product-backed path."
+      },
+      "anthropicSubprocessCli": {
+        "partiallyAvailable": "Claude Code CLI was detected. Provider-owned CLI integration is the preferred path for product-backed access as subprocess support is completed.",
+        "unavailable": "Claude Code CLI is not installed or not available on PATH."
+      },
+      "googleSubprocessCli": {
+        "partiallyAvailable": "Gemini CLI was detected. Provider-owned CLI integration is the preferred path for product-backed access as subprocess support is completed.",
+        "unavailable": "Gemini CLI is not installed or not available on PATH."
+      }
+    }
+  },
   "focus": {
     "title": "Focus",
     "pageTitle": "Focus Analysis",

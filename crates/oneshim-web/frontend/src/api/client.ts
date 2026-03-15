@@ -22,6 +22,7 @@ import type {
   ExecuteSceneActionResponse,
   ExportDataType,
   ExportFormat,
+  FeatureCapabilitySnapshot,
   FocusMetricsResponse,
   Frame,
   HeatmapResponse,
@@ -716,4 +717,8 @@ export async function oauthConnectionStatus(providerId: string): Promise<OAuthCo
 
 export async function fetchSecretBackendCapabilities(): Promise<SecretBackendCapabilities> {
   return tauriInvoke<SecretBackendCapabilities>('get_secret_backend_capabilities')
+}
+
+export async function fetchFeatureCapabilities(): Promise<FeatureCapabilitySnapshot> {
+  return tauriInvoke<FeatureCapabilitySnapshot>('get_feature_capabilities')
 }

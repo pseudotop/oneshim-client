@@ -645,6 +645,38 @@
     "reauthRequired": "재인증 필요",
     "reauthDescription": "OAuth 세션이 만료되었습니다. 다시 연결해 주세요."
   },
+  "featureCapability": {
+    "preferredPath": "권장 경로",
+    "availability": {
+      "available": "사용 가능",
+      "unavailable": "사용 불가",
+      "partially_available": "부분적으로 사용 가능"
+    },
+    "maturity": {
+      "stable": "안정",
+      "beta": "베타",
+      "experimental": "실험적",
+      "deprecated": "지원 종료 예정"
+    },
+    "providerSurface": {
+      "openaiManagedOAuth": {
+        "available": "이 호환 경로는 현재 이 기기에서 사용할 수 있습니다. 다만 권장 기본 설정 경로는 아닙니다.",
+        "unavailable": "직접 OAuth 호환 경로를 현재 이 기기에서 사용할 수 없습니다. 데스크톱 키체인 지원이 필요합니다."
+      },
+      "openaiSubprocessCli": {
+        "partiallyAvailable": "Codex CLI가 감지되었습니다. subprocess 지원이 완성되면 ONESHIM은 product-backed 접근에 대해 provider-owned CLI 통합을 우선 경로로 사용합니다.",
+        "unavailable": "Codex CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다. 권장 product-backed 경로를 위해 provider CLI를 설치하고 로그인하세요."
+      },
+      "anthropicSubprocessCli": {
+        "partiallyAvailable": "Claude Code CLI가 감지되었습니다. subprocess 지원이 완성되면 provider-owned CLI 통합이 product-backed 접근의 권장 경로가 됩니다.",
+        "unavailable": "Claude Code CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다."
+      },
+      "googleSubprocessCli": {
+        "partiallyAvailable": "Gemini CLI가 감지되었습니다. subprocess 지원이 완성되면 provider-owned CLI 통합이 product-backed 접근의 권장 경로가 됩니다.",
+        "unavailable": "Gemini CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다."
+      }
+    }
+  },
   "focus": {
     "title": "집중도",
     "pageTitle": "집중도 분석",

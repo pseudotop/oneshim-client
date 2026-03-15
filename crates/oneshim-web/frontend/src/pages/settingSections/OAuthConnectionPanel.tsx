@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { OAuthConnectionStatus, OAuthFlowStatus } from '../../api/client'
+import type { FeatureCapabilitySnapshot, OAuthConnectionStatus, OAuthFlowStatus } from '../../api/client'
 import {
+  fetchFeatureCapabilities,
   fetchSecretBackendCapabilities,
   oauthCancelFlow,
   oauthConnectionStatus,
@@ -9,7 +10,8 @@ import {
   oauthRevoke,
   oauthStartFlow,
 } from '../../api/client'
-import { Button, Card } from '../../components/ui'
+import { Badge, Button, Card } from '../../components/ui'
+import { findFeatureCapability, maturityBadgeColor } from '../../features/featureCapabilities'
 import { isOAuthPanelAvailable } from './oauth-panel-support'
 
 type ExpiryLevel = 'ok' | 'warning' | 'critical' | 'none';
@@ -49,6 +51,7 @@ interface OAuthConnectionPanelProps {
 export default function OAuthConnectionPanel({ providerId, providerName }: OAuthConnectionPanelProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<PanelState>({ phase: 'loading' })
+  const [featureSnapshot, setFeatureSnapshot] = useState<FeatureCapabilitySnapshot | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const clearPoll = useCallback(() => {
@@ -88,9 +91,28 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
       return
     }
     try {
-      const capabilities = await fetchSecretBackendCapabilities()
-      if (!capabilities.oauth_available || !capabilities.os_secret_store_available) {
-        setState({ phase: 'error', message: t('settingsOAuth.unavailable') })
+      const [capabilities, features] = await Promise.all([
+        fetchSecretBackendCapabilities(),
+        fetchFeatureCapabilities(),
+      ])
+      setFeatureSnapshot(features)
+
+      const oauthFeature = findFeatureCapability(
+        features,
+        `provider_surface.${providerId}.managed_oauth`,
+      )
+      if (
+        !capabilities.oauth_available ||
+        !capabilities.os_secret_store_available ||
+        oauthFeature?.availability === 'unavailable'
+      ) {
+        setState({
+          phase: 'error',
+          message:
+            oauthFeature?.status_copy_key != null
+              ? t(oauthFeature.status_copy_key)
+              : t('settingsOAuth.unavailable'),
+        })
         return
       }
       const status = await oauthConnectionStatus(providerId)
@@ -103,6 +125,20 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
       setState(toErrorState(err))
     }
   }, [providerId, t, toErrorState])
+
+  const oauthFeature = findFeatureCapability(
+    featureSnapshot,
+    `provider_surface.${providerId}.managed_oauth`,
+  )
+  const preferredCliFeature = findFeatureCapability(
+    featureSnapshot,
+    `provider_surface.${providerId}.subprocess_cli`,
+  )
+  const maturityLabel = oauthFeature
+    ? t(`featureCapability.maturity.${oauthFeature.maturity}`)
+    : t('settingsOAuth.experimental')
+  const preferredCliMessage =
+    preferredCliFeature?.status_copy_key != null ? t(preferredCliFeature.status_copy_key) : null
 
   useEffect(() => {
     refreshStatus()
@@ -185,10 +221,24 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
         <h4 className="font-medium text-content-strong text-sm">
           {providerName} {t('settingsOAuth.title')}
         </h4>
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 text-xs dark:bg-amber-900/30 dark:text-amber-300">
-          {t('settingsOAuth.experimental')}
-        </span>
+        <Badge color={oauthFeature ? maturityBadgeColor(oauthFeature.maturity) : 'warning'} size="sm">
+          {maturityLabel}
+        </Badge>
       </div>
+
+      {preferredCliFeature?.preferred && preferredCliMessage && (
+        <div className="space-y-1 rounded-lg border border-muted bg-surface-muted p-3">
+          <div className="flex items-center gap-2">
+            <Badge color="info" size="sm">
+              {t('featureCapability.preferredPath')}
+            </Badge>
+            <span className="text-content-secondary text-xs">
+              {t(`featureCapability.availability.${preferredCliFeature.availability}`)}
+            </span>
+          </div>
+          <p className="text-content-secondary text-xs">{preferredCliMessage}</p>
+        </div>
+      )}
 
       {state.phase === 'loading' && <p className="text-content-secondary text-sm">{t('settingsOAuth.loading')}</p>}
 
