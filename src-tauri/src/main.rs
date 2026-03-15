@@ -11,6 +11,7 @@
 mod auth_cli;
 mod automation_runtime;
 mod autostart;
+mod bridge_cli;
 mod cli_subscription_bridge;
 mod commands;
 #[cfg(any(feature = "server", test))]
@@ -63,6 +64,12 @@ fn main() {
         let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from("."));
         let exit_code = secret_cli::run(&args[2..], &config_dir);
+        std::process::exit(exit_code);
+    }
+    if args.len() > 1 && args[1] == "bridge" {
+        let data_dir = oneshim_core::config_manager::ConfigManager::data_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let exit_code = bridge_cli::run(&args[2..], &data_dir);
         std::process::exit(exit_code);
     }
 
