@@ -145,6 +145,7 @@ async fn persist_api_key_binding(
         }),
         projection_enabled: false,
     });
+    endpoint.api_key.clear();
 
     Ok(())
 }
@@ -1057,7 +1058,7 @@ mod tests {
         let saved = config_manager.get();
         let endpoint = saved.ai_provider.llm_api.expect("saved llm endpoint");
         let binding = endpoint.credential.expect("credential binding");
-        assert_eq!(endpoint.api_key, "sk-secret-123456");
+        assert_eq!(endpoint.api_key, "");
         assert_eq!(binding.backend_kind, CredentialBackendKind::OsSecretStore);
         assert_eq!(binding.auth_mode, CredentialAuthMode::ApiKey);
         let secret_ref = binding.secret_ref.expect("secret ref");

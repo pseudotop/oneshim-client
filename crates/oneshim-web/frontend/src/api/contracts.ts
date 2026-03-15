@@ -212,6 +212,8 @@ export interface ProviderModelsRequest {
   provider_type: string
   api_key: string
   endpoint?: string | null
+  surface?: string | null
+  use_saved_secret?: boolean
 }
 
 export interface ProviderModelsResponse {

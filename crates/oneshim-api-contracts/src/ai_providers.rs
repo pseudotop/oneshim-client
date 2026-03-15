@@ -36,6 +36,10 @@ pub struct ProviderModelsRequest {
     pub provider_type: String,
     pub api_key: String,
     pub endpoint: Option<String>,
+    #[serde(default)]
+    pub surface: Option<String>,
+    #[serde(default)]
+    pub use_saved_secret: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

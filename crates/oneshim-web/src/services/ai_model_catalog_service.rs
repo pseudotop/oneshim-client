@@ -1,26 +1,23 @@
 use std::time::Duration;
 
 use oneshim_api_contracts::ai_providers::{ProviderModelsRequest, ProviderModelsResponse};
-use oneshim_core::config::AiProviderType;
+use oneshim_core::config::{AiProviderConfig, AiProviderType, ExternalApiEndpoint};
 use serde_json::Value;
 
 use crate::error::ApiError;
 use crate::services::ai_provider_preset_service;
 use crate::services::settings_service::is_masked_key;
+use crate::AppState;
 
 const MODEL_DISCOVERY_TIMEOUT_SECS: u64 = 20;
 const MAX_ERROR_SNIPPET_CHARS: usize = 220;
 
 pub async fn fetch_provider_models(
     request: &ProviderModelsRequest,
+    state: &AppState,
 ) -> Result<ProviderModelsResponse, ApiError> {
     let provider_type = ai_provider_preset_service::resolve_provider_type(&request.provider_type)?;
-    let api_key = request.api_key.trim();
-    if api_key.is_empty() || is_masked_key(api_key) {
-        return Err(ApiError::BadRequest(
-            "A full API key is required to fetch model catalog.".to_string(),
-        ));
-    }
+    let api_key = resolve_model_discovery_api_key(request, state, provider_type).await?;
 
     let endpoint = resolve_models_endpoint(provider_type, request.endpoint.as_deref());
     if let Some(notice) =
@@ -41,11 +38,11 @@ pub async fn fetch_provider_models(
     match provider_type {
         AiProviderType::Anthropic => {
             builder = builder
-                .header("x-api-key", api_key)
+                .header("x-api-key", &api_key)
                 .header("anthropic-version", "2023-06-01");
         }
         AiProviderType::Google => {
-            builder = builder.header("x-goog-api-key", api_key);
+            builder = builder.header("x-goog-api-key", &api_key);
         }
         AiProviderType::OpenAi | AiProviderType::Generic => {
             builder = builder.header("Authorization", format!("Bearer {api_key}"));
@@ -165,6 +162,110 @@ fn parse_standard_models(value: &Value) -> Result<Vec<String>, ApiError> {
         .collect::<Vec<_>>();
 
     Ok(models)
+}
+
+async fn resolve_model_discovery_api_key(
+    request: &ProviderModelsRequest,
+    state: &AppState,
+    provider_type: AiProviderType,
+) -> Result<String, ApiError> {
+    let api_key = request.api_key.trim();
+    if !api_key.is_empty() && !is_masked_key(api_key) {
+        return Ok(api_key.to_string());
+    }
+
+    if request.use_saved_secret {
+        if let Some(saved) =
+            resolve_saved_model_discovery_api_key(request, state, provider_type).await?
+        {
+            return Ok(saved);
+        }
+    }
+
+    Err(ApiError::BadRequest(
+        "A full API key is required to fetch model catalog.".to_string(),
+    ))
+}
+
+async fn resolve_saved_model_discovery_api_key(
+    request: &ProviderModelsRequest,
+    state: &AppState,
+    provider_type: AiProviderType,
+) -> Result<Option<String>, ApiError> {
+    let Some(config_manager) = state.config_manager.as_ref() else {
+        return Ok(None);
+    };
+    let Some(surface) = parse_model_surface(request.surface.as_deref()) else {
+        return Ok(None);
+    };
+
+    let saved_config = config_manager.get();
+    let Some(saved_endpoint) = endpoint_for_surface(&saved_config.ai_provider, surface) else {
+        return Ok(None);
+    };
+
+    if saved_endpoint.provider_type != provider_type {
+        return Ok(None);
+    }
+
+    if let Some(request_endpoint) = request.endpoint.as_deref() {
+        let request_endpoint = normalize_optional_endpoint(request_endpoint);
+        let saved_endpoint_normalized = normalize_optional_endpoint(&saved_endpoint.endpoint);
+        if request_endpoint != saved_endpoint_normalized {
+            return Ok(None);
+        }
+    }
+
+    if let (Some(secret_store), Some(secret_ref)) = (
+        state.secret_store.as_ref(),
+        saved_endpoint
+            .credential
+            .as_ref()
+            .and_then(|binding| binding.secret_ref.as_ref()),
+    ) {
+        if let Some(secret) = secret_store
+            .retrieve(&secret_ref.namespace, &secret_ref.key)
+            .await
+            .map_err(|e| {
+                ApiError::Internal(format!("Failed to read stored model discovery secret: {e}"))
+            })?
+        {
+            if !secret.trim().is_empty() {
+                return Ok(Some(secret));
+            }
+        }
+    }
+
+    let plaintext = saved_endpoint.api_key.trim();
+    if !plaintext.is_empty() {
+        return Ok(Some(plaintext.to_string()));
+    }
+
+    Ok(None)
+}
+
+#[derive(Clone, Copy)]
+enum ModelSurface {
+    Ocr,
+    Llm,
+}
+
+fn parse_model_surface(value: Option<&str>) -> Option<ModelSurface> {
+    match value?.trim() {
+        "ocr_api" => Some(ModelSurface::Ocr),
+        "llm_api" => Some(ModelSurface::Llm),
+        _ => None,
+    }
+}
+
+fn endpoint_for_surface(
+    config: &AiProviderConfig,
+    surface: ModelSurface,
+) -> Option<&ExternalApiEndpoint> {
+    match surface {
+        ModelSurface::Ocr => config.ocr_api.as_ref(),
+        ModelSurface::Llm => config.llm_api.as_ref(),
+    }
 }
 
 fn resolve_models_endpoint(provider_type: AiProviderType, endpoint: Option<&str>) -> String {
@@ -287,6 +388,92 @@ fn truncate_error(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AppState;
+    use async_trait::async_trait;
+    use oneshim_core::config::{
+        AiProviderConfig, AppConfig, CredentialAuthMode, CredentialBackendKind, CredentialBinding,
+        ExternalApiEndpoint, SecretRef,
+    };
+    use oneshim_core::config_manager::ConfigManager;
+    use oneshim_core::error::CoreError;
+    use oneshim_core::ports::secret_store::SecretStore;
+    use oneshim_storage::sqlite::SqliteStorage;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use tempfile::TempDir;
+    use tokio::sync::broadcast;
+
+    struct TestSecretStore {
+        values: Mutex<HashMap<(String, String), String>>,
+    }
+
+    impl TestSecretStore {
+        fn new() -> Self {
+            Self {
+                values: Mutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl SecretStore for TestSecretStore {
+        async fn store(&self, namespace: &str, key: &str, value: &str) -> Result<(), CoreError> {
+            self.values
+                .lock()
+                .unwrap()
+                .insert((namespace.to_string(), key.to_string()), value.to_string());
+            Ok(())
+        }
+
+        async fn retrieve(&self, namespace: &str, key: &str) -> Result<Option<String>, CoreError> {
+            Ok(self
+                .values
+                .lock()
+                .unwrap()
+                .get(&(namespace.to_string(), key.to_string()))
+                .cloned())
+        }
+
+        async fn delete(&self, namespace: &str, key: &str) -> Result<(), CoreError> {
+            self.values
+                .lock()
+                .unwrap()
+                .remove(&(namespace.to_string(), key.to_string()));
+            Ok(())
+        }
+
+        async fn delete_namespace(&self, namespace: &str) -> Result<(), CoreError> {
+            self.values
+                .lock()
+                .unwrap()
+                .retain(|(existing_namespace, _), _| existing_namespace != namespace);
+            Ok(())
+        }
+    }
+
+    fn test_state_with_saved_secret(
+        config: AppConfig,
+        secret_store: Arc<dyn SecretStore>,
+    ) -> AppState {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let config_path = temp_dir.path().join("config.json");
+        let config_manager = ConfigManager::with_path(config_path).expect("config manager");
+        config_manager.update(config).expect("save config");
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("sqlite"));
+        let (event_tx, _) = broadcast::channel(8);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: Some(config_manager),
+            secret_store: Some(secret_store),
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            update_control: None,
+        }
+    }
 
     #[test]
     fn derives_google_models_endpoint_from_generate_content_url() {
@@ -335,5 +522,79 @@ mod tests {
         let value: Value = serde_json::from_str(body).unwrap();
         let parsed = parse_standard_models(&value).unwrap();
         assert_eq!(parsed.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn resolve_model_discovery_api_key_uses_saved_secret_binding() {
+        let secret_store = Arc::new(TestSecretStore::new()) as Arc<dyn SecretStore>;
+        secret_store
+            .store("provider/openai/llm", "api_key", "sk-saved")
+            .await
+            .unwrap();
+
+        let mut config = AppConfig::default_config();
+        config.ai_provider = AiProviderConfig {
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.openai.com/v1".to_string(),
+                api_key: String::new(),
+                model: Some("gpt-4.1-mini".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                credential: Some(CredentialBinding {
+                    auth_mode: CredentialAuthMode::ApiKey,
+                    backend_kind: CredentialBackendKind::OsSecretStore,
+                    secret_ref: Some(SecretRef {
+                        namespace: "provider/openai/llm".to_string(),
+                        key: "api_key".to_string(),
+                    }),
+                    projection_enabled: false,
+                }),
+            }),
+            ..AiProviderConfig::default()
+        };
+        let state = test_state_with_saved_secret(config, secret_store);
+        let request = ProviderModelsRequest {
+            provider_type: "OpenAi".to_string(),
+            api_key: String::new(),
+            endpoint: Some("https://api.openai.com/v1".to_string()),
+            surface: Some("llm_api".to_string()),
+            use_saved_secret: true,
+        };
+
+        let resolved = resolve_model_discovery_api_key(&request, &state, AiProviderType::OpenAi)
+            .await
+            .unwrap();
+        assert_eq!(resolved, "sk-saved");
+    }
+
+    #[tokio::test]
+    async fn resolve_model_discovery_api_key_rejects_endpoint_mismatch_for_saved_secret() {
+        let secret_store = Arc::new(TestSecretStore::new()) as Arc<dyn SecretStore>;
+        let mut config = AppConfig::default_config();
+        config.ai_provider = AiProviderConfig {
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.openai.com/v1".to_string(),
+                api_key: "sk-legacy".to_string(),
+                model: Some("gpt-4.1-mini".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                credential: None,
+            }),
+            ..AiProviderConfig::default()
+        };
+        let state = test_state_with_saved_secret(config, secret_store);
+        let request = ProviderModelsRequest {
+            provider_type: "OpenAi".to_string(),
+            api_key: String::new(),
+            endpoint: Some("https://proxy.example.com/v1".to_string()),
+            surface: Some("llm_api".to_string()),
+            use_saved_secret: true,
+        };
+
+        let resolved =
+            resolve_saved_model_discovery_api_key(&request, &state, AiProviderType::OpenAi)
+                .await
+                .unwrap();
+        assert!(resolved.is_none());
     }
 }

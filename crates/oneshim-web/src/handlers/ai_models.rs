@@ -6,9 +6,9 @@ use crate::services::ai_model_catalog_service;
 use crate::AppState;
 
 pub async fn discover_provider_models(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(request): Json<ProviderModelsRequest>,
 ) -> Result<Json<ProviderModelsResponse>, ApiError> {
-    let response = ai_model_catalog_service::fetch_provider_models(&request).await?;
+    let response = ai_model_catalog_service::fetch_provider_models(&request, &state).await?;
     Ok(Json(response))
 }

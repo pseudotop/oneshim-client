@@ -438,7 +438,8 @@ export default function Settings() {
       showToast('error', t('settingsAutomation.modelDiscoveryMissingConfig'), 5000)
       return
     }
-    if (!current.api_key_masked?.trim()) {
+    const useSavedSecret = current.has_secret && !current.api_key_masked?.trim()
+    if (!current.api_key_masked?.trim() && !useSavedSecret) {
       showToast('error', t('settingsAutomation.modelDiscoveryMissingKey'), 5000)
       return
     }
@@ -449,6 +450,8 @@ export default function Settings() {
         provider_type: current.provider_type ?? 'Generic',
         api_key: current.api_key_masked,
         endpoint: current.endpoint || null,
+        surface: which,
+        use_saved_secret: useSavedSecret,
       })
       handleModelDiscoveryResult(which, current.model, result)
     } catch (error) {
