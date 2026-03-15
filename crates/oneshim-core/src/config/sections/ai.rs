@@ -74,7 +74,7 @@ impl AiProviderConfig {
                     || self.llm_provider == LlmProviderType::Remote
                 {
                     return Err(CoreError::Config(
-                        "Provider subscription (CLI) mode requires local OCR/LLM providers instead of remote providers."
+                        "Provider subscription (CLI) mode does not use remote HTTP OCR/LLM providers. Keep local OCR/LLM selected; supported LLM workflows will use installed provider CLIs at runtime."
                             .to_string(),
                     ));
                 }

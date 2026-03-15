@@ -1,8 +1,9 @@
 use serde::Serialize;
-use std::env;
-use std::path::{Path, PathBuf};
 
 use crate::setup::SecretBackendCapabilities;
+use crate::subprocess_provider::{
+    detect_known_cli_surfaces, DetectedSubprocessCli, SubprocessCliSurfaceId,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -43,29 +44,24 @@ pub struct FeatureCapabilityState(pub FeatureCapabilitySnapshot);
 pub fn build_feature_capability_snapshot(
     secret_backend: &SecretBackendCapabilities,
 ) -> FeatureCapabilitySnapshot {
-    let codex_cli = detect_cli(&["codex"]);
-    let claude_code_cli = detect_cli(&["claude", "claude-code"]);
-    let gemini_cli = detect_cli(&["gemini", "gemini-cli"]);
+    let detected_surfaces = detect_known_cli_surfaces();
 
     FeatureCapabilitySnapshot {
         features: vec![
             managed_oauth_feature(secret_backend),
             subprocess_cli_feature(
-                "openai",
-                "codex",
-                codex_cli,
+                SubprocessCliSurfaceId::OpenAiCodex,
+                &detected_surfaces,
                 "featureCapability.providerSurface.openaiSubprocessCli",
             ),
             subprocess_cli_feature(
-                "anthropic",
-                "claude-code",
-                claude_code_cli,
+                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                &detected_surfaces,
                 "featureCapability.providerSurface.anthropicSubprocessCli",
             ),
             subprocess_cli_feature(
-                "google",
-                "gemini-cli",
-                gemini_cli,
+                SubprocessCliSurfaceId::GoogleGeminiCli,
+                &detected_surfaces,
                 "featureCapability.providerSurface.googleSubprocessCli",
             ),
         ],
@@ -98,14 +94,16 @@ fn managed_oauth_feature(secret_backend: &SecretBackendCapabilities) -> FeatureC
 }
 
 fn subprocess_cli_feature(
-    vendor_id: &str,
-    cli_id: &str,
-    detection: Option<PathBuf>,
+    surface_id: SubprocessCliSurfaceId,
+    detected_surfaces: &[DetectedSubprocessCli],
     copy_key_prefix: &str,
 ) -> FeatureCapability {
-    let detected = detection.is_some();
+    let detected = detected_surfaces
+        .iter()
+        .any(|surface| surface.surface_id == surface_id);
+    let runtime_supported = surface_id.runtime_supported();
     FeatureCapability {
-        feature_id: format!("provider_surface.{vendor_id}.subprocess_cli"),
+        feature_id: surface_id.feature_id().to_string(),
         maturity: FeatureMaturity::Experimental,
         availability: if detected {
             FeatureAvailability::PartiallyAvailable
@@ -113,9 +111,13 @@ fn subprocess_cli_feature(
             FeatureAvailability::Unavailable
         },
         preferred: true,
-        requires: vec![format!("cli:{cli_id}")],
+        requires: vec![format!("cli:{}", surface_id.cli_id())],
         status_reason: Some(if detected {
-            "cli_detected_runtime_pending".to_string()
+            if runtime_supported {
+                "cli_detected_auth_unverified".to_string()
+            } else {
+                "cli_detected_runtime_pending".to_string()
+            }
         } else {
             "cli_not_installed".to_string()
         }),
@@ -124,74 +126,6 @@ fn subprocess_cli_feature(
         } else {
             format!("{copy_key_prefix}.unavailable")
         }),
-    }
-}
-
-fn detect_cli(candidates: &[&str]) -> Option<PathBuf> {
-    candidates
-        .iter()
-        .find_map(|candidate| find_executable(candidate))
-}
-
-fn find_executable(name: &str) -> Option<PathBuf> {
-    if name.contains(std::path::MAIN_SEPARATOR) {
-        let path = PathBuf::from(name);
-        return is_executable(&path).then_some(path);
-    }
-
-    let path_var = env::var_os("PATH")?;
-    #[cfg(windows)]
-    let exts: Vec<String> = env::var_os("PATHEXT")
-        .map(|value| {
-            env::split_paths(&PathBuf::from(value))
-                .map(|path| path.to_string_lossy().to_string())
-                .collect()
-        })
-        .unwrap_or_else(|| {
-            vec![
-                ".COM".to_string(),
-                ".EXE".to_string(),
-                ".BAT".to_string(),
-                ".CMD".to_string(),
-            ]
-        });
-
-    for dir in env::split_paths(&path_var) {
-        let base = dir.join(name);
-        if is_executable(&base) {
-            return Some(base);
-        }
-        #[cfg(windows)]
-        {
-            for ext in &exts {
-                let candidate = dir.join(format!("{name}{ext}"));
-                if is_executable(&candidate) {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-
-    None
-}
-
-fn is_executable(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(metadata) = std::fs::metadata(path) {
-            return metadata.permissions().mode() & 0o111 != 0;
-        }
-        false
-    }
-
-    #[cfg(not(unix))]
-    {
-        true
     }
 }
 
@@ -220,9 +154,11 @@ mod tests {
     #[test]
     fn subprocess_cli_feature_is_preferred_but_partial_when_cli_detected() {
         let feature = subprocess_cli_feature(
-            "openai",
-            "codex",
-            Some(PathBuf::from("/usr/bin/codex")),
+            SubprocessCliSurfaceId::OpenAiCodex,
+            &[DetectedSubprocessCli {
+                surface_id: SubprocessCliSurfaceId::OpenAiCodex,
+                executable_path: "/usr/bin/codex".into(),
+            }],
             "featureCapability.providerSurface.openaiSubprocessCli",
         );
         assert_eq!(
@@ -231,6 +167,10 @@ mod tests {
         );
         assert!(feature.preferred);
         assert_eq!(feature.requires, vec!["cli:codex".to_string()]);
+        assert_eq!(
+            feature.status_reason.as_deref(),
+            Some("cli_detected_auth_unverified")
+        );
     }
 
     #[test]

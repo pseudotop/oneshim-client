@@ -664,15 +664,15 @@
         "unavailable": "Direct OAuth compatibility is unavailable on this device. Desktop keychain support is required."
       },
       "openaiSubprocessCli": {
-        "partiallyAvailable": "Codex CLI was detected. ONESHIM will prefer provider-owned CLI integration for product-backed access as subprocess support is completed.",
+        "partiallyAvailable": "Codex CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
         "unavailable": "Codex CLI is not installed or not available on PATH. Install and sign in through the provider CLI for the preferred product-backed path."
       },
       "anthropicSubprocessCli": {
-        "partiallyAvailable": "Claude Code CLI was detected. Provider-owned CLI integration is the preferred path for product-backed access as subprocess support is completed.",
+        "partiallyAvailable": "Claude Code CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
         "unavailable": "Claude Code CLI is not installed or not available on PATH."
       },
       "googleSubprocessCli": {
-        "partiallyAvailable": "Gemini CLI was detected. Provider-owned CLI integration is the preferred path for product-backed access as subprocess support is completed.",
+        "partiallyAvailable": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
         "unavailable": "Gemini CLI is not installed or not available on PATH."
       }
     }

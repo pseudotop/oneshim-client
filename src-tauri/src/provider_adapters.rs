@@ -6,12 +6,11 @@ use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::local_llm::LocalLlmProvider;
 use oneshim_core::config::PrivacyConfig;
 use oneshim_core::config::{
-    AiAccessMode, AiProviderConfig, LlmProviderType, OcrProviderType, PiiFilterLevel,
+    AiAccessMode, AiProviderConfig, AiProviderType, LlmProviderType, OcrProviderType,
+    PiiFilterLevel,
 };
 #[cfg(feature = "server")]
-use oneshim_core::config::{
-    AiProviderType, ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig,
-};
+use oneshim_core::config::{ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig};
 #[cfg(not(feature = "server"))]
 use oneshim_core::config::{ExternalDataPolicy, OcrValidationConfig};
 use oneshim_core::consent::ConsentManager;
@@ -36,7 +35,13 @@ use oneshim_vision::privacy_gateway::{PrivacyGateway, SanitizedImage};
 use std::path::PathBuf;
 use tokio::sync::RwLock;
 #[cfg(feature = "server")]
-use tracing::{debug, warn};
+use tracing::debug;
+use tracing::warn;
+
+use crate::subprocess_provider::{
+    detect_known_cli_surfaces, select_cli_surface_for_config, DetectedSubprocessCli,
+    SubprocessLlmProvider,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -309,14 +314,18 @@ pub fn resolve_ai_provider_adapters(
             ocr_fallback_reason: None,
             llm_fallback_reason: None,
         }),
-        AiAccessMode::ProviderSubscriptionCli => Ok(AiProviderAdapters {
-            ocr: Arc::new(LocalOcrProvider::new()),
-            llm: Arc::new(LocalLlmProvider::new()),
-            ocr_source: ProviderSource::CliSubscription,
-            llm_source: ProviderSource::CliSubscription,
-            ocr_fallback_reason: None,
-            llm_fallback_reason: None,
-        }),
+        AiAccessMode::ProviderSubscriptionCli => {
+            let (llm, llm_source, llm_fallback_reason) =
+                resolve_cli_subscription_llm_provider(config)?;
+            Ok(AiProviderAdapters {
+                ocr: Arc::new(LocalOcrProvider::new()),
+                llm,
+                ocr_source: ProviderSource::Local,
+                llm_source,
+                ocr_fallback_reason: None,
+                llm_fallback_reason,
+            })
+        }
         AiAccessMode::ProviderApiKey => {
             let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
                 config,
@@ -402,6 +411,73 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
         ProviderSource::Remote => ProviderSource::Platform,
         other => other,
     }
+}
+
+fn resolve_cli_subscription_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
+    let detected = detect_known_cli_surfaces();
+    resolve_cli_subscription_llm_provider_with_detected(config, &detected)
+}
+
+fn resolve_cli_subscription_llm_provider_with_detected(
+    config: &AiProviderConfig,
+    detected: &[DetectedSubprocessCli],
+) -> LlmProviderResolution {
+    if let Some(surface) = select_cli_surface_for_config(config, detected) {
+        return Ok((
+            Arc::new(SubprocessLlmProvider::new(surface, config)) as Arc<dyn LlmProvider>,
+            ProviderSource::CliSubscription,
+            None,
+        ));
+    }
+
+    let reason = cli_subscription_unavailable_reason(config, detected);
+    if config.fallback_to_local {
+        warn!(
+            fallback_reason = %reason,
+            "CLI subscription runtime unavailable, falling back to local rule-based LLM"
+        );
+        return Ok((
+            Arc::new(LocalLlmProvider::new()) as Arc<dyn LlmProvider>,
+            ProviderSource::LocalFallback,
+            Some(reason),
+        ));
+    }
+
+    Err(CoreError::Config(reason))
+}
+
+fn cli_subscription_unavailable_reason(
+    config: &AiProviderConfig,
+    detected: &[DetectedSubprocessCli],
+) -> String {
+    if let Some(provider_type) = config
+        .llm_api
+        .as_ref()
+        .map(|endpoint| endpoint.provider_type)
+        .filter(|provider_type| *provider_type != AiProviderType::Generic)
+    {
+        let provider_label = match provider_type {
+            AiProviderType::Anthropic => "anthropic",
+            AiProviderType::OpenAi => "openai",
+            AiProviderType::Google => "google",
+            AiProviderType::Generic => "generic",
+        };
+
+        return format!(
+            "No supported installed CLI runtime was detected for provider '{provider_label}'."
+        );
+    }
+
+    if detected
+        .iter()
+        .any(|surface| !surface.surface_id.runtime_supported())
+    {
+        return "Detected provider CLI executables do not yet have a supported runtime adapter."
+            .to_string();
+    }
+
+    "No supported provider CLI runtime was detected on PATH (checked: codex, claude, claude-code)."
+        .to_string()
 }
 
 #[allow(unused_variables)]
@@ -873,15 +949,83 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
+        let (llm, llm_source, llm_fallback_reason) =
+            resolve_cli_subscription_llm_provider_with_detected(
+                &config,
+                &[DetectedSubprocessCli {
+                    surface_id: crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
+                    executable_path: "/tmp/codex".into(),
+                }],
+            )
+            .expect("Failed to resolve CLI mode");
+
+        assert_eq!(llm_source, ProviderSource::CliSubscription);
+        assert!(llm_fallback_reason.is_none());
+        assert_eq!(llm.provider_name(), "subprocess-codex");
+        assert!(llm.is_external());
+
         let adapters =
             resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
                 .expect("Failed to resolve CLI mode");
-        assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
-        assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
-        assert!(adapters.ocr_fallback_reason.is_none());
-        assert!(adapters.llm_fallback_reason.is_none());
+        assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert!(!adapters.ocr.is_external());
-        assert!(!adapters.llm.is_external());
+        assert!(matches!(
+            adapters.llm_source,
+            ProviderSource::CliSubscription | ProviderSource::LocalFallback
+        ));
+    }
+
+    #[test]
+    fn cli_subscription_mode_falls_back_to_local_when_no_supported_cli_runtime_exists() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            fallback_to_local: true,
+            ..AiProviderConfig::default()
+        };
+
+        let (llm, llm_source, llm_fallback_reason) =
+            resolve_cli_subscription_llm_provider_with_detected(&config, &[])
+                .expect("CLI mode should fall back to local LLM");
+
+        assert_eq!(llm_source, ProviderSource::LocalFallback);
+        assert!(llm_fallback_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("No supported provider CLI runtime")));
+        assert_eq!(llm.provider_name(), "local-rule-based");
+        assert!(!llm.is_external());
+    }
+
+    #[test]
+    fn cli_subscription_mode_prefers_matching_provider_surface() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            llm_api: Some(ExternalApiEndpoint {
+                provider_type: AiProviderType::Anthropic,
+                ..remote_endpoint()
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let (llm, llm_source, llm_fallback_reason) =
+            resolve_cli_subscription_llm_provider_with_detected(
+                &config,
+                &[
+                    DetectedSubprocessCli {
+                        surface_id: crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
+                        executable_path: "/tmp/codex".into(),
+                    },
+                    DetectedSubprocessCli {
+                        surface_id:
+                            crate::subprocess_provider::SubprocessCliSurfaceId::AnthropicClaudeCode,
+                        executable_path: "/tmp/claude".into(),
+                    },
+                ],
+            )
+            .expect("CLI mode should resolve the Anthropic surface");
+
+        assert_eq!(llm_source, ProviderSource::CliSubscription);
+        assert!(llm_fallback_reason.is_none());
+        assert_eq!(llm.provider_name(), "subprocess-claude-code");
     }
 
     #[test]

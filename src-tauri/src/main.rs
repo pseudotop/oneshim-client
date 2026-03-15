@@ -35,6 +35,7 @@ mod scheduler;
 mod secret_cli;
 mod setup;
 mod skill_loader;
+mod subprocess_provider;
 mod tray;
 mod update_coordinator;
 mod updater;
