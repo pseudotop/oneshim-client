@@ -1063,26 +1063,15 @@ fn resolve_endpoint_surface_id(
         )));
     }
 
-    if matches!(endpoint_kind, ApiEndpointKind::Llm) {
-        match access_mode {
-            AiAccessMode::ProviderOAuth
-                if expected_transport != ProviderSurfaceTransport::ManagedOAuth =>
-            {
-                return Err(ApiError::BadRequest(
-                    "ProviderOAuth mode requires an LLM provider surface with managed_oauth transport."
-                        .to_string(),
-                ));
-            }
-            AiAccessMode::ProviderSubscriptionCli
-                if expected_transport != ProviderSurfaceTransport::SubprocessCli =>
-            {
-                return Err(ApiError::BadRequest(
-                    "ProviderSubscriptionCli mode requires an LLM provider surface with subprocess_cli transport."
-                        .to_string(),
-                ));
-            }
-            _ => {}
-        }
+    if !access_mode_allows_surface_transport(access_mode, endpoint_kind, spec.transport) {
+        let target = match endpoint_kind {
+            ApiEndpointKind::Ocr => "OCR",
+            ApiEndpointKind::Llm => "LLM",
+        };
+        return Err(ApiError::BadRequest(format!(
+            "Provider surface '{surface_id}' is incompatible with access_mode '{:?}' for the selected {target} endpoint.",
+            access_mode
+        )));
     }
 
     let required_capability = match endpoint_kind {
@@ -1147,6 +1136,37 @@ fn transport_for_auth_mode(auth_mode: CredentialAuthMode) -> ProviderSurfaceTran
         CredentialAuthMode::ManagedOAuth => ProviderSurfaceTransport::ManagedOAuth,
         CredentialAuthMode::CliBridge => ProviderSurfaceTransport::SubprocessCli,
         CredentialAuthMode::ApiKey => ProviderSurfaceTransport::DirectApi,
+    }
+}
+
+fn access_mode_allows_surface_transport(
+    access_mode: AiAccessMode,
+    endpoint_kind: ApiEndpointKind,
+    transport: ProviderSurfaceTransport,
+) -> bool {
+    match endpoint_kind {
+        ApiEndpointKind::Llm => match access_mode {
+            AiAccessMode::ProviderOAuth => transport == ProviderSurfaceTransport::ManagedOAuth,
+            AiAccessMode::ProviderSubscriptionCli => {
+                transport == ProviderSurfaceTransport::SubprocessCli
+            }
+            AiAccessMode::ProviderApiKey
+            | AiAccessMode::PlatformConnected
+            | AiAccessMode::LocalModel => transport == ProviderSurfaceTransport::DirectApi,
+        },
+        ApiEndpointKind::Ocr => match access_mode {
+            AiAccessMode::ProviderOAuth => matches!(
+                transport,
+                ProviderSurfaceTransport::DirectApi | ProviderSurfaceTransport::ManagedOAuth
+            ),
+            AiAccessMode::ProviderSubscriptionCli => matches!(
+                transport,
+                ProviderSurfaceTransport::DirectApi | ProviderSurfaceTransport::SubprocessCli
+            ),
+            AiAccessMode::ProviderApiKey
+            | AiAccessMode::PlatformConnected
+            | AiAccessMode::LocalModel => transport == ProviderSurfaceTransport::DirectApi,
+        },
     }
 }
 
@@ -2003,6 +2023,40 @@ mod tests {
             Some("provider_surface.openai.direct_api")
         );
         assert_eq!(endpoint.api_key, "sk-ocr-123456");
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_cli_auth_mode_for_ocr_in_api_key_mode() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderApiKey;
+        config.ai_provider.ocr_provider = OcrProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.access_mode = "ProviderApiKey".to_string();
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: String::new(),
+            api_key_masked: String::new(),
+            model: None,
+            provider_type: "OpenAi".to_string(),
+            surface_id: Some("provider_surface.openai.subprocess_cli".to_string()),
+            timeout_secs: 30,
+            auth_mode: "cli_bridge".to_string(),
+            backend_kind: "bridge_managed".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err = apply_settings_to_config(&mut config, &settings).expect_err("ocr cli mode guard");
+        match err {
+            ApiError::BadRequest(message) => {
+                assert!(message.contains("ProviderApiKey"));
+                assert!(message.contains("OCR"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[test]

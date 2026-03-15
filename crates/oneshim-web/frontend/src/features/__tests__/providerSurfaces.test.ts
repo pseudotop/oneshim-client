@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../../api/defaultProviderSurfaceCatalog'
-import type { FeatureCapabilitySnapshot } from '../../api/contracts'
+import type { FeatureCapabilitySnapshot, ProviderSurfaceCatalog, ProviderSurfaceSpec } from '../../api/contracts'
 import {
   deriveDefaultProviderSurfaceId,
   getCompatibleProviderSurfaces,
@@ -38,6 +38,56 @@ describe('provider surface defaults', () => {
     )
     expect(surfaces.some((surface) => surface.surface_id === 'provider_surface.openai.direct_api')).toBe(true)
     expect(surfaces.some((surface) => surface.surface_id === 'provider_surface.anthropic.direct_api')).toBe(true)
+  })
+
+  it('allows future OCR subprocess surfaces only in compatible access modes', () => {
+    const openAiDirect = DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces.find(
+      (surface) => surface.surface_id === 'provider_surface.openai.direct_api',
+    )
+    expect(openAiDirect).toBeDefined()
+
+    const ocrCliSurface: ProviderSurfaceSpec = {
+      ...openAiDirect!,
+      surface_id: 'provider_surface.openai.ocr_subprocess_cli',
+      display_name: 'OpenAI OCR CLI',
+      execution_kind: 'subprocess_cli',
+      placement_kind: 'installed_cli',
+      credential_kind: 'cli_bridge',
+      supports: {
+        ...openAiDirect!.supports,
+        ocr: true,
+      },
+      related_surface_ids: ['provider_surface.openai.subprocess_cli'],
+      ocr_transport: null,
+      subprocess_transport: {
+        tool_id: 'codex',
+        executable_candidates: ['codex'],
+        auth_probe_command: ['login', 'status'],
+        auth_probe_mode: 'codex_login_status_text',
+        invocation_mode: 'codex_exec_json',
+        model_flag: '--model',
+        json_output_supported: true,
+      },
+    }
+
+    const catalog: ProviderSurfaceCatalog = {
+      ...DEFAULT_PROVIDER_SURFACE_CATALOG,
+      surfaces: [...DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces, ocrCliSurface],
+    }
+
+    expect(
+      getCompatibleProviderSurfaces(catalog, 'ProviderApiKey', 'ocr_api').some(
+        (surface) => surface.surface_id === ocrCliSurface.surface_id,
+      ),
+    ).toBe(false)
+    expect(
+      getCompatibleProviderSurfaces(catalog, 'ProviderSubscriptionCli', 'ocr_api').some(
+        (surface) => surface.surface_id === ocrCliSurface.surface_id,
+      ),
+    ).toBe(true)
+    expect(
+      deriveDefaultProviderSurfaceId(catalog, 'ProviderSubscriptionCli', 'ocr_api', 'OpenAi'),
+    ).toBe('provider_surface.openai.direct_api')
   })
 
   it('falls back to direct api for generic provider types', () => {

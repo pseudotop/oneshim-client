@@ -24,6 +24,7 @@ use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::ocr_provider::OcrProvider;
 use oneshim_core::ports::ocr_provider::OcrResult;
 use oneshim_core::ports::secret_store::SecretStoreSet;
+use oneshim_core::provider_surface::{provider_surface_spec, ProviderSurfaceTransport};
 #[cfg(feature = "server")]
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
 #[cfg(feature = "server")]
@@ -38,13 +39,10 @@ use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::warn;
 
-use oneshim_api_contracts::provider_specs::SurfaceCapabilityKind;
-
 use crate::subprocess_provider::{
-    cli_id_for_surface_id, preferred_cli_surface_for_capability, preferred_cli_surface_for_config,
-    probe_for_surface_id, probe_known_cli_surfaces, runtime_supported_for_surface,
-    select_cli_surface_for_config, ProbedSubprocessCli, SubprocessCliAuthStatus,
-    SubprocessLlmProvider,
+    cli_id_for_surface_id, preferred_cli_surface_for_config, probe_for_surface_id,
+    probe_known_cli_surfaces, runtime_supported_for_surface, select_cli_surface_for_config,
+    ProbedSubprocessCli, SubprocessCliAuthStatus, SubprocessLlmProvider,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -425,6 +423,47 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
     }
 }
 
+fn configured_ocr_surface_transport(
+    config: &AiProviderConfig,
+) -> Option<(String, ProviderSurfaceTransport)> {
+    config
+        .ocr_api
+        .as_ref()
+        .and_then(|endpoint| endpoint.surface_id.as_deref())
+        .and_then(|surface_id| {
+            provider_surface_spec(surface_id).map(|spec| (spec.id.to_string(), spec.transport))
+        })
+}
+
+fn unsupported_ocr_surface_runtime(
+    config: &AiProviderConfig,
+    surface_id: &str,
+    transport: ProviderSurfaceTransport,
+) -> OcrProviderResolution {
+    let runtime_label = match transport {
+        ProviderSurfaceTransport::DirectApi => "direct_http",
+        ProviderSurfaceTransport::ManagedOAuth => "managed_oauth",
+        ProviderSurfaceTransport::SubprocessCli => "subprocess_cli",
+    };
+    let reason = format!(
+        "Selected OCR provider surface '{surface_id}' uses {runtime_label}, but an OCR runtime adapter for that transport is not implemented yet."
+    );
+
+    if config.fallback_to_local {
+        warn!(
+            fallback_reason = %reason,
+            "OCR runtime unavailable for selected provider surface, falling back to local OCR"
+        );
+        return Ok((
+            Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+            ProviderSource::LocalFallback,
+            Some(reason),
+        ));
+    }
+
+    Err(CoreError::Config(reason))
+}
+
 fn resolve_cli_subscription_ocr_provider(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
@@ -432,45 +471,52 @@ fn resolve_cli_subscription_ocr_provider(
     secret_stores: Option<SecretStoreSet>,
     detected: &[ProbedSubprocessCli],
 ) -> OcrProviderResolution {
+    if let Some((surface_id, transport)) = configured_ocr_surface_transport(config) {
+        if transport == ProviderSurfaceTransport::SubprocessCli {
+            if let Some(surface) = probe_for_surface_id(detected, &surface_id) {
+                let cli_label = cli_id_for_surface_id(&surface.detected.surface_id)
+                    .unwrap_or_else(|_| surface.detected.surface_id.clone());
+                let reason = match surface.auth_status {
+                    SubprocessCliAuthStatus::Authenticated => format!(
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but OCR subprocess runtime is not implemented yet."
+                    ),
+                    SubprocessCliAuthStatus::Unauthenticated => format!(
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but the CLI is not authenticated and OCR subprocess runtime is not implemented yet."
+                    ),
+                    SubprocessCliAuthStatus::Unknown => format!(
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but authentication could not be verified and OCR subprocess runtime is not implemented yet."
+                    ),
+                };
+                if config.fallback_to_local {
+                    warn!(
+                        fallback_reason = %reason,
+                        "CLI OCR runtime unavailable, falling back to local OCR"
+                    );
+                    return Ok((
+                        Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+                        ProviderSource::LocalFallback,
+                        Some(reason),
+                    ));
+                }
+                return Err(CoreError::Config(reason));
+            }
+
+            return unsupported_ocr_surface_runtime(config, &surface_id, transport);
+        }
+    }
+
     match config.ocr_provider {
         OcrProviderType::Local => Ok((
             Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
             ProviderSource::Local,
             None,
         )),
-        OcrProviderType::Remote => {
-            let preferred_surface =
-                preferred_cli_surface_for_capability(config, SurfaceCapabilityKind::Ocr);
-            if let Some(surface_id) = preferred_surface.as_deref() {
-                if let Some(surface) = probe_for_surface_id(detected, surface_id) {
-                    let reason = format!(
-                        "Installed {} CLI was detected for OCR, but subprocess OCR runtime is not implemented yet.",
-                        cli_id_for_surface_id(&surface.detected.surface_id)
-                            .unwrap_or_else(|_| surface.detected.surface_id.clone())
-                    );
-                    if config.fallback_to_local {
-                        warn!(
-                            fallback_reason = %reason,
-                            "CLI OCR runtime unavailable, falling back to local OCR"
-                        );
-                        return Ok((
-                            Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
-                            ProviderSource::LocalFallback,
-                            Some(reason),
-                        ));
-                    }
-
-                    return Err(CoreError::Config(reason));
-                }
-            }
-
-            resolve_ocr_provider(
-                config,
-                pii_filter_level,
-                external_ocr_privacy_guard,
-                secret_stores,
-            )
-        }
+        OcrProviderType::Remote => resolve_ocr_provider(
+            config,
+            pii_filter_level,
+            external_ocr_privacy_guard,
+            secret_stores,
+        ),
     }
 }
 
@@ -573,6 +619,11 @@ fn resolve_ocr_provider(
             None,
         )),
         OcrProviderType::Remote => {
+            if let Some((surface_id, transport)) = configured_ocr_surface_transport(config) {
+                if transport != ProviderSurfaceTransport::DirectApi {
+                    return unsupported_ocr_surface_runtime(config, &surface_id, transport);
+                }
+            }
             #[cfg(feature = "server")]
             {
                 resolve_remote_with_optional_fallback(
@@ -1096,6 +1147,47 @@ mod tests {
     }
 
     #[test]
+    fn cli_subscription_mode_rejects_selected_non_http_ocr_surface_until_runtime_exists() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: String::new(),
+                api_key: String::new(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                surface_id: Some("provider_surface.openai.subprocess_cli".to_string()),
+                credential: None,
+            }),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        match resolve_cli_subscription_ocr_provider(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            &[ProbedSubprocessCli {
+                detected: crate::subprocess_provider::DetectedSubprocessCli {
+                    surface_id: "provider_surface.openai.subprocess_cli".to_string(),
+                    executable_path: "/tmp/codex".into(),
+                },
+                auth_status: SubprocessCliAuthStatus::Authenticated,
+                auth_detail: Some("cli_authenticated".to_string()),
+            }],
+        ) {
+            Err(CoreError::Config(message)) => {
+                assert!(message.contains("OCR subprocess runtime is not implemented yet"));
+                assert!(message.contains("provider_surface.openai.subprocess_cli"));
+            }
+            Ok(_) => panic!("expected OCR subprocess runtime error"),
+            Err(other) => panic!("unexpected error: {other}"),
+        }
+    }
+
+    #[test]
     fn cli_subscription_mode_falls_back_to_local_when_no_supported_cli_runtime_exists() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderSubscriptionCli,
@@ -1416,6 +1508,35 @@ mod tests {
 
         assert_eq!(adapters.llm_source, ProviderSource::OAuth);
         assert_eq!(adapters.llm.provider_name(), DEFAULT_OPENAI_OAUTH_MODEL);
+    }
+
+    #[test]
+    fn remote_ocr_falls_back_when_selected_managed_ocr_surface_lacks_runtime() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: String::new(),
+                api_key: String::new(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+                credential: None,
+            }),
+            fallback_to_local: true,
+            ..AiProviderConfig::default()
+        };
+
+        let (ocr, source, reason) =
+            resolve_ocr_provider(&config, PiiFilterLevel::Standard, None, None)
+                .expect("managed OCR surface should fall back to local when enabled");
+
+        assert_eq!(source, ProviderSource::LocalFallback);
+        assert!(reason
+            .as_deref()
+            .is_some_and(|message| message.contains("managed_oauth")));
+        assert!(!ocr.is_external());
     }
 
     #[test]

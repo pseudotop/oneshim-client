@@ -34,20 +34,28 @@ function normalizedProviderType(providerType: string | null | undefined): string
   return (providerType ?? '').trim() || 'Generic'
 }
 
-function expectedExecutionKind(accessMode: string | null | undefined, _endpointKind: EndpointSurfaceKind): string | null {
-  if (_endpointKind === 'ocr_api') {
-    return null
+function compatibleExecutionKinds(accessMode: string | null | undefined, endpointKind: EndpointSurfaceKind): string[] {
+  if (endpointKind === 'ocr_api') {
+    if (accessMode === 'ProviderSubscriptionCli') {
+      return ['direct_http', 'subprocess_cli']
+    }
+
+    if (accessMode === 'ProviderOAuth') {
+      return ['direct_http', 'managed_http']
+    }
+
+    return ['direct_http']
   }
 
   if (accessMode === 'ProviderSubscriptionCli') {
-    return 'subprocess_cli'
+    return ['subprocess_cli']
   }
 
   if (accessMode === 'ProviderOAuth') {
-    return 'managed_http'
+    return ['managed_http']
   }
 
-  return 'direct_http'
+  return ['direct_http']
 }
 
 function surfaceSupportsKind(surface: ProviderSurfaceSpec, endpointKind: EndpointSurfaceKind): boolean {
@@ -123,12 +131,12 @@ export function getCompatibleProviderSurfaces(
   endpointKind: EndpointSurfaceKind,
   snapshot?: FeatureCapabilitySnapshot | null,
 ): ProviderSurfaceSpec[] {
-  const executionKind = expectedExecutionKind(accessMode, endpointKind)
+  const executionKinds = compatibleExecutionKinds(accessMode, endpointKind)
 
   return sortProviderSurfaces(
     catalog.surfaces.filter(
       (surface) =>
-        (executionKind == null || surface.execution_kind === executionKind) &&
+        executionKinds.includes(surface.execution_kind) &&
         surfaceSupportsKind(surface, endpointKind),
     ),
     snapshot,
