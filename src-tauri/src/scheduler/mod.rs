@@ -115,7 +115,11 @@ impl Scheduler {
         }
     }
 
-    pub async fn run(&self, shutdown_rx: tokio::sync::watch::Receiver<bool>) {
+    pub async fn run(
+        &self,
+        shutdown_rx: tokio::sync::watch::Receiver<bool>,
+        app_handle: Option<tauri::AppHandle>,
+    ) {
         info!(
             "스케줄러 started: 모니터링={}ms, 메트릭={}ms, 프로세스={}ms, 동기화={}ms, heartbeat={}ms, 집계={}ms",
             self.config.poll_interval.as_millis(),
@@ -125,7 +129,7 @@ impl Scheduler {
             self.config.heartbeat_interval.as_millis(),
             self.config.aggregation_interval.as_millis(),
         );
-        self.run_scheduler_loops(shutdown_rx).await;
+        self.run_scheduler_loops(shutdown_rx, app_handle).await;
     }
 }
 

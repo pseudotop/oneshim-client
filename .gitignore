@@ -37,3 +37,4 @@ wdio-logs/
 # Local agent/tooling state
 .serena/
 .claude/worktrees/
+docs/superpowers/

@@ -224,16 +224,24 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
           )}
           {state.status.expires_at && (() => {
             const level = getExpiryLevel(state.status.expires_at);
-            if (level === 'ok') return null;
-            const label = level === 'critical'
+            // When no refresh token, treat warning-level expiry as critical
+            const effectiveLevel = (!state.status.has_refresh_token && level === 'warning') ? 'critical' : level;
+            if (effectiveLevel === 'ok') return null;
+            const label = effectiveLevel === 'critical'
               ? t('settingsOAuth.statusExpired')
               : t('settingsOAuth.statusExpiringSoon');
             return (
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${EXPIRY_BADGE_STYLES[level]}`}>
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${EXPIRY_BADGE_STYLES[effectiveLevel]}`}>
                 {label}
               </span>
             );
           })()}
+          {state.status.has_refresh_token === false && (
+            <p className="flex items-center gap-1.5 rounded bg-amber-50 px-2 py-1.5 text-amber-800 text-xs dark:bg-amber-900/20 dark:text-amber-300">
+              <span aria-hidden="true">⚠</span>
+              {t('settingsOAuth.noRefreshToken')}
+            </p>
+          )}
           <Button type="button" variant="secondary" size="sm" onClick={handleDisconnect}>
             {t('settingsOAuth.disconnect')}
           </Button>

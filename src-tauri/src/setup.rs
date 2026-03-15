@@ -325,6 +325,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let agent_oauth_coordinator = oauth_coordinator.clone();
     #[cfg(not(feature = "server"))]
     let agent_oauth_coordinator: OAuthCoordinator = None;
+    let agent_app_handle = _app_handle.clone();
 
     handle.spawn(async move {
         if let Err(e) = run_agent(
@@ -337,6 +338,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             shutdown_rx,
             agent_event_tx,
             agent_oauth_coordinator,
+            agent_app_handle,
         )
         .await
         {
@@ -634,6 +636,7 @@ async fn run_agent(
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
     event_tx: Option<broadcast::Sender<RealtimeEvent>>,
     _oauth_coordinator: OAuthCoordinator,
+    app_handle: tauri::AppHandle,
 ) -> Result<()> {
     info!("Agent initializing");
 
@@ -750,7 +753,7 @@ async fn run_agent(
     }
 
     info!("Agent started (offline={})", offline_mode);
-    scheduler.run(shutdown_rx).await;
+    scheduler.run(shutdown_rx, Some(app_handle)).await;
     info!("Agent ended");
     Ok(())
 }

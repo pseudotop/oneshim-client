@@ -170,8 +170,9 @@ impl TokenRefreshCoordinator {
                 RefreshOutcome::ReauthRequired
             }
 
-            Ok(RefreshResult::ReauthRequired { .. }) => {
+            Ok(RefreshResult::ReauthRequired { kind, reason }) => {
                 // Terminal — set backoff far into the future to prevent retries.
+                warn!("terminal refresh failure for {provider_id}: [{kind:?}] {reason}");
                 state.backoff_until = Some(Instant::now() + Duration::from_secs(86400 * 365));
                 let _ = self.event_tx.send(TokenEvent::ReauthRequired {
                     provider_id: provider_id.to_string(),
@@ -179,7 +180,8 @@ impl TokenRefreshCoordinator {
                 RefreshOutcome::ReauthRequired
             }
 
-            Ok(RefreshResult::TransientFailure { message }) => {
+            Ok(RefreshResult::TransientFailure { kind, message }) => {
+                debug!("transient refresh failure for {provider_id}: [{kind:?}] {message}");
                 self.handle_transient_failure(&mut state, provider_id, &message)
             }
 
@@ -238,8 +240,8 @@ mod tests {
     use async_trait::async_trait;
     use oneshim_core::error::CoreError;
     use oneshim_core::ports::oauth::{
-        OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort, RefreshResult,
-        TokenEvent,
+        OAuthConnectionStatus, OAuthErrorKind, OAuthFlowHandle, OAuthFlowStatus, OAuthPort,
+        RefreshResult, TokenEvent,
     };
 
     /// Mock OAuthPort with configurable RefreshResult for testing.
@@ -334,6 +336,7 @@ mod tests {
     #[tokio::test]
     async fn transient_failure_increments_counter() {
         let mock = Arc::new(MockOAuthPort::new(RefreshResult::TransientFailure {
+            kind: OAuthErrorKind::NetworkError,
             message: "connection reset".into(),
         }));
         let (coord, mut rx) = make_coordinator(mock);
@@ -361,6 +364,7 @@ mod tests {
     #[tokio::test]
     async fn terminal_failure_immediate_reauth() {
         let mock = Arc::new(MockOAuthPort::new(RefreshResult::ReauthRequired {
+            kind: OAuthErrorKind::InvalidGrant,
             reason: "invalid_grant".into(),
         }));
         let (coord, mut rx) = make_coordinator(mock);
@@ -382,6 +386,7 @@ mod tests {
     #[tokio::test]
     async fn three_transient_failures_triggers_reauth() {
         let mock = Arc::new(MockOAuthPort::new(RefreshResult::TransientFailure {
+            kind: OAuthErrorKind::NetworkError,
             message: "timeout".into(),
         }));
         let (coord, mut rx) = make_coordinator(mock);
@@ -420,6 +425,7 @@ mod tests {
     #[tokio::test]
     async fn auto_recovery_resets_failure_count() {
         let mock = Arc::new(MockOAuthPort::new(RefreshResult::TransientFailure {
+            kind: OAuthErrorKind::NetworkError,
             message: "timeout".into(),
         }));
         let (coord, _rx) = make_coordinator(mock.clone());
@@ -489,6 +495,7 @@ mod tests {
                 self.call_count
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 Ok(RefreshResult::TransientFailure {
+                    kind: OAuthErrorKind::NetworkError,
                     message: "timeout".into(),
                 })
             }

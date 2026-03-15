@@ -20,7 +20,8 @@ use tracing::{debug, info, warn};
 
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::oauth::{
-    OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort, RefreshResult,
+    OAuthConnectionStatus, OAuthErrorKind, OAuthFlowHandle, OAuthFlowStatus, OAuthPort,
+    RefreshResult,
 };
 use oneshim_core::ports::secret_store::SecretStore;
 
@@ -437,6 +438,7 @@ impl OAuthPort for OAuthClient {
             .await?;
         let Some(refresh_tok) = refresh_tok else {
             return Ok(RefreshResult::ReauthRequired {
+                kind: OAuthErrorKind::Unknown("no_refresh_token".into()),
                 reason: "no refresh token available".into(),
             });
         };
@@ -455,15 +457,27 @@ impl OAuthPort for OAuthClient {
                     expires_at: new_expires,
                 })
             }
+            Err(CoreError::OAuthRefreshError { kind, message, .. }) => {
+                if kind.is_terminal() {
+                    warn!("token refresh terminal failure for {provider_id}: [{kind:?}] {message}");
+                    Ok(RefreshResult::ReauthRequired {
+                        kind,
+                        reason: message,
+                    })
+                } else {
+                    warn!(
+                        "token refresh transient failure for {provider_id}: [{kind:?}] {message}"
+                    );
+                    Ok(RefreshResult::TransientFailure { kind, message })
+                }
+            }
             Err(e) => {
                 let msg = e.to_string();
-                if msg.contains("invalid_grant") || msg.contains("invalid_client") {
-                    warn!("token refresh terminal failure for {provider_id}: {msg}");
-                    Ok(RefreshResult::ReauthRequired { reason: msg })
-                } else {
-                    warn!("token refresh transient failure for {provider_id}: {msg}");
-                    Ok(RefreshResult::TransientFailure { message: msg })
-                }
+                warn!("token refresh unexpected error for {provider_id}: {msg}");
+                Ok(RefreshResult::TransientFailure {
+                    kind: OAuthErrorKind::Unknown(msg.clone()),
+                    message: msg,
+                })
             }
         }
     }
@@ -722,7 +736,7 @@ mod tests {
         let store = Arc::new(TestSecretStore::new());
         let client = make_client(store);
         let result = client.refresh_access_token("openai", 300).await.unwrap();
-        assert_eq!(result, RefreshResult::NotAuthenticated);
+        assert!(matches!(result, RefreshResult::NotAuthenticated));
     }
 
     #[tokio::test]
@@ -765,8 +779,9 @@ mod tests {
         let client = make_client(store);
         let result = client.refresh_access_token("openai", 300).await.unwrap();
         match result {
-            RefreshResult::ReauthRequired { reason } => {
+            RefreshResult::ReauthRequired { kind, reason } => {
                 assert!(reason.contains("no refresh token"));
+                assert!(matches!(kind, OAuthErrorKind::Unknown(ref s) if s == "no_refresh_token"));
             }
             other => panic!("expected ReauthRequired, got {other:?}"),
         }

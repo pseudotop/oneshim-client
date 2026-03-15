@@ -40,14 +40,47 @@ pub struct OAuthConnectionStatus {
     pub has_refresh_token: bool,
 }
 
+/// Classification of OAuth error responses.
+///
+/// Typed replacement for fragile substring matching on error messages.
+/// Terminal kinds (`InvalidGrant`, `InvalidClient`) require re-authentication;
+/// transient kinds can be retried with backoff.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OAuthErrorKind {
+    InvalidGrant,
+    InvalidClient,
+    InvalidScope,
+    ServerError,
+    NetworkError,
+    RateLimited,
+    Unknown(String),
+}
+
+impl OAuthErrorKind {
+    /// Returns `true` for error kinds that cannot be recovered by retrying.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::InvalidGrant | Self::InvalidClient)
+    }
+}
+
 /// Result of an access-token refresh attempt.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum RefreshResult {
-    AlreadyFresh { expires_at: String },
-    Refreshed { expires_at: String },
+    AlreadyFresh {
+        expires_at: String,
+    },
+    Refreshed {
+        expires_at: String,
+    },
     NotAuthenticated,
-    ReauthRequired { reason: String },
-    TransientFailure { message: String },
+    ReauthRequired {
+        kind: OAuthErrorKind,
+        reason: String,
+    },
+    TransientFailure {
+        kind: OAuthErrorKind,
+        message: String,
+    },
 }
 
 /// OAuth runtime port.
@@ -162,5 +195,34 @@ mod tests {
         let json = r#"{"provider_id":"openai","connected":false,"expires_at":null,"scopes":[]}"#;
         let parsed: OAuthConnectionStatus = serde_json::from_str(json).unwrap();
         assert!(!parsed.has_refresh_token);
+    }
+
+    #[test]
+    fn error_kind_is_terminal() {
+        assert!(OAuthErrorKind::InvalidGrant.is_terminal());
+        assert!(OAuthErrorKind::InvalidClient.is_terminal());
+        assert!(!OAuthErrorKind::InvalidScope.is_terminal());
+        assert!(!OAuthErrorKind::ServerError.is_terminal());
+        assert!(!OAuthErrorKind::NetworkError.is_terminal());
+        assert!(!OAuthErrorKind::RateLimited.is_terminal());
+        assert!(!OAuthErrorKind::Unknown("foo".into()).is_terminal());
+    }
+
+    #[test]
+    fn error_kind_serialization_roundtrip() {
+        let kinds = vec![
+            OAuthErrorKind::InvalidGrant,
+            OAuthErrorKind::InvalidClient,
+            OAuthErrorKind::InvalidScope,
+            OAuthErrorKind::ServerError,
+            OAuthErrorKind::NetworkError,
+            OAuthErrorKind::RateLimited,
+            OAuthErrorKind::Unknown("custom_error".into()),
+        ];
+        for kind in &kinds {
+            let json = serde_json::to_string(kind).unwrap();
+            let parsed: OAuthErrorKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(format!("{:?}", kind), format!("{:?}", parsed));
+        }
     }
 }

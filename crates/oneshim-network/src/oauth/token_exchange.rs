@@ -1,6 +1,7 @@
 //! OAuth token exchange — authorization code → access + refresh tokens.
 
 use oneshim_core::error::CoreError;
+use oneshim_core::ports::oauth::OAuthErrorKind;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -97,6 +98,33 @@ pub async fn exchange_code(
     Ok(result)
 }
 
+/// Classify an HTTP error response into a typed `OAuthErrorKind`.
+///
+/// Examines the status code first (429 → RateLimited, 5xx → ServerError),
+/// then attempts to parse the JSON `error` field for OAuth-specific codes.
+fn classify_error_response(status: u16, body: &str) -> OAuthErrorKind {
+    // HTTP-level classification takes precedence for unambiguous status codes.
+    if status == 429 {
+        return OAuthErrorKind::RateLimited;
+    }
+    if (500..600).contains(&status) {
+        return OAuthErrorKind::ServerError;
+    }
+
+    // Attempt JSON error field parsing.
+    if let Ok(err) = serde_json::from_str::<TokenErrorResponse>(body) {
+        return match err.error.as_str() {
+            "invalid_grant" => OAuthErrorKind::InvalidGrant,
+            "invalid_client" => OAuthErrorKind::InvalidClient,
+            "invalid_scope" => OAuthErrorKind::InvalidScope,
+            "server_error" => OAuthErrorKind::ServerError,
+            other => OAuthErrorKind::Unknown(other.to_string()),
+        };
+    }
+
+    OAuthErrorKind::Unknown(format!("HTTP {status}"))
+}
+
 /// Refresh an access token using a refresh token.
 pub async fn refresh_token(
     http: &reqwest::Client,
@@ -114,33 +142,49 @@ pub async fn refresh_token(
         ])
         .send()
         .await
-        .map_err(|e| CoreError::OAuthError {
-            provider: config.provider_id.clone(),
-            message: format!("token refresh request failed: {e}"),
+        .map_err(|e| {
+            let kind = if e.is_timeout() || e.is_connect() {
+                OAuthErrorKind::NetworkError
+            } else {
+                OAuthErrorKind::Unknown(e.to_string())
+            };
+            CoreError::OAuthRefreshError {
+                provider: config.provider_id.clone(),
+                kind,
+                message: format!("token refresh request failed: {e}"),
+            }
         })?;
 
-    let status = resp.status();
-    let body = resp.text().await.map_err(|e| CoreError::OAuthError {
-        provider: config.provider_id.clone(),
-        message: format!("failed to read refresh response: {e}"),
-    })?;
-
-    if !status.is_success() {
-        if let Ok(err) = serde_json::from_str::<TokenErrorResponse>(&body) {
-            let desc = err.error_description.unwrap_or_default();
-            return Err(CoreError::OAuthError {
-                provider: config.provider_id.clone(),
-                message: format!("refresh failed: {}: {desc}", err.error),
-            });
-        }
-        return Err(CoreError::OAuthError {
+    let status = resp.status().as_u16();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| CoreError::OAuthRefreshError {
             provider: config.provider_id.clone(),
-            message: format!("token refresh returned {status}"),
+            kind: OAuthErrorKind::NetworkError,
+            message: format!("failed to read refresh response: {e}"),
+        })?;
+
+    if !(200..300).contains(&status) {
+        let kind = classify_error_response(status, &body);
+        let desc = serde_json::from_str::<TokenErrorResponse>(&body)
+            .ok()
+            .and_then(|e| e.error_description)
+            .unwrap_or_default();
+        warn!(
+            "token refresh failed for {}: [{:?}] {desc} (status: {status})",
+            config.provider_id, kind
+        );
+        return Err(CoreError::OAuthRefreshError {
+            provider: config.provider_id.clone(),
+            kind,
+            message: format!("refresh failed (HTTP {status}): {desc}"),
         });
     }
 
-    serde_json::from_str(&body).map_err(|e| CoreError::OAuthError {
+    serde_json::from_str(&body).map_err(|e| CoreError::OAuthRefreshError {
         provider: config.provider_id.clone(),
+        kind: OAuthErrorKind::Unknown("parse_error".into()),
         message: format!("failed to parse refresh response: {e}"),
     })
 }
@@ -180,5 +224,44 @@ mod tests {
         let err: TokenErrorResponse = serde_json::from_str(json).unwrap();
         assert_eq!(err.error, "invalid_grant");
         assert_eq!(err.error_description.as_deref(), Some("code expired"));
+    }
+
+    #[test]
+    fn classify_http_429_as_rate_limited() {
+        let kind = classify_error_response(429, "");
+        assert!(matches!(kind, OAuthErrorKind::RateLimited));
+    }
+
+    #[test]
+    fn classify_http_500_as_server_error() {
+        let kind = classify_error_response(500, r#"{"error":"server_error"}"#);
+        assert!(matches!(kind, OAuthErrorKind::ServerError));
+    }
+
+    #[test]
+    fn classify_invalid_grant_from_json() {
+        let body = r#"{"error":"invalid_grant","error_description":"token revoked"}"#;
+        let kind = classify_error_response(400, body);
+        assert!(matches!(kind, OAuthErrorKind::InvalidGrant));
+    }
+
+    #[test]
+    fn classify_invalid_client_from_json() {
+        let body = r#"{"error":"invalid_client"}"#;
+        let kind = classify_error_response(401, body);
+        assert!(matches!(kind, OAuthErrorKind::InvalidClient));
+    }
+
+    #[test]
+    fn classify_unknown_error_code() {
+        let body = r#"{"error":"unsupported_grant_type"}"#;
+        let kind = classify_error_response(400, body);
+        assert!(matches!(kind, OAuthErrorKind::Unknown(ref s) if s == "unsupported_grant_type"));
+    }
+
+    #[test]
+    fn classify_non_json_body() {
+        let kind = classify_error_response(400, "Bad Request");
+        assert!(matches!(kind, OAuthErrorKind::Unknown(ref s) if s == "HTTP 400"));
     }
 }
