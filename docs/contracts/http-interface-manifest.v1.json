@@ -71,7 +71,6 @@
     {
       "module": "ai_providers",
       "operations": [
-        { "method": "GET", "path": "/api/ai/providers/presets" },
         { "method": "GET", "path": "/api/ai/provider-surfaces" },
         { "method": "POST", "path": "/api/ai/providers/models" }
       ]

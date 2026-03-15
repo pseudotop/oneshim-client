@@ -1,5 +1,4 @@
 import { DEFAULT_WEB_PORT } from '../constants'
-import { DEFAULT_PROVIDER_PRESET_CATALOG } from './defaultProviderPresets'
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from './defaultProviderSurfaceCatalog'
 import type {
   AppSettings,
@@ -562,9 +561,6 @@ export async function handleStandaloneRequest(
       state.settings = body as AppSettings
     }
     return jsonResponse(state.settings)
-  }
-  if (path === '/api/ai/providers/presets' && method === 'GET') {
-    return jsonResponse(DEFAULT_PROVIDER_PRESET_CATALOG)
   }
   if (path === '/api/ai/provider-surfaces' && method === 'GET') {
     return jsonResponse(DEFAULT_PROVIDER_SURFACE_CATALOG)

@@ -613,6 +613,8 @@
     "model": "Model",
     "timeoutSecs": "Timeout (sec)",
     "providerType": "Provider Type",
+    "providerSurfaceLabel": "Provider Surface",
+    "noCompatibleProviderSurface": "No compatible provider surface is available for this mode.",
     "loadModels": "Load Models",
     "modelDiscoveryNoModels": "No models were returned for this provider configuration.",
     "modelDiscoveryMissingConfig": "Configure remote endpoint, provider, and API key first.",

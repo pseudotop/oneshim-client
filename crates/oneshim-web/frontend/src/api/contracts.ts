@@ -222,25 +222,6 @@ export interface ProviderModelsResponse {
   notice?: string | null
 }
 
-export interface ProviderPreset {
-  provider_type: string
-  aliases: string[]
-  display_name: string
-  llm_endpoint: string
-  ocr_endpoint: string
-  model_catalog_endpoint: string
-  ocr_model_catalog_supported: boolean
-  ocr_model_catalog_notice?: string | null
-  llm_models: string[]
-  ocr_models: string[]
-}
-
-export interface ProviderPresetCatalog {
-  version: number
-  updated_at: string
-  providers: ProviderPreset[]
-}
-
 export interface ProviderSurfaceSupports {
   llm: boolean
   ocr: boolean

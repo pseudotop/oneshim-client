@@ -36,7 +36,6 @@ import type {
   ProcessSnapshot,
   ProviderModelsRequest,
   ProviderModelsResponse,
-  ProviderPresetCatalog,
   ProviderSurfaceCatalog,
   ReportParams,
   ReportResponse,
@@ -223,15 +222,6 @@ export async function updateSettings(settings: AppSettings): Promise<AppSettings
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Failed to save settings' }))
     throw new Error(err.error || 'Failed to save settings')
-  }
-  return res.json()
-}
-
-export async function fetchProviderPresets(): Promise<ProviderPresetCatalog> {
-  const res = await fetchWithRetry(`${BASE_URL}/ai/providers/presets`)
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Provider preset query failed' }))
-    throw new Error(err.error || 'Provider preset query failed')
   }
   return res.json()
 }

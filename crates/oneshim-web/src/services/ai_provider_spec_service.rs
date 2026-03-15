@@ -1,4 +1,3 @@
-use oneshim_api_contracts::ai_providers::{ProviderPresetCatalog, ProviderSpecCatalog};
 use oneshim_api_contracts::provider_specs;
 use oneshim_core::config::AiProviderType;
 
@@ -7,16 +6,8 @@ use crate::error::ApiError;
 pub use oneshim_api_contracts::provider_specs::ProviderSurfaceCatalog;
 pub use oneshim_api_contracts::provider_specs::{ModelCatalogResponseShape, ProviderAuthScheme};
 
-pub fn list_provider_specs() -> Result<ProviderSpecCatalog, ApiError> {
-    provider_specs::list_provider_specs().map_err(ApiError::Internal)
-}
-
 pub fn list_provider_surface_specs() -> Result<ProviderSurfaceCatalog, ApiError> {
     provider_specs::list_provider_surface_specs().map_err(ApiError::Internal)
-}
-
-pub fn list_provider_presets() -> Result<ProviderPresetCatalog, ApiError> {
-    provider_specs::list_compatibility_provider_presets().map_err(ApiError::Internal)
 }
 
 pub fn resolve_provider_type(raw: &str) -> Result<AiProviderType, ApiError> {
@@ -58,36 +49,6 @@ pub fn ocr_model_catalog_notice_for_surface(
     surface_id: Option<&str>,
     endpoint: &str,
 ) -> Result<Option<String>, ApiError> {
-    if surface_id.is_none() {
-        let spec = provider_specs::provider_spec(provider_type).map_err(ApiError::Internal)?;
-        if spec.transports.model_catalog.ocr_supported {
-            return Ok(None);
-        }
-
-        let ocr_host = extract_host(&spec.transports.ocr.url).ok_or_else(|| {
-            ApiError::Internal(format!(
-                "Provider spec for {} has an invalid OCR endpoint host",
-                spec.provider_type
-            ))
-        })?;
-        if endpoint
-            .to_ascii_lowercase()
-            .contains(&ocr_host.to_ascii_lowercase())
-        {
-            return Ok(Some(
-                spec.transports
-                    .model_catalog
-                    .ocr_notice
-                    .clone()
-                    .unwrap_or_else(|| {
-                        "This OCR endpoint does not expose a selectable model catalog.".to_string()
-                    }),
-            ));
-        }
-
-        return Ok(None);
-    }
-
     let surface = provider_specs::resolved_surface_spec(provider_type, surface_id)
         .map_err(ApiError::Internal)?;
     let Some(ocr_transport) = surface.ocr_transport.as_ref() else {
@@ -167,31 +128,6 @@ fn extract_host(endpoint: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn specs_load_from_json() {
-        let catalog = list_provider_specs().expect("provider spec catalog should load");
-        assert_eq!(catalog.providers.len(), 4);
-        assert!(!catalog.updated_at.is_empty());
-    }
-
-    #[test]
-    fn compatibility_presets_are_derived_from_specs() {
-        let catalog = list_provider_presets().expect("provider preset catalog should load");
-        let google = catalog
-            .providers
-            .iter()
-            .find(|provider| provider.provider_type == "Google")
-            .expect("google preset should exist");
-        assert_eq!(
-            google.model_catalog_endpoint,
-            "https://generativelanguage.googleapis.com/v1beta/models"
-        );
-        assert_eq!(
-            google.llm_models.first().map(String::as_str),
-            Some("gemini-2.5-flash")
-        );
-    }
 
     #[test]
     fn surface_catalog_loads_from_json() {

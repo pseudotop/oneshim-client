@@ -4,7 +4,7 @@ import type {
   AutomationSettings,
   ExternalApiSettings,
   OcrValidationSettings as OcrValidationSettingsType,
-  ProviderVendorSpec,
+  ProviderSurfaceSpec,
   SandboxSettings,
   SceneActionOverrideSettings as SceneActionOverrideSettingsType,
   SceneIntelligenceSettings as SceneIntelligenceSettingsType,
@@ -96,7 +96,7 @@ function supportsProjectionToggle(settings: ExternalApiSettings | null | undefin
 }
 
 interface AiAutomationTabProps extends SettingsFormTabProps {
-  providerOptions: ProviderVendorSpec[]
+  providerSurfaceOptions: Record<'ocr_api' | 'llm_api', ProviderSurfaceSpec[]>
   modelCatalogNotice: Record<'ocr_api' | 'llm_api', string | null>
   modelCatalogLoading: 'ocr_api' | 'llm_api' | null
   onAutomationChange: (field: keyof AutomationSettings, value: boolean) => void
@@ -113,8 +113,8 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
     field: keyof ExternalApiSettings,
     value: string | number | boolean | null,
   ) => void
-  resolveProviderType: (raw: string | null | undefined) => string
-  onProviderTypeChange: (which: 'ocr_api' | 'llm_api', rawProviderType: string) => void
+  resolveProviderSurface: (which: 'ocr_api' | 'llm_api') => ProviderSurfaceSpec | undefined
+  onProviderSurfaceChange: (which: 'ocr_api' | 'llm_api', surfaceId: string) => void
   onDiscoverModels: (which: 'ocr_api' | 'llm_api') => void
   getModelOptions: (which: 'ocr_api' | 'llm_api') => string[]
   canDiscoverModels: (which: 'ocr_api' | 'llm_api') => boolean
@@ -122,7 +122,7 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
 
 export default function AiAutomationTab({
   formData,
-  providerOptions,
+  providerSurfaceOptions,
   modelCatalogNotice,
   modelCatalogLoading,
   onAutomationChange,
@@ -132,8 +132,8 @@ export default function AiAutomationTab({
   onSceneActionOverrideChange,
   onSceneIntelligenceChange,
   onExternalApiChange,
-  resolveProviderType,
-  onProviderTypeChange,
+  resolveProviderSurface,
+  onProviderSurfaceChange,
   onDiscoverModels,
   getModelOptions,
   canDiscoverModels,
@@ -472,19 +472,24 @@ export default function AiAutomationTab({
               <h4 className="font-medium text-content-strong text-sm">OCR {t('settingsAutomation.externalApi')}</h4>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label htmlFor="settings-ocr-provider-type" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.providerType')}
+                  <label htmlFor="settings-ocr-provider-surface" className="mb-1 block text-content-secondary text-xs">
+                    {t('settingsAutomation.providerSurfaceLabel')}
                   </label>
                   <Select
-                    id="settings-ocr-provider-type"
-                    value={resolveProviderType(formData.ai_provider.ocr_api?.provider_type)}
-                    onChange={(e) => onProviderTypeChange('ocr_api', e.target.value)}
+                    id="settings-ocr-provider-surface"
+                    value={formData.ai_provider.ocr_api?.surface_id ?? resolveProviderSurface('ocr_api')?.surface_id ?? ''}
+                    disabled={providerSurfaceOptions.ocr_api.length === 0}
+                    onChange={(e) => onProviderSurfaceChange('ocr_api', e.target.value)}
                   >
-                    {providerOptions.map((vendor) => (
-                      <option key={vendor.provider_type} value={vendor.provider_type}>
-                        {vendor.display_name}
-                      </option>
-                    ))}
+                    {providerSurfaceOptions.ocr_api.length === 0 ? (
+                      <option value="">{t('settingsAutomation.noCompatibleProviderSurface')}</option>
+                    ) : (
+                      providerSurfaceOptions.ocr_api.map((surface) => (
+                        <option key={surface.surface_id} value={surface.surface_id}>
+                          {surface.display_name}
+                        </option>
+                      ))
+                    )}
                   </Select>
                 </div>
                 <div className="flex items-end">
@@ -589,19 +594,24 @@ export default function AiAutomationTab({
               <h4 className="font-medium text-content-strong text-sm">LLM {t('settingsAutomation.externalApi')}</h4>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label htmlFor="settings-llm-provider-type" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.providerType')}
+                  <label htmlFor="settings-llm-provider-surface" className="mb-1 block text-content-secondary text-xs">
+                    {t('settingsAutomation.providerSurfaceLabel')}
                   </label>
                   <Select
-                    id="settings-llm-provider-type"
-                    value={resolveProviderType(formData.ai_provider.llm_api?.provider_type)}
-                    onChange={(e) => onProviderTypeChange('llm_api', e.target.value)}
+                    id="settings-llm-provider-surface"
+                    value={formData.ai_provider.llm_api?.surface_id ?? resolveProviderSurface('llm_api')?.surface_id ?? ''}
+                    disabled={providerSurfaceOptions.llm_api.length === 0}
+                    onChange={(e) => onProviderSurfaceChange('llm_api', e.target.value)}
                   >
-                    {providerOptions.map((vendor) => (
-                      <option key={vendor.provider_type} value={vendor.provider_type}>
-                        {vendor.display_name}
-                      </option>
-                    ))}
+                    {providerSurfaceOptions.llm_api.length === 0 ? (
+                      <option value="">{t('settingsAutomation.noCompatibleProviderSurface')}</option>
+                    ) : (
+                      providerSurfaceOptions.llm_api.map((surface) => (
+                        <option key={surface.surface_id} value={surface.surface_id}>
+                          {surface.display_name}
+                        </option>
+                      ))
+                    )}
                   </Select>
                 </div>
                 <div className="flex items-end">

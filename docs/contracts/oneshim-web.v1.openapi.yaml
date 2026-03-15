@@ -56,25 +56,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  "/api/ai/providers/presets":
-    get:
-      tags:
-        - ai_providers
-      operationId: ai_providers_get_api_ai_providers_presets
-      summary: "GET /api/ai/providers/presets"
-      responses:
-        "200":
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GenericObject'
-        "default":
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
   "/api/automation/audit":
     get:
       tags:

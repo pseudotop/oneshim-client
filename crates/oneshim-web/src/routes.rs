@@ -25,10 +25,6 @@ pub fn api_routes() -> Router<AppState> {
         .route("/settings", get(handlers::settings::get_settings))
         .route("/settings", post(handlers::settings::update_settings))
         .route(
-            "/ai/providers/presets",
-            get(handlers::ai_provider_presets::list_provider_presets),
-        )
-        .route(
             "/ai/provider-surfaces",
             get(handlers::ai_provider_surfaces::list_provider_surfaces),
         )

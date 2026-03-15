@@ -22,7 +22,6 @@ import {
   type PrivacySettings as PrivacySettingsType,
   type ProviderModelsResponse,
   type ProviderSurfaceSpec,
-  type ProviderVendorSpec,
   postUpdateAction,
   type SandboxSettings,
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
@@ -36,8 +35,16 @@ import {
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../api/defaultProviderSurfaceCatalog'
 import { isStandaloneModeEnabled } from '../api/standalone'
 import { Button, Spinner, Tabs } from '../components/ui'
+import {
+  defaultSurfaceEndpoint,
+  defaultSurfaceModel,
+  deriveDefaultProviderSurfaceId,
+  getCompatibleProviderSurfaces,
+  providerSurfaceById,
+  resolveProviderTypeForSurface,
+  type EndpointSurfaceKind,
+} from '../features/providerSurfaces'
 import { useToast } from '../hooks/useToast'
-import { deriveDefaultProviderSurfaceId, type EndpointSurfaceKind } from '../features/providerSurfaces'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { IS_TAURI } from '../utils/platform'
@@ -146,8 +153,6 @@ export default function Settings() {
   }, [defaultByokBackendKind, secretBackendCapabilities])
 
   const providerCatalog = providerSurfaceCatalog ?? DEFAULT_PROVIDER_SURFACE_CATALOG
-  const providerSurfaces = providerCatalog.surfaces
-  const providerVendors = providerCatalog.vendors
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
@@ -271,11 +276,25 @@ export default function Settings() {
     endpoint: ExternalApiSettings | null | undefined,
   ): ExternalApiSettings | null => {
     if (!endpoint) return null
-    const providerType = resolveProviderType(endpoint.provider_type)
+    const providerType = resolveProviderTypeForSurface(providerCatalog, endpoint.surface_id, endpoint.provider_type)
+    const surfaceId = deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, providerType)
+    const previousSurface = providerSurfaceById(providerCatalog, endpoint.surface_id)
+    const nextSurface = providerSurfaceById(providerCatalog, surfaceId)
+    const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, endpointKind)
+    const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, endpointKind)
+    const previousDefaultModel = defaultSurfaceModel(previousSurface, endpointKind)
+    const nextDefaultModel = defaultSurfaceModel(nextSurface, endpointKind)
+
     return {
       ...endpoint,
+      endpoint:
+        !endpoint.endpoint.trim() || endpoint.endpoint === previousDefaultEndpoint
+          ? nextDefaultEndpoint
+          : endpoint.endpoint,
+      model:
+        !endpoint.model?.trim() || endpoint.model === previousDefaultModel ? nextDefaultModel : endpoint.model,
       provider_type: providerType,
-      surface_id: deriveDefaultProviderSurfaceId(accessMode, endpointKind, providerType),
+      surface_id: surfaceId,
     }
   }
 
@@ -357,33 +376,33 @@ export default function Settings() {
   const defaultExternalApiSettings = (
     accessMode: string,
     endpointKind: EndpointSurfaceKind,
-  ): ExternalApiSettings => ({
-    endpoint: '',
-    api_key_masked: '',
-    model: null,
-    provider_type: 'Generic',
-    surface_id: deriveDefaultProviderSurfaceId(accessMode, endpointKind, 'Generic'),
-    timeout_secs: 30,
-    auth_mode: 'api_key',
-    backend_kind: defaultByokBackendKind,
-    has_secret: false,
-    can_edit_secret: backendAllowsSecretEditing(defaultByokBackendKind),
-    secret_display_hint: null,
-    projection_enabled: false,
-  })
+  ): ExternalApiSettings => {
+    const surfaceId = deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, 'Generic')
+    const surface = providerSurfaceById(providerCatalog, surfaceId)
 
-  const findProviderSurface = (surfaceId: string | null | undefined): ProviderSurfaceSpec | undefined => {
-    const normalized = (surfaceId ?? '').trim().toLowerCase()
-    if (!normalized) return undefined
-    return providerSurfaces.find((surface) => surface.surface_id.toLowerCase() === normalized)
+    return {
+      endpoint: defaultSurfaceEndpoint(surface, endpointKind),
+      api_key_masked: '',
+      model: defaultSurfaceModel(surface, endpointKind),
+      provider_type: surface?.provider_type ?? 'Generic',
+      surface_id: surfaceId,
+      timeout_secs: 30,
+      auth_mode: 'api_key',
+      backend_kind: defaultByokBackendKind,
+      has_secret: false,
+      can_edit_secret: backendAllowsSecretEditing(defaultByokBackendKind),
+      secret_display_hint: null,
+      projection_enabled: false,
+    }
   }
 
   const resolveEndpointSurface = (which: 'ocr_api' | 'llm_api'): ProviderSurfaceSpec | undefined => {
     const endpoint = formData?.ai_provider[which]
-    const providerType = resolveProviderType(endpoint?.provider_type)
+    const providerType = resolveProviderTypeForSurface(providerCatalog, endpoint?.surface_id, endpoint?.provider_type)
     const surfaceId =
-      endpoint?.surface_id ?? deriveDefaultProviderSurfaceId(formData?.ai_provider.access_mode, which, providerType)
-    return findProviderSurface(surfaceId)
+      endpoint?.surface_id ??
+      deriveDefaultProviderSurfaceId(providerCatalog, formData?.ai_provider.access_mode, which, providerType)
+    return providerSurfaceById(providerCatalog, surfaceId)
   }
 
   const handleExternalApiChange = (
@@ -405,22 +424,8 @@ export default function Settings() {
     })
   }
 
-  const findProviderVendor = (raw: string | null | undefined): ProviderVendorSpec | undefined => {
-    const normalized = (raw ?? '').trim().toLowerCase()
-    if (!normalized) {
-      return providerVendors.find((vendor) => vendor.provider_type === 'Generic')
-    }
-
-    return providerVendors.find(
-      (vendor) =>
-        vendor.provider_type.toLowerCase() === normalized ||
-        vendor.aliases.some((alias) => alias.toLowerCase() === normalized),
-    )
-  }
-
-  const resolveProviderType = (raw: string | null | undefined): string => {
-    return findProviderVendor(raw)?.provider_type ?? 'Generic'
-  }
+  const getCompatibleSurfaceOptions = (which: 'ocr_api' | 'llm_api'): ProviderSurfaceSpec[] =>
+    getCompatibleProviderSurfaces(providerCatalog, formData?.ai_provider.access_mode, which)
 
   const getSurfaceModels = (which: 'ocr_api' | 'llm_api'): string[] => {
     const surface = resolveEndpointSurface(which)
@@ -439,22 +444,27 @@ export default function Settings() {
     return surface?.supports.model_catalog ?? true
   }
 
-  const handleProviderTypeChange = (which: 'ocr_api' | 'llm_api', rawProviderType: string) => {
-    const providerType = resolveProviderType(rawProviderType)
+  const handleProviderSurfaceChange = (which: 'ocr_api' | 'llm_api', nextSurfaceId: string) => {
+    const nextSurface = providerSurfaceById(providerCatalog, nextSurfaceId)
+    if (!nextSurface) {
+      return
+    }
 
     setFormData((current) => {
       if (!current) return current
       const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
-      const nextSurfaceId = deriveDefaultProviderSurfaceId(current.ai_provider.access_mode, which, providerType)
-      const nextSurface = findProviderSurface(nextSurfaceId)
-      const presetEndpoint =
-        which === 'ocr_api' ? (nextSurface?.ocr_transport?.url ?? '') : (nextSurface?.llm_transport?.url ?? '')
-      const presetModel =
-        which === 'ocr_api'
-          ? (nextSurface?.default_models.ocr_models?.[0] ?? null)
-          : (nextSurface?.default_models.llm_models?.[0] ?? null)
-      const endpoint = existing.endpoint && existing.endpoint.trim().length > 0 ? existing.endpoint : presetEndpoint
-      const model = existing.model && existing.model.trim().length > 0 ? existing.model : presetModel
+      const previousSurface = providerSurfaceById(providerCatalog, existing.surface_id)
+      const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, which)
+      const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, which)
+      const previousDefaultModel = defaultSurfaceModel(previousSurface, which)
+      const nextDefaultModel = defaultSurfaceModel(nextSurface, which)
+
+      const endpoint =
+        !existing.endpoint.trim() || existing.endpoint === previousDefaultEndpoint
+          ? nextDefaultEndpoint
+          : existing.endpoint
+      const model =
+        !existing.model?.trim() || existing.model === previousDefaultModel ? nextDefaultModel : existing.model
 
       return {
         ...current,
@@ -462,8 +472,8 @@ export default function Settings() {
           ...current.ai_provider,
           [which]: {
             ...existing,
-            provider_type: providerType,
-            surface_id: nextSurfaceId,
+            provider_type: nextSurface.provider_type,
+            surface_id: nextSurface.surface_id,
             endpoint,
             model,
           },
@@ -654,7 +664,10 @@ export default function Settings() {
           <fieldset disabled={activeTab !== 'ai-automation'} className="m-0 min-w-0 border-0 p-0">
             <AiAutomationTab
               formData={formData}
-              providerOptions={providerVendors}
+              providerSurfaceOptions={{
+                ocr_api: getCompatibleSurfaceOptions('ocr_api'),
+                llm_api: getCompatibleSurfaceOptions('llm_api'),
+              }}
               modelCatalogNotice={modelCatalogNotice}
               modelCatalogLoading={modelCatalogLoading}
               onAutomationChange={handleAutomationChange}
@@ -664,8 +677,8 @@ export default function Settings() {
               onSceneActionOverrideChange={handleSceneActionOverrideChange}
               onSceneIntelligenceChange={handleSceneIntelligenceChange}
               onExternalApiChange={handleExternalApiChange}
-              resolveProviderType={resolveProviderType}
-              onProviderTypeChange={handleProviderTypeChange}
+              resolveProviderSurface={resolveEndpointSurface}
+              onProviderSurfaceChange={handleProviderSurfaceChange}
               onDiscoverModels={(which) => void discoverModels(which)}
               getModelOptions={getModelOptions}
               canDiscoverModels={canDiscoverModels}

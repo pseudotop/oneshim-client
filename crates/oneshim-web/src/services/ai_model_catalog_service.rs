@@ -7,7 +7,6 @@ use oneshim_core::provider_surface::default_provider_surface_id;
 use serde_json::Value;
 
 use crate::error::ApiError;
-use crate::services::ai_provider_preset_service;
 use crate::services::ai_provider_spec_service::{
     self, ModelCatalogResponseShape, ProviderAuthScheme,
 };
@@ -21,8 +20,11 @@ pub async fn fetch_provider_models(
     request: &ProviderModelsRequest,
     state: &AppState,
 ) -> Result<ProviderModelsResponse, ApiError> {
-    let provider_type = ai_provider_preset_service::resolve_provider_type(&request.provider_type)?;
     let requested_surface_id = normalize_optional_surface_id(request.surface_id.as_deref());
+    let provider_type = resolve_requested_provider_type(
+        request.provider_type.as_str(),
+        requested_surface_id.as_deref(),
+    )?;
     let api_key = resolve_model_discovery_api_key(request, state, provider_type).await?;
 
     let endpoint = resolve_models_endpoint(
@@ -316,7 +318,7 @@ fn resolve_models_endpoint(
             .as_deref()
             .and_then(derive_anthropic_models_endpoint)
             .or_else(|| {
-                ai_provider_preset_service::default_model_catalog_endpoint_for_surface(
+                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
                     provider_type,
                     surface_id,
                 )
@@ -327,7 +329,7 @@ fn resolve_models_endpoint(
             .as_deref()
             .and_then(derive_openai_models_endpoint)
             .or_else(|| {
-                ai_provider_preset_service::default_model_catalog_endpoint_for_surface(
+                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
                     provider_type,
                     surface_id,
                 )
@@ -338,7 +340,7 @@ fn resolve_models_endpoint(
             .as_deref()
             .and_then(derive_google_models_endpoint)
             .or_else(|| {
-                ai_provider_preset_service::default_model_catalog_endpoint_for_surface(
+                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
                     provider_type,
                     surface_id,
                 )
@@ -351,7 +353,7 @@ fn resolve_models_endpoint(
             .as_deref()
             .map(ToString::to_string)
             .or_else(|| {
-                ai_provider_preset_service::default_model_catalog_endpoint_for_surface(
+                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
                     provider_type,
                     surface_id,
                 )
@@ -360,6 +362,19 @@ fn resolve_models_endpoint(
             .map(Ok)
             .unwrap_or_else(|| Ok("https://api.openai.com/v1/models".to_string())),
     }
+}
+
+fn resolve_requested_provider_type(
+    raw_provider_type: &str,
+    surface_id: Option<&str>,
+) -> Result<AiProviderType, ApiError> {
+    if let Some(surface_id) = surface_id {
+        let surface = oneshim_api_contracts::provider_specs::provider_surface_spec(surface_id)
+            .map_err(ApiError::BadRequest)?;
+        return ai_provider_spec_service::resolve_provider_type(&surface.provider_type);
+    }
+
+    ai_provider_spec_service::resolve_provider_type(raw_provider_type)
 }
 
 fn saved_endpoint_surface_id(

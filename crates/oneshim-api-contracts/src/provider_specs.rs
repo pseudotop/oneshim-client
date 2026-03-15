@@ -5,9 +5,8 @@ use oneshim_core::config::AiProviderType;
 use oneshim_core::provider_surface::canonical_provider_surface_id;
 
 use crate::ai_providers::{
-    ProviderDefaultModels, ProviderModelCatalogTransportSpec, ProviderParameterProfile,
-    ProviderParameterSet, ProviderPreset, ProviderPresetCatalog, ProviderSpec, ProviderSpecCatalog,
-    ProviderTransportSet, ProviderTransportSpec,
+    ProviderModelCatalogTransportSpec, ProviderParameterProfile, ProviderParameterSet,
+    ProviderTransportSpec,
 };
 
 const PROVIDER_SURFACE_SPECS_JSON: &str = include_str!(concat!(
@@ -16,7 +15,6 @@ const PROVIDER_SURFACE_SPECS_JSON: &str = include_str!(concat!(
 ));
 
 static SURFACE_CATALOG: OnceLock<Result<ProviderSurfaceCatalog, String>> = OnceLock::new();
-static COMPAT_PROVIDER_CATALOG: OnceLock<Result<ProviderSpecCatalog, String>> = OnceLock::new();
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ProviderSurfaceCatalog {
@@ -141,10 +139,6 @@ pub enum SurfaceExecutionKind {
     SubprocessCli,
 }
 
-pub fn list_provider_specs() -> Result<ProviderSpecCatalog, String> {
-    Ok(compat_catalog()?.clone())
-}
-
 pub fn list_provider_surface_specs() -> Result<ProviderSurfaceCatalog, String> {
     Ok(surface_catalog()?.clone())
 }
@@ -175,15 +169,6 @@ pub fn resolve_provider_type(raw: &str) -> Option<AiProviderType> {
     }
 
     parse_provider_type_name(&normalized)
-}
-
-pub fn provider_spec(provider_type: AiProviderType) -> Result<&'static ProviderSpec, String> {
-    let label = provider_type_label(provider_type);
-    compat_catalog()?
-        .providers
-        .iter()
-        .find(|provider| provider.provider_type.eq_ignore_ascii_case(label))
-        .ok_or_else(|| format!("Provider spec for {label} is missing from the surface catalog."))
 }
 
 pub fn provider_surface_spec(surface_id: &str) -> Result<&'static ProviderSurfaceSpec, String> {
@@ -218,15 +203,7 @@ pub fn transport_spec(
     provider_type: AiProviderType,
     kind: ProviderTransportKind,
 ) -> Result<&'static ProviderTransportSpec, String> {
-    let spec = provider_spec(provider_type)?;
-    match kind {
-        ProviderTransportKind::Llm => Ok(&spec.transports.llm),
-        ProviderTransportKind::Ocr => Ok(&spec.transports.ocr),
-        ProviderTransportKind::ModelCatalog => Err(
-            "Model catalog transport uses a dedicated shape and must be resolved separately."
-                .to_string(),
-        ),
-    }
+    resolved_transport_spec(provider_type, None, kind)
 }
 
 pub fn resolved_transport_spec(
@@ -259,17 +236,7 @@ pub fn auth_scheme(
     provider_type: AiProviderType,
     kind: ProviderTransportKind,
 ) -> Result<ProviderAuthScheme, String> {
-    let raw = match kind {
-        ProviderTransportKind::Llm | ProviderTransportKind::Ocr => {
-            transport_spec(provider_type, kind)?.auth_scheme.as_str()
-        }
-        ProviderTransportKind::ModelCatalog => provider_spec(provider_type)?
-            .transports
-            .model_catalog
-            .auth_scheme
-            .as_str(),
-    };
-    parse_auth_scheme(raw)
+    resolved_auth_scheme(provider_type, None, kind)
 }
 
 pub fn resolved_auth_scheme(
@@ -296,7 +263,7 @@ pub fn request_shape(
     provider_type: AiProviderType,
     kind: ProviderTransportKind,
 ) -> Result<ProviderRequestShape, String> {
-    parse_request_shape(&transport_spec(provider_type, kind)?.request_shape)
+    resolved_request_shape(provider_type, None, kind)
 }
 
 pub fn resolved_request_shape(
@@ -375,21 +342,6 @@ pub fn resolved_default_model(
     })
 }
 
-pub fn list_compatibility_provider_presets() -> Result<ProviderPresetCatalog, String> {
-    let catalog = surface_catalog()?;
-    let providers = catalog
-        .vendors
-        .iter()
-        .filter_map(|vendor| compatibility_preset_from_vendor(catalog, vendor))
-        .collect::<Vec<_>>();
-
-    Ok(ProviderPresetCatalog {
-        version: catalog.version,
-        updated_at: catalog.updated_at.clone(),
-        providers,
-    })
-}
-
 pub fn parse_surface_execution_kind(raw: &str) -> Result<SurfaceExecutionKind, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "direct_http" => Ok(SurfaceExecutionKind::DirectHttp),
@@ -406,77 +358,11 @@ fn surface_catalog() -> Result<&'static ProviderSurfaceCatalog, String> {
     }
 }
 
-fn compat_catalog() -> Result<&'static ProviderSpecCatalog, String> {
-    match COMPAT_PROVIDER_CATALOG.get_or_init(load_compat_provider_catalog) {
-        Ok(catalog) => Ok(catalog),
-        Err(message) => Err(message.clone()),
-    }
-}
-
 fn load_surface_catalog() -> Result<ProviderSurfaceCatalog, String> {
     let catalog = serde_json::from_str::<ProviderSurfaceCatalog>(PROVIDER_SURFACE_SPECS_JSON)
         .map_err(|e| format!("Failed to parse provider surface catalog: {e}"))?;
     validate_surface_catalog(&catalog)?;
     Ok(catalog)
-}
-
-fn load_compat_provider_catalog() -> Result<ProviderSpecCatalog, String> {
-    let catalog = surface_catalog()?;
-    build_provider_spec_catalog(catalog)
-}
-
-fn build_provider_spec_catalog(
-    catalog: &ProviderSurfaceCatalog,
-) -> Result<ProviderSpecCatalog, String> {
-    let mut providers = Vec::with_capacity(catalog.vendors.len());
-
-    for vendor in &catalog.vendors {
-        let surface =
-            compatibility_surface_from_vendor(catalog, &vendor.vendor_id).ok_or_else(|| {
-                format!(
-                    "Vendor '{}' does not define a direct_http compatibility surface.",
-                    vendor.vendor_id
-                )
-            })?;
-
-        providers.push(ProviderSpec {
-            provider_type: vendor.provider_type.clone(),
-            aliases: vendor.aliases.clone(),
-            display_name: vendor.display_name.clone(),
-            transports: ProviderTransportSet {
-                llm: surface.llm_transport.clone().ok_or_else(|| {
-                    format!(
-                        "Surface '{}' is missing llm_transport for compatibility projection.",
-                        surface.surface_id
-                    )
-                })?,
-                ocr: surface.ocr_transport.clone().ok_or_else(|| {
-                    format!(
-                        "Surface '{}' is missing ocr_transport for compatibility projection.",
-                        surface.surface_id
-                    )
-                })?,
-                model_catalog: surface.model_catalog_transport.clone().ok_or_else(|| {
-                    format!(
-                        "Surface '{}' is missing model_catalog_transport for compatibility projection.",
-                        surface.surface_id
-                    )
-                })?,
-            },
-            defaults: ProviderDefaultModels {
-                llm_models: surface.default_models.llm_models.clone(),
-                ocr_models: surface.default_models.ocr_models.clone(),
-            },
-            parameters: surface.parameter_profiles.clone(),
-            references: surface.references.clone(),
-        });
-    }
-
-    Ok(ProviderSpecCatalog {
-        version: catalog.version,
-        updated_at: catalog.updated_at.clone(),
-        providers,
-    })
 }
 
 fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), String> {
@@ -777,45 +663,6 @@ fn compatibility_surface_for_provider_type(
     })
 }
 
-fn compatibility_preset_from_vendor(
-    catalog: &ProviderSurfaceCatalog,
-    vendor: &ProviderVendorSpec,
-) -> Option<ProviderPreset> {
-    let surface = compatibility_surface_from_vendor(catalog, &vendor.vendor_id)?;
-
-    Some(ProviderPreset {
-        provider_type: vendor.provider_type.clone(),
-        aliases: vendor.aliases.clone(),
-        display_name: vendor.display_name.clone(),
-        llm_endpoint: surface
-            .llm_transport
-            .as_ref()
-            .map(|value| value.url.clone())
-            .unwrap_or_default(),
-        ocr_endpoint: surface
-            .ocr_transport
-            .as_ref()
-            .map(|value| value.url.clone())
-            .unwrap_or_default(),
-        model_catalog_endpoint: surface
-            .model_catalog_transport
-            .as_ref()
-            .map(|value| value.url.clone())
-            .unwrap_or_default(),
-        ocr_model_catalog_supported: surface
-            .model_catalog_transport
-            .as_ref()
-            .map(|value| value.ocr_supported)
-            .unwrap_or(false),
-        ocr_model_catalog_notice: surface
-            .model_catalog_transport
-            .as_ref()
-            .and_then(|value| value.ocr_notice.clone()),
-        llm_models: surface.default_models.llm_models.clone(),
-        ocr_models: surface.default_models.ocr_models.clone(),
-    })
-}
-
 fn parse_auth_scheme(raw: &str) -> Result<ProviderAuthScheme, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "bearer" => Ok(ProviderAuthScheme::Bearer),
@@ -871,12 +718,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loads_provider_specs() {
-        let catalog = list_provider_specs().expect("provider specs should load");
-        assert_eq!(catalog.providers.len(), 4);
-    }
-
-    #[test]
     fn loads_provider_surface_catalog() {
         let catalog = list_provider_surface_specs().expect("surface catalog should load");
         assert!(catalog.vendors.len() >= 4);
@@ -920,18 +761,10 @@ mod tests {
     }
 
     #[test]
-    fn derives_compatibility_presets_from_direct_surfaces() {
-        let presets =
-            list_compatibility_provider_presets().expect("compatibility presets should load");
-        let generic = presets
-            .providers
-            .iter()
-            .find(|provider| provider.provider_type == "Generic")
-            .expect("generic preset should exist");
-        assert_eq!(
-            generic.llm_models.first().map(String::as_str),
-            Some("gpt-5-mini")
-        );
+    fn resolves_openai_direct_transport_without_compatibility_projection() {
+        let transport = transport_spec(AiProviderType::OpenAi, ProviderTransportKind::Llm)
+            .expect("transport should resolve");
+        assert_eq!(transport.url, "https://api.openai.com/v1/responses");
     }
 
     #[test]
