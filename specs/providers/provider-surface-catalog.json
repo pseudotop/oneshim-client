@@ -349,7 +349,7 @@
       "catalog_strategy": "subprocess_probe",
       "supports": {
         "llm": true,
-        "ocr": false,
+        "ocr": true,
         "model_catalog": false,
         "context_bridge": true
       },
@@ -357,18 +357,18 @@
         "structured_output": true
       },
       "ocr_capabilities": {
-        "strategy": "none",
+        "strategy": "multimodal_llm",
         "supports_geometry": false,
         "supports_confidence": false,
-        "requires_image_input_model": false
+        "requires_image_input_model": true
       },
       "default_models": {
         "llm_models": ["gpt-5.4", "gpt-5.2-codex", "gpt-5.2"],
-        "ocr_models": []
+        "ocr_models": ["gpt-5.4", "gpt-5.2-codex", "gpt-5.2"]
       },
       "unknown_model_policy": {
         "llm": "allow",
-        "ocr": "reject"
+        "ocr": "warn"
       },
       "known_models": [
         {
@@ -376,24 +376,24 @@
           "display_name": "GPT-5.4",
           "aliases": [],
           "id_prefixes": [],
-          "capabilities": { "llm": true, "ocr": false, "image_input": false },
-          "notes": ["Codex CLI surface is LLM-only in ONESHIM."]
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Codex CLI surface supports multimodal OCR in ONESHIM."]
         },
         {
           "id": "gpt-5.2-codex",
           "display_name": "GPT-5.2 Codex",
           "aliases": [],
           "id_prefixes": [],
-          "capabilities": { "llm": true, "ocr": false, "image_input": false },
-          "notes": ["Codex CLI surface is LLM-only in ONESHIM."]
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Codex CLI surface supports multimodal OCR in ONESHIM."]
         },
         {
           "id": "gpt-5.2",
           "display_name": "GPT-5.2",
           "aliases": [],
           "id_prefixes": [],
-          "capabilities": { "llm": true, "ocr": false, "image_input": false },
-          "notes": ["Codex CLI surface is LLM-only in ONESHIM."]
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Codex CLI surface supports multimodal OCR in ONESHIM."]
         }
       ],
       "parameter_profiles": {
@@ -403,9 +403,9 @@
           "notes": ["CLI surface support is constrained by Codex CLI flags and stdout contract."]
         },
         "ocr": {
-          "supported": [],
-          "unsupported": ["model"],
-          "notes": []
+          "supported": ["model", "image", "json_schema"],
+          "unsupported": [],
+          "notes": ["Codex CLI OCR uses image attachments plus structured JSON output."]
         }
       },
       "subprocess_transport": {
@@ -434,7 +434,7 @@
       "catalog_strategy": "subprocess_probe",
       "supports": {
         "llm": true,
-        "ocr": false,
+        "ocr": true,
         "model_catalog": false,
         "context_bridge": true
       },
@@ -442,18 +442,18 @@
         "structured_output": true
       },
       "ocr_capabilities": {
-        "strategy": "none",
+        "strategy": "multimodal_llm",
         "supports_geometry": false,
         "supports_confidence": false,
-        "requires_image_input_model": false
+        "requires_image_input_model": true
       },
       "default_models": {
         "llm_models": ["claude-opus-4-6", "claude-sonnet-4", "sonnet", "opus"],
-        "ocr_models": []
+        "ocr_models": ["claude-opus-4-6", "claude-sonnet-4", "sonnet", "opus"]
       },
       "unknown_model_policy": {
         "llm": "allow",
-        "ocr": "reject"
+        "ocr": "warn"
       },
       "known_models": [
         {
@@ -461,16 +461,16 @@
           "display_name": "Claude Opus 4.6",
           "aliases": ["opus"],
           "id_prefixes": [],
-          "capabilities": { "llm": true, "ocr": false, "image_input": false },
-          "notes": ["Claude Code subprocess surface is LLM-only in ONESHIM."]
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Claude Code subprocess surface supports multimodal OCR in ONESHIM."]
         },
         {
           "id": "claude-sonnet-4",
           "display_name": "Claude Sonnet 4",
           "aliases": ["sonnet"],
           "id_prefixes": [],
-          "capabilities": { "llm": true, "ocr": false, "image_input": false },
-          "notes": ["Claude Code subprocess surface is LLM-only in ONESHIM."]
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Claude Code subprocess surface supports multimodal OCR in ONESHIM."]
         }
       ],
       "parameter_profiles": {
@@ -480,9 +480,9 @@
           "notes": ["Claude Code surface support is constrained by Claude CLI flags and stdout contract."]
         },
         "ocr": {
-          "supported": [],
-          "unsupported": ["model"],
-          "notes": []
+          "supported": ["model", "image", "json_schema"],
+          "unsupported": [],
+          "notes": ["Claude Code OCR uses a local image path plus JSON schema-constrained stdout."]
         }
       },
       "subprocess_transport": {
@@ -745,7 +745,7 @@
       "catalog_strategy": "subprocess_probe",
       "supports": {
         "llm": true,
-        "ocr": false,
+        "ocr": true,
         "model_catalog": false,
         "context_bridge": true
       },
@@ -753,18 +753,18 @@
         "structured_output": true
       },
       "ocr_capabilities": {
-        "strategy": "none",
+        "strategy": "multimodal_llm",
         "supports_geometry": false,
         "supports_confidence": false,
-        "requires_image_input_model": false
+        "requires_image_input_model": true
       },
       "default_models": {
         "llm_models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
-        "ocr_models": []
+        "ocr_models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"]
       },
       "unknown_model_policy": {
         "llm": "allow",
-        "ocr": "reject"
+        "ocr": "warn"
       },
       "known_models": [
         {
@@ -772,24 +772,24 @@
           "display_name": "Gemini 2.5 Pro",
           "aliases": [],
           "id_prefixes": [],
-          "capabilities": { "llm": true, "ocr": false, "image_input": false },
-          "notes": ["Gemini CLI surface is LLM-only in ONESHIM."]
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Gemini CLI surface supports multimodal OCR in ONESHIM."]
         },
         {
           "id": "gemini-2.5-flash",
           "display_name": "Gemini 2.5 Flash",
           "aliases": [],
           "id_prefixes": [],
-          "capabilities": { "llm": true, "ocr": false, "image_input": false },
-          "notes": ["Gemini CLI surface is LLM-only in ONESHIM."]
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Gemini CLI surface supports multimodal OCR in ONESHIM."]
         },
         {
           "id": "gemini-3-flash-preview",
           "display_name": "Gemini 3 Flash Preview",
           "aliases": [],
           "id_prefixes": [],
-          "capabilities": { "llm": true, "ocr": false, "image_input": false },
-          "notes": ["Gemini CLI surface is LLM-only in ONESHIM."]
+          "capabilities": { "llm": true, "ocr": true, "image_input": true },
+          "notes": ["Gemini CLI surface supports multimodal OCR in ONESHIM."]
         }
       ],
       "parameter_profiles": {
@@ -799,9 +799,9 @@
           "notes": ["Gemini CLI runtime prefers JSON output when available and falls back to prompt/stdout mode on older installs. Auth state is not verified automatically yet."]
         },
         "ocr": {
-          "supported": [],
-          "unsupported": ["model"],
-          "notes": []
+          "supported": ["model", "image"],
+          "unsupported": [],
+          "notes": ["Gemini CLI OCR prefers JSON output when available and falls back to prompt/stdout mode on older installs."]
         }
       },
       "subprocess_transport": {

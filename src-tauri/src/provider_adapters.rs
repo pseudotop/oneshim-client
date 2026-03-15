@@ -39,10 +39,13 @@ use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::warn;
 
+use oneshim_api_contracts::provider_specs::SurfaceCapabilityKind;
+
 use crate::subprocess_provider::{
     cli_id_for_surface_id, preferred_cli_surface_for_config, probe_for_surface_id,
-    probe_known_cli_surfaces, runtime_supported_for_surface, select_cli_surface_for_config,
-    ProbedSubprocessCli, SubprocessCliAuthStatus, SubprocessLlmProvider,
+    probe_known_cli_surfaces, runtime_supported_for_surface, select_cli_surface_for_capability,
+    select_cli_surface_for_config, ProbedSubprocessCli, SubprocessCliAuthStatus,
+    SubprocessLlmProvider, SubprocessOcrProvider,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -473,18 +476,28 @@ fn resolve_cli_subscription_ocr_provider(
 ) -> OcrProviderResolution {
     if let Some((surface_id, transport)) = configured_ocr_surface_transport(config) {
         if transport == ProviderSurfaceTransport::SubprocessCli {
+            if let Some(surface) =
+                select_cli_surface_for_capability(config, detected, SurfaceCapabilityKind::Ocr)
+            {
+                return Ok((
+                    Arc::new(SubprocessOcrProvider::new(surface, config)) as Arc<dyn OcrProvider>,
+                    ProviderSource::CliSubscription,
+                    None,
+                ));
+            }
+
             if let Some(surface) = probe_for_surface_id(detected, &surface_id) {
                 let cli_label = cli_id_for_surface_id(&surface.detected.surface_id)
                     .unwrap_or_else(|_| surface.detected.surface_id.clone());
                 let reason = match surface.auth_status {
                     SubprocessCliAuthStatus::Authenticated => format!(
-                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but OCR subprocess runtime is not implemented yet."
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but the OCR subprocess runtime could not be selected."
                     ),
                     SubprocessCliAuthStatus::Unauthenticated => format!(
-                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but the CLI is not authenticated and OCR subprocess runtime is not implemented yet."
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but the CLI is not authenticated. Sign in through the provider-owned CLI first."
                     ),
                     SubprocessCliAuthStatus::Unknown => format!(
-                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but authentication could not be verified and OCR subprocess runtime is not implemented yet."
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but authentication status could not be verified."
                     ),
                 };
                 if config.fallback_to_local {
@@ -1147,7 +1160,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_subscription_mode_rejects_selected_non_http_ocr_surface_until_runtime_exists() {
+    fn cli_subscription_mode_uses_subprocess_ocr_when_supported() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderSubscriptionCli,
             ocr_provider: OcrProviderType::Remote,
@@ -1164,7 +1177,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        match resolve_cli_subscription_ocr_provider(
+        let (ocr, ocr_source, ocr_fallback_reason) = resolve_cli_subscription_ocr_provider(
             &config,
             PiiFilterLevel::Standard,
             None,
@@ -1177,14 +1190,13 @@ mod tests {
                 auth_status: SubprocessCliAuthStatus::Authenticated,
                 auth_detail: Some("cli_authenticated".to_string()),
             }],
-        ) {
-            Err(CoreError::Config(message)) => {
-                assert!(message.contains("OCR subprocess runtime is not implemented yet"));
-                assert!(message.contains("provider_surface.openai.subprocess_cli"));
-            }
-            Ok(_) => panic!("expected OCR subprocess runtime error"),
-            Err(other) => panic!("unexpected error: {other}"),
-        }
+        )
+        .expect("expected OCR subprocess runtime to resolve");
+
+        assert_eq!(ocr_source, ProviderSource::CliSubscription);
+        assert!(ocr_fallback_reason.is_none());
+        assert!(ocr.is_external());
+        assert_eq!(ocr.provider_name(), "subprocess-codex");
     }
 
     #[test]

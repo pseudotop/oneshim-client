@@ -45,6 +45,7 @@ type PanelState =
   | { phase: 'unavailable' }
   | { phase: 'loading' }
   | { phase: 'disconnected' }
+  | { phase: 'reauth_required'; status: OAuthConnectionStatus }
   | { phase: 'connecting'; authUrl: string; flowId: string }
   | { phase: 'connected'; status: OAuthConnectionStatus }
   | { phase: 'error'; detail?: string; message: string }
@@ -138,6 +139,8 @@ export default function OAuthConnectionPanel({
       const status = await oauthConnectionStatus(providerId)
       if (status.connected) {
         setState({ phase: 'connected', status })
+      } else if (status.has_refresh_token) {
+        setState({ phase: 'reauth_required', status })
       } else {
         setState({ phase: 'disconnected' })
       }
@@ -273,6 +276,25 @@ export default function OAuthConnectionPanel({
           <Button type="button" variant="primary" size="sm" onClick={handleConnect}>
             {t('settingsOAuth.connect')}
           </Button>
+        </div>
+      )}
+
+      {state.phase === 'reauth_required' && (
+        <div className="space-y-2">
+          <p className="text-content-secondary text-sm">{t('settingsOAuth.reauthDescription')}</p>
+          {state.status.expires_at && (
+            <p className="text-content-secondary text-xs">
+              {t('settingsOAuth.expiresAt')}: {new Date(state.status.expires_at).toLocaleString()}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="primary" size="sm" onClick={handleConnect}>
+              {t('settingsOAuth.reauthRequired')}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={handleDisconnect}>
+              {t('settingsOAuth.disconnect')}
+            </Button>
+          </div>
         </div>
       )}
 

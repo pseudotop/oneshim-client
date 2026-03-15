@@ -281,9 +281,7 @@ export default function AiAutomationTab({
   const currentLlmFeature = currentLlmSurface
     ? findFeatureCapability(featureCapabilities, currentLlmSurface.surface_id)
     : null
-  const currentLlmAvailability = providerSurfaceAvailability(currentLlmSurface, featureCapabilities)
   const currentLlmMaturity = providerSurfaceMaturity(currentLlmSurface, featureCapabilities)
-  const currentLlmStatusCopyKey = providerSurfaceStatusCopyKey(currentLlmSurface, featureCapabilities)
   const currentLlmRequirements = currentLlmFeature?.requires ?? []
   const preferredCliAvailability = providerSurfaceAvailability(preferredCliSurface, featureCapabilities)
   const showPreferredCliCta =
@@ -322,6 +320,37 @@ export default function AiAutomationTab({
 
     return Boolean(configuredEndpoint && catalogEndpoint && configuredEndpoint !== catalogEndpoint)
   }
+
+  const surfaceAvailabilityForEndpoint = (
+    surface: ProviderSurfaceSpec | undefined,
+    endpointKind: EndpointSurfaceKind,
+  ) => {
+    const endpointProbe = endpointProbeResult[endpointKind]
+    if (endpointProbe) {
+      return endpointProbe.availability
+    }
+
+    return usesCustomSelfHostedEndpoint(surface, endpointKind)
+      ? 'partially_available'
+      : providerSurfaceAvailability(surface, featureCapabilities)
+  }
+
+  const surfaceStatusCopyKeyForEndpoint = (
+    surface: ProviderSurfaceSpec | undefined,
+    endpointKind: EndpointSurfaceKind,
+  ) => {
+    const endpointProbe = endpointProbeResult[endpointKind]
+    if (endpointProbe) {
+      return endpointProbe.status_copy_key
+    }
+
+    return usesCustomSelfHostedEndpoint(surface, endpointKind)
+      ? null
+      : providerSurfaceStatusCopyKey(surface, featureCapabilities)
+  }
+
+  const currentLlmAvailability = surfaceAvailabilityForEndpoint(currentLlmSurface, 'llm_api')
+  const currentLlmStatusCopyKey = surfaceStatusCopyKeyForEndpoint(currentLlmSurface, 'llm_api')
 
   const handleSwitchToPreferredCli = () => {
     onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
@@ -393,12 +422,8 @@ export default function AiAutomationTab({
     const maturity = providerSurfaceMaturity(surface, featureCapabilities)
     const customSelfHostedEndpoint = usesCustomSelfHostedEndpoint(surface, endpointKind)
     const endpointProbe = endpointProbeResult[endpointKind]
-    const availability =
-      endpointProbe?.availability ??
-      (customSelfHostedEndpoint ? 'partially_available' : providerSurfaceAvailability(surface, featureCapabilities))
-    const statusCopyKey =
-      endpointProbe?.status_copy_key ??
-      (customSelfHostedEndpoint ? null : providerSurfaceStatusCopyKey(surface, featureCapabilities))
+    const availability = surfaceAvailabilityForEndpoint(surface, endpointKind)
+    const statusCopyKey = surfaceStatusCopyKeyForEndpoint(surface, endpointKind)
 
     return (
       <div className="space-y-2 rounded-lg border border-muted bg-surface-muted/80 p-3">

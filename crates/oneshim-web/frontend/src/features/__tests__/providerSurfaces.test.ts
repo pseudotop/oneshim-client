@@ -27,7 +27,7 @@ describe('provider surface defaults', () => {
   it('keeps direct OCR surfaces available in subscription cli mode', () => {
     expect(
       deriveDefaultProviderSurfaceId(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderSubscriptionCli', 'ocr_api', 'OpenAi'),
-    ).toBe('provider_surface.openai.direct_api')
+    ).toBe('provider_surface.openai.subprocess_cli')
   })
 
   it('lists OCR-compatible direct surfaces even when llm access mode uses provider CLI', () => {
@@ -36,6 +36,7 @@ describe('provider surface defaults', () => {
       'ProviderSubscriptionCli',
       'ocr_api',
     )
+    expect(surfaces.some((surface) => surface.surface_id === 'provider_surface.openai.subprocess_cli')).toBe(true)
     expect(surfaces.some((surface) => surface.surface_id === 'provider_surface.openai.direct_api')).toBe(true)
     expect(surfaces.some((surface) => surface.surface_id === 'provider_surface.anthropic.direct_api')).toBe(true)
   })
@@ -86,8 +87,8 @@ describe('provider surface defaults', () => {
       ),
     ).toBe(true)
     expect(
-      deriveDefaultProviderSurfaceId(catalog, 'ProviderSubscriptionCli', 'ocr_api', 'OpenAi'),
-    ).toBe('provider_surface.openai.direct_api')
+      getCompatibleProviderSurfaces(catalog, 'ProviderSubscriptionCli', 'ocr_api')[0]?.surface_id,
+    ).not.toBe('provider_surface.openai.direct_api')
   })
 
   it('falls back to direct api for generic provider types', () => {
@@ -101,6 +102,14 @@ describe('provider surface defaults', () => {
   it('filters compatible surfaces for oauth llm mode', () => {
     const surfaces = getCompatibleProviderSurfaces(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderOAuth', 'llm_api')
     expect(surfaces.map((surface) => surface.surface_id)).toEqual(['provider_surface.openai.managed_oauth'])
+  })
+
+  it('keeps oauth ocr mode on direct http surfaces until managed ocr runtime exists', () => {
+    const surfaces = getCompatibleProviderSurfaces(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderOAuth', 'ocr_api')
+    expect(surfaces.every((surface) => surface.execution_kind === 'direct_http')).toBe(true)
+    expect(
+      surfaces.some((surface) => surface.surface_id === 'provider_surface.openai.managed_oauth'),
+    ).toBe(false)
   })
 
   it('prefers higher-stability preferred surfaces within the same compatibility set', () => {

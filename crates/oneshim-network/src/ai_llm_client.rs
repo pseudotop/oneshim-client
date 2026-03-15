@@ -158,6 +158,36 @@ impl RemoteLlmProvider {
                 return Err(CoreError::PolicyDenied(message));
             }
         }
+        if let Some(message) = provider_specs::known_model_capability_warning(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            &model,
+        )
+        .map_err(CoreError::Internal)?
+        {
+            warn!(
+                provider = ?config.provider_type,
+                surface_id = ?config.surface_id,
+                model = %model,
+                "{message}"
+            );
+        }
+        if let Some(message) = provider_specs::known_model_capability_warning(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            &model,
+        )
+        .map_err(CoreError::Internal)?
+        {
+            warn!(
+                provider = ?config.provider_type,
+                surface_id = ?config.surface_id,
+                model = %model,
+                "{message}"
+            );
+        }
         provider_specs::validate_known_model_capability(
             config.provider_type,
             config.surface_id.as_deref(),

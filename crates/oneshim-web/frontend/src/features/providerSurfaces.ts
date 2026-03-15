@@ -5,6 +5,7 @@ import type {
   ProviderSurfaceCatalog,
   ProviderSurfaceSpec,
 } from '../api/contracts'
+import { providerSurfaceAvailability } from './featureCapabilities'
 
 export type EndpointSurfaceKind = 'ocr_api' | 'llm_api'
 export type UnknownModelPolicy = 'allow' | 'warn' | 'reject'
@@ -37,11 +38,11 @@ function normalizedProviderType(providerType: string | null | undefined): string
 function compatibleExecutionKinds(accessMode: string | null | undefined, endpointKind: EndpointSurfaceKind): string[] {
   if (endpointKind === 'ocr_api') {
     if (accessMode === 'ProviderSubscriptionCli') {
-      return ['direct_http', 'subprocess_cli']
+      return ['subprocess_cli', 'direct_http']
     }
 
     if (accessMode === 'ProviderOAuth') {
-      return ['direct_http', 'managed_http']
+      return ['direct_http']
     }
 
     return ['direct_http']
@@ -58,6 +59,16 @@ function compatibleExecutionKinds(accessMode: string | null | undefined, endpoin
   return ['direct_http']
 }
 
+function executionKindPriority(
+  accessMode: string | null | undefined,
+  endpointKind: EndpointSurfaceKind,
+  executionKind: string,
+): number {
+  const ordered = compatibleExecutionKinds(accessMode, endpointKind)
+  const index = ordered.indexOf(executionKind)
+  return index >= 0 ? index : ordered.length
+}
+
 function surfaceSupportsKind(surface: ProviderSurfaceSpec, endpointKind: EndpointSurfaceKind): boolean {
   return endpointKind === 'ocr_api' ? surface.supports.ocr : surface.supports.llm
 }
@@ -66,16 +77,7 @@ function featureAvailabilityScore(
   surface: ProviderSurfaceSpec,
   snapshot: FeatureCapabilitySnapshot | null | undefined,
 ): number {
-  const feature = snapshot?.features.find((candidate) => candidate.feature_id === surface.surface_id)
-  if (feature) {
-    return AVAILABILITY_RANK[feature.availability]
-  }
-
-  if (surface.execution_kind === 'direct_http') {
-    return AVAILABILITY_RANK.available
-  }
-
-  return AVAILABILITY_RANK.partially_available
+  return AVAILABILITY_RANK[providerSurfaceAvailability(surface, snapshot)]
 }
 
 function compareProviderSurfaces(
@@ -133,13 +135,37 @@ export function getCompatibleProviderSurfaces(
 ): ProviderSurfaceSpec[] {
   const executionKinds = compatibleExecutionKinds(accessMode, endpointKind)
 
-  return sortProviderSurfaces(
-    catalog.surfaces.filter(
-      (surface) =>
-        executionKinds.includes(surface.execution_kind) &&
-        surfaceSupportsKind(surface, endpointKind),
-    ),
-    snapshot,
+  const compatible = catalog.surfaces.filter(
+    (surface) =>
+      executionKinds.includes(surface.execution_kind) &&
+      surfaceSupportsKind(surface, endpointKind),
+  )
+
+  return [...compatible].sort((left, right) => {
+    const priorityDelta =
+      executionKindPriority(accessMode, endpointKind, left.execution_kind) -
+      executionKindPriority(accessMode, endpointKind, right.execution_kind)
+    if (priorityDelta !== 0) {
+      return priorityDelta
+    }
+    return endpointKind === 'ocr_api'
+      ? compareOcrDefaultSurfaces(left, right, snapshot)
+      : compareProviderSurfaces(left, right, snapshot)
+  })
+}
+
+export function surfaceCompatibleWithAccessMode(
+  surface: ProviderSurfaceSpec | null | undefined,
+  accessMode: string | null | undefined,
+  endpointKind: EndpointSurfaceKind,
+): boolean {
+  if (!surface) {
+    return false
+  }
+
+  return (
+    compatibleExecutionKinds(accessMode, endpointKind).includes(surface.execution_kind) &&
+    surfaceSupportsKind(surface, endpointKind)
   )
 }
 
@@ -154,10 +180,17 @@ export function deriveDefaultProviderSurfaceId(
   const compatible = getCompatibleProviderSurfaces(catalog, accessMode, endpointKind, snapshot)
   const vendorMatch = compatible.filter((surface) => surface.provider_type === normalizedProvider)
   const rawCandidates = vendorMatch.length > 0 ? vendorMatch : compatible
-  const candidates =
-    endpointKind === 'ocr_api'
-      ? [...rawCandidates].sort((left, right) => compareOcrDefaultSurfaces(left, right, snapshot))
-      : sortProviderSurfaces(rawCandidates, snapshot)
+  const candidates = [...rawCandidates].sort((left, right) => {
+    const priorityDelta =
+      executionKindPriority(accessMode, endpointKind, left.execution_kind) -
+      executionKindPriority(accessMode, endpointKind, right.execution_kind)
+    if (priorityDelta !== 0) {
+      return priorityDelta
+    }
+    return endpointKind === 'ocr_api'
+      ? compareOcrDefaultSurfaces(left, right, snapshot)
+      : compareProviderSurfaces(left, right, snapshot)
+  })
 
   return candidates[0]?.surface_id ?? null
 }

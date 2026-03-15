@@ -11,6 +11,8 @@ use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::{
     InterpretedAction, LlmProvider, ScreenContext, SkillContext,
 };
+use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
+use serde::Deserialize;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
@@ -33,6 +35,29 @@ const ACTION_SCHEMA_JSON: &str = r#"{
     "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
   },
   "required": ["target_text", "target_role", "action_type", "confidence"],
+  "additionalProperties": false
+}"#;
+const OCR_SCHEMA_JSON: &str = r#"{
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "x": { "type": "integer" },
+          "y": { "type": "integer" },
+          "width": { "type": "integer", "minimum": 0 },
+          "height": { "type": "integer", "minimum": 0 },
+          "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+        },
+        "required": ["text", "x", "y", "width", "height", "confidence"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["results"],
   "additionalProperties": false
 }"#;
 
@@ -62,6 +87,19 @@ pub struct SubprocessLlmProvider {
     provider_name: String,
     model: String,
     timeout: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubprocessOcrProvider {
+    surface: DetectedSubprocessCli,
+    provider_name: String,
+    model: String,
+    timeout: Duration,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SubprocessOcrEnvelope {
+    results: Vec<OcrResult>,
 }
 
 impl SubprocessLlmProvider {
@@ -301,10 +339,246 @@ impl LlmProvider for SubprocessLlmProvider {
     }
 }
 
+impl SubprocessOcrProvider {
+    pub fn new(surface: DetectedSubprocessCli, config: &AiProviderConfig) -> Self {
+        let model = config
+            .ocr_api
+            .as_ref()
+            .and_then(|endpoint| endpoint.model.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .or_else(|| {
+                default_ocr_model_for_surface(&surface.surface_id)
+                    .ok()
+                    .flatten()
+            })
+            .or_else(|| {
+                default_llm_model_for_surface(&surface.surface_id)
+                    .ok()
+                    .flatten()
+            })
+            .unwrap_or_else(|| "gpt-5.4".to_string());
+        let timeout_secs = config
+            .ocr_api
+            .as_ref()
+            .map(|endpoint| endpoint.timeout_secs)
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_SUBPROCESS_TIMEOUT_SECS);
+
+        Self {
+            provider_name: provider_name_for_surface_id(&surface.surface_id)
+                .unwrap_or_else(|_| "subprocess-provider-cli".to_string()),
+            surface,
+            model,
+            timeout: Duration::from_secs(timeout_secs),
+        }
+    }
+
+    async fn invoke(&self, image: &[u8], image_format: &str) -> Result<Vec<OcrResult>, CoreError> {
+        let temp_dir = tempdir().map_err(|err| {
+            CoreError::Internal(format!("Failed to create subprocess OCR tempdir: {err}"))
+        })?;
+        let image_path = write_subprocess_ocr_image(temp_dir.path(), image, image_format)?;
+        let raw = match invocation_mode_for_surface(&self.surface.surface_id)? {
+            SubprocessInvocationMode::CodexExecJson => {
+                self.run_codex_ocr(temp_dir.path(), &image_path).await?
+            }
+            SubprocessInvocationMode::ClaudePrintJson => {
+                self.run_claude_ocr(temp_dir.path(), &image_path).await?
+            }
+            SubprocessInvocationMode::GeminiCliPrompt => {
+                self.run_gemini_ocr(temp_dir.path(), &image_path).await?
+            }
+        };
+
+        parse_ocr_output(&raw)
+    }
+
+    async fn run_codex_ocr(&self, workdir: &Path, image_path: &Path) -> Result<String, CoreError> {
+        let schema_path = workdir.join("ocr.schema.json");
+        let output_path = workdir.join("codex-ocr-output.json");
+        std::fs::write(&schema_path, OCR_SCHEMA_JSON).map_err(|err| {
+            CoreError::Internal(format!("Failed to write Codex OCR schema: {err}"))
+        })?;
+
+        let prompt = build_codex_ocr_prompt(&self.model);
+        let mut child = Command::new(&self.surface.executable_path);
+        child
+            .arg("exec")
+            .arg("--sandbox")
+            .arg("read-only")
+            .arg("--skip-git-repo-check")
+            .arg("--color")
+            .arg("never")
+            .arg("-C")
+            .arg(workdir)
+            .arg("--image")
+            .arg(image_path)
+            .arg("--output-schema")
+            .arg(&schema_path)
+            .arg("--output-last-message")
+            .arg(&output_path)
+            .arg("-")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        append_model_flag(&mut child, &self.surface.surface_id, &self.model);
+
+        let mut child = child.spawn().map_err(|err| {
+            CoreError::Internal(format!("Failed to spawn Codex OCR subprocess: {err}"))
+        })?;
+
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            CoreError::Internal("Failed to open stdin for Codex OCR subprocess".to_string())
+        })?;
+        stdin
+            .write_all(prompt.as_bytes())
+            .await
+            .map_err(CoreError::Io)?;
+        drop(stdin);
+
+        let output = timeout(self.timeout, child.wait_with_output())
+            .await
+            .map_err(|_| CoreError::RequestTimeout {
+                timeout_ms: self.timeout.as_millis() as u64,
+            })?
+            .map_err(CoreError::Io)?;
+
+        if !output.status.success() {
+            return Err(classify_subprocess_error(
+                &self.surface.surface_id,
+                &String::from_utf8_lossy(&output.stderr),
+            ));
+        }
+
+        if let Ok(rendered) = std::fs::read_to_string(&output_path) {
+            if !rendered.trim().is_empty() {
+                return Ok(rendered);
+            }
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    async fn run_claude_ocr(&self, workdir: &Path, image_path: &Path) -> Result<String, CoreError> {
+        let prompt = build_path_based_ocr_prompt(image_path, &self.model);
+        let mut command = Command::new(&self.surface.executable_path);
+        command
+            .arg("-p")
+            .arg("--permission-mode")
+            .arg("dontAsk")
+            .arg("--tools")
+            .arg("")
+            .arg("--no-session-persistence")
+            .arg("--output-format")
+            .arg("text")
+            .arg("--json-schema")
+            .arg(OCR_SCHEMA_JSON)
+            .arg(prompt)
+            .current_dir(workdir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        append_model_flag(&mut command, &self.surface.surface_id, &self.model);
+
+        let output = timeout(self.timeout, command.output())
+            .await
+            .map_err(|_| CoreError::RequestTimeout {
+                timeout_ms: self.timeout.as_millis() as u64,
+            })?
+            .map_err(CoreError::Io)?;
+
+        if !output.status.success() {
+            return Err(classify_subprocess_error(
+                &self.surface.surface_id,
+                &String::from_utf8_lossy(&output.stderr),
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    async fn run_gemini_ocr(&self, workdir: &Path, image_path: &Path) -> Result<String, CoreError> {
+        let prompt = build_path_based_ocr_prompt(image_path, &self.model);
+        let output = match self.run_gemini_command(workdir, &prompt, true).await {
+            Ok(output) => output,
+            Err(error) if is_gemini_json_flag_error(&error) => {
+                self.run_gemini_command(workdir, &prompt, false).await?
+            }
+            Err(error) => return Err(error),
+        };
+
+        if !output.status.success() {
+            return Err(classify_subprocess_error(
+                &self.surface.surface_id,
+                &String::from_utf8_lossy(&output.stderr),
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    async fn run_gemini_command(
+        &self,
+        workdir: &Path,
+        prompt: &str,
+        prefer_json_output: bool,
+    ) -> Result<std::process::Output, CoreError> {
+        let mut command = Command::new(&self.surface.executable_path);
+        command.arg("-p").arg(prompt);
+        if prefer_json_output
+            && subprocess_supports_json_output(&self.surface.surface_id).unwrap_or(false)
+        {
+            command.arg("--output-format").arg("json");
+        }
+        command
+            .current_dir(workdir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        append_model_flag(&mut command, &self.surface.surface_id, &self.model);
+
+        timeout(self.timeout, command.output())
+            .await
+            .map_err(|_| CoreError::RequestTimeout {
+                timeout_ms: self.timeout.as_millis() as u64,
+            })?
+            .map_err(CoreError::Io)
+    }
+}
+
+#[async_trait]
+impl OcrProvider for SubprocessOcrProvider {
+    async fn extract_elements(
+        &self,
+        image: &[u8],
+        image_format: &str,
+    ) -> Result<Vec<OcrResult>, CoreError> {
+        self.invoke(image, image_format).await
+    }
+
+    fn provider_name(&self) -> &str {
+        &self.provider_name
+    }
+
+    fn is_external(&self) -> bool {
+        true
+    }
+}
+
 fn default_llm_model_for_surface(surface_id: &str) -> Result<Option<String>, String> {
     oneshim_api_contracts::provider_specs::default_surface_model(
         surface_id,
         SurfaceCapabilityKind::Llm,
+    )
+}
+
+fn default_ocr_model_for_surface(surface_id: &str) -> Result<Option<String>, String> {
+    oneshim_api_contracts::provider_specs::default_surface_model(
+        surface_id,
+        SurfaceCapabilityKind::Ocr,
     )
 }
 
@@ -345,6 +619,14 @@ fn runtime_ready_for_auth_status(
             )
         }
     }
+}
+
+pub(crate) fn runtime_ready_for_surface(
+    surface_id: &str,
+    auth_status: SubprocessCliAuthStatus,
+) -> bool {
+    runtime_ready_for_auth_status(surface_id, auth_status, SurfaceCapabilityKind::Llm)
+        || runtime_ready_for_auth_status(surface_id, auth_status, SurfaceCapabilityKind::Ocr)
 }
 
 fn auth_probe_mode_for_surface(surface_id: &str) -> Result<SubprocessAuthProbeMode, String> {
@@ -721,6 +1003,135 @@ Screen context JSON:\n{screen_context_json}",
     ))
 }
 
+fn build_codex_ocr_prompt(model: &str) -> String {
+    format!(
+        "You are ONESHIM's subprocess-backed OCR extractor.\n\
+Use the attached image as the only source of truth.\n\
+Return strict JSON matching this schema:\n{schema}\n\n\
+Rules:\n\
+- Include every visible text region that matters for UI interaction.\n\
+- Use x/y/width/height when they are reasonably inferable from the image.\n\
+- If geometry is uncertain, use 0 for coordinates and size.\n\
+- confidence must be a number between 0.0 and 1.0.\n\
+- Do not include markdown, commentary, or code fences.\n\
+- The selected model is '{model}'.",
+        schema = OCR_SCHEMA_JSON,
+        model = model
+    )
+}
+
+fn build_path_based_ocr_prompt(image_path: &Path, model: &str) -> String {
+    format!(
+        "You are ONESHIM's subprocess-backed OCR extractor.\n\
+Read the local image file at this path:\n{image_path}\n\n\
+Return strict JSON matching this schema:\n{schema}\n\n\
+Rules:\n\
+- Include every visible text region that matters for UI interaction.\n\
+- Use x/y/width/height when they are reasonably inferable from the image.\n\
+- If geometry is uncertain, use 0 for coordinates and size.\n\
+- confidence must be a number between 0.0 and 1.0.\n\
+- Do not include markdown, commentary, or code fences.\n\
+- The selected model is '{model}'.",
+        image_path = image_path.display(),
+        schema = OCR_SCHEMA_JSON,
+        model = model
+    )
+}
+
+fn write_subprocess_ocr_image(
+    workdir: &Path,
+    image: &[u8],
+    image_format: &str,
+) -> Result<PathBuf, CoreError> {
+    let extension = match image_format.trim().to_ascii_lowercase().as_str() {
+        "png" => "png",
+        "jpg" | "jpeg" => "jpg",
+        "webp" => "webp",
+        "gif" => "gif",
+        "bmp" => "bmp",
+        _ => "bin",
+    };
+    let path = workdir.join(format!("ocr-input.{extension}"));
+    std::fs::write(&path, image).map_err(|err| {
+        CoreError::Internal(format!("Failed to write subprocess OCR image input: {err}"))
+    })?;
+    Ok(path)
+}
+
+fn parse_ocr_output(raw: &str) -> Result<Vec<OcrResult>, CoreError> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return Err(CoreError::Internal(
+            "Subprocess CLI returned an empty OCR response.".to_string(),
+        ));
+    }
+
+    if let Ok(envelope) = serde_json::from_str::<SubprocessOcrEnvelope>(normalized) {
+        return Ok(normalize_ocr_results(envelope.results));
+    }
+
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(normalized) {
+        if let Some(results) = parse_ocr_value(&value) {
+            return Ok(normalize_ocr_results(results));
+        }
+    }
+
+    if let Some(fragment) = extract_json_object_fragment(normalized) {
+        if let Ok(envelope) = serde_json::from_str::<SubprocessOcrEnvelope>(&fragment) {
+            return Ok(normalize_ocr_results(envelope.results));
+        }
+    }
+
+    Err(CoreError::Internal(format!(
+        "Subprocess CLI returned non-JSON OCR output: {}",
+        truncate_for_error(normalized)
+    )))
+}
+
+fn parse_ocr_value(value: &serde_json::Value) -> Option<Vec<OcrResult>> {
+    if let Ok(envelope) = serde_json::from_value::<SubprocessOcrEnvelope>(value.clone()) {
+        return Some(envelope.results);
+    }
+
+    match value {
+        serde_json::Value::Object(map) => {
+            for key in ["result", "response", "content", "message", "data"] {
+                if let Some(nested) = map.get(key) {
+                    if let Some(results) = parse_ocr_value(nested) {
+                        return Some(results);
+                    }
+                }
+            }
+            None
+        }
+        serde_json::Value::String(text) => serde_json::from_str::<SubprocessOcrEnvelope>(text)
+            .ok()
+            .map(|envelope| envelope.results)
+            .or_else(|| {
+                extract_json_object_fragment(text).and_then(|fragment| {
+                    serde_json::from_str::<SubprocessOcrEnvelope>(&fragment)
+                        .ok()
+                        .map(|envelope| envelope.results)
+                })
+            }),
+        serde_json::Value::Array(items) => items.iter().find_map(parse_ocr_value),
+        _ => None,
+    }
+}
+
+fn normalize_ocr_results(results: Vec<OcrResult>) -> Vec<OcrResult> {
+    results
+        .into_iter()
+        .filter_map(|mut result| {
+            if result.text.trim().is_empty() {
+                return None;
+            }
+            result.confidence = result.confidence.clamp(0.0, 1.0);
+            Some(result)
+        })
+        .collect()
+}
+
 fn parse_interpreted_action_output(raw: &str) -> Result<InterpretedAction, CoreError> {
     let normalized = raw.trim();
     if normalized.is_empty() {
@@ -759,9 +1170,10 @@ fn parse_interpreted_action_value(value: &serde_json::Value) -> Option<Interpret
     match value {
         serde_json::Value::Object(map) => {
             for key in ["result", "response", "content", "message"] {
-                let nested = map.get(key)?;
-                if let Some(action) = parse_interpreted_action_value(nested) {
-                    return Some(action);
+                if let Some(nested) = map.get(key) {
+                    if let Some(action) = parse_interpreted_action_value(nested) {
+                        return Some(action);
+                    }
                 }
             }
             None
@@ -991,6 +1403,32 @@ mod tests {
     }
 
     #[test]
+    fn selects_provider_matching_ocr_surface_when_available() {
+        let config = AiProviderConfig {
+            ocr_api: Some(endpoint(AiProviderType::OpenAi, Some("gpt-5.4"))),
+            ..AiProviderConfig::default()
+        };
+        let surfaces = vec![
+            probed(
+                "provider_surface.openai.subprocess_cli",
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+            probed(
+                "provider_surface.anthropic.subprocess_cli",
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+        ];
+
+        let resolved =
+            select_cli_surface_for_capability(&config, &surfaces, SurfaceCapabilityKind::Ocr)
+                .unwrap();
+        assert_eq!(
+            resolved.surface_id,
+            "provider_surface.openai.subprocess_cli"
+        );
+    }
+
+    #[test]
     fn does_not_switch_to_a_different_vendor_when_matching_surface_requires_auth() {
         let config = AiProviderConfig {
             llm_api: Some(endpoint(AiProviderType::OpenAi, None)),
@@ -1102,6 +1540,40 @@ mod tests {
         let action = parse_interpreted_action_output(&raw).unwrap();
         assert_eq!(action.target_text.as_deref(), Some("Search"));
         assert_eq!(action.action_type, "type");
+    }
+
+    #[test]
+    fn parses_nested_ocr_json_payload() {
+        let raw = json!({
+            "response": {
+                "results": [
+                    {
+                        "text": "Save",
+                        "x": 10,
+                        "y": 20,
+                        "width": 80,
+                        "height": 24,
+                        "confidence": 1.2
+                    }
+                ]
+            }
+        })
+        .to_string();
+        let results = parse_ocr_output(&raw).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].text, "Save");
+        assert_eq!(results[0].confidence, 1.0);
+    }
+
+    #[test]
+    fn parses_string_wrapped_ocr_json_payload() {
+        let raw = json!({
+            "message": "{\"results\":[{\"text\":\"Open\",\"x\":0,\"y\":0,\"width\":40,\"height\":18,\"confidence\":0.9}]}"
+        })
+        .to_string();
+        let results = parse_ocr_output(&raw).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].text, "Open");
     }
 
     #[test]

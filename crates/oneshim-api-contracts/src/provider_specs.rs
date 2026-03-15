@@ -824,6 +824,39 @@ pub fn validate_known_model_capability(
     ))
 }
 
+pub fn known_model_capability_warning(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceCapabilityKind,
+    model_id: &str,
+) -> Result<Option<String>, String> {
+    let normalized = model_id.trim();
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    if known_model_spec_for_surface(&surface.surface_id, normalized)?.is_some() {
+        return Ok(None);
+    }
+
+    if unknown_model_policy_for_surface(&surface.surface_id, capability)?
+        != ProviderUnknownModelPolicy::Warn
+    {
+        return Ok(None);
+    }
+
+    let capability_label = match capability {
+        SurfaceCapabilityKind::Llm => "LLM",
+        SurfaceCapabilityKind::Ocr => "OCR",
+    };
+
+    Ok(Some(format!(
+        "Model '{}' is not catalogued for {} surface '{}'. Continuing because this surface allows unknown models with a warning.",
+        normalized, capability_label, surface.surface_id
+    )))
+}
+
 pub fn unknown_model_policy_for_surface(
     surface_id: &str,
     capability: SurfaceCapabilityKind,
@@ -1484,7 +1517,7 @@ mod tests {
                 SurfaceCapabilityKind::Ocr,
             )
             .expect("ocr subprocess default should resolve"),
-            None
+            Some("provider_surface.openai.subprocess_cli")
         );
     }
 
@@ -1706,6 +1739,18 @@ mod tests {
         )
         .expect_err("unknown OCR model should be rejected");
         assert!(error.contains("not catalogued"));
+    }
+
+    #[test]
+    fn surfaces_with_warn_policy_emit_unknown_model_warning() {
+        let warning = known_model_capability_warning(
+            AiProviderType::Ollama,
+            Some("provider_surface.ollama.local_http"),
+            SurfaceCapabilityKind::Ocr,
+            "custom-vision-model:latest",
+        )
+        .expect("warning lookup should succeed");
+        assert!(warning.is_some());
     }
 
     #[test]

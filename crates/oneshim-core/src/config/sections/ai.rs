@@ -117,13 +117,9 @@ impl AiProviderConfig {
 
                 // OCR still respects its own provider setting and may continue to use
                 // direct API configuration even while LLM uses managed OAuth.
+                // Managed OAuth OCR transport is not implemented yet.
                 if self.ocr_provider == OcrProviderType::Remote {
-                    validate_subprocess_or_remote_endpoint(
-                        self.ocr_api.as_ref(),
-                        "ocr_api",
-                        ProviderSurfaceTransport::ManagedOAuth,
-                        provider_surface_supports_ocr,
-                    )?;
+                    validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;
                 }
             }
         }

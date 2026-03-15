@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use oneshim_api_contracts::provider_specs::{
     default_surface_id_for_access_mode as default_surface_id_from_catalog,
-    resolved_surface_supports_model_selection,
+    known_model_capability_warning, resolved_surface_supports_model_selection,
     surface_supports_capability as surface_supports_capability_from_catalog,
     validate_known_model_capability, SurfaceCapabilityKind,
 };
@@ -22,6 +22,7 @@ use oneshim_core::provider_surface::{
     canonical_provider_surface_id, provider_surface_spec, ProviderSurfaceTransport,
 };
 use std::sync::Arc;
+use tracing::warn;
 
 use crate::error::ApiError;
 use crate::AppState;
@@ -1127,6 +1128,17 @@ fn validate_endpoint_model_compatibility(
         ApiEndpointKind::Ocr => SurfaceCapabilityKind::Ocr,
         ApiEndpointKind::Llm => SurfaceCapabilityKind::Llm,
     };
+    if let Some(message) =
+        known_model_capability_warning(provider_type, surface_id, capability, model)
+            .map_err(ApiError::BadRequest)?
+    {
+        warn!(
+            provider = ?provider_type,
+            surface_id = ?surface_id,
+            model = %model,
+            "{message}"
+        );
+    }
     validate_known_model_capability(provider_type, surface_id, capability, model)
         .map_err(ApiError::BadRequest)
 }
@@ -1155,10 +1167,7 @@ fn access_mode_allows_surface_transport(
             | AiAccessMode::LocalModel => transport == ProviderSurfaceTransport::DirectApi,
         },
         ApiEndpointKind::Ocr => match access_mode {
-            AiAccessMode::ProviderOAuth => matches!(
-                transport,
-                ProviderSurfaceTransport::DirectApi | ProviderSurfaceTransport::ManagedOAuth
-            ),
+            AiAccessMode::ProviderOAuth => transport == ProviderSurfaceTransport::DirectApi,
             AiAccessMode::ProviderSubscriptionCli => matches!(
                 transport,
                 ProviderSurfaceTransport::DirectApi | ProviderSurfaceTransport::SubprocessCli
@@ -2060,7 +2069,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_settings_to_config_rejects_llm_only_cli_surface_for_ocr() {
+    fn apply_settings_to_config_allows_subprocess_ocr_surface_in_cli_mode() {
         let mut config = AppConfig::default_config();
         config.ai_provider.access_mode = AiAccessMode::ProviderSubscriptionCli;
         config.ai_provider.ocr_provider = OcrProviderType::Remote;
@@ -2083,7 +2092,72 @@ mod tests {
             projection_enabled: false,
         });
 
-        let err = apply_settings_to_config(&mut config, &settings).expect_err("ocr surface guard");
+        apply_settings_to_config(&mut config, &settings).expect("ocr subprocess surface");
+
+        let endpoint = config.ai_provider.ocr_api.as_ref().expect("ocr endpoint");
+        assert_eq!(
+            endpoint.surface_id.as_deref(),
+            Some("provider_surface.openai.subprocess_cli")
+        );
+        let binding = endpoint.credential.as_ref().expect("credential binding");
+        assert_eq!(binding.auth_mode, CredentialAuthMode::CliBridge);
+        assert_eq!(binding.backend_kind, CredentialBackendKind::BridgeManaged);
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_managed_ocr_surface_in_cli_mode() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderSubscriptionCli;
+        config.ai_provider.ocr_provider = OcrProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.access_mode = "ProviderSubscriptionCli".to_string();
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: String::new(),
+            api_key_masked: String::new(),
+            model: Some("gpt-5.4".to_string()),
+            provider_type: "OpenAi".to_string(),
+            surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+            timeout_secs: 30,
+            auth_mode: "managed_oauth".to_string(),
+            backend_kind: "os_secret_store".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err = apply_settings_to_config(&mut config, &settings).expect_err("ocr managed guard");
+        assert!(matches!(err, ApiError::BadRequest(_)));
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_managed_ocr_surface_in_oauth_mode() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderOAuth;
+        config.ai_provider.ocr_provider = OcrProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.access_mode = "ProviderOAuth".to_string();
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: String::new(),
+            api_key_masked: String::new(),
+            model: Some("gpt-5.4".to_string()),
+            provider_type: "OpenAi".to_string(),
+            surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+            timeout_secs: 30,
+            auth_mode: "managed_oauth".to_string(),
+            backend_kind: "os_secret_store".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err =
+            apply_settings_to_config(&mut config, &settings).expect_err("oauth ocr managed guard");
         assert!(matches!(err, ApiError::BadRequest(_)));
     }
 

@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use crate::setup::SecretBackendCapabilities;
 use crate::subprocess_provider::{
-    probe_for_surface_id, probe_known_cli_surfaces, ProbedSubprocessCli, SubprocessCliAuthStatus,
+    probe_for_surface_id, probe_known_cli_surfaces, runtime_ready_for_surface, ProbedSubprocessCli,
+    SubprocessCliAuthStatus,
 };
 use oneshim_api_contracts::provider_specs::{
     parse_surface_execution_kind, parse_surface_placement_kind, parse_surface_stability,
@@ -152,7 +153,7 @@ fn subprocess_cli_feature(
     let availability = match detected {
         Some(surface)
             if runtime_supported
-                && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
+                && runtime_ready_for_surface(&surface.detected.surface_id, surface.auth_status) =>
         {
             FeatureAvailability::Available
         }
@@ -163,9 +164,16 @@ fn subprocess_cli_feature(
     let (status_reason, copy_suffix) = match detected {
         Some(surface)
             if runtime_supported
-                && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
+                && runtime_ready_for_surface(&surface.detected.surface_id, surface.auth_status) =>
         {
-            ("cli_ready", "available")
+            (
+                if surface.auth_status == SubprocessCliAuthStatus::Unknown {
+                    "cli_ready_probe_skipped"
+                } else {
+                    "cli_ready"
+                },
+                "available",
+            )
         }
         Some(_) if !runtime_supported => ("cli_detected_runtime_pending", "partially_available"),
         Some(surface) => match surface.auth_status {
@@ -595,6 +603,37 @@ mod tests {
             Some(
                 "featureCapability.surface.provider_surface.anthropic.subprocess_cli.auth_required"
             )
+        );
+    }
+
+    #[test]
+    fn subprocess_cli_feature_is_available_when_auth_probe_is_skipped() {
+        let surface = provider_surface_catalog()
+            .expect("catalog should load")
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.google.subprocess_cli")
+            .expect("google subprocess surface should exist")
+            .clone();
+        let feature = subprocess_cli_feature(
+            &surface,
+            &[ProbedSubprocessCli {
+                detected: crate::subprocess_provider::DetectedSubprocessCli {
+                    surface_id: "provider_surface.google.subprocess_cli".to_string(),
+                    executable_path: "/usr/bin/gemini".into(),
+                },
+                auth_status: SubprocessCliAuthStatus::Unknown,
+                auth_detail: Some("auth_status_probe_not_implemented".to_string()),
+            }],
+        );
+        assert_eq!(feature.availability, FeatureAvailability::Available);
+        assert_eq!(
+            feature.status_reason.as_deref(),
+            Some("cli_ready_probe_skipped")
+        );
+        assert_eq!(
+            feature.status_copy_key.as_deref(),
+            Some("featureCapability.surface.provider_surface.google.subprocess_cli.available")
         );
     }
 

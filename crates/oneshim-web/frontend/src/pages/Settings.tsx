@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useDeferredValue, useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   type AiProviderSettings,
@@ -48,6 +48,7 @@ import {
   providerSurfaceById,
   resolveProviderTypeForSurface,
   sortProviderSurfaces,
+  surfaceCompatibleWithAccessMode,
   surfaceKnownModel,
   surfaceUnknownModelPolicy,
   surfaceSupportsModelSelection,
@@ -71,12 +72,26 @@ function supportsProjectionFor(authMode: string, backendKind: string): boolean {
   )
 }
 
+function modelDiscoverySensitiveField(field: keyof ExternalApiSettings): boolean {
+  return (
+    field === 'endpoint' ||
+    field === 'api_key_masked' ||
+    field === 'provider_type' ||
+    field === 'surface_id' ||
+    field === 'auth_mode' ||
+    field === 'backend_kind' ||
+    field === 'has_secret'
+  )
+}
+
 export default function Settings() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
   const [activeTab, setActiveTab] = useState<SettingsTabId>('general')
   const [formData, setFormData] = useState<AppSettings | null>(null)
+  const formDataRef = useRef<AppSettings | null>(null)
+  const lastLoadedSettingsRef = useRef<string | null>(null)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
   const [exportLoading, setExportLoading] = useState<ExportDataType | null>(null)
   const [modelCatalog, setModelCatalog] = useState<Record<'ocr_api' | 'llm_api', string[]>>({
@@ -262,16 +277,26 @@ export default function Settings() {
       return null
     }
 
-    const providerType = resolveProviderTypeForSurface(
+    const seedProviderType = resolveProviderTypeForSurface(
       providerCatalog,
       requestedSurface?.surface_id ?? seed.surface_id,
       requestedSurface?.provider_type ?? seed.provider_type,
     )
+    const previousSurface = providerSurfaceById(providerCatalog, seed.surface_id)
+    const preservedSurface =
+      !requestedSurface && surfaceCompatibleWithAccessMode(previousSurface, accessMode, endpointKind)
+        ? previousSurface
+        : undefined
     const surfaceId =
       requestedSurface?.surface_id ??
-      deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, providerType, featureCapabilities)
-    const previousSurface = providerSurfaceById(providerCatalog, seed.surface_id)
-    const nextSurface = requestedSurface ?? providerSurfaceById(providerCatalog, surfaceId)
+      preservedSurface?.surface_id ??
+      deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, seedProviderType, featureCapabilities)
+    const nextSurface = requestedSurface ?? preservedSurface ?? providerSurfaceById(providerCatalog, surfaceId)
+    const providerType = resolveProviderTypeForSurface(
+      providerCatalog,
+      nextSurface?.surface_id ?? surfaceId,
+      nextSurface?.provider_type ?? seedProviderType,
+    )
     const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, endpointKind)
     const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, endpointKind)
     const previousDefaultModel = defaultSurfaceModel(previousSurface, endpointKind)
@@ -336,8 +361,25 @@ export default function Settings() {
   }
 
   useEffect(() => {
+    formDataRef.current = formData
+  }, [formData])
+
+  useEffect(() => {
     if (settings) {
-      setFormData((current) => current ?? sanitizeLoadedSettings(settings))
+      const sanitized = sanitizeLoadedSettings(settings)
+      const serialized = JSON.stringify(sanitized)
+      setFormData((current) => {
+        if (!current) {
+          return sanitized
+        }
+
+        if (lastLoadedSettingsRef.current && JSON.stringify(current) === lastLoadedSettingsRef.current) {
+          return sanitized
+        }
+
+        return current
+      })
+      lastLoadedSettingsRef.current = serialized
     }
   }, [settings, providerCatalog, featureCapabilities])
 
@@ -423,7 +465,9 @@ export default function Settings() {
     onSuccess: (savedSettings) => {
       queryClient.setQueryData(['settings'], savedSettings)
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-      setFormData(savedSettings)
+      const sanitized = sanitizeLoadedSettings(savedSettings)
+      lastLoadedSettingsRef.current = JSON.stringify(sanitized)
+      setFormData(sanitized)
       showToast('success', t('settings.savedFull'), 5000)
     },
     onError: (error: Error) => {
@@ -678,6 +722,9 @@ export default function Settings() {
     field: keyof ExternalApiSettings,
     value: string | number | boolean | null,
   ) => {
+    if (modelDiscoverySensitiveField(field)) {
+      resetModelDiscoveryState([which])
+    }
     setFormData((current) => {
       if (!current) return current
       const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
@@ -832,9 +879,12 @@ export default function Settings() {
 
   const canDiscoverModels = (which: 'ocr_api' | 'llm_api'): boolean => {
     const surface = resolveEndpointSurface(which)
+    if (!surface) {
+      return false
+    }
     const transport = surface?.model_catalog_transport
     if (!transport) {
-      return surface?.supports.model_catalog ?? true
+      return surface.supports.model_catalog
     }
 
     return which === 'ocr_api' ? transport.ocr_supported : transport.llm_supported
@@ -863,8 +913,14 @@ export default function Settings() {
   const handleModelDiscoveryResult = (
     which: 'ocr_api' | 'llm_api',
     currentModel: string | null | undefined,
+    requestSignature: string,
     result: ProviderModelsResponse,
   ) => {
+    const latestSignature = modelDiscoverySignature(formDataRef.current?.ai_provider[which])
+    if (latestSignature !== requestSignature) {
+      return
+    }
+
     setModelCatalog((current) => ({
       ...current,
       [which]: result.models,
@@ -926,6 +982,7 @@ export default function Settings() {
 
     setModelCatalogLoading(which)
     try {
+      const requestSignature = modelDiscoverySignature(current)
       const result = await discoverProviderModels({
         provider_type: current.provider_type ?? 'Generic',
         api_key: current.api_key_masked,
@@ -934,7 +991,7 @@ export default function Settings() {
         surface_id: current.surface_id || null,
         use_saved_secret: useSavedSecret,
       })
-      handleModelDiscoveryResult(which, current.model, result)
+      handleModelDiscoveryResult(which, current.model, requestSignature, result)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setModelCatalog((currentCatalog) => ({
@@ -954,6 +1011,17 @@ export default function Settings() {
       setModelCatalogLoading(null)
     }
   }
+
+  const modelDiscoverySignature = (endpoint: ExternalApiSettings | null | undefined): string =>
+    JSON.stringify({
+      provider_type: endpoint?.provider_type ?? '',
+      surface_id: endpoint?.surface_id ?? '',
+      endpoint: endpoint?.endpoint?.trim() ?? '',
+      auth_mode: endpoint?.auth_mode ?? '',
+      backend_kind: endpoint?.backend_kind ?? '',
+      api_key_masked: endpoint?.api_key_masked ?? '',
+      has_secret: Boolean(endpoint?.has_secret),
+    })
 
   const handleExport = async (dataType: ExportDataType) => {
     setExportLoading(dataType)
@@ -981,7 +1049,10 @@ export default function Settings() {
   ]
 
   const saveDisabled =
-    !settings || !formData || saveMutation.isPending || JSON.stringify(formData) === JSON.stringify(settings)
+    !settings ||
+    !formData ||
+    saveMutation.isPending ||
+    JSON.stringify(formData) === lastLoadedSettingsRef.current
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
