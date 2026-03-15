@@ -240,6 +240,89 @@ export interface ProviderPresetCatalog {
   providers: ProviderPreset[]
 }
 
+export interface ProviderSurfaceSupports {
+  llm: boolean
+  ocr: boolean
+  model_catalog: boolean
+  context_bridge: boolean
+}
+
+export interface SurfaceDefaultModels {
+  llm_models: string[]
+  ocr_models: string[]
+}
+
+export interface SubprocessTransportSpec {
+  executable_candidates: string[]
+  auth_probe_command: string[]
+  invocation_mode: string
+  model_flag?: string | null
+  json_output_supported: boolean
+}
+
+export interface ProviderSurfaceSpec {
+  surface_id: string
+  vendor_id: string
+  provider_type: string
+  display_name: string
+  execution_kind: string
+  credential_kind: string
+  stability: string
+  preferred_for_product_auth: boolean
+  catalog_strategy: string
+  supports: ProviderSurfaceSupports
+  default_models: SurfaceDefaultModels
+  parameter_profiles: {
+    llm: {
+      supported: string[]
+      unsupported: string[]
+      notes: string[]
+    }
+    ocr: {
+      supported: string[]
+      unsupported: string[]
+      notes: string[]
+    }
+  }
+  llm_transport?: {
+    method: string
+    url: string
+    auth_scheme: string
+    request_shape: string
+  } | null
+  ocr_transport?: {
+    method: string
+    url: string
+    auth_scheme: string
+    request_shape: string
+  } | null
+  model_catalog_transport?: {
+    method: string
+    url: string
+    auth_scheme: string
+    response_shape: string
+    llm_supported: boolean
+    ocr_supported: boolean
+    ocr_notice?: string | null
+  } | null
+  subprocess_transport?: SubprocessTransportSpec | null
+  references: string[]
+}
+
+export interface ProviderVendorSpec {
+  vendor_id: string
+  provider_type: string
+  aliases: string[]
+  display_name: string
+}
+
+export interface ProviderSurfaceCatalog {
+  version: number
+  updated_at: string
+  vendors: ProviderVendorSpec[]
+  surfaces: ProviderSurfaceSpec[]
+}
+
 export interface DeleteRangeRequest {
   from: string
   to: string

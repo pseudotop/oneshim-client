@@ -1,7 +1,8 @@
-use oneshim_api_contracts::ai_providers::{
-    ProviderPreset, ProviderPresetCatalog, ProviderSpecCatalog,
-};
+use oneshim_api_contracts::ai_providers::{ProviderPresetCatalog, ProviderSpecCatalog};
 use oneshim_api_contracts::provider_specs;
+use oneshim_api_contracts::provider_surface_specs::{
+    list_compatibility_provider_presets, ProviderSurfaceCatalog,
+};
 use oneshim_core::config::AiProviderType;
 
 use crate::error::ApiError;
@@ -12,17 +13,13 @@ pub fn list_provider_specs() -> Result<ProviderSpecCatalog, ApiError> {
     provider_specs::list_provider_specs().map_err(ApiError::Internal)
 }
 
+pub fn list_provider_surface_specs() -> Result<ProviderSurfaceCatalog, ApiError> {
+    oneshim_api_contracts::provider_surface_specs::list_provider_surface_specs()
+        .map_err(ApiError::Internal)
+}
+
 pub fn list_provider_presets() -> Result<ProviderPresetCatalog, ApiError> {
-    let catalog = list_provider_specs()?;
-    Ok(ProviderPresetCatalog {
-        version: catalog.version,
-        updated_at: catalog.updated_at,
-        providers: catalog
-            .providers
-            .iter()
-            .filter_map(compatibility_preset_from_spec)
-            .collect(),
-    })
+    list_compatibility_provider_presets().map_err(ApiError::Internal)
 }
 
 pub fn resolve_provider_type(raw: &str) -> Result<AiProviderType, ApiError> {
@@ -85,25 +82,6 @@ pub fn model_catalog_auth_scheme(
     .map_err(ApiError::Internal)
 }
 
-fn compatibility_preset_from_spec(
-    spec: &oneshim_api_contracts::ai_providers::ProviderSpec,
-) -> Option<ProviderPreset> {
-    provider_specs::resolve_provider_type(&spec.provider_type)?;
-
-    Some(ProviderPreset {
-        provider_type: spec.provider_type.clone(),
-        aliases: spec.aliases.clone(),
-        display_name: spec.display_name.clone(),
-        llm_endpoint: spec.transports.llm.url.clone(),
-        ocr_endpoint: spec.transports.ocr.url.clone(),
-        model_catalog_endpoint: spec.transports.model_catalog.url.clone(),
-        ocr_model_catalog_supported: spec.transports.model_catalog.ocr_supported,
-        ocr_model_catalog_notice: spec.transports.model_catalog.ocr_notice.clone(),
-        llm_models: spec.defaults.llm_models.clone(),
-        ocr_models: spec.defaults.ocr_models.clone(),
-    })
-}
-
 fn extract_host(endpoint: &str) -> Option<String> {
     let (_, right) = endpoint.split_once("://")?;
     let host = right.split('/').next()?.trim();
@@ -136,6 +114,16 @@ mod tests {
             google.model_catalog_endpoint,
             "https://generativelanguage.googleapis.com/v1beta/models"
         );
+        assert_eq!(
+            google.llm_models.first().map(String::as_str),
+            Some("gemini-2.5-flash")
+        );
+    }
+
+    #[test]
+    fn surface_catalog_loads_from_json() {
+        let catalog = list_provider_surface_specs().expect("provider surface catalog should load");
+        assert!(catalog.surfaces.len() >= 6);
     }
 
     #[test]

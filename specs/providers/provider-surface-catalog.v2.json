@@ -1,0 +1,389 @@
+{
+  "version": 2,
+  "updated_at": "2026-03-16T00:30:00Z",
+  "vendors": [
+    {
+      "vendor_id": "anthropic",
+      "provider_type": "Anthropic",
+      "aliases": ["anthropic"],
+      "display_name": "Anthropic"
+    },
+    {
+      "vendor_id": "openai",
+      "provider_type": "OpenAi",
+      "aliases": ["openai", "open_ai", "open-ai", "openai-compatible"],
+      "display_name": "OpenAI"
+    },
+    {
+      "vendor_id": "google",
+      "provider_type": "Google",
+      "aliases": ["google", "gemini"],
+      "display_name": "Google"
+    },
+    {
+      "vendor_id": "generic",
+      "provider_type": "Generic",
+      "aliases": ["generic"],
+      "display_name": "Generic"
+    }
+  ],
+  "surfaces": [
+    {
+      "surface_id": "provider_surface.anthropic.direct_api",
+      "vendor_id": "anthropic",
+      "provider_type": "Anthropic",
+      "display_name": "Anthropic API",
+      "execution_kind": "direct_http",
+      "credential_kind": "api_key",
+      "stability": "ga",
+      "preferred_for_product_auth": false,
+      "catalog_strategy": "http_models_endpoint",
+      "supports": {
+        "llm": true,
+        "ocr": true,
+        "model_catalog": true,
+        "context_bridge": false
+      },
+      "default_models": {
+        "llm_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"],
+        "ocr_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"]
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "messages", "system", "max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "stop_sequences", "thinking", "metadata"],
+          "unsupported": ["response_format"],
+          "notes": ["Anthropic Messages remains the primary API surface."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens", "thinking", "metadata"],
+          "unsupported": ["response_format"],
+          "notes": ["Vision OCR is implemented through image content blocks on the Messages API."]
+        }
+      },
+      "llm_transport": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "auth_scheme": "x_api_key",
+        "request_shape": "anthropic_messages"
+      },
+      "ocr_transport": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "auth_scheme": "x_api_key",
+        "request_shape": "anthropic_vision_messages"
+      },
+      "model_catalog_transport": {
+        "method": "GET",
+        "url": "https://api.anthropic.com/v1/models",
+        "auth_scheme": "x_api_key",
+        "response_shape": "standard_data_or_models",
+        "llm_supported": true,
+        "ocr_supported": true
+      },
+      "references": [
+        "https://docs.anthropic.com/en/api/messages",
+        "https://docs.anthropic.com/en/api/models"
+      ]
+    },
+    {
+      "surface_id": "provider_surface.openai.direct_api",
+      "vendor_id": "openai",
+      "provider_type": "OpenAi",
+      "display_name": "OpenAI API",
+      "execution_kind": "direct_http",
+      "credential_kind": "api_key",
+      "stability": "ga",
+      "preferred_for_product_auth": false,
+      "catalog_strategy": "http_models_endpoint",
+      "supports": {
+        "llm": true,
+        "ocr": true,
+        "model_catalog": true,
+        "context_bridge": false
+      },
+      "default_models": {
+        "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
+        "ocr_models": ["gpt-5.4", "gpt-5-mini"]
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "input", "instructions", "max_output_tokens", "temperature", "top_p", "tools", "tool_choice", "text", "reasoning", "metadata", "parallel_tool_calls", "store"],
+          "unsupported": [],
+          "notes": ["OpenAI's current primary surface is the Responses API for text and tool workflows."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens", "response_format"],
+          "unsupported": ["thinking"],
+          "notes": ["ONESHIM currently keeps OCR on OpenAI-compatible chat completions for API-key flows."]
+        }
+      },
+      "llm_transport": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "auth_scheme": "bearer",
+        "request_shape": "openai_responses"
+      },
+      "ocr_transport": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "auth_scheme": "bearer",
+        "request_shape": "openai_vision_chat_completions"
+      },
+      "model_catalog_transport": {
+        "method": "GET",
+        "url": "https://api.openai.com/v1/models",
+        "auth_scheme": "bearer",
+        "response_shape": "standard_data_or_models",
+        "llm_supported": true,
+        "ocr_supported": true
+      },
+      "references": [
+        "https://platform.openai.com/docs/api-reference/responses",
+        "https://platform.openai.com/docs/api-reference/models/list",
+        "https://openai.com/api/pricing/"
+      ]
+    },
+    {
+      "surface_id": "provider_surface.openai.managed_oauth",
+      "vendor_id": "openai",
+      "provider_type": "OpenAi",
+      "display_name": "OpenAI Managed OAuth",
+      "execution_kind": "managed_http",
+      "credential_kind": "managed_oauth",
+      "stability": "experimental",
+      "preferred_for_product_auth": false,
+      "catalog_strategy": "none",
+      "supports": {
+        "llm": true,
+        "ocr": false,
+        "model_catalog": false,
+        "context_bridge": false
+      },
+      "default_models": {
+        "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
+        "ocr_models": []
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "input", "instructions", "max_output_tokens", "temperature", "top_p", "tools", "tool_choice", "text", "reasoning", "metadata"],
+          "unsupported": ["response_format"],
+          "notes": ["Managed OAuth remains an experimental compatibility path inside ONESHIM."]
+        },
+        "ocr": {
+          "supported": [],
+          "unsupported": ["model"],
+          "notes": ["Managed OAuth does not currently expose OCR in ONESHIM."]
+        }
+      },
+      "llm_transport": {
+        "method": "POST",
+        "url": "https://chatgpt.com/backend-api/codex",
+        "auth_scheme": "bearer",
+        "request_shape": "openai_responses"
+      },
+      "references": [
+        "https://developers.openai.com/codex/auth/"
+      ]
+    },
+    {
+      "surface_id": "provider_surface.openai.subprocess_cli",
+      "vendor_id": "openai",
+      "provider_type": "OpenAi",
+      "display_name": "Codex CLI",
+      "execution_kind": "subprocess_cli",
+      "credential_kind": "cli_subscription",
+      "stability": "preview",
+      "preferred_for_product_auth": true,
+      "catalog_strategy": "subprocess_probe",
+      "supports": {
+        "llm": true,
+        "ocr": false,
+        "model_catalog": false,
+        "context_bridge": true
+      },
+      "default_models": {
+        "llm_models": ["gpt-5.4", "gpt-5.2-codex", "gpt-5.2"],
+        "ocr_models": []
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "prompt", "json_schema", "cwd", "sandbox", "approval_policy"],
+          "unsupported": ["response_format"],
+          "notes": ["CLI surface support is constrained by Codex CLI flags and stdout contract."]
+        },
+        "ocr": {
+          "supported": [],
+          "unsupported": ["model"],
+          "notes": []
+        }
+      },
+      "subprocess_transport": {
+        "executable_candidates": ["codex"],
+        "auth_probe_command": ["login", "status"],
+        "invocation_mode": "codex_exec_json",
+        "model_flag": "--model",
+        "json_output_supported": true
+      },
+      "references": [
+        "https://developers.openai.com/codex/auth/"
+      ]
+    },
+    {
+      "surface_id": "provider_surface.google.direct_api",
+      "vendor_id": "google",
+      "provider_type": "Google",
+      "display_name": "Google Gemini API",
+      "execution_kind": "direct_http",
+      "credential_kind": "api_key",
+      "stability": "ga",
+      "preferred_for_product_auth": false,
+      "catalog_strategy": "http_models_endpoint",
+      "supports": {
+        "llm": true,
+        "ocr": true,
+        "model_catalog": true,
+        "context_bridge": false
+      },
+      "default_models": {
+        "llm_models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-3-pro-preview"],
+        "ocr_models": []
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["contents", "system_instruction", "tools", "toolConfig", "safetySettings", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.topP", "generationConfig.topK", "generationConfig.stopSequences", "generationConfig.responseMimeType", "generationConfig.responseSchema", "generationConfig.thinkingConfig", "generationConfig.seed"],
+          "unsupported": ["response_format"],
+          "notes": ["Gemini direct API exposes machine-readable model metadata."]
+        },
+        "ocr": {
+          "supported": ["requests", "TEXT_DETECTION", "maxResults"],
+          "unsupported": ["model"],
+          "notes": ["Google OCR in ONESHIM remains Vision API-backed."]
+        }
+      },
+      "llm_transport": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "auth_scheme": "x_goog_api_key",
+        "request_shape": "google_generate_content"
+      },
+      "ocr_transport": {
+        "method": "POST",
+        "url": "https://vision.googleapis.com/v1/images:annotate",
+        "auth_scheme": "x_goog_api_key",
+        "request_shape": "google_vision_annotate"
+      },
+      "model_catalog_transport": {
+        "method": "GET",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models",
+        "auth_scheme": "x_goog_api_key",
+        "response_shape": "google_models",
+        "llm_supported": true,
+        "ocr_supported": false,
+        "ocr_notice": "Google Vision OCR endpoint does not expose a selectable model catalog."
+      },
+      "references": [
+        "https://ai.google.dev/models",
+        "https://ai.google.dev/api/models#v1beta.models.list"
+      ]
+    },
+    {
+      "surface_id": "provider_surface.google.subprocess_cli",
+      "vendor_id": "google",
+      "provider_type": "Google",
+      "display_name": "Gemini CLI",
+      "execution_kind": "subprocess_cli",
+      "credential_kind": "cli_subscription",
+      "stability": "experimental",
+      "preferred_for_product_auth": true,
+      "catalog_strategy": "subprocess_probe",
+      "supports": {
+        "llm": true,
+        "ocr": false,
+        "model_catalog": false,
+        "context_bridge": true
+      },
+      "default_models": {
+        "llm_models": ["gemini-3-flash-preview", "gemini-2.5-flash"],
+        "ocr_models": []
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "prompt"],
+          "unsupported": ["response_format"],
+          "notes": ["Gemini CLI runtime is not yet implemented in ONESHIM."]
+        },
+        "ocr": {
+          "supported": [],
+          "unsupported": ["model"],
+          "notes": []
+        }
+      },
+      "subprocess_transport": {
+        "executable_candidates": ["gemini"],
+        "auth_probe_command": [],
+        "invocation_mode": "gemini_cli_prompt",
+        "model_flag": "--model",
+        "json_output_supported": false
+      },
+      "references": [
+        "https://developers.google.com/gemini-code-assist/docs/gemini-cli"
+      ]
+    },
+    {
+      "surface_id": "provider_surface.generic.direct_api",
+      "vendor_id": "generic",
+      "provider_type": "Generic",
+      "display_name": "Generic OpenAI-Compatible API",
+      "execution_kind": "direct_http",
+      "credential_kind": "api_key",
+      "stability": "ga",
+      "preferred_for_product_auth": false,
+      "catalog_strategy": "http_models_endpoint",
+      "supports": {
+        "llm": true,
+        "ocr": true,
+        "model_catalog": true,
+        "context_bridge": false
+      },
+      "default_models": {
+        "llm_models": ["gpt-5-mini", "gpt-5.4"],
+        "ocr_models": ["gpt-5-mini"]
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "messages", "temperature", "top_p", "max_tokens", "tools", "tool_choice", "response_format"],
+          "unsupported": [],
+          "notes": ["Generic remains conservative and OpenAI-compatible by default."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens", "response_format"],
+          "unsupported": [],
+          "notes": []
+        }
+      },
+      "llm_transport": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "auth_scheme": "bearer",
+        "request_shape": "openai_chat_completions"
+      },
+      "ocr_transport": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "auth_scheme": "bearer",
+        "request_shape": "openai_vision_chat_completions"
+      },
+      "model_catalog_transport": {
+        "method": "GET",
+        "url": "https://api.openai.com/v1/models",
+        "auth_scheme": "bearer",
+        "response_shape": "standard_data_or_models",
+        "llm_supported": true,
+        "ocr_supported": true
+      },
+      "references": [
+        "https://platform.openai.com/docs/api-reference/chat"
+      ]
+    }
+  ]
+}

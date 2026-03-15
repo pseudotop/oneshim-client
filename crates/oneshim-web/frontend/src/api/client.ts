@@ -37,6 +37,7 @@ import type {
   ProviderModelsRequest,
   ProviderModelsResponse,
   ProviderPresetCatalog,
+  ProviderSurfaceCatalog,
   ReportParams,
   ReportResponse,
   RestoreResult,
@@ -231,6 +232,15 @@ export async function fetchProviderPresets(): Promise<ProviderPresetCatalog> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Provider preset query failed' }))
     throw new Error(err.error || 'Provider preset query failed')
+  }
+  return res.json()
+}
+
+export async function fetchProviderSurfaces(): Promise<ProviderSurfaceCatalog> {
+  const res = await fetchWithRetry(`${BASE_URL}/ai/provider-surfaces`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Provider surface query failed' }))
+    throw new Error(err.error || 'Provider surface query failed')
   }
   return res.json()
 }

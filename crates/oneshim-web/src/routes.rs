@@ -29,6 +29,10 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::ai_provider_presets::list_provider_presets),
         )
         .route(
+            "/ai/provider-surfaces",
+            get(handlers::ai_provider_surfaces::list_provider_surfaces),
+        )
+        .route(
             "/ai/providers/models",
             post(handlers::ai_models::discover_provider_models),
         )
