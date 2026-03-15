@@ -324,13 +324,14 @@ pub fn select_cli_surface_for_config(
     detected: &[ProbedSubprocessCli],
 ) -> Option<DetectedSubprocessCli> {
     if let Some(surface_id) = preferred_cli_surface_for_config(config) {
-        if let Some(surface) = detected.iter().find(|surface| {
-            surface.detected.surface_id == surface_id
-                && surface.detected.surface_id.runtime_supported()
-                && surface.auth_status == SubprocessCliAuthStatus::Authenticated
-        }) {
-            return Some(surface.detected.clone());
-        }
+        return detected
+            .iter()
+            .find(|surface| {
+                surface.detected.surface_id == surface_id
+                    && surface.detected.surface_id.runtime_supported()
+                    && surface.auth_status == SubprocessCliAuthStatus::Authenticated
+            })
+            .map(|surface| surface.detected.clone());
     }
 
     detected
@@ -794,7 +795,7 @@ mod tests {
     }
 
     #[test]
-    fn skips_matching_surface_when_authentication_is_required() {
+    fn does_not_switch_to_a_different_vendor_when_matching_surface_requires_auth() {
         let config = AiProviderConfig {
             llm_api: Some(endpoint(AiProviderType::OpenAi, None)),
             ..AiProviderConfig::default()
@@ -810,11 +811,8 @@ mod tests {
             ),
         ];
 
-        let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
-        assert_eq!(
-            resolved.surface_id,
-            SubprocessCliSurfaceId::AnthropicClaudeCode
-        );
+        let resolved = select_cli_surface_for_config(&config, &surfaces);
+        assert!(resolved.is_none());
     }
 
     #[test]

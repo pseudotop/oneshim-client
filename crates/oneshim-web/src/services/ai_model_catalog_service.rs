@@ -3,6 +3,7 @@ use std::time::Duration;
 use oneshim_api_contracts::ai_providers::{ProviderModelsRequest, ProviderModelsResponse};
 use oneshim_core::config::{AiProviderConfig, AiProviderType, ExternalApiEndpoint};
 use oneshim_core::ports::credential_source::CredentialSource;
+use oneshim_core::provider_surface::default_provider_surface_id;
 use serde_json::Value;
 
 use crate::error::ApiError;
@@ -29,9 +30,11 @@ pub async fn fetch_provider_models(
         requested_surface_id.as_deref(),
         request.endpoint.as_deref(),
     )?;
-    if let Some(notice) =
-        ai_provider_preset_service::ocr_model_catalog_notice_for_endpoint(provider_type, &endpoint)?
-    {
+    if let Some(notice) = ai_provider_spec_service::ocr_model_catalog_notice_for_surface(
+        provider_type,
+        requested_surface_id.as_deref(),
+        &endpoint,
+    )? {
         return Ok(ProviderModelsResponse {
             models: Vec::new(),
             notice: Some(notice),
@@ -225,10 +228,7 @@ async fn resolve_saved_model_discovery_api_key(
     }
 
     if let Some(request_surface_id) = normalize_optional_surface_id(request.surface_id.as_deref()) {
-        let saved_surface_id = saved_endpoint
-            .surface_id
-            .as_deref()
-            .and_then(|value| normalize_optional_surface_id(Some(value)));
+        let saved_surface_id = saved_endpoint_surface_id(&saved_config.ai_provider, saved_endpoint);
         if saved_surface_id.as_deref() != Some(request_surface_id.as_str()) {
             return Ok(None);
         }
@@ -300,6 +300,17 @@ fn resolve_models_endpoint(
     endpoint: Option<&str>,
 ) -> Result<String, ApiError> {
     let endpoint = endpoint.and_then(normalize_optional_endpoint);
+    if let Some(surface_id) = surface_id {
+        if !ai_provider_spec_service::model_catalog_supported_for_surface(
+            provider_type,
+            Some(surface_id),
+        )? {
+            return Err(ApiError::BadRequest(format!(
+                "Selected provider surface '{surface_id}' does not support model discovery."
+            )));
+        }
+    }
+
     match provider_type {
         AiProviderType::Anthropic => Ok(endpoint
             .as_deref()
@@ -349,6 +360,20 @@ fn resolve_models_endpoint(
             .map(Ok)
             .unwrap_or_else(|| Ok("https://api.openai.com/v1/models".to_string())),
     }
+}
+
+fn saved_endpoint_surface_id(
+    config: &AiProviderConfig,
+    endpoint: &ExternalApiEndpoint,
+) -> Option<String> {
+    endpoint
+        .surface_id
+        .as_deref()
+        .and_then(|value| normalize_optional_surface_id(Some(value)))
+        .or_else(|| {
+            default_provider_surface_id(endpoint.provider_type, config.access_mode)
+                .map(|value| value.to_ascii_lowercase())
+        })
 }
 
 fn normalize_optional_surface_id(raw: Option<&str>) -> Option<String> {
@@ -639,6 +664,64 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resolved, "sk-saved");
+    }
+
+    #[tokio::test]
+    async fn resolve_model_discovery_api_key_accepts_legacy_default_surface_id() {
+        let secret_store = Arc::new(TestSecretStore::new()) as Arc<dyn SecretStore>;
+        secret_store
+            .store("provider/openai/llm", "api_key", "sk-legacy-surface")
+            .await
+            .unwrap();
+
+        let mut config = AppConfig::default_config();
+        config.ai_provider = AiProviderConfig {
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.openai.com/v1".to_string(),
+                api_key: String::new(),
+                model: Some("gpt-5.4".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                surface_id: None,
+                credential: Some(CredentialBinding {
+                    auth_mode: CredentialAuthMode::ApiKey,
+                    backend_kind: CredentialBackendKind::OsSecretStore,
+                    secret_ref: Some(SecretRef {
+                        namespace: "provider/openai/llm".to_string(),
+                        key: "api_key".to_string(),
+                    }),
+                    projection_enabled: false,
+                }),
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let state = test_state_with_saved_secret(config, secret_store);
+        let request = ProviderModelsRequest {
+            provider_type: "OpenAi".to_string(),
+            api_key: String::new(),
+            endpoint: Some("https://api.openai.com/v1".to_string()),
+            surface: Some("llm_api".to_string()),
+            surface_id: Some("provider_surface.openai.direct_api".to_string()),
+            use_saved_secret: true,
+        };
+
+        let resolved = resolve_model_discovery_api_key(&request, &state, AiProviderType::OpenAi)
+            .await
+            .unwrap();
+        assert_eq!(resolved, "sk-legacy-surface");
+    }
+
+    #[test]
+    fn resolve_models_endpoint_rejects_unsupported_surface_catalog() {
+        let error = resolve_models_endpoint(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.managed_oauth"),
+            None,
+        )
+        .expect_err("managed oauth should not expose model discovery");
+
+        assert!(matches!(error, ApiError::BadRequest(_)));
     }
 
     #[tokio::test]

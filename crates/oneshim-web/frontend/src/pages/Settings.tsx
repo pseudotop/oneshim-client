@@ -11,6 +11,7 @@ import {
   type ExportFormat,
   type ExternalApiSettings,
   exportData,
+  fetchProviderSurfaces,
   fetchSecretBackendCapabilities,
   fetchProviderPresets,
   fetchSettings,
@@ -22,6 +23,7 @@ import {
   type PrivacySettings as PrivacySettingsType,
   type ProviderModelsResponse,
   type ProviderPreset,
+  type ProviderSurfaceSpec,
   postUpdateAction,
   type SandboxSettings,
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
@@ -90,6 +92,12 @@ export default function Settings() {
     retry: 1,
   })
 
+  const { data: providerSurfaceCatalog } = useQuery({
+    queryKey: ['ai-provider-surfaces'],
+    queryFn: fetchProviderSurfaces,
+    retry: 1,
+  })
+
   const { data: secretBackendCapabilities } = useQuery({
     queryKey: ['secret-backend-capabilities'],
     queryFn: fetchSecretBackendCapabilities,
@@ -148,6 +156,7 @@ export default function Settings() {
     providerPresetCatalog?.providers && providerPresetCatalog.providers.length > 0
       ? providerPresetCatalog.providers
       : DEFAULT_PROVIDER_PRESETS
+  const providerSurfaces = providerSurfaceCatalog?.surfaces ?? []
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
@@ -372,6 +381,20 @@ export default function Settings() {
     projection_enabled: false,
   })
 
+  const findProviderSurface = (surfaceId: string | null | undefined): ProviderSurfaceSpec | undefined => {
+    const normalized = (surfaceId ?? '').trim().toLowerCase()
+    if (!normalized) return undefined
+    return providerSurfaces.find((surface) => surface.surface_id.toLowerCase() === normalized)
+  }
+
+  const resolveEndpointSurface = (which: 'ocr_api' | 'llm_api'): ProviderSurfaceSpec | undefined => {
+    const endpoint = formData?.ai_provider[which]
+    const providerType = resolveProviderType(endpoint?.provider_type)
+    const surfaceId =
+      endpoint?.surface_id ?? deriveDefaultProviderSurfaceId(formData?.ai_provider.access_mode, which, providerType)
+    return findProviderSurface(surfaceId)
+  }
+
   const handleExternalApiChange = (
     which: 'ocr_api' | 'llm_api',
     field: keyof ExternalApiSettings,
@@ -413,22 +436,42 @@ export default function Settings() {
     return which === 'ocr_api' ? (preset?.ocr_models ?? []) : (preset?.llm_models ?? [])
   }
 
+  const getSurfaceModels = (which: 'ocr_api' | 'llm_api'): string[] => {
+    const surface = resolveEndpointSurface(which)
+    if (!surface) return []
+    return which === 'ocr_api' ? (surface.default_models.ocr_models ?? []) : (surface.default_models.llm_models ?? [])
+  }
+
   const getModelOptions = (which: 'ocr_api' | 'llm_api'): string[] => {
     const providerType = resolveProviderType(formData?.ai_provider[which]?.provider_type)
     const presetModels = getPresetModels(which, providerType)
+    const surfaceModels = getSurfaceModels(which)
     const discoveredModels = modelCatalog[which]
-    return Array.from(new Set([...discoveredModels, ...presetModels]))
+    return Array.from(new Set([...discoveredModels, ...surfaceModels, ...presetModels]))
+  }
+
+  const canDiscoverModels = (which: 'ocr_api' | 'llm_api'): boolean => {
+    const surface = resolveEndpointSurface(which)
+    return surface?.supports.model_catalog ?? true
   }
 
   const handleProviderTypeChange = (which: 'ocr_api' | 'llm_api', rawProviderType: string) => {
     const providerType = resolveProviderType(rawProviderType)
-    const preset = findProviderPreset(providerType)
-    const presetEndpoint = which === 'ocr_api' ? (preset?.ocr_endpoint ?? '') : (preset?.llm_endpoint ?? '')
-    const presetModel = which === 'ocr_api' ? (preset?.ocr_models?.[0] ?? null) : (preset?.llm_models?.[0] ?? null)
 
     setFormData((current) => {
       if (!current) return current
       const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
+      const preset = findProviderPreset(providerType)
+      const nextSurfaceId = deriveDefaultProviderSurfaceId(current.ai_provider.access_mode, which, providerType)
+      const nextSurface = findProviderSurface(nextSurfaceId)
+      const presetEndpoint =
+        which === 'ocr_api'
+          ? (nextSurface?.ocr_transport?.url ?? preset?.ocr_endpoint ?? '')
+          : (nextSurface?.llm_transport?.url ?? preset?.llm_endpoint ?? '')
+      const presetModel =
+        which === 'ocr_api'
+          ? (nextSurface?.default_models.ocr_models?.[0] ?? preset?.ocr_models?.[0] ?? null)
+          : (nextSurface?.default_models.llm_models?.[0] ?? preset?.llm_models?.[0] ?? null)
       const endpoint = existing.endpoint && existing.endpoint.trim().length > 0 ? existing.endpoint : presetEndpoint
       const model = existing.model && existing.model.trim().length > 0 ? existing.model : presetModel
 
@@ -439,7 +482,7 @@ export default function Settings() {
           [which]: {
             ...existing,
             provider_type: providerType,
-            surface_id: deriveDefaultProviderSurfaceId(current.ai_provider.access_mode, which, providerType),
+            surface_id: nextSurfaceId,
             endpoint,
             model,
           },
@@ -472,6 +515,10 @@ export default function Settings() {
     const current = formData.ai_provider[which]
     if (!current) {
       showToast('error', t('settingsAutomation.modelDiscoveryMissingConfig'), 5000)
+      return
+    }
+    if (!canDiscoverModels(which)) {
+      showToast('error', t('settingsAutomation.modelDiscoveryUnsupportedSurface'), 5000)
       return
     }
     const useSavedSecret = current.has_secret && !current.api_key_masked?.trim()
@@ -640,6 +687,7 @@ export default function Settings() {
               onProviderTypeChange={handleProviderTypeChange}
               onDiscoverModels={(which) => void discoverModels(which)}
               getModelOptions={getModelOptions}
+              canDiscoverModels={canDiscoverModels}
             />
           </fieldset>
         </div>

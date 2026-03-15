@@ -6,12 +6,31 @@ info:
     Auto-generated from docs/contracts/http-interface-manifest.v1.json.
     This snapshot is transport-level and contract-focused.
   x-oneshim-document-version: 1
-  x-oneshim-updated-at: "2026-02-26"
+  x-oneshim-updated-at: "2026-03-15"
   x-oneshim-routes-file: "crates/oneshim-web/src/routes.rs"
   x-oneshim-contracts-crate: "crates/oneshim-api-contracts"
 servers:
   - url: /
 paths:
+  "/api/ai/provider-surfaces":
+    get:
+      tags:
+        - ai_providers
+      operationId: ai_providers_get_api_ai_provider_surfaces
+      summary: "GET /api/ai/provider-surfaces"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/ai/providers/models":
     post:
       tags:

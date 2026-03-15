@@ -229,6 +229,49 @@
       ]
     },
     {
+      "surface_id": "provider_surface.anthropic.subprocess_cli",
+      "vendor_id": "anthropic",
+      "provider_type": "Anthropic",
+      "display_name": "Claude Code",
+      "execution_kind": "subprocess_cli",
+      "credential_kind": "cli_subscription",
+      "stability": "preview",
+      "preferred_for_product_auth": true,
+      "catalog_strategy": "subprocess_probe",
+      "supports": {
+        "llm": true,
+        "ocr": false,
+        "model_catalog": false,
+        "context_bridge": true
+      },
+      "default_models": {
+        "llm_models": ["claude-opus-4-6", "claude-sonnet-4", "sonnet", "opus"],
+        "ocr_models": []
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "prompt", "cwd", "output_format"],
+          "unsupported": ["response_format"],
+          "notes": ["Claude Code surface support is constrained by Claude CLI flags and stdout contract."]
+        },
+        "ocr": {
+          "supported": [],
+          "unsupported": ["model"],
+          "notes": []
+        }
+      },
+      "subprocess_transport": {
+        "executable_candidates": ["claude", "claude-code"],
+        "auth_probe_command": [],
+        "invocation_mode": "claude_print_json",
+        "model_flag": "--model",
+        "json_output_supported": true
+      },
+      "references": [
+        "https://docs.anthropic.com/en/docs/claude-code/settings"
+      ]
+    },
+    {
       "surface_id": "provider_surface.google.direct_api",
       "vendor_id": "google",
       "provider_type": "Google",
@@ -303,7 +346,7 @@
         "context_bridge": true
       },
       "default_models": {
-        "llm_models": ["gemini-3-flash-preview", "gemini-2.5-flash"],
+        "llm_models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
         "ocr_models": []
       },
       "parameter_profiles": {

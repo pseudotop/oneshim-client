@@ -117,6 +117,7 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
   onProviderTypeChange: (which: 'ocr_api' | 'llm_api', rawProviderType: string) => void
   onDiscoverModels: (which: 'ocr_api' | 'llm_api') => void
   getModelOptions: (which: 'ocr_api' | 'llm_api') => string[]
+  canDiscoverModels: (which: 'ocr_api' | 'llm_api') => boolean
 }
 
 export default function AiAutomationTab({
@@ -135,6 +136,7 @@ export default function AiAutomationTab({
   onProviderTypeChange,
   onDiscoverModels,
   getModelOptions,
+  canDiscoverModels,
 }: AiAutomationTabProps) {
   const { t } = useTranslation()
 
@@ -490,6 +492,7 @@ export default function AiAutomationTab({
                     type="button"
                     variant="secondary"
                     size="sm"
+                    disabled={!canDiscoverModels('ocr_api')}
                     isLoading={modelCatalogLoading === 'ocr_api'}
                     onClick={() => onDiscoverModels('ocr_api')}
                   >
@@ -573,6 +576,11 @@ export default function AiAutomationTab({
               {modelCatalogNotice.ocr_api && (
                 <p className="text-content-secondary text-xs">{modelCatalogNotice.ocr_api}</p>
               )}
+              {!canDiscoverModels('ocr_api') && !modelCatalogNotice.ocr_api && (
+                <p className="text-content-secondary text-xs">
+                  {t('settingsAutomation.modelDiscoveryUnsupportedSurface')}
+                </p>
+              )}
             </div>
           )}
 
@@ -601,6 +609,7 @@ export default function AiAutomationTab({
                     type="button"
                     variant="secondary"
                     size="sm"
+                    disabled={!canDiscoverModels('llm_api')}
                     isLoading={modelCatalogLoading === 'llm_api'}
                     onClick={() => onDiscoverModels('llm_api')}
                   >
@@ -683,6 +692,11 @@ export default function AiAutomationTab({
               </div>
               {modelCatalogNotice.llm_api && (
                 <p className="text-content-secondary text-xs">{modelCatalogNotice.llm_api}</p>
+              )}
+              {!canDiscoverModels('llm_api') && !modelCatalogNotice.llm_api && (
+                <p className="text-content-secondary text-xs">
+                  {t('settingsAutomation.modelDiscoveryUnsupportedSurface')}
+                </p>
               )}
             </div>
           )}

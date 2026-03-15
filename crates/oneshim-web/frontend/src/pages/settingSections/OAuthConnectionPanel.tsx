@@ -91,11 +91,14 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
       return
     }
     try {
-      const [capabilities, features] = await Promise.all([
-        fetchSecretBackendCapabilities(),
-        fetchFeatureCapabilities(),
-      ])
-      setFeatureSnapshot(features)
+      const capabilities = await fetchSecretBackendCapabilities()
+      let features: FeatureCapabilitySnapshot | null = null
+      try {
+        features = await fetchFeatureCapabilities()
+        setFeatureSnapshot(features)
+      } catch {
+        setFeatureSnapshot(null)
+      }
 
       const oauthFeature = findFeatureCapability(
         features,
