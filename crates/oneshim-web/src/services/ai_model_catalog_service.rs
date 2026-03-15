@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use oneshim_api_contracts::ai_providers::{ProviderModelsRequest, ProviderModelsResponse};
 use oneshim_core::config::{AiProviderConfig, AiProviderType, ExternalApiEndpoint};
+use oneshim_core::ports::credential_source::CredentialSource;
 use serde_json::Value;
 
 use crate::error::ApiError;
@@ -216,29 +217,16 @@ async fn resolve_saved_model_discovery_api_key(
         }
     }
 
-    if let (Some(secret_store), Some(secret_ref)) = (
-        state.secret_store.as_ref(),
-        saved_endpoint
-            .credential
-            .as_ref()
-            .and_then(|binding| binding.secret_ref.as_ref()),
+    if let Ok(source) = CredentialSource::from_api_key_endpoint_for_profile(
+        saved_endpoint,
+        Some(surface.profile_id()),
+        state.secret_store.clone(),
     ) {
-        if let Some(secret) = secret_store
-            .retrieve(&secret_ref.namespace, &secret_ref.key)
-            .await
-            .map_err(|e| {
-                ApiError::Internal(format!("Failed to read stored model discovery secret: {e}"))
-            })?
-        {
+        if let Ok(secret) = source.resolve_bearer_token().await {
             if !secret.trim().is_empty() {
                 return Ok(Some(secret));
             }
         }
-    }
-
-    let plaintext = saved_endpoint.api_key.trim();
-    if !plaintext.is_empty() {
-        return Ok(Some(plaintext.to_string()));
     }
 
     Ok(None)
@@ -248,6 +236,15 @@ async fn resolve_saved_model_discovery_api_key(
 enum ModelSurface {
     Ocr,
     Llm,
+}
+
+impl ModelSurface {
+    fn profile_id(self) -> &'static str {
+        match self {
+            Self::Ocr => "ocr",
+            Self::Llm => "llm",
+        }
+    }
 }
 
 fn parse_model_surface(value: Option<&str>) -> Option<ModelSurface> {
@@ -597,5 +594,45 @@ mod tests {
                 .await
                 .unwrap();
         assert!(resolved.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_model_discovery_api_key_uses_env_backend_without_secret_ref() {
+        let secret_store = Arc::new(TestSecretStore::new()) as Arc<dyn SecretStore>;
+        secret_store
+            .store("provider/openai/llm", "api_key", "sk-env")
+            .await
+            .unwrap();
+
+        let mut config = AppConfig::default_config();
+        config.ai_provider = AiProviderConfig {
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.openai.com/v1".to_string(),
+                api_key: String::new(),
+                model: Some("gpt-4.1-mini".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                credential: Some(CredentialBinding {
+                    auth_mode: CredentialAuthMode::ApiKey,
+                    backend_kind: CredentialBackendKind::Env,
+                    secret_ref: None,
+                    projection_enabled: false,
+                }),
+            }),
+            ..AiProviderConfig::default()
+        };
+        let state = test_state_with_saved_secret(config, secret_store);
+        let request = ProviderModelsRequest {
+            provider_type: "OpenAi".to_string(),
+            api_key: String::new(),
+            endpoint: Some("https://api.openai.com/v1".to_string()),
+            surface: Some("llm_api".to_string()),
+            use_saved_secret: true,
+        };
+
+        let resolved = resolve_model_discovery_api_key(&request, &state, AiProviderType::OpenAi)
+            .await
+            .unwrap();
+        assert_eq!(resolved, "sk-env");
     }
 }

@@ -5,10 +5,12 @@
 
 use std::sync::Arc;
 
-use crate::config::{CredentialAuthMode, ExternalApiEndpoint};
+use crate::config::{
+    AiProviderType, CredentialAuthMode, CredentialBackendKind, ExternalApiEndpoint,
+};
 use crate::error::CoreError;
 use crate::ports::oauth::OAuthPort;
-use crate::ports::secret_store::SecretStore;
+use crate::ports::secret_store::{provider_api_key_secret_ref, SecretStore};
 
 /// Source of authentication credentials for AI provider requests.
 #[derive(Clone)]
@@ -44,20 +46,47 @@ impl CredentialSource {
         endpoint: &ExternalApiEndpoint,
         secret_store: Option<Arc<dyn SecretStore>>,
     ) -> Result<Self, CoreError> {
+        Self::from_api_key_endpoint_for_profile(endpoint, None, secret_store)
+    }
+
+    pub fn from_api_key_endpoint_for_profile(
+        endpoint: &ExternalApiEndpoint,
+        profile_id: Option<&str>,
+        secret_store: Option<Arc<dyn SecretStore>>,
+    ) -> Result<Self, CoreError> {
         let plaintext_fallback =
             (!endpoint.api_key.trim().is_empty()).then(|| endpoint.api_key.clone());
 
         if let Some(binding) = endpoint.credential.as_ref() {
             if binding.auth_mode == CredentialAuthMode::ApiKey {
-                if let (Some(secret_ref), Some(secret_store)) =
-                    (binding.secret_ref.as_ref(), secret_store)
-                {
-                    return Ok(Self::StoredSecret {
-                        namespace: secret_ref.namespace.clone(),
-                        key: secret_ref.key.clone(),
-                        secret_store,
-                        plaintext_fallback,
-                    });
+                if let Some(secret_store) = secret_store {
+                    if let Some(secret_ref) = binding.secret_ref.as_ref() {
+                        return Ok(Self::StoredSecret {
+                            namespace: secret_ref.namespace.clone(),
+                            key: secret_ref.key.clone(),
+                            secret_store,
+                            plaintext_fallback,
+                        });
+                    }
+
+                    if binding.backend_kind == CredentialBackendKind::Env {
+                        let profile_id = profile_id.ok_or_else(|| {
+                            CoreError::Config(
+                                "profile_id is required to resolve env-backed provider credentials"
+                                    .to_string(),
+                            )
+                        })?;
+                        let (namespace, key) = provider_api_key_secret_ref(
+                            provider_type_id(endpoint.provider_type),
+                            profile_id,
+                        )?;
+                        return Ok(Self::StoredSecret {
+                            namespace,
+                            key: key.to_string(),
+                            secret_store,
+                            plaintext_fallback,
+                        });
+                    }
                 }
             }
         }
@@ -126,6 +155,15 @@ impl CredentialSource {
             Self::ManagedOAuth { api_base_url, .. } => Some(api_base_url),
             Self::StoredSecret { .. } => None,
         }
+    }
+}
+
+fn provider_type_id(provider_type: AiProviderType) -> &'static str {
+    match provider_type {
+        AiProviderType::OpenAi => "openai",
+        AiProviderType::Anthropic => "anthropic",
+        AiProviderType::Google => "google",
+        AiProviderType::Generic => "generic",
     }
 }
 
@@ -271,5 +309,37 @@ mod tests {
         let source = CredentialSource::from_api_key_endpoint(&endpoint, Some(store)).unwrap();
         let token = source.resolve_bearer_token().await.unwrap();
         assert_eq!(token, "sk-legacy");
+    }
+
+    #[tokio::test]
+    async fn env_backed_secret_without_secret_ref_uses_profile_context() {
+        let store = Arc::new(TestSecretStore::new());
+        store
+            .store("provider/openai/llm", "api_key", "sk-env")
+            .await
+            .unwrap();
+
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::Env,
+                secret_ref: None,
+                projection_enabled: false,
+            }),
+        };
+
+        let source = CredentialSource::from_api_key_endpoint_for_profile(
+            &endpoint,
+            Some("llm"),
+            Some(store),
+        )
+        .unwrap();
+        let token = source.resolve_bearer_token().await.unwrap();
+        assert_eq!(token, "sk-env");
     }
 }

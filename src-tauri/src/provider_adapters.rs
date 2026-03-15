@@ -425,8 +425,11 @@ fn resolve_ocr_provider(
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
-                        let credential =
-                            CredentialSource::from_api_key_endpoint(endpoint, secret_store)?;
+                        let credential = CredentialSource::from_api_key_endpoint_for_profile(
+                            endpoint,
+                            Some("ocr"),
+                            secret_store,
+                        )?;
                         let privacy_guard =
                             external_ocr_privacy_guard.clone().ok_or_else(|| {
                                 CoreError::Config(
@@ -476,8 +479,11 @@ fn resolve_llm_provider(
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.llm_api.as_ref(), "llm_api")?;
-                        let credential =
-                            CredentialSource::from_api_key_endpoint(endpoint, secret_store)?;
+                        let credential = CredentialSource::from_api_key_endpoint_for_profile(
+                            endpoint,
+                            Some("llm"),
+                            secret_store,
+                        )?;
                         Ok(Arc::new(RemoteLlmProvider::new_with_credential(
                             endpoint, credential,
                         )?) as Arc<dyn LlmProvider>)

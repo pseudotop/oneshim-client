@@ -95,7 +95,7 @@ fn cmd_status(args: &[String], config_dir: &Path) -> i32 {
         return 1;
     };
 
-    match inspect_surface_status(endpoint, config_dir) {
+    match inspect_surface_status(endpoint, surface, config_dir) {
         Ok(status) => {
             println!("{}", format_surface_status(surface, &status));
             0
@@ -200,7 +200,7 @@ fn cmd_env(args: &[String], config_dir: &Path) -> i32 {
         return 1;
     }
 
-    let env_vars = match resolve_env_projection(endpoint, config_dir) {
+    let env_vars = match resolve_env_projection(endpoint, surface, config_dir) {
         Ok(env_vars) => env_vars,
         Err(err) => {
             eprintln!("Error: {err}");
@@ -242,7 +242,7 @@ fn cmd_exec(args: &[String], config_dir: &Path) -> i32 {
         return 1;
     }
 
-    let env_vars = match resolve_env_projection(endpoint, config_dir) {
+    let env_vars = match resolve_env_projection(endpoint, surface, config_dir) {
         Ok(env_vars) => env_vars,
         Err(err) => {
             eprintln!("Error: {err}");
@@ -275,6 +275,7 @@ fn endpoint_for_surface(
 
 fn resolve_env_projection(
     endpoint: &ExternalApiEndpoint,
+    surface: SecretSurface,
     config_dir: &Path,
 ) -> Result<Vec<(String, String)>, String> {
     let template =
@@ -312,8 +313,12 @@ fn resolve_env_projection(
         }
     }
 
-    let source = CredentialSource::from_api_key_endpoint(endpoint, secret_store)
-        .map_err(|err| err.to_string())?;
+    let source = CredentialSource::from_api_key_endpoint_for_profile(
+        endpoint,
+        Some(surface.profile_id()),
+        secret_store,
+    )
+    .map_err(|err| err.to_string())?;
 
     let resolved = runtime
         .block_on(source.resolve_bearer_token())
@@ -371,6 +376,7 @@ struct SecretSurfaceStatus {
 
 fn inspect_surface_status(
     endpoint: &ExternalApiEndpoint,
+    surface: SecretSurface,
     config_dir: &Path,
 ) -> Result<SecretSurfaceStatus, String> {
     let binding = endpoint.credential.as_ref();
@@ -392,13 +398,16 @@ fn inspect_surface_status(
     let secret_store = create_secret_store_for_binding(binding, config_dir, desktop_secret_store)
         .map_err(|err| err.to_string())?;
     let runtime = build_runtime()?;
-    let resolved_secret_available =
-        match CredentialSource::from_api_key_endpoint(endpoint, secret_store)
-            .map_err(|err| err.to_string())
-        {
-            Ok(source) => runtime.block_on(source.resolve_bearer_token()).is_ok(),
-            Err(_) => false,
-        };
+    let resolved_secret_available = match CredentialSource::from_api_key_endpoint_for_profile(
+        endpoint,
+        Some(surface.profile_id()),
+        secret_store,
+    )
+    .map_err(|err| err.to_string())
+    {
+        Ok(source) => runtime.block_on(source.resolve_bearer_token()).is_ok(),
+        Err(_) => false,
+    };
 
     Ok(SecretSurfaceStatus {
         provider_type: format!("{:?}", endpoint.provider_type),
