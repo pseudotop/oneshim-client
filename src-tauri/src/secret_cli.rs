@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use oneshim_core::config::{CredentialAuthMode, ExternalApiEndpoint};
+use oneshim_core::config::{CredentialAuthMode, CredentialBackendKind, ExternalApiEndpoint};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::secret_projection::{
@@ -83,17 +83,8 @@ fn cmd_env(args: &[String], config_dir: &Path) -> i32 {
         return 1;
     };
 
-    let auth_mode = endpoint
-        .credential
-        .as_ref()
-        .map(|binding| binding.auth_mode)
-        .unwrap_or(CredentialAuthMode::ApiKey);
-    if auth_mode != CredentialAuthMode::ApiKey {
-        eprintln!(
-            "Error: {} is not configured for API-key projection. Current auth mode: {:?}",
-            surface.profile_id(),
-            auth_mode
-        );
+    if let Err(message) = ensure_projection_allowed(endpoint, surface) {
+        eprintln!("Error: {message}");
         return 1;
     }
 
@@ -134,17 +125,8 @@ fn cmd_exec(args: &[String], config_dir: &Path) -> i32 {
         return 1;
     };
 
-    let auth_mode = endpoint
-        .credential
-        .as_ref()
-        .map(|binding| binding.auth_mode)
-        .unwrap_or(CredentialAuthMode::ApiKey);
-    if auth_mode != CredentialAuthMode::ApiKey {
-        eprintln!(
-            "Error: {} is not configured for API-key projection. Current auth mode: {:?}",
-            surface.profile_id(),
-            auth_mode
-        );
+    if let Err(message) = ensure_projection_allowed(endpoint, surface) {
+        eprintln!("Error: {message}");
         return 1;
     }
 
@@ -230,6 +212,38 @@ fn resolve_env_projection(
         .into_iter()
         .map(|name| (name, resolved.clone()))
         .collect())
+}
+
+fn ensure_projection_allowed(
+    endpoint: &ExternalApiEndpoint,
+    surface: SecretSurface,
+) -> Result<(), String> {
+    let Some(binding) = endpoint.credential.as_ref() else {
+        return Ok(());
+    };
+
+    if binding.auth_mode != CredentialAuthMode::ApiKey {
+        return Err(format!(
+            "{} is not configured for API-key projection. Current auth mode: {:?}",
+            surface.profile_id(),
+            binding.auth_mode
+        ));
+    }
+
+    if matches!(
+        binding.backend_kind,
+        CredentialBackendKind::OsSecretStore
+            | CredentialBackendKind::FileSecretStore
+            | CredentialBackendKind::BridgeManaged
+    ) && !binding.projection_enabled
+    {
+        return Err(format!(
+            "{} secret projection is disabled. Enable CLI projection in Settings first.",
+            surface.profile_id()
+        ));
+    }
+
+    Ok(())
 }
 
 fn build_runtime() -> Result<tokio::runtime::Runtime, String> {
@@ -340,5 +354,63 @@ mod tests {
 
         let store = create_secret_store_for_binding(Some(&binding), temp_dir.path(), None).unwrap();
         assert!(store.is_some());
+    }
+
+    #[test]
+    fn ensure_projection_allowed_rejects_disabled_backend_managed_projection() {
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: None,
+                projection_enabled: false,
+            }),
+        };
+
+        let error = ensure_projection_allowed(&endpoint, SecretSurface::Llm).unwrap_err();
+        assert!(error.contains("Enable CLI projection"));
+    }
+
+    #[test]
+    fn ensure_projection_allowed_accepts_enabled_backend_managed_projection() {
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::FileSecretStore,
+                secret_ref: None,
+                projection_enabled: true,
+            }),
+        };
+
+        assert!(ensure_projection_allowed(&endpoint, SecretSurface::Llm).is_ok());
+    }
+
+    #[test]
+    fn ensure_projection_allowed_keeps_legacy_plaintext_compatibility() {
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: "sk-test".to_string(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::LegacyConfig,
+                secret_ref: None,
+                projection_enabled: false,
+            }),
+        };
+
+        assert!(ensure_projection_allowed(&endpoint, SecretSurface::Llm).is_ok());
     }
 }
