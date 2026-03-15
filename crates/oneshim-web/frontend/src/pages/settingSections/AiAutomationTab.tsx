@@ -20,6 +20,7 @@ import {
   providerSurfaceStatusCopyKey,
 } from '../../features/featureCapabilities'
 import {
+  defaultSurfaceEndpoint,
   type EndpointSurfaceKind,
   preferredRelatedProviderSurfaceFromList,
   surfaceModelSupportsCapability,
@@ -298,6 +299,23 @@ export default function AiAutomationTab({
     formData.ai_provider.llm_api?.model,
   )
 
+  const usesCustomSelfHostedEndpoint = (
+    surface: ProviderSurfaceSpec | undefined,
+    endpointKind: EndpointSurfaceKind,
+  ): boolean => {
+    if (!surface || surface.execution_kind !== 'direct_http' || surface.placement_kind !== 'self_hosted') {
+      return false
+    }
+
+    const configuredEndpoint =
+      endpointKind === 'ocr_api'
+        ? formData.ai_provider.ocr_api?.endpoint?.trim()
+        : formData.ai_provider.llm_api?.endpoint?.trim()
+    const catalogEndpoint = defaultSurfaceEndpoint(surface, endpointKind).trim()
+
+    return Boolean(configuredEndpoint && catalogEndpoint && configuredEndpoint !== catalogEndpoint)
+  }
+
   const handleSwitchToPreferredCli = () => {
     onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
     if (preferredCliSurface) {
@@ -357,14 +375,22 @@ export default function AiAutomationTab({
     return labels.join(' · ')
   }
 
-  const renderSurfaceStatus = (surface: ProviderSurfaceSpec | undefined) => {
+  const renderSurfaceStatus = (
+    surface: ProviderSurfaceSpec | undefined,
+    endpointKind: EndpointSurfaceKind,
+  ) => {
     if (!surface) {
       return null
     }
 
     const maturity = providerSurfaceMaturity(surface, featureCapabilities)
-    const availability = providerSurfaceAvailability(surface, featureCapabilities)
-    const statusCopyKey = providerSurfaceStatusCopyKey(surface, featureCapabilities)
+    const customSelfHostedEndpoint = usesCustomSelfHostedEndpoint(surface, endpointKind)
+    const availability = customSelfHostedEndpoint
+      ? 'partially_available'
+      : providerSurfaceAvailability(surface, featureCapabilities)
+    const statusCopyKey = customSelfHostedEndpoint
+      ? null
+      : providerSurfaceStatusCopyKey(surface, featureCapabilities)
 
     return (
       <div className="space-y-2 rounded-lg border border-muted bg-surface-muted/80 p-3">
@@ -385,6 +411,11 @@ export default function AiAutomationTab({
           </span>
         </div>
         {statusCopyKey && <p className="text-content-secondary text-xs">{t(statusCopyKey)}</p>}
+        {customSelfHostedEndpoint && (
+          <p className="text-content-secondary text-xs">
+            {t('settingsAutomation.selfHostedCustomEndpointStatus')}
+          </p>
+        )}
       </div>
     )
   }
@@ -886,7 +917,7 @@ export default function AiAutomationTab({
                     )}
                   </Select>
                 </div>
-                <div className="md:col-span-2">{renderSurfaceStatus(currentOcrSurface)}</div>
+                <div className="md:col-span-2">{renderSurfaceStatus(currentOcrSurface, 'ocr_api')}</div>
                 <div className="flex items-end">
                   <Button
                     type="button"
@@ -1035,7 +1066,7 @@ export default function AiAutomationTab({
                     )}
                   </Select>
                 </div>
-                <div className="md:col-span-2">{renderSurfaceStatus(currentLlmSurface)}</div>
+                <div className="md:col-span-2">{renderSurfaceStatus(currentLlmSurface, 'llm_api')}</div>
                 {showDirectApiFields(currentLlmSurface) && (
                   <>
                     <div className="flex items-end">

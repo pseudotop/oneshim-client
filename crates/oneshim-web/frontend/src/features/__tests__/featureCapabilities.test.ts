@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { findFeatureCapability, maturityBadgeColor } from '../featureCapabilities'
+import type { ProviderSurfaceSpec } from '../../api/contracts'
+import {
+  findFeatureCapability,
+  maturityBadgeColor,
+  providerSurfaceAvailability,
+} from '../featureCapabilities'
 
 describe('featureCapabilities helpers', () => {
   it('finds a feature by id', () => {
@@ -28,5 +33,15 @@ describe('featureCapabilities helpers', () => {
     expect(maturityBadgeColor('beta')).toBe('warning')
     expect(maturityBadgeColor('experimental')).toBe('error')
     expect(maturityBadgeColor('deprecated')).toBe('default')
+  })
+
+  it('treats self-hosted direct surfaces as partially available without a desktop probe', () => {
+    const surface = {
+      surface_id: 'provider_surface.ollama.local_http',
+      execution_kind: 'direct_http',
+      placement_kind: 'self_hosted',
+    } as ProviderSurfaceSpec
+
+    expect(providerSurfaceAvailability(surface, null)).toBe('partially_available')
   })
 })

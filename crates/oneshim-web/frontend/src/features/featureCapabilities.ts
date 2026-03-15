@@ -56,6 +56,9 @@ export function providerSurfaceAvailability(
   }
 
   if (surface.execution_kind === 'direct_http') {
+    if (surface.placement_kind === 'self_hosted' || surface.placement_kind === 'custom_hosted') {
+      return 'partially_available'
+    }
     return 'available'
   }
 

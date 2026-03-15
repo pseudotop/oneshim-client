@@ -46,6 +46,7 @@ import {
   providerSurfaceById,
   resolveProviderTypeForSurface,
   sortProviderSurfaces,
+  surfaceKnownModel,
   surfaceSupportsModelSelection,
   type EndpointSurfaceKind,
 } from '../features/providerSurfaces'
@@ -129,54 +130,34 @@ export default function Settings() {
     retry: 1,
   })
 
-  useEffect(() => {
-    if (settings) {
-      setFormData((current) => current ?? settings)
-    }
-  }, [settings])
+  const providerCatalog = providerSurfaceCatalog ?? DEFAULT_PROVIDER_SURFACE_CATALOG
+
+  const resetModelDiscoveryState = (targets: Array<'ocr_api' | 'llm_api'>) => {
+    setModelCatalog((current) => {
+      const next = { ...current }
+      for (const target of targets) {
+        next[target] = []
+      }
+      return next
+    })
+    setModelCatalogDetails((current) => {
+      const next = { ...current }
+      for (const target of targets) {
+        next[target] = []
+      }
+      return next
+    })
+    setModelCatalogNotice((current) => {
+      const next = { ...current }
+      for (const target of targets) {
+        next[target] = null
+      }
+      return next
+    })
+    setModelCatalogLoading((current) => (current && targets.includes(current) ? null : current))
+  }
 
   const defaultByokBackendKind = secretBackendCapabilities?.byok_backend_kind ?? 'legacy_config'
-
-  useEffect(() => {
-    if (!secretBackendCapabilities) {
-      return
-    }
-
-    setFormData((current) => {
-      if (!current) return current
-
-      let changed = false
-      const applyBackendDefault = (endpoint: ExternalApiSettings | null): ExternalApiSettings | null => {
-        if (!endpoint) return endpoint
-        if (endpoint.backend_kind !== 'legacy_config') return endpoint
-        if (endpoint.has_secret || endpoint.api_key_masked.trim().length > 0) return endpoint
-        changed = true
-        return {
-          ...endpoint,
-          backend_kind: defaultByokBackendKind,
-          can_edit_secret: backendAllowsSecretEditing(defaultByokBackendKind),
-        }
-      }
-
-      const nextOcr = applyBackendDefault(current.ai_provider.ocr_api)
-      const nextLlm = applyBackendDefault(current.ai_provider.llm_api)
-
-      if (!changed) {
-        return current
-      }
-
-      return {
-        ...current,
-        ai_provider: {
-          ...current.ai_provider,
-          ocr_api: nextOcr,
-          llm_api: nextLlm,
-        },
-      }
-    })
-  }, [defaultByokBackendKind, secretBackendCapabilities])
-
-  const providerCatalog = providerSurfaceCatalog ?? DEFAULT_PROVIDER_SURFACE_CATALOG
 
   const deriveEndpointAuthMode = (
     accessMode: string,
@@ -239,8 +220,26 @@ export default function Settings() {
     const previousDefaultModel = defaultSurfaceModel(previousSurface, endpointKind)
     const nextDefaultModel = defaultSurfaceModel(nextSurface, endpointKind)
     const supportsModelSelection = surfaceSupportsModelSelection(nextSurface, endpointKind)
+    const previousProviderType = resolveProviderTypeForSurface(
+      providerCatalog,
+      seed.surface_id,
+      seed.provider_type,
+    )
     const authMode = deriveEndpointAuthMode(accessMode, endpointKind, nextSurface)
     const backendKind = deriveEndpointBackendKind(authMode)
+    const currentModel = seed.model?.trim() ?? ''
+    const knownNextModel = surfaceKnownModel(nextSurface, currentModel)
+    const knownNextModelSupported = knownNextModel
+      ? endpointKind === 'ocr_api'
+        ? knownNextModel.capabilities.ocr && knownNextModel.capabilities.image_input
+        : knownNextModel.capabilities.llm
+      : null
+    const providerChanged = previousProviderType !== providerType
+    const executionChanged = previousSurface?.execution_kind !== nextSurface?.execution_kind
+    const shouldResetModelForSurfaceChange =
+      Boolean(currentModel) &&
+      previousSurface?.surface_id !== nextSurface?.surface_id &&
+      (knownNextModelSupported === false || (!knownNextModel && (providerChanged || executionChanged)))
 
     return {
       ...seed,
@@ -248,7 +247,9 @@ export default function Settings() {
         !seed.endpoint.trim() || seed.endpoint === previousDefaultEndpoint ? nextDefaultEndpoint : seed.endpoint,
       model: !supportsModelSelection
         ? null
-        : !seed.model?.trim() || seed.model === previousDefaultModel
+        : shouldResetModelForSurfaceChange
+          ? nextDefaultModel
+          : !seed.model?.trim() || seed.model === previousDefaultModel
           ? nextDefaultModel
           : seed.model,
       provider_type: providerType,
@@ -259,6 +260,68 @@ export default function Settings() {
       projection_enabled: supportsProjectionFor(authMode, backendKind) ? seed.projection_enabled : false,
     }
   }
+
+  const sanitizeLoadedSettings = (incoming: AppSettings): AppSettings => {
+    const aiProvider = { ...incoming.ai_provider }
+
+    if (aiProvider.ocr_provider === 'Remote') {
+      aiProvider.ocr_api = normalizeEndpointSettings(aiProvider.access_mode, 'ocr_api', aiProvider.ocr_api)
+    }
+
+    if (aiProvider.llm_provider === 'Remote' || aiProvider.access_mode === 'ProviderSubscriptionCli' || aiProvider.access_mode === 'ProviderOAuth') {
+      aiProvider.llm_api = normalizeEndpointSettings(aiProvider.access_mode, 'llm_api', aiProvider.llm_api)
+    }
+
+    return {
+      ...incoming,
+      ai_provider: aiProvider,
+    }
+  }
+
+  useEffect(() => {
+    if (settings) {
+      setFormData((current) => current ?? sanitizeLoadedSettings(settings))
+    }
+  }, [settings, providerCatalog, featureCapabilities])
+
+  useEffect(() => {
+    if (!secretBackendCapabilities) {
+      return
+    }
+
+    setFormData((current) => {
+      if (!current) return current
+
+      let changed = false
+      const applyBackendDefault = (endpoint: ExternalApiSettings | null): ExternalApiSettings | null => {
+        if (!endpoint) return endpoint
+        if (endpoint.backend_kind !== 'legacy_config') return endpoint
+        if (endpoint.has_secret || endpoint.api_key_masked.trim().length > 0) return endpoint
+        changed = true
+        return {
+          ...endpoint,
+          backend_kind: defaultByokBackendKind,
+          can_edit_secret: backendAllowsSecretEditing(defaultByokBackendKind),
+        }
+      }
+
+      const nextOcr = applyBackendDefault(current.ai_provider.ocr_api)
+      const nextLlm = applyBackendDefault(current.ai_provider.llm_api)
+
+      if (!changed) {
+        return current
+      }
+
+      return {
+        ...current,
+        ai_provider: {
+          ...current.ai_provider,
+          ocr_api: nextOcr,
+          llm_api: nextLlm,
+        },
+      }
+    })
+  }, [defaultByokBackendKind, secretBackendCapabilities])
 
   const applyAccessModeDefaults = (
     currentAiProvider: AiProviderSettings,
@@ -418,6 +481,16 @@ export default function Settings() {
     field: keyof AiProviderSettings,
     value: string | boolean | ExternalApiSettings | OcrValidationSettingsType | SceneIntelligenceSettingsType | null,
   ) => {
+    if (field === 'access_mode' && typeof value === 'string') {
+      resetModelDiscoveryState(['ocr_api', 'llm_api'])
+    }
+    if (field === 'ocr_provider' && value === 'Remote') {
+      resetModelDiscoveryState(['ocr_api'])
+    }
+    if (field === 'llm_provider' && value === 'Remote') {
+      resetModelDiscoveryState(['llm_api'])
+    }
+
     setFormData((current) =>
       current
         ? (() => {
@@ -631,6 +704,11 @@ export default function Settings() {
     const currentModel = formData?.ai_provider[which]?.model
     const detail = findModelDetail(which, currentModel)
     if (!detail) {
+      if (currentModel?.trim() && modelCatalogDetails[which].length > 0) {
+        return which === 'ocr_api'
+          ? t('settingsAutomation.ocrModelCompatibilityUnknown', { model: currentModel })
+          : t('settingsAutomation.llmModelCompatibilityUnknown', { model: currentModel })
+      }
       return null
     }
     if (which === 'ocr_api' && isOcrModelExplicitlyUnsupported(detail)) {
@@ -648,7 +726,12 @@ export default function Settings() {
 
   const canDiscoverModels = (which: 'ocr_api' | 'llm_api'): boolean => {
     const surface = resolveEndpointSurface(which)
-    return surface?.supports.model_catalog ?? true
+    const transport = surface?.model_catalog_transport
+    if (!transport) {
+      return surface?.supports.model_catalog ?? true
+    }
+
+    return which === 'ocr_api' ? transport.ocr_supported : transport.llm_supported
   }
 
   const handleProviderSurfaceChange = (which: 'ocr_api' | 'llm_api', nextSurfaceId: string) => {
@@ -657,6 +740,7 @@ export default function Settings() {
       return
     }
 
+    resetModelDiscoveryState([which])
     setFormData((current) => {
       if (!current) return current
       const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
@@ -693,7 +777,8 @@ export default function Settings() {
         ? (result.model_details ?? []).find((detail) => !isOcrModelExplicitlyUnsupported(detail))?.id
         : (result.model_details ?? []).find((detail) => !isLlmModelExplicitlyUnsupported(detail))?.id
 
-    if ((!currentModel || !currentModel.trim()) && (preferredDiscoveredModel || result.models.length > 0)) {
+    const canFallbackToRawModelList = !result.model_details || result.model_details.length === 0
+    if ((!currentModel || !currentModel.trim()) && (preferredDiscoveredModel || (canFallbackToRawModelList && result.models.length > 0))) {
       handleExternalApiChange(which, 'model', preferredDiscoveredModel ?? result.models[0])
     }
   }
