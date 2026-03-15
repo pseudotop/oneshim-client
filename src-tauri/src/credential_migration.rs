@@ -149,6 +149,7 @@ mod tests {
                 model: Some("gpt-4.1-mini".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
+                surface_id: None,
                 credential: None,
             }),
             ..AiProviderConfig::default()
@@ -214,6 +215,7 @@ mod tests {
                 model: Some("gpt-4.1-mini".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
+                surface_id: None,
                 credential: None,
             }),
             ..AiProviderConfig::default()

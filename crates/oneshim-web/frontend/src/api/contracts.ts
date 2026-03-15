@@ -617,6 +617,7 @@ export interface ExternalApiSettings {
   api_key_masked: string
   model: string | null
   provider_type: string
+  surface_id?: string | null
   timeout_secs: number
   auth_mode: string
   backend_kind: string

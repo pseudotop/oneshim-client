@@ -111,6 +111,7 @@ mod tests {
             api_key_masked: "".to_string(),
             model: None,
             provider_type: "Generic".to_string(),
+            surface_id: None,
             timeout_secs: 30,
             auth_mode: "api_key".to_string(),
             backend_kind: "legacy_config".to_string(),

@@ -39,8 +39,9 @@ use tracing::debug;
 use tracing::warn;
 
 use crate::subprocess_provider::{
-    probe_for_surface_id, probe_known_cli_surfaces, select_cli_surface_for_config,
-    ProbedSubprocessCli, SubprocessCliAuthStatus, SubprocessCliSurfaceId, SubprocessLlmProvider,
+    preferred_cli_surface_for_config, probe_for_surface_id, probe_known_cli_surfaces,
+    select_cli_surface_for_config, ProbedSubprocessCli, SubprocessCliAuthStatus,
+    SubprocessLlmProvider,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -456,12 +457,7 @@ fn cli_subscription_unavailable_reason(
         .map(|endpoint| endpoint.provider_type)
         .filter(|provider_type| *provider_type != AiProviderType::Generic)
     {
-        if let Some(surface_id) = match provider_type {
-            AiProviderType::Anthropic => Some(SubprocessCliSurfaceId::AnthropicClaudeCode),
-            AiProviderType::OpenAi => Some(SubprocessCliSurfaceId::OpenAiCodex),
-            AiProviderType::Google => Some(SubprocessCliSurfaceId::GoogleGeminiCli),
-            AiProviderType::Generic => None,
-        } {
+        if let Some(surface_id) = preferred_cli_surface_for_config(config) {
             if let Some(surface) = probe_for_surface_id(detected, surface_id) {
                 return match surface.auth_status {
                     SubprocessCliAuthStatus::Authenticated => format!(
@@ -651,6 +647,7 @@ fn oauth_llm_endpoint(config: &AiProviderConfig) -> ExternalApiEndpoint {
         model: Some(DEFAULT_OPENAI_OAUTH_MODEL.to_string()),
         timeout_secs: 30,
         provider_type: AiProviderType::OpenAi,
+        surface_id: None,
         credential: None,
     });
 
@@ -774,6 +771,7 @@ mod tests {
             model: Some("test-model".to_string()),
             timeout_secs: 5,
             provider_type: AiProviderType::Generic,
+            surface_id: None,
             credential: None,
         }
     }
@@ -1321,6 +1319,7 @@ mod tests {
             model: Some("gpt-5-mini".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: Some(CredentialBinding {
                 auth_mode: CredentialAuthMode::ApiKey,
                 backend_kind: CredentialBackendKind::Env,

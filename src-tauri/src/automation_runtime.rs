@@ -495,6 +495,7 @@ mod tests {
             model: Some("model-test".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            surface_id: None,
             credential: None,
         };
         let config = AiProviderConfig {
@@ -534,6 +535,7 @@ mod tests {
             model: Some("model-test".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            surface_id: None,
             credential: None,
         };
         let config = AiProviderConfig {

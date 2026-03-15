@@ -718,6 +718,7 @@ mod tests {
             model: Some("gpt-4.1-mini".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: None,
         };
         let config = AiProviderConfig {
@@ -791,6 +792,7 @@ mod tests {
             model: Some("gpt-4.1-mini".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: Some(CredentialBinding {
                 auth_mode: CredentialAuthMode::ApiKey,
                 backend_kind: CredentialBackendKind::OsSecretStore,
@@ -811,6 +813,7 @@ mod tests {
             model: Some("gpt-4.1-mini".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: Some(CredentialBinding {
                 auth_mode: CredentialAuthMode::ApiKey,
                 backend_kind: CredentialBackendKind::FileSecretStore,
@@ -830,6 +833,7 @@ mod tests {
             model: Some("gpt-4.1-mini".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: Some(CredentialBinding {
                 auth_mode: CredentialAuthMode::ApiKey,
                 backend_kind: CredentialBackendKind::BridgeManaged,
@@ -876,6 +880,7 @@ mod tests {
             model: Some("gpt-4.1-mini".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: Some(CredentialBinding {
                 auth_mode: CredentialAuthMode::ApiKey,
                 backend_kind: CredentialBackendKind::LegacyConfig,

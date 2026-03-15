@@ -36,6 +36,7 @@ import { DEFAULT_PROVIDER_PRESETS } from '../api/defaultProviderPresets'
 import { isStandaloneModeEnabled } from '../api/standalone'
 import { Button, Spinner, Tabs } from '../components/ui'
 import { useToast } from '../hooks/useToast'
+import { deriveDefaultProviderSurfaceId, type EndpointSurfaceKind } from '../features/providerSurfaces'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { IS_TAURI } from '../utils/platform'
@@ -264,16 +265,37 @@ export default function Settings() {
     )
   }
 
+  const syncEndpointSurface = (
+    endpointKind: EndpointSurfaceKind,
+    accessMode: string,
+    endpoint: ExternalApiSettings | null | undefined,
+  ): ExternalApiSettings | null => {
+    if (!endpoint) return null
+    const providerType = resolveProviderType(endpoint.provider_type)
+    return {
+      ...endpoint,
+      provider_type: providerType,
+      surface_id: deriveDefaultProviderSurfaceId(accessMode, endpointKind, providerType),
+    }
+  }
+
   const handleAiProviderChange = (
     field: keyof AiProviderSettings,
     value: string | boolean | ExternalApiSettings | OcrValidationSettingsType | SceneIntelligenceSettingsType | null,
   ) => {
     setFormData((current) =>
       current
-        ? {
-            ...current,
-            ai_provider: { ...current.ai_provider, [field]: value },
-          }
+        ? (() => {
+            const nextAiProvider = { ...current.ai_provider, [field]: value }
+            if (field === 'access_mode' && typeof value === 'string') {
+              nextAiProvider.ocr_api = syncEndpointSurface('ocr_api', value, nextAiProvider.ocr_api)
+              nextAiProvider.llm_api = syncEndpointSurface('llm_api', value, nextAiProvider.llm_api)
+            }
+            return {
+              ...current,
+              ai_provider: nextAiProvider,
+            }
+          })()
         : current,
     )
   }
@@ -332,11 +354,15 @@ export default function Settings() {
     )
   }
 
-  const defaultExternalApiSettings = (): ExternalApiSettings => ({
+  const defaultExternalApiSettings = (
+    accessMode: string,
+    endpointKind: EndpointSurfaceKind,
+  ): ExternalApiSettings => ({
     endpoint: '',
     api_key_masked: '',
     model: null,
     provider_type: 'Generic',
+    surface_id: deriveDefaultProviderSurfaceId(accessMode, endpointKind, 'Generic'),
     timeout_secs: 30,
     auth_mode: 'api_key',
     backend_kind: defaultByokBackendKind,
@@ -353,7 +379,7 @@ export default function Settings() {
   ) => {
     setFormData((current) => {
       if (!current) return current
-      const existing = current.ai_provider[which] ?? defaultExternalApiSettings()
+      const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
 
       return {
         ...current,
@@ -402,7 +428,7 @@ export default function Settings() {
 
     setFormData((current) => {
       if (!current) return current
-      const existing = current.ai_provider[which] ?? defaultExternalApiSettings()
+      const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
       const endpoint = existing.endpoint && existing.endpoint.trim().length > 0 ? existing.endpoint : presetEndpoint
       const model = existing.model && existing.model.trim().length > 0 ? existing.model : presetModel
 
@@ -413,6 +439,7 @@ export default function Settings() {
           [which]: {
             ...existing,
             provider_type: providerType,
+            surface_id: deriveDefaultProviderSurfaceId(current.ai_provider.access_mode, which, providerType),
             endpoint,
             model,
           },

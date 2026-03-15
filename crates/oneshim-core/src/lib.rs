@@ -7,6 +7,7 @@ pub mod consent;
 pub mod error;
 pub mod models;
 pub mod ports;
+pub mod provider_surface;
 
 #[cfg(test)]
 mod tests {

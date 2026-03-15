@@ -54,6 +54,8 @@ pub struct ExternalApiEndpoint {
     #[serde(default)]
     pub provider_type: AiProviderType,
     #[serde(default)]
+    pub surface_id: Option<String>,
+    #[serde(default)]
     pub credential: Option<CredentialBinding>,
 }
 

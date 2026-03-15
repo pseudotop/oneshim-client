@@ -4,6 +4,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::{
     InterpretedAction, LlmProvider, ScreenContext, SkillContext,
 };
+use oneshim_core::provider_surface::{provider_surface_spec, ProviderSurfaceTransport};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
@@ -322,13 +323,7 @@ pub fn select_cli_surface_for_config(
     config: &AiProviderConfig,
     detected: &[ProbedSubprocessCli],
 ) -> Option<DetectedSubprocessCli> {
-    let preferred_provider = config
-        .llm_api
-        .as_ref()
-        .map(|endpoint| endpoint.provider_type)
-        .filter(|provider_type| *provider_type != AiProviderType::Generic);
-
-    if let Some(surface_id) = preferred_provider.and_then(surface_for_provider_type) {
+    if let Some(surface_id) = preferred_cli_surface_for_config(config) {
         if let Some(surface) = detected.iter().find(|surface| {
             surface.detected.surface_id == surface_id
                 && surface.detected.surface_id.runtime_supported()
@@ -347,6 +342,37 @@ pub fn select_cli_surface_for_config(
         .map(|surface| surface.detected.clone())
 }
 
+pub fn preferred_cli_surface_for_config(
+    config: &AiProviderConfig,
+) -> Option<SubprocessCliSurfaceId> {
+    config
+        .llm_api
+        .as_ref()
+        .and_then(|endpoint| {
+            endpoint
+                .surface_id
+                .as_deref()
+                .and_then(surface_for_provider_surface_id)
+                .and_then(|surface_id| {
+                    if endpoint.provider_type == AiProviderType::Generic
+                        || surface_for_provider_type(endpoint.provider_type) == Some(surface_id)
+                    {
+                        Some(surface_id)
+                    } else {
+                        None
+                    }
+                })
+        })
+        .or_else(|| {
+            config
+                .llm_api
+                .as_ref()
+                .map(|endpoint| endpoint.provider_type)
+                .filter(|provider_type| *provider_type != AiProviderType::Generic)
+                .and_then(surface_for_provider_type)
+        })
+}
+
 pub fn probe_for_surface_id(
     probed: &[ProbedSubprocessCli],
     surface_id: SubprocessCliSurfaceId,
@@ -363,6 +389,15 @@ fn surface_for_provider_type(provider_type: AiProviderType) -> Option<Subprocess
         AiProviderType::Google => Some(SubprocessCliSurfaceId::GoogleGeminiCli),
         AiProviderType::Generic => None,
     }
+}
+
+fn surface_for_provider_surface_id(raw: &str) -> Option<SubprocessCliSurfaceId> {
+    let spec = provider_surface_spec(raw)?;
+    if spec.transport != ProviderSurfaceTransport::SubprocessCli {
+        return None;
+    }
+
+    surface_for_provider_type(spec.provider_type)
 }
 
 fn probe_cli_surface(detected: DetectedSubprocessCli) -> ProbedSubprocessCli {
@@ -697,6 +732,7 @@ mod tests {
             model: model.map(|value| value.to_string()),
             timeout_secs: 30,
             provider_type,
+            surface_id: None,
             credential: None,
         }
     }
@@ -779,6 +815,55 @@ mod tests {
             resolved.surface_id,
             SubprocessCliSurfaceId::AnthropicClaudeCode
         );
+    }
+
+    #[test]
+    fn prefers_explicit_surface_id_when_provider_type_is_generic() {
+        let mut llm_endpoint = endpoint(AiProviderType::Generic, None);
+        llm_endpoint.surface_id = Some("provider_surface.anthropic.subprocess_cli".to_string());
+        let config = AiProviderConfig {
+            llm_api: Some(llm_endpoint),
+            ..AiProviderConfig::default()
+        };
+        let surfaces = vec![
+            probed(
+                SubprocessCliSurfaceId::OpenAiCodex,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+            probed(
+                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+        ];
+
+        let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
+        assert_eq!(
+            resolved.surface_id,
+            SubprocessCliSurfaceId::AnthropicClaudeCode
+        );
+    }
+
+    #[test]
+    fn ignores_explicit_surface_id_when_it_conflicts_with_provider_type() {
+        let mut llm_endpoint = endpoint(AiProviderType::OpenAi, None);
+        llm_endpoint.surface_id = Some("provider_surface.anthropic.subprocess_cli".to_string());
+        let config = AiProviderConfig {
+            llm_api: Some(llm_endpoint),
+            ..AiProviderConfig::default()
+        };
+        let surfaces = vec![
+            probed(
+                SubprocessCliSurfaceId::OpenAiCodex,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+            probed(
+                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+        ];
+
+        let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
+        assert_eq!(resolved.surface_id, SubprocessCliSurfaceId::OpenAiCodex);
     }
 
     #[test]

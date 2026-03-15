@@ -261,6 +261,8 @@ pub struct ExternalApiSettings {
     pub model: Option<String>,
     #[serde(default = "default_provider_type")]
     pub provider_type: String,
+    #[serde(default)]
+    pub surface_id: Option<String>,
     #[serde(default = "default_external_timeout")]
     pub timeout_secs: u64,
     #[serde(default = "default_credential_auth_mode")]
@@ -304,6 +306,7 @@ impl Default for ExternalApiSettings {
             api_key_masked: String::new(),
             model: None,
             provider_type: default_provider_type(),
+            surface_id: None,
             timeout_secs: default_external_timeout(),
             auth_mode: default_credential_auth_mode(),
             backend_kind: default_credential_backend_kind(),

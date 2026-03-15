@@ -243,6 +243,7 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
                 credential: None,
             }),
             ..AiProviderConfig::default()
@@ -264,6 +265,7 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
                 credential: Some(CredentialBinding {
                     auth_mode: CredentialAuthMode::ApiKey,
                     backend_kind: CredentialBackendKind::OsSecretStore,
@@ -292,6 +294,7 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
                 credential: None,
             }),
             llm_api: Some(ExternalApiEndpoint {
@@ -300,6 +303,7 @@ mod tests {
                 model: Some("model-a".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
                 credential: None,
             }),
             ..AiProviderConfig::default()
@@ -319,6 +323,7 @@ mod tests {
                 model: Some("gpt-3.5-turbo".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
+                surface_id: None,
                 credential: None,
             }),
             ..AiProviderConfig::default()
@@ -341,6 +346,7 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
                 credential: None,
             }),
             ..AiProviderConfig::default()
@@ -378,6 +384,7 @@ mod tests {
                 model: Some("claude-sonnet-4-20250514".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::Anthropic,
+                surface_id: None,
                 credential: None,
             }),
             ..AiProviderConfig::default()
@@ -399,6 +406,7 @@ mod tests {
                 model: Some("gpt-5-mini".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
+                surface_id: None,
                 credential: None,
             }),
             ..AiProviderConfig::default()
