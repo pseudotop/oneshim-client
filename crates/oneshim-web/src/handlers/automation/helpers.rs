@@ -131,7 +131,7 @@ pub(super) fn parse_audit_status(status_filter: &str) -> Result<AuditStatus, Api
         "Denied" => Ok(AuditStatus::Denied),
         "Timeout" => Ok(AuditStatus::Timeout),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 state 필터: {}",
+            "Invalid state filter: {}",
             status_filter
         ))),
     }
@@ -148,7 +148,7 @@ pub(super) fn build_scene_action_intents(
     }
     if req.bbox_abs.width == 0 || req.bbox_abs.height == 0 {
         return Err(ApiError::BadRequest(
-            "bbox_abs.width/height는 0보다 커야 합니다".to_string(),
+            "bbox_abs.width/height must be greater than 0.".to_string(),
         ));
     }
 
@@ -196,7 +196,7 @@ pub(super) fn apply_scene_intelligence_filter(
 ) -> Result<UiScene, ApiError> {
     if !cfg.enabled {
         return Err(ApiError::BadRequest(
-            "Scene intelligence가 비active화되어 있습니다.".to_string(),
+            "Scene intelligence is disabled.".to_string(),
         ));
     }
 
@@ -280,7 +280,7 @@ pub(super) fn evaluate_scene_action_override(
     if reason.is_empty() {
         return (
             false,
-            Some("사유(reason)가 비어 있어 오버라이드가 무효입니다.".to_string()),
+            Some("Override is invalid because reason is empty.".to_string()),
         );
     }
 
@@ -292,19 +292,19 @@ pub(super) fn evaluate_scene_action_override(
     if approved_by.is_empty() {
         return (
             false,
-            Some("승인자(approved_by)가 비어 있어 오버라이드가 무효입니다.".to_string()),
+            Some("Override is invalid because approved_by is empty.".to_string()),
         );
     }
 
     let Some(expires_at) = cfg.expires_at else {
         return (
             false,
-            Some("만료 시각(expires_at)이 없어 오버라이드가 무효입니다.".to_string()),
+            Some("Override is invalid because expires_at is missing.".to_string()),
         );
     };
 
     if expires_at <= now {
-        return (false, Some("오버라이드 TTL이 만료되었습니다.".to_string()));
+        return (false, Some("Override TTL has expired.".to_string()));
     }
 
     (true, None)
@@ -358,14 +358,14 @@ pub(super) fn enforce_scene_action_privacy(
         (ExternalDataPolicy::PiiFilterStrict, SceneActionType::TypeText) => {
             if !allow_sensitive && !override_active {
                 return Err(ApiError::BadRequest(format!(
-                    "PiiFilterStrict policy에서는 type_text 액션이 차단됩니다. allow_sensitive_input=true를 전달하거나 유효한 오버라이드를 설정하세요.{override_hint}"
+                    "PiiFilterStrict blocks type_text actions. Pass allow_sensitive_input=true or configure a valid override.{override_hint}"
                 )));
             }
         }
         (ExternalDataPolicy::PiiFilterStandard, SceneActionType::TypeText) => {
             if !allow_sensitive && !override_active {
                 return Err(ApiError::BadRequest(format!(
-                    "PiiFilterStandard policy에서는 type_text 액션에 allow_sensitive_input=true 또는 유효한 오버라이드가 필요합니다.{override_hint}"
+                    "PiiFilterStandard requires allow_sensitive_input=true or a valid override for type_text actions.{override_hint}"
                 )));
             }
         }
@@ -419,7 +419,7 @@ pub(super) fn resolve_frame_image_path(
 
     let Some(base) = state.frames_dir.as_ref() else {
         return Err(ApiError::Internal(
-            "frame path 루트가 설정되지 않아 frame_id query를 처리할 수 없습니다".to_string(),
+            "Frame path root is not configured; frame_id queries cannot be resolved.".to_string(),
         ));
     };
 

@@ -111,7 +111,7 @@ mod tests {
         let dto = PresetRunResult {
             preset_id: "save-file".to_string(),
             success: true,
-            message: "execution됨".to_string(),
+            message: "executed".to_string(),
             steps_executed: Some(2),
             total_steps: Some(3),
             total_elapsed_ms: Some(150),
@@ -180,12 +180,12 @@ mod tests {
     fn execute_intent_hint_request_deserializes_optional_command_id() {
         let payload = r#"{
             "session_id": "sess-1",
-            "intent_hint": "save 버튼 클릭"
+            "intent_hint": "click the save button"
         }"#;
         let request: ExecuteIntentHintRequest = serde_json::from_str(payload).unwrap();
         assert!(request.command_id.is_none());
         assert_eq!(request.session_id, "sess-1");
-        assert_eq!(request.intent_hint, "save 버튼 클릭");
+        assert_eq!(request.intent_hint, "click the save button");
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
         let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
         assert!(!active);
         let issue_text = issue.unwrap_or_default();
-        assert!(issue_text.contains("만료") || issue_text.contains("expired"));
+        assert!(issue_text.contains("expired"));
     }
 
     #[test]

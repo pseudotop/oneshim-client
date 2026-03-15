@@ -280,7 +280,7 @@ impl OcrProvider for GuardedOcrProvider {
         debug!(
             redacted_regions = sanitized.redacted_regions,
             allow_unredacted_external_ocr = self.allow_unredacted_external_ocr,
-            "외부 OCR sent 전 이미지 세정 completed"
+            "External OCR image sanitization completed"
         );
 
         let results = self
@@ -677,23 +677,23 @@ fn require_endpoint_config<'a>(
 ) -> Result<&'a ExternalApiEndpoint, CoreError> {
     let endpoint = endpoint.ok_or_else(|| {
         CoreError::Config(format!(
-            "원격 AI 제공자를 사용하려면 `{field_name}` 설정이 필요합니다."
+            "Remote AI provider usage requires `{field_name}` to be configured."
         ))
     })?;
 
     if endpoint.endpoint.trim().is_empty() {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint` 값이 비어 있습니다."
+            "`{field_name}.endpoint` must not be empty."
         )));
     }
     if !(endpoint.endpoint.starts_with("http://") || endpoint.endpoint.starts_with("https://")) {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint`는 http:// https:// URL."
+            "`{field_name}.endpoint` must be an http:// or https:// URL."
         )));
     }
     if endpoint.timeout_secs == 0 {
         return Err(CoreError::Config(format!(
-            "`{field_name}.timeout_secs`는 1 이상이어야 합니다."
+            "`{field_name}.timeout_secs` must be greater than 0."
         )));
     }
 
@@ -715,7 +715,7 @@ fn resolve_remote_with_optional_fallback<T: ?Sized>(
                 provider = provider_kind,
                 error = %err,
                 fallback_reason = %fallback_reason,
-                "원격 제공자 initialize failure, 로컬 제공자로 폴백"
+                "Remote provider initialization failed, falling back to the local provider"
             );
             Ok((
                 local_builder(),

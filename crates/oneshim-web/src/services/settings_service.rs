@@ -316,17 +316,17 @@ fn log_policy_event(state: &AppState, action_type: &str, details: String) {
 fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
     if settings.retention_days == 0 || settings.retention_days > 365 {
         return Err(ApiError::BadRequest(
-            "보존 period은 1-365일 사이여야 합니다".to_string(),
+            "Retention period must be between 1 and 365 days.".to_string(),
         ));
     }
     if settings.max_storage_mb < 100 || settings.max_storage_mb > 10000 {
         return Err(ApiError::BadRequest(
-            "최대 save소 용량은 100MB-10GB 사이여야 합니다".to_string(),
+            "Maximum storage size must be between 100 MB and 10 GB.".to_string(),
         ));
     }
     if settings.web_port < 1024 {
         return Err(ApiError::BadRequest(
-            "port는 1024 이상이어야 합니다".to_string(),
+            "web_port must be 1024 or higher.".to_string(),
         ));
     }
     if !settings
@@ -337,7 +337,7 @@ fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
         || !(0.0..=1.0).contains(&settings.ai_provider.ocr_validation.min_confidence)
     {
         return Err(ApiError::BadRequest(
-            "ai_provider.ocr_validation.min_confidence는 0.0~1.0 범위여야 합니다".to_string(),
+            "ai_provider.ocr_validation.min_confidence must be within 0.0..=1.0.".to_string(),
         ));
     }
     if !settings
@@ -348,7 +348,7 @@ fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
         || !(0.0..=1.0).contains(&settings.ai_provider.ocr_validation.max_invalid_ratio)
     {
         return Err(ApiError::BadRequest(
-            "ai_provider.ocr_validation.max_invalid_ratio는 0.0~1.0 범위여야 합니다".to_string(),
+            "ai_provider.ocr_validation.max_invalid_ratio must be within 0.0..=1.0.".to_string(),
         ));
     }
     if !settings
@@ -359,14 +359,14 @@ fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
         || !(0.0..=1.0).contains(&settings.ai_provider.scene_intelligence.min_confidence)
     {
         return Err(ApiError::BadRequest(
-            "ai_provider.scene_intelligence.min_confidence는 0.0~1.0 범위여야 합니다".to_string(),
+            "ai_provider.scene_intelligence.min_confidence must be within 0.0..=1.0.".to_string(),
         ));
     }
     if settings.ai_provider.scene_intelligence.max_elements == 0
         || settings.ai_provider.scene_intelligence.max_elements > 1000
     {
         return Err(ApiError::BadRequest(
-            "ai_provider.scene_intelligence.max_elements는 1~1000 범위여야 합니다".to_string(),
+            "ai_provider.scene_intelligence.max_elements must be within 1..=1000.".to_string(),
         ));
     }
     if settings
@@ -381,7 +381,7 @@ fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
             > 1000
     {
         return Err(ApiError::BadRequest(
-            "ai_provider.scene_intelligence.calibration_min_elements는 1~1000 범위여야 합니다"
+            "ai_provider.scene_intelligence.calibration_min_elements must be within 1..=1000."
                 .to_string(),
         ));
     }
@@ -398,7 +398,7 @@ fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
         )
     {
         return Err(ApiError::BadRequest(
-            "ai_provider.scene_intelligence.calibration_min_avg_confidence는 0.0~1.0 범위여야 합니다"
+            "ai_provider.scene_intelligence.calibration_min_avg_confidence must be within 0.0..=1.0."
                 .to_string(),
         ));
     }
@@ -554,7 +554,7 @@ fn parse_pii_filter_level(value: &str) -> Result<PiiFilterLevel, ApiError> {
         "standard" => Ok(PiiFilterLevel::Standard),
         "strict" => Ok(PiiFilterLevel::Strict),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 privacy.pii_filter_level 값: {value}"
+            "Invalid privacy.pii_filter_level value: {value}"
         ))),
     }
 }
@@ -569,7 +569,7 @@ fn parse_weekday(value: &str) -> Result<Weekday, ApiError> {
         "sat" => Ok(Weekday::Sat),
         "sun" => Ok(Weekday::Sun),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 schedule.active_days 값: {value}"
+            "Invalid schedule.active_days value: {value}"
         ))),
     }
 }
@@ -580,7 +580,7 @@ fn parse_sandbox_profile(value: &str) -> Result<SandboxProfile, ApiError> {
         "standard" | "balanced" => Ok(SandboxProfile::Standard),
         "strict" => Ok(SandboxProfile::Strict),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 sandbox.profile 값: {value}"
+            "Invalid sandbox.profile value: {value}"
         ))),
     }
 }
@@ -590,7 +590,7 @@ fn parse_ocr_provider(value: &str) -> Result<OcrProviderType, ApiError> {
         "local" => Ok(OcrProviderType::Local),
         "remote" => Ok(OcrProviderType::Remote),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 ai_provider.ocr_provider 값: {value}"
+            "Invalid ai_provider.ocr_provider value: {value}"
         ))),
     }
 }
@@ -609,7 +609,7 @@ fn parse_ai_access_mode(value: &str) -> Result<AiAccessMode, ApiError> {
         }
         "provideroauth" | "provider_oauth" | "oauth" => Ok(AiAccessMode::ProviderOAuth),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 ai_provider.access_mode 값: {value}"
+            "Invalid ai_provider.access_mode value: {value}"
         ))),
     }
 }
@@ -621,7 +621,7 @@ fn parse_ai_provider_type(value: &str) -> Result<AiProviderType, ApiError> {
         "google" => Ok(AiProviderType::Google),
         "generic" => Ok(AiProviderType::Generic),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 ai_provider.api.provider_type 값: {value}"
+            "Invalid ai_provider.api.provider_type value: {value}"
         ))),
     }
 }
@@ -631,7 +631,7 @@ fn parse_llm_provider(value: &str) -> Result<LlmProviderType, ApiError> {
         "local" => Ok(LlmProviderType::Local),
         "remote" => Ok(LlmProviderType::Remote),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 ai_provider.llm_provider 값: {value}"
+            "Invalid ai_provider.llm_provider value: {value}"
         ))),
     }
 }
@@ -652,7 +652,7 @@ fn parse_external_data_policy(value: &str) -> Result<ExternalDataPolicy, ApiErro
         "allowfiltered" => Ok(ExternalDataPolicy::AllowFiltered),
         "disabled" => Ok(ExternalDataPolicy::PiiFilterStrict),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 ai_provider.external_data_policy 값: {value}"
+            "Invalid ai_provider.external_data_policy value: {value}"
         ))),
     }
 }
@@ -1076,7 +1076,7 @@ fn parse_credential_auth_mode(value: &str) -> Result<CredentialAuthMode, ApiErro
         "managed_oauth" | "managedoauth" => Ok(CredentialAuthMode::ManagedOAuth),
         "cli_bridge" | "clibridge" => Ok(CredentialAuthMode::CliBridge),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 ai_provider.api.auth_mode 값: {value}"
+            "Invalid ai_provider.api.auth_mode value: {value}"
         ))),
     }
 }
@@ -1090,7 +1090,7 @@ fn parse_credential_backend_kind(value: &str) -> Result<CredentialBackendKind, A
         "legacy_config" | "legacyconfig" => Ok(CredentialBackendKind::LegacyConfig),
         "unavailable" => Ok(CredentialBackendKind::Unavailable),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 ai_provider.api.backend_kind 값: {value}"
+            "Invalid ai_provider.api.backend_kind value: {value}"
         ))),
     }
 }
@@ -1154,7 +1154,7 @@ fn parse_optional_rfc3339_utc(
 
     let parsed = DateTime::parse_from_rfc3339(trimmed).map_err(|_| {
         ApiError::BadRequest(format!(
-            "{field_name}는 RFC3339 형식이어야 합니다. 예: 2026-02-24T03:00:00Z"
+            "{field_name} must use RFC3339 format. Example: 2026-02-24T03:00:00Z"
         ))
     })?;
 
