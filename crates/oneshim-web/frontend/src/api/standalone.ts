@@ -573,16 +573,16 @@ export async function handleStandaloneRequest(
       .toLowerCase()
     if (provider === 'google' || provider === 'gemini') {
       return jsonResponse({
-        models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+        models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
       })
     }
     if (provider === 'anthropic') {
       return jsonResponse({
-        models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
+        models: ['claude-sonnet-4-20250514', 'claude-opus-4-1-20250805'],
       })
     }
     return jsonResponse({
-      models: ['gpt-4.1-mini', 'o3-mini'],
+      models: ['gpt-5-mini', 'gpt-5.2', 'gpt-5-nano'],
     })
   }
   if (path === '/api/update/status' && method === 'GET') {

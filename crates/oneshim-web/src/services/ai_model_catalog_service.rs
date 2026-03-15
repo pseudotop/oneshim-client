@@ -508,6 +508,13 @@ mod tests {
     }
 
     #[test]
+    fn derives_openai_models_endpoint_from_responses_url() {
+        let endpoint = "https://api.openai.com/v1/responses";
+        let derived = derive_openai_models_endpoint(endpoint).unwrap();
+        assert_eq!(derived, "https://api.openai.com/v1/models");
+    }
+
+    #[test]
     fn parses_google_model_catalog() {
         let body = r#"{
           "models": [
@@ -530,8 +537,8 @@ mod tests {
     fn parses_standard_model_catalog() {
         let body = r#"{
           "data": [
-            {"id": "gpt-4.1-mini"},
-            {"id": "o3-mini"}
+            {"id": "gpt-5-mini"},
+            {"id": "gpt-5.2"}
           ]
         }"#;
         let value: Value = serde_json::from_str(body).unwrap();

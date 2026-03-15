@@ -640,7 +640,7 @@ mod tests {
             provider.ocr_request_shape().expect("shape should resolve"),
             ProviderRequestShape::OpenAiVisionChatCompletions
         );
-        assert_eq!(provider.model.as_deref(), Some("gpt-4.1-mini"));
+        assert_eq!(provider.model.as_deref(), Some("gpt-5-mini"));
     }
 
     #[test]

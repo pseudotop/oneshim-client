@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-03-15T12:00:00Z",
+  "updated_at": "2026-03-15T18:30:00Z",
   "providers": [
     {
       "provider_type": "Anthropic",
@@ -29,17 +29,17 @@
         }
       },
       "defaults": {
-        "llm_models": ["claude-sonnet-4-5", "claude-opus-4-1"],
-        "ocr_models": ["claude-sonnet-4-5", "claude-opus-4-1"]
+        "llm_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805"],
+        "ocr_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805"]
       },
       "parameters": {
         "llm": {
-          "supported": ["model", "messages", "system", "max_tokens", "temperature", "tools", "tool_choice", "stop_sequences", "thinking"],
-          "unsupported": ["response_format", "top_k"],
-          "notes": ["Anthropic uses the Messages API shape and documents beta/header-gated features separately."]
+          "supported": ["model", "messages", "system", "max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "stop_sequences", "thinking", "metadata"],
+          "unsupported": ["response_format"],
+          "notes": ["Anthropic Messages remains the primary API surface.", "Thinking/tool features may require versioned headers or beta flags outside the JSON body."]
         },
         "ocr": {
-          "supported": ["model", "messages", "max_tokens"],
+          "supported": ["model", "messages", "max_tokens", "thinking", "metadata"],
           "unsupported": ["response_format"],
           "notes": ["Vision OCR is implemented through image content blocks on the Messages API."]
         }
@@ -57,9 +57,9 @@
       "transports": {
         "llm": {
           "method": "POST",
-          "url": "https://api.openai.com/v1/chat/completions",
+          "url": "https://api.openai.com/v1/responses",
           "auth_scheme": "bearer",
-          "request_shape": "openai_chat_completions"
+          "request_shape": "openai_responses"
         },
         "ocr": {
           "method": "POST",
@@ -77,19 +77,19 @@
         }
       },
       "defaults": {
-        "llm_models": ["gpt-4.1", "gpt-4.1-mini", "o3-mini"],
-        "ocr_models": ["gpt-4.1", "gpt-4.1-mini"]
+        "llm_models": ["gpt-5-mini", "gpt-5.2", "gpt-5-nano"],
+        "ocr_models": ["gpt-5-mini", "gpt-5.2"]
       },
       "parameters": {
         "llm": {
-          "supported": ["model", "messages", "max_tokens", "max_output_tokens", "temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"],
+          "supported": ["model", "input", "instructions", "max_output_tokens", "temperature", "top_p", "tools", "tool_choice", "text", "reasoning", "metadata", "parallel_tool_calls", "store"],
           "unsupported": [],
-          "notes": ["OpenAI currently spans Chat Completions and Responses API families, so parameter support is model- and endpoint-dependent."]
+          "notes": ["OpenAI's current primary surface is Responses API for text/tool workflows.", "Model support for reasoning, structured outputs, and image input is model-specific and should be checked against the model docs."]
         },
         "ocr": {
           "supported": ["model", "messages", "max_tokens", "response_format"],
           "unsupported": ["thinking"],
-          "notes": ["Vision OCR currently uses chat-completions style multimodal input in ONESHIM."]
+          "notes": ["ONESHIM still uses OpenAI-compatible chat-completions multimodal OCR for API-key OCR paths.", "OpenAI also supports image inputs on the Responses API, but that migration is not yet the OCR default in ONESHIM."]
         }
       },
       "references": [
@@ -105,7 +105,7 @@
       "transports": {
         "llm": {
           "method": "POST",
-          "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+          "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
           "auth_scheme": "x_goog_api_key",
           "request_shape": "google_generate_content"
         },
@@ -126,14 +126,14 @@
         }
       },
       "defaults": {
-        "llm_models": ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro"],
+        "llm_models": ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
         "ocr_models": []
       },
       "parameters": {
         "llm": {
-          "supported": ["contents", "system_instruction", "temperature", "topP", "topK", "maxOutputTokens", "responseSchema", "tools", "thinking"],
+          "supported": ["contents", "system_instruction", "tools", "toolConfig", "safetySettings", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.topP", "generationConfig.topK", "generationConfig.stopSequences", "generationConfig.responseMimeType", "generationConfig.responseSchema", "generationConfig.thinkingConfig", "generationConfig.seed"],
           "unsupported": ["response_format"],
-          "notes": ["Gemini model metadata is machine-readable and exposes token limits plus supported generation methods."]
+          "notes": ["Gemini model metadata is machine-readable and exposes token limits plus supported generation methods.", "Most tunable output fields live under generationConfig rather than top-level request keys."]
         },
         "ocr": {
           "supported": ["requests", "TEXT_DETECTION", "maxResults"],
@@ -174,14 +174,14 @@
         }
       },
       "defaults": {
-        "llm_models": ["gpt-4.1-mini", "o3-mini"],
-        "ocr_models": ["gpt-4.1-mini"]
+        "llm_models": ["gpt-5-mini", "gpt-5-nano"],
+        "ocr_models": ["gpt-5-mini"]
       },
       "parameters": {
         "llm": {
-          "supported": ["model", "messages", "temperature", "top_p", "max_tokens"],
+          "supported": ["model", "messages", "temperature", "top_p", "max_tokens", "tools", "tool_choice", "response_format"],
           "unsupported": [],
-          "notes": ["Generic is treated as OpenAI-compatible by default until a provider-specific spec is added."]
+          "notes": ["Generic remains OpenAI-compatible by default because many third-party endpoints still expose chat-completions semantics first."]
         },
         "ocr": {
           "supported": ["model", "messages", "max_tokens", "response_format"],
@@ -221,14 +221,14 @@
         }
       },
       "defaults": {
-        "llm_models": ["openai/gpt-4.1-mini", "anthropic/claude-3.7-sonnet", "google/gemini-2.5-flash"],
-        "ocr_models": ["openai/gpt-4.1-mini"]
+        "llm_models": ["openai/gpt-5-mini", "anthropic/claude-sonnet-4", "google/gemini-2.5-flash"],
+        "ocr_models": ["openai/gpt-5-mini"]
       },
       "parameters": {
         "llm": {
-          "supported": ["model", "messages", "temperature", "top_p", "max_tokens", "response_format", "tools"],
+          "supported": ["model", "messages", "temperature", "top_p", "top_k", "min_p", "frequency_penalty", "presence_penalty", "repetition_penalty", "max_tokens", "stop", "response_format", "tools", "tool_choice", "provider"],
           "unsupported": [],
-          "notes": ["OpenRouter publishes supported parameter metadata per model and is a strong candidate for spec-driven integration."]
+          "notes": ["OpenRouter publishes supported parameter metadata per model and should be filtered by model-specific supported_parameters before request-time validation.", "Capability support varies by routed upstream model."]
         },
         "ocr": {
           "supported": ["model", "messages", "max_tokens"],
@@ -248,9 +248,9 @@
       "transports": {
         "llm": {
           "method": "POST",
-          "url": "https://api.x.ai/v1/chat/completions",
+          "url": "https://api.x.ai/v1/responses",
           "auth_scheme": "bearer",
-          "request_shape": "openai_chat_completions"
+          "request_shape": "openai_responses"
         },
         "ocr": {
           "method": "POST",
@@ -268,14 +268,14 @@
         }
       },
       "defaults": {
-        "llm_models": ["grok-4-fast-reasoning", "grok-4-fast-non-reasoning"],
-        "ocr_models": ["grok-4-fast-non-reasoning"]
+        "llm_models": ["grok-4.20-beta-latest-non-reasoning", "grok-4.20-beta"],
+        "ocr_models": ["grok-4.20-beta-latest-non-reasoning"]
       },
       "parameters": {
         "llm": {
-          "supported": ["model", "messages", "temperature", "top_p", "max_tokens"],
-          "unsupported": ["frequency_penalty", "presence_penalty", "stop"],
-          "notes": ["xAI documents model-specific unsupported parameters, especially for reasoning variants."]
+          "supported": ["model", "input", "max_output_tokens", "temperature", "top_p", "tools", "tool_choice", "store", "include", "previous_response_id"],
+          "unsupported": ["instructions", "presence_penalty", "frequency_penalty", "stop", "reasoning_effort"],
+          "notes": ["xAI documents current flagship usage primarily through the Responses API.", "Some Grok reasoning variants reject instructions, stop, and penalty fields outright."]
         },
         "ocr": {
           "supported": ["model", "messages", "max_tokens"],

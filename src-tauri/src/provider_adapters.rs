@@ -77,7 +77,7 @@ type LlmProviderResolution =
     Result<(Arc<dyn LlmProvider>, ProviderSource, Option<String>), CoreError>;
 
 #[cfg(feature = "server")]
-const DEFAULT_OPENAI_OAUTH_MODEL: &str = "gpt-4.1-mini";
+const DEFAULT_OPENAI_OAUTH_MODEL: &str = "gpt-5-mini";
 
 #[cfg_attr(not(feature = "server"), allow(dead_code))]
 #[derive(Clone)]
@@ -1105,7 +1105,7 @@ mod tests {
         let secret_bound_endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5-mini".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             credential: Some(CredentialBinding {

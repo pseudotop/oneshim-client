@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-02-25T09:35:00Z",
+  "updated_at": "2026-03-15T18:30:00Z",
   "rules": [
     {
       "provider_type": "OpenAi",
       "model": "gpt-3.5-turbo",
       "warn_at": "2025-07-01T00:00:00Z",
       "block_at": "2026-01-01T00:00:00Z",
-      "replacement": "gpt-4.1-mini",
+      "replacement": "gpt-5-mini",
       "action": "warn_then_block"
     },
     {
@@ -23,7 +23,7 @@
       "model": "claude-3-sonnet-20240229",
       "warn_at": "2025-12-01T00:00:00Z",
       "block_at": "2026-04-01T00:00:00Z",
-      "replacement": "claude-sonnet-4-5",
+      "replacement": "claude-sonnet-4-20250514",
       "action": "warn_then_block"
     }
   ]

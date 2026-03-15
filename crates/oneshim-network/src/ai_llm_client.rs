@@ -57,7 +57,7 @@ impl RemoteLlmProvider {
                     .ok()
                     .flatten()
             })
-            .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
+            .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
         match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
         {
@@ -117,7 +117,7 @@ impl RemoteLlmProvider {
                     .ok()
                     .flatten()
             })
-            .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
+            .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
         match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
         {
@@ -193,7 +193,8 @@ Return JSON only."#
 
     /// Build request body for OpenAI Responses API (`/v1/responses`).
     ///
-    /// Used when credential is ManagedOAuth (Codex CLI OAuth path).
+    /// Used whenever the provider spec resolves to the Responses API.
+    /// Managed OAuth also uses this path, but API-key OpenAI now does too.
     /// Ref: <https://platform.openai.com/docs/api-reference/responses>
     fn build_responses_api_body(
         &self,
@@ -208,17 +209,16 @@ Return JSON only."#
         })
     }
 
-    /// Whether this provider should use the OpenAI Responses API format.
-    fn use_responses_api(&self) -> bool {
-        self.credential.is_managed() && matches!(self.provider_type, AiProviderType::OpenAi)
-    }
-
     fn llm_request_shape(&self) -> Result<ProviderRequestShape, CoreError> {
-        if self.use_responses_api() {
-            return Ok(ProviderRequestShape::OpenAiResponses);
-        }
         provider_specs::request_shape(self.provider_type, ProviderTransportKind::Llm)
             .map_err(CoreError::Internal)
+    }
+
+    fn uses_responses_api(&self) -> bool {
+        matches!(
+            self.llm_request_shape(),
+            Ok(ProviderRequestShape::OpenAiResponses)
+        )
     }
 
     fn llm_auth_scheme(&self) -> Result<ProviderAuthScheme, CoreError> {
@@ -539,7 +539,7 @@ impl LlmProvider for RemoteLlmProvider {
             hint = %intent_hint,
             skills = skill_ctx.available_skills.len(),
             has_active_skill = skill_ctx.active_skill_body.is_some(),
-            responses_api = self.use_responses_api(),
+            responses_api = self.uses_responses_api(),
             "Calling external LLM API (with skills)"
         );
 
@@ -588,7 +588,7 @@ mod tests {
     #[test]
     fn openai_llm_uses_spec_default_model() {
         let config = ExternalApiEndpoint {
-            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
             api_key: "test-api-key".to_string(),
             model: None,
             timeout_secs: 30,
@@ -597,10 +597,10 @@ mod tests {
         };
 
         let provider = RemoteLlmProvider::new(&config).expect("provider should initialize");
-        assert_eq!(provider.model, "gpt-4.1");
+        assert_eq!(provider.model, "gpt-5-mini");
         assert_eq!(
             provider.llm_request_shape().expect("shape should resolve"),
-            ProviderRequestShape::OpenAiChatCompletions
+            ProviderRequestShape::OpenAiResponses
         );
     }
 
@@ -781,17 +781,16 @@ mod tests {
     }
 
     #[test]
-    fn use_responses_api_only_for_managed_openai() {
+    fn openai_llm_uses_responses_api_from_spec() {
         let config = ExternalApiEndpoint {
-            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
             api_key: "test-key".to_string(),
-            model: Some("gpt-4o".to_string()),
+            model: Some("gpt-5-mini".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             credential: None,
         };
-        // API key credential → should NOT use Responses API.
         let provider = RemoteLlmProvider::new(&config).unwrap();
-        assert!(!provider.use_responses_api());
+        assert!(provider.uses_responses_api());
     }
 }
