@@ -51,12 +51,16 @@ impl SecretSurface {
 pub fn run(args: &[String], config_dir: &Path) -> i32 {
     match args.first().map(String::as_str) {
         Some("env") => cmd_env(&args[1..], config_dir),
+        Some("exec") => cmd_exec(&args[1..], config_dir),
         _ => {
-            eprintln!("Usage: oneshim secret env <llm|ocr>");
+            eprintln!("Usage: oneshim secret <env|exec> ...");
             eprintln!();
             eprintln!("Commands:");
             eprintln!(
                 "  env <llm|ocr>       Emit shell export lines for the configured provider API key"
+            );
+            eprintln!(
+                "  exec <llm|ocr> -- <command...>    Run a child command with projected provider credentials"
             );
             1
         }
@@ -112,6 +116,63 @@ fn cmd_env(args: &[String], config_dir: &Path) -> i32 {
     }
 
     0
+}
+
+fn cmd_exec(args: &[String], config_dir: &Path) -> i32 {
+    let Ok((surface, command)) = parse_exec_args(args) else {
+        eprintln!("Usage: oneshim secret exec <llm|ocr> -- <command...>");
+        return 1;
+    };
+
+    let config_manager = match ConfigManager::with_path(config_dir.join(CONFIG_FILE_NAME)) {
+        Ok(manager) => manager,
+        Err(err) => {
+            eprintln!("Error: failed to load config: {err}");
+            return 1;
+        }
+    };
+    let config = config_manager.get();
+    let Some(endpoint) = endpoint_for_surface(&config.ai_provider, surface) else {
+        eprintln!(
+            "Error: no {} provider endpoint is configured. Save a remote provider in Settings first.",
+            surface.profile_id()
+        );
+        return 1;
+    };
+
+    let auth_mode = endpoint
+        .credential
+        .as_ref()
+        .map(|binding| binding.auth_mode)
+        .unwrap_or(CredentialAuthMode::ApiKey);
+    if auth_mode != CredentialAuthMode::ApiKey {
+        eprintln!(
+            "Error: {} is not configured for API-key projection. Current auth mode: {:?}",
+            surface.profile_id(),
+            auth_mode
+        );
+        return 1;
+    }
+
+    let env_vars = match resolve_env_projection(endpoint, config_dir) {
+        Ok(env_vars) => env_vars,
+        Err(err) => {
+            eprintln!("Error: {err}");
+            return 1;
+        }
+    };
+
+    let mut child = std::process::Command::new(&command[0]);
+    child.args(&command[1..]);
+    child.envs(env_vars);
+
+    match child.status() {
+        Ok(status) => status.code().unwrap_or(1),
+        Err(err) => {
+            eprintln!("Error: failed to launch '{}': {err}", command[0]);
+            1
+        }
+    }
 }
 
 fn endpoint_for_surface(
@@ -213,6 +274,23 @@ fn shell_quote(value: &str) -> String {
     format!("'{escaped}'")
 }
 
+fn parse_exec_args(args: &[String]) -> Result<(SecretSurface, &[String]), ()> {
+    let Some(surface) = args.first().and_then(|value| SecretSurface::parse(value)) else {
+        return Err(());
+    };
+
+    if args.get(1).map(String::as_str) != Some("--") {
+        return Err(());
+    }
+
+    let command = &args[2..];
+    if command.is_empty() {
+        return Err(());
+    }
+
+    Ok((surface, command))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +328,20 @@ mod tests {
     fn shell_quote_escapes_single_quotes() {
         assert_eq!(shell_quote("sk-test"), "'sk-test'");
         assert_eq!(shell_quote("a'b"), "'a'\\\"'\\\"'b'");
+    }
+
+    #[test]
+    fn parse_exec_args_requires_surface_separator_and_command() {
+        let args = vec!["llm".to_string(), "--".to_string(), "codex".to_string()];
+        let (surface, command) = parse_exec_args(&args).unwrap();
+        assert_eq!(surface, SecretSurface::Llm);
+        assert_eq!(command, &["codex".to_string()]);
+
+        assert!(parse_exec_args(&["llm".to_string()]).is_err());
+        assert!(parse_exec_args(&["llm".to_string(), "codex".to_string()]).is_err());
+        assert!(
+            parse_exec_args(&["other".to_string(), "--".to_string(), "codex".to_string()]).is_err()
+        );
     }
 
     #[test]
