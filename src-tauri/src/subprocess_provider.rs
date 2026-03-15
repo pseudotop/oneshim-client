@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use oneshim_api_contracts::provider_specs::{
     list_subprocess_surface_specs, provider_surface_spec as catalog_surface_spec,
     subprocess_auth_probe_mode, subprocess_invocation_mode, subprocess_runtime_supported,
-    subprocess_transport as catalog_subprocess_transport, SubprocessAuthProbeMode,
-    SubprocessInvocationMode, SurfaceCapabilityKind,
+    subprocess_supports_json_output, subprocess_transport as catalog_subprocess_transport,
+    surface_supports_capability, SubprocessAuthProbeMode, SubprocessInvocationMode,
+    SurfaceCapabilityKind,
 };
 use oneshim_core::config::{AiProviderConfig, AiProviderType};
 use oneshim_core::error::CoreError;
@@ -223,22 +224,14 @@ impl SubprocessLlmProvider {
             CoreError::Internal(format!("Failed to create Gemini subprocess tempdir: {err}"))
         })?;
 
-        let mut command = Command::new(&self.surface.executable_path);
-        command
-            .arg("-p")
-            .arg(prompt)
-            .current_dir(temp_dir.path())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        append_model_flag(&mut command, &self.surface.surface_id, &self.model);
-
-        let output = timeout(self.timeout, command.output())
-            .await
-            .map_err(|_| CoreError::RequestTimeout {
-                timeout_ms: self.timeout.as_millis() as u64,
-            })?
-            .map_err(CoreError::Io)?;
+        let output = match self.run_gemini_command(temp_dir.path(), prompt, true).await {
+            Ok(output) => output,
+            Err(error) if is_gemini_json_flag_error(&error) => {
+                self.run_gemini_command(temp_dir.path(), prompt, false)
+                    .await?
+            }
+            Err(error) => return Err(error),
+        };
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
@@ -248,6 +241,34 @@ impl SubprocessLlmProvider {
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    async fn run_gemini_command(
+        &self,
+        workdir: &Path,
+        prompt: &str,
+        prefer_json_output: bool,
+    ) -> Result<std::process::Output, CoreError> {
+        let mut command = Command::new(&self.surface.executable_path);
+        command.arg("-p").arg(prompt);
+        if prefer_json_output
+            && subprocess_supports_json_output(&self.surface.surface_id).unwrap_or(false)
+        {
+            command.arg("--output-format").arg("json");
+        }
+        command
+            .current_dir(workdir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        append_model_flag(&mut command, &self.surface.surface_id, &self.model);
+
+        timeout(self.timeout, command.output())
+            .await
+            .map_err(|_| CoreError::RequestTimeout {
+                timeout_ms: self.timeout.as_millis() as u64,
+            })?
+            .map_err(CoreError::Io)
     }
 }
 
@@ -303,6 +324,28 @@ pub(crate) fn runtime_supported_for_surface(surface_id: &str) -> bool {
     subprocess_runtime_supported(surface_id).unwrap_or(false)
 }
 
+fn llm_runtime_ready_for_auth_status(
+    surface_id: &str,
+    auth_status: SubprocessCliAuthStatus,
+) -> bool {
+    if !runtime_supported_for_surface(surface_id)
+        || !surface_supports_capability(surface_id, SurfaceCapabilityKind::Llm).unwrap_or(false)
+    {
+        return false;
+    }
+
+    match auth_status {
+        SubprocessCliAuthStatus::Authenticated => true,
+        SubprocessCliAuthStatus::Unauthenticated => false,
+        SubprocessCliAuthStatus::Unknown => {
+            matches!(
+                auth_probe_mode_for_surface(surface_id),
+                Ok(SubprocessAuthProbeMode::None)
+            )
+        }
+    }
+}
+
 fn auth_probe_mode_for_surface(surface_id: &str) -> Result<SubprocessAuthProbeMode, String> {
     subprocess_auth_probe_mode(surface_id)
 }
@@ -330,7 +373,6 @@ pub fn detect_known_cli_surfaces() -> Vec<DetectedSubprocessCli> {
     list_subprocess_surface_specs()
         .unwrap_or_default()
         .into_iter()
-        .filter(|surface| surface.supports.llm)
         .filter_map(|surface| {
             let transport = catalog_subprocess_transport(&surface.surface_id).ok()?;
             transport
@@ -364,8 +406,10 @@ pub fn select_cli_surface_for_config(
                     .detected
                     .surface_id
                     .eq_ignore_ascii_case(&surface_id)
-                    && runtime_supported_for_surface(&surface.detected.surface_id)
-                    && surface.auth_status == SubprocessCliAuthStatus::Authenticated
+                    && llm_runtime_ready_for_auth_status(
+                        &surface.detected.surface_id,
+                        surface.auth_status,
+                    )
             })
             .map(|surface| surface.detected.clone());
     }
@@ -373,8 +417,7 @@ pub fn select_cli_surface_for_config(
     detected
         .iter()
         .find(|surface| {
-            runtime_supported_for_surface(&surface.detected.surface_id)
-                && surface.auth_status == SubprocessCliAuthStatus::Authenticated
+            llm_runtime_ready_for_auth_status(&surface.detected.surface_id, surface.auth_status)
         })
         .map(|surface| surface.detected.clone())
 }
@@ -740,6 +783,19 @@ fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreError {
     ))
 }
 
+fn is_gemini_json_flag_error(error: &CoreError) -> bool {
+    let message = match error {
+        CoreError::Internal(value) | CoreError::Config(value) | CoreError::Auth(value) => value,
+        _ => return false,
+    };
+    let lowered = message.to_ascii_lowercase();
+    lowered.contains("output-format")
+        && (lowered.contains("unknown option")
+            || lowered.contains("unknown arguments")
+            || lowered.contains("unexpected argument")
+            || lowered.contains("unrecognized option"))
+}
+
 fn find_executable(name: &str) -> Option<PathBuf> {
     if name.contains(std::path::MAIN_SEPARATOR) {
         let path = PathBuf::from(name);
@@ -866,13 +922,31 @@ mod tests {
         let surfaces = vec![
             probed(
                 "provider_surface.google.subprocess_cli",
-                SubprocessCliAuthStatus::Authenticated,
+                SubprocessCliAuthStatus::Unknown,
             ),
             probed(
                 "provider_surface.openai.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
         ];
+
+        let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
+        assert_eq!(
+            resolved.surface_id,
+            "provider_surface.google.subprocess_cli"
+        );
+    }
+
+    #[test]
+    fn allows_unknown_auth_status_when_surface_has_no_probe() {
+        let config = AiProviderConfig {
+            llm_api: Some(endpoint(AiProviderType::Google, None)),
+            ..AiProviderConfig::default()
+        };
+        let surfaces = vec![probed(
+            "provider_surface.google.subprocess_cli",
+            SubprocessCliAuthStatus::Unknown,
+        )];
 
         let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
         assert_eq!(

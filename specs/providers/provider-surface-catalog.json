@@ -358,7 +358,7 @@
         "llm": {
           "supported": ["model", "prompt"],
           "unsupported": ["response_format"],
-          "notes": ["Gemini CLI runtime currently uses prompt/stdout mode and does not yet verify auth state automatically."]
+          "notes": ["Gemini CLI runtime prefers JSON output when available and falls back to prompt/stdout mode on older installs. Auth state is not verified automatically yet."]
         },
         "ocr": {
           "supported": [],
@@ -373,7 +373,7 @@
         "auth_probe_mode": "none",
         "invocation_mode": "gemini_cli_prompt",
         "model_flag": "--model",
-        "json_output_supported": false
+        "json_output_supported": true
       },
       "references": [
         "https://developers.google.com/gemini-code-assist/docs/gemini-cli"

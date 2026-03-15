@@ -499,7 +499,7 @@ fn cli_subscription_unavailable_reason(
             .to_string();
     }
 
-    "No supported provider CLI runtime was detected on PATH (checked: codex, claude, claude-code)."
+    "No supported provider CLI runtime was detected on PATH (checked: codex, claude, claude-code, gemini)."
         .to_string()
 }
 
@@ -1094,6 +1094,37 @@ mod tests {
             Ok(_) => panic!("Expected an authentication error"),
             Err(other) => panic!("Unexpected error: {other}"),
         }
+    }
+
+    #[test]
+    fn cli_subscription_mode_accepts_unknown_auth_for_probe_less_surface() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            llm_api: Some(ExternalApiEndpoint {
+                provider_type: AiProviderType::Google,
+                ..remote_endpoint()
+            }),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let (llm, llm_source, llm_fallback_reason) =
+            resolve_cli_subscription_llm_provider_with_detected(
+                &config,
+                &[ProbedSubprocessCli {
+                    detected: crate::subprocess_provider::DetectedSubprocessCli {
+                        surface_id: "provider_surface.google.subprocess_cli".to_string(),
+                        executable_path: "/tmp/gemini".into(),
+                    },
+                    auth_status: SubprocessCliAuthStatus::Unknown,
+                    auth_detail: Some("auth_status_probe_not_implemented".to_string()),
+                }],
+            )
+            .expect("CLI mode should allow probe-less Gemini runtime");
+
+        assert_eq!(llm_source, ProviderSource::CliSubscription);
+        assert!(llm_fallback_reason.is_none());
+        assert_eq!(llm.provider_name(), "subprocess-gemini-cli");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-use oneshim_core::config::AiProviderType;
+use oneshim_core::config::{AiAccessMode, AiProviderType};
 use oneshim_core::provider_surface::canonical_provider_surface_id;
 
 use crate::ai_providers::{
@@ -225,6 +225,48 @@ pub fn resolved_surface_spec(
     compatibility_surface_for_provider_type(provider_type)
 }
 
+pub fn default_surface_id_for_access_mode(
+    provider_type: AiProviderType,
+    access_mode: AiAccessMode,
+    capability: SurfaceCapabilityKind,
+) -> Result<Option<&'static str>, String> {
+    let execution_kind = match access_mode {
+        AiAccessMode::ProviderOAuth => SurfaceExecutionKind::ManagedHttp,
+        AiAccessMode::ProviderSubscriptionCli => SurfaceExecutionKind::SubprocessCli,
+        AiAccessMode::ProviderApiKey
+        | AiAccessMode::PlatformConnected
+        | AiAccessMode::LocalModel => SurfaceExecutionKind::DirectHttp,
+    };
+
+    let provider_label = provider_type_label(provider_type);
+    let mut candidates = surface_catalog()?
+        .surfaces
+        .iter()
+        .filter(|surface| surface.provider_type.eq_ignore_ascii_case(provider_label))
+        .filter(|surface| {
+            parse_surface_execution_kind(&surface.execution_kind).ok() == Some(execution_kind)
+        })
+        .filter(|surface| match capability {
+            SurfaceCapabilityKind::Llm => surface.supports.llm,
+            SurfaceCapabilityKind::Ocr => surface.supports.ocr,
+        })
+        .collect::<Vec<_>>();
+
+    candidates.sort_by(|left, right| {
+        right
+            .preferred_for_product_auth
+            .cmp(&left.preferred_for_product_auth)
+            .then_with(|| {
+                stability_sort_key(&right.stability).cmp(&stability_sort_key(&left.stability))
+            })
+            .then_with(|| left.display_name.cmp(&right.display_name))
+    });
+
+    Ok(candidates
+        .first()
+        .map(|surface| surface.surface_id.as_str()))
+}
+
 pub fn transport_spec(
     provider_type: AiProviderType,
     kind: ProviderTransportKind,
@@ -428,12 +470,27 @@ pub fn subprocess_transport(surface_id: &str) -> Result<&'static SubprocessTrans
     }
 }
 
+pub fn subprocess_supports_json_output(surface_id: &str) -> Result<bool, String> {
+    Ok(subprocess_transport(surface_id)?.json_output_supported)
+}
+
 pub fn subprocess_invocation_mode(surface_id: &str) -> Result<SubprocessInvocationMode, String> {
     parse_subprocess_invocation_mode(&subprocess_transport(surface_id)?.invocation_mode)
 }
 
 pub fn subprocess_auth_probe_mode(surface_id: &str) -> Result<SubprocessAuthProbeMode, String> {
     parse_subprocess_auth_probe_mode(&subprocess_transport(surface_id)?.auth_probe_mode)
+}
+
+pub fn surface_supports_capability(
+    surface_id: &str,
+    capability: SurfaceCapabilityKind,
+) -> Result<bool, String> {
+    let surface = provider_surface_spec(surface_id)?;
+    Ok(match capability {
+        SurfaceCapabilityKind::Llm => surface.supports.llm,
+        SurfaceCapabilityKind::Ocr => surface.supports.ocr,
+    })
 }
 
 pub fn list_subprocess_surface_specs() -> Result<Vec<&'static ProviderSurfaceSpec>, String> {
@@ -817,6 +874,15 @@ fn validate_transport_spec(
     Ok(())
 }
 
+fn stability_sort_key(raw: &str) -> i32 {
+    match parse_surface_stability(raw).unwrap_or(SurfaceStability::Experimental) {
+        SurfaceStability::Ga => 3,
+        SurfaceStability::Preview => 2,
+        SurfaceStability::Experimental => 1,
+        SurfaceStability::Deprecated => 0,
+    }
+}
+
 fn validate_parameter_profile(profile: &ProviderParameterProfile) -> Result<(), String> {
     let supported = profile
         .supported
@@ -1011,6 +1077,37 @@ mod tests {
     }
 
     #[test]
+    fn derives_catalog_default_surface_by_access_mode_and_capability() {
+        assert_eq!(
+            default_surface_id_for_access_mode(
+                AiProviderType::OpenAi,
+                AiAccessMode::ProviderOAuth,
+                SurfaceCapabilityKind::Llm,
+            )
+            .expect("managed oauth default should resolve"),
+            Some("provider_surface.openai.managed_oauth")
+        );
+        assert_eq!(
+            default_surface_id_for_access_mode(
+                AiProviderType::Google,
+                AiAccessMode::ProviderSubscriptionCli,
+                SurfaceCapabilityKind::Llm,
+            )
+            .expect("google subprocess default should resolve"),
+            Some("provider_surface.google.subprocess_cli")
+        );
+        assert_eq!(
+            default_surface_id_for_access_mode(
+                AiProviderType::OpenAi,
+                AiAccessMode::ProviderSubscriptionCli,
+                SurfaceCapabilityKind::Ocr,
+            )
+            .expect("ocr subprocess default should resolve"),
+            None
+        );
+    }
+
+    #[test]
     fn resolves_openai_direct_transport_without_compatibility_projection() {
         let transport = transport_spec(AiProviderType::OpenAi, ProviderTransportKind::Llm)
             .expect("transport should resolve");
@@ -1077,6 +1174,14 @@ mod tests {
         assert!(ids.contains(&"provider_surface.openai.subprocess_cli"));
         assert!(ids.contains(&"provider_surface.anthropic.subprocess_cli"));
         assert!(ids.contains(&"provider_surface.google.subprocess_cli"));
+    }
+
+    #[test]
+    fn reports_json_output_support_for_gemini_subprocess() {
+        assert!(
+            subprocess_supports_json_output("provider_surface.google.subprocess_cli")
+                .expect("json output support should resolve")
+        );
     }
 
     #[test]

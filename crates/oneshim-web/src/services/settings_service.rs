@@ -1,4 +1,7 @@
 use chrono::{DateTime, Utc};
+use oneshim_api_contracts::provider_specs::{
+    default_surface_id_for_access_mode as default_surface_id_from_catalog, SurfaceCapabilityKind,
+};
 use oneshim_api_contracts::settings::{
     AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
     MonitorControlSettings, NotificationSettings, OcrValidationSettings, PrivacySettings,
@@ -13,8 +16,7 @@ use oneshim_core::config::{
 };
 use oneshim_core::ports::secret_store::{provider_api_key_secret_ref, SecretStore, SecretStoreSet};
 use oneshim_core::provider_surface::{
-    canonical_provider_surface_id, default_provider_surface_id, provider_surface_spec,
-    ProviderSurfaceTransport,
+    canonical_provider_surface_id, provider_surface_spec, ProviderSurfaceTransport,
 };
 use std::sync::Arc;
 
@@ -871,10 +873,9 @@ fn api_settings_to_endpoint(
     let existing_key = existing_endpoint
         .map(|endpoint| endpoint.api_key.as_str())
         .unwrap_or("");
-    let api_key = if is_managed_auth_mode(&settings.auth_mode)
-        || is_masked_key(&settings.api_key_masked)
-        || settings.api_key_masked.is_empty()
-    {
+    let api_key = if is_managed_auth_mode(&settings.auth_mode) {
+        String::new()
+    } else if is_masked_key(&settings.api_key_masked) || settings.api_key_masked.is_empty() {
         existing_key.to_string()
     } else {
         settings.api_key_masked.clone()
@@ -905,16 +906,16 @@ fn default_surface_id_for_endpoint(
     access_mode: AiAccessMode,
     endpoint_kind: ApiEndpointKind,
 ) -> Option<&'static str> {
-    match (access_mode, endpoint_kind) {
-        (AiAccessMode::ProviderOAuth, ApiEndpointKind::Llm) => {
-            default_provider_surface_id(provider_type, AiAccessMode::ProviderOAuth)
-        }
-        (AiAccessMode::ProviderSubscriptionCli, ApiEndpointKind::Llm) => {
-            default_provider_surface_id(provider_type, AiAccessMode::ProviderSubscriptionCli)
-        }
-        (AiAccessMode::ProviderSubscriptionCli, ApiEndpointKind::Ocr) => None,
-        _ => default_provider_surface_id(provider_type, AiAccessMode::ProviderApiKey),
-    }
+    default_surface_id_from_catalog(
+        provider_type,
+        access_mode,
+        match endpoint_kind {
+            ApiEndpointKind::Ocr => SurfaceCapabilityKind::Ocr,
+            ApiEndpointKind::Llm => SurfaceCapabilityKind::Llm,
+        },
+    )
+    .ok()
+    .flatten()
 }
 
 fn resolve_endpoint_surface_id(
@@ -1012,11 +1013,25 @@ fn updated_credential_binding(
         auth_mode,
         CredentialAuthMode::ManagedOAuth | CredentialAuthMode::CliBridge
     ) {
-        return Ok(existing_endpoint.and_then(|endpoint| endpoint.credential.clone()));
+        return Ok(Some(CredentialBinding {
+            auth_mode,
+            backend_kind,
+            secret_ref: None,
+            projection_enabled: false,
+        }));
     }
 
     if let Some(mut binding) = existing_endpoint.and_then(|endpoint| endpoint.credential.clone()) {
-        if binding.auth_mode != auth_mode || binding.backend_kind != backend_kind {
+        if binding.auth_mode != auth_mode {
+            binding = CredentialBinding {
+                auth_mode,
+                backend_kind,
+                secret_ref: None,
+                projection_enabled: settings.projection_enabled,
+            };
+            return Ok(Some(binding));
+        }
+        if binding.backend_kind != backend_kind {
             return Err(ApiError::BadRequest(
                 "Changing provider credential auth mode or backend for an existing endpoint is not supported from Settings. Use the dedicated migration or reconnect flow instead.".to_string(),
             ));
@@ -1652,6 +1667,102 @@ mod tests {
             }
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn apply_settings_to_config_rewrites_binding_when_switching_to_oauth_mode() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: "sk-test-123456".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: Some("provider_surface.openai.direct_api".to_string()),
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: Some(SecretRef {
+                    namespace: "provider/openai/llm".to_string(),
+                    key: "api_key".to_string(),
+                }),
+                projection_enabled: true,
+            }),
+        });
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.access_mode = "ProviderOAuth".to_string();
+        let llm_api = settings
+            .ai_provider
+            .llm_api
+            .as_mut()
+            .expect("llm api settings");
+        llm_api.surface_id = Some("provider_surface.openai.managed_oauth".to_string());
+        llm_api.auth_mode = "managed_oauth".to_string();
+        llm_api.backend_kind = "os_secret_store".to_string();
+        llm_api.projection_enabled = false;
+
+        apply_settings_to_config(&mut config, &settings).expect("oauth mode rewrite");
+
+        let endpoint = config.ai_provider.llm_api.as_ref().expect("llm endpoint");
+        let binding = endpoint.credential.as_ref().expect("credential binding");
+        assert_eq!(binding.auth_mode, CredentialAuthMode::ManagedOAuth);
+        assert_eq!(binding.backend_kind, CredentialBackendKind::OsSecretStore);
+        assert!(binding.secret_ref.is_none());
+        assert!(!binding.projection_enabled);
+        assert!(endpoint.api_key.is_empty());
+    }
+
+    #[test]
+    fn apply_settings_to_config_rewrites_binding_when_switching_from_cli_bridge_to_api_key() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderSubscriptionCli;
+        config.ai_provider.llm_provider = LlmProviderType::Local;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: String::new(),
+            api_key: String::new(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: Some("provider_surface.openai.subprocess_cli".to_string()),
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::CliBridge,
+                backend_kind: CredentialBackendKind::BridgeManaged,
+                secret_ref: None,
+                projection_enabled: false,
+            }),
+        });
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.access_mode = "ProviderApiKey".to_string();
+        settings.ai_provider.llm_provider = "Remote".to_string();
+        settings.ai_provider.llm_api = Some(ExternalApiSettings {
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key_masked: String::new(),
+            model: Some("gpt-5.4".to_string()),
+            provider_type: "OpenAi".to_string(),
+            surface_id: Some("provider_surface.openai.direct_api".to_string()),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "os_secret_store".to_string(),
+            has_secret: false,
+            can_edit_secret: true,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        apply_settings_to_config(&mut config, &settings).expect("api key mode rewrite");
+
+        let endpoint = config.ai_provider.llm_api.as_ref().expect("llm endpoint");
+        let binding = endpoint.credential.as_ref().expect("credential binding");
+        assert_eq!(binding.auth_mode, CredentialAuthMode::ApiKey);
+        assert_eq!(binding.backend_kind, CredentialBackendKind::OsSecretStore);
+        assert!(binding.secret_ref.is_none());
+        assert_eq!(
+            endpoint.surface_id.as_deref(),
+            Some("provider_surface.openai.direct_api")
+        );
     }
 
     #[test]

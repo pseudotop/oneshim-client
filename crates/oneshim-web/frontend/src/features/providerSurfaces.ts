@@ -24,12 +24,12 @@ function normalizedProviderType(providerType: string | null | undefined): string
   return (providerType ?? '').trim() || 'Generic'
 }
 
-function expectedExecutionKind(accessMode: string | null | undefined, endpointKind: EndpointSurfaceKind): string | null {
+function expectedExecutionKind(accessMode: string | null | undefined, _endpointKind: EndpointSurfaceKind): string | null {
   if (accessMode === 'ProviderSubscriptionCli') {
-    return endpointKind === 'llm_api' ? 'subprocess_cli' : null
+    return 'subprocess_cli'
   }
 
-  if (accessMode === 'ProviderOAuth' && endpointKind === 'llm_api') {
+  if (accessMode === 'ProviderOAuth') {
     return 'managed_http'
   }
 

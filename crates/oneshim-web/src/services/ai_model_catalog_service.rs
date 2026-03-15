@@ -1,9 +1,11 @@
 use std::time::Duration;
 
 use oneshim_api_contracts::ai_providers::{ProviderModelsRequest, ProviderModelsResponse};
+use oneshim_api_contracts::provider_specs::{
+    default_surface_id_for_access_mode as default_surface_id_from_catalog, SurfaceCapabilityKind,
+};
 use oneshim_core::config::{AiProviderConfig, AiProviderType, ExternalApiEndpoint};
 use oneshim_core::ports::credential_source::CredentialSource;
-use oneshim_core::provider_surface::default_provider_surface_id;
 use serde_json::Value;
 
 use crate::error::ApiError;
@@ -230,7 +232,11 @@ async fn resolve_saved_model_discovery_api_key(
     }
 
     if let Some(request_surface_id) = normalize_optional_surface_id(request.surface_id.as_deref()) {
-        let saved_surface_id = saved_endpoint_surface_id(&saved_config.ai_provider, saved_endpoint);
+        let saved_surface_id = saved_endpoint_surface_id(
+            &saved_config.ai_provider,
+            saved_endpoint,
+            request.surface.as_deref(),
+        );
         if saved_surface_id.as_deref() != Some(request_surface_id.as_str()) {
             return Ok(None);
         }
@@ -380,14 +386,29 @@ fn resolve_requested_provider_type(
 fn saved_endpoint_surface_id(
     config: &AiProviderConfig,
     endpoint: &ExternalApiEndpoint,
+    requested_surface_kind: Option<&str>,
 ) -> Option<String> {
     endpoint
         .surface_id
         .as_deref()
         .and_then(|value| normalize_optional_surface_id(Some(value)))
         .or_else(|| {
-            default_provider_surface_id(endpoint.provider_type, config.access_mode)
-                .map(|value| value.to_ascii_lowercase())
+            default_surface_id_from_catalog(
+                endpoint.provider_type,
+                config.access_mode,
+                match requested_surface_kind
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .as_str()
+                {
+                    "ocr" | "ocr_api" => SurfaceCapabilityKind::Ocr,
+                    _ => SurfaceCapabilityKind::Llm,
+                },
+            )
+            .ok()
+            .flatten()
+            .map(|value| value.to_ascii_lowercase())
         })
 }
 
