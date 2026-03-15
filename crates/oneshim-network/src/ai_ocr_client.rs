@@ -1,4 +1,7 @@
 use async_trait::async_trait;
+use oneshim_api_contracts::provider_specs::{
+    self, ProviderAuthScheme, ProviderRequestShape, ProviderTransportKind,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -41,16 +44,20 @@ enum OcrProviderStrategy {
     Anthropic,
     OpenAi,
     Google,
-    Generic,
 }
 
-impl From<AiProviderType> for OcrProviderStrategy {
-    fn from(value: AiProviderType) -> Self {
+impl TryFrom<ProviderRequestShape> for OcrProviderStrategy {
+    type Error = CoreError;
+
+    fn try_from(value: ProviderRequestShape) -> Result<Self, Self::Error> {
         match value {
-            AiProviderType::Anthropic => Self::Anthropic,
-            AiProviderType::OpenAi => Self::OpenAi,
-            AiProviderType::Google => Self::Google,
-            AiProviderType::Generic => Self::Generic,
+            ProviderRequestShape::AnthropicMessages
+            | ProviderRequestShape::AnthropicVisionMessages => Ok(Self::Anthropic),
+            ProviderRequestShape::OpenAiChatCompletions
+            | ProviderRequestShape::OpenAiVisionChatCompletions
+            | ProviderRequestShape::OpenAiResponses => Ok(Self::OpenAi),
+            ProviderRequestShape::GoogleGenerateContent
+            | ProviderRequestShape::GoogleVisionAnnotate => Ok(Self::Google),
         }
     }
 }
@@ -88,7 +95,7 @@ impl OcrProviderStrategy {
                     }]
                 })
             }
-            Self::Anthropic | Self::Generic => serde_json::json!({
+            Self::Anthropic => serde_json::json!({
                 "model": model,
                 "max_tokens": 4096,
                 "messages": [{
@@ -112,33 +119,40 @@ impl OcrProviderStrategy {
         }
     }
 
-    fn apply_auth_headers(
-        self,
-        builder: reqwest::RequestBuilder,
-        api_key: &str,
-    ) -> reqwest::RequestBuilder {
-        match self {
-            Self::Anthropic => builder
-                .header("x-api-key", api_key)
-                .header("anthropic-version", "2023-06-01"),
-            Self::Google => builder.header("x-goog-api-key", api_key),
-            Self::OpenAi | Self::Generic => {
-                builder.header("Authorization", format!("Bearer {api_key}"))
-            }
-        }
-    }
-
     fn parse_response(self, body: &str) -> Result<Vec<OcrResult>, CoreError> {
         match self {
             Self::Anthropic => RemoteOcrProvider::parse_claude_vision_response(body),
             Self::Google => RemoteOcrProvider::parse_google_vision_response(body),
             Self::OpenAi => RemoteOcrProvider::parse_openai_vision_response(body),
-            Self::Generic => RemoteOcrProvider::parse_generic_with_fallback(body),
         }
     }
 }
 
+fn apply_auth_headers(
+    auth_scheme: ProviderAuthScheme,
+    builder: reqwest::RequestBuilder,
+    api_key: &str,
+) -> reqwest::RequestBuilder {
+    match auth_scheme {
+        ProviderAuthScheme::XApiKey => builder
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01"),
+        ProviderAuthScheme::XGoogApiKey => builder.header("x-goog-api-key", api_key),
+        ProviderAuthScheme::Bearer => builder.header("Authorization", format!("Bearer {api_key}")),
+    }
+}
+
 impl RemoteOcrProvider {
+    fn ocr_request_shape(&self) -> Result<ProviderRequestShape, CoreError> {
+        provider_specs::request_shape(self.provider_type, ProviderTransportKind::Ocr)
+            .map_err(CoreError::Internal)
+    }
+
+    fn ocr_auth_scheme(&self) -> Result<ProviderAuthScheme, CoreError> {
+        provider_specs::auth_scheme(self.provider_type, ProviderTransportKind::Ocr)
+            .map_err(CoreError::Internal)
+    }
+
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
         if config.api_key.is_empty() {
             return Err(CoreError::Config(
@@ -146,14 +160,18 @@ impl RemoteOcrProvider {
             ));
         }
         let credential = CredentialSource::ApiKey(config.api_key.clone());
+        let resolved_model = config.model.clone().or_else(|| {
+            provider_specs::default_ocr_model(config.provider_type)
+                .ok()
+                .flatten()
+        });
 
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
             .build()
             .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
 
-        if let Some(model) = config
-            .model
+        if let Some(model) = resolved_model
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -191,7 +209,7 @@ impl RemoteOcrProvider {
             http_client,
             endpoint: config.endpoint.clone(),
             credential,
-            model: config.model.clone(),
+            model: resolved_model,
             provider_type: config.provider_type,
             timeout_secs: config.timeout_secs,
         })
@@ -205,13 +223,17 @@ impl RemoteOcrProvider {
         config: &ExternalApiEndpoint,
         credential: CredentialSource,
     ) -> Result<Self, CoreError> {
+        let resolved_model = config.model.clone().or_else(|| {
+            provider_specs::default_ocr_model(config.provider_type)
+                .ok()
+                .flatten()
+        });
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
             .build()
             .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
 
-        if let Some(model) = config
-            .model
+        if let Some(model) = resolved_model
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -248,7 +270,7 @@ impl RemoteOcrProvider {
             http_client,
             endpoint,
             credential,
-            model: config.model.clone(),
+            model: resolved_model,
             provider_type: config.provider_type,
             timeout_secs: config.timeout_secs,
         })
@@ -316,16 +338,6 @@ impl RemoteOcrProvider {
         response.results.ok_or_else(|| {
             CoreError::OcrError("Generic OCR response missing `results` field".to_string())
         })
-    }
-
-    fn parse_generic_with_fallback(body: &str) -> Result<Vec<OcrResult>, CoreError> {
-        if let Ok(results) = Self::parse_generic_response(body) {
-            return Ok(results);
-        }
-        if let Ok(results) = Self::parse_openai_vision_response(body) {
-            return Ok(results);
-        }
-        Self::parse_claude_vision_response(body)
     }
 
     fn extract_openai_text(response: &Value) -> Option<String> {
@@ -426,11 +438,9 @@ impl OcrProvider for RemoteOcrProvider {
             _ => "image/png",
         };
 
-        let model = self
-            .model
-            .as_deref()
-            .unwrap_or("claude-sonnet-4-5-20250929");
-        let strategy = OcrProviderStrategy::from(self.provider_type);
+        let model = self.model.as_deref().unwrap_or("");
+        let request_shape = self.ocr_request_shape()?;
+        let strategy = OcrProviderStrategy::try_from(request_shape)?;
 
         let request_body = strategy.build_request_body(&encoded, media_type, model);
 
@@ -448,16 +458,13 @@ impl OcrProvider for RemoteOcrProvider {
             .json(&request_body);
 
         let bearer_token = self.credential.resolve_bearer_token().await?;
-        builder = strategy.apply_auth_headers(builder, &bearer_token);
+        builder = apply_auth_headers(self.ocr_auth_scheme()?, builder, &bearer_token);
 
         // ChatGPT OAuth requires a version header for model access (GPT-5.4 etc.).
         // Only applies to OpenAI-compatible providers, matching LLM client behaviour.
         // Ref: openai/codex codex-rs/core/src/model_provider_info.rs
         if self.credential.is_managed()
-            && matches!(
-                self.provider_type,
-                AiProviderType::OpenAi | AiProviderType::Generic
-            )
+            && matches!(self.ocr_auth_scheme()?, ProviderAuthScheme::Bearer)
         {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));
         }
@@ -615,6 +622,25 @@ mod tests {
         };
         let result = RemoteOcrProvider::new(&config);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn generic_ocr_uses_spec_shape_and_default_model() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://api.example.com".to_string(),
+            api_key: "test-api-key-placeholder".to_string(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::Generic,
+            credential: None,
+        };
+
+        let provider = RemoteOcrProvider::new(&config).expect("generic OCR provider should build");
+        assert_eq!(
+            provider.ocr_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::OpenAiVisionChatCompletions
+        );
+        assert_eq!(provider.model.as_deref(), Some("gpt-4.1-mini"));
     }
 
     #[test]

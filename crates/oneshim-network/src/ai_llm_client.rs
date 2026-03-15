@@ -1,4 +1,7 @@
 use async_trait::async_trait;
+use oneshim_api_contracts::provider_specs::{
+    self, ProviderAuthScheme, ProviderRequestShape, ProviderTransportKind,
+};
 use serde_json::Value;
 use tracing::{debug, warn};
 
@@ -49,6 +52,11 @@ impl RemoteLlmProvider {
         let model = config
             .model
             .clone()
+            .or_else(|| {
+                provider_specs::default_llm_model(config.provider_type)
+                    .ok()
+                    .flatten()
+            })
             .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
 
         match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
@@ -104,6 +112,11 @@ impl RemoteLlmProvider {
         let model = config
             .model
             .clone()
+            .or_else(|| {
+                provider_specs::default_llm_model(config.provider_type)
+                    .ok()
+                    .flatten()
+            })
             .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
 
         match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
@@ -200,24 +213,43 @@ Return JSON only."#
         self.credential.is_managed() && matches!(self.provider_type, AiProviderType::OpenAi)
     }
 
-    /// Build the provider-specific request body given a system and user prompt.
-    fn build_chat_body(&self, system_prompt: &str, user_prompt: &str) -> serde_json::Value {
+    fn llm_request_shape(&self) -> Result<ProviderRequestShape, CoreError> {
         if self.use_responses_api() {
-            return self.build_responses_api_body(system_prompt, user_prompt);
+            return Ok(ProviderRequestShape::OpenAiResponses);
         }
-        match self.provider_type {
-            AiProviderType::Anthropic => serde_json::json!({
+        provider_specs::request_shape(self.provider_type, ProviderTransportKind::Llm)
+            .map_err(CoreError::Internal)
+    }
+
+    fn llm_auth_scheme(&self) -> Result<ProviderAuthScheme, CoreError> {
+        provider_specs::auth_scheme(self.provider_type, ProviderTransportKind::Llm)
+            .map_err(CoreError::Internal)
+    }
+
+    /// Build the provider-specific request body given a system and user prompt.
+    fn build_chat_body(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<serde_json::Value, CoreError> {
+        let body = match self.llm_request_shape()? {
+            ProviderRequestShape::AnthropicMessages
+            | ProviderRequestShape::AnthropicVisionMessages => serde_json::json!({
                 "model": self.model,
                 "max_tokens": 512,
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": user_prompt}]
             }),
-            AiProviderType::Google => serde_json::json!({
+            ProviderRequestShape::GoogleGenerateContent => serde_json::json!({
                 "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
                 "system_instruction": {"parts": [{"text": system_prompt}]},
                 "generationConfig": {"maxOutputTokens": 512}
             }),
-            AiProviderType::OpenAi | AiProviderType::Generic => serde_json::json!({
+            ProviderRequestShape::OpenAiResponses => {
+                self.build_responses_api_body(system_prompt, user_prompt)
+            }
+            ProviderRequestShape::OpenAiChatCompletions
+            | ProviderRequestShape::OpenAiVisionChatCompletions => serde_json::json!({
                 "model": self.model,
                 "max_tokens": 512,
                 "messages": [
@@ -225,7 +257,13 @@ Return JSON only."#
                     {"role": "user", "content": user_prompt}
                 ]
             }),
-        }
+            ProviderRequestShape::GoogleVisionAnnotate => {
+                return Err(CoreError::Internal(
+                    "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
+                ));
+            }
+        };
+        Ok(body)
     }
 
     /// Send a request body to the LLM API, authenticate, and parse the response.
@@ -240,16 +278,16 @@ Return JSON only."#
             .json(request_body);
 
         let bearer_token = self.credential.resolve_bearer_token().await?;
-        match self.provider_type {
-            AiProviderType::Anthropic => {
+        match self.llm_auth_scheme()? {
+            ProviderAuthScheme::XApiKey => {
                 builder = builder
                     .header("x-api-key", &bearer_token)
                     .header("anthropic-version", "2023-06-01");
             }
-            AiProviderType::Google => {
+            ProviderAuthScheme::XGoogApiKey => {
                 builder = builder.header("x-goog-api-key", &bearer_token);
             }
-            AiProviderType::OpenAi | AiProviderType::Generic => {
+            ProviderAuthScheme::Bearer => {
                 builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
                 if self.credential.is_managed() {
                     builder = builder.header("version", env!("CARGO_PKG_VERSION"));
@@ -277,10 +315,18 @@ Return JSON only."#
             )));
         }
 
-        let action = match self.provider_type {
-            AiProviderType::Anthropic => Self::parse_claude_response(&body)?,
-            AiProviderType::Google => Self::parse_google_response(&body)?,
-            AiProviderType::OpenAi | AiProviderType::Generic => Self::parse_openai_response(&body)?,
+        let action = match self.llm_request_shape()? {
+            ProviderRequestShape::AnthropicMessages
+            | ProviderRequestShape::AnthropicVisionMessages => Self::parse_claude_response(&body)?,
+            ProviderRequestShape::GoogleGenerateContent => Self::parse_google_response(&body)?,
+            ProviderRequestShape::OpenAiChatCompletions
+            | ProviderRequestShape::OpenAiVisionChatCompletions
+            | ProviderRequestShape::OpenAiResponses => Self::parse_openai_response(&body)?,
+            ProviderRequestShape::GoogleVisionAnnotate => {
+                return Err(CoreError::Internal(
+                    "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
+                ));
+            }
         };
 
         debug!(
@@ -474,7 +520,7 @@ impl LlmProvider for RemoteLlmProvider {
             "Calling external LLM API"
         );
 
-        let request_body = self.build_chat_body(Self::system_prompt(), &user_prompt);
+        let request_body = self.build_chat_body(Self::system_prompt(), &user_prompt)?;
         self.send_and_parse(&request_body).await
     }
 
@@ -497,7 +543,7 @@ impl LlmProvider for RemoteLlmProvider {
             "Calling external LLM API (with skills)"
         );
 
-        let request_body = self.build_chat_body(&system_prompt, &user_prompt);
+        let request_body = self.build_chat_body(&system_prompt, &user_prompt)?;
         self.send_and_parse(&request_body).await
     }
 
@@ -537,6 +583,25 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("retired as of"));
+    }
+
+    #[test]
+    fn openai_llm_uses_spec_default_model() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            api_key: "test-api-key".to_string(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: None,
+        };
+
+        let provider = RemoteLlmProvider::new(&config).expect("provider should initialize");
+        assert_eq!(provider.model, "gpt-4.1");
+        assert_eq!(
+            provider.llm_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::OpenAiChatCompletions
+        );
     }
 
     #[test]

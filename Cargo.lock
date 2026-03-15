@@ -4544,6 +4544,7 @@ dependencies = [
  "futures",
  "lz4_flex",
  "mockito",
+ "oneshim-api-contracts",
  "oneshim-core",
  "parking_lot",
  "prost",

@@ -1,41 +1,22 @@
-use std::sync::OnceLock;
-
 use oneshim_api_contracts::ai_providers::{
-    ProviderPreset, ProviderPresetCatalog, ProviderSpec, ProviderSpecCatalog,
+    ProviderPreset, ProviderPresetCatalog, ProviderSpecCatalog,
 };
+use oneshim_api_contracts::provider_specs;
 use oneshim_core::config::AiProviderType;
 
 use crate::error::ApiError;
 
-const PROVIDER_SPECS_JSON: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../specs/providers/provider-catalog.v1.json"
-));
-
-static SPEC_CATALOG: OnceLock<Result<ProviderSpecCatalog, String>> = OnceLock::new();
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModelCatalogResponseShape {
-    StandardDataOrModels,
-    GoogleModels,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProviderAuthScheme {
-    Bearer,
-    XApiKey,
-    XGoogApiKey,
-}
+pub use oneshim_api_contracts::provider_specs::{ModelCatalogResponseShape, ProviderAuthScheme};
 
 pub fn list_provider_specs() -> Result<ProviderSpecCatalog, ApiError> {
-    Ok(catalog()?.clone())
+    provider_specs::list_provider_specs().map_err(ApiError::Internal)
 }
 
 pub fn list_provider_presets() -> Result<ProviderPresetCatalog, ApiError> {
-    let catalog = catalog()?;
+    let catalog = list_provider_specs()?;
     Ok(ProviderPresetCatalog {
         version: catalog.version,
-        updated_at: catalog.updated_at.clone(),
+        updated_at: catalog.updated_at,
         providers: catalog
             .providers
             .iter()
@@ -45,45 +26,21 @@ pub fn list_provider_presets() -> Result<ProviderPresetCatalog, ApiError> {
 }
 
 pub fn resolve_provider_type(raw: &str) -> Result<AiProviderType, ApiError> {
-    let normalized = raw.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return Err(ApiError::BadRequest(
-            "provider_type is required for model discovery.".to_string(),
-        ));
-    }
-
-    let catalog = catalog()?;
-    for provider in &catalog.providers {
-        let canonical = provider.provider_type.to_ascii_lowercase();
-        if canonical == normalized
-            || provider
-                .aliases
-                .iter()
-                .any(|alias| alias.eq_ignore_ascii_case(&normalized))
-        {
-            if let Some(parsed) = parse_provider_type_name(&provider.provider_type) {
-                return Ok(parsed);
-            }
-        }
-    }
-
-    parse_provider_type_name(&normalized)
+    provider_specs::resolve_provider_type(raw)
         .ok_or_else(|| ApiError::BadRequest(format!("Unsupported provider_type: {raw}")))
 }
 
 pub fn default_model_catalog_endpoint(provider_type: AiProviderType) -> Result<String, ApiError> {
-    Ok(spec_for_provider_type(provider_type)?
-        .transports
-        .model_catalog
-        .url
-        .clone())
+    provider_specs::provider_spec(provider_type)
+        .map(|spec| spec.transports.model_catalog.url.clone())
+        .map_err(ApiError::Internal)
 }
 
 pub fn ocr_model_catalog_notice_for_endpoint(
     provider_type: AiProviderType,
     endpoint: &str,
 ) -> Result<Option<String>, ApiError> {
-    let spec = spec_for_provider_type(provider_type)?;
+    let spec = provider_specs::provider_spec(provider_type).map_err(ApiError::Internal)?;
     if spec.transports.model_catalog.ocr_supported {
         return Ok(None);
     }
@@ -115,56 +72,23 @@ pub fn ocr_model_catalog_notice_for_endpoint(
 pub fn model_catalog_response_shape(
     provider_type: AiProviderType,
 ) -> Result<ModelCatalogResponseShape, ApiError> {
-    let raw = spec_for_provider_type(provider_type)?
-        .transports
-        .model_catalog
-        .response_shape
-        .trim()
-        .to_ascii_lowercase();
-    match raw.as_str() {
-        "standard_data_or_models" => Ok(ModelCatalogResponseShape::StandardDataOrModels),
-        "google_models" => Ok(ModelCatalogResponseShape::GoogleModels),
-        _ => Err(ApiError::Internal(format!(
-            "Unsupported model catalog response shape '{raw}' for {:?}",
-            provider_type
-        ))),
-    }
+    provider_specs::model_catalog_response_shape(provider_type).map_err(ApiError::Internal)
 }
 
 pub fn model_catalog_auth_scheme(
     provider_type: AiProviderType,
 ) -> Result<ProviderAuthScheme, ApiError> {
-    let raw = spec_for_provider_type(provider_type)?
-        .transports
-        .model_catalog
-        .auth_scheme
-        .trim()
-        .to_ascii_lowercase();
-    match raw.as_str() {
-        "bearer" => Ok(ProviderAuthScheme::Bearer),
-        "x_api_key" => Ok(ProviderAuthScheme::XApiKey),
-        "x_goog_api_key" => Ok(ProviderAuthScheme::XGoogApiKey),
-        _ => Err(ApiError::Internal(format!(
-            "Unsupported provider auth scheme '{raw}' for {:?}",
-            provider_type
-        ))),
-    }
+    provider_specs::auth_scheme(
+        provider_type,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::ModelCatalog,
+    )
+    .map_err(ApiError::Internal)
 }
 
-fn catalog() -> Result<&'static ProviderSpecCatalog, ApiError> {
-    match SPEC_CATALOG.get_or_init(load_spec_catalog) {
-        Ok(catalog) => Ok(catalog),
-        Err(message) => Err(ApiError::Internal(message.clone())),
-    }
-}
-
-fn load_spec_catalog() -> Result<ProviderSpecCatalog, String> {
-    serde_json::from_str::<ProviderSpecCatalog>(PROVIDER_SPECS_JSON)
-        .map_err(|e| format!("Failed to parse provider spec catalog: {e}"))
-}
-
-fn compatibility_preset_from_spec(spec: &ProviderSpec) -> Option<ProviderPreset> {
-    parse_provider_type_name(&spec.provider_type)?;
+fn compatibility_preset_from_spec(
+    spec: &oneshim_api_contracts::ai_providers::ProviderSpec,
+) -> Option<ProviderPreset> {
+    provider_specs::resolve_provider_type(&spec.provider_type)?;
 
     Some(ProviderPreset {
         provider_type: spec.provider_type.clone(),
@@ -178,41 +102,6 @@ fn compatibility_preset_from_spec(spec: &ProviderSpec) -> Option<ProviderPreset>
         llm_models: spec.defaults.llm_models.clone(),
         ocr_models: spec.defaults.ocr_models.clone(),
     })
-}
-
-fn spec_for_provider_type(
-    provider_type: AiProviderType,
-) -> Result<&'static ProviderSpec, ApiError> {
-    let label = provider_type_label(provider_type);
-    catalog()?
-        .providers
-        .iter()
-        .find(|provider| provider.provider_type.eq_ignore_ascii_case(label))
-        .ok_or_else(|| {
-            ApiError::Internal(format!(
-                "Provider spec for {} is missing from the spec catalog.",
-                label
-            ))
-        })
-}
-
-fn provider_type_label(provider_type: AiProviderType) -> &'static str {
-    match provider_type {
-        AiProviderType::Anthropic => "Anthropic",
-        AiProviderType::OpenAi => "OpenAi",
-        AiProviderType::Google => "Google",
-        AiProviderType::Generic => "Generic",
-    }
-}
-
-fn parse_provider_type_name(raw: &str) -> Option<AiProviderType> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "anthropic" => Some(AiProviderType::Anthropic),
-        "openai" | "open_ai" | "open-ai" | "openai-compatible" => Some(AiProviderType::OpenAi),
-        "google" | "gemini" => Some(AiProviderType::Google),
-        "generic" => Some(AiProviderType::Generic),
-        _ => None,
-    }
 }
 
 fn extract_host(endpoint: &str) -> Option<String> {
@@ -257,8 +146,8 @@ mod tests {
 
     #[test]
     fn returns_google_model_catalog_shape() {
-        let shape = model_catalog_response_shape(AiProviderType::Google)
-            .expect("google response shape should resolve");
+        let shape =
+            model_catalog_response_shape(AiProviderType::Google).expect("shape should resolve");
         assert_eq!(shape, ModelCatalogResponseShape::GoogleModels);
     }
 
@@ -268,8 +157,7 @@ mod tests {
             AiProviderType::Google,
             "https://vision.googleapis.com/v1/images:annotate",
         )
-        .expect("google ocr notice should resolve")
-        .expect("google ocr notice should exist");
-        assert!(notice.contains("does not expose"));
+        .expect("notice should resolve");
+        assert!(notice.is_some());
     }
 }

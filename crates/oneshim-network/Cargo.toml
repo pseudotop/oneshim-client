@@ -15,6 +15,7 @@ grpc = ["tonic", "tonic-prost", "prost", "prost-types", "tonic-health", "tonic/t
 
 [dependencies]
 oneshim-core = { workspace = true }
+oneshim-api-contracts = { workspace = true }
 reqwest = { workspace = true }
 eventsource-stream = { workspace = true }
 tokio-tungstenite = { workspace = true }
