@@ -206,8 +206,11 @@ export default function AiAutomationTab({
   const currentLlmMaturity = providerSurfaceMaturity(currentLlmSurface, featureCapabilities)
   const currentLlmStatusCopyKey = providerSurfaceStatusCopyKey(currentLlmSurface, featureCapabilities)
   const currentLlmRequirements = currentLlmFeature?.requires ?? []
+  const preferredCliAvailability = providerSurfaceAvailability(preferredCliSurface, featureCapabilities)
   const showPreferredCliCta =
-    Boolean(preferredCliSurface) && currentLlmSurface?.surface_id !== preferredCliSurface?.surface_id
+    Boolean(preferredCliSurface) &&
+    preferredCliAvailability !== 'unavailable' &&
+    currentLlmSurface?.surface_id !== preferredCliSurface?.surface_id
 
   const handleSwitchToPreferredCli = () => {
     onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
@@ -392,7 +395,7 @@ export default function AiAutomationTab({
             <p className="text-content-secondary text-sm">{currentAccessModeOption.description}</p>
           </div>
 
-          {currentLlmSurface && (
+          {showLlmSurfaceSection && currentLlmSurface && (
             <div className="space-y-3 rounded-lg border border-muted bg-surface-muted/80 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
