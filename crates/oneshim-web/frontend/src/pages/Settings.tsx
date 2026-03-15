@@ -487,6 +487,7 @@ export default function Settings() {
         api_key: current.api_key_masked,
         endpoint: current.endpoint || null,
         surface: which,
+        surface_id: current.surface_id || null,
         use_saved_secret: useSavedSecret,
       })
       handleModelDiscoveryResult(which, current.model, result)

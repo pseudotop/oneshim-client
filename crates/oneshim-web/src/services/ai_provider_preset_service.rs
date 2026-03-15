@@ -16,6 +16,13 @@ pub fn default_model_catalog_endpoint(provider_type: AiProviderType) -> Result<S
     ai_provider_spec_service::default_model_catalog_endpoint(provider_type)
 }
 
+pub fn default_model_catalog_endpoint_for_surface(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<String, ApiError> {
+    ai_provider_spec_service::default_model_catalog_endpoint_for_surface(provider_type, surface_id)
+}
+
 pub fn ocr_model_catalog_notice_for_endpoint(
     provider_type: AiProviderType,
     endpoint: &str,

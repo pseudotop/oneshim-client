@@ -213,6 +213,7 @@ export interface ProviderModelsRequest {
   api_key: string
   endpoint?: string | null
   surface?: string | null
+  surface_id?: string | null
   use_saved_secret?: boolean
 }
 

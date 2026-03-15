@@ -113,6 +113,8 @@ pub struct ProviderModelsRequest {
     #[serde(default)]
     pub surface: Option<String>,
     #[serde(default)]
+    pub surface_id: Option<String>,
+    #[serde(default)]
     pub use_saved_secret: bool,
 }
 

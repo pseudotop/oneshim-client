@@ -25,8 +25,15 @@ pub fn resolve_provider_type(raw: &str) -> Result<AiProviderType, ApiError> {
 }
 
 pub fn default_model_catalog_endpoint(provider_type: AiProviderType) -> Result<String, ApiError> {
-    provider_specs::provider_spec(provider_type)
-        .map(|spec| spec.transports.model_catalog.url.clone())
+    default_model_catalog_endpoint_for_surface(provider_type, None)
+}
+
+pub fn default_model_catalog_endpoint_for_surface(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<String, ApiError> {
+    provider_specs::resolved_model_catalog_transport(provider_type, surface_id)
+        .map(|transport| transport.url.clone())
         .map_err(ApiError::Internal)
 }
 
@@ -66,14 +73,30 @@ pub fn ocr_model_catalog_notice_for_endpoint(
 pub fn model_catalog_response_shape(
     provider_type: AiProviderType,
 ) -> Result<ModelCatalogResponseShape, ApiError> {
-    provider_specs::model_catalog_response_shape(provider_type).map_err(ApiError::Internal)
+    model_catalog_response_shape_for_surface(provider_type, None)
+}
+
+pub fn model_catalog_response_shape_for_surface(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<ModelCatalogResponseShape, ApiError> {
+    provider_specs::resolved_model_catalog_response_shape(provider_type, surface_id)
+        .map_err(ApiError::Internal)
 }
 
 pub fn model_catalog_auth_scheme(
     provider_type: AiProviderType,
 ) -> Result<ProviderAuthScheme, ApiError> {
-    provider_specs::auth_scheme(
+    model_catalog_auth_scheme_for_surface(provider_type, None)
+}
+
+pub fn model_catalog_auth_scheme_for_surface(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<ProviderAuthScheme, ApiError> {
+    provider_specs::resolved_auth_scheme(
         provider_type,
+        surface_id,
         oneshim_api_contracts::provider_specs::ProviderTransportKind::ModelCatalog,
     )
     .map_err(ApiError::Internal)

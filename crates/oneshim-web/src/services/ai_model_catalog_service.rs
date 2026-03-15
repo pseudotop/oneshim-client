@@ -21,9 +21,14 @@ pub async fn fetch_provider_models(
     state: &AppState,
 ) -> Result<ProviderModelsResponse, ApiError> {
     let provider_type = ai_provider_preset_service::resolve_provider_type(&request.provider_type)?;
+    let requested_surface_id = normalize_optional_surface_id(request.surface_id.as_deref());
     let api_key = resolve_model_discovery_api_key(request, state, provider_type).await?;
 
-    let endpoint = resolve_models_endpoint(provider_type, request.endpoint.as_deref());
+    let endpoint = resolve_models_endpoint(
+        provider_type,
+        requested_surface_id.as_deref(),
+        request.endpoint.as_deref(),
+    )?;
     if let Some(notice) =
         ai_provider_preset_service::ocr_model_catalog_notice_for_endpoint(provider_type, &endpoint)?
     {
@@ -39,7 +44,10 @@ pub async fn fetch_provider_models(
         .map_err(|e| ApiError::Internal(format!("Failed to create model discovery client: {e}")))?;
 
     let mut builder = client.get(&endpoint);
-    match ai_provider_spec_service::model_catalog_auth_scheme(provider_type)? {
+    match ai_provider_spec_service::model_catalog_auth_scheme_for_surface(
+        provider_type,
+        requested_surface_id.as_deref(),
+    )? {
         ProviderAuthScheme::Bearer => {
             builder = builder.header("Authorization", format!("Bearer {api_key}"));
         }
@@ -70,7 +78,10 @@ pub async fn fetch_provider_models(
     }
 
     let mut models = parse_models(
-        ai_provider_spec_service::model_catalog_response_shape(provider_type)?,
+        ai_provider_spec_service::model_catalog_response_shape_for_surface(
+            provider_type,
+            requested_surface_id.as_deref(),
+        )?,
         &body,
     )?;
     models.sort_unstable();
@@ -213,6 +224,16 @@ async fn resolve_saved_model_discovery_api_key(
         return Ok(None);
     }
 
+    if let Some(request_surface_id) = normalize_optional_surface_id(request.surface_id.as_deref()) {
+        let saved_surface_id = saved_endpoint
+            .surface_id
+            .as_deref()
+            .and_then(|value| normalize_optional_surface_id(Some(value)));
+        if saved_surface_id.as_deref() != Some(request_surface_id.as_str()) {
+            return Ok(None);
+        }
+    }
+
     if let Some(request_endpoint) = request.endpoint.as_deref() {
         let request_endpoint = normalize_optional_endpoint(request_endpoint);
         let saved_endpoint_normalized = normalize_optional_endpoint(&saved_endpoint.endpoint);
@@ -273,40 +294,69 @@ fn endpoint_for_surface(
     }
 }
 
-fn resolve_models_endpoint(provider_type: AiProviderType, endpoint: Option<&str>) -> String {
+fn resolve_models_endpoint(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    endpoint: Option<&str>,
+) -> Result<String, ApiError> {
     let endpoint = endpoint.and_then(normalize_optional_endpoint);
     match provider_type {
-        AiProviderType::Anthropic => endpoint
+        AiProviderType::Anthropic => Ok(endpoint
             .as_deref()
             .and_then(derive_anthropic_models_endpoint)
             .or_else(|| {
-                ai_provider_preset_service::default_model_catalog_endpoint(provider_type).ok()
+                ai_provider_preset_service::default_model_catalog_endpoint_for_surface(
+                    provider_type,
+                    surface_id,
+                )
+                .ok()
             })
-            .unwrap_or_else(|| "https://api.anthropic.com/v1/models".to_string()),
-        AiProviderType::OpenAi => endpoint
+            .unwrap_or_else(|| "https://api.anthropic.com/v1/models".to_string())),
+        AiProviderType::OpenAi => Ok(endpoint
             .as_deref()
             .and_then(derive_openai_models_endpoint)
             .or_else(|| {
-                ai_provider_preset_service::default_model_catalog_endpoint(provider_type).ok()
+                ai_provider_preset_service::default_model_catalog_endpoint_for_surface(
+                    provider_type,
+                    surface_id,
+                )
+                .ok()
             })
-            .unwrap_or_else(|| "https://api.openai.com/v1/models".to_string()),
-        AiProviderType::Google => endpoint
+            .unwrap_or_else(|| "https://api.openai.com/v1/models".to_string())),
+        AiProviderType::Google => Ok(endpoint
             .as_deref()
             .and_then(derive_google_models_endpoint)
             .or_else(|| {
-                ai_provider_preset_service::default_model_catalog_endpoint(provider_type).ok()
+                ai_provider_preset_service::default_model_catalog_endpoint_for_surface(
+                    provider_type,
+                    surface_id,
+                )
+                .ok()
             })
             .unwrap_or_else(|| {
                 "https://generativelanguage.googleapis.com/v1beta/models".to_string()
-            }),
+            })),
         AiProviderType::Generic => endpoint
             .as_deref()
             .map(ToString::to_string)
             .or_else(|| {
-                ai_provider_preset_service::default_model_catalog_endpoint(provider_type).ok()
+                ai_provider_preset_service::default_model_catalog_endpoint_for_surface(
+                    provider_type,
+                    surface_id,
+                )
+                .ok()
             })
-            .unwrap_or_else(|| "https://api.openai.com/v1/models".to_string()),
+            .map(Ok)
+            .unwrap_or_else(|| Ok("https://api.openai.com/v1/models".to_string())),
     }
+}
+
+fn normalize_optional_surface_id(raw: Option<&str>) -> Option<String> {
+    let trimmed = raw?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase())
 }
 
 fn normalize_optional_endpoint(raw: &str) -> Option<String> {
@@ -581,6 +631,7 @@ mod tests {
             api_key: String::new(),
             endpoint: Some("https://api.openai.com/v1".to_string()),
             surface: Some("llm_api".to_string()),
+            surface_id: None,
             use_saved_secret: true,
         };
 
@@ -612,6 +663,7 @@ mod tests {
             api_key: String::new(),
             endpoint: Some("https://proxy.example.com/v1".to_string()),
             surface: Some("llm_api".to_string()),
+            surface_id: None,
             use_saved_secret: true,
         };
 
@@ -654,6 +706,7 @@ mod tests {
             api_key: String::new(),
             endpoint: Some("https://api.openai.com/v1".to_string()),
             surface: Some("llm_api".to_string()),
+            surface_id: None,
             use_saved_secret: true,
         };
 
