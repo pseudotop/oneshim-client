@@ -158,6 +158,7 @@ export default function OAuthConnectionPanel({
   )
   const preferredCliMessage =
     preferredCliFeature?.status_copy_key != null ? t(preferredCliFeature.status_copy_key) : null
+  const setupMessage = oauthFeature?.setup_copy_key ? t(oauthFeature.setup_copy_key) : null
 
   useEffect(() => {
     refreshStatus()
@@ -260,6 +261,35 @@ export default function OAuthConnectionPanel({
             <Button type="button" variant="secondary" size="sm" onClick={onUsePreferredCli}>
               {t('settingsOAuth.switchToCli', { surface: preferredCliSurface.display_name })}
             </Button>
+          )}
+        </div>
+      )}
+
+      {setupMessage && (
+        <div className="space-y-2 rounded-lg border border-muted bg-surface-muted p-3">
+          <p className="text-content-muted text-xs">{t('featureCapability.setupTitle')}</p>
+          <p className="text-content-secondary text-xs">{setupMessage}</p>
+          {oauthFeature?.configuration_env_vars && oauthFeature.configuration_env_vars.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-content-muted text-xs">{t('featureCapability.setupEnvVars')}</p>
+              <div className="flex flex-wrap gap-2">
+                {oauthFeature.configuration_env_vars.map((envVar) => (
+                  <Badge key={envVar} color="default" size="sm">
+                    <code>{envVar}</code>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {oauthFeature?.setup_docs_url && (
+            <a
+              href={oauthFeature.setup_docs_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-accent text-xs underline"
+            >
+              {t('featureCapability.openSetupDocs')}
+            </a>
           )}
         </div>
       )}

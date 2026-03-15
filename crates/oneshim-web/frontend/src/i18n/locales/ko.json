@@ -710,6 +710,9 @@
   },
   "featureCapability": {
     "preferredPath": "권장 경로",
+    "setupTitle": "설정 필요",
+    "setupEnvVars": "환경 변수",
+    "openSetupDocs": "설정 문서 열기",
     "availability": {
       "available": "사용 가능",
       "unavailable": "사용 불가",
@@ -746,7 +749,8 @@
         "google": {
           "managed_oauth": {
             "available": "이 기기에서 Google OAuth를 사용할 수 있습니다. Desktop OAuth client ID를 구성하면 API key 없이 Vision OCR을 연결할 수 있습니다.",
-            "unavailable": "이 기기에서는 Google OAuth를 사용할 수 없습니다. 데스크톱 키체인 지원과 Google OAuth client ID 구성이 필요합니다."
+            "unavailable": "이 기기에서는 Google OAuth를 사용할 수 없습니다. 데스크톱 키체인 지원과 Google OAuth client ID 구성이 필요합니다.",
+            "setup": "ONESHIM용 Google Desktop OAuth client ID를 준비하거나 설정한 뒤, 앱을 다시 시작하고 Vision OCR 로그인 흐름을 시작하세요."
           },
           "subprocess_cli": {
             "available": "Gemini CLI가 설치되어 있고 인증도 완료되었습니다. 이 기기에서 지원되는 workflow는 ONESHIM이 provider-owned CLI 경로로 실행할 수 있습니다.",

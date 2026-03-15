@@ -16,6 +16,14 @@ use oneshim_network::oauth::provider_config::OAuthProviderConfig;
 const GOOGLE_OAUTH_CLIENT_ID_ENV: &str = "ONESHIM_GOOGLE_OAUTH_CLIENT_ID";
 
 #[cfg(any(feature = "server", test))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedOAuthProvisioning {
+    pub env_vars: &'static [&'static str],
+    pub setup_copy_key: Option<&'static str>,
+    pub docs_url: Option<&'static str>,
+}
+
+#[cfg(any(feature = "server", test))]
 pub fn configured_oauth_provider_configs() -> Vec<OAuthProviderConfig> {
     let mut providers = vec![OAuthProviderConfig::openai_codex()];
 
@@ -51,6 +59,20 @@ pub fn selected_managed_oauth_provider_ids(
     }
 
     Ok(provider_ids)
+}
+
+#[cfg(any(feature = "server", test))]
+pub fn managed_oauth_provider_provisioning(provider_id: &str) -> Option<ManagedOAuthProvisioning> {
+    match provider_id.trim().to_ascii_lowercase().as_str() {
+        "google" => Some(ManagedOAuthProvisioning {
+            env_vars: &[GOOGLE_OAUTH_CLIENT_ID_ENV],
+            setup_copy_key: Some(
+                "featureCapability.surface.provider_surface.google.managed_oauth.setup",
+            ),
+            docs_url: Some("https://developers.google.com/identity/protocols/oauth2/native-app"),
+        }),
+        _ => None,
+    }
 }
 
 #[cfg(any(feature = "server", test))]
@@ -185,5 +207,20 @@ mod tests {
         let providers =
             selected_managed_oauth_provider_ids(&config).expect("provider IDs should resolve");
         assert_eq!(providers, vec!["google".to_string()]);
+    }
+
+    #[test]
+    fn google_oauth_provisioning_includes_env_and_docs() {
+        let provisioning = managed_oauth_provider_provisioning("google")
+            .expect("google provisioning should exist");
+        assert_eq!(provisioning.env_vars, &[GOOGLE_OAUTH_CLIENT_ID_ENV]);
+        assert_eq!(
+            provisioning.setup_copy_key,
+            Some("featureCapability.surface.provider_surface.google.managed_oauth.setup")
+        );
+        assert_eq!(
+            provisioning.docs_url,
+            Some("https://developers.google.com/identity/protocols/oauth2/native-app")
+        );
     }
 }

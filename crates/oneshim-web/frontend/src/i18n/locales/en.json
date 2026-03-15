@@ -710,6 +710,9 @@
   },
   "featureCapability": {
     "preferredPath": "Preferred path",
+    "setupTitle": "Setup required",
+    "setupEnvVars": "Environment variables",
+    "openSetupDocs": "Open setup docs",
     "availability": {
       "available": "Available",
       "unavailable": "Unavailable",
@@ -746,7 +749,8 @@
         "google": {
           "managed_oauth": {
             "available": "Google OAuth is available on this device. Configure a Desktop OAuth client ID to connect Vision OCR without storing an API key.",
-            "unavailable": "Google OAuth is unavailable on this device. Desktop keychain support and a configured Google OAuth client ID are required."
+            "unavailable": "Google OAuth is unavailable on this device. Desktop keychain support and a configured Google OAuth client ID are required.",
+            "setup": "Create or supply a Google Desktop OAuth client ID for ONESHIM, then restart the app before starting the Vision OCR sign-in flow."
           },
           "subprocess_cli": {
             "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",

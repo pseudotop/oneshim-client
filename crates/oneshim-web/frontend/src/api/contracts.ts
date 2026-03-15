@@ -810,6 +810,9 @@ export interface FeatureCapability {
   requires: string[]
   status_reason: string | null
   status_copy_key: string | null
+  setup_copy_key: string | null
+  setup_docs_url: string | null
+  configuration_env_vars: string[]
 }
 
 export interface FeatureCapabilitySnapshot {

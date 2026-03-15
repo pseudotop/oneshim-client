@@ -433,11 +433,15 @@ export default function AiAutomationTab({
       return null
     }
 
+    const feature = findFeatureCapability(featureCapabilities, surface.surface_id)
     const maturity = providerSurfaceMaturity(surface, featureCapabilities)
     const customSelfHostedEndpoint = usesCustomSelfHostedEndpoint(surface, endpointKind)
     const endpointProbe = endpointProbeResult[endpointKind]
     const availability = surfaceAvailabilityForEndpoint(surface, endpointKind)
     const statusCopyKey = surfaceStatusCopyKeyForEndpoint(surface, endpointKind)
+    const setupCopyKey = endpointProbe ? null : feature?.setup_copy_key ?? null
+    const setupDocsUrl = endpointProbe ? null : feature?.setup_docs_url ?? null
+    const setupEnvVars = endpointProbe ? [] : feature?.configuration_env_vars ?? []
 
     return (
       <div className="space-y-2 rounded-lg border border-muted bg-surface-muted/80 p-3">
@@ -462,6 +466,34 @@ export default function AiAutomationTab({
           <p className="text-content-secondary text-xs">
             {t('settingsAutomation.selfHostedCustomEndpointStatus')}
           </p>
+        )}
+        {setupCopyKey && (
+          <div className="space-y-2 rounded-md border border-muted bg-surface-elevated/70 p-3">
+            <p className="text-content-muted text-xs">{t('featureCapability.setupTitle')}</p>
+            <p className="text-content-secondary text-xs">{t(setupCopyKey)}</p>
+            {setupEnvVars.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-content-muted text-xs">{t('featureCapability.setupEnvVars')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {setupEnvVars.map((envVar) => (
+                    <Badge key={envVar} color="default" size="sm">
+                      <code>{envVar}</code>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {setupDocsUrl && (
+              <a
+                href={setupDocsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex text-accent text-xs underline"
+              >
+                {t('featureCapability.openSetupDocs')}
+              </a>
+            )}
+          </div>
         )}
       </div>
     )

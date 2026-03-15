@@ -156,6 +156,9 @@ describe('provider surface defaults', () => {
           requires: ['cli:codex'],
           status_reason: null,
           status_copy_key: null,
+          setup_copy_key: null,
+          setup_docs_url: null,
+          configuration_env_vars: [],
         },
         {
           feature_id: 'provider_surface.anthropic.subprocess_cli',
@@ -165,6 +168,9 @@ describe('provider surface defaults', () => {
           requires: ['cli:claude-code'],
           status_reason: null,
           status_copy_key: null,
+          setup_copy_key: null,
+          setup_docs_url: null,
+          configuration_env_vars: [],
         },
       ],
     }
@@ -191,6 +197,9 @@ describe('provider surface defaults', () => {
           requires: ['local_service:ollama'],
           status_reason: 'service_unreachable',
           status_copy_key: 'featureCapability.surface.provider_surface.ollama.local_http.unavailable',
+          setup_copy_key: null,
+          setup_docs_url: null,
+          configuration_env_vars: [],
         },
       ],
     }

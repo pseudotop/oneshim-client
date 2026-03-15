@@ -1,6 +1,8 @@
 use serde::Serialize;
 use std::time::Duration;
 
+#[cfg(feature = "server")]
+use crate::oauth_provider_registry::managed_oauth_provider_provisioning;
 use crate::setup::SecretBackendCapabilities;
 use crate::subprocess_provider::{
     probe_for_surface_id, probe_known_cli_surfaces, runtime_ready_for_surface, ProbedSubprocessCli,
@@ -39,6 +41,9 @@ pub struct FeatureCapability {
     pub requires: Vec<String>,
     pub status_reason: Option<String>,
     pub status_copy_key: Option<String>,
+    pub setup_copy_key: Option<String>,
+    pub setup_docs_url: Option<String>,
+    pub configuration_env_vars: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -132,6 +137,10 @@ fn managed_oauth_feature(
         } else {
             None
         };
+    #[cfg(feature = "server")]
+    let provisioning = (!provider_configured)
+        .then(|| managed_oauth_provider_provisioning(&surface.vendor_id))
+        .flatten();
     FeatureCapability {
         feature_id: surface.surface_id.clone(),
         maturity: feature_maturity(surface),
@@ -154,6 +163,31 @@ fn managed_oauth_feature(
                 "unavailable"
             },
         )),
+        #[cfg(feature = "server")]
+        setup_copy_key: provisioning
+            .as_ref()
+            .and_then(|value| value.setup_copy_key.map(|copy_key| copy_key.to_string())),
+        #[cfg(not(feature = "server"))]
+        setup_copy_key: None,
+        #[cfg(feature = "server")]
+        setup_docs_url: provisioning
+            .as_ref()
+            .and_then(|value| value.docs_url.map(|docs_url| docs_url.to_string())),
+        #[cfg(not(feature = "server"))]
+        setup_docs_url: None,
+        #[cfg(feature = "server")]
+        configuration_env_vars: provisioning
+            .as_ref()
+            .map(|value| {
+                value
+                    .env_vars
+                    .iter()
+                    .map(|env_var| (*env_var).to_string())
+                    .collect()
+            })
+            .unwrap_or_default(),
+        #[cfg(not(feature = "server"))]
+        configuration_env_vars: Vec::new(),
     }
 }
 
@@ -215,6 +249,9 @@ fn subprocess_cli_feature(
             .unwrap_or_default(),
         status_reason: Some(status_reason.to_string()),
         status_copy_key: Some(surface_status_copy_key(&surface.surface_id, copy_suffix)),
+        setup_copy_key: None,
+        setup_docs_url: None,
+        configuration_env_vars: Vec::new(),
     }
 }
 
@@ -253,6 +290,9 @@ async fn probed_http_surface_feature(surface: &ProviderSurfaceSpec) -> FeatureCa
         requires,
         status_reason: Some(status_reason.to_string()),
         status_copy_key: Some(surface_status_copy_key(&surface.surface_id, copy_suffix)),
+        setup_copy_key: None,
+        setup_docs_url: None,
+        configuration_env_vars: Vec::new(),
     }
 }
 
@@ -541,6 +581,18 @@ mod tests {
         assert_eq!(
             feature.status_reason.as_deref(),
             Some("oauth_provider_not_configured")
+        );
+        assert_eq!(
+            feature.setup_copy_key.as_deref(),
+            Some("featureCapability.surface.provider_surface.google.managed_oauth.setup")
+        );
+        assert_eq!(
+            feature.setup_docs_url.as_deref(),
+            Some("https://developers.google.com/identity/protocols/oauth2/native-app")
+        );
+        assert_eq!(
+            feature.configuration_env_vars,
+            vec!["ONESHIM_GOOGLE_OAUTH_CLIENT_ID".to_string()]
         );
     }
 

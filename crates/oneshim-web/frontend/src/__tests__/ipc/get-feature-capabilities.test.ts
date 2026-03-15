@@ -18,6 +18,9 @@ describe('CRT-MK-M051: get_feature_capabilities IPC contract', () => {
               requires: ['os_secret_store'],
               status_reason: null,
               status_copy_key: 'featureCapability.surface.provider_surface.openai.managed_oauth.available',
+              setup_copy_key: null,
+              setup_docs_url: null,
+              configuration_env_vars: [],
             },
           ],
         }
@@ -33,6 +36,9 @@ describe('CRT-MK-M051: get_feature_capabilities IPC contract', () => {
         requires: string[]
         status_reason: string | null
         status_copy_key: string | null
+        setup_copy_key: string | null
+        setup_docs_url: string | null
+        configuration_env_vars: string[]
       }>
     }>('get_feature_capabilities')
 
