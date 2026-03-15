@@ -45,7 +45,7 @@ pub struct OAuthConnectionStatus {
 /// Typed replacement for fragile substring matching on error messages.
 /// Terminal kinds (`InvalidGrant`, `InvalidClient`) require re-authentication;
 /// transient kinds can be retried with backoff.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OAuthErrorKind {
     InvalidGrant,
     InvalidClient,

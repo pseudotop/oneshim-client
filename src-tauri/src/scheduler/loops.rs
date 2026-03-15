@@ -691,7 +691,8 @@ impl Scheduler {
                                         warn!("Failed to emit oauth-reauth-required event: {e}");
                                     }
 
-                                    // Native OS notification for background/minimized state
+                                    // Native OS notification for background/minimized state.
+                                    // Body is English-only: i18n is frontend-side; Rust has no locale context.
                                     if let Err(e) = tauri_plugin_notification::NotificationExt::notification(handle)
                                         .builder()
                                         .title("ONESHIM")
