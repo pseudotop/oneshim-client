@@ -6,7 +6,8 @@ use oneshim_api_contracts::ai_providers::{
 };
 use oneshim_api_contracts::provider_specs::{
     default_surface_id_for_access_mode as default_surface_id_from_catalog,
-    model_capability_status_for_surface, SurfaceCapabilityKind, SurfaceModelCapabilityKind,
+    model_capability_status_for_surface, resolved_model_catalog_strategy, resolved_surface_spec,
+    ModelCatalogStrategy, ProviderSurfaceSpec, SurfaceCapabilityKind, SurfaceModelCapabilityKind,
 };
 use oneshim_core::config::{AiProviderConfig, AiProviderType, ExternalApiEndpoint};
 use oneshim_core::ports::credential_source::CredentialSource;
@@ -448,77 +449,46 @@ fn resolve_models_endpoint(
     endpoint: Option<&str>,
 ) -> Result<String, ApiError> {
     let endpoint = endpoint.and_then(normalize_optional_endpoint);
-    if let Some(surface_id) = surface_id {
-        if !ai_provider_spec_service::model_catalog_supported_for_surface(
-            provider_type,
-            Some(surface_id),
-        )? {
-            return Err(ApiError::BadRequest(format!(
-                "Selected provider surface '{surface_id}' does not support model discovery."
-            )));
-        }
+    let surface = resolved_surface_spec(provider_type, surface_id).map_err(ApiError::Internal)?;
+    if !surface.supports.model_catalog || surface.model_catalog_transport.is_none() {
+        return Err(ApiError::BadRequest(format!(
+            "Selected provider surface '{}' does not support model discovery.",
+            surface.surface_id
+        )));
+    }
+    let catalog_strategy =
+        resolved_model_catalog_strategy(provider_type, Some(surface.surface_id.as_str()))
+            .map_err(ApiError::Internal)?;
+
+    let default_endpoint = ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
+        provider_type,
+        Some(surface.surface_id.as_str()),
+    )?;
+
+    if let Some(endpoint) = endpoint {
+        return match catalog_strategy {
+            ModelCatalogStrategy::HttpModelsEndpoint => {
+                if let Some(derived) =
+                    derive_model_catalog_endpoint_from_surface(surface, &endpoint)
+                {
+                    Ok(derived)
+                } else {
+                    Err(ApiError::BadRequest(format!(
+                        "Could not derive a model catalog endpoint from '{}' for surface '{}'.",
+                        endpoint, surface.surface_id
+                    )))
+                }
+            }
+            ModelCatalogStrategy::None | ModelCatalogStrategy::SubprocessProbe => {
+                Err(ApiError::BadRequest(format!(
+                    "Surface '{}' does not support HTTP model discovery from a custom endpoint.",
+                    surface.surface_id
+                )))
+            }
+        };
     }
 
-    match provider_type {
-        AiProviderType::Anthropic => Ok(endpoint
-            .as_deref()
-            .and_then(derive_anthropic_models_endpoint)
-            .or_else(|| {
-                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
-                    provider_type,
-                    surface_id,
-                )
-                .ok()
-            })
-            .unwrap_or_else(|| "https://api.anthropic.com/v1/models".to_string())),
-        AiProviderType::OpenAi => Ok(endpoint
-            .as_deref()
-            .and_then(derive_openai_models_endpoint)
-            .or_else(|| {
-                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
-                    provider_type,
-                    surface_id,
-                )
-                .ok()
-            })
-            .unwrap_or_else(|| "https://api.openai.com/v1/models".to_string())),
-        AiProviderType::Google => Ok(endpoint
-            .as_deref()
-            .and_then(derive_google_models_endpoint)
-            .or_else(|| {
-                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
-                    provider_type,
-                    surface_id,
-                )
-                .ok()
-            })
-            .unwrap_or_else(|| {
-                "https://generativelanguage.googleapis.com/v1beta/models".to_string()
-            })),
-        AiProviderType::Ollama => Ok(endpoint
-            .as_deref()
-            .and_then(derive_ollama_models_endpoint)
-            .or_else(|| {
-                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
-                    provider_type,
-                    surface_id,
-                )
-                .ok()
-            })
-            .unwrap_or_else(|| "http://localhost:11434/api/tags".to_string())),
-        AiProviderType::Generic => endpoint
-            .as_deref()
-            .map(ToString::to_string)
-            .or_else(|| {
-                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
-                    provider_type,
-                    surface_id,
-                )
-                .ok()
-            })
-            .map(Ok)
-            .unwrap_or_else(|| Ok("https://api.openai.com/v1/models".to_string())),
-    }
+    Ok(default_endpoint)
 }
 
 fn resolve_requested_provider_type(
@@ -579,112 +549,107 @@ fn normalize_optional_endpoint(raw: &str) -> Option<String> {
     Some(trimmed.trim_end_matches('/').to_string())
 }
 
-fn derive_openai_models_endpoint(endpoint: &str) -> Option<String> {
-    if endpoint.ends_with("/models") {
-        return Some(endpoint.to_string());
+fn derive_model_catalog_endpoint_from_surface(
+    surface: &ProviderSurfaceSpec,
+    endpoint: &str,
+) -> Option<String> {
+    let normalized_endpoint = normalize_optional_endpoint(endpoint)?;
+    let configured = reqwest::Url::parse(&normalized_endpoint).ok()?;
+    let catalog_transport = surface.model_catalog_transport.as_ref()?;
+    let catalog_url = reqwest::Url::parse(&catalog_transport.url).ok()?;
+
+    if configured.path() == catalog_url.path() {
+        return Some(normalized_endpoint);
     }
-    if let Some(prefix) = endpoint.split("/chat/completions").next() {
-        if prefix != endpoint {
-            return Some(format!("{prefix}/models"));
+
+    let candidate_transports = [
+        surface
+            .llm_transport
+            .as_ref()
+            .map(|transport| transport.url.as_str()),
+        surface
+            .ocr_transport
+            .as_ref()
+            .map(|transport| transport.url.as_str()),
+    ];
+
+    for candidate in candidate_transports.into_iter().flatten() {
+        let default_transport = reqwest::Url::parse(candidate).ok()?;
+        if let Some(derived) = derive_model_catalog_endpoint_from_transport(
+            &configured,
+            &default_transport,
+            &catalog_url,
+        ) {
+            return Some(derived);
         }
     }
-    if let Some(prefix) = endpoint.split("/responses").next() {
-        if prefix != endpoint {
-            return Some(format!("{prefix}/models"));
-        }
+
+    if configured.path().is_empty() || configured.path() == "/" {
+        return Some(rebased_url(&configured, &catalog_url));
     }
-    if let Some(prefix) = endpoint.split("/models/").next() {
-        if prefix != endpoint {
-            return Some(format!("{prefix}/models"));
-        }
+
+    if same_origin(&configured, &catalog_url) {
+        return Some(rebased_url(&configured, &catalog_url));
     }
-    if endpoint.contains("/v1") {
-        let base = endpoint
-            .split("/v1")
-            .next()
-            .unwrap_or(endpoint)
-            .trim_end_matches('/');
-        return Some(format!("{base}/v1/models"));
-    }
+
     None
 }
 
-fn derive_anthropic_models_endpoint(endpoint: &str) -> Option<String> {
-    if endpoint.ends_with("/v1/models") {
-        return Some(endpoint.to_string());
+fn derive_model_catalog_endpoint_from_transport(
+    configured: &reqwest::Url,
+    default_transport: &reqwest::Url,
+    catalog_url: &reqwest::Url,
+) -> Option<String> {
+    let configured_path = configured.path();
+    let default_transport_path = default_transport.path();
+
+    if configured_path.ends_with(default_transport_path) {
+        let prefix_len = configured_path
+            .len()
+            .saturating_sub(default_transport_path.len());
+        let derived_path = format!("{}{}", &configured_path[..prefix_len], catalog_url.path());
+        return Some(rebased_url_with_path(
+            configured,
+            &derived_path,
+            catalog_url,
+        ));
     }
-    if let Some(prefix) = endpoint.split("/v1/messages").next() {
-        if prefix != endpoint {
-            return Some(format!("{prefix}/v1/models"));
-        }
+
+    if path_is_prefix_of(configured_path, default_transport_path) {
+        return Some(rebased_url(configured, catalog_url));
     }
-    if endpoint.contains("/v1") {
-        let base = endpoint
-            .split("/v1")
-            .next()
-            .unwrap_or(endpoint)
-            .trim_end_matches('/');
-        return Some(format!("{base}/v1/models"));
-    }
+
     None
 }
 
-fn derive_google_models_endpoint(endpoint: &str) -> Option<String> {
-    if endpoint.ends_with("/models") {
-        return Some(endpoint.to_string());
-    }
-    if let Some(prefix) = endpoint.split("/models/").next() {
-        if prefix != endpoint {
-            return Some(format!("{prefix}/models"));
-        }
-    }
-    if endpoint.contains("generativelanguage.googleapis.com") && endpoint.contains("/v1") {
-        let base = endpoint
-            .split("/v1")
-            .next()
-            .unwrap_or(endpoint)
-            .trim_end_matches('/');
-        let version = if endpoint.contains("/v1beta") {
-            "v1beta"
-        } else {
-            "v1"
-        };
-        return Some(format!("{base}/{version}/models"));
-    }
-    Some(endpoint.to_string())
+fn rebased_url(base: &reqwest::Url, catalog_url: &reqwest::Url) -> String {
+    rebased_url_with_path(base, catalog_url.path(), catalog_url)
 }
 
-fn derive_ollama_models_endpoint(endpoint: &str) -> Option<String> {
-    if endpoint.ends_with("/api/tags") {
-        return Some(endpoint.to_string());
+fn rebased_url_with_path(base: &reqwest::Url, path: &str, catalog_url: &reqwest::Url) -> String {
+    let mut resolved = base.clone();
+    resolved.set_path(path);
+    resolved.set_query(catalog_url.query());
+    resolved.set_fragment(None);
+    resolved.to_string()
+}
+
+fn path_is_prefix_of(prefix_path: &str, full_path: &str) -> bool {
+    let prefix = prefix_path.trim_end_matches('/');
+    let full = full_path.trim_end_matches('/');
+    if prefix.is_empty() || prefix == "/" {
+        return true;
     }
-    if let Some(prefix) = endpoint.split("/v1/chat/completions").next() {
-        if prefix != endpoint {
-            return Some(format!("{prefix}/api/tags"));
-        }
-    }
-    if let Some(prefix) = endpoint.split("/v1/responses").next() {
-        if prefix != endpoint {
-            return Some(format!("{prefix}/api/tags"));
-        }
-    }
-    if endpoint.contains("/v1") {
-        let base = endpoint
-            .split("/v1")
-            .next()
-            .unwrap_or(endpoint)
-            .trim_end_matches('/');
-        return Some(format!("{base}/api/tags"));
-    }
-    if endpoint.contains("/api") {
-        let base = endpoint
-            .split("/api")
-            .next()
-            .unwrap_or(endpoint)
-            .trim_end_matches('/');
-        return Some(format!("{base}/api/tags"));
-    }
-    Some(format!("{}/api/tags", endpoint.trim_end_matches('/')))
+    full == prefix || full.starts_with(&format!("{prefix}/"))
+}
+
+fn same_origin(left: &reqwest::Url, right: &reqwest::Url) -> bool {
+    left.scheme().eq_ignore_ascii_case(right.scheme())
+        && left
+            .host_str()
+            .zip(right.host_str())
+            .is_some_and(|(l, r)| l.eq_ignore_ascii_case(r))
+        && left.port_or_known_default() == right.port_or_known_default()
 }
 
 fn truncate_error(raw: &str) -> String {
@@ -787,8 +752,14 @@ mod tests {
 
     #[test]
     fn derives_google_models_endpoint_from_generate_content_url() {
-        let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
-        let derived = derive_google_models_endpoint(endpoint).unwrap();
+        let surface = resolved_surface_spec(
+            AiProviderType::Google,
+            Some("provider_surface.google.direct_api"),
+        )
+        .expect("google surface should resolve");
+        let endpoint =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+        let derived = derive_model_catalog_endpoint_from_surface(surface, endpoint).unwrap();
         assert_eq!(
             derived,
             "https://generativelanguage.googleapis.com/v1beta/models"
@@ -797,23 +768,50 @@ mod tests {
 
     #[test]
     fn derives_openai_models_endpoint_from_chat_completions_url() {
+        let surface = resolved_surface_spec(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.direct_api"),
+        )
+        .expect("openai surface should resolve");
         let endpoint = "https://api.openai.com/v1/chat/completions";
-        let derived = derive_openai_models_endpoint(endpoint).unwrap();
+        let derived = derive_model_catalog_endpoint_from_surface(surface, endpoint).unwrap();
         assert_eq!(derived, "https://api.openai.com/v1/models");
     }
 
     #[test]
     fn derives_openai_models_endpoint_from_responses_url() {
+        let surface = resolved_surface_spec(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.direct_api"),
+        )
+        .expect("openai surface should resolve");
         let endpoint = "https://api.openai.com/v1/responses";
-        let derived = derive_openai_models_endpoint(endpoint).unwrap();
+        let derived = derive_model_catalog_endpoint_from_surface(surface, endpoint).unwrap();
         assert_eq!(derived, "https://api.openai.com/v1/models");
     }
 
     #[test]
     fn derives_ollama_models_endpoint_from_responses_url() {
+        let surface = resolved_surface_spec(
+            AiProviderType::Ollama,
+            Some("provider_surface.ollama.local_http"),
+        )
+        .expect("ollama surface should resolve");
         let endpoint = "http://localhost:11434/v1/responses";
-        let derived = derive_ollama_models_endpoint(endpoint).unwrap();
+        let derived = derive_model_catalog_endpoint_from_surface(surface, endpoint).unwrap();
         assert_eq!(derived, "http://localhost:11434/api/tags");
+    }
+
+    #[test]
+    fn derives_generic_local_openai_compatible_models_endpoint_from_v1_base() {
+        let surface = resolved_surface_spec(
+            AiProviderType::Generic,
+            Some("provider_surface.generic.local_openai_compatible"),
+        )
+        .expect("generic local openai-compatible surface should resolve");
+        let endpoint = "http://127.0.0.1:1234/v1";
+        let derived = derive_model_catalog_endpoint_from_surface(surface, endpoint).unwrap();
+        assert_eq!(derived, "http://127.0.0.1:1234/v1/models");
     }
 
     #[test]

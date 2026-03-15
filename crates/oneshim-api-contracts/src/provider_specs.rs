@@ -258,6 +258,13 @@ pub enum SurfaceStability {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelCatalogStrategy {
+    None,
+    HttpModelsEndpoint,
+    SubprocessProbe,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubprocessInvocationMode {
     CodexExecJson,
     ClaudePrintJson,
@@ -586,6 +593,28 @@ pub fn parse_surface_stability(raw: &str) -> Result<SurfaceStability, String> {
         "deprecated" => Ok(SurfaceStability::Deprecated),
         other => Err(format!("Unsupported surface stability '{other}'.")),
     }
+}
+
+pub fn parse_model_catalog_strategy(raw: &str) -> Result<ModelCatalogStrategy, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "none" => Ok(ModelCatalogStrategy::None),
+        "http_models_endpoint" => Ok(ModelCatalogStrategy::HttpModelsEndpoint),
+        "subprocess_probe" => Ok(ModelCatalogStrategy::SubprocessProbe),
+        other => Err(format!("Unsupported model catalog strategy '{other}'.")),
+    }
+}
+
+pub fn model_catalog_strategy(surface_id: &str) -> Result<ModelCatalogStrategy, String> {
+    let surface = provider_surface_spec(surface_id)?;
+    parse_model_catalog_strategy(&surface.catalog_strategy)
+}
+
+pub fn resolved_model_catalog_strategy(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<ModelCatalogStrategy, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    parse_model_catalog_strategy(&surface.catalog_strategy)
 }
 
 pub fn parse_subprocess_invocation_mode(raw: &str) -> Result<SubprocessInvocationMode, String> {
@@ -1237,6 +1266,7 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
         validate_model_capability_profile(&surface.capability_rules.ocr)?;
         validate_model_capability_profile(&surface.capability_rules.image_input)?;
         validate_model_capability_profile(&surface.capability_rules.structured_output)?;
+        let catalog_strategy = parse_model_catalog_strategy(&surface.catalog_strategy)?;
 
         if surface.supports.llm
             && surface.default_models.llm_models.is_empty()
@@ -1281,6 +1311,12 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                     )?;
                 }
                 if surface.supports.model_catalog {
+                    if catalog_strategy != ModelCatalogStrategy::HttpModelsEndpoint {
+                        return Err(format!(
+                            "Surface '{}' must use catalog_strategy='http_models_endpoint' for direct or managed HTTP model discovery.",
+                            surface.surface_id
+                        ));
+                    }
                     let transport = surface.model_catalog_transport.as_ref().ok_or_else(|| {
                         format!(
                             "Surface '{}' supports model_catalog but is missing model_catalog_transport.",
@@ -1338,6 +1374,14 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                 }
             }
             SurfaceExecutionKind::SubprocessCli => {
+                if surface.supports.model_catalog
+                    && catalog_strategy != ModelCatalogStrategy::SubprocessProbe
+                {
+                    return Err(format!(
+                        "Subprocess surface '{}' must use catalog_strategy='subprocess_probe' when model_catalog is enabled.",
+                        surface.surface_id
+                    ));
+                }
                 let subprocess = surface.subprocess_transport.as_ref().ok_or_else(|| {
                     format!(
                         "Surface '{}' uses subprocess_cli but is missing subprocess_transport.",
@@ -1827,6 +1871,11 @@ mod tests {
             subprocess_invocation_mode("provider_surface.openai.subprocess_cli")
                 .expect("invocation mode should resolve"),
             SubprocessInvocationMode::CodexExecJson
+        );
+        assert_eq!(
+            model_catalog_strategy("provider_surface.openai.direct_api")
+                .expect("catalog strategy should resolve"),
+            ModelCatalogStrategy::HttpModelsEndpoint
         );
         assert_eq!(
             subprocess_auth_probe_mode("provider_surface.anthropic.subprocess_cli")
