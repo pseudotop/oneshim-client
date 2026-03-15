@@ -7,6 +7,7 @@ import type {
 } from '../api/contracts'
 
 export type EndpointSurfaceKind = 'ocr_api' | 'llm_api'
+export type UnknownModelPolicy = 'allow' | 'warn' | 'reject'
 
 const STABILITY_RANK: Record<string, number> = {
   ga: 3,
@@ -326,4 +327,17 @@ export function surfaceModelSupportsCapability(
   }
 
   return endpointKind === 'ocr_api' ? known.capabilities.ocr : known.capabilities.llm
+}
+
+export function surfaceUnknownModelPolicy(
+  surface: ProviderSurfaceSpec | undefined,
+  endpointKind: EndpointSurfaceKind,
+): UnknownModelPolicy {
+  if (!surface) {
+    return 'warn'
+  }
+
+  return endpointKind === 'ocr_api'
+    ? surface.unknown_model_policy?.ocr ?? 'warn'
+    : surface.unknown_model_policy?.llm ?? 'warn'
 }

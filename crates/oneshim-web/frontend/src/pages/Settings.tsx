@@ -49,6 +49,7 @@ import {
   resolveProviderTypeForSurface,
   sortProviderSurfaces,
   surfaceKnownModel,
+  surfaceUnknownModelPolicy,
   surfaceSupportsModelSelection,
   type EndpointSurfaceKind,
 } from '../features/providerSurfaces'
@@ -714,6 +715,17 @@ export default function Settings() {
   const isLlmModelExplicitlyUnsupported = (detail: ProviderDiscoveredModel | undefined): boolean =>
     Boolean(detail && detail.llm_support === 'unsupported')
 
+  const isOcrModelCompatibilityUnknown = (detail: ProviderDiscoveredModel | undefined): boolean =>
+    Boolean(
+      detail &&
+        (detail.ocr_support === 'unknown' ||
+          detail.image_input_support === 'unknown' ||
+          detail.supports_ocr == null),
+    )
+
+  const isLlmModelCompatibilityUnknown = (detail: ProviderDiscoveredModel | undefined): boolean =>
+    Boolean(detail && detail.llm_support === 'unknown')
+
   const normalizeModelId = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase()
 
   const findModelDetail = (
@@ -727,31 +739,57 @@ export default function Settings() {
 
   const getModelOptions = (which: 'ocr_api' | 'llm_api'): string[] => {
     const surfaceModels = getSurfaceModels(which)
+    const surface = resolveEndpointSurface(which)
+    const unknownPolicy = surfaceUnknownModelPolicy(surface, which)
+    const isAllowedDiscoveredModel = (detail: ProviderDiscoveredModel): boolean => {
+      if (which === 'ocr_api') {
+        if (isOcrModelExplicitlyUnsupported(detail)) {
+          return false
+        }
+        return !(unknownPolicy === 'reject' && isOcrModelCompatibilityUnknown(detail))
+      }
+
+      if (isLlmModelExplicitlyUnsupported(detail)) {
+        return false
+      }
+      return !(unknownPolicy === 'reject' && isLlmModelCompatibilityUnknown(detail))
+    }
     const discoveredModels =
       modelCatalogDetails[which].length > 0
         ? modelCatalogDetails[which]
-            .filter((detail) =>
-              which === 'ocr_api'
-                ? !isOcrModelExplicitlyUnsupported(detail)
-                : !isLlmModelExplicitlyUnsupported(detail),
-            )
+            .filter((detail) => isAllowedDiscoveredModel(detail))
             .map((detail) => detail.id)
         : modelCatalog[which]
     const allowedSurfaceModels =
       which === 'ocr_api'
-        ? surfaceModels.filter((model) => !isOcrModelExplicitlyUnsupported(findModelDetail(which, model)))
-        : surfaceModels.filter((model) => !isLlmModelExplicitlyUnsupported(findModelDetail(which, model)))
+        ? surfaceModels.filter((model) => {
+            const detail = findModelDetail(which, model)
+            return !detail || isAllowedDiscoveredModel(detail)
+          })
+        : surfaceModels.filter((model) => {
+            const detail = findModelDetail(which, model)
+            return !detail || isAllowedDiscoveredModel(detail)
+          })
     return Array.from(new Set([...discoveredModels, ...allowedSurfaceModels]))
   }
 
   const getModelCompatibilityNotice = (which: 'ocr_api' | 'llm_api'): string | null => {
     const currentModel = formData?.ai_provider[which]?.model
+    const surface = resolveEndpointSurface(which)
+    const unknownPolicy = surfaceUnknownModelPolicy(surface, which)
     const detail = findModelDetail(which, currentModel)
     if (!detail) {
-      if (currentModel?.trim() && modelCatalogDetails[which].length > 0) {
-        return which === 'ocr_api'
-          ? t('settingsAutomation.ocrModelCompatibilityUnknown', { model: currentModel })
-          : t('settingsAutomation.llmModelCompatibilityUnknown', { model: currentModel })
+      if (currentModel?.trim() && !surfaceKnownModel(surface, currentModel)) {
+        if (unknownPolicy === 'reject') {
+          return which === 'ocr_api'
+            ? t('settingsAutomation.ocrModelCompatibilityUnknownRejected', { model: currentModel })
+            : t('settingsAutomation.llmModelCompatibilityUnknownRejected', { model: currentModel })
+        }
+        if (unknownPolicy === 'warn') {
+          return which === 'ocr_api'
+            ? t('settingsAutomation.ocrModelCompatibilityUnknown', { model: currentModel })
+            : t('settingsAutomation.llmModelCompatibilityUnknown', { model: currentModel })
+        }
       }
       return null
     }
@@ -760,10 +798,34 @@ export default function Settings() {
         model: detail.display_name ?? detail.id,
       })
     }
+    if (which === 'ocr_api' && isOcrModelCompatibilityUnknown(detail)) {
+      if (unknownPolicy === 'reject') {
+        return t('settingsAutomation.ocrModelCompatibilityUnknownRejected', {
+          model: detail.display_name ?? detail.id,
+        })
+      }
+      if (unknownPolicy === 'warn') {
+        return t('settingsAutomation.ocrModelCompatibilityUnknown', {
+          model: detail.display_name ?? detail.id,
+        })
+      }
+    }
     if (which === 'llm_api' && isLlmModelExplicitlyUnsupported(detail)) {
       return t('settingsAutomation.llmModelUnsupported', {
         model: detail.display_name ?? detail.id,
       })
+    }
+    if (which === 'llm_api' && isLlmModelCompatibilityUnknown(detail)) {
+      if (unknownPolicy === 'reject') {
+        return t('settingsAutomation.llmModelCompatibilityUnknownRejected', {
+          model: detail.display_name ?? detail.id,
+        })
+      }
+      if (unknownPolicy === 'warn') {
+        return t('settingsAutomation.llmModelCompatibilityUnknown', {
+          model: detail.display_name ?? detail.id,
+        })
+      }
     }
     return null
   }
@@ -816,13 +878,26 @@ export default function Settings() {
       [which]: result.model_details ?? [],
     }))
 
+    const unknownPolicy = surfaceUnknownModelPolicy(resolveEndpointSurface(which), which)
     const preferredDiscoveredModel =
       which === 'ocr_api'
-        ? (result.model_details ?? []).find((detail) => !isOcrModelExplicitlyUnsupported(detail))?.id
-        : (result.model_details ?? []).find((detail) => !isLlmModelExplicitlyUnsupported(detail))?.id
+        ? (result.model_details ?? []).find(
+            (detail) =>
+              !isOcrModelExplicitlyUnsupported(detail) &&
+              !(unknownPolicy === 'reject' && isOcrModelCompatibilityUnknown(detail)),
+          )?.id
+        : (result.model_details ?? []).find(
+            (detail) =>
+              !isLlmModelExplicitlyUnsupported(detail) &&
+              !(unknownPolicy === 'reject' && isLlmModelCompatibilityUnknown(detail)),
+          )?.id
 
     const canFallbackToRawModelList = !result.model_details || result.model_details.length === 0
-    if ((!currentModel || !currentModel.trim()) && (preferredDiscoveredModel || (canFallbackToRawModelList && result.models.length > 0))) {
+    if (
+      (!currentModel || !currentModel.trim()) &&
+      (preferredDiscoveredModel ||
+        (canFallbackToRawModelList && unknownPolicy !== 'reject' && result.models.length > 0))
+    ) {
       handleExternalApiChange(which, 'model', preferredDiscoveredModel ?? result.models[0])
     }
   }

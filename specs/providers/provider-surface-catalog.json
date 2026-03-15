@@ -55,6 +55,10 @@
         "llm_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"],
         "ocr_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"]
       },
+      "unknown_model_policy": {
+        "llm": "allow",
+        "ocr": "reject"
+      },
       "known_models": [
         {
           "id": "claude-sonnet-4-20250514",
@@ -138,6 +142,10 @@
       "default_models": {
         "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
         "ocr_models": ["gpt-5.4", "gpt-5-mini"]
+      },
+      "unknown_model_policy": {
+        "llm": "allow",
+        "ocr": "reject"
       },
       "known_models": [
         {
@@ -241,6 +249,10 @@
         "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
         "ocr_models": []
       },
+      "unknown_model_policy": {
+        "llm": "allow",
+        "ocr": "reject"
+      },
       "known_models": [
         {
           "id": "gpt-5.4",
@@ -318,6 +330,10 @@
         "llm_models": ["gpt-5.4", "gpt-5.2-codex", "gpt-5.2"],
         "ocr_models": []
       },
+      "unknown_model_policy": {
+        "llm": "allow",
+        "ocr": "reject"
+      },
       "known_models": [
         {
           "id": "gpt-5.4",
@@ -390,6 +406,10 @@
         "llm_models": ["claude-opus-4-6", "claude-sonnet-4", "sonnet", "opus"],
         "ocr_models": []
       },
+      "unknown_model_policy": {
+        "llm": "allow",
+        "ocr": "reject"
+      },
       "known_models": [
         {
           "id": "claude-opus-4-6",
@@ -453,6 +473,10 @@
       "default_models": {
         "llm_models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-3-pro-preview"],
         "ocr_models": []
+      },
+      "unknown_model_policy": {
+        "llm": "allow",
+        "ocr": "reject"
       },
       "known_models": [
         {
@@ -554,6 +578,10 @@
       "default_models": {
         "llm_models": ["qwen3:8b", "gpt-oss:20b", "gemma3:4b"],
         "ocr_models": ["qwen3-vl:8b", "gemma3:4b", "gemma3:12b"]
+      },
+      "unknown_model_policy": {
+        "llm": "allow",
+        "ocr": "warn"
       },
       "known_models": [
         {
@@ -662,6 +690,10 @@
         "llm_models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
         "ocr_models": []
       },
+      "unknown_model_policy": {
+        "llm": "allow",
+        "ocr": "reject"
+      },
       "known_models": [
         {
           "id": "gemini-2.5-pro",
@@ -733,6 +765,10 @@
       "default_models": {
         "llm_models": ["gpt-5-mini", "gpt-5.4"],
         "ocr_models": ["gpt-5-mini"]
+      },
+      "unknown_model_policy": {
+        "llm": "warn",
+        "ocr": "warn"
       },
       "known_models": [
         {

@@ -54,6 +54,8 @@ pub struct ProviderSurfaceSpec {
     pub default_models: SurfaceDefaultModels,
     pub parameter_profiles: ProviderParameterSet,
     #[serde(default)]
+    pub unknown_model_policy: ProviderUnknownModelPolicySet,
+    #[serde(default)]
     pub known_models: Vec<ProviderKnownModelSpec>,
     #[serde(default)]
     pub llm_transport: Option<ProviderTransportSpec>,
@@ -111,6 +113,22 @@ pub struct ProviderKnownModelCapabilities {
     pub ocr: bool,
     #[serde(default)]
     pub image_input: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderUnknownModelPolicy {
+    Allow,
+    Warn,
+    Reject,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct ProviderUnknownModelPolicySet {
+    #[serde(default = "default_unknown_model_policy")]
+    pub llm: ProviderUnknownModelPolicy,
+    #[serde(default = "default_unknown_model_policy")]
+    pub ocr: ProviderUnknownModelPolicy,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -212,6 +230,19 @@ pub enum SubprocessAuthProbeMode {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_unknown_model_policy() -> ProviderUnknownModelPolicy {
+    ProviderUnknownModelPolicy::Warn
+}
+
+impl Default for ProviderUnknownModelPolicySet {
+    fn default() -> Self {
+        Self {
+            llm: default_unknown_model_policy(),
+            ocr: default_unknown_model_policy(),
+        }
+    }
 }
 
 pub fn list_provider_surface_specs() -> Result<ProviderSurfaceCatalog, String> {
@@ -716,7 +747,22 @@ pub fn validate_known_model_capability(
 
     let surface = resolved_surface_spec(provider_type, surface_id)?;
     let Some(model) = known_model_spec_for_surface(&surface.surface_id, normalized)? else {
-        return Ok(());
+        let policy = unknown_model_policy_for_surface(&surface.surface_id, capability)?;
+        return match policy {
+            ProviderUnknownModelPolicy::Allow | ProviderUnknownModelPolicy::Warn => Ok(()),
+            ProviderUnknownModelPolicy::Reject => {
+                let capability_label = match capability {
+                    SurfaceCapabilityKind::Llm => "LLM",
+                    SurfaceCapabilityKind::Ocr => "OCR",
+                };
+                let replacement = default_surface_model(&surface.surface_id, capability)?
+                    .unwrap_or_else(|| "a compatible default model".to_string());
+                Err(format!(
+                    "Model '{}' is not catalogued for {} surface '{}'. Choose a known compatible model such as '{}'.",
+                    normalized, capability_label, surface.surface_id, replacement
+                ))
+            }
+        };
     };
 
     let supported = match capability {
@@ -739,6 +785,17 @@ pub fn validate_known_model_capability(
         "Model '{}' is not marked as {}-capable for surface '{}'. Choose a compatible model such as '{}'.",
         normalized, capability_label, surface.surface_id, replacement
     ))
+}
+
+pub fn unknown_model_policy_for_surface(
+    surface_id: &str,
+    capability: SurfaceCapabilityKind,
+) -> Result<ProviderUnknownModelPolicy, String> {
+    let surface = provider_surface_spec(surface_id)?;
+    Ok(match capability {
+        SurfaceCapabilityKind::Llm => surface.unknown_model_policy.llm,
+        SurfaceCapabilityKind::Ocr => surface.unknown_model_policy.ocr,
+    })
 }
 
 fn surface_catalog() -> Result<&'static ProviderSurfaceCatalog, String> {
@@ -1580,5 +1637,37 @@ mod tests {
             .expect("ollama probe should exist");
         assert_eq!(probe.url, "http://localhost:11434/api/version");
         assert_eq!(probe.auth_scheme, "none");
+    }
+
+    #[test]
+    fn resolves_unknown_model_policy_from_catalog() {
+        assert_eq!(
+            unknown_model_policy_for_surface(
+                "provider_surface.openai.direct_api",
+                SurfaceCapabilityKind::Llm
+            )
+            .expect("llm policy should resolve"),
+            ProviderUnknownModelPolicy::Allow
+        );
+        assert_eq!(
+            unknown_model_policy_for_surface(
+                "provider_surface.openai.direct_api",
+                SurfaceCapabilityKind::Ocr
+            )
+            .expect("ocr policy should resolve"),
+            ProviderUnknownModelPolicy::Reject
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_ocr_models_when_surface_policy_requires_known_models() {
+        let error = validate_known_model_capability(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.direct_api"),
+            SurfaceCapabilityKind::Ocr,
+            "gpt-5.999",
+        )
+        .expect_err("unknown OCR model should be rejected");
+        assert!(error.contains("not catalogued"));
     }
 }

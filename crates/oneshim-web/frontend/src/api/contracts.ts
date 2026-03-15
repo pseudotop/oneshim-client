@@ -286,6 +286,10 @@ export interface ProviderSurfaceSpec {
   catalog_strategy: string
   supports: ProviderSurfaceSupports
   default_models: SurfaceDefaultModels
+  unknown_model_policy?: {
+    llm: 'allow' | 'warn' | 'reject'
+    ocr: 'allow' | 'warn' | 'reject'
+  } | null
   known_models: ProviderKnownModelSpec[]
   parameter_profiles: {
     llm: {
