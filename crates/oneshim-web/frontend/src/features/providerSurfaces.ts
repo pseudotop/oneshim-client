@@ -89,6 +89,7 @@ export function getCompatibleProviderSurfaces(
   catalog: ProviderSurfaceCatalog,
   accessMode: string | null | undefined,
   endpointKind: EndpointSurfaceKind,
+  snapshot?: FeatureCapabilitySnapshot | null,
 ): ProviderSurfaceSpec[] {
   const executionKind = expectedExecutionKind(accessMode, endpointKind)
   if (!executionKind) {
@@ -99,6 +100,7 @@ export function getCompatibleProviderSurfaces(
     catalog.surfaces.filter(
       (surface) => surface.execution_kind === executionKind && surfaceSupportsKind(surface, endpointKind),
     ),
+    snapshot,
   )
 }
 
@@ -107,11 +109,12 @@ export function deriveDefaultProviderSurfaceId(
   accessMode: string | null | undefined,
   endpointKind: EndpointSurfaceKind,
   providerType: string | null | undefined,
+  snapshot?: FeatureCapabilitySnapshot | null,
 ): string | null {
   const normalizedProvider = normalizedProviderType(providerType)
-  const compatible = getCompatibleProviderSurfaces(catalog, accessMode, endpointKind)
+  const compatible = getCompatibleProviderSurfaces(catalog, accessMode, endpointKind, snapshot)
   const vendorMatch = compatible.filter((surface) => surface.provider_type === normalizedProvider)
-  const candidates = sortProviderSurfaces(vendorMatch.length > 0 ? vendorMatch : compatible)
+  const candidates = sortProviderSurfaces(vendorMatch.length > 0 ? vendorMatch : compatible, snapshot)
 
   return candidates[0]?.surface_id ?? null
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../../api/defaultProviderSurfaceCatalog'
+import type { FeatureCapabilitySnapshot } from '../../api/contracts'
 import {
   deriveDefaultProviderSurfaceId,
   getCompatibleProviderSurfaces,
@@ -66,6 +67,41 @@ describe('provider surface defaults', () => {
 
     expect(
       preferredRelatedProviderSurface(DEFAULT_PROVIDER_SURFACE_CATALOG, oauthSurface, 'subprocess_cli')?.surface_id,
+    ).toBe('provider_surface.openai.subprocess_cli')
+  })
+
+  it('uses capability availability when deriving default CLI surface', () => {
+    const snapshot: FeatureCapabilitySnapshot = {
+      features: [
+        {
+          feature_id: 'provider_surface.openai.subprocess_cli',
+          maturity: 'beta',
+          availability: 'available',
+          preferred: true,
+          requires: ['cli:codex'],
+          status_reason: null,
+          status_copy_key: null,
+        },
+        {
+          feature_id: 'provider_surface.anthropic.subprocess_cli',
+          maturity: 'beta',
+          availability: 'unavailable',
+          preferred: true,
+          requires: ['cli:claude-code'],
+          status_reason: null,
+          status_copy_key: null,
+        },
+      ],
+    }
+
+    expect(
+      deriveDefaultProviderSurfaceId(
+        DEFAULT_PROVIDER_SURFACE_CATALOG,
+        'ProviderSubscriptionCli',
+        'llm_api',
+        'Generic',
+        snapshot,
+      ),
     ).toBe('provider_surface.openai.subprocess_cli')
   })
 })

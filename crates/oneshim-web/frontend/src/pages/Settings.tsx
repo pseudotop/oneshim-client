@@ -223,7 +223,7 @@ export default function Settings() {
     )
     const surfaceId =
       requestedSurface?.surface_id ??
-      deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, providerType)
+      deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, providerType, featureCapabilities)
     const previousSurface = providerSurfaceById(providerCatalog, seed.surface_id)
     const nextSurface = requestedSurface ?? providerSurfaceById(providerCatalog, surfaceId)
     const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, endpointKind)
@@ -498,7 +498,13 @@ export default function Settings() {
     accessMode: string,
     endpointKind: EndpointSurfaceKind,
   ): ExternalApiSettings => {
-    const surfaceId = deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, 'Generic')
+    const surfaceId = deriveDefaultProviderSurfaceId(
+      providerCatalog,
+      accessMode,
+      endpointKind,
+      'Generic',
+      featureCapabilities,
+    )
     const surface = providerSurfaceById(providerCatalog, surfaceId)
     const authMode = deriveEndpointAuthMode(accessMode, endpointKind, surface)
     const backendKind = deriveEndpointBackendKind(authMode)
@@ -524,7 +530,13 @@ export default function Settings() {
     const providerType = resolveProviderTypeForSurface(providerCatalog, endpoint?.surface_id, endpoint?.provider_type)
     const surfaceId =
       endpoint?.surface_id ??
-      deriveDefaultProviderSurfaceId(providerCatalog, formData?.ai_provider.access_mode, which, providerType)
+      deriveDefaultProviderSurfaceId(
+        providerCatalog,
+        formData?.ai_provider.access_mode,
+        which,
+        providerType,
+        featureCapabilities,
+      )
     return providerSurfaceById(providerCatalog, surfaceId)
   }
 
@@ -549,7 +561,7 @@ export default function Settings() {
 
   const getCompatibleSurfaceOptions = (which: 'ocr_api' | 'llm_api'): ProviderSurfaceSpec[] =>
     sortProviderSurfaces(
-      getCompatibleProviderSurfaces(providerCatalog, formData?.ai_provider.access_mode, which),
+      getCompatibleProviderSurfaces(providerCatalog, formData?.ai_provider.access_mode, which, featureCapabilities),
       featureCapabilities,
     )
 
