@@ -49,7 +49,8 @@ use crate::notification_manager::NotificationManager;
 use crate::provider_adapters::ExternalOcrPrivacyGuard;
 #[cfg(feature = "server")]
 use crate::provider_secret_backend::{
-    create_os_secret_store, is_writable_backend_kind, resolve_provider_secret_backend,
+    build_provider_secret_store_set, create_os_secret_store, is_writable_backend_kind,
+    resolve_provider_secret_backend,
 };
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
 use crate::update_coordinator;
@@ -264,6 +265,15 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "server")]
     let provider_secret_store = provider_secret_backend.secret_store.clone();
     #[cfg(feature = "server")]
+    let provider_secret_stores = build_provider_secret_store_set(
+        &config_dir,
+        desktop_secret_store.clone(),
+        &provider_secret_backend,
+    )
+    .map_err(|err| -> Box<dyn std::error::Error> {
+        Box::new(std::io::Error::other(err.to_string()))
+    })?;
+    #[cfg(feature = "server")]
     if is_writable_backend_kind(provider_secret_backend.backend_kind) {
         if let Some(secret_store) = provider_secret_store.clone() {
             match handle.block_on(
@@ -469,7 +479,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     automation_frame_storage.clone(),
                     Some(external_ocr_privacy_guard.clone()),
                     skill_loader.clone(),
-                    provider_secret_store.clone(),
+                    Some(provider_secret_stores.clone()),
                     validated_oauth_port,
                 )
             });
@@ -578,6 +588,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(feature = "server")]
             {
                 web_server = web_server
+                    .with_secret_stores(provider_secret_stores.clone())
                     .with_default_secret_backend_kind(provider_secret_backend.backend_kind);
             }
             if let Some(status) = ai_runtime_status {

@@ -220,7 +220,11 @@ async fn resolve_saved_model_discovery_api_key(
     if let Ok(source) = CredentialSource::from_api_key_endpoint_for_profile(
         saved_endpoint,
         Some(surface.profile_id()),
-        state.secret_store.clone(),
+        state
+            .secret_stores
+            .as_ref()
+            .and_then(|stores| stores.for_binding(saved_endpoint.credential.as_ref()))
+            .or_else(|| state.secret_store.clone()),
     ) {
         if let Ok(secret) = source.resolve_bearer_token().await {
             if !secret.trim().is_empty() {
@@ -466,6 +470,7 @@ mod tests {
             config_manager: Some(config_manager),
             default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::LegacyConfig,
             secret_store: Some(secret_store),
+            secret_stores: None,
             audit_logger: None,
             automation_controller: None,
             ai_runtime_status: None,

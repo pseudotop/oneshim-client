@@ -11,7 +11,7 @@ use oneshim_core::config::{
     OcrValidationConfig, PiiFilterLevel, SandboxProfile, SceneActionOverrideConfig,
     SceneIntelligenceConfig, SecretRef, Weekday,
 };
-use oneshim_core::ports::secret_store::{provider_api_key_secret_ref, SecretStore};
+use oneshim_core::ports::secret_store::{provider_api_key_secret_ref, SecretStore, SecretStoreSet};
 use std::sync::Arc;
 
 use crate::error::ApiError;
@@ -61,6 +61,7 @@ pub async fn update_settings(state: &AppState, settings: &AppSettings) -> Result
         persist_api_key_bindings(
             &mut next_config,
             state.secret_store.clone(),
+            state.secret_stores.as_ref(),
             state.default_secret_backend_kind,
         )
         .await?;
@@ -83,6 +84,7 @@ pub async fn update_settings(state: &AppState, settings: &AppSettings) -> Result
 async fn persist_api_key_bindings(
     config: &mut AppConfig,
     secret_store: Option<Arc<dyn SecretStore>>,
+    secret_stores: Option<&SecretStoreSet>,
     default_backend_kind: CredentialBackendKind,
 ) -> Result<(), ApiError> {
     let access_mode = config.ai_provider.access_mode;
@@ -93,6 +95,7 @@ async fn persist_api_key_bindings(
             access_mode,
             ApiEndpointKind::Ocr,
             secret_store.clone(),
+            secret_stores,
             default_backend_kind,
         )
         .await?;
@@ -104,6 +107,7 @@ async fn persist_api_key_bindings(
             access_mode,
             ApiEndpointKind::Llm,
             secret_store,
+            secret_stores,
             default_backend_kind,
         )
         .await?;
@@ -117,6 +121,7 @@ async fn persist_api_key_binding(
     access_mode: AiAccessMode,
     endpoint_kind: ApiEndpointKind,
     secret_store: Option<Arc<dyn SecretStore>>,
+    secret_stores: Option<&SecretStoreSet>,
     default_backend_kind: CredentialBackendKind,
 ) -> Result<(), ApiError> {
     let auth_mode = endpoint
@@ -134,7 +139,13 @@ async fn persist_api_key_binding(
         return Ok(());
     }
 
-    match default_backend_kind {
+    let backend_kind = endpoint
+        .credential
+        .as_ref()
+        .map(|binding| binding.backend_kind)
+        .unwrap_or(default_backend_kind);
+
+    match backend_kind {
         CredentialBackendKind::Env => {
             return Err(ApiError::BadRequest(
                 "Environment-backed provider credentials are read-only; update the environment source instead.".to_string(),
@@ -166,6 +177,10 @@ async fn persist_api_key_binding(
         CredentialBackendKind::OsSecretStore | CredentialBackendKind::FileSecretStore => {}
     }
 
+    let secret_store = secret_stores
+        .and_then(|stores| stores.for_binding(endpoint.credential.as_ref()))
+        .or(secret_store);
+
     let Some(secret_store) = secret_store else {
         return Err(ApiError::Internal(
             "Writable provider secret backend was selected, but no secret store was initialized."
@@ -188,7 +203,7 @@ async fn persist_api_key_binding(
 
     endpoint.credential = Some(CredentialBinding {
         auth_mode: CredentialAuthMode::ApiKey,
-        backend_kind: default_backend_kind,
+        backend_kind,
         secret_ref: Some(SecretRef {
             namespace,
             key: key.to_string(),
@@ -1130,6 +1145,7 @@ mod tests {
             config_manager: None,
             default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::LegacyConfig,
             secret_store: None,
+            secret_stores: None,
             audit_logger: None,
             automation_controller: None,
             ai_runtime_status: None,
@@ -1150,6 +1166,7 @@ mod tests {
             config_manager: Some(config_manager),
             default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::OsSecretStore,
             secret_store,
+            secret_stores: None,
             audit_logger: None,
             automation_controller: None,
             ai_runtime_status: None,
@@ -1413,6 +1430,7 @@ mod tests {
             config_manager: Some(config_manager),
             default_secret_backend_kind: CredentialBackendKind::Env,
             secret_store: Some(Arc::new(TestSecretStore::new())),
+            secret_stores: None,
             audit_logger: None,
             automation_controller: None,
             ai_runtime_status: None,

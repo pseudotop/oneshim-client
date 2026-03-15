@@ -4,6 +4,8 @@ use std::sync::Arc;
 use oneshim_core::config::{CredentialBackendKind, CredentialBinding};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::secret_store::SecretStore;
+#[cfg(feature = "server")]
+use oneshim_core::ports::secret_store::SecretStoreSet;
 use oneshim_storage::env_secret_store::EnvSecretStore;
 use oneshim_storage::file_secret_store::FileSecretStore;
 use oneshim_storage::keychain::{KeychainOps, KeychainSecretStore};
@@ -36,6 +38,14 @@ pub fn create_os_secret_store(config_dir: &Path) -> Option<Arc<dyn SecretStore>>
         Ok(ops) => Some(Arc::new(KeychainSecretStore::new(Arc::new(ops))) as Arc<dyn SecretStore>),
         Err(_) => None,
     }
+}
+
+pub fn create_file_secret_store(config_dir: &Path) -> Result<Arc<dyn SecretStore>, CoreError> {
+    Ok(Arc::new(FileSecretStore::new(file_secret_store_path(config_dir))?) as Arc<dyn SecretStore>)
+}
+
+pub fn create_env_secret_store() -> Arc<dyn SecretStore> {
+    Arc::new(EnvSecretStore::from_current_process()) as Arc<dyn SecretStore>
 }
 
 pub fn resolve_provider_secret_backend(
@@ -93,16 +103,27 @@ pub fn create_secret_store_for_binding(
 
     match binding.backend_kind {
         CredentialBackendKind::OsSecretStore => Ok(os_secret_store),
-        CredentialBackendKind::FileSecretStore => Ok(Some(Arc::new(FileSecretStore::new(
-            file_secret_store_path(config_dir),
-        )?) as Arc<dyn SecretStore>)),
-        CredentialBackendKind::Env => Ok(Some(
-            Arc::new(EnvSecretStore::from_current_process()) as Arc<dyn SecretStore>
-        )),
+        CredentialBackendKind::FileSecretStore => Ok(Some(create_file_secret_store(config_dir)?)),
+        CredentialBackendKind::Env => Ok(Some(create_env_secret_store())),
         CredentialBackendKind::BridgeManaged
         | CredentialBackendKind::LegacyConfig
         | CredentialBackendKind::Unavailable => Ok(None),
     }
+}
+
+#[cfg(feature = "server")]
+pub fn build_provider_secret_store_set(
+    config_dir: &Path,
+    os_secret_store: Option<Arc<dyn SecretStore>>,
+    resolution: &ProviderSecretBackendResolution,
+) -> Result<SecretStoreSet, CoreError> {
+    Ok(SecretStoreSet {
+        os_secret_store,
+        file_secret_store: Some(create_file_secret_store(config_dir)?),
+        env_secret_store: Some(create_env_secret_store()),
+        default_backend_kind: resolution.backend_kind,
+        fallback_backend_kind: resolution.fallback_backend_kind,
+    })
 }
 
 #[cfg(feature = "server")]

@@ -37,7 +37,7 @@ use oneshim_core::config::{CredentialBackendKind, WebConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
-use oneshim_core::ports::secret_store::SecretStore;
+use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -65,6 +65,7 @@ pub struct AppState {
     pub config_manager: Option<ConfigManager>,
     pub default_secret_backend_kind: CredentialBackendKind,
     pub secret_store: Option<Arc<dyn SecretStore>>,
+    pub secret_stores: Option<SecretStoreSet>,
     pub audit_logger: Option<Arc<dyn AuditLogPort>>,
     pub automation_controller: Option<Arc<dyn AutomationPort>>,
     pub ai_runtime_status: Option<AiRuntimeStatus>,
@@ -90,6 +91,7 @@ impl WebServer {
                 config_manager: None,
                 default_secret_backend_kind: CredentialBackendKind::LegacyConfig,
                 secret_store: None,
+                secret_stores: None,
                 audit_logger: None,
                 automation_controller: None,
                 ai_runtime_status: None,
@@ -120,6 +122,11 @@ impl WebServer {
 
     pub fn with_secret_store(mut self, secret_store: Arc<dyn SecretStore>) -> Self {
         self.state.secret_store = Some(secret_store);
+        self
+    }
+
+    pub fn with_secret_stores(mut self, secret_stores: SecretStoreSet) -> Self {
+        self.state.secret_stores = Some(secret_stores);
         self
     }
 

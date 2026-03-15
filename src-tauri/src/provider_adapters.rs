@@ -24,7 +24,7 @@ use oneshim_core::ports::monitor::ProcessMonitor;
 use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::ocr_provider::OcrProvider;
 use oneshim_core::ports::ocr_provider::OcrResult;
-use oneshim_core::ports::secret_store::SecretStore;
+use oneshim_core::ports::secret_store::SecretStoreSet;
 #[cfg(feature = "server")]
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
 #[cfg(feature = "server")]
@@ -297,7 +297,7 @@ pub fn resolve_ai_provider_adapters(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
-    secret_store: Option<Arc<dyn SecretStore>>,
+    secret_stores: Option<SecretStoreSet>,
     #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AiProviderAdapters, CoreError> {
     match config.access_mode {
@@ -322,10 +322,10 @@ pub fn resolve_ai_provider_adapters(
                 config,
                 pii_filter_level,
                 external_ocr_privacy_guard.clone(),
-                secret_store.clone(),
+                secret_stores.clone(),
             )?;
             let (llm, llm_source, llm_fallback_reason) =
-                resolve_llm_provider(config, secret_store.clone())?;
+                resolve_llm_provider(config, secret_stores.clone())?;
             Ok(AiProviderAdapters {
                 ocr,
                 llm,
@@ -340,10 +340,10 @@ pub fn resolve_ai_provider_adapters(
                 config,
                 pii_filter_level,
                 external_ocr_privacy_guard.clone(),
-                secret_store.clone(),
+                secret_stores.clone(),
             )?;
             let (llm, llm_source, llm_fallback_reason) =
-                resolve_llm_provider(config, secret_store.clone())?;
+                resolve_llm_provider(config, secret_stores.clone())?;
             Ok(AiProviderAdapters {
                 ocr,
                 llm,
@@ -374,7 +374,7 @@ pub fn resolve_ai_provider_adapters(
                     config,
                     pii_filter_level,
                     external_ocr_privacy_guard.clone(),
-                    secret_store,
+                    secret_stores,
                 )?;
                 let (llm, llm_source, llm_fallback_reason) =
                     resolve_llm_provider_oauth(config, oauth)?;
@@ -409,7 +409,7 @@ fn resolve_ocr_provider(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
-    secret_store: Option<Arc<dyn SecretStore>>,
+    secret_stores: Option<SecretStoreSet>,
 ) -> OcrProviderResolution {
     match config.ocr_provider {
         OcrProviderType::Local => Ok((
@@ -425,6 +425,9 @@ fn resolve_ocr_provider(
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
+                        let secret_store = secret_stores
+                            .as_ref()
+                            .and_then(|stores| stores.for_binding(endpoint.credential.as_ref()));
                         let credential = CredentialSource::from_api_key_endpoint_for_profile(
                             endpoint,
                             Some("ocr"),
@@ -463,7 +466,7 @@ fn resolve_ocr_provider(
 #[allow(unused_variables)]
 fn resolve_llm_provider(
     config: &AiProviderConfig,
-    secret_store: Option<Arc<dyn SecretStore>>,
+    secret_stores: Option<SecretStoreSet>,
 ) -> LlmProviderResolution {
     match config.llm_provider {
         LlmProviderType::Local => Ok((
@@ -479,6 +482,9 @@ fn resolve_llm_provider(
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.llm_api.as_ref(), "llm_api")?;
+                        let secret_store = secret_stores
+                            .as_ref()
+                            .and_then(|stores| stores.for_binding(endpoint.credential.as_ref()));
                         let credential = CredentialSource::from_api_key_endpoint_for_profile(
                             endpoint,
                             Some("llm"),
@@ -1088,6 +1094,13 @@ mod tests {
             "sk-secret-store".to_string(),
         );
         let secret_store = Arc::new(EnvSecretStore::from_snapshot(snapshot));
+        let secret_stores = SecretStoreSet {
+            os_secret_store: None,
+            file_secret_store: None,
+            env_secret_store: Some(secret_store),
+            default_backend_kind: CredentialBackendKind::Env,
+            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+        };
 
         let secret_bound_endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
@@ -1128,7 +1141,7 @@ mod tests {
             &config,
             PiiFilterLevel::Standard,
             Some(privacy_guard),
-            Some(secret_store),
+            Some(secret_stores),
             None,
         )
         .expect("Secret-bound API key configuration should resolve");

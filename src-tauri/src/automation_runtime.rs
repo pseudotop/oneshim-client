@@ -8,7 +8,7 @@ use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
 use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
-use oneshim_core::ports::secret_store::SecretStore;
+use oneshim_core::ports::secret_store::SecretStoreSet;
 use oneshim_core::ports::skill_loader::SkillLoader;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::element_finder::OcrElementFinder;
@@ -131,14 +131,14 @@ pub fn build_automation_runtime(
     frame_storage: Option<Arc<FrameFileStorage>>,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
     skill_loader: Option<Arc<dyn SkillLoader>>,
-    secret_store: Option<Arc<dyn SecretStore>>,
+    secret_stores: Option<SecretStoreSet>,
     #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AutomationRuntime, CoreError> {
     let adapters = resolve_ai_provider_adapters(
         ai_config,
         pii_filter_level,
         external_ocr_privacy_guard,
-        secret_store,
+        secret_stores,
         #[cfg(feature = "server")]
         oauth_port,
     )?;

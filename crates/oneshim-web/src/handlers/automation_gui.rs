@@ -419,6 +419,7 @@ mod tests {
                 default_secret_backend_kind:
                     oneshim_core::config::CredentialBackendKind::LegacyConfig,
                 secret_store: None,
+                secret_stores: None,
                 audit_logger: None,
                 automation_controller: Some(make_controller()),
                 ai_runtime_status: None,
@@ -437,6 +438,7 @@ mod tests {
                 default_secret_backend_kind:
                     oneshim_core::config::CredentialBackendKind::LegacyConfig,
                 secret_store: None,
+                secret_stores: None,
                 audit_logger: None,
                 automation_controller: None,
                 ai_runtime_status: None,

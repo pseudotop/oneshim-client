@@ -4,8 +4,11 @@
 //! plaintext config storage. This port abstracts OS keychain, explicit file
 //! backends, environment-backed sources, or in-memory test doubles.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 
+use crate::config::{CredentialBackendKind, CredentialBinding};
 use crate::error::CoreError;
 
 pub const DEFAULT_SECRET_PROFILE: &str = "default";
@@ -99,6 +102,54 @@ pub trait SecretStore: Send + Sync {
 
     /// Delete all secrets under a namespace.
     async fn delete_namespace(&self, namespace: &str) -> Result<(), CoreError>;
+}
+
+#[derive(Clone)]
+pub struct SecretStoreSet {
+    pub os_secret_store: Option<Arc<dyn SecretStore>>,
+    pub file_secret_store: Option<Arc<dyn SecretStore>>,
+    pub env_secret_store: Option<Arc<dyn SecretStore>>,
+    pub default_backend_kind: CredentialBackendKind,
+    pub fallback_backend_kind: CredentialBackendKind,
+}
+
+impl SecretStoreSet {
+    pub fn for_backend_kind(
+        &self,
+        backend_kind: CredentialBackendKind,
+    ) -> Option<Arc<dyn SecretStore>> {
+        match backend_kind {
+            CredentialBackendKind::OsSecretStore => self.os_secret_store.clone(),
+            CredentialBackendKind::FileSecretStore => self.file_secret_store.clone(),
+            CredentialBackendKind::Env => self.env_secret_store.clone(),
+            CredentialBackendKind::BridgeManaged
+            | CredentialBackendKind::LegacyConfig
+            | CredentialBackendKind::Unavailable => None,
+        }
+    }
+
+    pub fn for_binding(&self, binding: Option<&CredentialBinding>) -> Option<Arc<dyn SecretStore>> {
+        let backend_kind = binding
+            .map(|value| value.backend_kind)
+            .unwrap_or(self.default_backend_kind);
+        self.for_backend_kind(backend_kind)
+    }
+
+    pub fn default_store(&self) -> Option<Arc<dyn SecretStore>> {
+        self.for_backend_kind(self.default_backend_kind)
+    }
+}
+
+impl Default for SecretStoreSet {
+    fn default() -> Self {
+        Self {
+            os_secret_store: None,
+            file_secret_store: None,
+            env_secret_store: None,
+            default_backend_kind: CredentialBackendKind::LegacyConfig,
+            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -231,5 +282,31 @@ mod tests {
     fn env_secret_var_name_normalizes_namespace_and_key() {
         let env_name = secret_env_var_name("provider/openai/default", "api_key");
         assert_eq!(env_name, "ONESHIM_SECRET_PROVIDER_OPENAI_DEFAULT_API_KEY");
+    }
+
+    #[test]
+    fn secret_store_set_uses_binding_backend_kind() {
+        let os_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
+        let file_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
+        let stores = SecretStoreSet {
+            os_secret_store: Some(os_store.clone()),
+            file_secret_store: Some(file_store.clone()),
+            env_secret_store: None,
+            default_backend_kind: CredentialBackendKind::OsSecretStore,
+            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+        };
+        let binding = CredentialBinding {
+            auth_mode: crate::config::CredentialAuthMode::ApiKey,
+            backend_kind: CredentialBackendKind::FileSecretStore,
+            secret_ref: None,
+            projection_enabled: false,
+        };
+
+        let selected = stores.for_binding(Some(&binding)).expect("selected store");
+        assert!(Arc::ptr_eq(&selected, &file_store));
+        assert!(Arc::ptr_eq(
+            &stores.default_store().expect("default store"),
+            &os_store
+        ));
     }
 }

@@ -93,6 +93,7 @@ mod tests {
             config_manager: None,
             default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::LegacyConfig,
             secret_store: None,
+            secret_stores: None,
             audit_logger: None,
             automation_controller: None,
             ai_runtime_status: None,
