@@ -8,13 +8,16 @@ use oneshim_core::provider_surface::{provider_surface_spec, ProviderSurfaceTrans
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
+use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 use tempfile::tempdir;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
 const DEFAULT_SUBPROCESS_TIMEOUT_SECS: u64 = 60;
+const CLI_AUTH_PROBE_TIMEOUT_SECS: u64 = 2;
 const ACTION_SCHEMA_JSON: &str = r#"{
   "type": "object",
   "properties": {
@@ -421,18 +424,13 @@ fn probe_cli_surface(detected: DetectedSubprocessCli) -> ProbedSubprocessCli {
 }
 
 fn probe_codex_auth_status(executable_path: &Path) -> (SubprocessCliAuthStatus, Option<String>) {
-    let output = match StdCommand::new(executable_path)
-        .arg("login")
-        .arg("status")
-        .output()
-    {
+    let output = match run_probe_command_with_timeout(
+        executable_path,
+        &["login", "status"],
+        Duration::from_secs(CLI_AUTH_PROBE_TIMEOUT_SECS),
+    ) {
         Ok(output) => output,
-        Err(err) => {
-            return (
-                SubprocessCliAuthStatus::Unknown,
-                Some(format!("probe_failed:{err}")),
-            );
-        }
+        Err(detail) => return (SubprocessCliAuthStatus::Unknown, Some(detail)),
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -468,19 +466,13 @@ fn parse_codex_auth_status(raw: &str) -> (SubprocessCliAuthStatus, Option<String
 }
 
 fn probe_claude_auth_status(executable_path: &Path) -> (SubprocessCliAuthStatus, Option<String>) {
-    let output = match StdCommand::new(executable_path)
-        .arg("auth")
-        .arg("status")
-        .arg("--json")
-        .output()
-    {
+    let output = match run_probe_command_with_timeout(
+        executable_path,
+        &["auth", "status", "--json"],
+        Duration::from_secs(CLI_AUTH_PROBE_TIMEOUT_SECS),
+    ) {
         Ok(output) => output,
-        Err(err) => {
-            return (
-                SubprocessCliAuthStatus::Unknown,
-                Some(format!("probe_failed:{err}")),
-            );
-        }
+        Err(detail) => return (SubprocessCliAuthStatus::Unknown, Some(detail)),
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -512,6 +504,44 @@ fn parse_claude_auth_status(raw: &str) -> (SubprocessCliAuthStatus, Option<Strin
             SubprocessCliAuthStatus::Unknown,
             Some("missing_loggedIn_field".to_string()),
         ),
+    }
+}
+
+fn run_probe_command_with_timeout(
+    executable_path: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    let mut child = StdCommand::new(executable_path)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("probe_failed:{err}"))?;
+
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                return child
+                    .wait_with_output()
+                    .map_err(|err| format!("probe_failed:{err}"));
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!("probe_timeout:{}ms", timeout.as_millis()));
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("probe_failed:{err}"));
+            }
+        }
     }
 }
 
