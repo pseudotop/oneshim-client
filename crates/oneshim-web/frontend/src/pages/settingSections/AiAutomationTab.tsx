@@ -5,6 +5,7 @@ import type {
   ExternalApiSettings,
   FeatureCapabilitySnapshot,
   OcrValidationSettings as OcrValidationSettingsType,
+  ProviderEndpointProbeResult,
   ProviderSurfaceSpec,
   SandboxSettings,
   SceneActionOverrideSettings as SceneActionOverrideSettingsType,
@@ -214,6 +215,8 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
   modelCatalogNotice: Record<'ocr_api' | 'llm_api', string | null>
   modelCompatibilityNotice: Record<'ocr_api' | 'llm_api', string | null>
   modelCatalogLoading: 'ocr_api' | 'llm_api' | null
+  endpointProbeResult: Record<'ocr_api' | 'llm_api', ProviderEndpointProbeResult | null>
+  endpointProbeLoading: Record<'ocr_api' | 'llm_api', boolean>
   onAutomationChange: (field: keyof AutomationSettings, value: boolean) => void
   onSandboxChange: (field: keyof SandboxSettings, value: boolean | string | number | string[]) => void
   onAiProviderChange: (
@@ -244,6 +247,8 @@ export default function AiAutomationTab({
   modelCatalogNotice,
   modelCompatibilityNotice,
   modelCatalogLoading,
+  endpointProbeResult,
+  endpointProbeLoading,
   onAutomationChange,
   onSandboxChange,
   onAiProviderChange,
@@ -385,12 +390,13 @@ export default function AiAutomationTab({
 
     const maturity = providerSurfaceMaturity(surface, featureCapabilities)
     const customSelfHostedEndpoint = usesCustomSelfHostedEndpoint(surface, endpointKind)
-    const availability = customSelfHostedEndpoint
-      ? 'partially_available'
-      : providerSurfaceAvailability(surface, featureCapabilities)
-    const statusCopyKey = customSelfHostedEndpoint
-      ? null
-      : providerSurfaceStatusCopyKey(surface, featureCapabilities)
+    const endpointProbe = endpointProbeResult[endpointKind]
+    const availability =
+      endpointProbe?.availability ??
+      (customSelfHostedEndpoint ? 'partially_available' : providerSurfaceAvailability(surface, featureCapabilities))
+    const statusCopyKey =
+      endpointProbe?.status_copy_key ??
+      (customSelfHostedEndpoint ? null : providerSurfaceStatusCopyKey(surface, featureCapabilities))
 
     return (
       <div className="space-y-2 rounded-lg border border-muted bg-surface-muted/80 p-3">
@@ -411,7 +417,7 @@ export default function AiAutomationTab({
           </span>
         </div>
         {statusCopyKey && <p className="text-content-secondary text-xs">{t(statusCopyKey)}</p>}
-        {customSelfHostedEndpoint && (
+        {customSelfHostedEndpoint && !endpointProbe && !endpointProbeLoading[endpointKind] && (
           <p className="text-content-secondary text-xs">
             {t('settingsAutomation.selfHostedCustomEndpointStatus')}
           </p>

@@ -32,6 +32,7 @@ import type {
   LocalSuggestion,
   PaginatedResponse,
   PoliciesInfo,
+  ProviderEndpointProbeResult,
   PresetRunResult,
   ProcessSnapshot,
   ProviderModelsRequest,
@@ -721,4 +722,16 @@ export async function fetchSecretBackendCapabilities(): Promise<SecretBackendCap
 
 export async function fetchFeatureCapabilities(): Promise<FeatureCapabilitySnapshot> {
   return tauriInvoke<FeatureCapabilitySnapshot>('get_feature_capabilities')
+}
+
+export async function probeProviderSurfaceEndpoint(args: {
+  surface_id: string
+  endpoint_kind: 'ocr_api' | 'llm_api'
+  endpoint: string
+}): Promise<ProviderEndpointProbeResult> {
+  return tauriInvoke<ProviderEndpointProbeResult>('probe_provider_surface_endpoint', {
+    surfaceId: args.surface_id,
+    endpointKind: args.endpoint_kind,
+    endpoint: args.endpoint,
+  })
 }

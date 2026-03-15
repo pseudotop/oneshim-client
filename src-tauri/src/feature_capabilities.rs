@@ -45,7 +45,23 @@ pub struct FeatureCapabilitySnapshot {
     pub features: Vec<FeatureCapability>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProviderEndpointProbeResult {
+    pub surface_id: String,
+    pub endpoint_kind: String,
+    pub endpoint: String,
+    pub availability: FeatureAvailability,
+    pub status_reason: Option<String>,
+    pub status_copy_key: Option<String>,
+}
+
 pub struct FeatureCapabilityState(pub SecretBackendCapabilities);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EndpointProbeKind {
+    LlmApi,
+    OcrApi,
+}
 
 pub async fn build_feature_capability_snapshot(
     secret_backend: &SecretBackendCapabilities,
@@ -220,6 +236,23 @@ async fn probed_http_surface_feature(surface: &ProviderSurfaceSpec) -> FeatureCa
 }
 
 async fn probe_surface_http_reachability(surface: &ProviderSurfaceSpec) -> Result<bool, String> {
+    let probe_url = surface
+        .availability_probe
+        .as_ref()
+        .map(|probe| probe.url.clone())
+        .ok_or_else(|| {
+            format!(
+                "Surface '{}' is missing availability_probe.",
+                surface.surface_id
+            )
+        })?;
+    probe_surface_http_reachability_at_url(surface, &probe_url).await
+}
+
+async fn probe_surface_http_reachability_at_url(
+    surface: &ProviderSurfaceSpec,
+    probe_url: &str,
+) -> Result<bool, String> {
     let probe = surface.availability_probe.as_ref().ok_or_else(|| {
         format!(
             "Surface '{}' is missing availability_probe.",
@@ -248,8 +281,8 @@ async fn probe_surface_http_reachability(surface: &ProviderSurfaceSpec) -> Resul
         .map_err(|error| format!("Failed to build availability probe client: {error}"))?;
     let method = probe.method.trim().to_ascii_uppercase();
     let response = match method.as_str() {
-        "GET" => client.get(&probe.url).send().await,
-        "HEAD" => client.head(&probe.url).send().await,
+        "GET" => client.get(probe_url).send().await,
+        "HEAD" => client.head(probe_url).send().await,
         other => {
             return Err(format!(
                 "Self-hosted availability probe for '{}' uses unsupported method '{}'.",
@@ -260,6 +293,164 @@ async fn probe_surface_http_reachability(surface: &ProviderSurfaceSpec) -> Resul
     .map_err(|error| format!("Availability probe request failed: {error}"))?;
 
     Ok(response.status().is_success())
+}
+
+pub async fn probe_provider_surface_endpoint(
+    surface_id: &str,
+    endpoint_kind: &str,
+    endpoint: &str,
+) -> ProviderEndpointProbeResult {
+    let normalized_endpoint = endpoint.trim().to_string();
+    let copy_key = |suffix: &str| Some(surface_status_copy_key(surface_id, suffix));
+
+    let surface = match oneshim_api_contracts::provider_specs::provider_surface_spec(surface_id) {
+        Ok(surface) => surface,
+        Err(error) => {
+            return ProviderEndpointProbeResult {
+                surface_id: surface_id.to_string(),
+                endpoint_kind: endpoint_kind.to_string(),
+                endpoint: normalized_endpoint,
+                availability: FeatureAvailability::PartiallyAvailable,
+                status_reason: Some(format!("surface_missing:{error}")),
+                status_copy_key: copy_key("partially_available"),
+            }
+        }
+    };
+
+    let parsed_kind = match parse_endpoint_probe_kind(endpoint_kind) {
+        Ok(kind) => kind,
+        Err(error) => {
+            return ProviderEndpointProbeResult {
+                surface_id: surface.surface_id.clone(),
+                endpoint_kind: endpoint_kind.to_string(),
+                endpoint: normalized_endpoint,
+                availability: FeatureAvailability::PartiallyAvailable,
+                status_reason: Some(format!("endpoint_kind_invalid:{error}")),
+                status_copy_key: copy_key("partially_available"),
+            }
+        }
+    };
+
+    let probe_url = match probe_url_for_endpoint(surface, parsed_kind, endpoint) {
+        Ok(url) => url,
+        Err(error) => {
+            return ProviderEndpointProbeResult {
+                surface_id: surface.surface_id.clone(),
+                endpoint_kind: endpoint_kind.to_string(),
+                endpoint: normalized_endpoint,
+                availability: FeatureAvailability::PartiallyAvailable,
+                status_reason: Some(format!("probe_url_invalid:{error}")),
+                status_copy_key: copy_key("partially_available"),
+            }
+        }
+    };
+
+    let (availability, status_reason, copy_suffix) =
+        match probe_surface_http_reachability_at_url(surface, &probe_url).await {
+            Ok(true) => (
+                FeatureAvailability::Available,
+                Some("service_reachable".to_string()),
+                "available",
+            ),
+            Ok(false) => (
+                FeatureAvailability::Unavailable,
+                Some("service_unreachable".to_string()),
+                "unavailable",
+            ),
+            Err(error) => (
+                FeatureAvailability::PartiallyAvailable,
+                Some(format!("service_probe_failed:{error}")),
+                "partially_available",
+            ),
+        };
+
+    ProviderEndpointProbeResult {
+        surface_id: surface.surface_id.clone(),
+        endpoint_kind: endpoint_kind.to_string(),
+        endpoint: normalized_endpoint,
+        availability,
+        status_reason,
+        status_copy_key: copy_key(copy_suffix),
+    }
+}
+
+fn parse_endpoint_probe_kind(raw: &str) -> Result<EndpointProbeKind, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "llm_api" => Ok(EndpointProbeKind::LlmApi),
+        "ocr_api" => Ok(EndpointProbeKind::OcrApi),
+        other => Err(format!("Unsupported endpoint kind '{other}'.")),
+    }
+}
+
+fn probe_url_for_endpoint(
+    surface: &ProviderSurfaceSpec,
+    endpoint_kind: EndpointProbeKind,
+    endpoint: &str,
+) -> Result<String, String> {
+    let configured_endpoint = reqwest::Url::parse(endpoint.trim())
+        .map_err(|error| format!("Configured endpoint is invalid: {error}"))?;
+    let default_endpoint = default_surface_transport_url(surface, endpoint_kind)?;
+    let probe = surface.availability_probe.as_ref().ok_or_else(|| {
+        format!(
+            "Surface '{}' is missing availability_probe.",
+            surface.surface_id
+        )
+    })?;
+    let default_probe = reqwest::Url::parse(&probe.url)
+        .map_err(|error| format!("Availability probe URL is invalid: {error}"))?;
+
+    let configured_path = configured_endpoint.path().to_string();
+    let default_endpoint_path = default_endpoint.path().to_string();
+    let probe_path = default_probe.path().to_string();
+
+    let resolved_path =
+        if !default_endpoint_path.is_empty() && configured_path.ends_with(&default_endpoint_path) {
+            let prefix_len = configured_path.len() - default_endpoint_path.len();
+            format!("{}{}", &configured_path[..prefix_len], probe_path)
+        } else {
+            probe_path
+        };
+
+    let mut resolved = configured_endpoint;
+    resolved.set_path(&resolved_path);
+    resolved.set_query(default_probe.query());
+    resolved.set_fragment(None);
+    Ok(resolved.to_string())
+}
+
+fn default_surface_transport_url(
+    surface: &ProviderSurfaceSpec,
+    endpoint_kind: EndpointProbeKind,
+) -> Result<reqwest::Url, String> {
+    let raw = match endpoint_kind {
+        EndpointProbeKind::LlmApi => surface
+            .llm_transport
+            .as_ref()
+            .map(|transport| transport.url.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "Surface '{}' does not define an llm_transport.",
+                    surface.surface_id
+                )
+            })?,
+        EndpointProbeKind::OcrApi => surface
+            .ocr_transport
+            .as_ref()
+            .map(|transport| transport.url.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "Surface '{}' does not define an ocr_transport.",
+                    surface.surface_id
+                )
+            })?,
+    };
+
+    reqwest::Url::parse(raw).map_err(|error| {
+        format!(
+            "Default transport URL for '{}' is invalid: {error}",
+            surface.surface_id
+        )
+    })
 }
 
 fn feature_maturity(surface: &ProviderSurfaceSpec) -> FeatureMaturity {
@@ -436,5 +627,45 @@ mod tests {
             .requires
             .iter()
             .any(|value| value == "local_server:ollama"));
+    }
+
+    #[test]
+    fn probe_url_for_endpoint_keeps_custom_path_prefix() {
+        let surface = provider_surface_catalog()
+            .expect("catalog should load")
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.ollama.local_http")
+            .expect("ollama surface should exist")
+            .clone();
+
+        let url = probe_url_for_endpoint(
+            &surface,
+            EndpointProbeKind::LlmApi,
+            "http://127.0.0.1:11434/edge/ollama/v1/responses",
+        )
+        .expect("probe url should resolve");
+
+        assert_eq!(url, "http://127.0.0.1:11434/edge/ollama/api/version");
+    }
+
+    #[test]
+    fn probe_url_for_endpoint_falls_back_to_probe_path_when_suffix_does_not_match() {
+        let surface = provider_surface_catalog()
+            .expect("catalog should load")
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.ollama.local_http")
+            .expect("ollama surface should exist")
+            .clone();
+
+        let url = probe_url_for_endpoint(
+            &surface,
+            EndpointProbeKind::LlmApi,
+            "http://127.0.0.1:11434/custom-endpoint",
+        )
+        .expect("probe url should resolve");
+
+        assert_eq!(url, "http://127.0.0.1:11434/api/version");
     }
 }

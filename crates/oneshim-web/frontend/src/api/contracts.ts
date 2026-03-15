@@ -778,6 +778,15 @@ export interface FeatureCapabilitySnapshot {
   features: FeatureCapability[]
 }
 
+export interface ProviderEndpointProbeResult {
+  surface_id: string
+  endpoint_kind: string
+  endpoint: string
+  availability: FeatureAvailability
+  status_reason: string | null
+  status_copy_key: string | null
+}
+
 export interface AutomationStatus {
   enabled: boolean
   sandbox_enabled: boolean

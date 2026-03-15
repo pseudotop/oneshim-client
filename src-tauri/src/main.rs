@@ -109,6 +109,7 @@ fn main() {
             commands::get_web_port,
             commands::get_secret_backend_capabilities,
             commands::get_feature_capabilities,
+            commands::probe_provider_surface_endpoint,
             commands::get_allowed_setting_keys,
             commands::oauth_start_flow,
             commands::oauth_flow_status,

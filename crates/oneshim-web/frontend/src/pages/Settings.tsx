@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   type AiProviderSettings,
@@ -14,6 +14,8 @@ import {
   exportData,
   type FeatureCapabilitySnapshot,
   fetchProviderSurfaces,
+  probeProviderSurfaceEndpoint,
+  type ProviderEndpointProbeResult,
   fetchSecretBackendCapabilities,
   fetchSettings,
   fetchStorageStats,
@@ -131,6 +133,60 @@ export default function Settings() {
   })
 
   const providerCatalog = providerSurfaceCatalog ?? DEFAULT_PROVIDER_SURFACE_CATALOG
+  const resolveSurfaceForState = (
+    state: AppSettings | null,
+    which: 'ocr_api' | 'llm_api',
+  ): ProviderSurfaceSpec | undefined => {
+    const endpoint = state?.ai_provider[which]
+    const providerType = resolveProviderTypeForSurface(providerCatalog, endpoint?.surface_id, endpoint?.provider_type)
+    const surfaceId =
+      endpoint?.surface_id ??
+      deriveDefaultProviderSurfaceId(
+        providerCatalog,
+        state?.ai_provider.access_mode,
+        which,
+        providerType,
+        featureCapabilities,
+      )
+    return providerSurfaceById(providerCatalog, surfaceId)
+  }
+  const currentOcrSurface = resolveSurfaceForState(formData, 'ocr_api')
+  const currentLlmSurface = resolveSurfaceForState(formData, 'llm_api')
+  const deferredOcrEndpoint = useDeferredValue(formData?.ai_provider.ocr_api?.endpoint?.trim() ?? '')
+  const deferredLlmEndpoint = useDeferredValue(formData?.ai_provider.llm_api?.endpoint?.trim() ?? '')
+  const shouldProbeProviderEndpoint = (
+    surface: ProviderSurfaceSpec | undefined,
+    endpoint: string,
+  ): surface is ProviderSurfaceSpec =>
+    canQueryDesktopCapabilities &&
+    Boolean(surface?.availability_probe) &&
+    surface?.execution_kind === 'direct_http' &&
+    (surface.placement_kind === 'self_hosted' || surface.placement_kind === 'custom_hosted') &&
+    endpoint.length > 0
+
+  const { data: ocrEndpointProbe, isFetching: ocrEndpointProbeLoading } = useQuery<ProviderEndpointProbeResult>({
+    queryKey: ['provider-endpoint-probe', 'ocr_api', currentOcrSurface?.surface_id ?? null, deferredOcrEndpoint],
+    queryFn: () =>
+      probeProviderSurfaceEndpoint({
+        surface_id: currentOcrSurface!.surface_id,
+        endpoint_kind: 'ocr_api',
+        endpoint: deferredOcrEndpoint,
+      }),
+    enabled: shouldProbeProviderEndpoint(currentOcrSurface, deferredOcrEndpoint),
+    retry: 0,
+  })
+
+  const { data: llmEndpointProbe, isFetching: llmEndpointProbeLoading } = useQuery<ProviderEndpointProbeResult>({
+    queryKey: ['provider-endpoint-probe', 'llm_api', currentLlmSurface?.surface_id ?? null, deferredLlmEndpoint],
+    queryFn: () =>
+      probeProviderSurfaceEndpoint({
+        surface_id: currentLlmSurface!.surface_id,
+        endpoint_kind: 'llm_api',
+        endpoint: deferredLlmEndpoint,
+      }),
+    enabled: shouldProbeProviderEndpoint(currentLlmSurface, deferredLlmEndpoint),
+    retry: 0,
+  })
 
   const resetModelDiscoveryState = (targets: Array<'ocr_api' | 'llm_api'>) => {
     setModelCatalog((current) => {
@@ -613,20 +669,8 @@ export default function Settings() {
     }
   }
 
-  const resolveEndpointSurface = (which: 'ocr_api' | 'llm_api'): ProviderSurfaceSpec | undefined => {
-    const endpoint = formData?.ai_provider[which]
-    const providerType = resolveProviderTypeForSurface(providerCatalog, endpoint?.surface_id, endpoint?.provider_type)
-    const surfaceId =
-      endpoint?.surface_id ??
-      deriveDefaultProviderSurfaceId(
-        providerCatalog,
-        formData?.ai_provider.access_mode,
-        which,
-        providerType,
-        featureCapabilities,
-      )
-    return providerSurfaceById(providerCatalog, surfaceId)
-  }
+  const resolveEndpointSurface = (which: 'ocr_api' | 'llm_api'): ProviderSurfaceSpec | undefined =>
+    resolveSurfaceForState(formData, which)
 
   const handleExternalApiChange = (
     which: 'ocr_api' | 'llm_api',
@@ -968,6 +1012,14 @@ export default function Settings() {
                 llm_api: getModelCompatibilityNotice('llm_api'),
               }}
               modelCatalogLoading={modelCatalogLoading}
+              endpointProbeResult={{
+                ocr_api: ocrEndpointProbe ?? null,
+                llm_api: llmEndpointProbe ?? null,
+              }}
+              endpointProbeLoading={{
+                ocr_api: ocrEndpointProbeLoading,
+                llm_api: llmEndpointProbeLoading,
+              }}
               onAutomationChange={handleAutomationChange}
               onSandboxChange={handleSandboxChange}
               onAiProviderChange={handleAiProviderChange}
