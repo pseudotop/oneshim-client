@@ -10,16 +10,18 @@ use oneshim_core::ports::secret_store::{provider_api_key_secret_ref, SecretStore
 pub async fn migrate_legacy_provider_api_keys(
     config_manager: &ConfigManager,
     secret_store: Arc<dyn SecretStore>,
+    backend_kind: CredentialBackendKind,
 ) -> Result<bool, CoreError> {
     let mut config = config_manager.get();
     let mut changed = false;
 
     if let Some(endpoint) = config.ai_provider.ocr_api.as_mut() {
-        changed |= migrate_endpoint_if_needed(endpoint, "ocr", secret_store.clone()).await?;
+        changed |=
+            migrate_endpoint_if_needed(endpoint, "ocr", secret_store.clone(), backend_kind).await?;
     }
 
     if let Some(endpoint) = config.ai_provider.llm_api.as_mut() {
-        changed |= migrate_endpoint_if_needed(endpoint, "llm", secret_store).await?;
+        changed |= migrate_endpoint_if_needed(endpoint, "llm", secret_store, backend_kind).await?;
     }
 
     if changed {
@@ -33,7 +35,18 @@ async fn migrate_endpoint_if_needed(
     endpoint: &mut ExternalApiEndpoint,
     profile_id: &str,
     secret_store: Arc<dyn SecretStore>,
+    backend_kind: CredentialBackendKind,
 ) -> Result<bool, CoreError> {
+    if !matches!(
+        backend_kind,
+        CredentialBackendKind::OsSecretStore | CredentialBackendKind::FileSecretStore
+    ) {
+        return Err(CoreError::Config(format!(
+            "legacy provider API key migration requires a writable secret backend, got {:?}",
+            backend_kind
+        )));
+    }
+
     let api_key = endpoint.api_key.trim();
     if api_key.is_empty() {
         return Ok(false);
@@ -44,7 +57,7 @@ async fn migrate_endpoint_if_needed(
 
     endpoint.credential = Some(CredentialBinding {
         auth_mode: CredentialAuthMode::ApiKey,
-        backend_kind: CredentialBackendKind::OsSecretStore,
+        backend_kind,
         secret_ref: Some(SecretRef {
             namespace,
             key: key.to_string(),
@@ -143,9 +156,13 @@ mod tests {
         config_manager.update(config).unwrap();
 
         let secret_store = Arc::new(TestSecretStore::new()) as Arc<dyn SecretStore>;
-        let changed = migrate_legacy_provider_api_keys(&config_manager, secret_store.clone())
-            .await
-            .unwrap();
+        let changed = migrate_legacy_provider_api_keys(
+            &config_manager,
+            secret_store.clone(),
+            CredentialBackendKind::OsSecretStore,
+        )
+        .await;
+        let changed = changed.unwrap();
 
         assert!(changed);
         let migrated = config_manager.get();
@@ -172,10 +189,53 @@ mod tests {
         let config_manager = ConfigManager::with_path(config_path).unwrap();
         let secret_store = Arc::new(TestSecretStore::new()) as Arc<dyn SecretStore>;
 
-        let changed = migrate_legacy_provider_api_keys(&config_manager, secret_store)
-            .await
-            .unwrap();
+        let changed = migrate_legacy_provider_api_keys(
+            &config_manager,
+            secret_store,
+            CredentialBackendKind::OsSecretStore,
+        )
+        .await
+        .unwrap();
 
         assert!(!changed);
+    }
+
+    #[tokio::test]
+    async fn migrate_legacy_provider_api_keys_preserves_selected_backend_kind() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.json");
+        let config_manager = ConfigManager::with_path(config_path).unwrap();
+
+        let mut config = AppConfig::default_config();
+        config.ai_provider = AiProviderConfig {
+            llm_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.openai.com/v1".to_string(),
+                api_key: "sk-file-backend".to_string(),
+                model: Some("gpt-4.1-mini".to_string()),
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                credential: None,
+            }),
+            ..AiProviderConfig::default()
+        };
+        config_manager.update(config).unwrap();
+
+        let secret_store = Arc::new(TestSecretStore::new()) as Arc<dyn SecretStore>;
+        let changed = migrate_legacy_provider_api_keys(
+            &config_manager,
+            secret_store,
+            CredentialBackendKind::FileSecretStore,
+        )
+        .await
+        .unwrap();
+
+        assert!(changed);
+        let migrated = config_manager.get();
+        let binding = migrated
+            .ai_provider
+            .llm_api
+            .and_then(|endpoint| endpoint.credential)
+            .expect("binding");
+        assert_eq!(binding.backend_kind, CredentialBackendKind::FileSecretStore);
     }
 }

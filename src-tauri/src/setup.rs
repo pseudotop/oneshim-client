@@ -270,6 +270,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 crate::credential_migration::migrate_legacy_provider_api_keys(
                     &config_manager,
                     secret_store,
+                    provider_secret_backend.backend_kind,
                 ),
             ) {
                 Ok(true) => info!("Migrated legacy provider API keys into selected secret store"),
