@@ -39,9 +39,9 @@ use tracing::debug;
 use tracing::warn;
 
 use crate::subprocess_provider::{
-    preferred_cli_surface_for_config, probe_for_surface_id, probe_known_cli_surfaces,
-    select_cli_surface_for_config, ProbedSubprocessCli, SubprocessCliAuthStatus,
-    SubprocessLlmProvider,
+    cli_id_for_surface_id, preferred_cli_surface_for_config, probe_for_surface_id,
+    probe_known_cli_surfaces, runtime_supported_for_surface, select_cli_surface_for_config,
+    ProbedSubprocessCli, SubprocessCliAuthStatus, SubprocessLlmProvider,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -458,19 +458,22 @@ fn cli_subscription_unavailable_reason(
         .filter(|provider_type| *provider_type != AiProviderType::Generic)
     {
         if let Some(surface_id) = preferred_cli_surface_for_config(config) {
-            if let Some(surface) = probe_for_surface_id(detected, surface_id) {
+            if let Some(surface) = probe_for_surface_id(detected, &surface_id) {
                 return match surface.auth_status {
                     SubprocessCliAuthStatus::Authenticated => format!(
                         "Installed {} CLI was detected but the runtime adapter could not be selected.",
-                        surface.detected.surface_id.cli_id()
+                        cli_id_for_surface_id(&surface.detected.surface_id)
+                            .unwrap_or_else(|_| surface.detected.surface_id.clone())
                     ),
                     SubprocessCliAuthStatus::Unauthenticated => format!(
                         "Installed {} CLI is not authenticated. Sign in through the provider-owned CLI first.",
-                        surface.detected.surface_id.cli_id()
+                        cli_id_for_surface_id(&surface.detected.surface_id)
+                            .unwrap_or_else(|_| surface.detected.surface_id.clone())
                     ),
                     SubprocessCliAuthStatus::Unknown => format!(
                         "Installed {} CLI was detected, but authentication status could not be verified.",
-                        surface.detected.surface_id.cli_id()
+                        cli_id_for_surface_id(&surface.detected.surface_id)
+                            .unwrap_or_else(|_| surface.detected.surface_id.clone())
                     ),
                 };
             }
@@ -490,7 +493,7 @@ fn cli_subscription_unavailable_reason(
 
     if detected
         .iter()
-        .any(|surface| !surface.detected.surface_id.runtime_supported())
+        .any(|surface| !runtime_supported_for_surface(&surface.detected.surface_id))
     {
         return "Detected provider CLI executables do not yet have a supported runtime adapter."
             .to_string();
@@ -976,7 +979,7 @@ mod tests {
                 &config,
                 &[ProbedSubprocessCli {
                     detected: crate::subprocess_provider::DetectedSubprocessCli {
-                        surface_id: crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
+                        surface_id: "provider_surface.openai.subprocess_cli".to_string(),
                         executable_path: "/tmp/codex".into(),
                     },
                     auth_status: SubprocessCliAuthStatus::Authenticated,
@@ -1038,8 +1041,7 @@ mod tests {
                 &[
                     ProbedSubprocessCli {
                         detected: crate::subprocess_provider::DetectedSubprocessCli {
-                            surface_id:
-                                crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
+                            surface_id: "provider_surface.openai.subprocess_cli".to_string(),
                             executable_path: "/tmp/codex".into(),
                         },
                         auth_status: SubprocessCliAuthStatus::Authenticated,
@@ -1047,8 +1049,7 @@ mod tests {
                     },
                     ProbedSubprocessCli {
                         detected: crate::subprocess_provider::DetectedSubprocessCli {
-                            surface_id:
-                                crate::subprocess_provider::SubprocessCliSurfaceId::AnthropicClaudeCode,
+                            surface_id: "provider_surface.anthropic.subprocess_cli".to_string(),
                             executable_path: "/tmp/claude".into(),
                         },
                         auth_status: SubprocessCliAuthStatus::Authenticated,
@@ -1079,7 +1080,7 @@ mod tests {
             &config,
             &[ProbedSubprocessCli {
                 detected: crate::subprocess_provider::DetectedSubprocessCli {
-                    surface_id: crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
+                    surface_id: "provider_surface.openai.subprocess_cli".to_string(),
                     executable_path: "/tmp/codex".into(),
                 },
                 auth_status: SubprocessCliAuthStatus::Unauthenticated,

@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use oneshim_api_contracts::provider_specs::{
-    parse_surface_execution_kind, provider_surface_catalog,
-    provider_surface_spec as catalog_surface_spec, subprocess_auth_probe_mode,
+    list_subprocess_surface_specs, provider_surface_spec as catalog_surface_spec,
+    subprocess_auth_probe_mode, subprocess_invocation_mode, subprocess_runtime_supported,
     subprocess_transport as catalog_subprocess_transport, SubprocessAuthProbeMode,
-    SubprocessInvocationMode, SurfaceExecutionKind,
+    SubprocessInvocationMode, SurfaceCapabilityKind,
 };
 use oneshim_core::config::{AiProviderConfig, AiProviderType};
 use oneshim_core::error::CoreError;
@@ -35,102 +35,9 @@ const ACTION_SCHEMA_JSON: &str = r#"{
   "additionalProperties": false
 }"#;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SubprocessCliSurfaceId {
-    OpenAiCodex,
-    AnthropicClaudeCode,
-    GoogleGeminiCli,
-}
-
-impl SubprocessCliSurfaceId {
-    const ALL: [Self; 3] = [
-        Self::OpenAiCodex,
-        Self::AnthropicClaudeCode,
-        Self::GoogleGeminiCli,
-    ];
-
-    pub fn feature_id(self) -> &'static str {
-        match self {
-            Self::OpenAiCodex => "provider_surface.openai.subprocess_cli",
-            Self::AnthropicClaudeCode => "provider_surface.anthropic.subprocess_cli",
-            Self::GoogleGeminiCli => "provider_surface.google.subprocess_cli",
-        }
-    }
-
-    pub fn all() -> &'static [Self] {
-        &Self::ALL
-    }
-
-    pub fn from_feature_id(raw: &str) -> Option<Self> {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "provider_surface.openai.subprocess_cli" => Some(Self::OpenAiCodex),
-            "provider_surface.anthropic.subprocess_cli" => Some(Self::AnthropicClaudeCode),
-            "provider_surface.google.subprocess_cli" => Some(Self::GoogleGeminiCli),
-            _ => None,
-        }
-    }
-
-    fn surface_spec(self) -> &'static oneshim_api_contracts::provider_specs::ProviderSurfaceSpec {
-        catalog_surface_spec(self.feature_id()).expect("known subprocess surface must exist")
-    }
-
-    fn subprocess_transport(
-        self,
-    ) -> &'static oneshim_api_contracts::provider_specs::SubprocessTransportSpec {
-        catalog_subprocess_transport(self.feature_id())
-            .expect("known subprocess transport must exist")
-    }
-
-    pub fn cli_id(self) -> &'static str {
-        self.subprocess_transport().tool_id.as_str()
-    }
-
-    pub fn provider_name(self) -> &'static str {
-        match self {
-            Self::OpenAiCodex => "subprocess-codex",
-            Self::AnthropicClaudeCode => "subprocess-claude-code",
-            Self::GoogleGeminiCli => "subprocess-gemini-cli",
-        }
-    }
-
-    pub fn candidate_binaries(self) -> &'static [String] {
-        self.subprocess_transport().executable_candidates.as_slice()
-    }
-
-    pub fn auth_probe_command(self) -> &'static [String] {
-        self.subprocess_transport().auth_probe_command.as_slice()
-    }
-
-    pub fn auth_probe_mode(self) -> SubprocessAuthProbeMode {
-        subprocess_auth_probe_mode(self.feature_id())
-            .expect("known subprocess auth probe mode must resolve")
-    }
-
-    pub fn invocation_mode(self) -> SubprocessInvocationMode {
-        oneshim_api_contracts::provider_specs::subprocess_invocation_mode(self.feature_id())
-            .expect("known subprocess invocation mode must resolve")
-    }
-
-    pub fn default_model(self) -> &'static str {
-        self.surface_spec()
-            .default_models
-            .llm_models
-            .first()
-            .map(String::as_str)
-            .expect("known subprocess surface must declare a default llm model")
-    }
-
-    pub fn runtime_supported(self) -> bool {
-        matches!(
-            self.invocation_mode(),
-            SubprocessInvocationMode::CodexExecJson | SubprocessInvocationMode::ClaudePrintJson
-        )
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DetectedSubprocessCli {
-    pub surface_id: SubprocessCliSurfaceId,
+    pub surface_id: String,
     pub executable_path: PathBuf,
 }
 
@@ -151,6 +58,7 @@ pub struct ProbedSubprocessCli {
 #[derive(Debug, Clone)]
 pub struct SubprocessLlmProvider {
     surface: DetectedSubprocessCli,
+    provider_name: String,
     model: String,
     timeout: Duration,
 }
@@ -163,8 +71,13 @@ impl SubprocessLlmProvider {
             .and_then(|endpoint| endpoint.model.as_deref())
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .unwrap_or(surface.surface_id.default_model())
-            .to_string();
+            .map(str::to_string)
+            .or_else(|| {
+                default_llm_model_for_surface(&surface.surface_id)
+                    .ok()
+                    .flatten()
+            })
+            .unwrap_or_else(|| "gpt-5.4".to_string());
         let timeout_secs = config
             .llm_api
             .as_ref()
@@ -173,6 +86,8 @@ impl SubprocessLlmProvider {
             .unwrap_or(DEFAULT_SUBPROCESS_TIMEOUT_SECS);
 
         Self {
+            provider_name: provider_name_for_surface_id(&surface.surface_id)
+                .unwrap_or_else(|_| "subprocess-provider-cli".to_string()),
             surface,
             model,
             timeout: Duration::from_secs(timeout_secs),
@@ -186,14 +101,10 @@ impl SubprocessLlmProvider {
         skill_ctx: &SkillContext,
     ) -> Result<InterpretedAction, CoreError> {
         let prompt = build_intent_prompt(screen_context, intent_hint, skill_ctx)?;
-        let raw = match self.surface.surface_id.invocation_mode() {
+        let raw = match invocation_mode_for_surface(&self.surface.surface_id)? {
             SubprocessInvocationMode::CodexExecJson => self.run_codex(&prompt).await?,
             SubprocessInvocationMode::ClaudePrintJson => self.run_claude(&prompt).await?,
-            SubprocessInvocationMode::GeminiCliPrompt => {
-                return Err(CoreError::Config(
-                    "Gemini CLI subprocess runtime is not implemented yet.".to_string(),
-                ));
-            }
+            SubprocessInvocationMode::GeminiCliPrompt => self.run_gemini(&prompt).await?,
         };
 
         parse_interpreted_action_output(&raw)
@@ -223,13 +134,12 @@ impl SubprocessLlmProvider {
             .arg(&schema_path)
             .arg("--output-last-message")
             .arg(&output_path)
-            .arg("--model")
-            .arg(&self.model)
             .arg("-")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        append_model_flag(&mut child, &self.surface.surface_id, &self.model);
 
         let mut child = child.spawn().map_err(|err| {
             CoreError::Internal(format!("Failed to spawn Codex CLI subprocess: {err}"))
@@ -253,7 +163,7 @@ impl SubprocessLlmProvider {
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
-                self.surface.surface_id,
+                &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
         }
@@ -272,37 +182,67 @@ impl SubprocessLlmProvider {
             CoreError::Internal(format!("Failed to create Claude subprocess tempdir: {err}"))
         })?;
 
-        let output = timeout(
-            self.timeout,
-            Command::new(&self.surface.executable_path)
-                .arg("-p")
-                .arg("--permission-mode")
-                .arg("dontAsk")
-                .arg("--tools")
-                .arg("")
-                .arg("--no-session-persistence")
-                .arg("--output-format")
-                .arg("text")
-                .arg("--json-schema")
-                .arg(ACTION_SCHEMA_JSON)
-                .arg("--model")
-                .arg(&self.model)
-                .arg(prompt)
-                .current_dir(temp_dir.path())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .kill_on_drop(true)
-                .output(),
-        )
-        .await
-        .map_err(|_| CoreError::RequestTimeout {
-            timeout_ms: self.timeout.as_millis() as u64,
-        })?
-        .map_err(CoreError::Io)?;
+        let mut command = Command::new(&self.surface.executable_path);
+        command
+            .arg("-p")
+            .arg("--permission-mode")
+            .arg("dontAsk")
+            .arg("--tools")
+            .arg("")
+            .arg("--no-session-persistence")
+            .arg("--output-format")
+            .arg("text")
+            .arg("--json-schema")
+            .arg(ACTION_SCHEMA_JSON)
+            .arg(prompt)
+            .current_dir(temp_dir.path())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        append_model_flag(&mut command, &self.surface.surface_id, &self.model);
+
+        let output = timeout(self.timeout, command.output())
+            .await
+            .map_err(|_| CoreError::RequestTimeout {
+                timeout_ms: self.timeout.as_millis() as u64,
+            })?
+            .map_err(CoreError::Io)?;
 
         if !output.status.success() {
             return Err(classify_subprocess_error(
-                self.surface.surface_id,
+                &self.surface.surface_id,
+                &String::from_utf8_lossy(&output.stderr),
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    async fn run_gemini(&self, prompt: &str) -> Result<String, CoreError> {
+        let temp_dir = tempdir().map_err(|err| {
+            CoreError::Internal(format!("Failed to create Gemini subprocess tempdir: {err}"))
+        })?;
+
+        let mut command = Command::new(&self.surface.executable_path);
+        command
+            .arg("-p")
+            .arg(prompt)
+            .current_dir(temp_dir.path())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        append_model_flag(&mut command, &self.surface.surface_id, &self.model);
+
+        let output = timeout(self.timeout, command.output())
+            .await
+            .map_err(|_| CoreError::RequestTimeout {
+                timeout_ms: self.timeout.as_millis() as u64,
+            })?
+            .map_err(CoreError::Io)?;
+
+        if !output.status.success() {
+            return Err(classify_subprocess_error(
+                &self.surface.surface_id,
                 &String::from_utf8_lossy(&output.stderr),
             ));
         }
@@ -332,7 +272,7 @@ impl LlmProvider for SubprocessLlmProvider {
     }
 
     fn provider_name(&self) -> &str {
-        self.surface.surface_id.provider_name()
+        &self.provider_name
     }
 
     fn is_external(&self) -> bool {
@@ -340,17 +280,65 @@ impl LlmProvider for SubprocessLlmProvider {
     }
 }
 
+fn default_llm_model_for_surface(surface_id: &str) -> Result<Option<String>, String> {
+    oneshim_api_contracts::provider_specs::default_surface_model(
+        surface_id,
+        SurfaceCapabilityKind::Llm,
+    )
+}
+
+fn provider_name_for_surface_id(surface_id: &str) -> Result<String, String> {
+    Ok(format!("subprocess-{}", cli_id_for_surface_id(surface_id)?))
+}
+
+pub(crate) fn cli_id_for_surface_id(surface_id: &str) -> Result<String, String> {
+    Ok(catalog_subprocess_transport(surface_id)?.tool_id.clone())
+}
+
+fn invocation_mode_for_surface(surface_id: &str) -> Result<SubprocessInvocationMode, CoreError> {
+    subprocess_invocation_mode(surface_id).map_err(CoreError::Internal)
+}
+
+pub(crate) fn runtime_supported_for_surface(surface_id: &str) -> bool {
+    subprocess_runtime_supported(surface_id).unwrap_or(false)
+}
+
+fn auth_probe_mode_for_surface(surface_id: &str) -> Result<SubprocessAuthProbeMode, String> {
+    subprocess_auth_probe_mode(surface_id)
+}
+
+fn auth_probe_command_for_surface(surface_id: &str) -> Result<Vec<String>, String> {
+    Ok(catalog_subprocess_transport(surface_id)?
+        .auth_probe_command
+        .clone())
+}
+
+fn append_model_flag(command: &mut Command, surface_id: &str, model: &str) {
+    if let Ok(transport) = catalog_subprocess_transport(surface_id) {
+        if let Some(flag) = transport
+            .model_flag
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            command.arg(flag).arg(model);
+        }
+    }
+}
+
 pub fn detect_known_cli_surfaces() -> Vec<DetectedSubprocessCli> {
-    SubprocessCliSurfaceId::all()
-        .iter()
-        .copied()
-        .filter_map(|surface_id| {
-            surface_id
-                .candidate_binaries()
+    list_subprocess_surface_specs()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|surface| surface.supports.llm)
+        .filter_map(|surface| {
+            let transport = catalog_subprocess_transport(&surface.surface_id).ok()?;
+            transport
+                .executable_candidates
                 .iter()
                 .find_map(|candidate| find_executable(candidate))
                 .map(|executable_path| DetectedSubprocessCli {
-                    surface_id,
+                    surface_id: surface.surface_id.clone(),
                     executable_path,
                 })
         })
@@ -372,8 +360,11 @@ pub fn select_cli_surface_for_config(
         return detected
             .iter()
             .find(|surface| {
-                surface.detected.surface_id == surface_id
-                    && surface.detected.surface_id.runtime_supported()
+                surface
+                    .detected
+                    .surface_id
+                    .eq_ignore_ascii_case(&surface_id)
+                    && runtime_supported_for_surface(&surface.detected.surface_id)
                     && surface.auth_status == SubprocessCliAuthStatus::Authenticated
             })
             .map(|surface| surface.detected.clone());
@@ -382,15 +373,13 @@ pub fn select_cli_surface_for_config(
     detected
         .iter()
         .find(|surface| {
-            surface.detected.surface_id.runtime_supported()
+            runtime_supported_for_surface(&surface.detected.surface_id)
                 && surface.auth_status == SubprocessCliAuthStatus::Authenticated
         })
         .map(|surface| surface.detected.clone())
 }
 
-pub fn preferred_cli_surface_for_config(
-    config: &AiProviderConfig,
-) -> Option<SubprocessCliSurfaceId> {
+pub fn preferred_cli_surface_for_config(config: &AiProviderConfig) -> Option<String> {
     config
         .llm_api
         .as_ref()
@@ -399,14 +388,10 @@ pub fn preferred_cli_surface_for_config(
                 .surface_id
                 .as_deref()
                 .and_then(surface_for_provider_surface_id)
-                .and_then(|surface_id| {
-                    if endpoint.provider_type == AiProviderType::Generic
-                        || surface_for_provider_type(endpoint.provider_type) == Some(surface_id)
-                    {
-                        Some(surface_id)
-                    } else {
-                        None
-                    }
+                .filter(|surface_id| {
+                    endpoint.provider_type == AiProviderType::Generic
+                        || surface_for_provider_type(endpoint.provider_type).as_deref()
+                            == Some(surface_id.as_str())
                 })
         })
         .or_else(|| {
@@ -419,16 +404,16 @@ pub fn preferred_cli_surface_for_config(
         })
 }
 
-pub fn probe_for_surface_id(
-    probed: &[ProbedSubprocessCli],
-    surface_id: SubprocessCliSurfaceId,
-) -> Option<&ProbedSubprocessCli> {
+pub fn probe_for_surface_id<'a>(
+    probed: &'a [ProbedSubprocessCli],
+    surface_id: &str,
+) -> Option<&'a ProbedSubprocessCli> {
     probed
         .iter()
-        .find(|surface| surface.detected.surface_id == surface_id)
+        .find(|surface| surface.detected.surface_id.eq_ignore_ascii_case(surface_id))
 }
 
-fn surface_for_provider_type(provider_type: AiProviderType) -> Option<SubprocessCliSurfaceId> {
+fn surface_for_provider_type(provider_type: AiProviderType) -> Option<String> {
     let provider_label = match provider_type {
         AiProviderType::Anthropic => "Anthropic",
         AiProviderType::OpenAi => "OpenAi",
@@ -436,38 +421,45 @@ fn surface_for_provider_type(provider_type: AiProviderType) -> Option<Subprocess
         AiProviderType::Generic => return None,
     };
 
-    provider_surface_catalog()
+    list_subprocess_surface_specs()
         .ok()?
-        .surfaces
-        .iter()
-        .filter(|surface| {
-            surface.provider_type.eq_ignore_ascii_case(provider_label)
-                && matches!(
-                    parse_surface_execution_kind(&surface.execution_kind),
-                    Ok(SurfaceExecutionKind::SubprocessCli)
-                )
-        })
+        .into_iter()
+        .filter(|surface| surface.provider_type.eq_ignore_ascii_case(provider_label))
         .max_by_key(|surface| surface.preferred_for_product_auth)
-        .and_then(|surface| SubprocessCliSurfaceId::from_feature_id(&surface.surface_id))
+        .map(|surface| surface.surface_id.clone())
 }
 
-fn surface_for_provider_surface_id(raw: &str) -> Option<SubprocessCliSurfaceId> {
-    SubprocessCliSurfaceId::from_feature_id(raw)
+fn surface_for_provider_surface_id(raw: &str) -> Option<String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+    catalog_surface_spec(normalized).ok().and_then(|surface| {
+        catalog_subprocess_transport(&surface.surface_id)
+            .ok()
+            .map(|_| surface.surface_id.clone())
+    })
 }
 
 fn probe_cli_surface(detected: DetectedSubprocessCli) -> ProbedSubprocessCli {
-    let probe_mode = detected.surface_id.auth_probe_mode();
-    let probe_args = detected.surface_id.auth_probe_command();
-    let (auth_status, auth_detail) = match probe_mode {
-        SubprocessAuthProbeMode::CodexLoginStatusText => {
-            probe_codex_auth_status(&detected.executable_path, probe_args)
+    let (auth_status, auth_detail) = match auth_probe_mode_for_surface(&detected.surface_id) {
+        Ok(SubprocessAuthProbeMode::CodexLoginStatusText) => {
+            let probe_args =
+                auth_probe_command_for_surface(&detected.surface_id).unwrap_or_default();
+            probe_codex_auth_status(&detected.executable_path, &probe_args)
         }
-        SubprocessAuthProbeMode::ClaudeAuthStatusJson => {
-            probe_claude_auth_status(&detected.executable_path, probe_args)
+        Ok(SubprocessAuthProbeMode::ClaudeAuthStatusJson) => {
+            let probe_args =
+                auth_probe_command_for_surface(&detected.surface_id).unwrap_or_default();
+            probe_claude_auth_status(&detected.executable_path, &probe_args)
         }
-        SubprocessAuthProbeMode::None => (
+        Ok(SubprocessAuthProbeMode::None) => (
             SubprocessCliAuthStatus::Unknown,
             Some("auth_status_probe_not_implemented".to_string()),
+        ),
+        Err(error) => (
+            SubprocessCliAuthStatus::Unknown,
+            Some(format!("probe_spec_error:{error}")),
         ),
     };
 
@@ -725,9 +717,10 @@ fn truncate_for_error(value: &str) -> String {
     format!("{truncated}...")
 }
 
-fn classify_subprocess_error(surface_id: SubprocessCliSurfaceId, stderr: &str) -> CoreError {
+fn classify_subprocess_error(surface_id: &str, stderr: &str) -> CoreError {
     let normalized = stderr.trim();
     let lowered = normalized.to_ascii_lowercase();
+    let cli_id = cli_id_for_surface_id(surface_id).unwrap_or_else(|_| surface_id.to_string());
     if lowered.contains("login")
         || lowered.contains("auth")
         || lowered.contains("sign in")
@@ -735,14 +728,14 @@ fn classify_subprocess_error(surface_id: SubprocessCliSurfaceId, stderr: &str) -
     {
         return CoreError::Auth(format!(
             "{} CLI authentication is required: {}",
-            surface_id.cli_id(),
+            cli_id,
             truncate_for_error(normalized)
         ));
     }
 
     CoreError::Internal(format!(
         "{} CLI invocation failed: {}",
-        surface_id.cli_id(),
+        cli_id,
         truncate_for_error(normalized)
     ))
 }
@@ -829,14 +822,14 @@ mod tests {
         }
     }
 
-    fn probed(
-        surface_id: SubprocessCliSurfaceId,
-        auth_status: SubprocessCliAuthStatus,
-    ) -> ProbedSubprocessCli {
+    fn probed(surface_id: &str, auth_status: SubprocessCliAuthStatus) -> ProbedSubprocessCli {
         ProbedSubprocessCli {
             detected: DetectedSubprocessCli {
-                surface_id,
-                executable_path: PathBuf::from(format!("/tmp/{}", surface_id.cli_id())),
+                surface_id: surface_id.to_string(),
+                executable_path: PathBuf::from(format!(
+                    "/tmp/{}",
+                    cli_id_for_surface_id(surface_id).unwrap_or_else(|_| surface_id.to_string())
+                )),
             },
             auth_status,
             auth_detail: None,
@@ -851,11 +844,11 @@ mod tests {
         };
         let surfaces = vec![
             probed(
-                SubprocessCliSurfaceId::OpenAiCodex,
+                "provider_surface.openai.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
             probed(
-                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                "provider_surface.anthropic.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
         ];
@@ -863,7 +856,7 @@ mod tests {
         let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
         assert_eq!(
             resolved.surface_id,
-            SubprocessCliSurfaceId::AnthropicClaudeCode
+            "provider_surface.anthropic.subprocess_cli"
         );
     }
 
@@ -872,17 +865,20 @@ mod tests {
         let config = AiProviderConfig::default();
         let surfaces = vec![
             probed(
-                SubprocessCliSurfaceId::GoogleGeminiCli,
+                "provider_surface.google.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
             probed(
-                SubprocessCliSurfaceId::OpenAiCodex,
+                "provider_surface.openai.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
         ];
 
         let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
-        assert_eq!(resolved.surface_id, SubprocessCliSurfaceId::OpenAiCodex);
+        assert_eq!(
+            resolved.surface_id,
+            "provider_surface.google.subprocess_cli"
+        );
     }
 
     #[test]
@@ -893,11 +889,11 @@ mod tests {
         };
         let surfaces = vec![
             probed(
-                SubprocessCliSurfaceId::OpenAiCodex,
+                "provider_surface.openai.subprocess_cli",
                 SubprocessCliAuthStatus::Unauthenticated,
             ),
             probed(
-                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                "provider_surface.anthropic.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
         ];
@@ -916,11 +912,11 @@ mod tests {
         };
         let surfaces = vec![
             probed(
-                SubprocessCliSurfaceId::OpenAiCodex,
+                "provider_surface.openai.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
             probed(
-                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                "provider_surface.anthropic.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
         ];
@@ -928,7 +924,7 @@ mod tests {
         let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
         assert_eq!(
             resolved.surface_id,
-            SubprocessCliSurfaceId::AnthropicClaudeCode
+            "provider_surface.anthropic.subprocess_cli"
         );
     }
 
@@ -942,17 +938,20 @@ mod tests {
         };
         let surfaces = vec![
             probed(
-                SubprocessCliSurfaceId::OpenAiCodex,
+                "provider_surface.openai.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
             probed(
-                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                "provider_surface.anthropic.subprocess_cli",
                 SubprocessCliAuthStatus::Authenticated,
             ),
         ];
 
         let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
-        assert_eq!(resolved.surface_id, SubprocessCliSurfaceId::OpenAiCodex);
+        assert_eq!(
+            resolved.surface_id,
+            "provider_surface.openai.subprocess_cli"
+        );
     }
 
     #[test]

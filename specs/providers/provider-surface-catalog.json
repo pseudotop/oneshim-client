@@ -358,7 +358,7 @@
         "llm": {
           "supported": ["model", "prompt"],
           "unsupported": ["response_format"],
-          "notes": ["Gemini CLI runtime is not yet implemented in ONESHIM."]
+          "notes": ["Gemini CLI runtime currently uses prompt/stdout mode and does not yet verify auth state automatically."]
         },
         "ocr": {
           "supported": [],

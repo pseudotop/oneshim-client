@@ -163,6 +163,16 @@ impl RemoteOcrProvider {
         .map_err(CoreError::Internal)
     }
 
+    fn ensure_ocr_parameters_supported(&self, parameters: &[&str]) -> Result<(), CoreError> {
+        provider_specs::validate_supported_parameters(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Ocr,
+            parameters,
+        )
+        .map_err(CoreError::Internal)
+    }
+
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
         if config.api_key.is_empty() {
             return Err(CoreError::Config(
@@ -462,6 +472,30 @@ impl OcrProvider for RemoteOcrProvider {
 
         let model = self.model.as_deref().unwrap_or("");
         let request_shape = self.ocr_request_shape()?;
+        match request_shape {
+            ProviderRequestShape::AnthropicMessages
+            | ProviderRequestShape::AnthropicVisionMessages => {
+                self.ensure_ocr_parameters_supported(&["model", "max_tokens", "messages"])?;
+            }
+            ProviderRequestShape::OpenAiChatCompletions
+            | ProviderRequestShape::OpenAiVisionChatCompletions
+            | ProviderRequestShape::OpenAiResponses => {
+                self.ensure_ocr_parameters_supported(&[
+                    "model",
+                    "max_tokens",
+                    "response_format",
+                    "messages",
+                ])?;
+            }
+            ProviderRequestShape::GoogleGenerateContent
+            | ProviderRequestShape::GoogleVisionAnnotate => {
+                self.ensure_ocr_parameters_supported(&[
+                    "requests",
+                    "TEXT_DETECTION",
+                    "maxResults",
+                ])?;
+            }
+        }
         let strategy = OcrProviderStrategy::try_from(request_shape)?;
 
         let request_body = strategy.build_request_body(&encoded, media_type, model);

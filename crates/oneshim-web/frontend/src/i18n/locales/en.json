@@ -722,7 +722,7 @@
         },
         "google": {
           "subprocess_cli": {
-            "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path when runtime support is enabled.",
+            "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
             "auth_required": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
             "partially_available": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
             "unavailable": "Gemini CLI is not installed or not available on PATH."
@@ -748,7 +748,7 @@
         "unavailable": "Claude Code CLI is not installed or not available on PATH."
       },
       "googleSubprocessCli": {
-        "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path when runtime support is enabled.",
+        "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
         "authRequired": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
         "partiallyAvailable": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
         "unavailable": "Gemini CLI is not installed or not available on PATH."

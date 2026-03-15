@@ -261,6 +261,16 @@ Return JSON only."#
         .map_err(CoreError::Internal)
     }
 
+    fn ensure_llm_parameters_supported(&self, parameters: &[&str]) -> Result<(), CoreError> {
+        provider_specs::validate_supported_parameters(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            parameters,
+        )
+        .map_err(CoreError::Internal)
+    }
+
     /// Build the provider-specific request body given a system and user prompt.
     fn build_chat_body(
         &self,
@@ -269,29 +279,53 @@ Return JSON only."#
     ) -> Result<serde_json::Value, CoreError> {
         let body = match self.llm_request_shape()? {
             ProviderRequestShape::AnthropicMessages
-            | ProviderRequestShape::AnthropicVisionMessages => serde_json::json!({
-                "model": self.model,
-                "max_tokens": 512,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": user_prompt}]
-            }),
-            ProviderRequestShape::GoogleGenerateContent => serde_json::json!({
-                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-                "system_instruction": {"parts": [{"text": system_prompt}]},
-                "generationConfig": {"maxOutputTokens": 512}
-            }),
+            | ProviderRequestShape::AnthropicVisionMessages => {
+                self.ensure_llm_parameters_supported(&[
+                    "model",
+                    "max_tokens",
+                    "system",
+                    "messages",
+                ])?;
+                serde_json::json!({
+                    "model": self.model,
+                    "max_tokens": 512,
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": user_prompt}]
+                })
+            }
+            ProviderRequestShape::GoogleGenerateContent => {
+                self.ensure_llm_parameters_supported(&[
+                    "contents",
+                    "system_instruction",
+                    "generationConfig.maxOutputTokens",
+                ])?;
+                serde_json::json!({
+                    "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                    "system_instruction": {"parts": [{"text": system_prompt}]},
+                    "generationConfig": {"maxOutputTokens": 512}
+                })
+            }
             ProviderRequestShape::OpenAiResponses => {
+                self.ensure_llm_parameters_supported(&[
+                    "model",
+                    "instructions",
+                    "input",
+                    "max_output_tokens",
+                ])?;
                 self.build_responses_api_body(system_prompt, user_prompt)
             }
             ProviderRequestShape::OpenAiChatCompletions
-            | ProviderRequestShape::OpenAiVisionChatCompletions => serde_json::json!({
-                "model": self.model,
-                "max_tokens": 512,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
-            }),
+            | ProviderRequestShape::OpenAiVisionChatCompletions => {
+                self.ensure_llm_parameters_supported(&["model", "max_tokens", "messages"])?;
+                serde_json::json!({
+                    "model": self.model,
+                    "max_tokens": 512,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ]
+                })
+            }
             ProviderRequestShape::GoogleVisionAnnotate => {
                 return Err(CoreError::Internal(
                     "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),

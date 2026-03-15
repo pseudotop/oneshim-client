@@ -3,11 +3,10 @@ use serde::Serialize;
 use crate::setup::SecretBackendCapabilities;
 use crate::subprocess_provider::{
     probe_for_surface_id, probe_known_cli_surfaces, ProbedSubprocessCli, SubprocessCliAuthStatus,
-    SubprocessCliSurfaceId,
 };
 use oneshim_api_contracts::provider_specs::{
     parse_surface_execution_kind, parse_surface_stability, provider_surface_catalog,
-    ProviderSurfaceSpec, SurfaceExecutionKind, SurfaceStability,
+    subprocess_runtime_supported, ProviderSurfaceSpec, SurfaceExecutionKind, SurfaceStability,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -128,24 +127,8 @@ fn subprocess_cli_feature(
     surface: &ProviderSurfaceSpec,
     detected_surfaces: &[ProbedSubprocessCli],
 ) -> FeatureCapability {
-    let Some(surface_id) = SubprocessCliSurfaceId::from_feature_id(&surface.surface_id) else {
-        return FeatureCapability {
-            feature_id: surface.surface_id.clone(),
-            maturity: feature_maturity(surface),
-            availability: FeatureAvailability::Unavailable,
-            preferred: surface.preferred_for_product_auth,
-            requires: surface
-                .subprocess_transport
-                .as_ref()
-                .map(|transport| vec![format!("cli:{}", transport.tool_id)])
-                .unwrap_or_default(),
-            status_reason: Some("surface_mapping_missing".to_string()),
-            status_copy_key: Some(surface_status_copy_key(&surface.surface_id, "unavailable")),
-        };
-    };
-
-    let detected = probe_for_surface_id(detected_surfaces, surface_id);
-    let runtime_supported = surface_id.runtime_supported();
+    let detected = probe_for_surface_id(detected_surfaces, &surface.surface_id);
+    let runtime_supported = subprocess_runtime_supported(&surface.surface_id).unwrap_or(false);
     let availability = match detected {
         Some(surface)
             if runtime_supported
@@ -184,7 +167,11 @@ fn subprocess_cli_feature(
         maturity: feature_maturity(surface),
         availability,
         preferred: surface.preferred_for_product_auth,
-        requires: vec![format!("cli:{}", surface_id.cli_id())],
+        requires: surface
+            .subprocess_transport
+            .as_ref()
+            .map(|transport| vec![format!("cli:{}", transport.tool_id)])
+            .unwrap_or_default(),
         status_reason: Some(status_reason.to_string()),
         status_copy_key: Some(surface_status_copy_key(&surface.surface_id, copy_suffix)),
     }
@@ -247,7 +234,7 @@ mod tests {
             &surface,
             &[ProbedSubprocessCli {
                 detected: crate::subprocess_provider::DetectedSubprocessCli {
-                    surface_id: SubprocessCliSurfaceId::OpenAiCodex,
+                    surface_id: "provider_surface.openai.subprocess_cli".to_string(),
                     executable_path: "/usr/bin/codex".into(),
                 },
                 auth_status: SubprocessCliAuthStatus::Unknown,
@@ -283,7 +270,7 @@ mod tests {
             &surface,
             &[ProbedSubprocessCli {
                 detected: crate::subprocess_provider::DetectedSubprocessCli {
-                    surface_id: SubprocessCliSurfaceId::OpenAiCodex,
+                    surface_id: "provider_surface.openai.subprocess_cli".to_string(),
                     executable_path: "/usr/bin/codex".into(),
                 },
                 auth_status: SubprocessCliAuthStatus::Authenticated,
@@ -312,7 +299,7 @@ mod tests {
             &surface,
             &[ProbedSubprocessCli {
                 detected: crate::subprocess_provider::DetectedSubprocessCli {
-                    surface_id: SubprocessCliSurfaceId::AnthropicClaudeCode,
+                    surface_id: "provider_surface.anthropic.subprocess_cli".to_string(),
                     executable_path: "/usr/bin/claude".into(),
                 },
                 auth_status: SubprocessCliAuthStatus::Unauthenticated,

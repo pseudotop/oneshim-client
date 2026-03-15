@@ -436,6 +436,70 @@ pub fn subprocess_auth_probe_mode(surface_id: &str) -> Result<SubprocessAuthProb
     parse_subprocess_auth_probe_mode(&subprocess_transport(surface_id)?.auth_probe_mode)
 }
 
+pub fn list_subprocess_surface_specs() -> Result<Vec<&'static ProviderSurfaceSpec>, String> {
+    Ok(surface_catalog()?
+        .surfaces
+        .iter()
+        .filter(|surface| {
+            matches!(
+                parse_surface_execution_kind(&surface.execution_kind),
+                Ok(SurfaceExecutionKind::SubprocessCli)
+            )
+        })
+        .collect())
+}
+
+pub fn subprocess_runtime_supported(surface_id: &str) -> Result<bool, String> {
+    Ok(matches!(
+        subprocess_invocation_mode(surface_id)?,
+        SubprocessInvocationMode::CodexExecJson
+            | SubprocessInvocationMode::ClaudePrintJson
+            | SubprocessInvocationMode::GeminiCliPrompt
+    ))
+}
+
+pub fn resolved_parameter_profile(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceCapabilityKind,
+) -> Result<&'static ProviderParameterProfile, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    Ok(match capability {
+        SurfaceCapabilityKind::Llm => &surface.parameter_profiles.llm,
+        SurfaceCapabilityKind::Ocr => &surface.parameter_profiles.ocr,
+    })
+}
+
+pub fn parameter_profile_for_surface(
+    surface_id: &str,
+    capability: SurfaceCapabilityKind,
+) -> Result<&'static ProviderParameterProfile, String> {
+    let surface = provider_surface_spec(surface_id)?;
+    Ok(match capability {
+        SurfaceCapabilityKind::Llm => &surface.parameter_profiles.llm,
+        SurfaceCapabilityKind::Ocr => &surface.parameter_profiles.ocr,
+    })
+}
+
+pub fn validate_supported_parameters(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceCapabilityKind,
+    parameters: &[&str],
+) -> Result<(), String> {
+    let profile = resolved_parameter_profile(provider_type, surface_id, capability)?;
+    validate_parameter_usage(profile, parameters)
+}
+
+pub fn validate_supported_surface_parameters(
+    surface_id: &str,
+    capability: SurfaceCapabilityKind,
+    parameters: &[&str],
+) -> Result<(), String> {
+    let profile = parameter_profile_for_surface(surface_id, capability)?;
+    validate_parameter_usage(profile, parameters)
+}
+
 fn surface_catalog() -> Result<&'static ProviderSurfaceCatalog, String> {
     match SURFACE_CATALOG.get_or_init(load_surface_catalog) {
         Ok(catalog) => Ok(catalog),
@@ -781,6 +845,41 @@ fn validate_parameter_profile(profile: &ProviderParameterProfile) -> Result<(), 
     Ok(())
 }
 
+fn validate_parameter_usage(
+    profile: &ProviderParameterProfile,
+    parameters: &[&str],
+) -> Result<(), String> {
+    let supported = profile
+        .supported
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    let unsupported = profile
+        .unsupported
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+
+    for parameter in parameters {
+        let normalized = parameter.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return Err("Parameter usage contains an empty field name.".to_string());
+        }
+        if unsupported.contains(&normalized) {
+            return Err(format!(
+                "Parameter '{parameter}' is explicitly unsupported by this provider surface."
+            ));
+        }
+        if !supported.is_empty() && !supported.contains(&normalized) {
+            return Err(format!(
+                "Parameter '{parameter}' is not declared as supported by this provider surface."
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn compatibility_surface_from_vendor<'a>(
     catalog: &'a ProviderSurfaceCatalog,
     vendor_id: &str,
@@ -962,6 +1061,44 @@ mod tests {
                 .expect("probe mode should resolve"),
             SubprocessAuthProbeMode::ClaudeAuthStatusJson
         );
+        assert!(
+            subprocess_runtime_supported("provider_surface.google.subprocess_cli")
+                .expect("gemini subprocess runtime support should resolve")
+        );
+    }
+
+    #[test]
+    fn lists_subprocess_surface_specs_from_catalog() {
+        let surfaces = list_subprocess_surface_specs().expect("subprocess surfaces should load");
+        let ids: Vec<&str> = surfaces
+            .iter()
+            .map(|surface| surface.surface_id.as_str())
+            .collect();
+        assert!(ids.contains(&"provider_surface.openai.subprocess_cli"));
+        assert!(ids.contains(&"provider_surface.anthropic.subprocess_cli"));
+        assert!(ids.contains(&"provider_surface.google.subprocess_cli"));
+    }
+
+    #[test]
+    fn validates_supported_parameters_for_openai_managed_surface() {
+        validate_supported_parameters(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.managed_oauth"),
+            SurfaceCapabilityKind::Llm,
+            &["model", "instructions", "input", "max_output_tokens"],
+        )
+        .expect("managed OpenAI parameters should be allowed");
+    }
+
+    #[test]
+    fn rejects_undeclared_parameter_usage_for_surface() {
+        let err = validate_supported_surface_parameters(
+            "provider_surface.anthropic.subprocess_cli",
+            SurfaceCapabilityKind::Llm,
+            &["response_format"],
+        )
+        .expect_err("unsupported subprocess parameter should fail");
+        assert!(err.contains("explicitly unsupported"));
     }
 
     #[test]
