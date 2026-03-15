@@ -39,11 +39,25 @@ impl ProjectionTemplate {
             file_name_hint: None,
         }
     }
+
+    pub fn temp_file(consumer_id: impl Into<String>, file_name_hint: impl Into<String>) -> Self {
+        Self {
+            consumer_id: consumer_id.into(),
+            target: ProjectionTarget::TempFile,
+            env_names: Vec::new(),
+            file_name_hint: Some(file_name_hint.into()),
+        }
+    }
 }
 
 pub fn provider_api_key_cli_consumer_id(provider_id: &str) -> Result<String, CoreError> {
     let provider_id = validate_secret_segment(provider_id, "provider_id")?;
     Ok(format!("provider/{provider_id}/api-key-cli"))
+}
+
+pub fn provider_api_key_temp_file_consumer_id(provider_id: &str) -> Result<String, CoreError> {
+    let provider_id = validate_secret_segment(provider_id, "provider_id")?;
+    Ok(format!("provider/{provider_id}/api-key-temp-file"))
 }
 
 /// Request to project a canonical secret into a compatibility target.
@@ -67,6 +81,21 @@ impl SecretProjectionRequest {
             namespace,
             key: key.to_string(),
             target: ProjectionTarget::ProcessEnv,
+            purpose: ProjectionPurpose::ProviderCliExecution,
+            consumer_id: consumer_id.into(),
+        })
+    }
+
+    pub fn provider_api_key_temp_file(
+        provider_id: &str,
+        profile_id: &str,
+        consumer_id: impl Into<String>,
+    ) -> Result<Self, CoreError> {
+        let (namespace, key) = provider_api_key_secret_ref(provider_id, profile_id)?;
+        Ok(Self {
+            namespace,
+            key: key.to_string(),
+            target: ProjectionTarget::TempFile,
             purpose: ProjectionPurpose::ProviderCliExecution,
             consumer_id: consumer_id.into(),
         })
@@ -115,9 +144,26 @@ mod tests {
     }
 
     #[test]
+    fn temp_file_template_sets_target_and_hint() {
+        let template =
+            ProjectionTemplate::temp_file("provider/openai/api-key-temp-file", "openai-api-key");
+
+        assert_eq!(template.consumer_id, "provider/openai/api-key-temp-file");
+        assert_eq!(template.target, ProjectionTarget::TempFile);
+        assert!(template.env_names.is_empty());
+        assert_eq!(template.file_name_hint.as_deref(), Some("openai-api-key"));
+    }
+
+    #[test]
     fn provider_api_key_cli_consumer_id_uses_stable_shape() {
         let consumer_id = provider_api_key_cli_consumer_id("openai").unwrap();
         assert_eq!(consumer_id, "provider/openai/api-key-cli");
+    }
+
+    #[test]
+    fn provider_api_key_temp_file_consumer_id_uses_stable_shape() {
+        let consumer_id = provider_api_key_temp_file_consumer_id("openai").unwrap();
+        assert_eq!(consumer_id, "provider/openai/api-key-temp-file");
     }
 
     #[test]
@@ -134,5 +180,21 @@ mod tests {
         assert_eq!(request.target, ProjectionTarget::ProcessEnv);
         assert_eq!(request.purpose, ProjectionPurpose::ProviderCliExecution);
         assert_eq!(request.consumer_id, "provider/openai/api-key-cli");
+    }
+
+    #[test]
+    fn provider_api_key_temp_file_request_uses_secret_ref_shape() {
+        let request = SecretProjectionRequest::provider_api_key_temp_file(
+            "openai",
+            "llm",
+            "provider/openai/api-key-temp-file",
+        )
+        .unwrap();
+
+        assert_eq!(request.namespace, "provider/openai/llm");
+        assert_eq!(request.key, "api_key");
+        assert_eq!(request.target, ProjectionTarget::TempFile);
+        assert_eq!(request.purpose, ProjectionPurpose::ProviderCliExecution);
+        assert_eq!(request.consumer_id, "provider/openai/api-key-temp-file");
     }
 }

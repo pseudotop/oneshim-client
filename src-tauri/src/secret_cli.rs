@@ -9,11 +9,16 @@ use oneshim_core::config::{CredentialAuthMode, CredentialBackendKind, ExternalAp
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::secret_projection::{
-    ProjectionPurpose, SecretProjectionPort, SecretProjectionRequest, SecretProjectionResult,
+    provider_api_key_temp_file_consumer_id, ProjectionPurpose, SecretProjectionPort,
+    SecretProjectionRequest, SecretProjectionResult,
 };
 use oneshim_storage::process_env_projection::{
     provider_api_key_cli_template, ProcessEnvSecretProjection,
 };
+use oneshim_storage::temp_file_projection::{
+    provider_api_key_temp_file_template, TempFileSecretProjection,
+};
+use tempfile::Builder;
 
 #[cfg(feature = "server")]
 use crate::credential_migration::migrate_legacy_provider_api_keys;
@@ -51,9 +56,10 @@ pub fn run(args: &[String], config_dir: &Path) -> i32 {
         Some("migrate") => cmd_migrate(config_dir),
         Some("status") => cmd_status(&args[1..], config_dir),
         Some("env") => cmd_env(&args[1..], config_dir),
+        Some("file") => cmd_file(&args[1..], config_dir),
         Some("exec") => cmd_exec(&args[1..], config_dir),
         _ => {
-            eprintln!("Usage: oneshim secret <migrate|status|env|exec> ...");
+            eprintln!("Usage: oneshim secret <migrate|status|env|file|exec> ...");
             eprintln!();
             eprintln!("Commands:");
             eprintln!(
@@ -64,6 +70,9 @@ pub fn run(args: &[String], config_dir: &Path) -> i32 {
             );
             eprintln!(
                 "  env <llm|ocr>       Emit shell export lines for the configured provider API key"
+            );
+            eprintln!(
+                "  file <llm|ocr>      Materialize a temp file containing the configured provider API key"
             );
             eprintln!(
                 "  exec <llm|ocr> -- <command...>    Run a child command with projected provider credentials"
@@ -215,6 +224,45 @@ fn cmd_env(args: &[String], config_dir: &Path) -> i32 {
     0
 }
 
+fn cmd_file(args: &[String], config_dir: &Path) -> i32 {
+    let Some(surface) = args.first().and_then(|value| SecretSurface::parse(value)) else {
+        eprintln!("Usage: oneshim secret file <llm|ocr>");
+        return 1;
+    };
+
+    let config_manager = match ConfigManager::with_path(config_dir.join(CONFIG_FILE_NAME)) {
+        Ok(manager) => manager,
+        Err(err) => {
+            eprintln!("Error: failed to load config: {err}");
+            return 1;
+        }
+    };
+    let config = config_manager.get();
+    let Some(endpoint) = endpoint_for_surface(&config.ai_provider, surface) else {
+        eprintln!(
+            "Error: no {} provider endpoint is configured. Save a remote provider in Settings first.",
+            surface.profile_id()
+        );
+        return 1;
+    };
+
+    if let Err(message) = ensure_projection_allowed(endpoint, surface) {
+        eprintln!("Error: {message}");
+        return 1;
+    }
+
+    match resolve_temp_file_projection(endpoint, surface, config_dir) {
+        Ok(path) => {
+            println!("{}", path.display());
+            0
+        }
+        Err(err) => {
+            eprintln!("Error: {err}");
+            1
+        }
+    }
+}
+
 fn cmd_exec(args: &[String], config_dir: &Path) -> i32 {
     let Ok((surface, command)) = parse_exec_args(args) else {
         eprintln!("Usage: oneshim secret exec <llm|ocr> -- <command...>");
@@ -329,6 +377,122 @@ fn resolve_env_projection(
         .into_iter()
         .map(|name| (name, resolved.clone()))
         .collect())
+}
+
+fn resolve_temp_file_projection(
+    endpoint: &ExternalApiEndpoint,
+    surface: SecretSurface,
+    config_dir: &Path,
+) -> Result<std::path::PathBuf, String> {
+    let template = provider_api_key_temp_file_template(endpoint.provider_type)
+        .map_err(|err| err.to_string())?;
+    let desktop_secret_store = create_os_secret_store(config_dir);
+    let secret_store = create_secret_store_for_binding(
+        endpoint.credential.as_ref(),
+        config_dir,
+        desktop_secret_store,
+    )
+    .map_err(|err| err.to_string())?;
+    let runtime = build_runtime()?;
+
+    if let Some(binding) = endpoint.credential.as_ref() {
+        if let Some(secret_store) = secret_store.clone() {
+            let request = if let Some(secret_ref) = binding.secret_ref.as_ref() {
+                Some(SecretProjectionRequest {
+                    namespace: secret_ref.namespace.clone(),
+                    key: secret_ref.key.clone(),
+                    target: oneshim_core::ports::secret_projection::ProjectionTarget::TempFile,
+                    purpose: ProjectionPurpose::ProviderCliExecution,
+                    consumer_id: template.consumer_id.clone(),
+                })
+            } else if binding.backend_kind == CredentialBackendKind::Env {
+                Some(
+                    SecretProjectionRequest::provider_api_key_temp_file(
+                        provider_type_id(endpoint.provider_type),
+                        surface.profile_id(),
+                        provider_api_key_temp_file_consumer_id(provider_type_id(
+                            endpoint.provider_type,
+                        ))
+                        .map_err(|err| err.to_string())?,
+                    )
+                    .map_err(|err| err.to_string())?,
+                )
+            } else {
+                None
+            };
+
+            if let Some(request) = request {
+                let projection =
+                    TempFileSecretProjection::with_default_provider_api_key_cli_templates(
+                        secret_store,
+                        config_dir,
+                    );
+                if let Ok(SecretProjectionResult::TempFile { path, .. }) =
+                    runtime.block_on(projection.project(request))
+                {
+                    return Ok(path);
+                }
+            }
+        }
+    }
+
+    let source = CredentialSource::from_api_key_endpoint_for_profile(
+        endpoint,
+        Some(surface.profile_id()),
+        secret_store,
+    )
+    .map_err(|err| err.to_string())?;
+    let resolved = runtime
+        .block_on(source.resolve_bearer_token())
+        .map_err(|err| err.to_string())?;
+
+    materialize_plaintext_temp_file(
+        &resolved,
+        template
+            .file_name_hint
+            .as_deref()
+            .unwrap_or("provider-api-key"),
+    )
+}
+
+fn materialize_plaintext_temp_file(
+    secret: &str,
+    file_name_hint: &str,
+) -> Result<std::path::PathBuf, String> {
+    let prefix = format!(
+        "oneshim-{}-",
+        file_name_hint
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() {
+                    ch.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>()
+            .trim_matches('-')
+    );
+
+    let temp_file = Builder::new()
+        .prefix(&prefix)
+        .suffix(".secret")
+        .tempfile()
+        .map_err(|err| format!("failed to create temp secret file: {err}"))?;
+    std::fs::write(temp_file.path(), secret)
+        .map_err(|err| format!("failed to write temp secret file: {err}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(temp_file.path(), std::fs::Permissions::from_mode(0o600))
+            .map_err(|err| format!("failed to secure temp secret file: {err}"))?;
+    }
+
+    temp_file
+        .keep()
+        .map(|value| value.1)
+        .map_err(|err| format!("failed to persist temp secret file: {}", err.error))
 }
 
 fn ensure_projection_allowed(
@@ -456,6 +620,15 @@ fn build_runtime() -> Result<tokio::runtime::Runtime, String> {
         .map_err(|err| format!("failed to build CLI runtime: {err}"))
 }
 
+fn provider_type_id(provider_type: oneshim_core::config::AiProviderType) -> &'static str {
+    match provider_type {
+        oneshim_core::config::AiProviderType::OpenAi => "openai",
+        oneshim_core::config::AiProviderType::Anthropic => "anthropic",
+        oneshim_core::config::AiProviderType::Google => "google",
+        oneshim_core::config::AiProviderType::Generic => "generic",
+    }
+}
+
 fn shell_quote(value: &str) -> String {
     let escaped = value.replace('\'', r#"'\"'\"'"#);
     format!("'{escaped}'")
@@ -518,6 +691,14 @@ mod tests {
     fn shell_quote_escapes_single_quotes() {
         assert_eq!(shell_quote("sk-test"), "'sk-test'");
         assert_eq!(shell_quote("a'b"), "'a'\\\"'\\\"'b'");
+    }
+
+    #[test]
+    fn materialize_plaintext_temp_file_writes_secret() {
+        let path = materialize_plaintext_temp_file("sk-temp", "openai-api-key").unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, "sk-temp");
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

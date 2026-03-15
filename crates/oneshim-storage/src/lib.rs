@@ -8,3 +8,4 @@ pub mod keychain;
 pub mod migration;
 pub mod process_env_projection;
 pub mod sqlite;
+pub mod temp_file_projection;
