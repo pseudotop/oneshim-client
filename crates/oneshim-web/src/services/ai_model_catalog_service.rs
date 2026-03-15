@@ -5,7 +5,8 @@ use oneshim_api_contracts::ai_providers::{
     ProviderModelsResponse,
 };
 use oneshim_api_contracts::provider_specs::{
-    default_surface_id_for_access_mode as default_surface_id_from_catalog, SurfaceCapabilityKind,
+    default_surface_id_for_access_mode as default_surface_id_from_catalog,
+    model_capability_status_for_surface, SurfaceCapabilityKind, SurfaceModelCapabilityKind,
 };
 use oneshim_core::config::{AiProviderConfig, AiProviderType, ExternalApiEndpoint};
 use oneshim_core::ports::credential_source::CredentialSource;
@@ -252,42 +253,63 @@ fn build_model_details(
                 surface_id, &model.id,
             )
             .map_err(ApiError::Internal)?;
-            let (llm_support, ocr_support, capability_source) = match known {
-                Some(known) => (
-                    Some(if known.capabilities.llm {
-                        ProviderModelSupportStatus::Supported
-                    } else {
-                        ProviderModelSupportStatus::Unsupported
-                    }),
-                    Some(if known.capabilities.ocr {
-                        ProviderModelSupportStatus::Supported
-                    } else {
-                        ProviderModelSupportStatus::Unsupported
-                    }),
-                    Some("known_model_catalog".to_string()),
-                ),
-                None => (
-                    Some(ProviderModelSupportStatus::Unknown),
-                    Some(ProviderModelSupportStatus::Unknown),
-                    Some("surface_unknown".to_string()),
-                ),
-            };
-
-            let image_input_support = match known {
-                Some(known) => Some(if known.capabilities.image_input {
-                    ProviderModelSupportStatus::Supported
-                } else {
-                    ProviderModelSupportStatus::Unsupported
-                }),
-                None => {
+            let llm_support = Some(
+                model_capability_status_for_surface(
+                    surface_id,
+                    SurfaceModelCapabilityKind::Llm,
+                    &model.id,
+                )
+                .map_err(ApiError::Internal)?,
+            );
+            let ocr_support = Some(
+                model_capability_status_for_surface(
+                    surface_id,
+                    SurfaceModelCapabilityKind::Ocr,
+                    &model.id,
+                )
+                .map_err(ApiError::Internal)?,
+            );
+            let image_input_support = {
+                let resolved = model_capability_status_for_surface(
+                    surface_id,
+                    SurfaceModelCapabilityKind::ImageInput,
+                    &model.id,
+                )
+                .map_err(ApiError::Internal)?;
+                Some(
                     if provider_type == AiProviderType::Google
+                        && resolved == ProviderModelSupportStatus::Unknown
                         && llm_support == Some(ProviderModelSupportStatus::Supported)
                     {
-                        Some(ProviderModelSupportStatus::Supported)
+                        ProviderModelSupportStatus::Supported
                     } else {
-                        Some(ProviderModelSupportStatus::Unknown)
-                    }
-                }
+                        resolved
+                    },
+                )
+            };
+            let structured_output_support = Some(
+                model_capability_status_for_surface(
+                    surface_id,
+                    SurfaceModelCapabilityKind::StructuredOutput,
+                    &model.id,
+                )
+                .map_err(ApiError::Internal)?,
+            );
+            let capability_source = if known.is_some() {
+                Some("known_model_catalog".to_string())
+            } else if [
+                llm_support,
+                ocr_support,
+                image_input_support,
+                structured_output_support,
+            ]
+            .into_iter()
+            .flatten()
+            .any(|status| status != ProviderModelSupportStatus::Unknown)
+            {
+                Some("capability_rules".to_string())
+            } else {
+                Some("surface_unknown".to_string())
             };
 
             Ok(ProviderDiscoveredModel {
@@ -298,6 +320,7 @@ fn build_model_details(
                     .map(|status| status == ProviderModelSupportStatus::Supported),
                 ocr_support,
                 image_input_support,
+                structured_output_support,
                 capability_source,
             })
         })
@@ -855,6 +878,10 @@ mod tests {
             details[0].image_input_support,
             Some(ProviderModelSupportStatus::Unsupported)
         );
+        assert_eq!(
+            details[0].structured_output_support,
+            Some(ProviderModelSupportStatus::Unsupported)
+        );
     }
 
     #[test]
@@ -876,6 +903,32 @@ mod tests {
         assert_eq!(
             details[0].ocr_support,
             Some(ProviderModelSupportStatus::Unsupported)
+        );
+    }
+
+    #[test]
+    fn builds_capability_rule_details_for_local_openai_compatible_models() {
+        let details = build_model_details(
+            AiProviderType::Generic,
+            Some("provider_surface.generic.local_openai_compatible"),
+            &[ParsedModelRecord {
+                id: "qwen2.5-vl-7b-instruct".to_string(),
+                display_name: Some("Qwen 2.5 VL 7B".to_string()),
+            }],
+        )
+        .expect("local openai-compatible model details should build");
+        assert_eq!(details.len(), 1);
+        assert_eq!(
+            details[0].ocr_support,
+            Some(ProviderModelSupportStatus::Supported)
+        );
+        assert_eq!(
+            details[0].image_input_support,
+            Some(ProviderModelSupportStatus::Supported)
+        );
+        assert_eq!(
+            details[0].capability_source.as_deref(),
+            Some("capability_rules")
         );
     }
 

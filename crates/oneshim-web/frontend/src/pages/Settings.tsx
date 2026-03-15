@@ -50,6 +50,7 @@ import {
   sortProviderSurfaces,
   surfaceCompatibleWithAccessMode,
   surfaceKnownModel,
+  surfaceOcrRequiresStructuredOutputModel,
   surfaceUnknownModelPolicy,
   surfaceSupportsModelSelection,
   type EndpointSurfaceKind,
@@ -756,7 +757,9 @@ export default function Settings() {
       detail &&
         (detail.supports_ocr === false ||
           detail.ocr_support === 'unsupported' ||
-          detail.image_input_support === 'unsupported'),
+          detail.image_input_support === 'unsupported' ||
+          (surfaceOcrRequiresStructuredOutputModel(resolveEndpointSurface('ocr_api')) &&
+            detail.structured_output_support === 'unsupported')),
     )
 
   const isLlmModelExplicitlyUnsupported = (detail: ProviderDiscoveredModel | undefined): boolean =>
@@ -767,6 +770,8 @@ export default function Settings() {
       detail &&
         (detail.ocr_support === 'unknown' ||
           detail.image_input_support === 'unknown' ||
+          (surfaceOcrRequiresStructuredOutputModel(resolveEndpointSurface('ocr_api')) &&
+            detail.structured_output_support === 'unknown') ||
           detail.supports_ocr == null),
     )
 

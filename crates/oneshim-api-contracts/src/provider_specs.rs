@@ -5,8 +5,8 @@ use oneshim_core::config::{AiAccessMode, AiProviderType};
 use oneshim_core::provider_surface::canonical_provider_surface_id;
 
 use crate::ai_providers::{
-    ProviderModelCatalogTransportSpec, ProviderParameterProfile, ProviderParameterSet,
-    ProviderTransportSpec,
+    ProviderModelCapabilityRules, ProviderModelCatalogTransportSpec, ProviderModelSupportStatus,
+    ProviderParameterProfile, ProviderParameterSet, ProviderTransportSpec,
 };
 
 const PROVIDER_SURFACE_SPECS_JSON: &str = include_str!(concat!(
@@ -56,6 +56,8 @@ pub struct ProviderSurfaceSpec {
     #[serde(default)]
     pub ocr_capabilities: ProviderOcrCapabilities,
     pub default_models: SurfaceDefaultModels,
+    #[serde(default)]
+    pub capability_rules: ProviderModelCapabilityRules,
     pub parameter_profiles: ProviderParameterSet,
     #[serde(default)]
     pub unknown_model_policy: ProviderUnknownModelPolicySet,
@@ -103,6 +105,8 @@ pub struct ProviderOcrCapabilities {
     pub supports_confidence: bool,
     #[serde(default)]
     pub requires_image_input_model: bool,
+    #[serde(default)]
+    pub requires_structured_output_model: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -214,6 +218,23 @@ pub enum SurfaceCapabilityKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceModelCapabilityKind {
+    Llm,
+    Ocr,
+    ImageInput,
+    StructuredOutput,
+}
+
+impl From<SurfaceCapabilityKind> for SurfaceModelCapabilityKind {
+    fn from(value: SurfaceCapabilityKind) -> Self {
+        match value {
+            SurfaceCapabilityKind::Llm => SurfaceModelCapabilityKind::Llm,
+            SurfaceCapabilityKind::Ocr => SurfaceModelCapabilityKind::Ocr,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceExecutionKind {
     DirectHttp,
     ManagedHttp,
@@ -258,6 +279,14 @@ fn default_unknown_model_policy() -> ProviderUnknownModelPolicy {
     ProviderUnknownModelPolicy::Warn
 }
 
+fn default_model_support_status(raw: &str) -> ProviderModelSupportStatus {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "supported" => ProviderModelSupportStatus::Supported,
+        "unsupported" => ProviderModelSupportStatus::Unsupported,
+        _ => ProviderModelSupportStatus::Unknown,
+    }
+}
+
 fn default_ocr_strategy() -> String {
     "none".to_string()
 }
@@ -278,6 +307,7 @@ impl Default for ProviderOcrCapabilities {
             supports_geometry: false,
             supports_confidence: false,
             requires_image_input_model: false,
+            requires_structured_output_model: false,
         }
     }
 }
@@ -708,24 +738,7 @@ pub fn surface_supports_model_selection(
     capability: SurfaceCapabilityKind,
 ) -> Result<bool, String> {
     let surface = provider_surface_spec(surface_id)?;
-    let has_default_models = match capability {
-        SurfaceCapabilityKind::Llm => !surface.default_models.llm_models.is_empty(),
-        SurfaceCapabilityKind::Ocr => !surface.default_models.ocr_models.is_empty(),
-    };
-    let model_catalog_support = surface
-        .model_catalog_transport
-        .as_ref()
-        .map(|transport| match capability {
-            SurfaceCapabilityKind::Llm => transport.llm_supported,
-            SurfaceCapabilityKind::Ocr => transport.ocr_supported,
-        })
-        .unwrap_or(false);
-    let known_models = surface.known_models.iter().any(|model| match capability {
-        SurfaceCapabilityKind::Llm => model.capabilities.llm,
-        SurfaceCapabilityKind::Ocr => model.capabilities.ocr,
-    });
-
-    Ok(has_default_models || model_catalog_support || known_models)
+    Ok(surface_declares_model_selection(surface, capability))
 }
 
 pub fn resolved_surface_supports_model_selection(
@@ -771,6 +784,87 @@ pub fn known_model_spec_for_surface(
         .find(|model| known_model_matches(model, &normalized)))
 }
 
+pub fn model_capability_status_for_surface(
+    surface_id: &str,
+    capability: SurfaceModelCapabilityKind,
+    model_id: &str,
+) -> Result<ProviderModelSupportStatus, String> {
+    let normalized = model_id.trim();
+    if normalized.is_empty() {
+        return Ok(ProviderModelSupportStatus::Unknown);
+    }
+
+    let surface = provider_surface_spec(surface_id)?;
+    if let Some(model) = known_model_spec_for_surface(&surface.surface_id, normalized)? {
+        let explicit = match capability {
+            SurfaceModelCapabilityKind::Llm => Some(model.capabilities.llm),
+            SurfaceModelCapabilityKind::Ocr => Some(model.capabilities.ocr),
+            SurfaceModelCapabilityKind::ImageInput => Some(model.capabilities.image_input),
+            SurfaceModelCapabilityKind::StructuredOutput => None,
+        };
+        if let Some(supported) = explicit {
+            return Ok(if supported {
+                ProviderModelSupportStatus::Supported
+            } else {
+                ProviderModelSupportStatus::Unsupported
+            });
+        }
+    }
+
+    let profile = match capability {
+        SurfaceModelCapabilityKind::Llm => &surface.capability_rules.llm,
+        SurfaceModelCapabilityKind::Ocr => &surface.capability_rules.ocr,
+        SurfaceModelCapabilityKind::ImageInput => &surface.capability_rules.image_input,
+        SurfaceModelCapabilityKind::StructuredOutput => &surface.capability_rules.structured_output,
+    };
+
+    capability_status_from_profile(profile, normalized)
+}
+
+pub fn resolved_model_capability_status(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceModelCapabilityKind,
+    model_id: &str,
+) -> Result<ProviderModelSupportStatus, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    model_capability_status_for_surface(&surface.surface_id, capability, model_id)
+}
+
+pub fn surface_requires_explicit_model_selection(
+    surface_id: &str,
+    capability: SurfaceCapabilityKind,
+) -> Result<bool, String> {
+    Ok(surface_supports_model_selection(surface_id, capability)?
+        && default_surface_model(surface_id, capability)?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .is_none())
+}
+
+pub fn resolved_surface_requires_explicit_model_selection(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceCapabilityKind,
+) -> Result<bool, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    surface_requires_explicit_model_selection(&surface.surface_id, capability)
+}
+
+pub fn ocr_requires_structured_output_model(surface_id: &str) -> Result<bool, String> {
+    Ok(provider_surface_spec(surface_id)?
+        .ocr_capabilities
+        .requires_structured_output_model)
+}
+
+pub fn resolved_ocr_requires_structured_output_model(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<bool, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    ocr_requires_structured_output_model(&surface.surface_id)
+}
+
 pub fn validate_known_model_capability(
     provider_type: AiProviderType,
     surface_id: Option<&str>,
@@ -783,7 +877,12 @@ pub fn validate_known_model_capability(
     }
 
     let surface = resolved_surface_spec(provider_type, surface_id)?;
-    let Some(model) = known_model_spec_for_surface(&surface.surface_id, normalized)? else {
+    let support =
+        model_capability_status_for_surface(&surface.surface_id, capability.into(), normalized)?;
+    if support == ProviderModelSupportStatus::Supported {
+        return Ok(());
+    }
+    if support == ProviderModelSupportStatus::Unknown {
         let policy = unknown_model_policy_for_surface(&surface.surface_id, capability)?;
         return match policy {
             ProviderUnknownModelPolicy::Allow | ProviderUnknownModelPolicy::Warn => Ok(()),
@@ -800,15 +899,6 @@ pub fn validate_known_model_capability(
                 ))
             }
         };
-    };
-
-    let supported = match capability {
-        SurfaceCapabilityKind::Llm => model.capabilities.llm,
-        SurfaceCapabilityKind::Ocr => model.capabilities.ocr,
-    };
-
-    if supported {
-        return Ok(());
     }
 
     let capability_label = match capability {
@@ -836,7 +926,9 @@ pub fn known_model_capability_warning(
     }
 
     let surface = resolved_surface_spec(provider_type, surface_id)?;
-    if known_model_spec_for_surface(&surface.surface_id, normalized)?.is_some() {
+    if model_capability_status_for_surface(&surface.surface_id, capability.into(), normalized)?
+        != ProviderModelSupportStatus::Unknown
+    {
         return Ok(None);
     }
 
@@ -894,6 +986,78 @@ fn known_model_matches(model: &ProviderKnownModelSpec, normalized_model_id: &str
             && (normalized_model_id == normalized_prefix
                 || normalized_model_id.starts_with(&normalized_prefix))
     })
+}
+
+fn capability_status_from_profile(
+    profile: &crate::ai_providers::ProviderModelCapabilityProfile,
+    model_id: &str,
+) -> Result<ProviderModelSupportStatus, String> {
+    let normalized = model_id.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Ok(ProviderModelSupportStatus::Unknown);
+    }
+
+    for pattern in &profile.deny_patterns {
+        if model_pattern_matches(pattern, &normalized)? {
+            return Ok(ProviderModelSupportStatus::Unsupported);
+        }
+    }
+
+    for pattern in &profile.allow_patterns {
+        if model_pattern_matches(pattern, &normalized)? {
+            return Ok(ProviderModelSupportStatus::Supported);
+        }
+    }
+
+    Ok(default_model_support_status(&profile.default_support))
+}
+
+fn model_pattern_matches(pattern: &str, normalized_model_id: &str) -> Result<bool, String> {
+    let normalized_pattern = pattern.trim().to_ascii_lowercase();
+    if normalized_pattern.is_empty() {
+        return Ok(false);
+    }
+
+    if normalized_pattern == "*" {
+        return Ok(true);
+    }
+
+    if !normalized_pattern.contains('*') {
+        return Ok(normalized_model_id == normalized_pattern);
+    }
+
+    let parts = normalized_pattern.split('*').collect::<Vec<_>>();
+    let starts_with_wildcard = normalized_pattern.starts_with('*');
+    let ends_with_wildcard = normalized_pattern.ends_with('*');
+    let mut search_start = 0usize;
+
+    for (index, part) in parts.iter().enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+
+        if index == 0 && !starts_with_wildcard {
+            if !normalized_model_id[search_start..].starts_with(part) {
+                return Ok(false);
+            }
+            search_start += part.len();
+            continue;
+        }
+
+        let haystack = &normalized_model_id[search_start..];
+        let Some(found_at) = haystack.find(part) else {
+            return Ok(false);
+        };
+        search_start += found_at + part.len();
+    }
+
+    if !ends_with_wildcard {
+        if let Some(last_part) = parts.iter().rev().find(|part| !part.is_empty()) {
+            return Ok(normalized_model_id.ends_with(last_part));
+        }
+    }
+
+    Ok(true)
 }
 
 fn load_surface_catalog() -> Result<ProviderSurfaceCatalog, String> {
@@ -1069,10 +1233,17 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
 
         validate_parameter_profile(&surface.parameter_profiles.llm)?;
         validate_parameter_profile(&surface.parameter_profiles.ocr)?;
+        validate_model_capability_profile(&surface.capability_rules.llm)?;
+        validate_model_capability_profile(&surface.capability_rules.ocr)?;
+        validate_model_capability_profile(&surface.capability_rules.image_input)?;
+        validate_model_capability_profile(&surface.capability_rules.structured_output)?;
 
-        if surface.supports.llm && surface.default_models.llm_models.is_empty() {
+        if surface.supports.llm
+            && surface.default_models.llm_models.is_empty()
+            && !surface_declares_model_selection(surface, SurfaceCapabilityKind::Llm)
+        {
             return Err(format!(
-                "Surface '{}' supports LLM but has no default llm_models.",
+                "Surface '{}' supports LLM but defines neither default llm_models nor any LLM model-selection strategy.",
                 surface.surface_id
             ));
         }
@@ -1288,6 +1459,15 @@ fn stability_sort_key(raw: &str) -> i32 {
     }
 }
 
+fn compatibility_placement_sort_key(raw: &str) -> i32 {
+    match parse_surface_placement_kind(raw).unwrap_or(SurfacePlacementKind::CustomHosted) {
+        SurfacePlacementKind::ProviderHosted => 4,
+        SurfacePlacementKind::CustomHosted => 3,
+        SurfacePlacementKind::SelfHosted => 2,
+        SurfacePlacementKind::InstalledCli => 1,
+    }
+}
+
 fn validate_parameter_profile(profile: &ProviderParameterProfile) -> Result<(), String> {
     let supported = profile
         .supported
@@ -1314,6 +1494,72 @@ fn validate_parameter_profile(profile: &ProviderParameterProfile) -> Result<(), 
     }
 
     Ok(())
+}
+
+fn validate_model_capability_profile(
+    profile: &crate::ai_providers::ProviderModelCapabilityProfile,
+) -> Result<(), String> {
+    let default_support = profile.default_support.trim();
+    if !default_support.is_empty() {
+        match default_support.to_ascii_lowercase().as_str() {
+            "supported" | "unsupported" | "unknown" => {}
+            other => {
+                return Err(format!(
+                    "Model capability profile has unsupported default_support '{}'.",
+                    other
+                ));
+            }
+        }
+    }
+
+    if profile
+        .allow_patterns
+        .iter()
+        .chain(profile.deny_patterns.iter())
+        .any(|value| value.trim().is_empty())
+    {
+        return Err("Model capability profile contains an empty pattern.".to_string());
+    }
+
+    Ok(())
+}
+
+fn surface_declares_model_selection(
+    surface: &ProviderSurfaceSpec,
+    capability: SurfaceCapabilityKind,
+) -> bool {
+    let has_defaults = match capability {
+        SurfaceCapabilityKind::Llm => !surface.default_models.llm_models.is_empty(),
+        SurfaceCapabilityKind::Ocr => !surface.default_models.ocr_models.is_empty(),
+    };
+    if has_defaults {
+        return true;
+    }
+
+    let model_catalog_support = surface
+        .model_catalog_transport
+        .as_ref()
+        .map(|transport| match capability {
+            SurfaceCapabilityKind::Llm => transport.llm_supported,
+            SurfaceCapabilityKind::Ocr => transport.ocr_supported,
+        })
+        .unwrap_or(false);
+    if model_catalog_support {
+        return true;
+    }
+
+    if surface.known_models.iter().any(|model| match capability {
+        SurfaceCapabilityKind::Llm => model.capabilities.llm,
+        SurfaceCapabilityKind::Ocr => model.capabilities.ocr,
+    }) {
+        return true;
+    }
+
+    let rules = match capability {
+        SurfaceCapabilityKind::Llm => &surface.capability_rules.llm,
+        SurfaceCapabilityKind::Ocr => &surface.capability_rules.ocr,
+    };
+    !rules.allow_patterns.is_empty() || rules.default_support.eq_ignore_ascii_case("supported")
 }
 
 fn validate_parameter_usage(
@@ -1355,13 +1601,28 @@ fn compatibility_surface_from_vendor<'a>(
     catalog: &'a ProviderSurfaceCatalog,
     vendor_id: &str,
 ) -> Option<&'a ProviderSurfaceSpec> {
-    catalog.surfaces.iter().find(|surface| {
-        surface.vendor_id.eq_ignore_ascii_case(vendor_id)
-            && matches!(
-                parse_surface_execution_kind(&surface.execution_kind),
-                Ok(SurfaceExecutionKind::DirectHttp)
-            )
-    })
+    catalog
+        .surfaces
+        .iter()
+        .filter(|surface| {
+            surface.vendor_id.eq_ignore_ascii_case(vendor_id)
+                && matches!(
+                    parse_surface_execution_kind(&surface.execution_kind),
+                    Ok(SurfaceExecutionKind::DirectHttp)
+                )
+        })
+        .max_by(|left, right| {
+            left.preferred_for_product_auth
+                .cmp(&right.preferred_for_product_auth)
+                .then_with(|| {
+                    stability_sort_key(&left.stability).cmp(&stability_sort_key(&right.stability))
+                })
+                .then_with(|| {
+                    compatibility_placement_sort_key(&left.placement_kind)
+                        .cmp(&compatibility_placement_sort_key(&right.placement_kind))
+                })
+                .then_with(|| right.display_name.cmp(&left.display_name))
+        })
 }
 
 fn compatibility_surface_for_provider_type(
@@ -1735,22 +1996,53 @@ mod tests {
             AiProviderType::OpenAi,
             Some("provider_surface.openai.direct_api"),
             SurfaceCapabilityKind::Ocr,
-            "gpt-5.999",
+            "custom-text-model",
         )
         .expect_err("unknown OCR model should be rejected");
-        assert!(error.contains("not catalogued"));
+        assert!(error.contains("not catalogued") || error.contains("not marked"));
     }
 
     #[test]
     fn surfaces_with_warn_policy_emit_unknown_model_warning() {
         let warning = known_model_capability_warning(
-            AiProviderType::Ollama,
-            Some("provider_surface.ollama.local_http"),
+            AiProviderType::Generic,
+            Some("provider_surface.generic.direct_api"),
             SurfaceCapabilityKind::Ocr,
-            "custom-vision-model:latest",
+            "totally-new-model",
         )
         .expect("warning lookup should succeed");
         assert!(warning.is_some());
+    }
+
+    #[test]
+    fn resolves_capability_rules_for_local_openai_compatible_surface() {
+        assert_eq!(
+            model_capability_status_for_surface(
+                "provider_surface.generic.local_openai_compatible",
+                SurfaceModelCapabilityKind::Ocr,
+                "qwen2.5-vl-7b-instruct"
+            )
+            .expect("ocr support should resolve"),
+            ProviderModelSupportStatus::Supported
+        );
+        assert_eq!(
+            model_capability_status_for_surface(
+                "provider_surface.generic.local_openai_compatible",
+                SurfaceModelCapabilityKind::StructuredOutput,
+                "text-embedding-3-small"
+            )
+            .expect("structured output support should resolve"),
+            ProviderModelSupportStatus::Unsupported
+        );
+    }
+
+    #[test]
+    fn explicit_model_selection_is_required_for_local_openai_compatible_surface() {
+        assert!(surface_requires_explicit_model_selection(
+            "provider_surface.generic.local_openai_compatible",
+            SurfaceCapabilityKind::Llm
+        )
+        .expect("selection requirement should resolve"));
     }
 
     #[test]
@@ -1771,5 +2063,6 @@ mod tests {
         assert_eq!(google.ocr_capabilities.strategy, "vision_api");
         assert!(google.ocr_capabilities.supports_geometry);
         assert!(google.ocr_capabilities.supports_confidence);
+        assert!(openai.ocr_capabilities.requires_structured_output_model);
     }
 }

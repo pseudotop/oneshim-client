@@ -226,6 +226,7 @@ export interface ProviderDiscoveredModel {
   supports_ocr?: boolean | null
   ocr_support?: ProviderModelSupportStatus | null
   image_input_support?: ProviderModelSupportStatus | null
+  structured_output_support?: ProviderModelSupportStatus | null
   capability_source?: string | null
 }
 
@@ -282,7 +283,7 @@ export interface ProviderSurfaceSpec {
   credential_kind: string
   stability: string
   preferred_for_product_auth: boolean
-  related_surface_ids: string[]
+  related_surface_ids?: string[]
   catalog_strategy: string
   supports: ProviderSurfaceSupports
   llm_capabilities?: {
@@ -293,8 +294,31 @@ export interface ProviderSurfaceSpec {
     supports_geometry: boolean
     supports_confidence: boolean
     requires_image_input_model: boolean
+    requires_structured_output_model: boolean
   } | null
   default_models: SurfaceDefaultModels
+  capability_rules?: {
+    llm: {
+      default_support: string
+      allow_patterns: string[]
+      deny_patterns: string[]
+    }
+    ocr: {
+      default_support: string
+      allow_patterns: string[]
+      deny_patterns: string[]
+    }
+    image_input: {
+      default_support: string
+      allow_patterns: string[]
+      deny_patterns: string[]
+    }
+    structured_output: {
+      default_support: string
+      allow_patterns: string[]
+      deny_patterns: string[]
+    }
+  } | null
   unknown_model_policy?: {
     llm: 'allow' | 'warn' | 'reject'
     ocr: 'allow' | 'warn' | 'reject'

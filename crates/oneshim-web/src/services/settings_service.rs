@@ -1,9 +1,11 @@
 use chrono::{DateTime, Utc};
 use oneshim_api_contracts::provider_specs::{
     default_surface_id_for_access_mode as default_surface_id_from_catalog,
-    known_model_capability_warning, resolved_surface_supports_model_selection,
+    known_model_capability_warning, resolved_model_capability_status,
+    resolved_ocr_requires_structured_output_model,
+    resolved_surface_requires_explicit_model_selection, resolved_surface_supports_model_selection,
     surface_supports_capability as surface_supports_capability_from_catalog,
-    validate_known_model_capability, SurfaceCapabilityKind,
+    validate_known_model_capability, SurfaceCapabilityKind, SurfaceModelCapabilityKind,
 };
 use oneshim_api_contracts::settings::{
     AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
@@ -955,19 +957,16 @@ fn validate_surface_model_selection(
     endpoint_kind: ApiEndpointKind,
     model: Option<&str>,
 ) -> Result<(), ApiError> {
-    let Some(model) = model.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(());
-    };
-
     let capability = match endpoint_kind {
         ApiEndpointKind::Ocr => SurfaceCapabilityKind::Ocr,
         ApiEndpointKind::Llm => SurfaceCapabilityKind::Llm,
     };
+    let normalized_model = model.map(str::trim).filter(|value| !value.is_empty());
 
     let supports_model =
         resolved_surface_supports_model_selection(provider_type, surface_id, capability)
             .map_err(ApiError::BadRequest)?;
-    if !supports_model {
+    if normalized_model.is_some() && !supports_model {
         let target = match endpoint_kind {
             ApiEndpointKind::Ocr => "OCR",
             ApiEndpointKind::Llm => "LLM",
@@ -978,8 +977,26 @@ fn validate_surface_model_selection(
         )));
     }
 
-    validate_known_model_capability(provider_type, surface_id, capability, model)
-        .map_err(ApiError::BadRequest)
+    if normalized_model.is_none()
+        && resolved_surface_requires_explicit_model_selection(provider_type, surface_id, capability)
+            .map_err(ApiError::BadRequest)?
+    {
+        let target = match endpoint_kind {
+            ApiEndpointKind::Ocr => "OCR",
+            ApiEndpointKind::Llm => "LLM",
+        };
+        let surface_label = surface_id.unwrap_or("default surface");
+        return Err(ApiError::BadRequest(format!(
+            "Provider surface '{surface_label}' requires an explicit {target} model selection."
+        )));
+    }
+
+    if let Some(model) = normalized_model {
+        validate_known_model_capability(provider_type, surface_id, capability, model)
+            .map_err(ApiError::BadRequest)?;
+    }
+
+    Ok(())
 }
 
 fn default_surface_id_for_endpoint(
@@ -1140,7 +1157,38 @@ fn validate_endpoint_model_compatibility(
         );
     }
     validate_known_model_capability(provider_type, surface_id, capability, model)
-        .map_err(ApiError::BadRequest)
+        .map_err(ApiError::BadRequest)?;
+
+    if matches!(endpoint_kind, ApiEndpointKind::Ocr)
+        && resolved_ocr_requires_structured_output_model(provider_type, surface_id)
+            .map_err(ApiError::BadRequest)?
+    {
+        match resolved_model_capability_status(
+            provider_type,
+            surface_id,
+            SurfaceModelCapabilityKind::StructuredOutput,
+            model,
+        )
+        .map_err(ApiError::BadRequest)?
+        {
+            oneshim_api_contracts::ai_providers::ProviderModelSupportStatus::Unsupported => {
+                return Err(ApiError::BadRequest(format!(
+                    "Model '{model}' is not marked as supporting structured JSON output required by the selected OCR surface."
+                )));
+            }
+            oneshim_api_contracts::ai_providers::ProviderModelSupportStatus::Unknown => {
+                warn!(
+                    provider = ?provider_type,
+                    surface_id = ?surface_id,
+                    model = %model,
+                    "OCR surface requires structured output, but the selected model's support is unknown."
+                );
+            }
+            oneshim_api_contracts::ai_providers::ProviderModelSupportStatus::Supported => {}
+        }
+    }
+
+    Ok(())
 }
 
 fn transport_for_auth_mode(auth_mode: CredentialAuthMode) -> ProviderSurfaceTransport {
@@ -2222,6 +2270,76 @@ mod tests {
         match err {
             ApiError::BadRequest(message) => {
                 assert!(message.contains("does not support configurable OCR model selection"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_settings_to_config_requires_explicit_model_for_local_openai_compatible_surface() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderApiKey;
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.llm_provider = "Remote".to_string();
+        settings.ai_provider.llm_api = Some(ExternalApiSettings {
+            endpoint: "http://127.0.0.1:1234/v1/chat/completions".to_string(),
+            api_key_masked: String::new(),
+            model: None,
+            provider_type: "Generic".to_string(),
+            surface_id: Some("provider_surface.generic.local_openai_compatible".to_string()),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "unavailable".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err = apply_settings_to_config(&mut config, &settings)
+            .expect_err("surface should require explicit model selection");
+        match err {
+            ApiError::BadRequest(message) => {
+                assert!(message.contains("requires an explicit LLM model selection"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_non_structured_model_for_local_openai_compatible_ocr() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderApiKey;
+        config.ai_provider.ocr_provider = OcrProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: "http://127.0.0.1:1234/v1/chat/completions".to_string(),
+            api_key_masked: String::new(),
+            model: Some("text-embedding-3-small".to_string()),
+            provider_type: "Generic".to_string(),
+            surface_id: Some("provider_surface.generic.local_openai_compatible".to_string()),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "unavailable".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err = apply_settings_to_config(&mut config, &settings)
+            .expect_err("surface should reject non-structured OCR model");
+        match err {
+            ApiError::BadRequest(message) => {
+                assert!(
+                    message.contains("structured JSON output")
+                        || message.contains("OCR-capable")
+                        || message.contains("not marked as OCR-capable")
+                );
             }
             other => panic!("unexpected error: {other:?}"),
         }

@@ -110,6 +110,12 @@ impl RemoteLlmProvider {
             .build()
             .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
 
+        let supports_model = provider_specs::resolved_surface_supports_model_selection(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
         let model = config
             .model
             .clone()
@@ -122,14 +128,19 @@ impl RemoteLlmProvider {
                 .ok()
                 .flatten()
             })
-            .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
-
-        let supports_model = provider_specs::resolved_surface_supports_model_selection(
-            config.provider_type,
-            config.surface_id.as_deref(),
-            provider_specs::SurfaceCapabilityKind::Llm,
-        )
-        .map_err(CoreError::Internal)?;
+            .or_else(|| {
+                if supports_model {
+                    None
+                } else {
+                    Some(Self::fallback_llm_model(config.provider_type).to_string())
+                }
+            })
+            .ok_or_else(|| {
+                CoreError::Config(
+                    "The selected LLM provider surface requires an explicit model selection."
+                        .to_string(),
+                )
+            })?;
         if !supports_model {
             return Err(CoreError::Config(
                 "The selected LLM provider surface does not support configurable model selection."
@@ -157,21 +168,6 @@ impl RemoteLlmProvider {
             ModelLifecycleDecision::Block { message, .. } => {
                 return Err(CoreError::PolicyDenied(message));
             }
-        }
-        if let Some(message) = provider_specs::known_model_capability_warning(
-            config.provider_type,
-            config.surface_id.as_deref(),
-            provider_specs::SurfaceCapabilityKind::Llm,
-            &model,
-        )
-        .map_err(CoreError::Internal)?
-        {
-            warn!(
-                provider = ?config.provider_type,
-                surface_id = ?config.surface_id,
-                model = %model,
-                "{message}"
-            );
         }
         if let Some(message) = provider_specs::known_model_capability_warning(
             config.provider_type,
@@ -230,6 +226,12 @@ impl RemoteLlmProvider {
             .build()
             .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
 
+        let supports_model = provider_specs::resolved_surface_supports_model_selection(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
         let model = config
             .model
             .clone()
@@ -242,14 +244,19 @@ impl RemoteLlmProvider {
                 .ok()
                 .flatten()
             })
-            .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
-
-        let supports_model = provider_specs::resolved_surface_supports_model_selection(
-            config.provider_type,
-            config.surface_id.as_deref(),
-            provider_specs::SurfaceCapabilityKind::Llm,
-        )
-        .map_err(CoreError::Internal)?;
+            .or_else(|| {
+                if supports_model {
+                    None
+                } else {
+                    Some(Self::fallback_llm_model(config.provider_type).to_string())
+                }
+            })
+            .ok_or_else(|| {
+                CoreError::Config(
+                    "The selected LLM provider surface requires an explicit model selection."
+                        .to_string(),
+                )
+            })?;
         if !supports_model {
             return Err(CoreError::Config(
                 "The selected LLM provider surface does not support configurable model selection."
@@ -1070,5 +1077,24 @@ mod tests {
             provider.llm_request_shape().expect("shape should resolve"),
             ProviderRequestShape::OpenAiResponses
         );
+    }
+
+    #[test]
+    fn local_openai_compatible_llm_requires_explicit_model_selection() {
+        let config = ExternalApiEndpoint {
+            endpoint: "http://127.0.0.1:1234/v1/chat/completions".to_string(),
+            api_key: String::new(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::Generic,
+            surface_id: Some("provider_surface.generic.local_openai_compatible".to_string()),
+            credential: None,
+        };
+        let result = RemoteLlmProvider::new(&config);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("requires an explicit model selection"));
     }
 }

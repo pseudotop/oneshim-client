@@ -1,6 +1,8 @@
 use async_trait::async_trait;
+use oneshim_api_contracts::ai_providers::ProviderModelSupportStatus;
 use oneshim_api_contracts::provider_specs::{
     self, ProviderAuthScheme, ProviderRequestShape, ProviderTransportKind,
+    SurfaceModelCapabilityKind,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -217,6 +219,17 @@ impl RemoteOcrProvider {
         } else {
             CredentialSource::ApiKey(config.api_key.clone())
         };
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(config.timeout_secs))
+            .build()
+            .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+
+        let supports_model = provider_specs::resolved_surface_supports_model_selection(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Ocr,
+        )
+        .map_err(CoreError::Internal)?;
         let resolved_model = config.model.clone().or_else(|| {
             provider_specs::resolved_default_model(
                 config.provider_type,
@@ -226,23 +239,24 @@ impl RemoteOcrProvider {
             .ok()
             .flatten()
         });
-
-        let http_client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(config.timeout_secs))
-            .build()
-            .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+        if resolved_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+            && supports_model
+        {
+            return Err(CoreError::Config(
+                "The selected OCR provider surface requires an explicit model selection."
+                    .to_string(),
+            ));
+        }
 
         if let Some(model) = resolved_model
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            let supports_model = provider_specs::resolved_surface_supports_model_selection(
-                config.provider_type,
-                config.surface_id.as_deref(),
-                provider_specs::SurfaceCapabilityKind::Ocr,
-            )
-            .map_err(CoreError::Internal)?;
             if !supports_model {
                 return Err(CoreError::Config(
                     "The selected OCR provider surface does not support configurable model selection."
@@ -285,21 +299,6 @@ impl RemoteOcrProvider {
                     "{message}"
                 );
             }
-            if let Some(message) = provider_specs::known_model_capability_warning(
-                config.provider_type,
-                config.surface_id.as_deref(),
-                provider_specs::SurfaceCapabilityKind::Ocr,
-                model,
-            )
-            .map_err(CoreError::Internal)?
-            {
-                warn!(
-                    provider = ?config.provider_type,
-                    surface_id = ?config.surface_id,
-                    model = %model,
-                    "{message}"
-                );
-            }
             provider_specs::validate_known_model_capability(
                 config.provider_type,
                 config.surface_id.as_deref(),
@@ -307,6 +306,36 @@ impl RemoteOcrProvider {
                 model,
             )
             .map_err(CoreError::Config)?;
+            if provider_specs::resolved_ocr_requires_structured_output_model(
+                config.provider_type,
+                config.surface_id.as_deref(),
+            )
+            .map_err(CoreError::Internal)?
+            {
+                match provider_specs::resolved_model_capability_status(
+                    config.provider_type,
+                    config.surface_id.as_deref(),
+                    SurfaceModelCapabilityKind::StructuredOutput,
+                    model,
+                )
+                .map_err(CoreError::Internal)?
+                {
+                    ProviderModelSupportStatus::Supported => {}
+                    ProviderModelSupportStatus::Unsupported => {
+                        return Err(CoreError::Config(format!(
+                            "Selected OCR model '{model}' is not marked as supporting structured JSON output required by this provider surface."
+                        )));
+                    }
+                    ProviderModelSupportStatus::Unknown => {
+                        warn!(
+                            provider = ?config.provider_type,
+                            surface_id = ?config.surface_id,
+                            model = %model,
+                            "OCR surface requires structured output, but the selected model's support is unknown."
+                        );
+                    }
+                }
+            }
         }
 
         debug!(
@@ -335,6 +364,16 @@ impl RemoteOcrProvider {
         config: &ExternalApiEndpoint,
         credential: CredentialSource,
     ) -> Result<Self, CoreError> {
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(config.timeout_secs))
+            .build()
+            .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+        let supports_model = provider_specs::resolved_surface_supports_model_selection(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Ocr,
+        )
+        .map_err(CoreError::Internal)?;
         let resolved_model = config.model.clone().or_else(|| {
             provider_specs::resolved_default_model(
                 config.provider_type,
@@ -344,22 +383,24 @@ impl RemoteOcrProvider {
             .ok()
             .flatten()
         });
-        let http_client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(config.timeout_secs))
-            .build()
-            .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
+        if resolved_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+            && supports_model
+        {
+            return Err(CoreError::Config(
+                "The selected OCR provider surface requires an explicit model selection."
+                    .to_string(),
+            ));
+        }
 
         if let Some(model) = resolved_model
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            let supports_model = provider_specs::resolved_surface_supports_model_selection(
-                config.provider_type,
-                config.surface_id.as_deref(),
-                provider_specs::SurfaceCapabilityKind::Ocr,
-            )
-            .map_err(CoreError::Internal)?;
             if !supports_model {
                 return Err(CoreError::Config(
                     "The selected OCR provider surface does not support configurable model selection."
@@ -394,6 +435,36 @@ impl RemoteOcrProvider {
                 model,
             )
             .map_err(CoreError::Config)?;
+            if provider_specs::resolved_ocr_requires_structured_output_model(
+                config.provider_type,
+                config.surface_id.as_deref(),
+            )
+            .map_err(CoreError::Internal)?
+            {
+                match provider_specs::resolved_model_capability_status(
+                    config.provider_type,
+                    config.surface_id.as_deref(),
+                    SurfaceModelCapabilityKind::StructuredOutput,
+                    model,
+                )
+                .map_err(CoreError::Internal)?
+                {
+                    ProviderModelSupportStatus::Supported => {}
+                    ProviderModelSupportStatus::Unsupported => {
+                        return Err(CoreError::Config(format!(
+                            "Selected OCR model '{model}' is not marked as supporting structured JSON output required by this provider surface."
+                        )));
+                    }
+                    ProviderModelSupportStatus::Unknown => {
+                        warn!(
+                            provider = ?config.provider_type,
+                            surface_id = ?config.surface_id,
+                            model = %model,
+                            "OCR surface requires structured output, but the selected model's support is unknown."
+                        );
+                    }
+                }
+            }
         }
 
         // Use OAuth-provided base URL when available.
@@ -953,6 +1024,48 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("OCR-capable"));
+    }
+
+    #[test]
+    fn local_openai_compatible_ocr_requires_explicit_model_selection() {
+        let config = ExternalApiEndpoint {
+            endpoint: "http://127.0.0.1:1234/v1/chat/completions".to_string(),
+            api_key: String::new(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::Generic,
+            surface_id: Some("provider_surface.generic.local_openai_compatible".to_string()),
+            credential: None,
+        };
+
+        let result = RemoteOcrProvider::new(&config);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("requires an explicit model selection"));
+    }
+
+    #[test]
+    fn local_openai_compatible_ocr_rejects_model_without_structured_output() {
+        let config = ExternalApiEndpoint {
+            endpoint: "http://127.0.0.1:1234/v1/chat/completions".to_string(),
+            api_key: String::new(),
+            model: Some("text-embedding-3-small".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Generic,
+            surface_id: Some("provider_surface.generic.local_openai_compatible".to_string()),
+            credential: None,
+        };
+
+        let result = RemoteOcrProvider::new(&config);
+        assert!(result.is_err());
+        let message = result.unwrap_err().to_string();
+        assert!(
+            message.contains("structured JSON output")
+                || message.contains("OCR-capable")
+                || message.contains("not marked as OCR-capable")
+        );
     }
 
     #[test]

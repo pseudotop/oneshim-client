@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated_at": "2026-03-16T03:40:00Z",
+  "updated_at": "2026-03-16T08:25:00Z",
   "vendors": [
     {
       "vendor_id": "anthropic",
@@ -29,7 +29,7 @@
     {
       "vendor_id": "generic",
       "provider_type": "Generic",
-      "aliases": ["generic", "openai-compatible", "openai_like", "openai-like", "openailike", "llamaindex", "llama-index"],
+      "aliases": ["generic", "openai-compatible", "openai_like", "openai-like", "openailike", "llamaindex", "llama-index", "lmstudio", "lm-studio", "vllm", "openai-compatible-local", "local-openai-compatible"],
       "display_name": "Generic"
     }
   ],
@@ -155,11 +155,34 @@
         "strategy": "multimodal_llm",
         "supports_geometry": true,
         "supports_confidence": true,
-        "requires_image_input_model": true
+        "requires_image_input_model": true,
+        "requires_structured_output_model": true
       },
       "default_models": {
         "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
         "ocr_models": ["gpt-5.4", "gpt-5-mini"]
+      },
+      "capability_rules": {
+        "llm": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "o*"],
+          "deny_patterns": ["text-embedding-*", "text-similarity-*", "text-search-*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*", "gpt-4o-transcribe*", "gpt-4o-mini-transcribe*"]
+        },
+        "ocr": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "o*"],
+          "deny_patterns": ["text-embedding-*", "text-similarity-*", "text-search-*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*", "gpt-4o-transcribe*", "gpt-4o-mini-transcribe*"]
+        },
+        "image_input": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "o*"],
+          "deny_patterns": ["text-embedding-*", "text-similarity-*", "text-search-*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*", "gpt-4o-transcribe*", "gpt-4o-mini-transcribe*"]
+        },
+        "structured_output": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "o*"],
+          "deny_patterns": ["text-embedding-*", "text-similarity-*", "text-search-*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*", "gpt-4o-transcribe*", "gpt-4o-mini-transcribe*"]
+        }
       },
       "unknown_model_policy": {
         "llm": "allow",
@@ -636,11 +659,34 @@
         "strategy": "multimodal_llm",
         "supports_geometry": true,
         "supports_confidence": true,
-        "requires_image_input_model": true
+        "requires_image_input_model": true,
+        "requires_structured_output_model": true
       },
       "default_models": {
         "llm_models": ["qwen3:8b", "gpt-oss:20b", "gemma3:4b"],
         "ocr_models": ["qwen3-vl:8b", "gemma3:4b", "gemma3:12b"]
+      },
+      "capability_rules": {
+        "llm": {
+          "default_support": "supported",
+          "allow_patterns": [],
+          "deny_patterns": ["nomic-embed*", "mxbai-embed*", "bge-*", "snowflake-arctic-embed*"]
+        },
+        "ocr": {
+          "default_support": "unsupported",
+          "allow_patterns": ["qwen3-vl*", "qwen2.5-vl*", "gemma3*", "llava*", "bakllava*", "moondream*"],
+          "deny_patterns": ["nomic-embed*", "mxbai-embed*", "bge-*", "snowflake-arctic-embed*"]
+        },
+        "image_input": {
+          "default_support": "unsupported",
+          "allow_patterns": ["qwen3-vl*", "qwen2.5-vl*", "gemma3*", "llava*", "bakllava*", "moondream*"],
+          "deny_patterns": ["nomic-embed*", "mxbai-embed*", "bge-*", "snowflake-arctic-embed*"]
+        },
+        "structured_output": {
+          "default_support": "unknown",
+          "allow_patterns": ["qwen*", "gpt-oss*", "gemma3*", "llava*", "bakllava*", "moondream*"],
+          "deny_patterns": ["nomic-embed*", "mxbai-embed*", "bge-*", "snowflake-arctic-embed*"]
+        }
       },
       "unknown_model_policy": {
         "llm": "allow",
@@ -818,6 +864,115 @@
       ]
     },
     {
+      "surface_id": "provider_surface.generic.local_openai_compatible",
+      "vendor_id": "generic",
+      "provider_type": "Generic",
+      "display_name": "Local OpenAI-Compatible Server",
+      "execution_kind": "direct_http",
+      "placement_kind": "self_hosted",
+      "credential_kind": "none",
+      "stability": "preview",
+      "preferred_for_product_auth": false,
+      "catalog_strategy": "http_models_endpoint",
+      "supports": {
+        "llm": true,
+        "ocr": true,
+        "model_catalog": true,
+        "context_bridge": false
+      },
+      "llm_capabilities": {
+        "structured_output": true
+      },
+      "ocr_capabilities": {
+        "strategy": "multimodal_llm",
+        "supports_geometry": true,
+        "supports_confidence": true,
+        "requires_image_input_model": true,
+        "requires_structured_output_model": true
+      },
+      "default_models": {
+        "llm_models": [],
+        "ocr_models": []
+      },
+      "capability_rules": {
+        "llm": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "openai/gpt-*", "qwen*", "llama*", "mistral*", "gemma*", "claude*", "deepseek*", "phi*"],
+          "deny_patterns": ["text-embedding-*", "nomic-embed*", "mxbai-embed*", "bge-*", "snowflake-arctic-embed*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*"]
+        },
+        "ocr": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "openai/gpt-*", "qwen*vl*", "llava*", "bakllava*", "moondream*", "gemma3*", "internvl*"],
+          "deny_patterns": ["text-embedding-*", "nomic-embed*", "mxbai-embed*", "bge-*", "snowflake-arctic-embed*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*"]
+        },
+        "image_input": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "openai/gpt-*", "qwen*vl*", "llava*", "bakllava*", "moondream*", "gemma3*", "internvl*"],
+          "deny_patterns": ["text-embedding-*", "nomic-embed*", "mxbai-embed*", "bge-*", "snowflake-arctic-embed*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*"]
+        },
+        "structured_output": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "openai/gpt-*", "qwen*", "llama*", "mistral*", "gemma*", "deepseek*", "phi*"],
+          "deny_patterns": ["text-embedding-*", "nomic-embed*", "mxbai-embed*", "bge-*", "snowflake-arctic-embed*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*"]
+        }
+      },
+      "unknown_model_policy": {
+        "llm": "warn",
+        "ocr": "warn"
+      },
+      "known_models": [
+        {
+          "id": "non-generative-models",
+          "display_name": "Embedding and utility models",
+          "aliases": [],
+          "id_prefixes": ["text-embedding-", "nomic-embed", "mxbai-embed", "bge-", "snowflake-arctic-embed", "omni-moderation-", "text-moderation-", "whisper-", "tts-", "gpt-image-"],
+          "capabilities": { "llm": false, "ocr": false, "image_input": false },
+          "notes": ["Embedding, moderation, transcription, and image-generation models are not valid ONESHIM LLM/OCR backends."]
+        }
+      ],
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "messages", "temperature", "top_p", "max_tokens", "tools", "tool_choice", "response_format"],
+          "unsupported": [],
+          "notes": ["Use this preset for local OpenAI-compatible servers such as LM Studio or vLLM."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens", "response_format"],
+          "unsupported": [],
+          "notes": ["OCR assumes a multimodal OpenAI-compatible model and JSON response support."]
+        }
+      },
+      "llm_transport": {
+        "method": "POST",
+        "url": "http://127.0.0.1:1234/v1/chat/completions",
+        "auth_scheme": "none",
+        "request_shape": "openai_chat_completions"
+      },
+      "ocr_transport": {
+        "method": "POST",
+        "url": "http://127.0.0.1:1234/v1/chat/completions",
+        "auth_scheme": "none",
+        "request_shape": "openai_vision_chat_completions"
+      },
+      "model_catalog_transport": {
+        "method": "GET",
+        "url": "http://127.0.0.1:1234/v1/models",
+        "auth_scheme": "none",
+        "response_shape": "standard_data_or_models",
+        "llm_supported": true,
+        "ocr_supported": true
+      },
+      "availability_probe": {
+        "method": "GET",
+        "url": "http://127.0.0.1:1234/v1/models",
+        "auth_scheme": "none"
+      },
+      "references": [
+        "https://lmstudio.ai/docs/local-server",
+        "https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html"
+      ]
+    },
+    {
       "surface_id": "provider_surface.generic.direct_api",
       "vendor_id": "generic",
       "provider_type": "Generic",
@@ -841,11 +996,34 @@
         "strategy": "multimodal_llm",
         "supports_geometry": true,
         "supports_confidence": true,
-        "requires_image_input_model": true
+        "requires_image_input_model": true,
+        "requires_structured_output_model": true
       },
       "default_models": {
         "llm_models": ["gpt-5-mini", "gpt-5.4"],
         "ocr_models": ["gpt-5-mini"]
+      },
+      "capability_rules": {
+        "llm": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "claude-*", "qwen*", "llama*", "mistral*", "gemma*", "deepseek*", "phi*"],
+          "deny_patterns": ["text-embedding-*", "text-similarity-*", "text-search-*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*"]
+        },
+        "ocr": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "claude-*", "qwen*vl*", "llava*", "bakllava*", "moondream*", "gemma3*", "internvl*"],
+          "deny_patterns": ["text-embedding-*", "text-similarity-*", "text-search-*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*"]
+        },
+        "image_input": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "claude-*", "qwen*vl*", "llava*", "bakllava*", "moondream*", "gemma3*", "internvl*"],
+          "deny_patterns": ["text-embedding-*", "text-similarity-*", "text-search-*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*"]
+        },
+        "structured_output": {
+          "default_support": "unknown",
+          "allow_patterns": ["gpt-*", "qwen*", "llama*", "mistral*", "gemma*", "deepseek*", "phi*"],
+          "deny_patterns": ["text-embedding-*", "text-similarity-*", "text-search-*", "omni-moderation-*", "text-moderation-*", "whisper-*", "tts-*", "gpt-image-*"]
+        }
       },
       "unknown_model_policy": {
         "llm": "warn",

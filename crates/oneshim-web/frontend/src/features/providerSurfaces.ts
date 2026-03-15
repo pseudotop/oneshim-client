@@ -229,7 +229,7 @@ export function relatedProviderSurfacesFromList(
     return []
   }
 
-  return surface.related_surface_ids
+  return (surface.related_surface_ids ?? [])
     .map((surfaceId) => providerSurfaceByIdFromList(surfaces, surfaceId))
     .filter((candidate): candidate is ProviderSurfaceSpec => candidate != null)
 }
@@ -398,4 +398,10 @@ export function surfaceOcrExecutionStrategy(
     return strategy
   }
   return 'none'
+}
+
+export function surfaceOcrRequiresStructuredOutputModel(
+  surface: ProviderSurfaceSpec | undefined,
+): boolean {
+  return surface?.ocr_capabilities?.requires_structured_output_model ?? false
 }

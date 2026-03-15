@@ -45,6 +45,8 @@ pub struct ProviderModelCapabilityRules {
     pub ocr: ProviderModelCapabilityProfile,
     #[serde(default)]
     pub image_input: ProviderModelCapabilityProfile,
+    #[serde(default)]
+    pub structured_output: ProviderModelCapabilityProfile,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -103,6 +105,8 @@ pub struct ProviderDiscoveredModel {
     pub ocr_support: Option<ProviderModelSupportStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_input_support: Option<ProviderModelSupportStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structured_output_support: Option<ProviderModelSupportStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capability_source: Option<String>,
 }
