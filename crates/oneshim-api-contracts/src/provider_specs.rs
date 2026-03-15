@@ -108,6 +108,7 @@ pub enum ProviderTransportKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderAuthScheme {
+    None,
     Bearer,
     XApiKey,
     XGoogApiKey,
@@ -855,23 +856,45 @@ fn validate_transport_spec(
     auth_scheme: &str,
     request_shape: Option<&str>,
 ) -> Result<(), String> {
+    let auth_scheme = parse_auth_scheme(auth_scheme)?;
     if url.trim().is_empty() {
         return Err(format!(
             "Transport owner '{}' transport '{}' is missing a URL.",
             transport_owner, transport_name
         ));
     }
-    if !url.trim().starts_with("https://") {
+    if !transport_url_is_allowed(url, auth_scheme) {
         return Err(format!(
-            "Transport owner '{}' transport '{}' must use an https URL.",
+            "Transport owner '{}' transport '{}' must use an https URL or an allowed local no-auth URL.",
             transport_owner, transport_name
         ));
     }
-    parse_auth_scheme(auth_scheme)?;
     if let Some(shape) = request_shape {
         parse_request_shape(shape)?;
     }
     Ok(())
+}
+
+fn transport_url_is_allowed(url: &str, auth_scheme: ProviderAuthScheme) -> bool {
+    let trimmed = url.trim();
+    if trimmed.starts_with("https://") {
+        return true;
+    }
+
+    if auth_scheme != ProviderAuthScheme::None || !trimmed.starts_with("http://") {
+        return false;
+    }
+
+    let Some(rest) = trimmed.strip_prefix("http://") else {
+        return false;
+    };
+    let host_port = rest.split('/').next().unwrap_or_default();
+    if host_port.starts_with("[::1]") {
+        return true;
+    }
+    let host = host_port.split(':').next().unwrap_or_default();
+
+    matches!(host, "localhost" | "127.0.0.1")
 }
 
 fn stability_sort_key(raw: &str) -> i32 {
@@ -981,6 +1004,7 @@ fn compatibility_surface_for_provider_type(
 
 fn parse_auth_scheme(raw: &str) -> Result<ProviderAuthScheme, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
+        "none" => Ok(ProviderAuthScheme::None),
         "bearer" => Ok(ProviderAuthScheme::Bearer),
         "x_api_key" => Ok(ProviderAuthScheme::XApiKey),
         "x_goog_api_key" => Ok(ProviderAuthScheme::XGoogApiKey),
@@ -1006,6 +1030,7 @@ fn provider_type_label(provider_type: AiProviderType) -> &'static str {
         AiProviderType::Anthropic => "Anthropic",
         AiProviderType::OpenAi => "OpenAi",
         AiProviderType::Google => "Google",
+        AiProviderType::Ollama => "Ollama",
         AiProviderType::Generic => "Generic",
     }
 }
@@ -1013,8 +1038,11 @@ fn provider_type_label(provider_type: AiProviderType) -> &'static str {
 fn parse_provider_type_name(raw: &str) -> Option<AiProviderType> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "anthropic" => Some(AiProviderType::Anthropic),
-        "openai" | "open_ai" | "open-ai" | "openai-compatible" => Some(AiProviderType::OpenAi),
+        "openai" | "open_ai" | "open-ai" => Some(AiProviderType::OpenAi),
         "google" | "gemini" => Some(AiProviderType::Google),
+        "ollama" => Some(AiProviderType::Ollama),
+        "llamaindex" | "llama-index" | "openai-compatible" | "openai-like" | "openai_like"
+        | "openailike" => Some(AiProviderType::Generic),
         "generic" => Some(AiProviderType::Generic),
         _ => None,
     }
@@ -1044,11 +1072,15 @@ mod tests {
     fn resolves_aliases() {
         assert_eq!(
             resolve_provider_type("openai-compatible"),
-            Some(AiProviderType::OpenAi)
+            Some(AiProviderType::Generic)
         );
         assert_eq!(
             resolve_provider_type("gemini"),
             Some(AiProviderType::Google)
+        );
+        assert_eq!(
+            resolve_provider_type("ollama"),
+            Some(AiProviderType::Ollama)
         );
     }
 
@@ -1203,7 +1235,9 @@ mod tests {
             &["response_format"],
         )
         .expect_err("unsupported subprocess parameter should fail");
-        assert!(err.contains("explicitly unsupported"));
+        assert!(
+            err.contains("not declared as supported") || err.contains("explicitly unsupported")
+        );
     }
 
     #[test]
@@ -1239,5 +1273,16 @@ mod tests {
         let err = validate_surface_catalog(&catalog)
             .expect_err("cross-vendor related surface should fail");
         assert!(err.contains("must share the same vendor"));
+    }
+
+    #[test]
+    fn resolves_ollama_no_auth_surface() {
+        let auth_scheme = resolved_auth_scheme(
+            AiProviderType::Ollama,
+            Some("provider_surface.ollama.local_http"),
+            ProviderTransportKind::Llm,
+        )
+        .expect("ollama auth scheme should resolve");
+        assert_eq!(auth_scheme, ProviderAuthScheme::None);
     }
 }

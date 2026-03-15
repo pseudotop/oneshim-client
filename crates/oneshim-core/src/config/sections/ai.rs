@@ -7,7 +7,7 @@ use super::ai_validation::{
 use crate::error::CoreError;
 use crate::provider_surface::{
     provider_surface_spec, provider_surface_supports_llm, provider_surface_supports_ocr,
-    ProviderSurfaceTransport,
+    provider_surface_uses_no_auth, ProviderSurfaceTransport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -159,7 +159,13 @@ fn validate_remote_endpoint(
         binding.auth_mode == CredentialAuthMode::ApiKey && binding.secret_ref.is_some()
     });
 
-    if endpoint.api_key.trim().is_empty() && !has_api_key_binding {
+    let requires_plaintext_api_key = endpoint
+        .surface_id
+        .as_deref()
+        .map(|surface_id| !provider_surface_uses_no_auth(surface_id))
+        .unwrap_or(true);
+
+    if requires_plaintext_api_key && endpoint.api_key.trim().is_empty() && !has_api_key_binding {
         return Err(CoreError::Config(format!(
             "`{field_name}.api_key` must not be empty unless a credential binding is configured."
         )));

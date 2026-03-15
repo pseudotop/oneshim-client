@@ -39,6 +39,13 @@ const KNOWN_PROVIDER_SURFACES: &[ProviderSurfaceSpec] = &[
         supports_ocr: true,
     },
     ProviderSurfaceSpec {
+        id: "provider_surface.ollama.local_http",
+        provider_type: AiProviderType::Ollama,
+        transport: ProviderSurfaceTransport::DirectApi,
+        supports_llm: true,
+        supports_ocr: true,
+    },
+    ProviderSurfaceSpec {
         id: "provider_surface.generic.direct_api",
         provider_type: AiProviderType::Generic,
         transport: ProviderSurfaceTransport::DirectApi,
@@ -95,6 +102,16 @@ pub fn provider_surface_supports_ocr(raw: &str) -> bool {
     provider_surface_spec(raw).is_some_and(|spec| spec.supports_ocr)
 }
 
+pub fn provider_surface_uses_no_auth(raw: &str) -> bool {
+    matches!(
+        provider_surface_spec(raw),
+        Some(ProviderSurfaceSpec {
+            id: "provider_surface.ollama.local_http",
+            ..
+        })
+    )
+}
+
 pub fn default_provider_surface_id(
     provider_type: AiProviderType,
     access_mode: AiAccessMode,
@@ -106,6 +123,7 @@ pub fn default_provider_surface_id(
             AiProviderType::OpenAi => Some("provider_surface.openai.subprocess_cli"),
             AiProviderType::Anthropic => Some("provider_surface.anthropic.subprocess_cli"),
             AiProviderType::Google => Some("provider_surface.google.subprocess_cli"),
+            AiProviderType::Ollama => None,
             AiProviderType::Generic => None,
         },
         AiAccessMode::ProviderApiKey
@@ -114,6 +132,7 @@ pub fn default_provider_surface_id(
             AiProviderType::Anthropic => "provider_surface.anthropic.direct_api",
             AiProviderType::OpenAi => "provider_surface.openai.direct_api",
             AiProviderType::Google => "provider_surface.google.direct_api",
+            AiProviderType::Ollama => "provider_surface.ollama.local_http",
             AiProviderType::Generic => "provider_surface.generic.direct_api",
         }),
     }

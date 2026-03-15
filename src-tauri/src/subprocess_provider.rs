@@ -491,6 +491,7 @@ fn surface_for_provider_type(
         AiProviderType::Anthropic => "Anthropic",
         AiProviderType::OpenAi => "OpenAi",
         AiProviderType::Google => "Google",
+        AiProviderType::Ollama => return None,
         AiProviderType::Generic => return None,
     };
 

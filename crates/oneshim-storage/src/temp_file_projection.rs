@@ -157,6 +157,7 @@ pub fn provider_api_key_temp_file_template(
         AiProviderType::OpenAi => ("openai", "openai"),
         AiProviderType::Anthropic => ("anthropic", "anthropic"),
         AiProviderType::Google => ("google", "google"),
+        AiProviderType::Ollama => ("ollama", "ollama"),
         AiProviderType::Generic => ("generic", "generic"),
     };
 
@@ -173,6 +174,7 @@ pub fn default_provider_api_key_temp_file_templates() -> Vec<ProjectionTemplate>
         AiProviderType::OpenAi,
         AiProviderType::Anthropic,
         AiProviderType::Google,
+        AiProviderType::Ollama,
         AiProviderType::Generic,
     ] {
         for profile_id in ["llm", "ocr"] {

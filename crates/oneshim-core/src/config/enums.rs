@@ -59,6 +59,7 @@ pub enum AiProviderType {
     Anthropic,
     OpenAi,
     Google,
+    Ollama,
     #[default]
     Generic,
 }

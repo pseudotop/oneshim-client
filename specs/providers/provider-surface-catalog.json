@@ -11,7 +11,7 @@
     {
       "vendor_id": "openai",
       "provider_type": "OpenAi",
-      "aliases": ["openai", "open_ai", "open-ai", "openai-compatible"],
+      "aliases": ["openai", "open_ai", "open-ai"],
       "display_name": "OpenAI"
     },
     {
@@ -21,9 +21,15 @@
       "display_name": "Google"
     },
     {
+      "vendor_id": "ollama",
+      "provider_type": "Ollama",
+      "aliases": ["ollama"],
+      "display_name": "Ollama"
+    },
+    {
       "vendor_id": "generic",
       "provider_type": "Generic",
-      "aliases": ["generic"],
+      "aliases": ["generic", "openai-compatible", "openai_like", "openai-like", "openailike", "llamaindex", "llama-index"],
       "display_name": "Generic"
     }
   ],
@@ -335,6 +341,65 @@
       ]
     },
     {
+      "surface_id": "provider_surface.ollama.local_http",
+      "vendor_id": "ollama",
+      "provider_type": "Ollama",
+      "display_name": "Ollama Local API",
+      "execution_kind": "direct_http",
+      "credential_kind": "none",
+      "stability": "ga",
+      "preferred_for_product_auth": false,
+      "catalog_strategy": "http_models_endpoint",
+      "supports": {
+        "llm": true,
+        "ocr": true,
+        "model_catalog": true,
+        "context_bridge": false
+      },
+      "default_models": {
+        "llm_models": ["qwen3:8b", "gpt-oss:20b", "gemma3"],
+        "ocr_models": ["qwen3-vl:8b", "gemma3"]
+      },
+      "parameter_profiles": {
+        "llm": {
+          "supported": ["model", "input", "instructions", "max_output_tokens", "temperature", "top_p", "text", "reasoning"],
+          "unsupported": ["tools", "tool_choice", "parallel_tool_calls", "store"],
+          "notes": ["ONESHIM uses Ollama's local OpenAI-compatible /v1/responses surface for LLM calls."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens", "response_format"],
+          "unsupported": ["thinking"],
+          "notes": ["Vision OCR runs through Ollama's OpenAI-compatible /v1/chat/completions surface."]
+        }
+      },
+      "llm_transport": {
+        "method": "POST",
+        "url": "http://localhost:11434/v1/responses",
+        "auth_scheme": "none",
+        "request_shape": "openai_responses"
+      },
+      "ocr_transport": {
+        "method": "POST",
+        "url": "http://localhost:11434/v1/chat/completions",
+        "auth_scheme": "none",
+        "request_shape": "openai_vision_chat_completions"
+      },
+      "model_catalog_transport": {
+        "method": "GET",
+        "url": "http://localhost:11434/api/tags",
+        "auth_scheme": "none",
+        "response_shape": "standard_data_or_models",
+        "llm_supported": true,
+        "ocr_supported": true
+      },
+      "references": [
+        "https://docs.ollama.com/api/authentication",
+        "https://docs.ollama.com/api/openai-compatibility",
+        "https://docs.ollama.com/api/tags",
+        "https://docs.ollama.com/capabilities/structured-outputs"
+      ]
+    },
+    {
       "surface_id": "provider_surface.google.subprocess_cli",
       "vendor_id": "google",
       "provider_type": "Google",
@@ -403,7 +468,10 @@
         "llm": {
           "supported": ["model", "messages", "temperature", "top_p", "max_tokens", "tools", "tool_choice", "response_format"],
           "unsupported": [],
-          "notes": ["Generic remains conservative and OpenAI-compatible by default."]
+          "notes": [
+            "Generic remains conservative and OpenAI-compatible by default.",
+            "This starter surface is suitable for OpenAI-like gateways including LlamaIndex OpenAILike."
+          ]
         },
         "ocr": {
           "supported": ["model", "messages", "max_tokens", "response_format"],
@@ -432,7 +500,8 @@
         "ocr_supported": true
       },
       "references": [
-        "https://platform.openai.com/docs/api-reference/chat"
+        "https://platform.openai.com/docs/api-reference/chat",
+        "https://developers.llamaindex.ai/python/framework-api-reference/llms/openai_like/"
       ]
     }
   ]

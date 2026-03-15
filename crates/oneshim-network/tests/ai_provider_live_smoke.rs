@@ -157,7 +157,10 @@ impl ProviderCapability {
                 ocr_can_inherit_llm_endpoint: false,
                 ocr_can_inherit_llm_model: false,
             },
-            AiProviderType::Anthropic | AiProviderType::OpenAi | AiProviderType::Generic => Self {
+            AiProviderType::Anthropic
+            | AiProviderType::OpenAi
+            | AiProviderType::Ollama
+            | AiProviderType::Generic => Self {
                 ocr_can_inherit_llm_endpoint: true,
                 ocr_can_inherit_llm_model: true,
             },
@@ -284,6 +287,7 @@ fn provider_label(provider_type: AiProviderType) -> &'static str {
         AiProviderType::Anthropic => "anthropic",
         AiProviderType::OpenAi => "openai",
         AiProviderType::Google => "google",
+        AiProviderType::Ollama => "ollama",
         AiProviderType::Generic => "generic",
     }
 }
@@ -293,6 +297,7 @@ fn parse_provider_type(raw: &str) -> AiProviderType {
         "anthropic" => AiProviderType::Anthropic,
         "openai" | "open_ai" | "open-ai" => AiProviderType::OpenAi,
         "google" | "gemini" => AiProviderType::Google,
+        "ollama" => AiProviderType::Ollama,
         "generic" => AiProviderType::Generic,
         other => panic!("Unsupported provider type: {other}"),
     }

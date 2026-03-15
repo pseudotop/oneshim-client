@@ -668,6 +668,7 @@ fn provider_type_id(provider_type: oneshim_core::config::AiProviderType) -> &'st
         oneshim_core::config::AiProviderType::OpenAi => "openai",
         oneshim_core::config::AiProviderType::Anthropic => "anthropic",
         oneshim_core::config::AiProviderType::Google => "google",
+        oneshim_core::config::AiProviderType::Ollama => "ollama",
         oneshim_core::config::AiProviderType::Generic => "generic",
     }
 }

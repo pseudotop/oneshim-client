@@ -46,6 +46,7 @@ pub fn provider_api_key_cli_template(
         AiProviderType::OpenAi => ("openai", vec!["OPENAI_API_KEY".to_string()]),
         AiProviderType::Anthropic => ("anthropic", vec!["ANTHROPIC_API_KEY".to_string()]),
         AiProviderType::Google => ("google", vec!["GOOGLE_API_KEY".to_string()]),
+        AiProviderType::Ollama => ("ollama", vec!["OLLAMA_API_KEY".to_string()]),
         AiProviderType::Generic => ("generic", vec!["ONESHIM_GENERIC_API_KEY".to_string()]),
     };
 
@@ -60,6 +61,7 @@ pub fn default_provider_api_key_cli_templates() -> Vec<ProjectionTemplate> {
         AiProviderType::OpenAi,
         AiProviderType::Anthropic,
         AiProviderType::Google,
+        AiProviderType::Ollama,
         AiProviderType::Generic,
     ]
     .into_iter()

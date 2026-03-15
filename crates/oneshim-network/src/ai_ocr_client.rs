@@ -136,6 +136,7 @@ fn apply_auth_headers(
     api_key: &str,
 ) -> reqwest::RequestBuilder {
     match auth_scheme {
+        ProviderAuthScheme::None => builder,
         ProviderAuthScheme::XApiKey => builder
             .header("x-api-key", api_key)
             .header("anthropic-version", "2023-06-01"),
@@ -174,12 +175,22 @@ impl RemoteOcrProvider {
     }
 
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
-        if config.api_key.is_empty() {
+        let auth_scheme = provider_specs::resolved_auth_scheme(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            ProviderTransportKind::Ocr,
+        )
+        .map_err(CoreError::Internal)?;
+        if !matches!(auth_scheme, ProviderAuthScheme::None) && config.api_key.is_empty() {
             return Err(CoreError::Config(
                 "AI OCR API key is not configured. Set it in Settings.".into(),
             ));
         }
-        let credential = CredentialSource::ApiKey(config.api_key.clone());
+        let credential = if matches!(auth_scheme, ProviderAuthScheme::None) {
+            CredentialSource::NoAuth
+        } else {
+            CredentialSource::ApiKey(config.api_key.clone())
+        };
         let resolved_model = config.model.clone().or_else(|| {
             provider_specs::resolved_default_model(
                 config.provider_type,
@@ -513,15 +524,18 @@ impl OcrProvider for RemoteOcrProvider {
             .header("Content-Type", "application/json")
             .json(&request_body);
 
-        let bearer_token = self.credential.resolve_bearer_token().await?;
-        builder = apply_auth_headers(self.ocr_auth_scheme()?, builder, &bearer_token);
+        let auth_scheme = self.ocr_auth_scheme()?;
+        if matches!(auth_scheme, ProviderAuthScheme::None) {
+            builder = apply_auth_headers(auth_scheme, builder, "");
+        } else {
+            let bearer_token = self.credential.resolve_bearer_token().await?;
+            builder = apply_auth_headers(auth_scheme, builder, &bearer_token);
+        }
 
         // ChatGPT OAuth requires a version header for model access (GPT-5.4 etc.).
         // Only applies to OpenAI-compatible providers, matching LLM client behaviour.
         // Ref: openai/codex codex-rs/core/src/model_provider_info.rs
-        if self.credential.is_managed()
-            && matches!(self.ocr_auth_scheme()?, ProviderAuthScheme::Bearer)
-        {
+        if self.credential.is_managed() && matches!(auth_scheme, ProviderAuthScheme::Bearer) {
             builder = builder.header("version", env!("CARGO_PKG_VERSION"));
         }
 
@@ -700,6 +714,26 @@ mod tests {
             ProviderRequestShape::OpenAiVisionChatCompletions
         );
         assert_eq!(provider.model.as_deref(), Some("gpt-5-mini"));
+    }
+
+    #[test]
+    fn ollama_ocr_initializes_without_api_key() {
+        let config = ExternalApiEndpoint {
+            endpoint: "http://localhost:11434/v1/chat/completions".to_string(),
+            api_key: String::new(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::Ollama,
+            surface_id: Some("provider_surface.ollama.local_http".to_string()),
+            credential: None,
+        };
+
+        let provider = RemoteOcrProvider::new(&config).expect("ollama OCR provider should build");
+        assert_eq!(
+            provider.ocr_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::OpenAiVisionChatCompletions
+        );
+        assert_eq!(provider.model.as_deref(), Some("qwen3-vl:8b"));
     }
 
     #[test]

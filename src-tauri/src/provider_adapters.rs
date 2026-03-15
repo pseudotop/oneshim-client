@@ -538,6 +538,7 @@ fn cli_subscription_unavailable_reason(
             AiProviderType::Anthropic => "anthropic",
             AiProviderType::OpenAi => "openai",
             AiProviderType::Google => "google",
+            AiProviderType::Ollama => "ollama",
             AiProviderType::Generic => "generic",
         };
 

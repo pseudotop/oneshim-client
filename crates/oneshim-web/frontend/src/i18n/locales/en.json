@@ -635,6 +635,7 @@
     "apiKeyPlaceholder": "Enter API key...",
     "apiKeyStoredPlaceholder": "Stored in {{backend}}",
     "apiKeyStoredHint": "This secret is currently stored in {{backend}}. Enter a new key here to replace it.",
+    "noAuthSurfaceDescription": "This surface does not require an API key. Leave the credential field empty and connect to the local or self-hosted endpoint directly.",
     "secretProjectionEnabled": "Allow CLI projection",
     "secretProjectionEnabledDescription": "Permit ONESHIM-managed CLI and bridge compatibility flows for this stored secret.",
     "backendOsSecretStore": "OS secret store",

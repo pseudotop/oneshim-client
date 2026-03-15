@@ -43,17 +43,28 @@ impl RemoteLlmProvider {
             AiProviderType::Anthropic => "claude-sonnet-4-20250514",
             AiProviderType::OpenAi => "gpt-5.4",
             AiProviderType::Google => "gemini-2.5-flash",
+            AiProviderType::Ollama => "qwen3:8b",
             AiProviderType::Generic => "gpt-5-mini",
         }
     }
 
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
-        if config.api_key.is_empty() {
+        let auth_scheme = provider_specs::resolved_auth_scheme(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+        if !matches!(auth_scheme, ProviderAuthScheme::None) && config.api_key.is_empty() {
             return Err(CoreError::Config(
                 "AI LLM API key is not configured. Set it in Settings.".into(),
             ));
         }
-        let credential = CredentialSource::ApiKey(config.api_key.clone());
+        let credential = if matches!(auth_scheme, ProviderAuthScheme::None) {
+            CredentialSource::NoAuth
+        } else {
+            CredentialSource::ApiKey(config.api_key.clone())
+        };
 
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
@@ -346,17 +357,20 @@ Return JSON only."#
             .header("Content-Type", "application/json")
             .json(request_body);
 
-        let bearer_token = self.credential.resolve_bearer_token().await?;
         match self.llm_auth_scheme()? {
+            ProviderAuthScheme::None => {}
             ProviderAuthScheme::XApiKey => {
+                let bearer_token = self.credential.resolve_bearer_token().await?;
                 builder = builder
                     .header("x-api-key", &bearer_token)
                     .header("anthropic-version", "2023-06-01");
             }
             ProviderAuthScheme::XGoogApiKey => {
+                let bearer_token = self.credential.resolve_bearer_token().await?;
                 builder = builder.header("x-goog-api-key", &bearer_token);
             }
             ProviderAuthScheme::Bearer => {
+                let bearer_token = self.credential.resolve_bearer_token().await?;
                 builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
                 if self.credential.is_managed() {
                     builder = builder.header("version", env!("CARGO_PKG_VERSION"));
@@ -669,6 +683,26 @@ mod tests {
 
         let provider = RemoteLlmProvider::new(&config).expect("provider should initialize");
         assert_eq!(provider.model, "gpt-5.4");
+        assert_eq!(
+            provider.llm_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::OpenAiResponses
+        );
+    }
+
+    #[test]
+    fn ollama_llm_initializes_without_api_key() {
+        let config = ExternalApiEndpoint {
+            endpoint: "http://localhost:11434/v1/responses".to_string(),
+            api_key: String::new(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::Ollama,
+            surface_id: Some("provider_surface.ollama.local_http".to_string()),
+            credential: None,
+        };
+
+        let provider = RemoteLlmProvider::new(&config).expect("ollama llm should initialize");
+        assert_eq!(provider.model, "qwen3:8b");
         assert_eq!(
             provider.llm_request_shape().expect("shape should resolve"),
             ProviderRequestShape::OpenAiResponses

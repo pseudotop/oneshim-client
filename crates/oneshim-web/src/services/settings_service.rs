@@ -131,6 +131,16 @@ async fn persist_api_key_binding(
     secret_stores: Option<&SecretStoreSet>,
     default_backend_kind: CredentialBackendKind,
 ) -> Result<(), ApiError> {
+    if endpoint
+        .surface_id
+        .as_deref()
+        .is_some_and(surface_uses_no_auth)
+    {
+        endpoint.api_key.clear();
+        endpoint.credential = None;
+        return Ok(());
+    }
+
     let auth_mode = endpoint
         .credential
         .as_ref()
@@ -622,8 +632,11 @@ fn parse_ai_access_mode(value: &str) -> Result<AiAccessMode, ApiError> {
 fn parse_ai_provider_type(value: &str) -> Result<AiProviderType, ApiError> {
     match value.trim().to_ascii_lowercase().as_str() {
         "anthropic" => Ok(AiProviderType::Anthropic),
-        "openai" | "open_ai" | "openai-compatible" => Ok(AiProviderType::OpenAi),
+        "openai" | "open_ai" => Ok(AiProviderType::OpenAi),
         "google" => Ok(AiProviderType::Google),
+        "ollama" => Ok(AiProviderType::Ollama),
+        "llamaindex" | "llama-index" | "openai-compatible" | "openai-like" | "openai_like"
+        | "openailike" => Ok(AiProviderType::Generic),
         "generic" => Ok(AiProviderType::Generic),
         _ => Err(ApiError::BadRequest(format!(
             "Invalid ai_provider.api.provider_type value: {value}"
@@ -646,6 +659,7 @@ fn provider_type_id(value: AiProviderType) -> &'static str {
         AiProviderType::Anthropic => "anthropic",
         AiProviderType::OpenAi => "openai",
         AiProviderType::Google => "google",
+        AiProviderType::Ollama => "ollama",
         AiProviderType::Generic => "generic",
     }
 }
@@ -821,6 +835,10 @@ fn endpoint_to_api_settings(
     endpoint_kind: ApiEndpointKind,
     default_backend_kind: CredentialBackendKind,
 ) -> ExternalApiSettings {
+    let no_auth_surface = endpoint
+        .surface_id
+        .as_deref()
+        .is_some_and(surface_uses_no_auth);
     let binding = endpoint.credential.as_ref();
     let auth_mode = endpoint
         .credential
@@ -837,14 +855,15 @@ fn endpoint_to_api_settings(
         .unwrap_or_else(|| {
             derive_credential_backend_kind(auth_mode, has_plaintext_secret, default_backend_kind)
         });
-    let has_secret = has_plaintext_secret
-        || binding
-            .and_then(|value| value.secret_ref.as_ref())
-            .is_some()
-        || binding.is_some_and(|value| {
-            value.auth_mode == CredentialAuthMode::ApiKey
-                && value.backend_kind == CredentialBackendKind::Env
-        });
+    let has_secret = !no_auth_surface
+        && (has_plaintext_secret
+            || binding
+                .and_then(|value| value.secret_ref.as_ref())
+                .is_some()
+            || binding.is_some_and(|value| {
+                value.auth_mode == CredentialAuthMode::ApiKey
+                    && value.backend_kind == CredentialBackendKind::Env
+            }));
     let masked_plaintext_secret = has_plaintext_secret.then(|| mask_api_key(&endpoint.api_key));
 
     ExternalApiSettings {
@@ -858,9 +877,14 @@ fn endpoint_to_api_settings(
         }),
         timeout_secs: endpoint.timeout_secs,
         auth_mode: credential_auth_mode_to_wire(auth_mode).to_string(),
-        backend_kind: credential_backend_kind_to_wire(backend_kind).to_string(),
+        backend_kind: credential_backend_kind_to_wire(if no_auth_surface {
+            CredentialBackendKind::Unavailable
+        } else {
+            backend_kind
+        })
+        .to_string(),
         has_secret,
-        can_edit_secret: can_edit_secret(auth_mode, backend_kind),
+        can_edit_secret: !no_auth_surface && can_edit_secret(auth_mode, backend_kind),
         secret_display_hint: masked_plaintext_secret,
         projection_enabled: binding
             .map(|value| value.projection_enabled)
@@ -875,18 +899,6 @@ fn api_settings_to_endpoint(
     endpoint_kind: ApiEndpointKind,
 ) -> Result<ExternalApiEndpoint, ApiError> {
     let provider_type = parse_ai_provider_type(&settings.provider_type)?;
-    let existing_key = existing_endpoint
-        .map(|endpoint| endpoint.api_key.as_str())
-        .unwrap_or("");
-    let api_key = if is_managed_auth_mode(&settings.auth_mode) {
-        String::new()
-    } else if is_masked_key(&settings.api_key_masked) || settings.api_key_masked.is_empty() {
-        existing_key.to_string()
-    } else {
-        settings.api_key_masked.clone()
-    };
-
-    let credential = updated_credential_binding(settings, existing_endpoint)?;
     let surface_id = resolve_endpoint_surface_id(
         settings,
         existing_endpoint,
@@ -894,6 +906,21 @@ fn api_settings_to_endpoint(
         access_mode,
         endpoint_kind,
     )?;
+    let existing_key = existing_endpoint
+        .map(|endpoint| endpoint.api_key.as_str())
+        .unwrap_or("");
+    let api_key = if is_managed_auth_mode(&settings.auth_mode)
+        || surface_id.as_deref().is_some_and(surface_uses_no_auth)
+    {
+        String::new()
+    } else if is_masked_key(&settings.api_key_masked) || settings.api_key_masked.is_empty() {
+        existing_key.to_string()
+    } else {
+        settings.api_key_masked.clone()
+    };
+
+    let credential =
+        updated_credential_binding(settings, existing_endpoint, surface_id.as_deref())?;
 
     Ok(ExternalApiEndpoint {
         endpoint: settings.endpoint.clone(),
@@ -1073,7 +1100,12 @@ fn derive_credential_backend_kind(
 fn updated_credential_binding(
     settings: &ExternalApiSettings,
     existing_endpoint: Option<&ExternalApiEndpoint>,
+    resolved_surface_id: Option<&str>,
 ) -> Result<Option<CredentialBinding>, ApiError> {
+    if resolved_surface_id.is_some_and(surface_uses_no_auth) {
+        return Ok(None);
+    }
+
     let auth_mode = parse_credential_auth_mode(&settings.auth_mode)?;
     let backend_kind = parse_credential_backend_kind(&settings.backend_kind)?;
     validate_projection_binding(auth_mode, backend_kind, settings.projection_enabled)?;
@@ -1152,6 +1184,21 @@ fn validate_projection_binding(
     }
 
     Ok(())
+}
+
+fn surface_uses_no_auth(surface_id: &str) -> bool {
+    oneshim_api_contracts::provider_specs::provider_surface_spec(surface_id)
+        .map(|surface| {
+            surface
+                .llm_transport
+                .as_ref()
+                .is_some_and(|transport| transport.auth_scheme.eq_ignore_ascii_case("none"))
+                || surface
+                    .ocr_transport
+                    .as_ref()
+                    .is_some_and(|transport| transport.auth_scheme.eq_ignore_ascii_case("none"))
+        })
+        .unwrap_or(false)
 }
 
 fn parse_credential_auth_mode(value: &str) -> Result<CredentialAuthMode, ApiError> {
@@ -1469,6 +1516,30 @@ mod tests {
         assert!(llm_api.can_edit_secret);
         assert_eq!(llm_api.secret_display_hint.as_deref(), Some("sk...7890"));
         assert!(!llm_api.projection_enabled);
+    }
+
+    #[test]
+    fn config_to_settings_marks_ollama_surface_as_no_auth() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: "http://localhost:11434/v1/responses".to_string(),
+            api_key: String::new(),
+            model: Some("qwen3:8b".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Ollama,
+            surface_id: Some("provider_surface.ollama.local_http".to_string()),
+            credential: None,
+        });
+
+        let settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        let llm_api = settings.ai_provider.llm_api.expect("llm api settings");
+
+        assert_eq!(llm_api.auth_mode, "api_key");
+        assert_eq!(llm_api.backend_kind, "unavailable");
+        assert!(!llm_api.has_secret);
+        assert!(!llm_api.can_edit_secret);
+        assert!(llm_api.api_key_masked.is_empty());
     }
 
     #[test]
@@ -1894,6 +1965,57 @@ mod tests {
 
         let err = apply_settings_to_config(&mut config, &settings).expect_err("ocr surface guard");
         assert!(matches!(err, ApiError::BadRequest(_)));
+    }
+
+    #[test]
+    fn apply_settings_to_config_clears_secret_binding_for_ollama_surface() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: Some("provider_surface.openai.direct_api".to_string()),
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: Some(SecretRef {
+                    namespace: "provider/openai/llm".to_string(),
+                    key: "api_key".to_string(),
+                }),
+                projection_enabled: true,
+            }),
+        });
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.llm_provider = "Remote".to_string();
+        settings.ai_provider.llm_api = Some(ExternalApiSettings {
+            endpoint: "http://localhost:11434/v1/responses".to_string(),
+            api_key_masked: String::new(),
+            model: Some("qwen3:8b".to_string()),
+            provider_type: "Ollama".to_string(),
+            surface_id: Some("provider_surface.ollama.local_http".to_string()),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "unavailable".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        apply_settings_to_config(&mut config, &settings).expect("ollama no-auth save should work");
+
+        let endpoint = config.ai_provider.llm_api.expect("saved endpoint");
+        assert_eq!(endpoint.provider_type, AiProviderType::Ollama);
+        assert_eq!(
+            endpoint.surface_id.as_deref(),
+            Some("provider_surface.ollama.local_http")
+        );
+        assert!(endpoint.api_key.is_empty());
+        assert!(endpoint.credential.is_none());
     }
 
     #[test]

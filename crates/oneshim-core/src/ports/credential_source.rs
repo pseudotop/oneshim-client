@@ -11,10 +11,14 @@ use crate::config::{
 use crate::error::CoreError;
 use crate::ports::oauth::OAuthPort;
 use crate::ports::secret_store::{provider_api_key_secret_ref, SecretStore};
+use crate::provider_surface::provider_surface_uses_no_auth;
 
 /// Source of authentication credentials for AI provider requests.
 #[derive(Clone)]
 pub enum CredentialSource {
+    /// No credential is required for this transport surface.
+    NoAuth,
+
     /// User-provided API key (current default, BYOK).
     ApiKey(String),
 
@@ -54,6 +58,14 @@ impl CredentialSource {
         profile_id: Option<&str>,
         secret_store: Option<Arc<dyn SecretStore>>,
     ) -> Result<Self, CoreError> {
+        if endpoint
+            .surface_id
+            .as_deref()
+            .is_some_and(provider_surface_uses_no_auth)
+        {
+            return Ok(Self::NoAuth);
+        }
+
         let plaintext_fallback =
             (!endpoint.api_key.trim().is_empty()).then(|| endpoint.api_key.clone());
 
@@ -121,6 +133,7 @@ impl CredentialSource {
     /// For `ManagedOAuth`, calls `OAuthPort::get_access_token` (may trigger refresh).
     pub async fn resolve_bearer_token(&self) -> Result<String, CoreError> {
         match self {
+            Self::NoAuth => Ok(String::new()),
             Self::ApiKey(key) => Ok(key.clone()),
             Self::ManagedOAuth {
                 provider_id,
@@ -165,6 +178,7 @@ impl CredentialSource {
     /// (API key users configure their own endpoint).
     pub fn api_base_url(&self) -> Option<&str> {
         match self {
+            Self::NoAuth => None,
             Self::ApiKey(_) => None,
             Self::ManagedOAuth { api_base_url, .. } => Some(api_base_url),
             Self::StoredSecret { .. } => None,
@@ -177,6 +191,7 @@ fn provider_type_id(provider_type: AiProviderType) -> &'static str {
         AiProviderType::OpenAi => "openai",
         AiProviderType::Anthropic => "anthropic",
         AiProviderType::Google => "google",
+        AiProviderType::Ollama => "ollama",
         AiProviderType::Generic => "generic",
     }
 }
@@ -184,6 +199,7 @@ fn provider_type_id(provider_type: AiProviderType) -> &'static str {
 impl std::fmt::Debug for CredentialSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::NoAuth => write!(f, "CredentialSource::NoAuth"),
             Self::ApiKey(_) => write!(f, "CredentialSource::ApiKey(****)"),
             Self::ManagedOAuth { provider_id, .. } => {
                 write!(f, "CredentialSource::ManagedOAuth({provider_id})")

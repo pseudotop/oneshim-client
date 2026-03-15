@@ -381,8 +381,11 @@ fn provider_rule_matches(
 fn parse_provider_type_label(raw: &str) -> Option<AiProviderType> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "anthropic" => Some(AiProviderType::Anthropic),
-        "openai" | "open_ai" | "open-ai" | "openai-compatible" => Some(AiProviderType::OpenAi),
+        "openai" | "open_ai" | "open-ai" => Some(AiProviderType::OpenAi),
         "google" | "gemini" => Some(AiProviderType::Google),
+        "ollama" => Some(AiProviderType::Ollama),
+        "llamaindex" | "llama-index" | "openai-compatible" | "openai-like" | "openai_like"
+        | "openailike" => Some(AiProviderType::Generic),
         "generic" => Some(AiProviderType::Generic),
         _ => None,
     }
@@ -393,6 +396,7 @@ fn provider_label(provider_type: AiProviderType) -> &'static str {
         AiProviderType::Anthropic => "anthropic",
         AiProviderType::OpenAi => "openai",
         AiProviderType::Google => "google",
+        AiProviderType::Ollama => "ollama",
         AiProviderType::Generic => "generic",
     }
 }

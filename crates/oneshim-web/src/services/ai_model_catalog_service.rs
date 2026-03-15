@@ -27,13 +27,20 @@ pub async fn fetch_provider_models(
         request.provider_type.as_str(),
         requested_surface_id.as_deref(),
     )?;
-    let api_key = resolve_model_discovery_api_key(request, state, provider_type).await?;
-
     let endpoint = resolve_models_endpoint(
         provider_type,
         requested_surface_id.as_deref(),
         request.endpoint.as_deref(),
     )?;
+    let auth_scheme = ai_provider_spec_service::model_catalog_auth_scheme_for_surface(
+        provider_type,
+        requested_surface_id.as_deref(),
+    )?;
+    let api_key = if matches!(auth_scheme, ProviderAuthScheme::None) {
+        None
+    } else {
+        Some(resolve_model_discovery_api_key(request, state, provider_type).await?)
+    };
     if let Some(notice) = ai_provider_spec_service::ocr_model_catalog_notice_for_surface(
         provider_type,
         requested_surface_id.as_deref(),
@@ -51,20 +58,21 @@ pub async fn fetch_provider_models(
         .map_err(|e| ApiError::Internal(format!("Failed to create model discovery client: {e}")))?;
 
     let mut builder = client.get(&endpoint);
-    match ai_provider_spec_service::model_catalog_auth_scheme_for_surface(
-        provider_type,
-        requested_surface_id.as_deref(),
-    )? {
+    match auth_scheme {
+        ProviderAuthScheme::None => {}
         ProviderAuthScheme::Bearer => {
+            let api_key = api_key.as_deref().unwrap_or_default();
             builder = builder.header("Authorization", format!("Bearer {api_key}"));
         }
         ProviderAuthScheme::XApiKey => {
+            let api_key = api_key.as_deref().unwrap_or_default();
             builder = builder
-                .header("x-api-key", &api_key)
+                .header("x-api-key", api_key)
                 .header("anthropic-version", "2023-06-01");
         }
         ProviderAuthScheme::XGoogApiKey => {
-            builder = builder.header("x-goog-api-key", &api_key);
+            let api_key = api_key.as_deref().unwrap_or_default();
+            builder = builder.header("x-goog-api-key", api_key);
         }
     }
 
@@ -355,6 +363,17 @@ fn resolve_models_endpoint(
             .unwrap_or_else(|| {
                 "https://generativelanguage.googleapis.com/v1beta/models".to_string()
             })),
+        AiProviderType::Ollama => Ok(endpoint
+            .as_deref()
+            .and_then(derive_ollama_models_endpoint)
+            .or_else(|| {
+                ai_provider_spec_service::default_model_catalog_endpoint_for_surface(
+                    provider_type,
+                    surface_id,
+                )
+                .ok()
+            })
+            .unwrap_or_else(|| "http://localhost:11434/api/tags".to_string())),
         AiProviderType::Generic => endpoint
             .as_deref()
             .map(ToString::to_string)
@@ -503,6 +522,39 @@ fn derive_google_models_endpoint(endpoint: &str) -> Option<String> {
     Some(endpoint.to_string())
 }
 
+fn derive_ollama_models_endpoint(endpoint: &str) -> Option<String> {
+    if endpoint.ends_with("/api/tags") {
+        return Some(endpoint.to_string());
+    }
+    if let Some(prefix) = endpoint.split("/v1/chat/completions").next() {
+        if prefix != endpoint {
+            return Some(format!("{prefix}/api/tags"));
+        }
+    }
+    if let Some(prefix) = endpoint.split("/v1/responses").next() {
+        if prefix != endpoint {
+            return Some(format!("{prefix}/api/tags"));
+        }
+    }
+    if endpoint.contains("/v1") {
+        let base = endpoint
+            .split("/v1")
+            .next()
+            .unwrap_or(endpoint)
+            .trim_end_matches('/');
+        return Some(format!("{base}/api/tags"));
+    }
+    if endpoint.contains("/api") {
+        let base = endpoint
+            .split("/api")
+            .next()
+            .unwrap_or(endpoint)
+            .trim_end_matches('/');
+        return Some(format!("{base}/api/tags"));
+    }
+    Some(format!("{}/api/tags", endpoint.trim_end_matches('/')))
+}
+
 fn truncate_error(raw: &str) -> String {
     let compact = raw.replace(['\n', '\r'], " ");
     let compact = compact.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -623,6 +675,13 @@ mod tests {
         let endpoint = "https://api.openai.com/v1/responses";
         let derived = derive_openai_models_endpoint(endpoint).unwrap();
         assert_eq!(derived, "https://api.openai.com/v1/models");
+    }
+
+    #[test]
+    fn derives_ollama_models_endpoint_from_responses_url() {
+        let endpoint = "http://localhost:11434/v1/responses";
+        let derived = derive_ollama_models_endpoint(endpoint).unwrap();
+        assert_eq!(derived, "http://localhost:11434/api/tags");
     }
 
     #[test]

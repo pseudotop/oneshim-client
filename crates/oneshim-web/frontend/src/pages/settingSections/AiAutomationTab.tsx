@@ -19,7 +19,10 @@ import {
   providerSurfaceMaturity,
   providerSurfaceStatusCopyKey,
 } from '../../features/featureCapabilities'
-import { preferredRelatedProviderSurfaceFromList } from '../../features/providerSurfaces'
+import {
+  type EndpointSurfaceKind,
+  preferredRelatedProviderSurfaceFromList,
+} from '../../features/providerSurfaces'
 import { form } from '../../styles/tokens'
 import OAuthConnectionPanel from './OAuthConnectionPanel'
 import { isProviderOAuthAccessMode } from './oauth-panel-support'
@@ -135,6 +138,25 @@ function requirementLabel(
   return requirement
 }
 
+function surfaceAuthScheme(
+  surface: ProviderSurfaceSpec | undefined,
+  endpointKind: EndpointSurfaceKind,
+): string | null {
+  if (!surface) {
+    return null
+  }
+
+  const transport = endpointKind === 'ocr_api' ? surface.ocr_transport : surface.llm_transport
+  return transport?.auth_scheme ?? null
+}
+
+function surfaceUsesNoAuth(
+  surface: ProviderSurfaceSpec | undefined,
+  endpointKind: EndpointSurfaceKind,
+): boolean {
+  return surfaceAuthScheme(surface, endpointKind) === 'none'
+}
+
 interface AiAutomationTabProps extends SettingsFormTabProps {
   allProviderSurfaces: ProviderSurfaceSpec[]
   providerSurfaceOptions: Record<'ocr_api' | 'llm_api', ProviderSurfaceSpec[]>
@@ -211,6 +233,8 @@ export default function AiAutomationTab({
     Boolean(preferredCliSurface) &&
     preferredCliAvailability !== 'unavailable' &&
     currentLlmSurface?.surface_id !== preferredCliSurface?.surface_id
+  const currentOcrUsesNoAuth = surfaceUsesNoAuth(currentOcrSurface, 'ocr_api')
+  const currentLlmUsesNoAuth = surfaceUsesNoAuth(currentLlmSurface, 'llm_api')
 
   const handleSwitchToPreferredCli = () => {
     onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
@@ -815,26 +839,32 @@ export default function AiAutomationTab({
                         placeholder={t('settingsAutomation.endpointPlaceholderOcr', 'https://api.example.com/ocr')}
                       />
                     </div>
-                    <div>
-                      <label htmlFor="settings-ocr-api-key" className="mb-1 block text-content-secondary text-xs">
-                        {t('settingsAutomation.apiKey')}
-                      </label>
-                      <Input
-                        id="settings-ocr-api-key"
-                        type="password"
-                        value={formData.ai_provider.ocr_api?.api_key_masked ?? ''}
-                        onChange={(e) => onExternalApiChange('ocr_api', 'api_key_masked', e.target.value)}
-                        placeholder={apiKeyPlaceholder(t, formData.ai_provider.ocr_api)}
-                      />
-                      {shouldShowBackendManagedHint(formData.ai_provider.ocr_api) && (
-                        <p className="mt-1 text-content-secondary text-xs">
-                          {t('settingsAutomation.apiKeyStoredHint', {
-                            backend: credentialBackendLabel(t, formData.ai_provider.ocr_api?.backend_kind),
-                          })}
-                        </p>
-                      )}
-                    </div>
-                    {supportsProjectionToggle(formData.ai_provider.ocr_api) && (
+                    {!currentOcrUsesNoAuth ? (
+                      <div>
+                        <label htmlFor="settings-ocr-api-key" className="mb-1 block text-content-secondary text-xs">
+                          {t('settingsAutomation.apiKey')}
+                        </label>
+                        <Input
+                          id="settings-ocr-api-key"
+                          type="password"
+                          value={formData.ai_provider.ocr_api?.api_key_masked ?? ''}
+                          onChange={(e) => onExternalApiChange('ocr_api', 'api_key_masked', e.target.value)}
+                          placeholder={apiKeyPlaceholder(t, formData.ai_provider.ocr_api)}
+                        />
+                        {shouldShowBackendManagedHint(formData.ai_provider.ocr_api) && (
+                          <p className="mt-1 text-content-secondary text-xs">
+                            {t('settingsAutomation.apiKeyStoredHint', {
+                              backend: credentialBackendLabel(t, formData.ai_provider.ocr_api?.backend_kind),
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="md:col-span-2 rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs">
+                        {t('settingsAutomation.noAuthSurfaceDescription')}
+                      </div>
+                    )}
+                    {!currentOcrUsesNoAuth && supportsProjectionToggle(formData.ai_provider.ocr_api) && (
                       <div className="md:col-span-2">
                         <ToggleRow
                           label={t('settingsAutomation.secretProjectionEnabled')}
@@ -942,26 +972,32 @@ export default function AiAutomationTab({
                         placeholder={t('settingsAutomation.endpointPlaceholderLlm', 'https://api.example.com/llm')}
                       />
                     </div>
-                    <div>
-                      <label htmlFor="settings-llm-api-key" className="mb-1 block text-content-secondary text-xs">
-                        {t('settingsAutomation.apiKey')}
-                      </label>
-                      <Input
-                        id="settings-llm-api-key"
-                        type="password"
-                        value={formData.ai_provider.llm_api?.api_key_masked ?? ''}
-                        onChange={(e) => onExternalApiChange('llm_api', 'api_key_masked', e.target.value)}
-                        placeholder={apiKeyPlaceholder(t, formData.ai_provider.llm_api)}
-                      />
-                      {shouldShowBackendManagedHint(formData.ai_provider.llm_api) && (
-                        <p className="mt-1 text-content-secondary text-xs">
-                          {t('settingsAutomation.apiKeyStoredHint', {
-                            backend: credentialBackendLabel(t, formData.ai_provider.llm_api?.backend_kind),
-                          })}
-                        </p>
-                      )}
-                    </div>
-                    {supportsProjectionToggle(formData.ai_provider.llm_api) && (
+                    {!currentLlmUsesNoAuth ? (
+                      <div>
+                        <label htmlFor="settings-llm-api-key" className="mb-1 block text-content-secondary text-xs">
+                          {t('settingsAutomation.apiKey')}
+                        </label>
+                        <Input
+                          id="settings-llm-api-key"
+                          type="password"
+                          value={formData.ai_provider.llm_api?.api_key_masked ?? ''}
+                          onChange={(e) => onExternalApiChange('llm_api', 'api_key_masked', e.target.value)}
+                          placeholder={apiKeyPlaceholder(t, formData.ai_provider.llm_api)}
+                        />
+                        {shouldShowBackendManagedHint(formData.ai_provider.llm_api) && (
+                          <p className="mt-1 text-content-secondary text-xs">
+                            {t('settingsAutomation.apiKeyStoredHint', {
+                              backend: credentialBackendLabel(t, formData.ai_provider.llm_api?.backend_kind),
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="md:col-span-2 rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs">
+                        {t('settingsAutomation.noAuthSurfaceDescription')}
+                      </div>
+                    )}
+                    {!currentLlmUsesNoAuth && supportsProjectionToggle(formData.ai_provider.llm_api) && (
                       <div className="md:col-span-2">
                         <ToggleRow
                           label={t('settingsAutomation.secretProjectionEnabled')}

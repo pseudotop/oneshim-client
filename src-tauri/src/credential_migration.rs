@@ -74,6 +74,7 @@ fn provider_type_id(endpoint: &ExternalApiEndpoint) -> &'static str {
         oneshim_core::config::AiProviderType::OpenAi => "openai",
         oneshim_core::config::AiProviderType::Anthropic => "anthropic",
         oneshim_core::config::AiProviderType::Google => "google",
+        oneshim_core::config::AiProviderType::Ollama => "ollama",
         oneshim_core::config::AiProviderType::Generic => "generic",
     }
 }

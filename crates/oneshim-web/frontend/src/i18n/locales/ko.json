@@ -635,6 +635,7 @@
     "apiKeyPlaceholder": "API 키 입력...",
     "apiKeyStoredPlaceholder": "{{backend}}에 저장됨",
     "apiKeyStoredHint": "이 비밀값은 현재 {{backend}}에 저장되어 있습니다. 여기서 새 키를 입력하면 교체됩니다.",
+    "noAuthSurfaceDescription": "이 surface는 API 키가 필요하지 않습니다. 자격 증명 입력란은 비워 두고 로컬 또는 self-hosted 엔드포인트에 직접 연결하세요.",
     "secretProjectionEnabled": "CLI 프로젝션 허용",
     "secretProjectionEnabledDescription": "이 저장된 비밀값에 대해 ONESHIM이 관리하는 CLI 및 브리지 호환 흐름을 허용합니다.",
     "backendOsSecretStore": "OS 비밀 저장소",

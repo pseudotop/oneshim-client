@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn resolves_provider_alias() {
         let provider_type = resolve_provider_type("openai-compatible").expect("alias should parse");
-        assert_eq!(provider_type, AiProviderType::OpenAi);
+        assert_eq!(provider_type, AiProviderType::Generic);
     }
 
     #[test]
