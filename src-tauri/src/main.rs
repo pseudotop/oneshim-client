@@ -27,6 +27,7 @@ mod platform_accessibility;
 mod platform_overlay;
 mod provider_adapters;
 mod scheduler;
+mod secret_cli;
 mod setup;
 mod skill_loader;
 mod tray;
@@ -53,6 +54,12 @@ fn main() {
         let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from("."));
         let exit_code = auth_cli::run(&args[2..], &config_dir);
+        std::process::exit(exit_code);
+    }
+    if args.len() > 1 && args[1] == "secret" {
+        let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let exit_code = secret_cli::run(&args[2..], &config_dir);
         std::process::exit(exit_code);
     }
 
