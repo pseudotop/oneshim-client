@@ -13,7 +13,6 @@ import {
   exportData,
   fetchProviderSurfaces,
   fetchSecretBackendCapabilities,
-  fetchProviderPresets,
   fetchSettings,
   fetchStorageStats,
   fetchUpdateStatus,
@@ -22,8 +21,8 @@ import {
   type OcrValidationSettings as OcrValidationSettingsType,
   type PrivacySettings as PrivacySettingsType,
   type ProviderModelsResponse,
-  type ProviderPreset,
   type ProviderSurfaceSpec,
+  type ProviderVendorSpec,
   postUpdateAction,
   type SandboxSettings,
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
@@ -34,7 +33,7 @@ import {
   type UpdateStatus,
   updateSettings,
 } from '../api/client'
-import { DEFAULT_PROVIDER_PRESETS } from '../api/defaultProviderPresets'
+import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../api/defaultProviderSurfaceCatalog'
 import { isStandaloneModeEnabled } from '../api/standalone'
 import { Button, Spinner, Tabs } from '../components/ui'
 import { useToast } from '../hooks/useToast'
@@ -83,12 +82,6 @@ export default function Settings() {
     queryKey: ['update-status'],
     queryFn: fetchUpdateStatus,
     refetchInterval: 15000,
-    retry: 1,
-  })
-
-  const { data: providerPresetCatalog } = useQuery({
-    queryKey: ['ai-provider-presets'],
-    queryFn: fetchProviderPresets,
     retry: 1,
   })
 
@@ -152,11 +145,9 @@ export default function Settings() {
     })
   }, [defaultByokBackendKind, secretBackendCapabilities])
 
-  const providerPresets =
-    providerPresetCatalog?.providers && providerPresetCatalog.providers.length > 0
-      ? providerPresetCatalog.providers
-      : DEFAULT_PROVIDER_PRESETS
-  const providerSurfaces = providerSurfaceCatalog?.surfaces ?? []
+  const providerCatalog = providerSurfaceCatalog ?? DEFAULT_PROVIDER_SURFACE_CATALOG
+  const providerSurfaces = providerCatalog.surfaces
+  const providerVendors = providerCatalog.vendors
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
@@ -414,26 +405,21 @@ export default function Settings() {
     })
   }
 
-  const findProviderPreset = (raw: string | null | undefined): ProviderPreset | undefined => {
+  const findProviderVendor = (raw: string | null | undefined): ProviderVendorSpec | undefined => {
     const normalized = (raw ?? '').trim().toLowerCase()
     if (!normalized) {
-      return providerPresets.find((preset) => preset.provider_type === 'Generic')
+      return providerVendors.find((vendor) => vendor.provider_type === 'Generic')
     }
 
-    return providerPresets.find(
-      (preset) =>
-        preset.provider_type.toLowerCase() === normalized ||
-        preset.aliases.some((alias) => alias.toLowerCase() === normalized),
+    return providerVendors.find(
+      (vendor) =>
+        vendor.provider_type.toLowerCase() === normalized ||
+        vendor.aliases.some((alias) => alias.toLowerCase() === normalized),
     )
   }
 
   const resolveProviderType = (raw: string | null | undefined): string => {
-    return findProviderPreset(raw)?.provider_type ?? 'Generic'
-  }
-
-  const getPresetModels = (which: 'ocr_api' | 'llm_api', rawProviderType: string | null | undefined): string[] => {
-    const preset = findProviderPreset(rawProviderType)
-    return which === 'ocr_api' ? (preset?.ocr_models ?? []) : (preset?.llm_models ?? [])
+    return findProviderVendor(raw)?.provider_type ?? 'Generic'
   }
 
   const getSurfaceModels = (which: 'ocr_api' | 'llm_api'): string[] => {
@@ -443,11 +429,9 @@ export default function Settings() {
   }
 
   const getModelOptions = (which: 'ocr_api' | 'llm_api'): string[] => {
-    const providerType = resolveProviderType(formData?.ai_provider[which]?.provider_type)
-    const presetModels = getPresetModels(which, providerType)
     const surfaceModels = getSurfaceModels(which)
     const discoveredModels = modelCatalog[which]
-    return Array.from(new Set([...discoveredModels, ...surfaceModels, ...presetModels]))
+    return Array.from(new Set([...discoveredModels, ...surfaceModels]))
   }
 
   const canDiscoverModels = (which: 'ocr_api' | 'llm_api'): boolean => {
@@ -461,17 +445,14 @@ export default function Settings() {
     setFormData((current) => {
       if (!current) return current
       const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
-      const preset = findProviderPreset(providerType)
       const nextSurfaceId = deriveDefaultProviderSurfaceId(current.ai_provider.access_mode, which, providerType)
       const nextSurface = findProviderSurface(nextSurfaceId)
       const presetEndpoint =
-        which === 'ocr_api'
-          ? (nextSurface?.ocr_transport?.url ?? preset?.ocr_endpoint ?? '')
-          : (nextSurface?.llm_transport?.url ?? preset?.llm_endpoint ?? '')
+        which === 'ocr_api' ? (nextSurface?.ocr_transport?.url ?? '') : (nextSurface?.llm_transport?.url ?? '')
       const presetModel =
         which === 'ocr_api'
-          ? (nextSurface?.default_models.ocr_models?.[0] ?? preset?.ocr_models?.[0] ?? null)
-          : (nextSurface?.default_models.llm_models?.[0] ?? preset?.llm_models?.[0] ?? null)
+          ? (nextSurface?.default_models.ocr_models?.[0] ?? null)
+          : (nextSurface?.default_models.llm_models?.[0] ?? null)
       const endpoint = existing.endpoint && existing.endpoint.trim().length > 0 ? existing.endpoint : presetEndpoint
       const model = existing.model && existing.model.trim().length > 0 ? existing.model : presetModel
 
@@ -673,7 +654,7 @@ export default function Settings() {
           <fieldset disabled={activeTab !== 'ai-automation'} className="m-0 min-w-0 border-0 p-0">
             <AiAutomationTab
               formData={formData}
-              providerPresets={providerPresets}
+              providerOptions={providerVendors}
               modelCatalogNotice={modelCatalogNotice}
               modelCatalogLoading={modelCatalogLoading}
               onAutomationChange={handleAutomationChange}

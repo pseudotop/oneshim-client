@@ -4,7 +4,7 @@ import type {
   AutomationSettings,
   ExternalApiSettings,
   OcrValidationSettings as OcrValidationSettingsType,
-  ProviderPreset,
+  ProviderVendorSpec,
   SandboxSettings,
   SceneActionOverrideSettings as SceneActionOverrideSettingsType,
   SceneIntelligenceSettings as SceneIntelligenceSettingsType,
@@ -96,7 +96,7 @@ function supportsProjectionToggle(settings: ExternalApiSettings | null | undefin
 }
 
 interface AiAutomationTabProps extends SettingsFormTabProps {
-  providerPresets: ProviderPreset[]
+  providerOptions: ProviderVendorSpec[]
   modelCatalogNotice: Record<'ocr_api' | 'llm_api', string | null>
   modelCatalogLoading: 'ocr_api' | 'llm_api' | null
   onAutomationChange: (field: keyof AutomationSettings, value: boolean) => void
@@ -122,7 +122,7 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
 
 export default function AiAutomationTab({
   formData,
-  providerPresets,
+  providerOptions,
   modelCatalogNotice,
   modelCatalogLoading,
   onAutomationChange,
@@ -480,9 +480,9 @@ export default function AiAutomationTab({
                     value={resolveProviderType(formData.ai_provider.ocr_api?.provider_type)}
                     onChange={(e) => onProviderTypeChange('ocr_api', e.target.value)}
                   >
-                    {providerPresets.map((preset) => (
-                      <option key={preset.provider_type} value={preset.provider_type}>
-                        {preset.display_name}
+                    {providerOptions.map((vendor) => (
+                      <option key={vendor.provider_type} value={vendor.provider_type}>
+                        {vendor.display_name}
                       </option>
                     ))}
                   </Select>
@@ -597,9 +597,9 @@ export default function AiAutomationTab({
                     value={resolveProviderType(formData.ai_provider.llm_api?.provider_type)}
                     onChange={(e) => onProviderTypeChange('llm_api', e.target.value)}
                   >
-                    {providerPresets.map((preset) => (
-                      <option key={preset.provider_type} value={preset.provider_type}>
-                        {preset.display_name}
+                    {providerOptions.map((vendor) => (
+                      <option key={vendor.provider_type} value={vendor.provider_type}>
+                        {vendor.display_name}
                       </option>
                     ))}
                   </Select>

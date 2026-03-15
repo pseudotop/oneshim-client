@@ -1,5 +1,6 @@
 import { DEFAULT_WEB_PORT } from '../constants'
 import { DEFAULT_PROVIDER_PRESET_CATALOG } from './defaultProviderPresets'
+import { DEFAULT_PROVIDER_SURFACE_CATALOG } from './defaultProviderSurfaceCatalog'
 import type {
   AppSettings,
   AutomationSettings,
@@ -22,8 +23,6 @@ import type {
   UpdateStatus,
   WorkflowPreset,
 } from './client'
-import type { ProviderSurfaceCatalog } from './contracts'
-
 const API_BASE = '/api'
 const STANDALONE_STORAGE_KEY = 'oneshim-web-standalone-mode'
 const STANDALONE_QUERY_KEY = 'standalone'
@@ -199,61 +198,6 @@ function makeDefaultSettings(): AppSettings {
       ocr_api: null,
       llm_api: null,
     },
-  }
-}
-
-function makeDefaultProviderSurfaceCatalog(): ProviderSurfaceCatalog {
-  return {
-    version: 2,
-    updated_at: '2026-03-16T00:30:00Z',
-    vendors: [
-      { vendor_id: 'anthropic', provider_type: 'Anthropic', aliases: ['anthropic'], display_name: 'Anthropic' },
-      { vendor_id: 'openai', provider_type: 'OpenAi', aliases: ['openai', 'open_ai', 'open-ai', 'openai-compatible'], display_name: 'OpenAI' },
-      { vendor_id: 'google', provider_type: 'Google', aliases: ['google', 'gemini'], display_name: 'Google' },
-      { vendor_id: 'generic', provider_type: 'Generic', aliases: ['generic'], display_name: 'Generic' },
-    ],
-    surfaces: [
-      {
-        surface_id: 'provider_surface.openai.direct_api',
-        vendor_id: 'openai',
-        provider_type: 'OpenAi',
-        display_name: 'OpenAI API',
-        execution_kind: 'direct_http',
-        credential_kind: 'api_key',
-        stability: 'ga',
-        preferred_for_product_auth: false,
-        catalog_strategy: 'http_models_endpoint',
-        supports: { llm: true, ocr: true, model_catalog: true, context_bridge: false },
-        default_models: { llm_models: ['gpt-5.4', 'gpt-5.2', 'gpt-5-mini'], ocr_models: ['gpt-5.4', 'gpt-5-mini'] },
-        parameter_profiles: {
-          llm: { supported: [], unsupported: [], notes: [] },
-          ocr: { supported: [], unsupported: [], notes: [] },
-        },
-        llm_transport: { method: 'POST', url: 'https://api.openai.com/v1/responses', auth_scheme: 'bearer', request_shape: 'openai_responses' },
-        ocr_transport: { method: 'POST', url: 'https://api.openai.com/v1/chat/completions', auth_scheme: 'bearer', request_shape: 'openai_vision_chat_completions' },
-        model_catalog_transport: { method: 'GET', url: 'https://api.openai.com/v1/models', auth_scheme: 'bearer', response_shape: 'standard_data_or_models', llm_supported: true, ocr_supported: true },
-        references: [],
-      },
-      {
-        surface_id: 'provider_surface.openai.subprocess_cli',
-        vendor_id: 'openai',
-        provider_type: 'OpenAi',
-        display_name: 'Codex CLI',
-        execution_kind: 'subprocess_cli',
-        credential_kind: 'cli_subscription',
-        stability: 'preview',
-        preferred_for_product_auth: true,
-        catalog_strategy: 'subprocess_probe',
-        supports: { llm: true, ocr: false, model_catalog: false, context_bridge: true },
-        default_models: { llm_models: ['gpt-5.4', 'gpt-5.2-codex', 'gpt-5.2'], ocr_models: [] },
-        parameter_profiles: {
-          llm: { supported: [], unsupported: [], notes: [] },
-          ocr: { supported: [], unsupported: [], notes: [] },
-        },
-        subprocess_transport: { executable_candidates: ['codex'], auth_probe_command: ['login', 'status'], invocation_mode: 'codex_exec_json', model_flag: '--model', json_output_supported: true },
-        references: [],
-      },
-    ],
   }
 }
 
@@ -623,7 +567,7 @@ export async function handleStandaloneRequest(
     return jsonResponse(DEFAULT_PROVIDER_PRESET_CATALOG)
   }
   if (path === '/api/ai/provider-surfaces' && method === 'GET') {
-    return jsonResponse(makeDefaultProviderSurfaceCatalog())
+    return jsonResponse(DEFAULT_PROVIDER_SURFACE_CATALOG)
   }
   if (path === '/api/ai/providers/models' && method === 'POST') {
     const payload = body as { provider_type?: string } | null
