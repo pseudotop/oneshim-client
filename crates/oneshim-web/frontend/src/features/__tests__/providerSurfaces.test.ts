@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../../api/defaultProviderSurfaceCatalog'
-import { deriveDefaultProviderSurfaceId, getCompatibleProviderSurfaces } from '../providerSurfaces'
+import { deriveDefaultProviderSurfaceId, getCompatibleProviderSurfaces, sortProviderSurfaces } from '../providerSurfaces'
 
 describe('provider surface defaults', () => {
   it('uses managed oauth for OpenAI llm oauth mode', () => {
@@ -32,5 +32,25 @@ describe('provider surface defaults', () => {
   it('filters compatible surfaces for oauth llm mode', () => {
     const surfaces = getCompatibleProviderSurfaces(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderOAuth', 'llm_api')
     expect(surfaces.map((surface) => surface.surface_id)).toEqual(['provider_surface.openai.managed_oauth'])
+  })
+
+  it('prefers higher-stability preferred surfaces within the same compatibility set', () => {
+    const subprocess = DEFAULT_PROVIDER_SURFACE_CATALOG.surfaces.find(
+      (surface) => surface.surface_id === 'provider_surface.openai.subprocess_cli',
+    )
+    expect(subprocess).toBeDefined()
+
+    const legacySubprocess = {
+      ...subprocess!,
+      surface_id: 'provider_surface.test.legacy_cli',
+      display_name: 'Legacy CLI',
+      preferred_for_product_auth: false,
+      stability: 'experimental',
+    }
+
+    expect(sortProviderSurfaces([legacySubprocess, subprocess!]).map((surface) => surface.surface_id)).toEqual([
+      'provider_surface.openai.subprocess_cli',
+      'provider_surface.test.legacy_cli',
+    ])
   })
 })

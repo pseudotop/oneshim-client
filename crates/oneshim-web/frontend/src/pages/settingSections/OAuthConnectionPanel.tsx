@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { FeatureCapabilitySnapshot, OAuthConnectionStatus, OAuthFlowStatus } from '../../api/client'
+import type {
+  FeatureCapabilitySnapshot,
+  OAuthConnectionStatus,
+  OAuthFlowStatus,
+  ProviderSurfaceSpec,
+  SecretBackendCapabilities,
+} from '../../api/client'
 import {
-  fetchFeatureCapabilities,
-  fetchSecretBackendCapabilities,
   oauthCancelFlow,
   oauthConnectionStatus,
   oauthFlowStatus,
@@ -11,7 +15,12 @@ import {
   oauthStartFlow,
 } from '../../api/client'
 import { Badge, Button, Card } from '../../components/ui'
-import { findFeatureCapability, maturityBadgeColor } from '../../features/featureCapabilities'
+import {
+  findFeatureCapability,
+  maturityBadgeColor,
+  providerSurfaceMaturity,
+  providerSurfaceStatusCopyKey,
+} from '../../features/featureCapabilities'
 import { isOAuthPanelAvailable } from './oauth-panel-support'
 
 type ExpiryLevel = 'ok' | 'warning' | 'critical' | 'none';
@@ -46,12 +55,22 @@ const POLL_TIMEOUT_MS = 120000
 interface OAuthConnectionPanelProps {
   providerId: string
   providerName: string
+  oauthSurface?: ProviderSurfaceSpec
+  preferredCliSurface?: ProviderSurfaceSpec
+  featureSnapshot?: FeatureCapabilitySnapshot | null
+  secretBackendCapabilities?: SecretBackendCapabilities | null
 }
 
-export default function OAuthConnectionPanel({ providerId, providerName }: OAuthConnectionPanelProps) {
+export default function OAuthConnectionPanel({
+  providerId,
+  providerName,
+  oauthSurface,
+  preferredCliSurface,
+  featureSnapshot,
+  secretBackendCapabilities,
+}: OAuthConnectionPanelProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<PanelState>({ phase: 'loading' })
-  const [featureSnapshot, setFeatureSnapshot] = useState<FeatureCapabilitySnapshot | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const clearPoll = useCallback(() => {
@@ -91,30 +110,26 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
       return
     }
     try {
-      const capabilities = await fetchSecretBackendCapabilities()
-      let features: FeatureCapabilitySnapshot | null = null
-      try {
-        features = await fetchFeatureCapabilities()
-        setFeatureSnapshot(features)
-      } catch {
-        setFeatureSnapshot(null)
+      if (!oauthSurface) {
+        setState({ phase: 'error', message: t('settingsOAuth.unavailable') })
+        return
       }
 
-      const oauthFeature = findFeatureCapability(
-        features,
-        `provider_surface.${providerId}.managed_oauth`,
-      )
+      if (!secretBackendCapabilities) {
+        setState({ phase: 'loading' })
+        return
+      }
+
+      const oauthFeature = findFeatureCapability(featureSnapshot, oauthSurface.surface_id)
+      const statusCopyKey = providerSurfaceStatusCopyKey(oauthSurface, featureSnapshot)
       if (
-        !capabilities.oauth_available ||
-        !capabilities.os_secret_store_available ||
+        !secretBackendCapabilities.oauth_available ||
+        !secretBackendCapabilities.os_secret_store_available ||
         oauthFeature?.availability === 'unavailable'
       ) {
         setState({
           phase: 'error',
-          message:
-            oauthFeature?.status_copy_key != null
-              ? t(oauthFeature.status_copy_key)
-              : t('settingsOAuth.unavailable'),
+          message: statusCopyKey != null ? t(statusCopyKey) : t('settingsOAuth.unavailable'),
         })
         return
       }
@@ -127,19 +142,15 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
     } catch (err) {
       setState(toErrorState(err))
     }
-  }, [providerId, t, toErrorState])
+  }, [featureSnapshot, oauthSurface, providerId, secretBackendCapabilities, t, toErrorState])
 
-  const oauthFeature = findFeatureCapability(
-    featureSnapshot,
-    `provider_surface.${providerId}.managed_oauth`,
+  const oauthFeature = oauthSurface ? findFeatureCapability(featureSnapshot, oauthSurface.surface_id) : null
+  const preferredCliFeature = preferredCliSurface
+    ? findFeatureCapability(featureSnapshot, preferredCliSurface.surface_id)
+    : null
+  const maturityLabel = t(
+    `featureCapability.maturity.${providerSurfaceMaturity(oauthSurface, featureSnapshot)}`,
   )
-  const preferredCliFeature = findFeatureCapability(
-    featureSnapshot,
-    `provider_surface.${providerId}.subprocess_cli`,
-  )
-  const maturityLabel = oauthFeature
-    ? t(`featureCapability.maturity.${oauthFeature.maturity}`)
-    : t('settingsOAuth.experimental')
   const preferredCliMessage =
     preferredCliFeature?.status_copy_key != null ? t(preferredCliFeature.status_copy_key) : null
 

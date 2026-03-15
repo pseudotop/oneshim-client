@@ -10,7 +10,9 @@ import {
   type ExportDataType,
   type ExportFormat,
   type ExternalApiSettings,
+  fetchFeatureCapabilities,
   exportData,
+  type FeatureCapabilitySnapshot,
   fetchProviderSurfaces,
   fetchSecretBackendCapabilities,
   fetchSettings,
@@ -42,6 +44,7 @@ import {
   getCompatibleProviderSurfaces,
   providerSurfaceById,
   resolveProviderTypeForSurface,
+  sortProviderSurfaces,
   type EndpointSurfaceKind,
 } from '../features/providerSurfaces'
 import { useToast } from '../hooks/useToast'
@@ -54,6 +57,12 @@ type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'd
 
 function backendAllowsSecretEditing(backendKind: string): boolean {
   return backendKind !== 'env' && backendKind !== 'bridge_managed' && backendKind !== 'unavailable'
+}
+
+function supportsProjectionFor(authMode: string, backendKind: string): boolean {
+  return (
+    authMode === 'api_key' && (backendKind === 'os_secret_store' || backendKind === 'file_secret_store')
+  )
 }
 
 export default function Settings() {
@@ -73,7 +82,7 @@ export default function Settings() {
     llm_api: null,
   })
   const [modelCatalogLoading, setModelCatalogLoading] = useState<'ocr_api' | 'llm_api' | null>(null)
-  const canQuerySecretBackendCapabilities = IS_TAURI && !isStandaloneModeEnabled()
+  const canQueryDesktopCapabilities = IS_TAURI && !isStandaloneModeEnabled()
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['settings'],
@@ -98,10 +107,17 @@ export default function Settings() {
     retry: 1,
   })
 
+  const { data: featureCapabilities } = useQuery<FeatureCapabilitySnapshot>({
+    queryKey: ['feature-capabilities'],
+    queryFn: fetchFeatureCapabilities,
+    enabled: canQueryDesktopCapabilities,
+    retry: 1,
+  })
+
   const { data: secretBackendCapabilities } = useQuery({
     queryKey: ['secret-backend-capabilities'],
     queryFn: fetchSecretBackendCapabilities,
-    enabled: canQuerySecretBackendCapabilities,
+    enabled: canQueryDesktopCapabilities,
     retry: 1,
   })
 
@@ -153,6 +169,119 @@ export default function Settings() {
   }, [defaultByokBackendKind, secretBackendCapabilities])
 
   const providerCatalog = providerSurfaceCatalog ?? DEFAULT_PROVIDER_SURFACE_CATALOG
+
+  const deriveEndpointAuthMode = (
+    accessMode: string,
+    endpointKind: EndpointSurfaceKind,
+    surface: ProviderSurfaceSpec | undefined,
+  ): string => {
+    if (surface?.execution_kind === 'managed_http') {
+      return 'managed_oauth'
+    }
+
+    if (surface?.execution_kind === 'subprocess_cli') {
+      return 'cli_bridge'
+    }
+
+    if (accessMode === 'ProviderOAuth' && endpointKind === 'llm_api') {
+      return 'managed_oauth'
+    }
+
+    if (accessMode === 'ProviderSubscriptionCli' && endpointKind === 'llm_api') {
+      return 'cli_bridge'
+    }
+
+    return 'api_key'
+  }
+
+  const deriveEndpointBackendKind = (authMode: string): string => {
+    switch (authMode) {
+      case 'managed_oauth':
+        return 'os_secret_store'
+      case 'cli_bridge':
+        return 'bridge_managed'
+      default:
+        return defaultByokBackendKind
+    }
+  }
+
+  const normalizeEndpointSettings = (
+    accessMode: string,
+    endpointKind: EndpointSurfaceKind,
+    endpoint: ExternalApiSettings | null | undefined,
+    requestedSurface?: ProviderSurfaceSpec,
+  ): ExternalApiSettings | null => {
+    const seed = endpoint ?? defaultExternalApiSettings(accessMode, endpointKind)
+    if (!seed) {
+      return null
+    }
+
+    const providerType = resolveProviderTypeForSurface(
+      providerCatalog,
+      requestedSurface?.surface_id ?? seed.surface_id,
+      requestedSurface?.provider_type ?? seed.provider_type,
+    )
+    const surfaceId =
+      requestedSurface?.surface_id ??
+      deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, providerType)
+    const previousSurface = providerSurfaceById(providerCatalog, seed.surface_id)
+    const nextSurface = requestedSurface ?? providerSurfaceById(providerCatalog, surfaceId)
+    const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, endpointKind)
+    const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, endpointKind)
+    const previousDefaultModel = defaultSurfaceModel(previousSurface, endpointKind)
+    const nextDefaultModel = defaultSurfaceModel(nextSurface, endpointKind)
+    const authMode = deriveEndpointAuthMode(accessMode, endpointKind, nextSurface)
+    const backendKind = deriveEndpointBackendKind(authMode)
+
+    return {
+      ...seed,
+      endpoint:
+        !seed.endpoint.trim() || seed.endpoint === previousDefaultEndpoint ? nextDefaultEndpoint : seed.endpoint,
+      model: !seed.model?.trim() || seed.model === previousDefaultModel ? nextDefaultModel : seed.model,
+      provider_type: providerType,
+      surface_id: surfaceId,
+      auth_mode: authMode,
+      backend_kind: backendKind,
+      can_edit_secret: backendAllowsSecretEditing(backendKind) && authMode === 'api_key',
+      projection_enabled: supportsProjectionFor(authMode, backendKind) ? seed.projection_enabled : false,
+    }
+  }
+
+  const applyAccessModeDefaults = (
+    currentAiProvider: AiProviderSettings,
+    nextAccessMode: string,
+  ): AiProviderSettings => {
+    const nextAiProvider: AiProviderSettings = {
+      ...currentAiProvider,
+      access_mode: nextAccessMode,
+    }
+
+    if (nextAccessMode === 'ProviderSubscriptionCli') {
+      nextAiProvider.ocr_provider = 'Local'
+      nextAiProvider.llm_provider = 'Local'
+      nextAiProvider.llm_api = normalizeEndpointSettings(nextAccessMode, 'llm_api', nextAiProvider.llm_api)
+      return nextAiProvider
+    }
+
+    if (nextAccessMode === 'ProviderOAuth') {
+      nextAiProvider.llm_provider = 'Remote'
+      nextAiProvider.llm_api = normalizeEndpointSettings(nextAccessMode, 'llm_api', nextAiProvider.llm_api)
+      if (nextAiProvider.ocr_provider === 'Remote') {
+        nextAiProvider.ocr_api = normalizeEndpointSettings(nextAccessMode, 'ocr_api', nextAiProvider.ocr_api)
+      }
+      return nextAiProvider
+    }
+
+    if (nextAiProvider.ocr_provider === 'Remote') {
+      nextAiProvider.ocr_api = normalizeEndpointSettings(nextAccessMode, 'ocr_api', nextAiProvider.ocr_api)
+    }
+
+    if (nextAiProvider.llm_provider === 'Remote') {
+      nextAiProvider.llm_api = normalizeEndpointSettings(nextAccessMode, 'llm_api', nextAiProvider.llm_api)
+    }
+
+    return nextAiProvider
+  }
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
@@ -270,34 +399,6 @@ export default function Settings() {
     )
   }
 
-  const syncEndpointSurface = (
-    endpointKind: EndpointSurfaceKind,
-    accessMode: string,
-    endpoint: ExternalApiSettings | null | undefined,
-  ): ExternalApiSettings | null => {
-    if (!endpoint) return null
-    const providerType = resolveProviderTypeForSurface(providerCatalog, endpoint.surface_id, endpoint.provider_type)
-    const surfaceId = deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, providerType)
-    const previousSurface = providerSurfaceById(providerCatalog, endpoint.surface_id)
-    const nextSurface = providerSurfaceById(providerCatalog, surfaceId)
-    const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, endpointKind)
-    const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, endpointKind)
-    const previousDefaultModel = defaultSurfaceModel(previousSurface, endpointKind)
-    const nextDefaultModel = defaultSurfaceModel(nextSurface, endpointKind)
-
-    return {
-      ...endpoint,
-      endpoint:
-        !endpoint.endpoint.trim() || endpoint.endpoint === previousDefaultEndpoint
-          ? nextDefaultEndpoint
-          : endpoint.endpoint,
-      model:
-        !endpoint.model?.trim() || endpoint.model === previousDefaultModel ? nextDefaultModel : endpoint.model,
-      provider_type: providerType,
-      surface_id: surfaceId,
-    }
-  }
-
   const handleAiProviderChange = (
     field: keyof AiProviderSettings,
     value: string | boolean | ExternalApiSettings | OcrValidationSettingsType | SceneIntelligenceSettingsType | null,
@@ -305,11 +406,31 @@ export default function Settings() {
     setFormData((current) =>
       current
         ? (() => {
-            const nextAiProvider = { ...current.ai_provider, [field]: value }
             if (field === 'access_mode' && typeof value === 'string') {
-              nextAiProvider.ocr_api = syncEndpointSurface('ocr_api', value, nextAiProvider.ocr_api)
-              nextAiProvider.llm_api = syncEndpointSurface('llm_api', value, nextAiProvider.llm_api)
+              return {
+                ...current,
+                ai_provider: applyAccessModeDefaults(current.ai_provider, value),
+              }
             }
+
+            const nextAiProvider = { ...current.ai_provider, [field]: value }
+
+            if (field === 'ocr_provider' && value === 'Remote') {
+              nextAiProvider.ocr_api = normalizeEndpointSettings(
+                current.ai_provider.access_mode,
+                'ocr_api',
+                nextAiProvider.ocr_api,
+              )
+            }
+
+            if (field === 'llm_provider' && value === 'Remote') {
+              nextAiProvider.llm_api = normalizeEndpointSettings(
+                current.ai_provider.access_mode,
+                'llm_api',
+                nextAiProvider.llm_api,
+              )
+            }
+
             return {
               ...current,
               ai_provider: nextAiProvider,
@@ -379,6 +500,8 @@ export default function Settings() {
   ): ExternalApiSettings => {
     const surfaceId = deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, 'Generic')
     const surface = providerSurfaceById(providerCatalog, surfaceId)
+    const authMode = deriveEndpointAuthMode(accessMode, endpointKind, surface)
+    const backendKind = deriveEndpointBackendKind(authMode)
 
     return {
       endpoint: defaultSurfaceEndpoint(surface, endpointKind),
@@ -387,10 +510,10 @@ export default function Settings() {
       provider_type: surface?.provider_type ?? 'Generic',
       surface_id: surfaceId,
       timeout_secs: 30,
-      auth_mode: 'api_key',
-      backend_kind: defaultByokBackendKind,
+      auth_mode: authMode,
+      backend_kind: backendKind,
       has_secret: false,
-      can_edit_secret: backendAllowsSecretEditing(defaultByokBackendKind),
+      can_edit_secret: backendAllowsSecretEditing(backendKind) && authMode === 'api_key',
       secret_display_hint: null,
       projection_enabled: false,
     }
@@ -425,7 +548,10 @@ export default function Settings() {
   }
 
   const getCompatibleSurfaceOptions = (which: 'ocr_api' | 'llm_api'): ProviderSurfaceSpec[] =>
-    getCompatibleProviderSurfaces(providerCatalog, formData?.ai_provider.access_mode, which)
+    sortProviderSurfaces(
+      getCompatibleProviderSurfaces(providerCatalog, formData?.ai_provider.access_mode, which),
+      featureCapabilities,
+    )
 
   const getSurfaceModels = (which: 'ocr_api' | 'llm_api'): string[] => {
     const surface = resolveEndpointSurface(which)
@@ -453,30 +579,11 @@ export default function Settings() {
     setFormData((current) => {
       if (!current) return current
       const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
-      const previousSurface = providerSurfaceById(providerCatalog, existing.surface_id)
-      const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, which)
-      const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, which)
-      const previousDefaultModel = defaultSurfaceModel(previousSurface, which)
-      const nextDefaultModel = defaultSurfaceModel(nextSurface, which)
-
-      const endpoint =
-        !existing.endpoint.trim() || existing.endpoint === previousDefaultEndpoint
-          ? nextDefaultEndpoint
-          : existing.endpoint
-      const model =
-        !existing.model?.trim() || existing.model === previousDefaultModel ? nextDefaultModel : existing.model
-
       return {
         ...current,
         ai_provider: {
           ...current.ai_provider,
-          [which]: {
-            ...existing,
-            provider_type: nextSurface.provider_type,
-            surface_id: nextSurface.surface_id,
-            endpoint,
-            model,
-          },
+          [which]: normalizeEndpointSettings(current.ai_provider.access_mode, which, existing, nextSurface),
         },
       }
     })
@@ -664,10 +771,13 @@ export default function Settings() {
           <fieldset disabled={activeTab !== 'ai-automation'} className="m-0 min-w-0 border-0 p-0">
             <AiAutomationTab
               formData={formData}
+              allProviderSurfaces={providerCatalog.surfaces}
               providerSurfaceOptions={{
                 ocr_api: getCompatibleSurfaceOptions('ocr_api'),
                 llm_api: getCompatibleSurfaceOptions('llm_api'),
               }}
+              featureCapabilities={featureCapabilities}
+              secretBackendCapabilities={secretBackendCapabilities}
               modelCatalogNotice={modelCatalogNotice}
               modelCatalogLoading={modelCatalogLoading}
               onAutomationChange={handleAutomationChange}

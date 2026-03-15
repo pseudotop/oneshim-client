@@ -1,4 +1,10 @@
-import type { FeatureCapability, FeatureCapabilitySnapshot } from '../api/contracts'
+import type {
+  FeatureAvailability,
+  FeatureCapability,
+  FeatureCapabilitySnapshot,
+  FeatureMaturity,
+  ProviderSurfaceSpec,
+} from '../api/contracts'
 
 export function findFeatureCapability(
   snapshot: FeatureCapabilitySnapshot | null | undefined,
@@ -20,4 +26,55 @@ export function maturityBadgeColor(
     case 'deprecated':
       return 'default'
   }
+}
+
+function surfaceStabilityToMaturity(stability: string | null | undefined): FeatureMaturity {
+  switch ((stability ?? '').trim().toLowerCase()) {
+    case 'ga':
+      return 'stable'
+    case 'preview':
+      return 'beta'
+    case 'deprecated':
+      return 'deprecated'
+    case 'experimental':
+    default:
+      return 'experimental'
+  }
+}
+
+export function providerSurfaceAvailability(
+  surface: ProviderSurfaceSpec | null | undefined,
+  snapshot: FeatureCapabilitySnapshot | null | undefined,
+): FeatureAvailability {
+  if (!surface) {
+    return 'unavailable'
+  }
+
+  if (surface.execution_kind === 'direct_http') {
+    return 'available'
+  }
+
+  return findFeatureCapability(snapshot, surface.surface_id)?.availability ?? 'partially_available'
+}
+
+export function providerSurfaceMaturity(
+  surface: ProviderSurfaceSpec | null | undefined,
+  snapshot: FeatureCapabilitySnapshot | null | undefined,
+): FeatureMaturity {
+  if (!surface) {
+    return 'deprecated'
+  }
+
+  return findFeatureCapability(snapshot, surface.surface_id)?.maturity ?? surfaceStabilityToMaturity(surface.stability)
+}
+
+export function providerSurfaceStatusCopyKey(
+  surface: ProviderSurfaceSpec | null | undefined,
+  snapshot: FeatureCapabilitySnapshot | null | undefined,
+): string | null {
+  if (!surface || surface.execution_kind === 'direct_http') {
+    return null
+  }
+
+  return findFeatureCapability(snapshot, surface.surface_id)?.status_copy_key ?? null
 }

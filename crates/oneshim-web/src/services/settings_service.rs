@@ -980,6 +980,9 @@ fn derive_credential_auth_mode(
 ) -> CredentialAuthMode {
     match (access_mode, endpoint_kind) {
         (AiAccessMode::ProviderOAuth, ApiEndpointKind::Llm) => CredentialAuthMode::ManagedOAuth,
+        (AiAccessMode::ProviderSubscriptionCli, ApiEndpointKind::Llm) => {
+            CredentialAuthMode::CliBridge
+        }
         _ => CredentialAuthMode::ApiKey,
     }
 }
@@ -1409,6 +1412,34 @@ mod tests {
             Some("provider_surface.openai.managed_oauth")
         );
         assert!(!llm_api.has_secret);
+        assert!(!llm_api.can_edit_secret);
+        assert_eq!(llm_api.secret_display_hint, None);
+    }
+
+    #[test]
+    fn config_to_settings_marks_cli_subscription_as_cli_bridge_metadata() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderSubscriptionCli;
+        config.ai_provider.llm_provider = LlmProviderType::Local;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: String::new(),
+            api_key: String::new(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
+        });
+
+        let settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        let llm_api = settings.ai_provider.llm_api.expect("llm api settings");
+
+        assert_eq!(llm_api.auth_mode, "cli_bridge");
+        assert_eq!(llm_api.backend_kind, "bridge_managed");
+        assert_eq!(
+            llm_api.surface_id.as_deref(),
+            Some("provider_surface.openai.subprocess_cli")
+        );
         assert!(!llm_api.can_edit_secret);
         assert_eq!(llm_api.secret_display_hint, None);
     }

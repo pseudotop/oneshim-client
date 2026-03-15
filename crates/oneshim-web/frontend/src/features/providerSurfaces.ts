@@ -1,6 +1,24 @@
-import type { ProviderSurfaceCatalog, ProviderSurfaceSpec } from '../api/contracts'
+import type {
+  FeatureAvailability,
+  FeatureCapabilitySnapshot,
+  ProviderSurfaceCatalog,
+  ProviderSurfaceSpec,
+} from '../api/contracts'
 
 export type EndpointSurfaceKind = 'ocr_api' | 'llm_api'
+
+const STABILITY_RANK: Record<string, number> = {
+  ga: 3,
+  preview: 2,
+  experimental: 1,
+  deprecated: 0,
+}
+
+const AVAILABILITY_RANK: Record<FeatureAvailability, number> = {
+  available: 2,
+  partially_available: 1,
+  unavailable: 0,
+}
 
 function normalizedProviderType(providerType: string | null | undefined): string {
   return (providerType ?? '').trim() || 'Generic'
@@ -22,6 +40,51 @@ function surfaceSupportsKind(surface: ProviderSurfaceSpec, endpointKind: Endpoin
   return endpointKind === 'ocr_api' ? surface.supports.ocr : surface.supports.llm
 }
 
+function featureAvailabilityScore(
+  surface: ProviderSurfaceSpec,
+  snapshot: FeatureCapabilitySnapshot | null | undefined,
+): number {
+  if (surface.execution_kind === 'direct_http') {
+    return AVAILABILITY_RANK.available
+  }
+
+  const feature = snapshot?.features.find((candidate) => candidate.feature_id === surface.surface_id)
+  if (!feature) {
+    return AVAILABILITY_RANK.partially_available
+  }
+
+  return AVAILABILITY_RANK[feature.availability]
+}
+
+function compareProviderSurfaces(
+  left: ProviderSurfaceSpec,
+  right: ProviderSurfaceSpec,
+  snapshot?: FeatureCapabilitySnapshot | null,
+): number {
+  const availabilityDelta = featureAvailabilityScore(right, snapshot) - featureAvailabilityScore(left, snapshot)
+  if (availabilityDelta !== 0) {
+    return availabilityDelta
+  }
+
+  if (left.preferred_for_product_auth !== right.preferred_for_product_auth) {
+    return Number(right.preferred_for_product_auth) - Number(left.preferred_for_product_auth)
+  }
+
+  const stabilityDelta = (STABILITY_RANK[right.stability] ?? -1) - (STABILITY_RANK[left.stability] ?? -1)
+  if (stabilityDelta !== 0) {
+    return stabilityDelta
+  }
+
+  return left.display_name.localeCompare(right.display_name)
+}
+
+export function sortProviderSurfaces(
+  surfaces: ProviderSurfaceSpec[],
+  snapshot?: FeatureCapabilitySnapshot | null,
+): ProviderSurfaceSpec[] {
+  return [...surfaces].sort((left, right) => compareProviderSurfaces(left, right, snapshot))
+}
+
 export function getCompatibleProviderSurfaces(
   catalog: ProviderSurfaceCatalog,
   accessMode: string | null | undefined,
@@ -32,8 +95,10 @@ export function getCompatibleProviderSurfaces(
     return []
   }
 
-  return catalog.surfaces.filter(
-    (surface) => surface.execution_kind === executionKind && surfaceSupportsKind(surface, endpointKind),
+  return sortProviderSurfaces(
+    catalog.surfaces.filter(
+      (surface) => surface.execution_kind === executionKind && surfaceSupportsKind(surface, endpointKind),
+    ),
   )
 }
 
@@ -46,7 +111,7 @@ export function deriveDefaultProviderSurfaceId(
   const normalizedProvider = normalizedProviderType(providerType)
   const compatible = getCompatibleProviderSurfaces(catalog, accessMode, endpointKind)
   const vendorMatch = compatible.filter((surface) => surface.provider_type === normalizedProvider)
-  const candidates = vendorMatch.length > 0 ? vendorMatch : compatible
+  const candidates = sortProviderSurfaces(vendorMatch.length > 0 ? vendorMatch : compatible)
 
   return candidates[0]?.surface_id ?? null
 }
