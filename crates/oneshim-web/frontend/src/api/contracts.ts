@@ -235,8 +235,10 @@ export interface SurfaceDefaultModels {
 }
 
 export interface SubprocessTransportSpec {
+  tool_id: string
   executable_candidates: string[]
   auth_probe_command: string[]
+  auth_probe_mode: string
   invocation_mode: string
   model_flag?: string | null
   json_output_supported: boolean

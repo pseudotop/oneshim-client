@@ -4439,6 +4439,7 @@ dependencies = [
  "image",
  "mockito",
  "objc",
+ "oneshim-api-contracts",
  "oneshim-automation",
  "oneshim-core",
  "oneshim-monitor",

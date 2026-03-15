@@ -218,8 +218,10 @@
         }
       },
       "subprocess_transport": {
+        "tool_id": "codex",
         "executable_candidates": ["codex"],
         "auth_probe_command": ["login", "status"],
+        "auth_probe_mode": "codex_login_status_text",
         "invocation_mode": "codex_exec_json",
         "model_flag": "--model",
         "json_output_supported": true
@@ -261,8 +263,10 @@
         }
       },
       "subprocess_transport": {
+        "tool_id": "claude-code",
         "executable_candidates": ["claude", "claude-code"],
-        "auth_probe_command": [],
+        "auth_probe_command": ["auth", "status", "--json"],
+        "auth_probe_mode": "claude_auth_status_json",
         "invocation_mode": "claude_print_json",
         "model_flag": "--model",
         "json_output_supported": true
@@ -362,8 +366,10 @@
         }
       },
       "subprocess_transport": {
+        "tool_id": "gemini-cli",
         "executable_candidates": ["gemini"],
         "auth_probe_command": [],
+        "auth_probe_mode": "none",
         "invocation_mode": "gemini_cli_prompt",
         "model_flag": "--model",
         "json_output_supported": false

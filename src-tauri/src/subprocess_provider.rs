@@ -1,10 +1,15 @@
 use async_trait::async_trait;
+use oneshim_api_contracts::provider_specs::{
+    parse_surface_execution_kind, provider_surface_catalog,
+    provider_surface_spec as catalog_surface_spec, subprocess_auth_probe_mode,
+    subprocess_transport as catalog_subprocess_transport, SubprocessAuthProbeMode,
+    SubprocessInvocationMode, SurfaceExecutionKind,
+};
 use oneshim_core::config::{AiProviderConfig, AiProviderType};
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::llm_provider::{
     InterpretedAction, LlmProvider, ScreenContext, SkillContext,
 };
-use oneshim_core::provider_surface::{provider_surface_spec, ProviderSurfaceTransport};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
@@ -38,6 +43,12 @@ pub enum SubprocessCliSurfaceId {
 }
 
 impl SubprocessCliSurfaceId {
+    const ALL: [Self; 3] = [
+        Self::OpenAiCodex,
+        Self::AnthropicClaudeCode,
+        Self::GoogleGeminiCli,
+    ];
+
     pub fn feature_id(self) -> &'static str {
         match self {
             Self::OpenAiCodex => "provider_surface.openai.subprocess_cli",
@@ -46,12 +57,32 @@ impl SubprocessCliSurfaceId {
         }
     }
 
-    pub fn cli_id(self) -> &'static str {
-        match self {
-            Self::OpenAiCodex => "codex",
-            Self::AnthropicClaudeCode => "claude-code",
-            Self::GoogleGeminiCli => "gemini-cli",
+    pub fn all() -> &'static [Self] {
+        &Self::ALL
+    }
+
+    pub fn from_feature_id(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "provider_surface.openai.subprocess_cli" => Some(Self::OpenAiCodex),
+            "provider_surface.anthropic.subprocess_cli" => Some(Self::AnthropicClaudeCode),
+            "provider_surface.google.subprocess_cli" => Some(Self::GoogleGeminiCli),
+            _ => None,
         }
+    }
+
+    fn surface_spec(self) -> &'static oneshim_api_contracts::provider_specs::ProviderSurfaceSpec {
+        catalog_surface_spec(self.feature_id()).expect("known subprocess surface must exist")
+    }
+
+    fn subprocess_transport(
+        self,
+    ) -> &'static oneshim_api_contracts::provider_specs::SubprocessTransportSpec {
+        catalog_subprocess_transport(self.feature_id())
+            .expect("known subprocess transport must exist")
+    }
+
+    pub fn cli_id(self) -> &'static str {
+        self.subprocess_transport().tool_id.as_str()
     }
 
     pub fn provider_name(self) -> &'static str {
@@ -62,24 +93,38 @@ impl SubprocessCliSurfaceId {
         }
     }
 
-    pub fn candidate_binaries(self) -> &'static [&'static str] {
-        match self {
-            Self::OpenAiCodex => &["codex"],
-            Self::AnthropicClaudeCode => &["claude", "claude-code"],
-            Self::GoogleGeminiCli => &["gemini", "gemini-cli"],
-        }
+    pub fn candidate_binaries(self) -> &'static [String] {
+        self.subprocess_transport().executable_candidates.as_slice()
+    }
+
+    pub fn auth_probe_command(self) -> &'static [String] {
+        self.subprocess_transport().auth_probe_command.as_slice()
+    }
+
+    pub fn auth_probe_mode(self) -> SubprocessAuthProbeMode {
+        subprocess_auth_probe_mode(self.feature_id())
+            .expect("known subprocess auth probe mode must resolve")
+    }
+
+    pub fn invocation_mode(self) -> SubprocessInvocationMode {
+        oneshim_api_contracts::provider_specs::subprocess_invocation_mode(self.feature_id())
+            .expect("known subprocess invocation mode must resolve")
     }
 
     pub fn default_model(self) -> &'static str {
-        match self {
-            Self::OpenAiCodex => "gpt-5.4",
-            Self::AnthropicClaudeCode => "claude-opus-4-6",
-            Self::GoogleGeminiCli => "gemini-2.5-pro",
-        }
+        self.surface_spec()
+            .default_models
+            .llm_models
+            .first()
+            .map(String::as_str)
+            .expect("known subprocess surface must declare a default llm model")
     }
 
     pub fn runtime_supported(self) -> bool {
-        matches!(self, Self::OpenAiCodex | Self::AnthropicClaudeCode)
+        matches!(
+            self.invocation_mode(),
+            SubprocessInvocationMode::CodexExecJson | SubprocessInvocationMode::ClaudePrintJson
+        )
     }
 }
 
@@ -141,10 +186,10 @@ impl SubprocessLlmProvider {
         skill_ctx: &SkillContext,
     ) -> Result<InterpretedAction, CoreError> {
         let prompt = build_intent_prompt(screen_context, intent_hint, skill_ctx)?;
-        let raw = match self.surface.surface_id {
-            SubprocessCliSurfaceId::OpenAiCodex => self.run_codex(&prompt).await?,
-            SubprocessCliSurfaceId::AnthropicClaudeCode => self.run_claude(&prompt).await?,
-            SubprocessCliSurfaceId::GoogleGeminiCli => {
+        let raw = match self.surface.surface_id.invocation_mode() {
+            SubprocessInvocationMode::CodexExecJson => self.run_codex(&prompt).await?,
+            SubprocessInvocationMode::ClaudePrintJson => self.run_claude(&prompt).await?,
+            SubprocessInvocationMode::GeminiCliPrompt => {
                 return Err(CoreError::Config(
                     "Gemini CLI subprocess runtime is not implemented yet.".to_string(),
                 ));
@@ -296,23 +341,20 @@ impl LlmProvider for SubprocessLlmProvider {
 }
 
 pub fn detect_known_cli_surfaces() -> Vec<DetectedSubprocessCli> {
-    [
-        SubprocessCliSurfaceId::OpenAiCodex,
-        SubprocessCliSurfaceId::AnthropicClaudeCode,
-        SubprocessCliSurfaceId::GoogleGeminiCli,
-    ]
-    .into_iter()
-    .filter_map(|surface_id| {
-        surface_id
-            .candidate_binaries()
-            .iter()
-            .find_map(|candidate| find_executable(candidate))
-            .map(|executable_path| DetectedSubprocessCli {
-                surface_id,
-                executable_path,
-            })
-    })
-    .collect()
+    SubprocessCliSurfaceId::all()
+        .iter()
+        .copied()
+        .filter_map(|surface_id| {
+            surface_id
+                .candidate_binaries()
+                .iter()
+                .find_map(|candidate| find_executable(candidate))
+                .map(|executable_path| DetectedSubprocessCli {
+                    surface_id,
+                    executable_path,
+                })
+        })
+        .collect()
 }
 
 pub fn probe_known_cli_surfaces() -> Vec<ProbedSubprocessCli> {
@@ -387,30 +429,43 @@ pub fn probe_for_surface_id(
 }
 
 fn surface_for_provider_type(provider_type: AiProviderType) -> Option<SubprocessCliSurfaceId> {
-    match provider_type {
-        AiProviderType::OpenAi => Some(SubprocessCliSurfaceId::OpenAiCodex),
-        AiProviderType::Anthropic => Some(SubprocessCliSurfaceId::AnthropicClaudeCode),
-        AiProviderType::Google => Some(SubprocessCliSurfaceId::GoogleGeminiCli),
-        AiProviderType::Generic => None,
-    }
+    let provider_label = match provider_type {
+        AiProviderType::Anthropic => "Anthropic",
+        AiProviderType::OpenAi => "OpenAi",
+        AiProviderType::Google => "Google",
+        AiProviderType::Generic => return None,
+    };
+
+    provider_surface_catalog()
+        .ok()?
+        .surfaces
+        .iter()
+        .filter(|surface| {
+            surface.provider_type.eq_ignore_ascii_case(provider_label)
+                && matches!(
+                    parse_surface_execution_kind(&surface.execution_kind),
+                    Ok(SurfaceExecutionKind::SubprocessCli)
+                )
+        })
+        .max_by_key(|surface| surface.preferred_for_product_auth)
+        .and_then(|surface| SubprocessCliSurfaceId::from_feature_id(&surface.surface_id))
 }
 
 fn surface_for_provider_surface_id(raw: &str) -> Option<SubprocessCliSurfaceId> {
-    let spec = provider_surface_spec(raw)?;
-    if spec.transport != ProviderSurfaceTransport::SubprocessCli {
-        return None;
-    }
-
-    surface_for_provider_type(spec.provider_type)
+    SubprocessCliSurfaceId::from_feature_id(raw)
 }
 
 fn probe_cli_surface(detected: DetectedSubprocessCli) -> ProbedSubprocessCli {
-    let (auth_status, auth_detail) = match detected.surface_id {
-        SubprocessCliSurfaceId::OpenAiCodex => probe_codex_auth_status(&detected.executable_path),
-        SubprocessCliSurfaceId::AnthropicClaudeCode => {
-            probe_claude_auth_status(&detected.executable_path)
+    let probe_mode = detected.surface_id.auth_probe_mode();
+    let probe_args = detected.surface_id.auth_probe_command();
+    let (auth_status, auth_detail) = match probe_mode {
+        SubprocessAuthProbeMode::CodexLoginStatusText => {
+            probe_codex_auth_status(&detected.executable_path, probe_args)
         }
-        SubprocessCliSurfaceId::GoogleGeminiCli => (
+        SubprocessAuthProbeMode::ClaudeAuthStatusJson => {
+            probe_claude_auth_status(&detected.executable_path, probe_args)
+        }
+        SubprocessAuthProbeMode::None => (
             SubprocessCliAuthStatus::Unknown,
             Some("auth_status_probe_not_implemented".to_string()),
         ),
@@ -423,10 +478,13 @@ fn probe_cli_surface(detected: DetectedSubprocessCli) -> ProbedSubprocessCli {
     }
 }
 
-fn probe_codex_auth_status(executable_path: &Path) -> (SubprocessCliAuthStatus, Option<String>) {
+fn probe_codex_auth_status(
+    executable_path: &Path,
+    args: &[String],
+) -> (SubprocessCliAuthStatus, Option<String>) {
     let output = match run_probe_command_with_timeout(
         executable_path,
-        &["login", "status"],
+        args,
         Duration::from_secs(CLI_AUTH_PROBE_TIMEOUT_SECS),
     ) {
         Ok(output) => output,
@@ -465,10 +523,13 @@ fn parse_codex_auth_status(raw: &str) -> (SubprocessCliAuthStatus, Option<String
     )
 }
 
-fn probe_claude_auth_status(executable_path: &Path) -> (SubprocessCliAuthStatus, Option<String>) {
+fn probe_claude_auth_status(
+    executable_path: &Path,
+    args: &[String],
+) -> (SubprocessCliAuthStatus, Option<String>) {
     let output = match run_probe_command_with_timeout(
         executable_path,
-        &["auth", "status", "--json"],
+        args,
         Duration::from_secs(CLI_AUTH_PROBE_TIMEOUT_SECS),
     ) {
         Ok(output) => output,
@@ -509,7 +570,7 @@ fn parse_claude_auth_status(raw: &str) -> (SubprocessCliAuthStatus, Option<Strin
 
 fn run_probe_command_with_timeout(
     executable_path: &Path,
-    args: &[&str],
+    args: &[String],
     timeout: Duration,
 ) -> Result<std::process::Output, String> {
     let mut child = StdCommand::new(executable_path)

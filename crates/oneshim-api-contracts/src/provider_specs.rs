@@ -84,10 +84,12 @@ pub struct SurfaceDefaultModels {
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct SubprocessTransportSpec {
+    pub tool_id: String,
     #[serde(default)]
     pub executable_candidates: Vec<String>,
     #[serde(default)]
     pub auth_probe_command: Vec<String>,
+    pub auth_probe_mode: String,
     pub invocation_mode: String,
     #[serde(default)]
     pub model_flag: Option<String>,
@@ -137,6 +139,28 @@ pub enum SurfaceExecutionKind {
     DirectHttp,
     ManagedHttp,
     SubprocessCli,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceStability {
+    Ga,
+    Preview,
+    Experimental,
+    Deprecated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubprocessInvocationMode {
+    CodexExecJson,
+    ClaudePrintJson,
+    GeminiCliPrompt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubprocessAuthProbeMode {
+    None,
+    CodexLoginStatusText,
+    ClaudeAuthStatusJson,
 }
 
 pub fn list_provider_surface_specs() -> Result<ProviderSurfaceCatalog, String> {
@@ -351,6 +375,65 @@ pub fn parse_surface_execution_kind(raw: &str) -> Result<SurfaceExecutionKind, S
     }
 }
 
+pub fn parse_surface_stability(raw: &str) -> Result<SurfaceStability, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "ga" => Ok(SurfaceStability::Ga),
+        "preview" => Ok(SurfaceStability::Preview),
+        "experimental" => Ok(SurfaceStability::Experimental),
+        "deprecated" => Ok(SurfaceStability::Deprecated),
+        other => Err(format!("Unsupported surface stability '{other}'.")),
+    }
+}
+
+pub fn parse_subprocess_invocation_mode(raw: &str) -> Result<SubprocessInvocationMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "codex_exec_json" => Ok(SubprocessInvocationMode::CodexExecJson),
+        "claude_print_json" => Ok(SubprocessInvocationMode::ClaudePrintJson),
+        "gemini_cli_prompt" => Ok(SubprocessInvocationMode::GeminiCliPrompt),
+        other => Err(format!("Unsupported subprocess invocation mode '{other}'.")),
+    }
+}
+
+pub fn parse_subprocess_auth_probe_mode(raw: &str) -> Result<SubprocessAuthProbeMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "none" => Ok(SubprocessAuthProbeMode::None),
+        "codex_login_status_text" => Ok(SubprocessAuthProbeMode::CodexLoginStatusText),
+        "claude_auth_status_json" => Ok(SubprocessAuthProbeMode::ClaudeAuthStatusJson),
+        other => Err(format!("Unsupported subprocess auth probe mode '{other}'.")),
+    }
+}
+
+pub fn surface_stability(surface_id: &str) -> Result<SurfaceStability, String> {
+    let surface = provider_surface_spec(surface_id)?;
+    parse_surface_stability(&surface.stability)
+}
+
+pub fn subprocess_transport(surface_id: &str) -> Result<&'static SubprocessTransportSpec, String> {
+    let surface = provider_surface_spec(surface_id)?;
+    match parse_surface_execution_kind(&surface.execution_kind)? {
+        SurfaceExecutionKind::SubprocessCli => {
+            surface.subprocess_transport.as_ref().ok_or_else(|| {
+                format!(
+                    "Surface '{}' uses subprocess_cli but is missing subprocess_transport.",
+                    surface.surface_id
+                )
+            })
+        }
+        _ => Err(format!(
+            "Surface '{}' is not a subprocess_cli surface.",
+            surface.surface_id
+        )),
+    }
+}
+
+pub fn subprocess_invocation_mode(surface_id: &str) -> Result<SubprocessInvocationMode, String> {
+    parse_subprocess_invocation_mode(&subprocess_transport(surface_id)?.invocation_mode)
+}
+
+pub fn subprocess_auth_probe_mode(surface_id: &str) -> Result<SubprocessAuthProbeMode, String> {
+    parse_subprocess_auth_probe_mode(&subprocess_transport(surface_id)?.auth_probe_mode)
+}
+
 fn surface_catalog() -> Result<&'static ProviderSurfaceCatalog, String> {
     match SURFACE_CATALOG.get_or_init(load_surface_catalog) {
         Ok(catalog) => Ok(catalog),
@@ -446,6 +529,7 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                 surface.surface_id
             ));
         }
+        parse_surface_stability(&surface.stability)?;
         if surface.references.is_empty() {
             return Err(format!(
                 "Surface '{}' must include at least one reference URL.",
@@ -563,9 +647,26 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                         surface.surface_id
                     )
                 })?;
+                if subprocess.tool_id.trim().is_empty() {
+                    return Err(format!(
+                        "Subprocess surface '{}' must declare a non-empty tool_id.",
+                        surface.surface_id
+                    ));
+                }
                 if subprocess.executable_candidates.is_empty() {
                     return Err(format!(
                         "Subprocess surface '{}' must declare executable_candidates.",
+                        surface.surface_id
+                    ));
+                }
+                let auth_probe_mode =
+                    parse_subprocess_auth_probe_mode(&subprocess.auth_probe_mode)?;
+                parse_subprocess_invocation_mode(&subprocess.invocation_mode)?;
+                if auth_probe_mode != SubprocessAuthProbeMode::None
+                    && subprocess.auth_probe_command.is_empty()
+                {
+                    return Err(format!(
+                        "Subprocess surface '{}' must declare auth_probe_command when auth_probe_mode is enabled.",
                         surface.surface_id
                     ));
                 }
@@ -797,5 +898,19 @@ mod tests {
         )
         .expect("managed surface should resolve");
         assert_eq!(shape, ProviderRequestShape::OpenAiResponses);
+    }
+
+    #[test]
+    fn resolves_subprocess_surface_modes() {
+        assert_eq!(
+            subprocess_invocation_mode("provider_surface.openai.subprocess_cli")
+                .expect("invocation mode should resolve"),
+            SubprocessInvocationMode::CodexExecJson
+        );
+        assert_eq!(
+            subprocess_auth_probe_mode("provider_surface.anthropic.subprocess_cli")
+                .expect("probe mode should resolve"),
+            SubprocessAuthProbeMode::ClaudeAuthStatusJson
+        );
     }
 }

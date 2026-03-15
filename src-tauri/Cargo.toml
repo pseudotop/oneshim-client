@@ -30,6 +30,7 @@ oneshim-network = { workspace = true, optional = true }
 oneshim-storage = { workspace = true }
 oneshim-suggestion = { workspace = true }
 oneshim-web = { workspace = true }
+oneshim-api-contracts = { workspace = true }
 
 tokio = { workspace = true }
 tracing = { workspace = true }

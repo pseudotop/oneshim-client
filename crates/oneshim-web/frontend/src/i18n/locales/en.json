@@ -661,6 +661,38 @@
       "experimental": "Experimental",
       "deprecated": "Deprecated"
     },
+    "surface": {
+      "provider_surface": {
+        "openai": {
+          "managed_oauth": {
+            "available": "This compatibility path is available on this device. It is not the preferred setup path.",
+            "unavailable": "Direct OAuth compatibility is unavailable on this device. Desktop keychain support is required."
+          },
+          "subprocess_cli": {
+            "available": "Codex CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+            "auth_required": "Codex CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+            "partially_available": "Codex CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "unavailable": "Codex CLI is not installed or not available on PATH. Install and sign in through the provider CLI for the preferred product-backed path."
+          }
+        },
+        "anthropic": {
+          "subprocess_cli": {
+            "available": "Claude Code CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+            "auth_required": "Claude Code CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+            "partially_available": "Claude Code CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "unavailable": "Claude Code CLI is not installed or not available on PATH."
+          }
+        },
+        "google": {
+          "subprocess_cli": {
+            "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path when runtime support is enabled.",
+            "auth_required": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+            "partially_available": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "unavailable": "Gemini CLI is not installed or not available on PATH."
+          }
+        }
+      }
+    },
     "providerSurface": {
       "openaiManagedOAuth": {
         "available": "This compatibility path is available on this device. It is not the preferred setup path.",

@@ -17,7 +17,7 @@ describe('CRT-MK-M051: get_feature_capabilities IPC contract', () => {
               preferred: false,
               requires: ['os_secret_store'],
               status_reason: null,
-              status_copy_key: 'featureCapability.providerSurface.openaiManagedOAuth.available',
+              status_copy_key: 'featureCapability.surface.provider_surface.openai.managed_oauth.available',
             },
           ],
         }

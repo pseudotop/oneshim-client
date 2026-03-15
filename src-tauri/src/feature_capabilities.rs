@@ -5,6 +5,10 @@ use crate::subprocess_provider::{
     probe_for_surface_id, probe_known_cli_surfaces, ProbedSubprocessCli, SubprocessCliAuthStatus,
     SubprocessCliSurfaceId,
 };
+use oneshim_api_contracts::provider_specs::{
+    parse_surface_execution_kind, parse_surface_stability, provider_surface_catalog,
+    ProviderSurfaceSpec, SurfaceExecutionKind, SurfaceStability,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,118 +57,150 @@ fn build_feature_capability_snapshot_with_probes(
     secret_backend: &SecretBackendCapabilities,
     detected_surfaces: &[ProbedSubprocessCli],
 ) -> FeatureCapabilitySnapshot {
+    let catalog = match provider_surface_catalog() {
+        Ok(catalog) => catalog,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to load provider surface catalog for feature capability snapshot."
+            );
+            return FeatureCapabilitySnapshot {
+                features: Vec::new(),
+            };
+        }
+    };
+
     FeatureCapabilitySnapshot {
-        features: vec![
-            managed_oauth_feature(secret_backend),
-            subprocess_cli_feature(
-                SubprocessCliSurfaceId::OpenAiCodex,
-                detected_surfaces,
-                "featureCapability.providerSurface.openaiSubprocessCli",
-            ),
-            subprocess_cli_feature(
-                SubprocessCliSurfaceId::AnthropicClaudeCode,
-                detected_surfaces,
-                "featureCapability.providerSurface.anthropicSubprocessCli",
-            ),
-            subprocess_cli_feature(
-                SubprocessCliSurfaceId::GoogleGeminiCli,
-                detected_surfaces,
-                "featureCapability.providerSurface.googleSubprocessCli",
-            ),
-        ],
+        features: catalog
+            .surfaces
+            .iter()
+            .filter_map(
+                |surface| match parse_surface_execution_kind(&surface.execution_kind) {
+                    Ok(SurfaceExecutionKind::ManagedHttp)
+                        if surface
+                            .credential_kind
+                            .eq_ignore_ascii_case("managed_oauth") =>
+                    {
+                        Some(managed_oauth_feature(surface, secret_backend))
+                    }
+                    Ok(SurfaceExecutionKind::SubprocessCli) => {
+                        Some(subprocess_cli_feature(surface, detected_surfaces))
+                    }
+                    _ => None,
+                },
+            )
+            .collect(),
     }
 }
 
-fn managed_oauth_feature(secret_backend: &SecretBackendCapabilities) -> FeatureCapability {
+fn managed_oauth_feature(
+    surface: &ProviderSurfaceSpec,
+    secret_backend: &SecretBackendCapabilities,
+) -> FeatureCapability {
     let available = secret_backend.oauth_available && secret_backend.os_secret_store_available;
     FeatureCapability {
-        feature_id: "provider_surface.openai.managed_oauth".to_string(),
-        maturity: FeatureMaturity::Experimental,
+        feature_id: surface.surface_id.clone(),
+        maturity: feature_maturity(surface),
         availability: if available {
             FeatureAvailability::Available
         } else {
             FeatureAvailability::Unavailable
         },
-        preferred: false,
+        preferred: surface.preferred_for_product_auth,
         requires: vec!["os_secret_store".to_string()],
         status_reason: if available {
             None
         } else {
             Some("os_secret_store_unavailable".to_string())
         },
-        status_copy_key: Some(if available {
-            "featureCapability.providerSurface.openaiManagedOAuth.available".to_string()
-        } else {
-            "featureCapability.providerSurface.openaiManagedOAuth.unavailable".to_string()
-        }),
+        status_copy_key: Some(surface_status_copy_key(
+            &surface.surface_id,
+            if available {
+                "available"
+            } else {
+                "unavailable"
+            },
+        )),
     }
 }
 
 fn subprocess_cli_feature(
-    surface_id: SubprocessCliSurfaceId,
+    surface: &ProviderSurfaceSpec,
     detected_surfaces: &[ProbedSubprocessCli],
-    copy_key_prefix: &str,
 ) -> FeatureCapability {
+    let Some(surface_id) = SubprocessCliSurfaceId::from_feature_id(&surface.surface_id) else {
+        return FeatureCapability {
+            feature_id: surface.surface_id.clone(),
+            maturity: feature_maturity(surface),
+            availability: FeatureAvailability::Unavailable,
+            preferred: surface.preferred_for_product_auth,
+            requires: surface
+                .subprocess_transport
+                .as_ref()
+                .map(|transport| vec![format!("cli:{}", transport.tool_id)])
+                .unwrap_or_default(),
+            status_reason: Some("surface_mapping_missing".to_string()),
+            status_copy_key: Some(surface_status_copy_key(&surface.surface_id, "unavailable")),
+        };
+    };
+
     let detected = probe_for_surface_id(detected_surfaces, surface_id);
     let runtime_supported = surface_id.runtime_supported();
+    let availability = match detected {
+        Some(surface)
+            if runtime_supported
+                && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
+        {
+            FeatureAvailability::Available
+        }
+        Some(_) => FeatureAvailability::PartiallyAvailable,
+        None => FeatureAvailability::Unavailable,
+    };
+
+    let (status_reason, copy_suffix) = match detected {
+        Some(surface)
+            if runtime_supported
+                && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
+        {
+            ("cli_ready", "available")
+        }
+        Some(_) if !runtime_supported => ("cli_detected_runtime_pending", "partially_available"),
+        Some(surface) => match surface.auth_status {
+            SubprocessCliAuthStatus::Authenticated => {
+                ("cli_detected_runtime_pending", "partially_available")
+            }
+            SubprocessCliAuthStatus::Unauthenticated => {
+                ("cli_detected_auth_required", "auth_required")
+            }
+            SubprocessCliAuthStatus::Unknown => {
+                ("cli_detected_auth_unverified", "partially_available")
+            }
+        },
+        None => ("cli_not_installed", "unavailable"),
+    };
+
     FeatureCapability {
-        feature_id: surface_id.feature_id().to_string(),
-        maturity: if runtime_supported {
-            FeatureMaturity::Beta
-        } else {
-            FeatureMaturity::Experimental
-        },
-        availability: match detected {
-            Some(surface)
-                if runtime_supported
-                    && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
-            {
-                FeatureAvailability::Available
-            }
-            Some(_) => FeatureAvailability::PartiallyAvailable,
-            None => FeatureAvailability::Unavailable,
-        },
-        preferred: true,
+        feature_id: surface.surface_id.clone(),
+        maturity: feature_maturity(surface),
+        availability,
+        preferred: surface.preferred_for_product_auth,
         requires: vec![format!("cli:{}", surface_id.cli_id())],
-        status_reason: Some(match detected {
-            Some(surface)
-                if runtime_supported
-                    && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
-            {
-                "cli_ready".to_string()
-            }
-            Some(surface) if !runtime_supported => "cli_detected_runtime_pending".to_string(),
-            Some(surface) => match surface.auth_status {
-                SubprocessCliAuthStatus::Authenticated => {
-                    "cli_detected_runtime_pending".to_string()
-                }
-                SubprocessCliAuthStatus::Unauthenticated => {
-                    "cli_detected_auth_required".to_string()
-                }
-                SubprocessCliAuthStatus::Unknown => "cli_detected_auth_unverified".to_string(),
-            },
-            None => "cli_not_installed".to_string(),
-        }),
-        status_copy_key: Some(match detected {
-            Some(surface)
-                if runtime_supported
-                    && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
-            {
-                format!("{copy_key_prefix}.available")
-            }
-            Some(surface) if !runtime_supported => format!("{copy_key_prefix}.partiallyAvailable"),
-            Some(surface) => match surface.auth_status {
-                SubprocessCliAuthStatus::Authenticated => {
-                    format!("{copy_key_prefix}.partiallyAvailable")
-                }
-                SubprocessCliAuthStatus::Unauthenticated => {
-                    format!("{copy_key_prefix}.authRequired")
-                }
-                SubprocessCliAuthStatus::Unknown => format!("{copy_key_prefix}.partiallyAvailable"),
-            },
-            None => format!("{copy_key_prefix}.unavailable"),
-        }),
+        status_reason: Some(status_reason.to_string()),
+        status_copy_key: Some(surface_status_copy_key(&surface.surface_id, copy_suffix)),
     }
+}
+
+fn feature_maturity(surface: &ProviderSurfaceSpec) -> FeatureMaturity {
+    match parse_surface_stability(&surface.stability).unwrap_or(SurfaceStability::Experimental) {
+        SurfaceStability::Ga => FeatureMaturity::Stable,
+        SurfaceStability::Preview => FeatureMaturity::Beta,
+        SurfaceStability::Experimental => FeatureMaturity::Experimental,
+        SurfaceStability::Deprecated => FeatureMaturity::Deprecated,
+    }
+}
+
+fn surface_status_copy_key(surface_id: &str, suffix: &str) -> String {
+    format!("featureCapability.surface.{surface_id}.{suffix}")
 }
 
 #[cfg(test)]
@@ -183,7 +219,16 @@ mod tests {
 
     #[test]
     fn managed_oauth_feature_is_experimental_and_unavailable_without_keychain() {
-        let feature = managed_oauth_feature(&backend_caps(false));
+        let feature = managed_oauth_feature(
+            &provider_surface_catalog()
+                .expect("catalog should load")
+                .surfaces
+                .iter()
+                .find(|surface| surface.surface_id == "provider_surface.openai.managed_oauth")
+                .expect("openai managed oauth surface should exist")
+                .clone(),
+            &backend_caps(false),
+        );
         assert_eq!(feature.maturity, FeatureMaturity::Experimental);
         assert_eq!(feature.availability, FeatureAvailability::Unavailable);
         assert!(!feature.preferred);
@@ -191,8 +236,15 @@ mod tests {
 
     #[test]
     fn subprocess_cli_feature_is_preferred_but_partial_when_cli_detected() {
+        let surface = provider_surface_catalog()
+            .expect("catalog should load")
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.openai.subprocess_cli")
+            .expect("openai subprocess surface should exist")
+            .clone();
         let feature = subprocess_cli_feature(
-            SubprocessCliSurfaceId::OpenAiCodex,
+            &surface,
             &[ProbedSubprocessCli {
                 detected: crate::subprocess_provider::DetectedSubprocessCli {
                     surface_id: SubprocessCliSurfaceId::OpenAiCodex,
@@ -201,7 +253,6 @@ mod tests {
                 auth_status: SubprocessCliAuthStatus::Unknown,
                 auth_detail: Some("probe_failed:test".to_string()),
             }],
-            "featureCapability.providerSurface.openaiSubprocessCli",
         );
         assert_eq!(
             feature.availability,
@@ -213,12 +264,23 @@ mod tests {
             feature.status_reason.as_deref(),
             Some("cli_detected_auth_unverified")
         );
+        assert_eq!(
+            feature.status_copy_key.as_deref(),
+            Some("featureCapability.surface.provider_surface.openai.subprocess_cli.partially_available")
+        );
     }
 
     #[test]
     fn subprocess_cli_feature_is_available_when_cli_is_authenticated() {
+        let surface = provider_surface_catalog()
+            .expect("catalog should load")
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.openai.subprocess_cli")
+            .expect("openai subprocess surface should exist")
+            .clone();
         let feature = subprocess_cli_feature(
-            SubprocessCliSurfaceId::OpenAiCodex,
+            &surface,
             &[ProbedSubprocessCli {
                 detected: crate::subprocess_provider::DetectedSubprocessCli {
                     surface_id: SubprocessCliSurfaceId::OpenAiCodex,
@@ -227,21 +289,27 @@ mod tests {
                 auth_status: SubprocessCliAuthStatus::Authenticated,
                 auth_detail: Some("cli_authenticated".to_string()),
             }],
-            "featureCapability.providerSurface.openaiSubprocessCli",
         );
         assert_eq!(feature.maturity, FeatureMaturity::Beta);
         assert_eq!(feature.availability, FeatureAvailability::Available);
         assert_eq!(feature.status_reason.as_deref(), Some("cli_ready"));
         assert_eq!(
             feature.status_copy_key.as_deref(),
-            Some("featureCapability.providerSurface.openaiSubprocessCli.available")
+            Some("featureCapability.surface.provider_surface.openai.subprocess_cli.available")
         );
     }
 
     #[test]
     fn subprocess_cli_feature_reports_auth_required_when_logged_out() {
+        let surface = provider_surface_catalog()
+            .expect("catalog should load")
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.anthropic.subprocess_cli")
+            .expect("anthropic subprocess surface should exist")
+            .clone();
         let feature = subprocess_cli_feature(
-            SubprocessCliSurfaceId::AnthropicClaudeCode,
+            &surface,
             &[ProbedSubprocessCli {
                 detected: crate::subprocess_provider::DetectedSubprocessCli {
                     surface_id: SubprocessCliSurfaceId::AnthropicClaudeCode,
@@ -250,7 +318,6 @@ mod tests {
                 auth_status: SubprocessCliAuthStatus::Unauthenticated,
                 auth_detail: Some("cli_auth_required".to_string()),
             }],
-            "featureCapability.providerSurface.anthropicSubprocessCli",
         );
         assert_eq!(
             feature.availability,
@@ -262,7 +329,9 @@ mod tests {
         );
         assert_eq!(
             feature.status_copy_key.as_deref(),
-            Some("featureCapability.providerSurface.anthropicSubprocessCli.authRequired")
+            Some(
+                "featureCapability.surface.provider_surface.anthropic.subprocess_cli.auth_required"
+            )
         );
     }
 
