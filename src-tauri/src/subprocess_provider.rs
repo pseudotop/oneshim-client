@@ -6,7 +6,7 @@ use oneshim_core::ports::llm_provider::{
 };
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Command as StdCommand, Stdio};
 use std::time::Duration;
 use tempfile::tempdir;
 use tokio::io::AsyncWriteExt;
@@ -83,6 +83,20 @@ impl SubprocessCliSurfaceId {
 pub struct DetectedSubprocessCli {
     pub surface_id: SubprocessCliSurfaceId,
     pub executable_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubprocessCliAuthStatus {
+    Authenticated,
+    Unauthenticated,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbedSubprocessCli {
+    pub detected: DetectedSubprocessCli,
+    pub auth_status: SubprocessCliAuthStatus,
+    pub auth_detail: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -297,9 +311,16 @@ pub fn detect_known_cli_surfaces() -> Vec<DetectedSubprocessCli> {
     .collect()
 }
 
+pub fn probe_known_cli_surfaces() -> Vec<ProbedSubprocessCli> {
+    detect_known_cli_surfaces()
+        .into_iter()
+        .map(probe_cli_surface)
+        .collect()
+}
+
 pub fn select_cli_surface_for_config(
     config: &AiProviderConfig,
-    detected: &[DetectedSubprocessCli],
+    detected: &[ProbedSubprocessCli],
 ) -> Option<DetectedSubprocessCli> {
     let preferred_provider = config
         .llm_api
@@ -309,16 +330,30 @@ pub fn select_cli_surface_for_config(
 
     if let Some(surface_id) = preferred_provider.and_then(surface_for_provider_type) {
         if let Some(surface) = detected.iter().find(|surface| {
-            surface.surface_id == surface_id && surface.surface_id.runtime_supported()
+            surface.detected.surface_id == surface_id
+                && surface.detected.surface_id.runtime_supported()
+                && surface.auth_status == SubprocessCliAuthStatus::Authenticated
         }) {
-            return Some(surface.clone());
+            return Some(surface.detected.clone());
         }
     }
 
     detected
         .iter()
-        .find(|surface| surface.surface_id.runtime_supported())
-        .cloned()
+        .find(|surface| {
+            surface.detected.surface_id.runtime_supported()
+                && surface.auth_status == SubprocessCliAuthStatus::Authenticated
+        })
+        .map(|surface| surface.detected.clone())
+}
+
+pub fn probe_for_surface_id(
+    probed: &[ProbedSubprocessCli],
+    surface_id: SubprocessCliSurfaceId,
+) -> Option<&ProbedSubprocessCli> {
+    probed
+        .iter()
+        .find(|surface| surface.detected.surface_id == surface_id)
 }
 
 fn surface_for_provider_type(provider_type: AiProviderType) -> Option<SubprocessCliSurfaceId> {
@@ -327,6 +362,120 @@ fn surface_for_provider_type(provider_type: AiProviderType) -> Option<Subprocess
         AiProviderType::Anthropic => Some(SubprocessCliSurfaceId::AnthropicClaudeCode),
         AiProviderType::Google => Some(SubprocessCliSurfaceId::GoogleGeminiCli),
         AiProviderType::Generic => None,
+    }
+}
+
+fn probe_cli_surface(detected: DetectedSubprocessCli) -> ProbedSubprocessCli {
+    let (auth_status, auth_detail) = match detected.surface_id {
+        SubprocessCliSurfaceId::OpenAiCodex => probe_codex_auth_status(&detected.executable_path),
+        SubprocessCliSurfaceId::AnthropicClaudeCode => {
+            probe_claude_auth_status(&detected.executable_path)
+        }
+        SubprocessCliSurfaceId::GoogleGeminiCli => (
+            SubprocessCliAuthStatus::Unknown,
+            Some("auth_status_probe_not_implemented".to_string()),
+        ),
+    };
+
+    ProbedSubprocessCli {
+        detected,
+        auth_status,
+        auth_detail,
+    }
+}
+
+fn probe_codex_auth_status(executable_path: &Path) -> (SubprocessCliAuthStatus, Option<String>) {
+    let output = match StdCommand::new(executable_path)
+        .arg("login")
+        .arg("status")
+        .output()
+    {
+        Ok(output) => output,
+        Err(err) => {
+            return (
+                SubprocessCliAuthStatus::Unknown,
+                Some(format!("probe_failed:{err}")),
+            );
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}\n{stderr}");
+    parse_codex_auth_status(&combined)
+}
+
+fn parse_codex_auth_status(raw: &str) -> (SubprocessCliAuthStatus, Option<String>) {
+    let normalized = raw.trim();
+    let lowered = normalized.to_ascii_lowercase();
+    if lowered.contains("not logged in") || lowered.contains("login required") {
+        return (
+            SubprocessCliAuthStatus::Unauthenticated,
+            Some("cli_auth_required".to_string()),
+        );
+    }
+
+    if lowered.starts_with("logged in") || lowered.contains("logged in using") {
+        return (
+            SubprocessCliAuthStatus::Authenticated,
+            Some("cli_authenticated".to_string()),
+        );
+    }
+
+    (
+        SubprocessCliAuthStatus::Unknown,
+        Some(format!(
+            "unexpected_status_output:{}",
+            truncate_for_error(normalized)
+        )),
+    )
+}
+
+fn probe_claude_auth_status(executable_path: &Path) -> (SubprocessCliAuthStatus, Option<String>) {
+    let output = match StdCommand::new(executable_path)
+        .arg("auth")
+        .arg("status")
+        .arg("--json")
+        .output()
+    {
+        Ok(output) => output,
+        Err(err) => {
+            return (
+                SubprocessCliAuthStatus::Unknown,
+                Some(format!("probe_failed:{err}")),
+            );
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_claude_auth_status(&stdout)
+}
+
+fn parse_claude_auth_status(raw: &str) -> (SubprocessCliAuthStatus, Option<String>) {
+    let normalized = raw.trim();
+    let value = match serde_json::from_str::<serde_json::Value>(normalized) {
+        Ok(value) => value,
+        Err(err) => {
+            return (
+                SubprocessCliAuthStatus::Unknown,
+                Some(format!("invalid_status_json:{err}")),
+            );
+        }
+    };
+
+    match value.get("loggedIn").and_then(|value| value.as_bool()) {
+        Some(true) => (
+            SubprocessCliAuthStatus::Authenticated,
+            Some("cli_authenticated".to_string()),
+        ),
+        Some(false) => (
+            SubprocessCliAuthStatus::Unauthenticated,
+            Some("cli_auth_required".to_string()),
+        ),
+        None => (
+            SubprocessCliAuthStatus::Unknown,
+            Some("missing_loggedIn_field".to_string()),
+        ),
     }
 }
 
@@ -552,10 +701,17 @@ mod tests {
         }
     }
 
-    fn detected(surface_id: SubprocessCliSurfaceId) -> DetectedSubprocessCli {
-        DetectedSubprocessCli {
-            surface_id,
-            executable_path: PathBuf::from(format!("/tmp/{}", surface_id.cli_id())),
+    fn probed(
+        surface_id: SubprocessCliSurfaceId,
+        auth_status: SubprocessCliAuthStatus,
+    ) -> ProbedSubprocessCli {
+        ProbedSubprocessCli {
+            detected: DetectedSubprocessCli {
+                surface_id,
+                executable_path: PathBuf::from(format!("/tmp/{}", surface_id.cli_id())),
+            },
+            auth_status,
+            auth_detail: None,
         }
     }
 
@@ -566,8 +722,14 @@ mod tests {
             ..AiProviderConfig::default()
         };
         let surfaces = vec![
-            detected(SubprocessCliSurfaceId::OpenAiCodex),
-            detected(SubprocessCliSurfaceId::AnthropicClaudeCode),
+            probed(
+                SubprocessCliSurfaceId::OpenAiCodex,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+            probed(
+                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
         ];
 
         let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
@@ -581,12 +743,57 @@ mod tests {
     fn falls_back_to_first_runtime_supported_surface() {
         let config = AiProviderConfig::default();
         let surfaces = vec![
-            detected(SubprocessCliSurfaceId::GoogleGeminiCli),
-            detected(SubprocessCliSurfaceId::OpenAiCodex),
+            probed(
+                SubprocessCliSurfaceId::GoogleGeminiCli,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+            probed(
+                SubprocessCliSurfaceId::OpenAiCodex,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
         ];
 
         let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
         assert_eq!(resolved.surface_id, SubprocessCliSurfaceId::OpenAiCodex);
+    }
+
+    #[test]
+    fn skips_matching_surface_when_authentication_is_required() {
+        let config = AiProviderConfig {
+            llm_api: Some(endpoint(AiProviderType::OpenAi, None)),
+            ..AiProviderConfig::default()
+        };
+        let surfaces = vec![
+            probed(
+                SubprocessCliSurfaceId::OpenAiCodex,
+                SubprocessCliAuthStatus::Unauthenticated,
+            ),
+            probed(
+                SubprocessCliSurfaceId::AnthropicClaudeCode,
+                SubprocessCliAuthStatus::Authenticated,
+            ),
+        ];
+
+        let resolved = select_cli_surface_for_config(&config, &surfaces).unwrap();
+        assert_eq!(
+            resolved.surface_id,
+            SubprocessCliSurfaceId::AnthropicClaudeCode
+        );
+    }
+
+    #[test]
+    fn parses_codex_logged_in_status() {
+        let (status, detail) = parse_codex_auth_status("Logged in using ChatGPT");
+        assert_eq!(status, SubprocessCliAuthStatus::Authenticated);
+        assert_eq!(detail.as_deref(), Some("cli_authenticated"));
+    }
+
+    #[test]
+    fn parses_claude_logged_out_status_json() {
+        let (status, detail) =
+            parse_claude_auth_status(r#"{"loggedIn":false,"authMethod":"none"}"#);
+        assert_eq!(status, SubprocessCliAuthStatus::Unauthenticated);
+        assert_eq!(detail.as_deref(), Some("cli_auth_required"));
     }
 
     #[test]

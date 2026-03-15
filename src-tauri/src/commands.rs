@@ -4,7 +4,9 @@ use std::sync::atomic::Ordering;
 use sysinfo::System;
 use tauri::command;
 
-use crate::feature_capabilities::{FeatureCapabilitySnapshot, FeatureCapabilityState};
+use crate::feature_capabilities::{
+    build_feature_capability_snapshot, FeatureCapabilitySnapshot, FeatureCapabilityState,
+};
 use crate::setup::{
     AppState, OAuthCoordinatorState, OAuthState, SecretBackendCapabilities, SecretBackendState,
 };
@@ -240,7 +242,10 @@ pub async fn get_secret_backend_capabilities(
 pub async fn get_feature_capabilities(
     state: tauri::State<'_, FeatureCapabilityState>,
 ) -> Result<FeatureCapabilitySnapshot, String> {
-    Ok(state.0.clone())
+    let secret_backend = state.0.clone();
+    tokio::task::spawn_blocking(move || build_feature_capability_snapshot(&secret_backend))
+        .await
+        .map_err(|err| format!("Failed to collect feature capabilities: {err}"))
 }
 
 // ── OAuth IPC commands ──────────────────────────────────────

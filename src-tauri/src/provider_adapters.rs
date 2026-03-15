@@ -39,8 +39,8 @@ use tracing::debug;
 use tracing::warn;
 
 use crate::subprocess_provider::{
-    detect_known_cli_surfaces, select_cli_surface_for_config, DetectedSubprocessCli,
-    SubprocessLlmProvider,
+    probe_for_surface_id, probe_known_cli_surfaces, select_cli_surface_for_config,
+    ProbedSubprocessCli, SubprocessCliAuthStatus, SubprocessCliSurfaceId, SubprocessLlmProvider,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -414,13 +414,13 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
 }
 
 fn resolve_cli_subscription_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
-    let detected = detect_known_cli_surfaces();
-    resolve_cli_subscription_llm_provider_with_detected(config, &detected)
+    let probed = probe_known_cli_surfaces();
+    resolve_cli_subscription_llm_provider_with_detected(config, &probed)
 }
 
 fn resolve_cli_subscription_llm_provider_with_detected(
     config: &AiProviderConfig,
-    detected: &[DetectedSubprocessCli],
+    detected: &[ProbedSubprocessCli],
 ) -> LlmProviderResolution {
     if let Some(surface) = select_cli_surface_for_config(config, detected) {
         return Ok((
@@ -448,7 +448,7 @@ fn resolve_cli_subscription_llm_provider_with_detected(
 
 fn cli_subscription_unavailable_reason(
     config: &AiProviderConfig,
-    detected: &[DetectedSubprocessCli],
+    detected: &[ProbedSubprocessCli],
 ) -> String {
     if let Some(provider_type) = config
         .llm_api
@@ -456,6 +456,30 @@ fn cli_subscription_unavailable_reason(
         .map(|endpoint| endpoint.provider_type)
         .filter(|provider_type| *provider_type != AiProviderType::Generic)
     {
+        if let Some(surface_id) = match provider_type {
+            AiProviderType::Anthropic => Some(SubprocessCliSurfaceId::AnthropicClaudeCode),
+            AiProviderType::OpenAi => Some(SubprocessCliSurfaceId::OpenAiCodex),
+            AiProviderType::Google => Some(SubprocessCliSurfaceId::GoogleGeminiCli),
+            AiProviderType::Generic => None,
+        } {
+            if let Some(surface) = probe_for_surface_id(detected, surface_id) {
+                return match surface.auth_status {
+                    SubprocessCliAuthStatus::Authenticated => format!(
+                        "Installed {} CLI was detected but the runtime adapter could not be selected.",
+                        surface.detected.surface_id.cli_id()
+                    ),
+                    SubprocessCliAuthStatus::Unauthenticated => format!(
+                        "Installed {} CLI is not authenticated. Sign in through the provider-owned CLI first.",
+                        surface.detected.surface_id.cli_id()
+                    ),
+                    SubprocessCliAuthStatus::Unknown => format!(
+                        "Installed {} CLI was detected, but authentication status could not be verified.",
+                        surface.detected.surface_id.cli_id()
+                    ),
+                };
+            }
+        }
+
         let provider_label = match provider_type {
             AiProviderType::Anthropic => "anthropic",
             AiProviderType::OpenAi => "openai",
@@ -470,7 +494,7 @@ fn cli_subscription_unavailable_reason(
 
     if detected
         .iter()
-        .any(|surface| !surface.surface_id.runtime_supported())
+        .any(|surface| !surface.detected.surface_id.runtime_supported())
     {
         return "Detected provider CLI executables do not yet have a supported runtime adapter."
             .to_string();
@@ -952,9 +976,13 @@ mod tests {
         let (llm, llm_source, llm_fallback_reason) =
             resolve_cli_subscription_llm_provider_with_detected(
                 &config,
-                &[DetectedSubprocessCli {
-                    surface_id: crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
-                    executable_path: "/tmp/codex".into(),
+                &[ProbedSubprocessCli {
+                    detected: crate::subprocess_provider::DetectedSubprocessCli {
+                        surface_id: crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
+                        executable_path: "/tmp/codex".into(),
+                    },
+                    auth_status: SubprocessCliAuthStatus::Authenticated,
+                    auth_detail: Some("cli_authenticated".to_string()),
                 }],
             )
             .expect("Failed to resolve CLI mode");
@@ -1010,14 +1038,23 @@ mod tests {
             resolve_cli_subscription_llm_provider_with_detected(
                 &config,
                 &[
-                    DetectedSubprocessCli {
-                        surface_id: crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
-                        executable_path: "/tmp/codex".into(),
+                    ProbedSubprocessCli {
+                        detected: crate::subprocess_provider::DetectedSubprocessCli {
+                            surface_id:
+                                crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
+                            executable_path: "/tmp/codex".into(),
+                        },
+                        auth_status: SubprocessCliAuthStatus::Authenticated,
+                        auth_detail: Some("cli_authenticated".to_string()),
                     },
-                    DetectedSubprocessCli {
-                        surface_id:
-                            crate::subprocess_provider::SubprocessCliSurfaceId::AnthropicClaudeCode,
-                        executable_path: "/tmp/claude".into(),
+                    ProbedSubprocessCli {
+                        detected: crate::subprocess_provider::DetectedSubprocessCli {
+                            surface_id:
+                                crate::subprocess_provider::SubprocessCliSurfaceId::AnthropicClaudeCode,
+                            executable_path: "/tmp/claude".into(),
+                        },
+                        auth_status: SubprocessCliAuthStatus::Authenticated,
+                        auth_detail: Some("cli_authenticated".to_string()),
                     },
                 ],
             )
@@ -1026,6 +1063,38 @@ mod tests {
         assert_eq!(llm_source, ProviderSource::CliSubscription);
         assert!(llm_fallback_reason.is_none());
         assert_eq!(llm.provider_name(), "subprocess-claude-code");
+    }
+
+    #[test]
+    fn cli_subscription_mode_reports_auth_required_when_matching_cli_is_logged_out() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            llm_api: Some(ExternalApiEndpoint {
+                provider_type: AiProviderType::OpenAi,
+                ..remote_endpoint()
+            }),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        match resolve_cli_subscription_llm_provider_with_detected(
+            &config,
+            &[ProbedSubprocessCli {
+                detected: crate::subprocess_provider::DetectedSubprocessCli {
+                    surface_id: crate::subprocess_provider::SubprocessCliSurfaceId::OpenAiCodex,
+                    executable_path: "/tmp/codex".into(),
+                },
+                auth_status: SubprocessCliAuthStatus::Unauthenticated,
+                auth_detail: Some("cli_auth_required".to_string()),
+            }],
+        ) {
+            Err(CoreError::Config(message)) => {
+                assert!(message.contains("not authenticated"));
+                assert!(message.contains("codex"));
+            }
+            Ok(_) => panic!("Expected an authentication error"),
+            Err(other) => panic!("Unexpected error: {other}"),
+        }
     }
 
     #[test]

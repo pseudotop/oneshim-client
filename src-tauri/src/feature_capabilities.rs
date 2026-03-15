@@ -2,7 +2,8 @@ use serde::Serialize;
 
 use crate::setup::SecretBackendCapabilities;
 use crate::subprocess_provider::{
-    detect_known_cli_surfaces, DetectedSubprocessCli, SubprocessCliSurfaceId,
+    probe_for_surface_id, probe_known_cli_surfaces, ProbedSubprocessCli, SubprocessCliAuthStatus,
+    SubprocessCliSurfaceId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -39,29 +40,35 @@ pub struct FeatureCapabilitySnapshot {
     pub features: Vec<FeatureCapability>,
 }
 
-pub struct FeatureCapabilityState(pub FeatureCapabilitySnapshot);
+pub struct FeatureCapabilityState(pub SecretBackendCapabilities);
 
 pub fn build_feature_capability_snapshot(
     secret_backend: &SecretBackendCapabilities,
 ) -> FeatureCapabilitySnapshot {
-    let detected_surfaces = detect_known_cli_surfaces();
+    let detected_surfaces = probe_known_cli_surfaces();
+    build_feature_capability_snapshot_with_probes(secret_backend, &detected_surfaces)
+}
 
+fn build_feature_capability_snapshot_with_probes(
+    secret_backend: &SecretBackendCapabilities,
+    detected_surfaces: &[ProbedSubprocessCli],
+) -> FeatureCapabilitySnapshot {
     FeatureCapabilitySnapshot {
         features: vec![
             managed_oauth_feature(secret_backend),
             subprocess_cli_feature(
                 SubprocessCliSurfaceId::OpenAiCodex,
-                &detected_surfaces,
+                detected_surfaces,
                 "featureCapability.providerSurface.openaiSubprocessCli",
             ),
             subprocess_cli_feature(
                 SubprocessCliSurfaceId::AnthropicClaudeCode,
-                &detected_surfaces,
+                detected_surfaces,
                 "featureCapability.providerSurface.anthropicSubprocessCli",
             ),
             subprocess_cli_feature(
                 SubprocessCliSurfaceId::GoogleGeminiCli,
-                &detected_surfaces,
+                detected_surfaces,
                 "featureCapability.providerSurface.googleSubprocessCli",
             ),
         ],
@@ -95,36 +102,67 @@ fn managed_oauth_feature(secret_backend: &SecretBackendCapabilities) -> FeatureC
 
 fn subprocess_cli_feature(
     surface_id: SubprocessCliSurfaceId,
-    detected_surfaces: &[DetectedSubprocessCli],
+    detected_surfaces: &[ProbedSubprocessCli],
     copy_key_prefix: &str,
 ) -> FeatureCapability {
-    let detected = detected_surfaces
-        .iter()
-        .any(|surface| surface.surface_id == surface_id);
+    let detected = probe_for_surface_id(detected_surfaces, surface_id);
     let runtime_supported = surface_id.runtime_supported();
     FeatureCapability {
         feature_id: surface_id.feature_id().to_string(),
-        maturity: FeatureMaturity::Experimental,
-        availability: if detected {
-            FeatureAvailability::PartiallyAvailable
+        maturity: if runtime_supported {
+            FeatureMaturity::Beta
         } else {
-            FeatureAvailability::Unavailable
+            FeatureMaturity::Experimental
+        },
+        availability: match detected {
+            Some(surface)
+                if runtime_supported
+                    && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
+            {
+                FeatureAvailability::Available
+            }
+            Some(_) => FeatureAvailability::PartiallyAvailable,
+            None => FeatureAvailability::Unavailable,
         },
         preferred: true,
         requires: vec![format!("cli:{}", surface_id.cli_id())],
-        status_reason: Some(if detected {
-            if runtime_supported {
-                "cli_detected_auth_unverified".to_string()
-            } else {
-                "cli_detected_runtime_pending".to_string()
+        status_reason: Some(match detected {
+            Some(surface)
+                if runtime_supported
+                    && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
+            {
+                "cli_ready".to_string()
             }
-        } else {
-            "cli_not_installed".to_string()
+            Some(surface) if !runtime_supported => "cli_detected_runtime_pending".to_string(),
+            Some(surface) => match surface.auth_status {
+                SubprocessCliAuthStatus::Authenticated => {
+                    "cli_detected_runtime_pending".to_string()
+                }
+                SubprocessCliAuthStatus::Unauthenticated => {
+                    "cli_detected_auth_required".to_string()
+                }
+                SubprocessCliAuthStatus::Unknown => "cli_detected_auth_unverified".to_string(),
+            },
+            None => "cli_not_installed".to_string(),
         }),
-        status_copy_key: Some(if detected {
-            format!("{copy_key_prefix}.partiallyAvailable")
-        } else {
-            format!("{copy_key_prefix}.unavailable")
+        status_copy_key: Some(match detected {
+            Some(surface)
+                if runtime_supported
+                    && surface.auth_status == SubprocessCliAuthStatus::Authenticated =>
+            {
+                format!("{copy_key_prefix}.available")
+            }
+            Some(surface) if !runtime_supported => format!("{copy_key_prefix}.partiallyAvailable"),
+            Some(surface) => match surface.auth_status {
+                SubprocessCliAuthStatus::Authenticated => {
+                    format!("{copy_key_prefix}.partiallyAvailable")
+                }
+                SubprocessCliAuthStatus::Unauthenticated => {
+                    format!("{copy_key_prefix}.authRequired")
+                }
+                SubprocessCliAuthStatus::Unknown => format!("{copy_key_prefix}.partiallyAvailable"),
+            },
+            None => format!("{copy_key_prefix}.unavailable"),
         }),
     }
 }
@@ -155,9 +193,13 @@ mod tests {
     fn subprocess_cli_feature_is_preferred_but_partial_when_cli_detected() {
         let feature = subprocess_cli_feature(
             SubprocessCliSurfaceId::OpenAiCodex,
-            &[DetectedSubprocessCli {
-                surface_id: SubprocessCliSurfaceId::OpenAiCodex,
-                executable_path: "/usr/bin/codex".into(),
+            &[ProbedSubprocessCli {
+                detected: crate::subprocess_provider::DetectedSubprocessCli {
+                    surface_id: SubprocessCliSurfaceId::OpenAiCodex,
+                    executable_path: "/usr/bin/codex".into(),
+                },
+                auth_status: SubprocessCliAuthStatus::Unknown,
+                auth_detail: Some("probe_failed:test".to_string()),
             }],
             "featureCapability.providerSurface.openaiSubprocessCli",
         );
@@ -170,6 +212,57 @@ mod tests {
         assert_eq!(
             feature.status_reason.as_deref(),
             Some("cli_detected_auth_unverified")
+        );
+    }
+
+    #[test]
+    fn subprocess_cli_feature_is_available_when_cli_is_authenticated() {
+        let feature = subprocess_cli_feature(
+            SubprocessCliSurfaceId::OpenAiCodex,
+            &[ProbedSubprocessCli {
+                detected: crate::subprocess_provider::DetectedSubprocessCli {
+                    surface_id: SubprocessCliSurfaceId::OpenAiCodex,
+                    executable_path: "/usr/bin/codex".into(),
+                },
+                auth_status: SubprocessCliAuthStatus::Authenticated,
+                auth_detail: Some("cli_authenticated".to_string()),
+            }],
+            "featureCapability.providerSurface.openaiSubprocessCli",
+        );
+        assert_eq!(feature.maturity, FeatureMaturity::Beta);
+        assert_eq!(feature.availability, FeatureAvailability::Available);
+        assert_eq!(feature.status_reason.as_deref(), Some("cli_ready"));
+        assert_eq!(
+            feature.status_copy_key.as_deref(),
+            Some("featureCapability.providerSurface.openaiSubprocessCli.available")
+        );
+    }
+
+    #[test]
+    fn subprocess_cli_feature_reports_auth_required_when_logged_out() {
+        let feature = subprocess_cli_feature(
+            SubprocessCliSurfaceId::AnthropicClaudeCode,
+            &[ProbedSubprocessCli {
+                detected: crate::subprocess_provider::DetectedSubprocessCli {
+                    surface_id: SubprocessCliSurfaceId::AnthropicClaudeCode,
+                    executable_path: "/usr/bin/claude".into(),
+                },
+                auth_status: SubprocessCliAuthStatus::Unauthenticated,
+                auth_detail: Some("cli_auth_required".to_string()),
+            }],
+            "featureCapability.providerSurface.anthropicSubprocessCli",
+        );
+        assert_eq!(
+            feature.availability,
+            FeatureAvailability::PartiallyAvailable
+        );
+        assert_eq!(
+            feature.status_reason.as_deref(),
+            Some("cli_detected_auth_required")
+        );
+        assert_eq!(
+            feature.status_copy_key.as_deref(),
+            Some("featureCapability.providerSurface.anthropicSubprocessCli.authRequired")
         );
     }
 
