@@ -190,8 +190,9 @@ impl RemoteOcrProvider {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(
+            match ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
                 config.provider_type,
+                config.surface_id.as_deref(),
                 model,
             )? {
                 ModelLifecycleDecision::Allowed => {}
@@ -257,8 +258,9 @@ impl RemoteOcrProvider {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(
+            match ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
                 config.provider_type,
+                config.surface_id.as_deref(),
                 model,
             )? {
                 ModelLifecycleDecision::Allowed => {}

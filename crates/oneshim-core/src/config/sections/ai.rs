@@ -152,8 +152,9 @@ fn validate_remote_endpoint(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        let decision = crate::ai_model_lifecycle_policy::evaluate_model_lifecycle_now(
+        let decision = crate::ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
             endpoint.provider_type,
+            endpoint.surface_id.as_deref(),
             model,
         )?;
         if let crate::ai_model_lifecycle_policy::ModelLifecycleDecision::Block { message, .. } =

@@ -74,8 +74,11 @@ impl RemoteLlmProvider {
             })
             .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
 
-        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
-        {
+        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            &model,
+        )? {
             ModelLifecycleDecision::Allowed => {}
             ModelLifecycleDecision::Warn {
                 message,
@@ -139,8 +142,11 @@ impl RemoteLlmProvider {
             })
             .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
 
-        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
-        {
+        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            &model,
+        )? {
             ModelLifecycleDecision::Allowed => {}
             ModelLifecycleDecision::Warn {
                 message,
