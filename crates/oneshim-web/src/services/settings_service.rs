@@ -912,6 +912,11 @@ fn updated_credential_binding(
     }
 
     if let Some(mut binding) = existing_endpoint.and_then(|endpoint| endpoint.credential.clone()) {
+        if binding.auth_mode != auth_mode || binding.backend_kind != backend_kind {
+            return Err(ApiError::BadRequest(
+                "Changing provider credential auth mode or backend for an existing endpoint is not supported from Settings. Use the dedicated migration or reconnect flow instead.".to_string(),
+            ));
+        }
         binding.projection_enabled = settings.projection_enabled;
         return Ok(Some(binding));
     }
@@ -950,9 +955,7 @@ fn validate_projection_binding(
 
     if !matches!(
         backend_kind,
-        CredentialBackendKind::OsSecretStore
-            | CredentialBackendKind::FileSecretStore
-            | CredentialBackendKind::BridgeManaged
+        CredentialBackendKind::OsSecretStore | CredentialBackendKind::FileSecretStore
     ) {
         return Err(ApiError::BadRequest(format!(
             "Projection is not supported for backend kind {:?}.",
@@ -1443,6 +1446,79 @@ mod tests {
 
         let err = apply_settings_to_config(&mut config, &settings).expect_err("projection guard");
         assert!(matches!(err, ApiError::BadRequest(_)));
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_projection_enabled_for_bridge_managed_backend() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+
+        let settings = AppSettings {
+            ai_provider: AiProviderSettings {
+                llm_provider: "Remote".to_string(),
+                llm_api: Some(ExternalApiSettings {
+                    endpoint: "https://api.openai.com/v1".to_string(),
+                    api_key_masked: String::new(),
+                    model: Some("gpt-4.1-mini".to_string()),
+                    provider_type: "OpenAi".to_string(),
+                    timeout_secs: 30,
+                    auth_mode: "api_key".to_string(),
+                    backend_kind: "bridge_managed".to_string(),
+                    has_secret: true,
+                    can_edit_secret: false,
+                    secret_display_hint: None,
+                    projection_enabled: true,
+                }),
+                ..AiProviderSettings::default()
+            },
+            ..AppSettings::default()
+        };
+
+        let err = apply_settings_to_config(&mut config, &settings).unwrap_err();
+        match err {
+            ApiError::BadRequest(message) => {
+                assert!(message.contains("Projection is not supported"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_backend_change_for_existing_binding() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: Some(SecretRef {
+                    namespace: "provider/openai/llm".to_string(),
+                    key: "api_key".to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        });
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        let llm_api = settings
+            .ai_provider
+            .llm_api
+            .as_mut()
+            .expect("llm api settings");
+        llm_api.backend_kind = "file_secret_store".to_string();
+
+        let err = apply_settings_to_config(&mut config, &settings).unwrap_err();
+        match err {
+            ApiError::BadRequest(message) => {
+                assert!(message.contains("Changing provider credential auth mode or backend"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[tokio::test]
