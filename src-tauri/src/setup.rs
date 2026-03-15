@@ -251,16 +251,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     });
     info!("settings file: {:?}", config_manager.config_path());
 
-    let config = config_manager.get();
-    let web_port = Arc::new(AtomicU16::new(config.web.port));
-    maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
-
-    // 2b. Integrity preflight — signed policy bundle verification
-    if let Err(e) = crate::integrity_guard::run_preflight(&config, false) {
-        warn!("integrity preflight failed (non-fatal): {e}");
-    }
-
-    // 3. tokio runtime — Handle만 추출, Runtime은 전용 스레드에 파킹
+    // 2b. tokio runtime — Handle만 추출, Runtime은 전용 스레드에 파킹
     let runtime = Runtime::new()?;
     let handle = runtime.handle().clone();
     #[cfg(feature = "server")]
@@ -268,6 +259,27 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| data_dir_path.clone());
     #[cfg(feature = "server")]
     let desktop_secret_store = create_desktop_secret_store(&config_dir);
+    #[cfg(feature = "server")]
+    if let Some(secret_store) = desktop_secret_store.clone() {
+        match handle.block_on(
+            crate::credential_migration::migrate_legacy_provider_api_keys(
+                &config_manager,
+                secret_store,
+            ),
+        ) {
+            Ok(true) => info!("Migrated legacy provider API keys into desktop secret store"),
+            Ok(false) => {}
+            Err(err) => warn!("Legacy provider API key migration skipped: {err}"),
+        }
+    }
+    let config = config_manager.get();
+    let web_port = Arc::new(AtomicU16::new(config.web.port));
+    maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
+
+    // 2c. Integrity preflight — signed policy bundle verification
+    if let Err(e) = crate::integrity_guard::run_preflight(&config, false) {
+        warn!("integrity preflight failed (non-fatal): {e}");
+    }
     #[cfg(feature = "server")]
     let oauth_port = desktop_secret_store.clone().map(create_oauth_port);
     #[cfg(feature = "server")]
