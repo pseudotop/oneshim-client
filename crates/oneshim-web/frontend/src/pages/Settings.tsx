@@ -11,6 +11,7 @@ import {
   type ExportFormat,
   type ExternalApiSettings,
   exportData,
+  fetchSecretBackendCapabilities,
   fetchProviderPresets,
   fetchSettings,
   fetchStorageStats,
@@ -31,10 +32,12 @@ import {
   type UpdateStatus,
   updateSettings,
 } from '../api/client'
+import { isStandaloneModeEnabled } from '../api/standalone'
 import { Button, Spinner, Tabs } from '../components/ui'
 import { useToast } from '../hooks/useToast'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
+import { IS_TAURI } from '../utils/platform'
 import { AiAutomationTab, DataStorageTab, GeneralTab, MonitoringTab, PrivacyTab } from './settingSections'
 
 const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
@@ -87,6 +90,10 @@ const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
 
 type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'data'
 
+function backendAllowsSecretEditing(backendKind: string): boolean {
+  return backendKind !== 'env' && backendKind !== 'bridge_managed' && backendKind !== 'unavailable'
+}
+
 export default function Settings() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -104,6 +111,7 @@ export default function Settings() {
     llm_api: null,
   })
   const [modelCatalogLoading, setModelCatalogLoading] = useState<'ocr_api' | 'llm_api' | null>(null)
+  const canQuerySecretBackendCapabilities = IS_TAURI && !isStandaloneModeEnabled()
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['settings'],
@@ -128,11 +136,59 @@ export default function Settings() {
     retry: 1,
   })
 
+  const { data: secretBackendCapabilities } = useQuery({
+    queryKey: ['secret-backend-capabilities'],
+    queryFn: fetchSecretBackendCapabilities,
+    enabled: canQuerySecretBackendCapabilities,
+    retry: 1,
+  })
+
   useEffect(() => {
     if (settings) {
       setFormData((current) => current ?? settings)
     }
   }, [settings])
+
+  const defaultByokBackendKind = secretBackendCapabilities?.byok_backend_kind ?? 'legacy_config'
+
+  useEffect(() => {
+    if (!secretBackendCapabilities) {
+      return
+    }
+
+    setFormData((current) => {
+      if (!current) return current
+
+      let changed = false
+      const applyBackendDefault = (endpoint: ExternalApiSettings | null): ExternalApiSettings | null => {
+        if (!endpoint) return endpoint
+        if (endpoint.backend_kind !== 'legacy_config') return endpoint
+        if (endpoint.has_secret || endpoint.api_key_masked.trim().length > 0) return endpoint
+        changed = true
+        return {
+          ...endpoint,
+          backend_kind: defaultByokBackendKind,
+          can_edit_secret: backendAllowsSecretEditing(defaultByokBackendKind),
+        }
+      }
+
+      const nextOcr = applyBackendDefault(current.ai_provider.ocr_api)
+      const nextLlm = applyBackendDefault(current.ai_provider.llm_api)
+
+      if (!changed) {
+        return current
+      }
+
+      return {
+        ...current,
+        ai_provider: {
+          ...current.ai_provider,
+          ocr_api: nextOcr,
+          llm_api: nextLlm,
+        },
+      }
+    })
+  }, [defaultByokBackendKind, secretBackendCapabilities])
 
   const providerPresets =
     providerPresetCatalog?.providers && providerPresetCatalog.providers.length > 0
@@ -330,9 +386,9 @@ export default function Settings() {
     provider_type: 'Generic',
     timeout_secs: 30,
     auth_mode: 'api_key',
-    backend_kind: 'legacy_config',
+    backend_kind: defaultByokBackendKind,
     has_secret: false,
-    can_edit_secret: true,
+    can_edit_secret: backendAllowsSecretEditing(defaultByokBackendKind),
     secret_display_hint: null,
     projection_enabled: false,
   })
