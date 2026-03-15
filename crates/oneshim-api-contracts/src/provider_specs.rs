@@ -41,6 +41,7 @@ pub struct ProviderSurfaceSpec {
     pub provider_type: String,
     pub display_name: String,
     pub execution_kind: String,
+    pub placement_kind: String,
     pub credential_kind: String,
     pub stability: String,
     #[serde(default)]
@@ -142,6 +143,14 @@ pub enum SurfaceExecutionKind {
     DirectHttp,
     ManagedHttp,
     SubprocessCli,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfacePlacementKind {
+    ProviderHosted,
+    SelfHosted,
+    InstalledCli,
+    CustomHosted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,6 +429,18 @@ pub fn parse_surface_execution_kind(raw: &str) -> Result<SurfaceExecutionKind, S
     }
 }
 
+pub fn parse_surface_placement_kind(raw: &str) -> Result<SurfacePlacementKind, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "provider_hosted" => Ok(SurfacePlacementKind::ProviderHosted),
+        "self_hosted" => Ok(SurfacePlacementKind::SelfHosted),
+        "installed_cli" => Ok(SurfacePlacementKind::InstalledCli),
+        "custom_hosted" => Ok(SurfacePlacementKind::CustomHosted),
+        other => Err(format!(
+            "Unsupported provider surface placement_kind '{other}'."
+        )),
+    }
+}
+
 pub fn parse_surface_stability(raw: &str) -> Result<SurfaceStability, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "ga" => Ok(SurfaceStability::Ga),
@@ -653,6 +674,7 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                 surface.surface_id
             ));
         }
+        parse_surface_placement_kind(&surface.placement_kind)?;
         parse_surface_stability(&surface.stability)?;
         if surface.references.is_empty() {
             return Err(format!(
@@ -1284,5 +1306,14 @@ mod tests {
         )
         .expect("ollama auth scheme should resolve");
         assert_eq!(auth_scheme, ProviderAuthScheme::None);
+    }
+
+    #[test]
+    fn resolves_ollama_self_hosted_placement() {
+        let surface = provider_surface_spec("provider_surface.ollama.local_http")
+            .expect("ollama surface should exist");
+        let placement =
+            parse_surface_placement_kind(&surface.placement_kind).expect("placement should parse");
+        assert_eq!(placement, SurfacePlacementKind::SelfHosted);
     }
 }

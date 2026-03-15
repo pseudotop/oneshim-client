@@ -250,6 +250,7 @@ export interface ProviderSurfaceSpec {
   provider_type: string
   display_name: string
   execution_kind: string
+  placement_kind: string
   credential_kind: string
   stability: string
   preferred_for_product_auth: boolean

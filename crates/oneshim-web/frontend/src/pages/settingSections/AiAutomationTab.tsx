@@ -123,6 +123,40 @@ function executionKindLabel(
   }
 }
 
+function placementKindLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  placementKind: string | null | undefined,
+): string {
+  switch ((placementKind ?? '').trim()) {
+    case 'self_hosted':
+      return t('settingsAutomation.placementSelfHosted')
+    case 'installed_cli':
+      return t('settingsAutomation.placementInstalledCli')
+    case 'custom_hosted':
+      return t('settingsAutomation.placementCustomHosted')
+    case 'provider_hosted':
+    default:
+      return t('settingsAutomation.placementProviderHosted')
+  }
+}
+
+function placementKindDescription(
+  t: ReturnType<typeof useTranslation>['t'],
+  placementKind: string | null | undefined,
+): string {
+  switch ((placementKind ?? '').trim()) {
+    case 'self_hosted':
+      return t('settingsAutomation.placementDescriptionSelfHosted')
+    case 'installed_cli':
+      return t('settingsAutomation.placementDescriptionInstalledCli')
+    case 'custom_hosted':
+      return t('settingsAutomation.placementDescriptionCustomHosted')
+    case 'provider_hosted':
+    default:
+      return t('settingsAutomation.placementDescriptionProviderHosted')
+  }
+}
+
 function requirementLabel(
   t: ReturnType<typeof useTranslation>['t'],
   requirement: string,
@@ -277,7 +311,7 @@ export default function AiAutomationTab({
     }
 
   const formatSurfaceOptionLabel = (surface: ProviderSurfaceSpec): string => {
-    const labels = [surface.display_name]
+    const labels = [surface.display_name, placementKindLabel(t, surface.placement_kind)]
     if (surface.preferred_for_product_auth) {
       labels.push(t('featureCapability.preferredPath'))
     }
@@ -307,6 +341,9 @@ export default function AiAutomationTab({
     return (
       <div className="space-y-2 rounded-lg border border-muted bg-surface-muted/80 p-3">
         <div className="flex flex-wrap items-center gap-2">
+          <Badge color="default" size="sm">
+            {placementKindLabel(t, surface.placement_kind)}
+          </Badge>
           <Badge color={maturityBadgeColor(maturity)} size="sm">
             {t(`featureCapability.maturity.${maturity}`)}
           </Badge>
@@ -445,11 +482,20 @@ export default function AiAutomationTab({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="space-y-1">
                   <p className="text-content-muted text-xs">{t('settingsAutomation.pathExecutionLabel')}</p>
                   <p className="text-content-secondary text-sm">
                     {executionKindLabel(t, currentLlmSurface.execution_kind)}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-content-muted text-xs">{t('settingsAutomation.pathPlacementLabel')}</p>
+                  <p className="text-content-secondary text-sm">
+                    {placementKindLabel(t, currentLlmSurface.placement_kind)}
+                  </p>
+                  <p className="text-content-muted text-xs">
+                    {placementKindDescription(t, currentLlmSurface.placement_kind)}
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -861,6 +907,11 @@ export default function AiAutomationTab({
                       </div>
                     ) : (
                       <div className="md:col-span-2 rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs">
+                        {placementKindDescription(t, currentOcrSurface?.placement_kind)}
+                      </div>
+                    )}
+                    {currentOcrUsesNoAuth && (
+                      <div className="md:col-span-2 rounded-md bg-surface-elevated/70 p-3 text-content-secondary text-xs">
                         {t('settingsAutomation.noAuthSurfaceDescription')}
                       </div>
                     )}
@@ -994,6 +1045,11 @@ export default function AiAutomationTab({
                       </div>
                     ) : (
                       <div className="md:col-span-2 rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs">
+                        {placementKindDescription(t, currentLlmSurface?.placement_kind)}
+                      </div>
+                    )}
+                    {currentLlmUsesNoAuth && (
+                      <div className="md:col-span-2 rounded-md bg-surface-elevated/70 p-3 text-content-secondary text-xs">
                         {t('settingsAutomation.noAuthSurfaceDescription')}
                       </div>
                     )}

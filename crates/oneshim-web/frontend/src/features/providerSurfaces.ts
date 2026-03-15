@@ -14,6 +14,13 @@ const STABILITY_RANK: Record<string, number> = {
   deprecated: 0,
 }
 
+const PLACEMENT_RANK: Record<string, number> = {
+  self_hosted: 3,
+  installed_cli: 2,
+  provider_hosted: 1,
+  custom_hosted: 0,
+}
+
 const AVAILABILITY_RANK: Record<FeatureAvailability, number> = {
   available: 2,
   partially_available: 1,
@@ -77,6 +84,11 @@ function compareProviderSurfaces(
   const stabilityDelta = (STABILITY_RANK[right.stability] ?? -1) - (STABILITY_RANK[left.stability] ?? -1)
   if (stabilityDelta !== 0) {
     return stabilityDelta
+  }
+
+  const placementDelta = (PLACEMENT_RANK[right.placement_kind] ?? -1) - (PLACEMENT_RANK[left.placement_kind] ?? -1)
+  if (placementDelta !== 0) {
+    return placementDelta
   }
 
   return left.display_name.localeCompare(right.display_name)
