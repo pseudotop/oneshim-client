@@ -324,12 +324,13 @@ pub(crate) fn runtime_supported_for_surface(surface_id: &str) -> bool {
     subprocess_runtime_supported(surface_id).unwrap_or(false)
 }
 
-fn llm_runtime_ready_for_auth_status(
+fn runtime_ready_for_auth_status(
     surface_id: &str,
     auth_status: SubprocessCliAuthStatus,
+    capability: SurfaceCapabilityKind,
 ) -> bool {
     if !runtime_supported_for_surface(surface_id)
-        || !surface_supports_capability(surface_id, SurfaceCapabilityKind::Llm).unwrap_or(false)
+        || !surface_supports_capability(surface_id, capability).unwrap_or(false)
     {
         return false;
     }
@@ -398,7 +399,15 @@ pub fn select_cli_surface_for_config(
     config: &AiProviderConfig,
     detected: &[ProbedSubprocessCli],
 ) -> Option<DetectedSubprocessCli> {
-    if let Some(surface_id) = preferred_cli_surface_for_config(config) {
+    select_cli_surface_for_capability(config, detected, SurfaceCapabilityKind::Llm)
+}
+
+pub fn select_cli_surface_for_capability(
+    config: &AiProviderConfig,
+    detected: &[ProbedSubprocessCli],
+    capability: SurfaceCapabilityKind,
+) -> Option<DetectedSubprocessCli> {
+    if let Some(surface_id) = preferred_cli_surface_for_capability(config, capability) {
         return detected
             .iter()
             .find(|surface| {
@@ -406,9 +415,10 @@ pub fn select_cli_surface_for_config(
                     .detected
                     .surface_id
                     .eq_ignore_ascii_case(&surface_id)
-                    && llm_runtime_ready_for_auth_status(
+                    && runtime_ready_for_auth_status(
                         &surface.detected.surface_id,
                         surface.auth_status,
+                        capability,
                     )
             })
             .map(|surface| surface.detected.clone());
@@ -417,15 +427,24 @@ pub fn select_cli_surface_for_config(
     detected
         .iter()
         .find(|surface| {
-            llm_runtime_ready_for_auth_status(&surface.detected.surface_id, surface.auth_status)
+            runtime_ready_for_auth_status(
+                &surface.detected.surface_id,
+                surface.auth_status,
+                capability,
+            )
         })
         .map(|surface| surface.detected.clone())
 }
 
 pub fn preferred_cli_surface_for_config(config: &AiProviderConfig) -> Option<String> {
-    config
-        .llm_api
-        .as_ref()
+    preferred_cli_surface_for_capability(config, SurfaceCapabilityKind::Llm)
+}
+
+pub fn preferred_cli_surface_for_capability(
+    config: &AiProviderConfig,
+    capability: SurfaceCapabilityKind,
+) -> Option<String> {
+    endpoint_for_capability(config, capability)
         .and_then(|endpoint| {
             endpoint
                 .surface_id
@@ -433,17 +452,15 @@ pub fn preferred_cli_surface_for_config(config: &AiProviderConfig) -> Option<Str
                 .and_then(surface_for_provider_surface_id)
                 .filter(|surface_id| {
                     endpoint.provider_type == AiProviderType::Generic
-                        || surface_for_provider_type(endpoint.provider_type).as_deref()
+                        || surface_for_provider_type(endpoint.provider_type, capability).as_deref()
                             == Some(surface_id.as_str())
                 })
         })
         .or_else(|| {
-            config
-                .llm_api
-                .as_ref()
+            endpoint_for_capability(config, capability)
                 .map(|endpoint| endpoint.provider_type)
                 .filter(|provider_type| *provider_type != AiProviderType::Generic)
-                .and_then(surface_for_provider_type)
+                .and_then(|provider_type| surface_for_provider_type(provider_type, capability))
         })
 }
 
@@ -456,7 +473,20 @@ pub fn probe_for_surface_id<'a>(
         .find(|surface| surface.detected.surface_id.eq_ignore_ascii_case(surface_id))
 }
 
-fn surface_for_provider_type(provider_type: AiProviderType) -> Option<String> {
+fn endpoint_for_capability(
+    config: &AiProviderConfig,
+    capability: SurfaceCapabilityKind,
+) -> Option<&oneshim_core::config::ExternalApiEndpoint> {
+    match capability {
+        SurfaceCapabilityKind::Llm => config.llm_api.as_ref(),
+        SurfaceCapabilityKind::Ocr => config.ocr_api.as_ref(),
+    }
+}
+
+fn surface_for_provider_type(
+    provider_type: AiProviderType,
+    capability: SurfaceCapabilityKind,
+) -> Option<String> {
     let provider_label = match provider_type {
         AiProviderType::Anthropic => "Anthropic",
         AiProviderType::OpenAi => "OpenAi",
@@ -468,6 +498,10 @@ fn surface_for_provider_type(provider_type: AiProviderType) -> Option<String> {
         .ok()?
         .into_iter()
         .filter(|surface| surface.provider_type.eq_ignore_ascii_case(provider_label))
+        .filter(|surface| match capability {
+            SurfaceCapabilityKind::Llm => surface.supports.llm,
+            SurfaceCapabilityKind::Ocr => surface.supports.ocr,
+        })
         .max_by_key(|surface| surface.preferred_for_product_auth)
         .map(|surface| surface.surface_id.clone())
 }

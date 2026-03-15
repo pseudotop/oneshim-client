@@ -25,6 +25,10 @@ function normalizedProviderType(providerType: string | null | undefined): string
 }
 
 function expectedExecutionKind(accessMode: string | null | undefined, _endpointKind: EndpointSurfaceKind): string | null {
+  if (_endpointKind === 'ocr_api') {
+    return null
+  }
+
   if (accessMode === 'ProviderSubscriptionCli') {
     return 'subprocess_cli'
   }
@@ -78,6 +82,19 @@ function compareProviderSurfaces(
   return left.display_name.localeCompare(right.display_name)
 }
 
+function compareOcrDefaultSurfaces(
+  left: ProviderSurfaceSpec,
+  right: ProviderSurfaceSpec,
+  snapshot?: FeatureCapabilitySnapshot | null,
+): number {
+  const directHttpDelta = Number(right.execution_kind === 'direct_http') - Number(left.execution_kind === 'direct_http')
+  if (directHttpDelta !== 0) {
+    return directHttpDelta
+  }
+
+  return compareProviderSurfaces(left, right, snapshot)
+}
+
 export function sortProviderSurfaces(
   surfaces: ProviderSurfaceSpec[],
   snapshot?: FeatureCapabilitySnapshot | null,
@@ -92,13 +109,12 @@ export function getCompatibleProviderSurfaces(
   snapshot?: FeatureCapabilitySnapshot | null,
 ): ProviderSurfaceSpec[] {
   const executionKind = expectedExecutionKind(accessMode, endpointKind)
-  if (!executionKind) {
-    return []
-  }
 
   return sortProviderSurfaces(
     catalog.surfaces.filter(
-      (surface) => surface.execution_kind === executionKind && surfaceSupportsKind(surface, endpointKind),
+      (surface) =>
+        (executionKind == null || surface.execution_kind === executionKind) &&
+        surfaceSupportsKind(surface, endpointKind),
     ),
     snapshot,
   )
@@ -114,7 +130,11 @@ export function deriveDefaultProviderSurfaceId(
   const normalizedProvider = normalizedProviderType(providerType)
   const compatible = getCompatibleProviderSurfaces(catalog, accessMode, endpointKind, snapshot)
   const vendorMatch = compatible.filter((surface) => surface.provider_type === normalizedProvider)
-  const candidates = sortProviderSurfaces(vendorMatch.length > 0 ? vendorMatch : compatible, snapshot)
+  const rawCandidates = vendorMatch.length > 0 ? vendorMatch : compatible
+  const candidates =
+    endpointKind === 'ocr_api'
+      ? [...rawCandidates].sort((left, right) => compareOcrDefaultSurfaces(left, right, snapshot))
+      : sortProviderSurfaces(rawCandidates, snapshot)
 
   return candidates[0]?.surface_id ?? null
 }

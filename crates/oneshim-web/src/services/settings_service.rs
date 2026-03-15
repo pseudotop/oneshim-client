@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use oneshim_api_contracts::provider_specs::{
-    default_surface_id_for_access_mode as default_surface_id_from_catalog, SurfaceCapabilityKind,
+    default_surface_id_for_access_mode as default_surface_id_from_catalog,
+    surface_supports_capability as surface_supports_capability_from_catalog, SurfaceCapabilityKind,
 };
 use oneshim_api_contracts::settings::{
     AiProviderSettings, AppSettings, AutomationSettings, ExternalApiSettings,
@@ -134,7 +135,9 @@ async fn persist_api_key_binding(
         .credential
         .as_ref()
         .map(|binding| binding.auth_mode)
-        .unwrap_or_else(|| derive_credential_auth_mode(access_mode, endpoint_kind));
+        .unwrap_or_else(|| {
+            derive_credential_auth_mode(endpoint.surface_id.as_deref(), access_mode, endpoint_kind)
+        });
 
     if auth_mode != CredentialAuthMode::ApiKey {
         return Ok(());
@@ -823,7 +826,9 @@ fn endpoint_to_api_settings(
         .credential
         .as_ref()
         .map(|binding| binding.auth_mode)
-        .unwrap_or_else(|| derive_credential_auth_mode(access_mode, endpoint_kind));
+        .unwrap_or_else(|| {
+            derive_credential_auth_mode(endpoint.surface_id.as_deref(), access_mode, endpoint_kind)
+        });
     let has_plaintext_secret = !endpoint.api_key.trim().is_empty();
     let backend_kind = endpoint
         .credential
@@ -906,6 +911,19 @@ fn default_surface_id_for_endpoint(
     access_mode: AiAccessMode,
     endpoint_kind: ApiEndpointKind,
 ) -> Option<&'static str> {
+    let direct_default = || {
+        default_surface_id_from_catalog(
+            provider_type,
+            AiAccessMode::ProviderApiKey,
+            match endpoint_kind {
+                ApiEndpointKind::Ocr => SurfaceCapabilityKind::Ocr,
+                ApiEndpointKind::Llm => SurfaceCapabilityKind::Llm,
+            },
+        )
+        .ok()
+        .flatten()
+    };
+
     default_surface_id_from_catalog(
         provider_type,
         access_mode,
@@ -916,6 +934,11 @@ fn default_surface_id_for_endpoint(
     )
     .ok()
     .flatten()
+    .or_else(|| {
+        matches!(endpoint_kind, ApiEndpointKind::Ocr)
+            .then(direct_default)
+            .flatten()
+    })
 }
 
 fn resolve_endpoint_surface_id(
@@ -925,6 +948,7 @@ fn resolve_endpoint_surface_id(
     access_mode: AiAccessMode,
     endpoint_kind: ApiEndpointKind,
 ) -> Result<Option<String>, ApiError> {
+    let auth_mode = parse_credential_auth_mode(&settings.auth_mode)?;
     let requested = settings
         .surface_id
         .as_deref()
@@ -955,15 +979,7 @@ fn resolve_endpoint_surface_id(
         )));
     }
 
-    let expected_transport = match (access_mode, endpoint_kind) {
-        (AiAccessMode::ProviderOAuth, ApiEndpointKind::Llm) => {
-            ProviderSurfaceTransport::ManagedOAuth
-        }
-        (AiAccessMode::ProviderSubscriptionCli, ApiEndpointKind::Llm) => {
-            ProviderSurfaceTransport::SubprocessCli
-        }
-        _ => ProviderSurfaceTransport::DirectApi,
-    };
+    let expected_transport = transport_for_auth_mode(auth_mode);
 
     if spec.transport != expected_transport {
         return Err(ApiError::BadRequest(format!(
@@ -972,19 +988,72 @@ fn resolve_endpoint_surface_id(
         )));
     }
 
+    if matches!(endpoint_kind, ApiEndpointKind::Llm) {
+        match access_mode {
+            AiAccessMode::ProviderOAuth
+                if expected_transport != ProviderSurfaceTransport::ManagedOAuth =>
+            {
+                return Err(ApiError::BadRequest(
+                    "ProviderOAuth mode requires an LLM provider surface with managed_oauth transport."
+                        .to_string(),
+                ));
+            }
+            AiAccessMode::ProviderSubscriptionCli
+                if expected_transport != ProviderSurfaceTransport::SubprocessCli =>
+            {
+                return Err(ApiError::BadRequest(
+                    "ProviderSubscriptionCli mode requires an LLM provider surface with subprocess_cli transport."
+                        .to_string(),
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    let required_capability = match endpoint_kind {
+        ApiEndpointKind::Ocr => SurfaceCapabilityKind::Ocr,
+        ApiEndpointKind::Llm => SurfaceCapabilityKind::Llm,
+    };
+    if !surface_supports_capability_from_catalog(&surface_id, required_capability)
+        .map_err(ApiError::BadRequest)?
+    {
+        return Err(ApiError::BadRequest(format!(
+            "Provider surface '{surface_id}' does not support the selected endpoint capability."
+        )));
+    }
+
     Ok(canonical_provider_surface_id(&surface_id).map(str::to_string))
 }
 
 fn derive_credential_auth_mode(
+    surface_id: Option<&str>,
     access_mode: AiAccessMode,
     endpoint_kind: ApiEndpointKind,
 ) -> CredentialAuthMode {
+    if let Some(surface_id) = surface_id {
+        if let Some(spec) = provider_surface_spec(surface_id) {
+            return match spec.transport {
+                ProviderSurfaceTransport::ManagedOAuth => CredentialAuthMode::ManagedOAuth,
+                ProviderSurfaceTransport::SubprocessCli => CredentialAuthMode::CliBridge,
+                ProviderSurfaceTransport::DirectApi => CredentialAuthMode::ApiKey,
+            };
+        }
+    }
+
     match (access_mode, endpoint_kind) {
         (AiAccessMode::ProviderOAuth, ApiEndpointKind::Llm) => CredentialAuthMode::ManagedOAuth,
         (AiAccessMode::ProviderSubscriptionCli, ApiEndpointKind::Llm) => {
             CredentialAuthMode::CliBridge
         }
         _ => CredentialAuthMode::ApiKey,
+    }
+}
+
+fn transport_for_auth_mode(auth_mode: CredentialAuthMode) -> ProviderSurfaceTransport {
+    match auth_mode {
+        CredentialAuthMode::ManagedOAuth => ProviderSurfaceTransport::ManagedOAuth,
+        CredentialAuthMode::CliBridge => ProviderSurfaceTransport::SubprocessCli,
+        CredentialAuthMode::ApiKey => ProviderSurfaceTransport::DirectApi,
     }
 }
 
@@ -1763,6 +1832,68 @@ mod tests {
             endpoint.surface_id.as_deref(),
             Some("provider_surface.openai.direct_api")
         );
+    }
+
+    #[test]
+    fn apply_settings_to_config_allows_direct_ocr_surface_in_cli_mode() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderSubscriptionCli;
+        config.ai_provider.ocr_provider = OcrProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.access_mode = "ProviderSubscriptionCli".to_string();
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            api_key_masked: "sk-ocr-123456".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            provider_type: "OpenAi".to_string(),
+            surface_id: Some("provider_surface.openai.direct_api".to_string()),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "legacy_config".to_string(),
+            has_secret: true,
+            can_edit_secret: true,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        apply_settings_to_config(&mut config, &settings).expect("cli mode should keep direct OCR");
+
+        let endpoint = config.ai_provider.ocr_api.as_ref().expect("ocr endpoint");
+        assert_eq!(
+            endpoint.surface_id.as_deref(),
+            Some("provider_surface.openai.direct_api")
+        );
+        assert_eq!(endpoint.api_key, "sk-ocr-123456");
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_llm_only_cli_surface_for_ocr() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderSubscriptionCli;
+        config.ai_provider.ocr_provider = OcrProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.access_mode = "ProviderSubscriptionCli".to_string();
+        settings.ai_provider.ocr_provider = "Remote".to_string();
+        settings.ai_provider.ocr_api = Some(ExternalApiSettings {
+            endpoint: String::new(),
+            api_key_masked: String::new(),
+            model: Some("gpt-5.4".to_string()),
+            provider_type: "OpenAi".to_string(),
+            surface_id: Some("provider_surface.openai.subprocess_cli".to_string()),
+            timeout_secs: 30,
+            auth_mode: "cli_bridge".to_string(),
+            backend_kind: "bridge_managed".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err = apply_settings_to_config(&mut config, &settings).expect_err("ocr surface guard");
+        assert!(matches!(err, ApiError::BadRequest(_)));
     }
 
     #[test]

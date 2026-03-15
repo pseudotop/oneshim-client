@@ -38,10 +38,13 @@ use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::warn;
 
+use oneshim_api_contracts::provider_specs::SurfaceCapabilityKind;
+
 use crate::subprocess_provider::{
-    cli_id_for_surface_id, preferred_cli_surface_for_config, probe_for_surface_id,
-    probe_known_cli_surfaces, runtime_supported_for_surface, select_cli_surface_for_config,
-    ProbedSubprocessCli, SubprocessCliAuthStatus, SubprocessLlmProvider,
+    cli_id_for_surface_id, preferred_cli_surface_for_capability, preferred_cli_surface_for_config,
+    probe_for_surface_id, probe_known_cli_surfaces, runtime_supported_for_surface,
+    select_cli_surface_for_config, ProbedSubprocessCli, SubprocessCliAuthStatus,
+    SubprocessLlmProvider,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -316,14 +319,22 @@ pub fn resolve_ai_provider_adapters(
             llm_fallback_reason: None,
         }),
         AiAccessMode::ProviderSubscriptionCli => {
+            let probed = probe_known_cli_surfaces();
+            let (ocr, ocr_source, ocr_fallback_reason) = resolve_cli_subscription_ocr_provider(
+                config,
+                pii_filter_level,
+                external_ocr_privacy_guard.clone(),
+                secret_stores.clone(),
+                &probed,
+            )?;
             let (llm, llm_source, llm_fallback_reason) =
-                resolve_cli_subscription_llm_provider(config)?;
+                resolve_cli_subscription_llm_provider_with_detected(config, &probed)?;
             Ok(AiProviderAdapters {
-                ocr: Arc::new(LocalOcrProvider::new()),
+                ocr,
                 llm,
-                ocr_source: ProviderSource::Local,
+                ocr_source,
                 llm_source,
-                ocr_fallback_reason: None,
+                ocr_fallback_reason,
                 llm_fallback_reason,
             })
         }
@@ -414,9 +425,53 @@ fn to_platform_source(source: ProviderSource) -> ProviderSource {
     }
 }
 
-fn resolve_cli_subscription_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
-    let probed = probe_known_cli_surfaces();
-    resolve_cli_subscription_llm_provider_with_detected(config, &probed)
+fn resolve_cli_subscription_ocr_provider(
+    config: &AiProviderConfig,
+    pii_filter_level: PiiFilterLevel,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    secret_stores: Option<SecretStoreSet>,
+    detected: &[ProbedSubprocessCli],
+) -> OcrProviderResolution {
+    match config.ocr_provider {
+        OcrProviderType::Local => Ok((
+            Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+            ProviderSource::Local,
+            None,
+        )),
+        OcrProviderType::Remote => {
+            let preferred_surface =
+                preferred_cli_surface_for_capability(config, SurfaceCapabilityKind::Ocr);
+            if let Some(surface_id) = preferred_surface.as_deref() {
+                if let Some(surface) = probe_for_surface_id(detected, surface_id) {
+                    let reason = format!(
+                        "Installed {} CLI was detected for OCR, but subprocess OCR runtime is not implemented yet.",
+                        cli_id_for_surface_id(&surface.detected.surface_id)
+                            .unwrap_or_else(|_| surface.detected.surface_id.clone())
+                    );
+                    if config.fallback_to_local {
+                        warn!(
+                            fallback_reason = %reason,
+                            "CLI OCR runtime unavailable, falling back to local OCR"
+                        );
+                        return Ok((
+                            Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+                            ProviderSource::LocalFallback,
+                            Some(reason),
+                        ));
+                    }
+
+                    return Err(CoreError::Config(reason));
+                }
+            }
+
+            resolve_ocr_provider(
+                config,
+                pii_filter_level,
+                external_ocr_privacy_guard,
+                secret_stores,
+            )
+        }
+    }
 }
 
 fn resolve_cli_subscription_llm_provider_with_detected(
@@ -1002,6 +1057,41 @@ mod tests {
             adapters.llm_source,
             ProviderSource::CliSubscription | ProviderSource::LocalFallback
         ));
+    }
+
+    #[test]
+    fn cli_subscription_mode_keeps_direct_remote_ocr_when_configured() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(remote_endpoint()),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "capture.png".to_string(),
+                app_name: "Preview".to_string(),
+                pid: 11,
+                bounds: None,
+            }),
+            None,
+        );
+
+        let (ocr, ocr_source, ocr_fallback_reason) = resolve_cli_subscription_ocr_provider(
+            &config,
+            PiiFilterLevel::Standard,
+            Some(privacy_guard),
+            None,
+            &[],
+        )
+        .expect("CLI mode should allow direct remote OCR");
+
+        assert_eq!(ocr_source, ProviderSource::Remote);
+        assert!(ocr_fallback_reason.is_none());
+        assert!(ocr.is_external());
     }
 
     #[test]

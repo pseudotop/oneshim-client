@@ -12,6 +12,8 @@ pub struct ProviderSurfaceSpec {
     pub id: &'static str,
     pub provider_type: AiProviderType,
     pub transport: ProviderSurfaceTransport,
+    pub supports_llm: bool,
+    pub supports_ocr: bool,
 }
 
 const KNOWN_PROVIDER_SURFACES: &[ProviderSurfaceSpec] = &[
@@ -19,41 +21,57 @@ const KNOWN_PROVIDER_SURFACES: &[ProviderSurfaceSpec] = &[
         id: "provider_surface.anthropic.direct_api",
         provider_type: AiProviderType::Anthropic,
         transport: ProviderSurfaceTransport::DirectApi,
+        supports_llm: true,
+        supports_ocr: true,
     },
     ProviderSurfaceSpec {
         id: "provider_surface.openai.direct_api",
         provider_type: AiProviderType::OpenAi,
         transport: ProviderSurfaceTransport::DirectApi,
+        supports_llm: true,
+        supports_ocr: true,
     },
     ProviderSurfaceSpec {
         id: "provider_surface.google.direct_api",
         provider_type: AiProviderType::Google,
         transport: ProviderSurfaceTransport::DirectApi,
+        supports_llm: true,
+        supports_ocr: true,
     },
     ProviderSurfaceSpec {
         id: "provider_surface.generic.direct_api",
         provider_type: AiProviderType::Generic,
         transport: ProviderSurfaceTransport::DirectApi,
+        supports_llm: true,
+        supports_ocr: true,
     },
     ProviderSurfaceSpec {
         id: "provider_surface.openai.managed_oauth",
         provider_type: AiProviderType::OpenAi,
         transport: ProviderSurfaceTransport::ManagedOAuth,
+        supports_llm: true,
+        supports_ocr: false,
     },
     ProviderSurfaceSpec {
         id: "provider_surface.openai.subprocess_cli",
         provider_type: AiProviderType::OpenAi,
         transport: ProviderSurfaceTransport::SubprocessCli,
+        supports_llm: true,
+        supports_ocr: false,
     },
     ProviderSurfaceSpec {
         id: "provider_surface.anthropic.subprocess_cli",
         provider_type: AiProviderType::Anthropic,
         transport: ProviderSurfaceTransport::SubprocessCli,
+        supports_llm: true,
+        supports_ocr: false,
     },
     ProviderSurfaceSpec {
         id: "provider_surface.google.subprocess_cli",
         provider_type: AiProviderType::Google,
         transport: ProviderSurfaceTransport::SubprocessCli,
+        supports_llm: true,
+        supports_ocr: false,
     },
 ];
 
@@ -67,6 +85,14 @@ pub fn provider_surface_spec(raw: &str) -> Option<ProviderSurfaceSpec> {
         .iter()
         .copied()
         .find(|spec| spec.id.eq_ignore_ascii_case(&normalized))
+}
+
+pub fn provider_surface_supports_llm(raw: &str) -> bool {
+    provider_surface_spec(raw).is_some_and(|spec| spec.supports_llm)
+}
+
+pub fn provider_surface_supports_ocr(raw: &str) -> bool {
+    provider_surface_spec(raw).is_some_and(|spec| spec.supports_ocr)
 }
 
 pub fn default_provider_surface_id(

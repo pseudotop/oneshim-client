@@ -189,7 +189,7 @@ export default function AiAutomationTab({
   const currentLlmSurface = resolveProviderSurface('llm_api')
   const isCliAccessMode = formData.ai_provider.access_mode === 'ProviderSubscriptionCli'
   const isOAuthAccessMode = isProviderOAuthAccessMode(formData.ai_provider.access_mode)
-  const showOcrRemoteSection = formData.ai_provider.ocr_provider === 'Remote' && !isCliAccessMode
+  const showOcrRemoteSection = formData.ai_provider.ocr_provider === 'Remote'
   const showLlmSurfaceSection = formData.ai_provider.llm_provider === 'Remote' || isCliAccessMode
   const oauthSurface =
     currentLlmSurface?.execution_kind === 'managed_http' ? currentLlmSurface : undefined
@@ -473,46 +473,42 @@ export default function AiAutomationTab({
             </div>
           )}
 
-          {isCliAccessMode ? (
-            <div className="rounded-lg border border-muted bg-surface-muted/80 p-4 text-content-secondary text-sm">
-              {t('settingsAutomation.cliModeProviderSummary')}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label htmlFor="settings-ocr-provider" className={form.label}>
+                {t('settingsAutomation.ocrProvider')}
+              </label>
+              <Select
+                id="settings-ocr-provider"
+                value={formData.ai_provider.ocr_provider}
+                onChange={(e) => onAiProviderChange('ocr_provider', e.target.value)}
+              >
+                <option value="Local">{t('settingsAutomation.providerLocal')}</option>
+                <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
+              </Select>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label htmlFor="settings-ocr-provider" className={form.label}>
-                  {t('settingsAutomation.ocrProvider')}
-                </label>
-                <Select
-                  id="settings-ocr-provider"
-                  value={formData.ai_provider.ocr_provider}
-                  onChange={(e) => onAiProviderChange('ocr_provider', e.target.value)}
-                >
-                  <option value="Local">{t('settingsAutomation.providerLocal')}</option>
-                  <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
-                </Select>
-              </div>
-              <div>
-                <label htmlFor="settings-llm-provider" className={form.label}>
-                  {t('settingsAutomation.llmProvider')}
-                </label>
-                <Select
-                  id="settings-llm-provider"
-                  value={formData.ai_provider.llm_provider}
-                  disabled={isOAuthAccessMode}
-                  onChange={(e) => onAiProviderChange('llm_provider', e.target.value)}
-                >
-                  <option value="Local">{t('settingsAutomation.providerLocal')}</option>
-                  <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
-                </Select>
-                {isOAuthAccessMode && (
-                  <p className="mt-1 text-content-secondary text-xs">
-                    {t('settingsAutomation.oauthLlmProviderPinned')}
-                  </p>
-                )}
-              </div>
+            <div>
+              <label htmlFor="settings-llm-provider" className={form.label}>
+                {t('settingsAutomation.llmProvider')}
+              </label>
+              <Select
+                id="settings-llm-provider"
+                value={isCliAccessMode ? 'Remote' : formData.ai_provider.llm_provider}
+                disabled={isOAuthAccessMode || isCliAccessMode}
+                onChange={(e) => onAiProviderChange('llm_provider', e.target.value)}
+              >
+                <option value="Local">{t('settingsAutomation.providerLocal')}</option>
+                <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
+              </Select>
+              {(isOAuthAccessMode || isCliAccessMode) && (
+                <p className="mt-1 text-content-secondary text-xs">
+                  {isCliAccessMode
+                    ? t('settingsAutomation.cliModeProviderSummary')
+                    : t('settingsAutomation.oauthLlmProviderPinned')}
+                </p>
+              )}
             </div>
-          )}
+          </div>
 
           <div>
             <label htmlFor="settings-data-policy" className={form.label}>

@@ -21,10 +21,20 @@ describe('provider surface defaults', () => {
     ).toBe('provider_surface.anthropic.subprocess_cli')
   })
 
-  it('keeps ocr surface unset in subscription cli mode', () => {
+  it('keeps direct OCR surfaces available in subscription cli mode', () => {
     expect(
       deriveDefaultProviderSurfaceId(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderSubscriptionCli', 'ocr_api', 'OpenAi'),
-    ).toBeNull()
+    ).toBe('provider_surface.openai.direct_api')
+  })
+
+  it('lists OCR-compatible direct surfaces even when llm access mode uses provider CLI', () => {
+    const surfaces = getCompatibleProviderSurfaces(
+      DEFAULT_PROVIDER_SURFACE_CATALOG,
+      'ProviderSubscriptionCli',
+      'ocr_api',
+    )
+    expect(surfaces.some((surface) => surface.surface_id === 'provider_surface.openai.direct_api')).toBe(true)
+    expect(surfaces.some((surface) => surface.surface_id === 'provider_surface.anthropic.direct_api')).toBe(true)
   })
 
   it('falls back to direct api for generic provider types', () => {

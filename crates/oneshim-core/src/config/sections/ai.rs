@@ -5,6 +5,10 @@ use super::ai_validation::{
     SceneIntelligenceConfig,
 };
 use crate::error::CoreError;
+use crate::provider_surface::{
+    provider_surface_spec, provider_surface_supports_llm, provider_surface_supports_ocr,
+    ProviderSurfaceTransport,
+};
 use serde::{Deserialize, Serialize};
 
 // ── AiProviderConfig ───────────────────────────────────────────────
@@ -70,13 +74,21 @@ impl AiProviderConfig {
             }
             AiAccessMode::LocalModel => {}
             AiAccessMode::ProviderSubscriptionCli => {
-                if self.ocr_provider == OcrProviderType::Remote
-                    || self.llm_provider == LlmProviderType::Remote
-                {
-                    return Err(CoreError::Config(
-                        "Provider subscription (CLI) mode does not use remote HTTP OCR/LLM providers. Keep local OCR/LLM selected; supported LLM workflows will use installed provider CLIs at runtime."
-                            .to_string(),
-                    ));
+                if self.ocr_provider == OcrProviderType::Remote {
+                    validate_subprocess_or_remote_endpoint(
+                        self.ocr_api.as_ref(),
+                        "ocr_api",
+                        ProviderSurfaceTransport::SubprocessCli,
+                        provider_surface_supports_ocr,
+                    )?;
+                }
+                if self.llm_provider == LlmProviderType::Remote {
+                    validate_non_http_surface_endpoint(
+                        self.llm_api.as_ref(),
+                        "llm_api",
+                        ProviderSurfaceTransport::SubprocessCli,
+                        provider_surface_supports_llm,
+                    )?;
                 }
             }
             AiAccessMode::ProviderOAuth => {
@@ -96,9 +108,22 @@ impl AiProviderConfig {
                     }
                 }
 
-                // OCR still respects its own provider setting (local/remote with API key).
+                validate_non_http_surface_endpoint(
+                    self.llm_api.as_ref(),
+                    "llm_api",
+                    ProviderSurfaceTransport::ManagedOAuth,
+                    provider_surface_supports_llm,
+                )?;
+
+                // OCR still respects its own provider setting and may continue to use
+                // direct API configuration even while LLM uses managed OAuth.
                 if self.ocr_provider == OcrProviderType::Remote {
-                    validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;
+                    validate_subprocess_or_remote_endpoint(
+                        self.ocr_api.as_ref(),
+                        "ocr_api",
+                        ProviderSurfaceTransport::ManagedOAuth,
+                        provider_surface_supports_ocr,
+                    )?;
                 }
             }
         }
@@ -165,6 +190,89 @@ fn validate_remote_endpoint(
     }
 
     Ok(())
+}
+
+fn validate_non_http_surface_endpoint(
+    endpoint: Option<&ExternalApiEndpoint>,
+    field_name: &str,
+    expected_transport: ProviderSurfaceTransport,
+    capability_check: fn(&str) -> bool,
+) -> Result<(), CoreError> {
+    let endpoint = endpoint.ok_or_else(|| {
+        CoreError::Config(format!(
+            "`{field_name}` is required when a managed provider surface is selected."
+        ))
+    })?;
+
+    let surface_id = endpoint
+        .surface_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            CoreError::Config(format!(
+                "`{field_name}.surface_id` is required for managed provider surfaces."
+            ))
+        })?;
+
+    let spec = provider_surface_spec(surface_id).ok_or_else(|| {
+        CoreError::Config(format!(
+            "`{field_name}.surface_id` references an unknown provider surface."
+        ))
+    })?;
+
+    if spec.provider_type != endpoint.provider_type {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.surface_id` must match `{field_name}.provider_type`."
+        )));
+    }
+
+    if spec.transport != expected_transport {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.surface_id` is incompatible with the selected access mode."
+        )));
+    }
+
+    if !capability_check(surface_id) {
+        return Err(CoreError::Config(format!(
+            "`{field_name}.surface_id` does not support this endpoint capability."
+        )));
+    }
+
+    Ok(())
+}
+
+fn validate_subprocess_or_remote_endpoint(
+    endpoint: Option<&ExternalApiEndpoint>,
+    field_name: &str,
+    managed_transport: ProviderSurfaceTransport,
+    capability_check: fn(&str) -> bool,
+) -> Result<(), CoreError> {
+    let Some(endpoint) = endpoint else {
+        return Err(CoreError::Config(format!(
+            "`{field_name}` is required when a remote provider is selected."
+        )));
+    };
+
+    if let Some(surface_id) = endpoint
+        .surface_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Some(surface) = provider_surface_spec(surface_id) {
+            if surface.transport == managed_transport {
+                return validate_non_http_surface_endpoint(
+                    Some(endpoint),
+                    field_name,
+                    managed_transport,
+                    capability_check,
+                );
+            }
+        }
+    }
+
+    validate_remote_endpoint(Some(endpoint), field_name)
 }
 
 // ── Private default helpers ─────────────────────────────────────────

@@ -257,9 +257,11 @@ export default function Settings() {
     }
 
     if (nextAccessMode === 'ProviderSubscriptionCli') {
-      nextAiProvider.ocr_provider = 'Local'
-      nextAiProvider.llm_provider = 'Local'
+      nextAiProvider.llm_provider = 'Remote'
       nextAiProvider.llm_api = normalizeEndpointSettings(nextAccessMode, 'llm_api', nextAiProvider.llm_api)
+      if (nextAiProvider.ocr_provider === 'Remote') {
+        nextAiProvider.ocr_api = normalizeEndpointSettings(nextAccessMode, 'ocr_api', nextAiProvider.ocr_api)
+      }
       return nextAiProvider
     }
 
