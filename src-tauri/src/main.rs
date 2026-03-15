@@ -28,6 +28,7 @@ mod notification_manager;
 mod platform_accessibility;
 mod platform_overlay;
 mod provider_adapters;
+mod provider_secret_backend;
 mod scheduler;
 mod secret_cli;
 mod setup;

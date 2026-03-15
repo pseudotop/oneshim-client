@@ -45,7 +45,7 @@ pub fn get_storage_stats(state: &AppState) -> Result<StorageStats, ApiError> {
 pub fn get_settings(state: &AppState) -> AppSettings {
     if let Some(ref config_manager) = state.config_manager {
         let config = config_manager.get();
-        config_to_settings(&config)
+        config_to_settings(&config, state.default_secret_backend_kind)
     } else {
         AppSettings::default()
     }
@@ -58,7 +58,12 @@ pub async fn update_settings(state: &AppState, settings: &AppSettings) -> Result
         let previous_config = config_manager.get();
         let mut next_config = previous_config.clone();
         apply_settings_to_config(&mut next_config, settings)?;
-        persist_api_key_bindings(&mut next_config, state.secret_store.clone()).await?;
+        persist_api_key_bindings(
+            &mut next_config,
+            state.secret_store.clone(),
+            state.default_secret_backend_kind,
+        )
+        .await?;
 
         next_config
             .ai_provider
@@ -78,11 +83,8 @@ pub async fn update_settings(state: &AppState, settings: &AppSettings) -> Result
 async fn persist_api_key_bindings(
     config: &mut AppConfig,
     secret_store: Option<Arc<dyn SecretStore>>,
+    default_backend_kind: CredentialBackendKind,
 ) -> Result<(), ApiError> {
-    let Some(secret_store) = secret_store else {
-        return Ok(());
-    };
-
     let access_mode = config.ai_provider.access_mode;
 
     if let Some(endpoint) = config.ai_provider.ocr_api.as_mut() {
@@ -91,12 +93,20 @@ async fn persist_api_key_bindings(
             access_mode,
             ApiEndpointKind::Ocr,
             secret_store.clone(),
+            default_backend_kind,
         )
         .await?;
     }
 
     if let Some(endpoint) = config.ai_provider.llm_api.as_mut() {
-        persist_api_key_binding(endpoint, access_mode, ApiEndpointKind::Llm, secret_store).await?;
+        persist_api_key_binding(
+            endpoint,
+            access_mode,
+            ApiEndpointKind::Llm,
+            secret_store,
+            default_backend_kind,
+        )
+        .await?;
     }
 
     Ok(())
@@ -106,7 +116,8 @@ async fn persist_api_key_binding(
     endpoint: &mut ExternalApiEndpoint,
     access_mode: AiAccessMode,
     endpoint_kind: ApiEndpointKind,
-    secret_store: Arc<dyn SecretStore>,
+    secret_store: Option<Arc<dyn SecretStore>>,
+    default_backend_kind: CredentialBackendKind,
 ) -> Result<(), ApiError> {
     let auth_mode = endpoint
         .credential
@@ -123,6 +134,41 @@ async fn persist_api_key_binding(
         return Ok(());
     }
 
+    match default_backend_kind {
+        CredentialBackendKind::Env => {
+            return Err(ApiError::BadRequest(
+                "Environment-backed provider credentials are read-only; update the environment source instead.".to_string(),
+            ));
+        }
+        CredentialBackendKind::Unavailable => {
+            return Err(ApiError::BadRequest(
+                "No writable provider secret backend is available; configure a secret backend before saving API keys.".to_string(),
+            ));
+        }
+        CredentialBackendKind::LegacyConfig => {
+            endpoint.credential = Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::LegacyConfig,
+                secret_ref: None,
+                projection_enabled: false,
+            });
+            return Ok(());
+        }
+        CredentialBackendKind::BridgeManaged => {
+            return Err(ApiError::BadRequest(
+                "Bridge-managed credentials cannot be edited from Settings.".to_string(),
+            ));
+        }
+        CredentialBackendKind::OsSecretStore | CredentialBackendKind::FileSecretStore => {}
+    }
+
+    let Some(secret_store) = secret_store else {
+        return Err(ApiError::Internal(
+            "Writable provider secret backend was selected, but no secret store was initialized."
+                .to_string(),
+        ));
+    };
+
     let (namespace, key) = provider_api_key_secret_ref(
         provider_type_id(endpoint.provider_type),
         endpoint_kind.profile_id(),
@@ -138,7 +184,7 @@ async fn persist_api_key_binding(
 
     endpoint.credential = Some(CredentialBinding {
         auth_mode: CredentialAuthMode::ApiKey,
-        backend_kind: CredentialBackendKind::OsSecretStore,
+        backend_kind: default_backend_kind,
         secret_ref: Some(SecretRef {
             namespace,
             key: key.to_string(),
@@ -332,7 +378,10 @@ fn validate_settings_input(settings: &AppSettings) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn config_to_settings(config: &AppConfig) -> AppSettings {
+fn config_to_settings(
+    config: &AppConfig,
+    default_secret_backend_kind: CredentialBackendKind,
+) -> AppSettings {
     AppSettings {
         retention_days: config.storage.retention_days,
         max_storage_mb: config.storage.max_storage_mb as u32,
@@ -456,6 +505,7 @@ fn config_to_settings(config: &AppConfig) -> AppSettings {
                     endpoint,
                     config.ai_provider.access_mode,
                     ApiEndpointKind::Ocr,
+                    default_secret_backend_kind,
                 )
             }),
             llm_api: config.ai_provider.llm_api.as_ref().map(|endpoint| {
@@ -463,6 +513,7 @@ fn config_to_settings(config: &AppConfig) -> AppSettings {
                     endpoint,
                     config.ai_provider.access_mode,
                     ApiEndpointKind::Llm,
+                    default_secret_backend_kind,
                 )
             }),
         },
@@ -728,6 +779,7 @@ fn endpoint_to_api_settings(
     endpoint: &ExternalApiEndpoint,
     access_mode: AiAccessMode,
     endpoint_kind: ApiEndpointKind,
+    default_backend_kind: CredentialBackendKind,
 ) -> ExternalApiSettings {
     let auth_mode = endpoint
         .credential
@@ -739,7 +791,9 @@ fn endpoint_to_api_settings(
         .credential
         .as_ref()
         .map(|binding| binding.backend_kind)
-        .unwrap_or_else(|| derive_credential_backend_kind(auth_mode, has_plaintext_secret));
+        .unwrap_or_else(|| {
+            derive_credential_backend_kind(auth_mode, has_plaintext_secret, default_backend_kind)
+        });
     let has_secret = has_plaintext_secret
         || endpoint
             .credential
@@ -757,7 +811,7 @@ fn endpoint_to_api_settings(
         auth_mode: credential_auth_mode_to_wire(auth_mode).to_string(),
         backend_kind: credential_backend_kind_to_wire(backend_kind).to_string(),
         has_secret,
-        can_edit_secret: matches!(auth_mode, CredentialAuthMode::ApiKey),
+        can_edit_secret: can_edit_secret(auth_mode, backend_kind),
         secret_display_hint: masked_plaintext_secret,
         projection_enabled: endpoint
             .credential
@@ -806,13 +860,24 @@ fn derive_credential_auth_mode(
 fn derive_credential_backend_kind(
     auth_mode: CredentialAuthMode,
     has_plaintext_secret: bool,
+    default_backend_kind: CredentialBackendKind,
 ) -> CredentialBackendKind {
     match auth_mode {
         CredentialAuthMode::ManagedOAuth => CredentialBackendKind::OsSecretStore,
         CredentialAuthMode::CliBridge => CredentialBackendKind::BridgeManaged,
         CredentialAuthMode::ApiKey if has_plaintext_secret => CredentialBackendKind::LegacyConfig,
-        CredentialAuthMode::ApiKey => CredentialBackendKind::Unavailable,
+        CredentialAuthMode::ApiKey => default_backend_kind,
     }
+}
+
+fn can_edit_secret(auth_mode: CredentialAuthMode, backend_kind: CredentialBackendKind) -> bool {
+    matches!(auth_mode, CredentialAuthMode::ApiKey)
+        && matches!(
+            backend_kind,
+            CredentialBackendKind::OsSecretStore
+                | CredentialBackendKind::FileSecretStore
+                | CredentialBackendKind::LegacyConfig
+        )
 }
 
 fn credential_auth_mode_to_wire(value: CredentialAuthMode) -> &'static str {
@@ -961,6 +1026,7 @@ mod tests {
             frames_dir: None,
             event_tx,
             config_manager: None,
+            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::LegacyConfig,
             secret_store: None,
             audit_logger: None,
             automation_controller: None,
@@ -980,6 +1046,7 @@ mod tests {
             frames_dir: None,
             event_tx,
             config_manager: Some(config_manager),
+            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::OsSecretStore,
             secret_store,
             audit_logger: None,
             automation_controller: None,
@@ -1079,7 +1146,7 @@ mod tests {
             credential: None,
         });
 
-        let settings = config_to_settings(&config);
+        let settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
         let llm_api = settings.ai_provider.llm_api.expect("llm api settings");
 
         assert_eq!(llm_api.auth_mode, "api_key");
@@ -1104,7 +1171,7 @@ mod tests {
             credential: None,
         });
 
-        let settings = config_to_settings(&config);
+        let settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
         let llm_api = settings.ai_provider.llm_api.expect("llm api settings");
 
         assert_eq!(llm_api.auth_mode, "managed_oauth");
@@ -1135,12 +1202,55 @@ mod tests {
             }),
         });
 
-        let settings = config_to_settings(&config);
+        let settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
         let llm_api = settings.ai_provider.llm_api.expect("llm api settings");
 
         assert_eq!(llm_api.backend_kind, "os_secret_store");
         assert!(llm_api.has_secret);
         assert_eq!(llm_api.api_key_masked, "");
         assert_eq!(llm_api.secret_display_hint, None);
+    }
+
+    #[tokio::test]
+    async fn update_settings_rejects_api_key_write_for_env_backend() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let config_path = temp_dir.path().join("config.json");
+        let config_manager = ConfigManager::with_path(config_path).expect("config manager");
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).expect("in-memory sqlite"));
+        let (event_tx, _) = broadcast::channel(8);
+        let state = AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: Some(config_manager),
+            default_secret_backend_kind: CredentialBackendKind::Env,
+            secret_store: Some(Arc::new(TestSecretStore::new())),
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            update_control: None,
+        };
+
+        let mut settings = AppSettings::default();
+        settings.ai_provider.llm_provider = "Remote".to_string();
+        settings.ai_provider.llm_api = Some(ExternalApiSettings {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key_masked: "sk-secret-123456".to_string(),
+            model: Some("gpt-4.1-mini".to_string()),
+            provider_type: "OpenAi".to_string(),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "env".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: false,
+        });
+
+        let err = update_settings(&state, &settings)
+            .await
+            .expect_err("env backend should be read-only");
+
+        assert!(matches!(err, ApiError::BadRequest(_)));
     }
 }

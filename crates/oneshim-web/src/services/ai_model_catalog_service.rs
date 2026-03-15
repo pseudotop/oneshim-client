@@ -467,6 +467,7 @@ mod tests {
             frames_dir: None,
             event_tx,
             config_manager: Some(config_manager),
+            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::LegacyConfig,
             secret_store: Some(secret_store),
             audit_logger: None,
             automation_controller: None,

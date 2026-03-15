@@ -4,26 +4,20 @@
 //! process-scoped environment variables for CLI compatibility.
 
 use std::path::Path;
-use std::sync::Arc;
 
-use oneshim_core::config::{
-    CredentialAuthMode, CredentialBackendKind, CredentialBinding, ExternalApiEndpoint,
-};
+use oneshim_core::config::{CredentialAuthMode, ExternalApiEndpoint};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::secret_projection::{
     ProjectionPurpose, SecretProjectionPort, SecretProjectionRequest, SecretProjectionResult,
 };
-use oneshim_core::ports::secret_store::SecretStore;
-use oneshim_storage::env_secret_store::EnvSecretStore;
-use oneshim_storage::file_secret_store::FileSecretStore;
-use oneshim_storage::keychain::{KeychainOps, KeychainSecretStore};
 use oneshim_storage::process_env_projection::{
     provider_api_key_cli_template, ProcessEnvSecretProjection,
 };
 
+use crate::provider_secret_backend::{create_os_secret_store, create_secret_store_for_binding};
+
 const CONFIG_FILE_NAME: &str = "config.json";
-const FILE_SECRET_STORE_NAME: &str = "oneshim-secrets.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SecretSurface {
@@ -191,8 +185,13 @@ fn resolve_env_projection(
 ) -> Result<Vec<(String, String)>, String> {
     let template =
         provider_api_key_cli_template(endpoint.provider_type).map_err(|err| err.to_string())?;
-    let secret_store = create_secret_store_for_endpoint(endpoint.credential.as_ref(), config_dir)
-        .map_err(|err| err.to_string())?;
+    let desktop_secret_store = create_os_secret_store(config_dir);
+    let secret_store = create_secret_store_for_binding(
+        endpoint.credential.as_ref(),
+        config_dir,
+        desktop_secret_store,
+    )
+    .map_err(|err| err.to_string())?;
     let runtime = build_runtime()?;
 
     if let (Some(secret_store), Some(secret_ref)) = (
@@ -240,35 +239,6 @@ fn build_runtime() -> Result<tokio::runtime::Runtime, String> {
         .map_err(|err| format!("failed to build CLI runtime: {err}"))
 }
 
-fn create_secret_store_for_endpoint(
-    binding: Option<&CredentialBinding>,
-    config_dir: &Path,
-) -> Result<Option<Arc<dyn SecretStore>>, oneshim_core::error::CoreError> {
-    let Some(binding) = binding else {
-        return Ok(create_desktop_secret_store(config_dir));
-    };
-
-    match binding.backend_kind {
-        CredentialBackendKind::OsSecretStore => Ok(create_desktop_secret_store(config_dir)),
-        CredentialBackendKind::FileSecretStore => Ok(Some(Arc::new(FileSecretStore::new(
-            config_dir.join(FILE_SECRET_STORE_NAME),
-        )?) as Arc<dyn SecretStore>)),
-        CredentialBackendKind::Env => Ok(Some(
-            Arc::new(EnvSecretStore::from_current_process()) as Arc<dyn SecretStore>
-        )),
-        CredentialBackendKind::BridgeManaged
-        | CredentialBackendKind::LegacyConfig
-        | CredentialBackendKind::Unavailable => Ok(None),
-    }
-}
-
-fn create_desktop_secret_store(config_dir: &Path) -> Option<Arc<dyn SecretStore>> {
-    let registry_path = config_dir.join("oneshim-keychain-registry.json");
-    KeychainOps::new(registry_path)
-        .ok()
-        .map(|ops| Arc::new(KeychainSecretStore::new(Arc::new(ops))) as Arc<dyn SecretStore>)
-}
-
 fn shell_quote(value: &str) -> String {
     let escaped = value.replace('\'', r#"'\"'\"'"#);
     format!("'{escaped}'")
@@ -294,7 +264,10 @@ fn parse_exec_args(args: &[String]) -> Result<(SecretSurface, &[String]), ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oneshim_core::config::{AiProviderConfig, AiProviderType};
+    use oneshim_core::config::{
+        AiProviderConfig, AiProviderType, CredentialAuthMode, CredentialBackendKind,
+        CredentialBinding,
+    };
     use tempfile::TempDir;
 
     #[test]
@@ -365,7 +338,7 @@ mod tests {
             projection_enabled: false,
         };
 
-        let store = create_secret_store_for_endpoint(Some(&binding), temp_dir.path()).unwrap();
+        let store = create_secret_store_for_binding(Some(&binding), temp_dir.path(), None).unwrap();
         assert!(store.is_some());
     }
 }

@@ -4,7 +4,7 @@ use oneshim_automation::audit::{AuditLogAdapter, AuditLogger};
 use oneshim_automation::controller::AutomationController;
 use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
-use oneshim_core::config::{AiAccessMode, AppConfig};
+use oneshim_core::config::{AiAccessMode, AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
@@ -24,8 +24,6 @@ use oneshim_network::http_client::HttpApiClient;
 #[cfg(feature = "server")]
 use oneshim_network::oauth::{provider_config::OAuthProviderConfig, OAuthClient};
 use oneshim_storage::frame_storage::FrameFileStorage;
-#[cfg(feature = "server")]
-use oneshim_storage::keychain::{KeychainOps, KeychainSecretStore};
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
@@ -49,6 +47,10 @@ use crate::cli_subscription_bridge::{
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
 use crate::provider_adapters::ExternalOcrPrivacyGuard;
+#[cfg(feature = "server")]
+use crate::provider_secret_backend::{
+    create_os_secret_store, is_writable_backend_kind, resolve_provider_secret_backend,
+};
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
 use crate::update_coordinator;
 
@@ -141,22 +143,6 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
     }
 }
 
-/// Build the OAuth runtime port without probing the OS keychain at startup.
-///
-/// Keychain availability is determined lazily when OAuth is actually used,
-/// which avoids write/delete prompts during normal app boot.
-#[cfg(feature = "server")]
-fn create_desktop_secret_store(config_dir: &std::path::Path) -> Option<Arc<dyn SecretStore>> {
-    let registry_path = config_dir.join("oneshim-keychain-registry.json");
-    match KeychainOps::new(registry_path) {
-        Ok(ops) => Some(Arc::new(KeychainSecretStore::new(Arc::new(ops))) as Arc<dyn SecretStore>),
-        Err(e) => {
-            warn!("Failed to initialize OAuth secret store: {e}");
-            None
-        }
-    }
-}
-
 #[cfg(feature = "server")]
 fn create_oauth_port(secret_store: Arc<dyn SecretStore>) -> Arc<dyn OAuthPort> {
     let providers = vec![OAuthProviderConfig::openai_codex()];
@@ -213,19 +199,28 @@ fn should_fallback_to_noop(ai_config: &oneshim_core::config::AiProviderConfig) -
     ai_config.fallback_to_local && ai_config.access_mode != AiAccessMode::ProviderOAuth
 }
 
-fn secret_backend_capabilities(oauth_available: bool) -> SecretBackendCapabilities {
-    let default_backend_kind = if oauth_available {
-        "os_secret_store"
-    } else {
-        "unavailable"
-    };
+fn credential_backend_kind_to_wire(value: CredentialBackendKind) -> &'static str {
+    match value {
+        CredentialBackendKind::OsSecretStore => "os_secret_store",
+        CredentialBackendKind::FileSecretStore => "file_secret_store",
+        CredentialBackendKind::Env => "env",
+        CredentialBackendKind::BridgeManaged => "bridge_managed",
+        CredentialBackendKind::LegacyConfig => "legacy_config",
+        CredentialBackendKind::Unavailable => "unavailable",
+    }
+}
 
+fn secret_backend_capabilities(
+    oauth_available: bool,
+    provider_backend_kind: CredentialBackendKind,
+    fallback_backend_kind: CredentialBackendKind,
+) -> SecretBackendCapabilities {
     SecretBackendCapabilities {
         os_secret_store_available: oauth_available,
         oauth_available,
-        default_backend_kind: default_backend_kind.to_string(),
-        byok_backend_kind: default_backend_kind.to_string(),
-        fallback_backend_kind: "legacy_config".to_string(),
+        default_backend_kind: credential_backend_kind_to_wire(provider_backend_kind).to_string(),
+        byok_backend_kind: credential_backend_kind_to_wire(provider_backend_kind).to_string(),
+        fallback_backend_kind: credential_backend_kind_to_wire(fallback_backend_kind).to_string(),
     }
 }
 
@@ -258,18 +253,29 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
         .unwrap_or_else(|_| data_dir_path.clone());
     #[cfg(feature = "server")]
-    let desktop_secret_store = create_desktop_secret_store(&config_dir);
+    let desktop_secret_store = create_os_secret_store(&config_dir);
     #[cfg(feature = "server")]
-    if let Some(secret_store) = desktop_secret_store.clone() {
-        match handle.block_on(
-            crate::credential_migration::migrate_legacy_provider_api_keys(
-                &config_manager,
-                secret_store,
-            ),
-        ) {
-            Ok(true) => info!("Migrated legacy provider API keys into desktop secret store"),
-            Ok(false) => {}
-            Err(err) => warn!("Legacy provider API key migration skipped: {err}"),
+    let provider_secret_backend =
+        resolve_provider_secret_backend(&config_dir, desktop_secret_store.clone()).map_err(
+            |err| -> Box<dyn std::error::Error> {
+                Box::new(std::io::Error::other(err.to_string()))
+            },
+        )?;
+    #[cfg(feature = "server")]
+    let provider_secret_store = provider_secret_backend.secret_store.clone();
+    #[cfg(feature = "server")]
+    if is_writable_backend_kind(provider_secret_backend.backend_kind) {
+        if let Some(secret_store) = provider_secret_store.clone() {
+            match handle.block_on(
+                crate::credential_migration::migrate_legacy_provider_api_keys(
+                    &config_manager,
+                    secret_store,
+                ),
+            ) {
+                Ok(true) => info!("Migrated legacy provider API keys into selected secret store"),
+                Ok(false) => {}
+                Err(err) => warn!("Legacy provider API key migration skipped: {err}"),
+            }
         }
     }
     let config = config_manager.get();
@@ -462,7 +468,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     automation_frame_storage.clone(),
                     Some(external_ocr_privacy_guard.clone()),
                     skill_loader.clone(),
-                    desktop_secret_store.clone(),
+                    provider_secret_store.clone(),
                     validated_oauth_port,
                 )
             });
@@ -565,8 +571,13 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 .with_bound_port_state(web_port_state)
                 .with_bound_port_notifier(bound_port_tx);
             #[cfg(feature = "server")]
-            if let Some(secret_store) = desktop_secret_store.clone() {
+            if let Some(secret_store) = provider_secret_store.clone() {
                 web_server = web_server.with_secret_store(secret_store);
+            }
+            #[cfg(feature = "server")]
+            {
+                web_server = web_server
+                    .with_default_secret_backend_kind(provider_secret_backend.backend_kind);
             }
             if let Some(status) = ai_runtime_status {
                 web_server = web_server.with_ai_runtime_status(status);
@@ -632,7 +643,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "server"))]
     let oauth_coordinator_state = OAuthCoordinatorState(None);
 
-    let secret_backend_state = SecretBackendState(secret_backend_capabilities(oauth_available));
+    #[cfg(feature = "server")]
+    let secret_backend_state = SecretBackendState(secret_backend_capabilities(
+        oauth_available,
+        provider_secret_backend.backend_kind,
+        provider_secret_backend.fallback_backend_kind,
+    ));
+    #[cfg(not(feature = "server"))]
+    let secret_backend_state = SecretBackendState(secret_backend_capabilities(
+        oauth_available,
+        CredentialBackendKind::Unavailable,
+        CredentialBackendKind::LegacyConfig,
+    ));
 
     app.manage(AppState {
         runtime_handle: handle,

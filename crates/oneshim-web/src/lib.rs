@@ -33,7 +33,7 @@ pub mod update_control;
 
 use crate::storage_port::WebStorage;
 use axum::Router;
-use oneshim_core::config::WebConfig;
+use oneshim_core::config::{CredentialBackendKind, WebConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
@@ -63,6 +63,7 @@ pub struct AppState {
     pub frames_dir: Option<std::path::PathBuf>,
     pub event_tx: broadcast::Sender<RealtimeEvent>,
     pub config_manager: Option<ConfigManager>,
+    pub default_secret_backend_kind: CredentialBackendKind,
     pub secret_store: Option<Arc<dyn SecretStore>>,
     pub audit_logger: Option<Arc<dyn AuditLogPort>>,
     pub automation_controller: Option<Arc<dyn AutomationPort>>,
@@ -87,6 +88,7 @@ impl WebServer {
                 frames_dir: None,
                 event_tx,
                 config_manager: None,
+                default_secret_backend_kind: CredentialBackendKind::LegacyConfig,
                 secret_store: None,
                 audit_logger: None,
                 automation_controller: None,
@@ -105,6 +107,14 @@ impl WebServer {
 
     pub fn with_config_manager(mut self, config_manager: ConfigManager) -> Self {
         self.state.config_manager = Some(config_manager);
+        self
+    }
+
+    pub fn with_default_secret_backend_kind(
+        mut self,
+        default_secret_backend_kind: CredentialBackendKind,
+    ) -> Self {
+        self.state.default_secret_backend_kind = default_secret_backend_kind;
         self
     }
 
