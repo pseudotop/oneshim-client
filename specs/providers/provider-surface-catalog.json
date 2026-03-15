@@ -636,6 +636,64 @@
       ]
     },
     {
+      "surface_id": "provider_surface.google.managed_oauth",
+      "vendor_id": "google",
+      "provider_type": "Google",
+      "display_name": "Google Vision Managed OAuth",
+      "execution_kind": "managed_http",
+      "placement_kind": "provider_hosted",
+      "credential_kind": "managed_oauth",
+      "stability": "experimental",
+      "preferred_for_product_auth": false,
+      "catalog_strategy": "none",
+      "supports": {
+        "llm": false,
+        "ocr": true,
+        "model_catalog": false,
+        "context_bridge": false
+      },
+      "llm_capabilities": {
+        "structured_output": false
+      },
+      "ocr_capabilities": {
+        "strategy": "vision_api",
+        "supports_geometry": true,
+        "supports_confidence": true,
+        "requires_image_input_model": false
+      },
+      "default_models": {
+        "llm_models": [],
+        "ocr_models": []
+      },
+      "unknown_model_policy": {
+        "llm": "reject",
+        "ocr": "reject"
+      },
+      "known_models": [],
+      "parameter_profiles": {
+        "llm": {
+          "supported": [],
+          "unsupported": ["model"],
+          "notes": ["Google managed OAuth is currently OCR-only in ONESHIM."]
+        },
+        "ocr": {
+          "supported": ["requests", "TEXT_DETECTION", "maxResults"],
+          "unsupported": ["model"],
+          "notes": ["Google Vision OCR accepts bearer tokens when a user-authorized Google OAuth client is configured."]
+        }
+      },
+      "ocr_transport": {
+        "method": "POST",
+        "url": "https://vision.googleapis.com/v1/images:annotate",
+        "auth_scheme": "bearer",
+        "request_shape": "google_vision_annotate"
+      },
+      "references": [
+        "https://cloud.google.com/vision/docs/authentication",
+        "https://developers.google.com/identity/protocols/oauth2/native-app"
+      ]
+    },
+    {
       "surface_id": "provider_surface.ollama.local_http",
       "vendor_id": "ollama",
       "provider_type": "Ollama",

@@ -27,6 +27,7 @@ mod lifecycle;
 mod macos_integration;
 mod memory_profiler;
 mod notification_manager;
+mod oauth_provider_registry;
 mod platform_accessibility;
 mod platform_overlay;
 mod provider_adapters;

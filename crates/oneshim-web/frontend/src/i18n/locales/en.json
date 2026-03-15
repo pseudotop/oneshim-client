@@ -744,6 +744,10 @@
           }
         },
         "google": {
+          "managed_oauth": {
+            "available": "Google OAuth is available on this device. Configure a Desktop OAuth client ID to connect Vision OCR without storing an API key.",
+            "unavailable": "Google OAuth is unavailable on this device. Desktop keychain support and a configured Google OAuth client ID are required."
+          },
           "subprocess_cli": {
             "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
             "auth_required": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",

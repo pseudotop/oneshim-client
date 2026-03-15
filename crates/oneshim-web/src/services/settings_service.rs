@@ -1028,9 +1028,10 @@ fn default_surface_id_for_endpoint(
     .ok()
     .flatten()
     .or_else(|| {
-        matches!(endpoint_kind, ApiEndpointKind::Ocr)
-            .then(direct_default)
-            .flatten()
+        (matches!(endpoint_kind, ApiEndpointKind::Ocr)
+            || matches!(access_mode, AiAccessMode::ProviderOAuth))
+        .then(direct_default)
+        .flatten()
     })
 }
 
@@ -1206,7 +1207,10 @@ fn access_mode_allows_surface_transport(
 ) -> bool {
     match endpoint_kind {
         ApiEndpointKind::Llm => match access_mode {
-            AiAccessMode::ProviderOAuth => transport == ProviderSurfaceTransport::ManagedOAuth,
+            AiAccessMode::ProviderOAuth => matches!(
+                transport,
+                ProviderSurfaceTransport::DirectApi | ProviderSurfaceTransport::ManagedOAuth
+            ),
             AiAccessMode::ProviderSubscriptionCli => {
                 transport == ProviderSurfaceTransport::SubprocessCli
             }
@@ -1215,7 +1219,10 @@ fn access_mode_allows_surface_transport(
             | AiAccessMode::LocalModel => transport == ProviderSurfaceTransport::DirectApi,
         },
         ApiEndpointKind::Ocr => match access_mode {
-            AiAccessMode::ProviderOAuth => transport == ProviderSurfaceTransport::DirectApi,
+            AiAccessMode::ProviderOAuth => matches!(
+                transport,
+                ProviderSurfaceTransport::DirectApi | ProviderSurfaceTransport::ManagedOAuth
+            ),
             AiAccessMode::ProviderSubscriptionCli => matches!(
                 transport,
                 ProviderSurfaceTransport::DirectApi | ProviderSurfaceTransport::SubprocessCli

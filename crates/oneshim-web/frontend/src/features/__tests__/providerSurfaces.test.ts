@@ -101,15 +101,18 @@ describe('provider surface defaults', () => {
 
   it('filters compatible surfaces for oauth llm mode', () => {
     const surfaces = getCompatibleProviderSurfaces(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderOAuth', 'llm_api')
-    expect(surfaces.map((surface) => surface.surface_id)).toEqual(['provider_surface.openai.managed_oauth'])
+    expect(surfaces.map((surface) => surface.surface_id)).toContain('provider_surface.openai.managed_oauth')
+    expect(surfaces.some((surface) => surface.execution_kind === 'managed_http')).toBe(true)
+    expect(surfaces.some((surface) => surface.execution_kind === 'direct_http')).toBe(true)
+    expect(surfaces[0]?.surface_id).toBe('provider_surface.openai.managed_oauth')
   })
 
-  it('keeps oauth ocr mode on direct http surfaces until managed ocr runtime exists', () => {
+  it('allows direct and managed OCR surfaces in oauth mode', () => {
     const surfaces = getCompatibleProviderSurfaces(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderOAuth', 'ocr_api')
-    expect(surfaces.every((surface) => surface.execution_kind === 'direct_http')).toBe(true)
+    expect(surfaces.some((surface) => surface.execution_kind === 'direct_http')).toBe(true)
     expect(
-      surfaces.some((surface) => surface.surface_id === 'provider_surface.openai.managed_oauth'),
-    ).toBe(false)
+      surfaces.some((surface) => surface.surface_id === 'provider_surface.google.managed_oauth'),
+    ).toBe(true)
   })
 
   it('prefers higher-stability preferred surfaces within the same compatibility set', () => {

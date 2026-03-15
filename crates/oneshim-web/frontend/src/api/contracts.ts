@@ -792,6 +792,7 @@ export interface OAuthConnectionStatus {
 export interface SecretBackendCapabilities {
   os_secret_store_available: boolean
   oauth_available: boolean
+  oauth_provider_ids: string[]
   default_backend_kind: string
   byok_backend_kind: string
   fallback_backend_kind: string

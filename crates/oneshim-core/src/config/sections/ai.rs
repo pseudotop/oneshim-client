@@ -92,34 +92,21 @@ impl AiProviderConfig {
                 }
             }
             AiAccessMode::ProviderOAuth => {
-                // OAuth mode is currently implemented only for OpenAI-backed remote LLM calls.
-                if self.llm_provider != LlmProviderType::Remote {
-                    return Err(CoreError::Config(
-                        "ProviderOAuth mode requires llm_provider=Remote.".to_string(),
-                    ));
+                if self.llm_provider == LlmProviderType::Remote {
+                    validate_managed_or_remote_endpoint(
+                        self.llm_api.as_ref(),
+                        "llm_api",
+                        ProviderSurfaceTransport::ManagedOAuth,
+                        provider_surface_supports_llm,
+                    )?;
                 }
-
-                if let Some(endpoint) = self.llm_api.as_ref() {
-                    if endpoint.provider_type != AiProviderType::OpenAi {
-                        return Err(CoreError::Config(
-                            "ProviderOAuth mode currently supports only llm_api.provider_type=OpenAi."
-                                .to_string(),
-                        ));
-                    }
-                }
-
-                validate_non_http_surface_endpoint(
-                    self.llm_api.as_ref(),
-                    "llm_api",
-                    ProviderSurfaceTransport::ManagedOAuth,
-                    provider_surface_supports_llm,
-                )?;
-
-                // OCR still respects its own provider setting and may continue to use
-                // direct API configuration even while LLM uses managed OAuth.
-                // Managed OAuth OCR transport is not implemented yet.
                 if self.ocr_provider == OcrProviderType::Remote {
-                    validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;
+                    validate_managed_or_remote_endpoint(
+                        self.ocr_api.as_ref(),
+                        "ocr_api",
+                        ProviderSurfaceTransport::ManagedOAuth,
+                        provider_surface_supports_ocr,
+                    )?;
                 }
             }
         }
@@ -245,6 +232,39 @@ fn validate_non_http_surface_endpoint(
 }
 
 fn validate_subprocess_or_remote_endpoint(
+    endpoint: Option<&ExternalApiEndpoint>,
+    field_name: &str,
+    managed_transport: ProviderSurfaceTransport,
+    capability_check: fn(&str) -> bool,
+) -> Result<(), CoreError> {
+    let Some(endpoint) = endpoint else {
+        return Err(CoreError::Config(format!(
+            "`{field_name}` is required when a remote provider is selected."
+        )));
+    };
+
+    if let Some(surface_id) = endpoint
+        .surface_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Some(surface) = provider_surface_spec(surface_id) {
+            if surface.transport == managed_transport {
+                return validate_non_http_surface_endpoint(
+                    Some(endpoint),
+                    field_name,
+                    managed_transport,
+                    capability_check,
+                );
+            }
+        }
+    }
+
+    validate_remote_endpoint(Some(endpoint), field_name)
+}
+
+fn validate_managed_or_remote_endpoint(
     endpoint: Option<&ExternalApiEndpoint>,
     field_name: &str,
     managed_transport: ProviderSurfaceTransport,

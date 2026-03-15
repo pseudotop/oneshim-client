@@ -22,7 +22,7 @@ use oneshim_network::batch_uploader::BatchUploader;
 #[cfg(feature = "server")]
 use oneshim_network::http_client::HttpApiClient;
 #[cfg(feature = "server")]
-use oneshim_network::oauth::{provider_config::OAuthProviderConfig, OAuthClient};
+use oneshim_network::oauth::OAuthClient;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
@@ -47,6 +47,12 @@ use crate::cli_subscription_bridge::{
 use crate::feature_capabilities::FeatureCapabilityState;
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
+#[cfg(feature = "server")]
+use crate::oauth_provider_registry::configured_oauth_provider_ids;
+#[cfg(feature = "server")]
+use crate::oauth_provider_registry::{
+    configured_oauth_provider_configs, selected_managed_oauth_provider_ids,
+};
 use crate::provider_adapters::ExternalOcrPrivacyGuard;
 #[cfg(feature = "server")]
 use crate::provider_secret_backend::{
@@ -92,6 +98,7 @@ pub struct OAuthCoordinatorState(pub OAuthCoordinator);
 pub struct SecretBackendCapabilities {
     pub os_secret_store_available: bool,
     pub oauth_available: bool,
+    pub oauth_provider_ids: Vec<String>,
     pub default_backend_kind: String,
     pub byok_backend_kind: String,
     pub fallback_backend_kind: String,
@@ -147,7 +154,7 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
 
 #[cfg(feature = "server")]
 fn create_oauth_port(secret_store: Arc<dyn SecretStore>) -> Arc<dyn OAuthPort> {
-    let providers = vec![OAuthProviderConfig::openai_codex()];
+    let providers = configured_oauth_provider_configs();
     Arc::new(OAuthClient::new(secret_store, providers)) as Arc<dyn OAuthPort>
 }
 
@@ -161,20 +168,27 @@ fn preflight_provider_oauth_connection(
         return Ok(oauth_port);
     }
 
+    let selected_provider_ids = selected_managed_oauth_provider_ids(ai_config)?;
+    if selected_provider_ids.is_empty() {
+        return Ok(oauth_port);
+    }
+
     let oauth = oauth_port.ok_or_else(|| {
         oneshim_core::error::CoreError::Config(
             "ProviderOAuth mode requires an available OS secret store".to_string(),
         )
     })?;
-    let provider = OAuthProviderConfig::openai_codex();
-    let status = handle
-        .block_on(oauth.connection_status(&provider.provider_id))
-        .map_err(|e| oneshim_core::error::CoreError::Config(e.to_string()))?;
 
-    if !status.connected && !status.has_refresh_token {
-        return Err(oneshim_core::error::CoreError::Config(
-            "ProviderOAuth mode requires an active OAuth connection or a refresh token".to_string(),
-        ));
+    for provider_id in selected_provider_ids {
+        let status = handle
+            .block_on(oauth.connection_status(&provider_id))
+            .map_err(|e| oneshim_core::error::CoreError::Config(e.to_string()))?;
+
+        if !status.connected && !status.has_refresh_token {
+            return Err(oneshim_core::error::CoreError::Config(format!(
+                "ProviderOAuth mode requires an active OAuth connection or a refresh token for provider '{provider_id}'."
+            )));
+        }
     }
 
     Ok(Some(oauth))
@@ -214,12 +228,14 @@ fn credential_backend_kind_to_wire(value: CredentialBackendKind) -> &'static str
 
 fn secret_backend_capabilities(
     oauth_available: bool,
+    oauth_provider_ids: Vec<String>,
     provider_backend_kind: CredentialBackendKind,
     fallback_backend_kind: CredentialBackendKind,
 ) -> SecretBackendCapabilities {
     SecretBackendCapabilities {
         os_secret_store_available: oauth_available,
         oauth_available,
+        oauth_provider_ids,
         default_backend_kind: credential_backend_kind_to_wire(provider_backend_kind).to_string(),
         byok_backend_kind: credential_backend_kind_to_wire(provider_backend_kind).to_string(),
         fallback_backend_kind: credential_backend_kind_to_wire(fallback_backend_kind).to_string(),
@@ -642,6 +658,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let oauth_available = oauth_port.is_some();
     #[cfg(not(feature = "server"))]
     let oauth_available = false;
+    #[cfg(feature = "server")]
+    let oauth_provider_ids = configured_oauth_provider_ids();
+    #[cfg(not(feature = "server"))]
+    let oauth_provider_ids: Vec<String> = Vec::new();
 
     #[cfg(feature = "server")]
     let oauth_state = OAuthState(oauth_port);
@@ -656,12 +676,14 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "server")]
     let secret_backend_state = SecretBackendState(secret_backend_capabilities(
         oauth_available,
+        oauth_provider_ids,
         provider_secret_backend.backend_kind,
         provider_secret_backend.fallback_backend_kind,
     ));
     #[cfg(not(feature = "server"))]
     let secret_backend_state = SecretBackendState(secret_backend_capabilities(
         oauth_available,
+        oauth_provider_ids,
         CredentialBackendKind::Unavailable,
         CredentialBackendKind::LegacyConfig,
     ));

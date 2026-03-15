@@ -117,7 +117,21 @@ fn managed_oauth_feature(
     surface: &ProviderSurfaceSpec,
     secret_backend: &SecretBackendCapabilities,
 ) -> FeatureCapability {
-    let available = secret_backend.oauth_available && secret_backend.os_secret_store_available;
+    let provider_configured = secret_backend
+        .oauth_provider_ids
+        .iter()
+        .any(|provider_id| provider_id.eq_ignore_ascii_case(&surface.vendor_id));
+    let available = secret_backend.oauth_available
+        && secret_backend.os_secret_store_available
+        && provider_configured;
+    let status_reason =
+        if !secret_backend.os_secret_store_available || !secret_backend.oauth_available {
+            Some("os_secret_store_unavailable".to_string())
+        } else if !provider_configured {
+            Some("oauth_provider_not_configured".to_string())
+        } else {
+            None
+        };
     FeatureCapability {
         feature_id: surface.surface_id.clone(),
         maturity: feature_maturity(surface),
@@ -127,12 +141,11 @@ fn managed_oauth_feature(
             FeatureAvailability::Unavailable
         },
         preferred: surface.preferred_for_product_auth,
-        requires: vec!["os_secret_store".to_string()],
-        status_reason: if available {
-            None
-        } else {
-            Some("os_secret_store_unavailable".to_string())
-        },
+        requires: vec![
+            "os_secret_store".to_string(),
+            format!("oauth_provider:{}", surface.vendor_id),
+        ],
+        status_reason,
         status_copy_key: Some(surface_status_copy_key(
             &surface.surface_id,
             if available {
@@ -478,10 +491,17 @@ fn surface_status_copy_key(surface_id: &str, suffix: &str) -> String {
 mod tests {
     use super::*;
 
-    fn backend_caps(oauth_available: bool) -> SecretBackendCapabilities {
+    fn backend_caps(
+        oauth_available: bool,
+        oauth_provider_ids: &[&str],
+    ) -> SecretBackendCapabilities {
         SecretBackendCapabilities {
             os_secret_store_available: oauth_available,
             oauth_available,
+            oauth_provider_ids: oauth_provider_ids
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
             default_backend_kind: "os_secret_store".into(),
             byok_backend_kind: "os_secret_store".into(),
             fallback_backend_kind: "legacy_config".into(),
@@ -498,11 +518,30 @@ mod tests {
                 .find(|surface| surface.surface_id == "provider_surface.openai.managed_oauth")
                 .expect("openai managed oauth surface should exist")
                 .clone(),
-            &backend_caps(false),
+            &backend_caps(false, &["openai"]),
         );
         assert_eq!(feature.maturity, FeatureMaturity::Experimental);
         assert_eq!(feature.availability, FeatureAvailability::Unavailable);
         assert!(!feature.preferred);
+    }
+
+    #[test]
+    fn managed_oauth_feature_is_unavailable_when_provider_is_not_configured() {
+        let feature = managed_oauth_feature(
+            &provider_surface_catalog()
+                .expect("catalog should load")
+                .surfaces
+                .iter()
+                .find(|surface| surface.surface_id == "provider_surface.google.managed_oauth")
+                .expect("google managed oauth surface should exist")
+                .clone(),
+            &backend_caps(true, &["openai"]),
+        );
+        assert_eq!(feature.availability, FeatureAvailability::Unavailable);
+        assert_eq!(
+            feature.status_reason.as_deref(),
+            Some("oauth_provider_not_configured")
+        );
     }
 
     #[test]
@@ -639,7 +678,7 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_contains_expected_feature_ids() {
-        let snapshot = build_feature_capability_snapshot(&backend_caps(true)).await;
+        let snapshot = build_feature_capability_snapshot(&backend_caps(true, &["openai"])).await;
         let ids: Vec<&str> = snapshot
             .features
             .iter()

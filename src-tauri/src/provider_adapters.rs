@@ -41,6 +41,10 @@ use tracing::warn;
 
 use oneshim_api_contracts::provider_specs::SurfaceCapabilityKind;
 
+#[cfg(feature = "server")]
+use crate::oauth_provider_registry::{
+    managed_oauth_provider_id_for_endpoint, managed_oauth_transport_url_for_endpoint,
+};
 use crate::subprocess_provider::{
     cli_id_for_surface_id, preferred_cli_surface_for_config, probe_for_surface_id,
     probe_known_cli_surfaces, runtime_supported_for_surface, select_cli_surface_for_capability,
@@ -376,30 +380,49 @@ pub fn resolve_ai_provider_adapters(
             })
         }
         AiAccessMode::ProviderOAuth => {
-            // OAuth mode intentionally does NOT respect fallback_to_local for LLM.
-            // An authentication failure means the user has not connected via OAuth yet
-            // and should be prompted to do so — silently falling back to a local model
-            // would hide the misconfiguration.
             #[cfg(feature = "server")]
             {
-                if config.llm_provider != LlmProviderType::Remote {
-                    return Err(CoreError::Config(
-                        "ProviderOAuth mode requires llm_provider=Remote.".to_string(),
-                    ));
-                }
-                let oauth = oauth_port.ok_or_else(|| {
-                    CoreError::Config(
-                        "ProviderOAuth mode requires an initialized OAuth runtime.".to_string(),
-                    )
-                })?;
-                let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
-                    config,
-                    pii_filter_level,
-                    external_ocr_privacy_guard.clone(),
-                    secret_stores,
-                )?;
-                let (llm, llm_source, llm_fallback_reason) =
-                    resolve_llm_provider_oauth(config, oauth)?;
+                let ocr_uses_managed = matches!(
+                    configured_ocr_surface_transport(config),
+                    Some((_, ProviderSurfaceTransport::ManagedOAuth))
+                );
+                let llm_uses_managed = llm_uses_managed_oauth(config);
+                let oauth = if ocr_uses_managed || llm_uses_managed {
+                    Some(oauth_port.ok_or_else(|| {
+                        CoreError::Config(
+                            "ProviderOAuth mode requires an initialized OAuth runtime for managed provider surfaces.".to_string(),
+                        )
+                    })?)
+                } else {
+                    None
+                };
+                let (ocr, ocr_source, ocr_fallback_reason) = if ocr_uses_managed {
+                    resolve_ocr_provider_oauth(
+                        config,
+                        pii_filter_level,
+                        external_ocr_privacy_guard.clone(),
+                        oauth
+                            .clone()
+                            .expect("oauth runtime should exist for managed OCR"),
+                    )?
+                } else {
+                    resolve_ocr_provider(
+                        config,
+                        pii_filter_level,
+                        external_ocr_privacy_guard.clone(),
+                        secret_stores.clone(),
+                    )?
+                };
+                let (llm, llm_source, llm_fallback_reason) = if llm_uses_managed {
+                    resolve_llm_provider_oauth(
+                        config,
+                        oauth
+                            .clone()
+                            .expect("oauth runtime should exist for managed LLM"),
+                    )?
+                } else {
+                    resolve_llm_provider(config, secret_stores.clone())?
+                };
                 Ok(AiProviderAdapters {
                     ocr,
                     llm,
@@ -436,6 +459,32 @@ fn configured_ocr_surface_transport(
         .and_then(|surface_id| {
             provider_surface_spec(surface_id).map(|spec| (spec.id.to_string(), spec.transport))
         })
+}
+
+#[cfg(feature = "server")]
+fn configured_llm_surface_transport(
+    config: &AiProviderConfig,
+) -> Option<(String, ProviderSurfaceTransport)> {
+    config
+        .llm_api
+        .as_ref()
+        .and_then(|endpoint| endpoint.surface_id.as_deref())
+        .and_then(|surface_id| {
+            provider_surface_spec(surface_id).map(|spec| (spec.id.to_string(), spec.transport))
+        })
+}
+
+#[cfg(feature = "server")]
+fn llm_uses_managed_oauth(config: &AiProviderConfig) -> bool {
+    if config.llm_provider != LlmProviderType::Remote {
+        return false;
+    }
+
+    match configured_llm_surface_transport(config) {
+        Some((_, ProviderSurfaceTransport::ManagedOAuth)) => true,
+        Some(_) => false,
+        None => true,
+    }
 }
 
 fn unsupported_ocr_surface_runtime(
@@ -728,27 +777,27 @@ fn resolve_llm_provider(
 
 /// Resolve LLM provider using OAuth-managed credentials.
 ///
-/// Uses `OAuthProviderConfig::openai_codex()` defaults for endpoint/model
-/// when `config.llm_api` is not set. The credential's `api_base_url`
-/// overrides the endpoint at request time (ChatGPT OAuth uses a different
-/// API endpoint than the standard OpenAI API).
+/// Uses surface metadata to resolve the provider ID and authenticated request
+/// URL. OpenAI keeps a compatibility fallback when `llm_api` is omitted.
 #[cfg(feature = "server")]
 fn resolve_llm_provider_oauth(
     config: &AiProviderConfig,
     oauth_port: Arc<dyn OAuthPort>,
 ) -> LlmProviderResolution {
-    // Currently the only supported OAuth provider. When adding more providers,
-    // this should be derived from config (e.g., config.oauth_provider_id).
-    let provider_id = "openai".to_string();
-    let api_base_url = OAuthProviderConfig::openai_codex().api_base_url;
-
+    let endpoint = oauth_llm_endpoint(config);
+    let provider_id = managed_oauth_provider_id_for_endpoint(
+        &endpoint,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::Llm,
+    )?;
+    let api_base_url = managed_oauth_transport_url_for_endpoint(
+        &endpoint,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::Llm,
+    )?;
     let credential = CredentialSource::ManagedOAuth {
         provider_id,
         oauth_port,
         api_base_url,
     };
-
-    let endpoint = oauth_llm_endpoint(config);
 
     let provider = RemoteLlmProvider::new_with_credential(&endpoint, credential)?;
     debug!(
@@ -763,6 +812,45 @@ fn resolve_llm_provider_oauth(
 }
 
 #[cfg(feature = "server")]
+fn resolve_ocr_provider_oauth(
+    config: &AiProviderConfig,
+    _pii_filter_level: PiiFilterLevel,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    oauth_port: Arc<dyn OAuthPort>,
+) -> OcrProviderResolution {
+    let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
+    let provider_id = managed_oauth_provider_id_for_endpoint(
+        endpoint,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::Ocr,
+    )?;
+    let api_base_url = managed_oauth_transport_url_for_endpoint(
+        endpoint,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::Ocr,
+    )?;
+    let credential = CredentialSource::ManagedOAuth {
+        provider_id,
+        oauth_port,
+        api_base_url,
+    };
+    let privacy_guard = external_ocr_privacy_guard.ok_or_else(|| {
+        CoreError::Config("Remote OCR provider requires a runtime privacy guard".to_string())
+    })?;
+    let remote = Arc::new(RemoteOcrProvider::new_with_credential(
+        endpoint, credential,
+    )?) as Arc<dyn OcrProvider>;
+    Ok((
+        Arc::new(GuardedOcrProvider::new(
+            remote,
+            privacy_guard,
+            config.allow_unredacted_external_ocr,
+            config.ocr_validation.clone(),
+        )) as Arc<dyn OcrProvider>,
+        ProviderSource::OAuth,
+        None,
+    ))
+}
+
+#[cfg(feature = "server")]
 fn oauth_llm_endpoint(config: &AiProviderConfig) -> ExternalApiEndpoint {
     let mut endpoint = config.llm_api.clone().unwrap_or(ExternalApiEndpoint {
         endpoint: OAuthProviderConfig::OPENAI_API_BASE_URL.to_string(),
@@ -770,7 +858,7 @@ fn oauth_llm_endpoint(config: &AiProviderConfig) -> ExternalApiEndpoint {
         model: Some(DEFAULT_OPENAI_OAUTH_MODEL.to_string()),
         timeout_secs: 30,
         provider_type: AiProviderType::OpenAi,
-        surface_id: None,
+        surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
         credential: None,
     });
 
@@ -1480,7 +1568,7 @@ mod tests {
     }
 
     #[test]
-    fn oauth_mode_rejects_local_llm_configuration() {
+    fn oauth_mode_allows_local_llm_when_no_managed_llm_surface_is_selected() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderOAuth,
             llm_provider: LlmProviderType::Local,
@@ -1494,10 +1582,11 @@ mod tests {
             None,
             None,
             Some(oauth),
+        )
+        .expect(
+            "ProviderOAuth mode should allow local LLM when no managed LLM surface is selected",
         );
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert!(err.to_string().contains("llm_provider=Remote"));
+        assert_eq!(result.llm_source, ProviderSource::Local);
     }
 
     #[test]
@@ -1549,6 +1638,49 @@ mod tests {
             .as_deref()
             .is_some_and(|message| message.contains("managed_oauth")));
         assert!(!ocr.is_external());
+    }
+
+    #[test]
+    fn oauth_mode_resolves_google_managed_ocr_surface() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Local,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: "https://vision.googleapis.com/v1/images:annotate".to_string(),
+                api_key: String::new(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::Google,
+                surface_id: Some("provider_surface.google.managed_oauth".to_string()),
+                credential: None,
+            }),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let oauth = Arc::new(FakeOAuthPort { connected: true }) as Arc<dyn OAuthPort>;
+        let (privacy_guard, _tempdir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                app_name: "Terminal".to_string(),
+                title: "OCR".to_string(),
+                pid: 4242,
+                bounds: None,
+            }),
+            None,
+        );
+        let adapters = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            Some(privacy_guard),
+            None,
+            Some(oauth),
+        )
+        .expect("Google OCR managed OAuth should resolve when an OAuth port is available");
+
+        assert_eq!(adapters.ocr_source, ProviderSource::OAuth);
+        assert!(adapters.ocr.is_external());
     }
 
     #[test]

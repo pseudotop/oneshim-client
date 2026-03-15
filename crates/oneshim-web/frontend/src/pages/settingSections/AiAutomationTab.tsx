@@ -270,24 +270,35 @@ export default function AiAutomationTab({
   const isOAuthAccessMode = isProviderOAuthAccessMode(formData.ai_provider.access_mode)
   const showOcrRemoteSection = formData.ai_provider.ocr_provider === 'Remote'
   const showLlmSurfaceSection = formData.ai_provider.llm_provider === 'Remote' || isCliAccessMode
-  const oauthSurface =
-    currentLlmSurface?.execution_kind === 'managed_http' ? currentLlmSurface : undefined
-  const preferredCliSurface = preferredRelatedProviderSurfaceFromList(
-    allProviderSurfaces,
-    oauthSurface,
-    'subprocess_cli',
-    featureCapabilities,
-  )
   const currentLlmFeature = currentLlmSurface
     ? findFeatureCapability(featureCapabilities, currentLlmSurface.surface_id)
     : null
   const currentLlmMaturity = providerSurfaceMaturity(currentLlmSurface, featureCapabilities)
   const currentLlmRequirements = currentLlmFeature?.requires ?? []
-  const preferredCliAvailability = providerSurfaceAvailability(preferredCliSurface, featureCapabilities)
-  const showPreferredCliCta =
-    Boolean(preferredCliSurface) &&
-    preferredCliAvailability !== 'unavailable' &&
-    currentLlmSurface?.surface_id !== preferredCliSurface?.surface_id
+  const oauthPanels = ([
+    { endpointKind: 'llm_api' as const, surface: currentLlmSurface },
+    { endpointKind: 'ocr_api' as const, surface: currentOcrSurface },
+  ])
+    .filter((entry) => entry.surface?.execution_kind === 'managed_http')
+    .map((entry) => {
+      const preferredCliSurface = preferredRelatedProviderSurfaceFromList(
+        allProviderSurfaces,
+        entry.surface,
+        'subprocess_cli',
+        featureCapabilities,
+      )
+      const preferredCliAvailability = providerSurfaceAvailability(preferredCliSurface, featureCapabilities)
+      return {
+        endpointKind: entry.endpointKind,
+        oauthSurface: entry.surface!,
+        preferredCliSurface,
+        showPreferredCliCta:
+          Boolean(preferredCliSurface) &&
+          preferredCliAvailability !== 'unavailable' &&
+          entry.surface?.surface_id !== preferredCliSurface?.surface_id,
+      }
+    })
+  const currentLlmPreferredCli = oauthPanels.find((entry) => entry.endpointKind === 'llm_api')
   const currentOcrUsesNoAuth = surfaceUsesNoAuth(currentOcrSurface, 'ocr_api')
   const currentLlmUsesNoAuth = surfaceUsesNoAuth(currentLlmSurface, 'llm_api')
   const currentOcrSupportsModelSelection = surfaceSupportsModelSelection(currentOcrSurface, 'ocr_api')
@@ -352,10 +363,13 @@ export default function AiAutomationTab({
   const currentLlmAvailability = surfaceAvailabilityForEndpoint(currentLlmSurface, 'llm_api')
   const currentLlmStatusCopyKey = surfaceStatusCopyKeyForEndpoint(currentLlmSurface, 'llm_api')
 
-  const handleSwitchToPreferredCli = () => {
+  const handleSwitchToPreferredCli = (
+    endpointKind: EndpointSurfaceKind,
+    preferredCliSurface: ProviderSurfaceSpec | undefined,
+  ) => {
     onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
     if (preferredCliSurface) {
-      onProviderSurfaceChange('llm_api', preferredCliSurface.surface_id)
+      onProviderSurfaceChange(endpointKind, preferredCliSurface.surface_id)
     }
   }
 
@@ -615,7 +629,7 @@ export default function AiAutomationTab({
                 </div>
               )}
 
-              {showPreferredCliCta && preferredCliSurface && (
+              {currentLlmPreferredCli?.showPreferredCliCta && currentLlmPreferredCli.preferredCliSurface && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-muted bg-surface-elevated/70 p-3">
                   <div className="space-y-1">
                     <p className="font-medium text-content-strong text-sm">
@@ -623,11 +637,21 @@ export default function AiAutomationTab({
                     </p>
                     <p className="text-content-secondary text-sm">
                       {t('settingsAutomation.preferredCliDescription', {
-                        surface: preferredCliSurface.display_name,
+                        surface: currentLlmPreferredCli.preferredCliSurface.display_name,
                       })}
                     </p>
                   </div>
-                  <Button type="button" variant="secondary" size="sm" onClick={handleSwitchToPreferredCli}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      handleSwitchToPreferredCli(
+                        currentLlmPreferredCli.endpointKind,
+                        currentLlmPreferredCli.preferredCliSurface,
+                      )
+                    }
+                  >
                     {t('settingsAutomation.switchToPreferredCli')}
                   </Button>
                 </div>
@@ -913,17 +937,31 @@ export default function AiAutomationTab({
             onChange={(value) => onAiProviderChange('fallback_to_local', value)}
           />
 
-          {isOAuthAccessMode && oauthSurface && (
-            <OAuthConnectionPanel
-              providerId={oauthSurface.vendor_id}
-              providerName={oauthSurface.provider_type === 'OpenAi' ? 'OpenAI' : oauthSurface.display_name}
-              oauthSurface={oauthSurface}
-              preferredCliSurface={preferredCliSurface}
-              featureSnapshot={featureCapabilities}
-              secretBackendCapabilities={secretBackendCapabilities}
-              onUsePreferredCli={showPreferredCliCta ? handleSwitchToPreferredCli : undefined}
-            />
-          )}
+          {isOAuthAccessMode &&
+            oauthPanels.map((panel) => (
+              <OAuthConnectionPanel
+                key={`${panel.endpointKind}:${panel.oauthSurface.surface_id}`}
+                providerId={panel.oauthSurface.vendor_id}
+                providerName={
+                  panel.oauthSurface.provider_type === 'OpenAi'
+                    ? 'OpenAI'
+                    : panel.oauthSurface.display_name
+                }
+                oauthSurface={panel.oauthSurface}
+                preferredCliSurface={panel.preferredCliSurface}
+                featureSnapshot={featureCapabilities}
+                secretBackendCapabilities={secretBackendCapabilities}
+                onUsePreferredCli={
+                  panel.showPreferredCliCta
+                    ? () =>
+                        handleSwitchToPreferredCli(
+                          panel.endpointKind,
+                          panel.preferredCliSurface,
+                        )
+                    : undefined
+                }
+              />
+            ))}
 
           {showOcrRemoteSection && (
             <div className="space-y-3 rounded-lg border border-muted p-4">

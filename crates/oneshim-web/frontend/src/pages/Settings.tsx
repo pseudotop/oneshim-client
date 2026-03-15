@@ -351,7 +351,7 @@ export default function Settings() {
       aiProvider.ocr_api = normalizeEndpointSettings(aiProvider.access_mode, 'ocr_api', aiProvider.ocr_api)
     }
 
-    if (aiProvider.llm_provider === 'Remote' || aiProvider.access_mode === 'ProviderSubscriptionCli' || aiProvider.access_mode === 'ProviderOAuth') {
+    if (aiProvider.llm_provider === 'Remote') {
       aiProvider.llm_api = normalizeEndpointSettings(aiProvider.access_mode, 'llm_api', aiProvider.llm_api)
     }
 
@@ -442,8 +442,9 @@ export default function Settings() {
     }
 
     if (nextAccessMode === 'ProviderOAuth') {
-      nextAiProvider.llm_provider = 'Remote'
-      nextAiProvider.llm_api = normalizeEndpointSettings(nextAccessMode, 'llm_api', nextAiProvider.llm_api)
+      if (nextAiProvider.llm_provider === 'Remote') {
+        nextAiProvider.llm_api = normalizeEndpointSettings(nextAccessMode, 'llm_api', nextAiProvider.llm_api)
+      }
       if (nextAiProvider.ocr_provider === 'Remote') {
         nextAiProvider.ocr_api = normalizeEndpointSettings(nextAccessMode, 'ocr_api', nextAiProvider.ocr_api)
       }

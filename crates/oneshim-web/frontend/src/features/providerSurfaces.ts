@@ -42,7 +42,7 @@ function compatibleExecutionKinds(accessMode: string | null | undefined, endpoin
     }
 
     if (accessMode === 'ProviderOAuth') {
-      return ['direct_http']
+      return ['managed_http', 'direct_http']
     }
 
     return ['direct_http']
@@ -53,7 +53,7 @@ function compatibleExecutionKinds(accessMode: string | null | undefined, endpoin
   }
 
   if (accessMode === 'ProviderOAuth') {
-    return ['managed_http']
+    return ['managed_http', 'direct_http']
   }
 
   return ['direct_http']
