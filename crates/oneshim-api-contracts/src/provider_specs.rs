@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use oneshim_core::config::AiProviderType;
@@ -160,8 +161,175 @@ fn catalog() -> Result<&'static ProviderSpecCatalog, String> {
 }
 
 fn load_spec_catalog() -> Result<ProviderSpecCatalog, String> {
-    serde_json::from_str::<ProviderSpecCatalog>(PROVIDER_SPECS_JSON)
-        .map_err(|e| format!("Failed to parse provider spec catalog: {e}"))
+    let catalog = serde_json::from_str::<ProviderSpecCatalog>(PROVIDER_SPECS_JSON)
+        .map_err(|e| format!("Failed to parse provider spec catalog: {e}"))?;
+    validate_spec_catalog(&catalog)?;
+    Ok(catalog)
+}
+
+fn validate_spec_catalog(catalog: &ProviderSpecCatalog) -> Result<(), String> {
+    if catalog.providers.is_empty() {
+        return Err("Provider spec catalog must contain at least one provider.".to_string());
+    }
+
+    let mut provider_types = HashSet::new();
+    let mut aliases = HashSet::new();
+
+    for provider in &catalog.providers {
+        let provider_key = provider.provider_type.trim().to_ascii_lowercase();
+        if provider_key.is_empty() {
+            return Err("Provider spec contains an empty provider_type.".to_string());
+        }
+        if !provider_types.insert(provider_key.clone()) {
+            return Err(format!(
+                "Provider spec catalog contains duplicate provider_type '{}'.",
+                provider.provider_type
+            ));
+        }
+
+        if provider.display_name.trim().is_empty() {
+            return Err(format!(
+                "Provider spec '{}' is missing a display_name.",
+                provider.provider_type
+            ));
+        }
+        if provider.references.is_empty() {
+            return Err(format!(
+                "Provider spec '{}' must include at least one reference URL.",
+                provider.provider_type
+            ));
+        }
+
+        for alias in &provider.aliases {
+            let normalized = alias.trim().to_ascii_lowercase();
+            if normalized.is_empty() {
+                return Err(format!(
+                    "Provider spec '{}' contains an empty alias.",
+                    provider.provider_type
+                ));
+            }
+            if normalized == provider_key {
+                continue;
+            }
+            if !aliases.insert(normalized.clone()) {
+                return Err(format!(
+                    "Provider spec alias '{}' is defined more than once.",
+                    alias
+                ));
+            }
+        }
+
+        validate_transport_spec(
+            &provider.provider_type,
+            "llm",
+            &provider.transports.llm.url,
+            &provider.transports.llm.auth_scheme,
+            Some(&provider.transports.llm.request_shape),
+        )?;
+        validate_transport_spec(
+            &provider.provider_type,
+            "ocr",
+            &provider.transports.ocr.url,
+            &provider.transports.ocr.auth_scheme,
+            Some(&provider.transports.ocr.request_shape),
+        )?;
+        validate_transport_spec(
+            &provider.provider_type,
+            "model_catalog",
+            &provider.transports.model_catalog.url,
+            &provider.transports.model_catalog.auth_scheme,
+            None,
+        )?;
+
+        if !provider.transports.model_catalog.ocr_supported
+            && provider
+                .transports
+                .model_catalog
+                .ocr_notice
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or("")
+                .is_empty()
+        {
+            return Err(format!(
+                "Provider spec '{}' must include an OCR notice when model catalog OCR is unsupported.",
+                provider.provider_type
+            ));
+        }
+
+        if provider.defaults.llm_models.is_empty() {
+            return Err(format!(
+                "Provider spec '{}' must define at least one default LLM model.",
+                provider.provider_type
+            ));
+        }
+
+        validate_parameter_profile(&provider.provider_type, "llm", &provider.parameters.llm)?;
+        validate_parameter_profile(&provider.provider_type, "ocr", &provider.parameters.ocr)?;
+    }
+
+    Ok(())
+}
+
+fn validate_transport_spec(
+    provider_type: &str,
+    transport_name: &str,
+    url: &str,
+    auth_scheme: &str,
+    request_shape: Option<&str>,
+) -> Result<(), String> {
+    if url.trim().is_empty() {
+        return Err(format!(
+            "Provider spec '{}' transport '{}' is missing a URL.",
+            provider_type, transport_name
+        ));
+    }
+    if !url.trim().starts_with("https://") {
+        return Err(format!(
+            "Provider spec '{}' transport '{}' must use an https URL.",
+            provider_type, transport_name
+        ));
+    }
+    parse_auth_scheme(auth_scheme)?;
+    if let Some(shape) = request_shape {
+        parse_request_shape(shape)?;
+    }
+    Ok(())
+}
+
+fn validate_parameter_profile(
+    provider_type: &str,
+    profile_name: &str,
+    profile: &crate::ai_providers::ProviderParameterProfile,
+) -> Result<(), String> {
+    let supported: HashSet<String> = profile
+        .supported
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .collect();
+    let unsupported: HashSet<String> = profile
+        .unsupported
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .collect();
+
+    if supported.iter().any(|value| value.is_empty())
+        || unsupported.iter().any(|value| value.is_empty())
+    {
+        return Err(format!(
+            "Provider spec '{}' profile '{}' contains an empty parameter entry.",
+            provider_type, profile_name
+        ));
+    }
+
+    if let Some(duplicate) = supported.intersection(&unsupported).next() {
+        return Err(format!(
+            "Provider spec '{}' profile '{}' lists '{}' as both supported and unsupported.",
+            provider_type, profile_name, duplicate
+        ));
+    }
+
+    Ok(())
 }
 
 fn parse_auth_scheme(raw: &str) -> Result<ProviderAuthScheme, String> {
@@ -208,6 +376,7 @@ fn parse_provider_type_name(raw: &str) -> Option<AiProviderType> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai_providers::ProviderParameterProfile;
 
     #[test]
     fn loads_provider_specs() {
@@ -239,5 +408,30 @@ mod tests {
         let shape = model_catalog_response_shape(AiProviderType::Google)
             .expect("catalog shape should resolve");
         assert_eq!(shape, ModelCatalogResponseShape::GoogleModels);
+    }
+
+    #[test]
+    fn rejects_duplicate_aliases() {
+        let mut catalog = list_provider_specs().expect("provider specs should load");
+        catalog.providers[1].aliases = vec!["shared".to_string()];
+        catalog.providers[2].aliases = vec!["shared".to_string()];
+
+        let err = validate_spec_catalog(&catalog).expect_err("duplicate aliases should fail");
+        assert!(err.contains("defined more than once"));
+    }
+
+    #[test]
+    fn rejects_overlapping_supported_and_unsupported_parameters() {
+        let err = validate_parameter_profile(
+            "OpenAi",
+            "llm",
+            &ProviderParameterProfile {
+                supported: vec!["temperature".to_string()],
+                unsupported: vec!["temperature".to_string()],
+                notes: Vec::new(),
+            },
+        )
+        .expect_err("overlapping parameters should fail");
+        assert!(err.contains("both supported and unsupported"));
     }
 }
