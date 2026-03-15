@@ -1,4 +1,5 @@
 import { DEFAULT_WEB_PORT } from '../constants'
+import { DEFAULT_PROVIDER_PRESET_CATALOG } from './defaultProviderPresets'
 import type {
   AppSettings,
   AutomationSettings,
@@ -11,7 +12,6 @@ import type {
   FocusMetricsResponse,
   LocalSuggestion,
   PoliciesInfo,
-  ProviderPresetCatalog,
   ReportResponse,
   RestoreResult,
   SearchResponse,
@@ -26,58 +26,6 @@ import type {
 const API_BASE = '/api'
 const STANDALONE_STORAGE_KEY = 'oneshim-web-standalone-mode'
 const STANDALONE_QUERY_KEY = 'standalone'
-const DEFAULT_PROVIDER_PRESETS: ProviderPresetCatalog = {
-  version: 2,
-  updated_at: '2026-02-25T09:20:00Z',
-  providers: [
-    {
-      provider_type: 'Anthropic',
-      aliases: ['anthropic'],
-      display_name: 'Anthropic',
-      llm_endpoint: 'https://api.anthropic.com/v1/messages',
-      ocr_endpoint: 'https://api.anthropic.com/v1/messages',
-      model_catalog_endpoint: 'https://api.anthropic.com/v1/models',
-      ocr_model_catalog_supported: true,
-      llm_models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
-      ocr_models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
-    },
-    {
-      provider_type: 'OpenAi',
-      aliases: ['openai', 'open_ai', 'open-ai', 'openai-compatible'],
-      display_name: 'OpenAI',
-      llm_endpoint: 'https://api.openai.com/v1/chat/completions',
-      ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
-      model_catalog_endpoint: 'https://api.openai.com/v1/models',
-      ocr_model_catalog_supported: true,
-      llm_models: ['gpt-4.1', 'gpt-4.1-mini', 'o3-mini'],
-      ocr_models: ['gpt-4.1', 'gpt-4.1-mini'],
-    },
-    {
-      provider_type: 'Google',
-      aliases: ['google', 'gemini'],
-      display_name: 'Google',
-      llm_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-      ocr_endpoint: 'https://vision.googleapis.com/v1/images:annotate',
-      model_catalog_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
-      ocr_model_catalog_supported: false,
-      ocr_model_catalog_notice: 'Google Vision OCR endpoint does not expose a selectable model catalog.',
-      llm_models: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-pro'],
-      ocr_models: [],
-    },
-    {
-      provider_type: 'Generic',
-      aliases: ['generic'],
-      display_name: 'Generic',
-      llm_endpoint: 'https://api.openai.com/v1/chat/completions',
-      ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
-      model_catalog_endpoint: 'https://api.openai.com/v1/models',
-      ocr_model_catalog_supported: true,
-      llm_models: ['gpt-4.1-mini', 'o3-mini'],
-      ocr_models: ['gpt-4.1-mini'],
-    },
-  ],
-}
-
 function hasWindow(): boolean {
   return typeof window !== 'undefined'
 }
@@ -616,7 +564,7 @@ export async function handleStandaloneRequest(
     return jsonResponse(state.settings)
   }
   if (path === '/api/ai/providers/presets' && method === 'GET') {
-    return jsonResponse(DEFAULT_PROVIDER_PRESETS)
+    return jsonResponse(DEFAULT_PROVIDER_PRESET_CATALOG)
   }
   if (path === '/api/ai/providers/models' && method === 'POST') {
     const payload = body as { provider_type?: string } | null

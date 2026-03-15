@@ -32,6 +32,7 @@ import {
   type UpdateStatus,
   updateSettings,
 } from '../api/client'
+import { DEFAULT_PROVIDER_PRESETS } from '../api/defaultProviderPresets'
 import { isStandaloneModeEnabled } from '../api/standalone'
 import { Button, Spinner, Tabs } from '../components/ui'
 import { useToast } from '../hooks/useToast'
@@ -39,54 +40,6 @@ import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { IS_TAURI } from '../utils/platform'
 import { AiAutomationTab, DataStorageTab, GeneralTab, MonitoringTab, PrivacyTab } from './settingSections'
-
-const DEFAULT_PROVIDER_PRESETS: ProviderPreset[] = [
-  {
-    provider_type: 'Anthropic',
-    aliases: ['anthropic'],
-    display_name: 'Anthropic',
-    llm_endpoint: 'https://api.anthropic.com/v1/messages',
-    ocr_endpoint: 'https://api.anthropic.com/v1/messages',
-    model_catalog_endpoint: 'https://api.anthropic.com/v1/models',
-    ocr_model_catalog_supported: true,
-    llm_models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
-    ocr_models: ['claude-sonnet-4-5', 'claude-opus-4-1'],
-  },
-  {
-    provider_type: 'OpenAi',
-    aliases: ['openai', 'open_ai', 'open-ai', 'openai-compatible'],
-    display_name: 'OpenAI',
-    llm_endpoint: 'https://api.openai.com/v1/chat/completions',
-    ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
-    model_catalog_endpoint: 'https://api.openai.com/v1/models',
-    ocr_model_catalog_supported: true,
-    llm_models: ['gpt-4.1', 'gpt-4.1-mini', 'o3-mini'],
-    ocr_models: ['gpt-4.1', 'gpt-4.1-mini'],
-  },
-  {
-    provider_type: 'Google',
-    aliases: ['google', 'gemini'],
-    display_name: 'Google',
-    llm_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
-    ocr_endpoint: 'https://vision.googleapis.com/v1/images:annotate',
-    model_catalog_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
-    ocr_model_catalog_supported: false,
-    ocr_model_catalog_notice: 'Google Vision OCR endpoint does not expose a selectable model catalog.',
-    llm_models: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.5-pro'],
-    ocr_models: [],
-  },
-  {
-    provider_type: 'Generic',
-    aliases: ['generic'],
-    display_name: 'Generic',
-    llm_endpoint: 'https://api.openai.com/v1/chat/completions',
-    ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
-    model_catalog_endpoint: 'https://api.openai.com/v1/models',
-    ocr_model_catalog_supported: true,
-    llm_models: ['gpt-4.1-mini', 'o3-mini'],
-    ocr_models: ['gpt-4.1-mini'],
-  },
-]
 
 type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'data'
 
