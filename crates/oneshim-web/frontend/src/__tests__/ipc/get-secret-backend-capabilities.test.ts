@@ -12,8 +12,8 @@ describe('CRT-MK-M050: get_secret_backend_capabilities IPC contract', () => {
           os_secret_store_available: true,
           oauth_available: true,
           default_backend_kind: 'os_secret_store',
-          byok_backend_kind: 'legacy_config',
-          fallback_backend_kind: 'unavailable',
+          byok_backend_kind: 'os_secret_store',
+          fallback_backend_kind: 'legacy_config',
         }
       }
     })
@@ -29,7 +29,7 @@ describe('CRT-MK-M050: get_secret_backend_capabilities IPC contract', () => {
     expect(result.os_secret_store_available).toBe(true)
     expect(result.oauth_available).toBe(true)
     expect(result.default_backend_kind).toBe('os_secret_store')
-    expect(result.byok_backend_kind).toBe('legacy_config')
-    expect(result.fallback_backend_kind).toBe('unavailable')
+    expect(result.byok_backend_kind).toBe('os_secret_store')
+    expect(result.fallback_backend_kind).toBe('legacy_config')
   })
 })
