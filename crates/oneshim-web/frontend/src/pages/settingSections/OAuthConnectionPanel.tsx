@@ -59,6 +59,7 @@ interface OAuthConnectionPanelProps {
   preferredCliSurface?: ProviderSurfaceSpec
   featureSnapshot?: FeatureCapabilitySnapshot | null
   secretBackendCapabilities?: SecretBackendCapabilities | null
+  onUsePreferredCli?: () => void
 }
 
 export default function OAuthConnectionPanel({
@@ -68,6 +69,7 @@ export default function OAuthConnectionPanel({
   preferredCliSurface,
   featureSnapshot,
   secretBackendCapabilities,
+  onUsePreferredCli,
 }: OAuthConnectionPanelProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<PanelState>({ phase: 'loading' })
@@ -251,6 +253,11 @@ export default function OAuthConnectionPanel({
             </span>
           </div>
           <p className="text-content-secondary text-xs">{preferredCliMessage}</p>
+          {onUsePreferredCli && preferredCliSurface && (
+            <Button type="button" variant="secondary" size="sm" onClick={onUsePreferredCli}>
+              {t('settingsOAuth.switchToCli', { surface: preferredCliSurface.display_name })}
+            </Button>
+          )}
         </div>
       )}
 

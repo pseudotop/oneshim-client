@@ -13,6 +13,7 @@ import type {
 } from '../../api/client'
 import { Badge, Button, Card, CardTitle, Input, Select } from '../../components/ui'
 import {
+  findFeatureCapability,
   maturityBadgeColor,
   providerSurfaceAvailability,
   providerSurfaceMaturity,
@@ -104,6 +105,36 @@ function supportsProjectionToggle(settings: ExternalApiSettings | null | undefin
   )
 }
 
+function executionKindLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  executionKind: string | null | undefined,
+): string {
+  switch ((executionKind ?? '').trim()) {
+    case 'managed_http':
+      return t('settingsAutomation.executionKindManagedHttp')
+    case 'subprocess_cli':
+      return t('settingsAutomation.executionKindSubprocessCli')
+    case 'direct_http':
+    default:
+      return t('settingsAutomation.executionKindDirectHttp')
+  }
+}
+
+function requirementLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  requirement: string,
+): string {
+  if (requirement === 'os_secret_store') {
+    return t('settingsAutomation.requirementOsSecretStore')
+  }
+
+  if (requirement.startsWith('cli:')) {
+    return t('settingsAutomation.requirementCli', { tool: requirement.slice(4) })
+  }
+
+  return requirement
+}
+
 interface AiAutomationTabProps extends SettingsFormTabProps {
   allProviderSurfaces: ProviderSurfaceSpec[]
   providerSurfaceOptions: Record<'ocr_api' | 'llm_api', ProviderSurfaceSpec[]>
@@ -168,6 +199,22 @@ export default function AiAutomationTab({
     'subprocess_cli',
     featureCapabilities,
   )
+  const currentLlmFeature = currentLlmSurface
+    ? findFeatureCapability(featureCapabilities, currentLlmSurface.surface_id)
+    : null
+  const currentLlmAvailability = providerSurfaceAvailability(currentLlmSurface, featureCapabilities)
+  const currentLlmMaturity = providerSurfaceMaturity(currentLlmSurface, featureCapabilities)
+  const currentLlmStatusCopyKey = providerSurfaceStatusCopyKey(currentLlmSurface, featureCapabilities)
+  const currentLlmRequirements = currentLlmFeature?.requires ?? []
+  const showPreferredCliCta =
+    Boolean(preferredCliSurface) && currentLlmSurface?.surface_id !== preferredCliSurface?.surface_id
+
+  const handleSwitchToPreferredCli = () => {
+    onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
+    if (preferredCliSurface) {
+      onProviderSurfaceChange('llm_api', preferredCliSurface.surface_id)
+    }
+  }
 
   const accessModeOptions = [
     {
@@ -344,6 +391,84 @@ export default function AiAutomationTab({
             </div>
             <p className="text-content-secondary text-sm">{currentAccessModeOption.description}</p>
           </div>
+
+          {currentLlmSurface && (
+            <div className="space-y-3 rounded-lg border border-muted bg-surface-muted/80 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="font-medium text-content-strong text-sm">
+                    {t('settingsAutomation.pathSummaryTitle')}
+                  </p>
+                  <p className="text-content-secondary text-sm">
+                    {t('settingsAutomation.pathSummarySurface', { surface: currentLlmSurface.display_name })}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge color={maturityBadgeColor(currentLlmMaturity)} size="sm">
+                    {t(`featureCapability.maturity.${currentLlmMaturity}`)}
+                  </Badge>
+                  {currentLlmSurface.preferred_for_product_auth && (
+                    <Badge color="info" size="sm">
+                      {t('featureCapability.preferredPath')}
+                    </Badge>
+                  )}
+                  <Badge color={currentLlmAvailability === 'available' ? 'success' : 'warning'} size="sm">
+                    {t(`featureCapability.availability.${currentLlmAvailability}`)}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <p className="text-content-muted text-xs">{t('settingsAutomation.pathExecutionLabel')}</p>
+                  <p className="text-content-secondary text-sm">
+                    {executionKindLabel(t, currentLlmSurface.execution_kind)}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-content-muted text-xs">{t('settingsAutomation.pathRequirementsLabel')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {currentLlmRequirements.length > 0 ? (
+                      currentLlmRequirements.map((requirement) => (
+                        <Badge key={requirement} color="default" size="sm">
+                          {requirementLabel(t, requirement)}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-content-secondary text-sm">
+                        {t('settingsAutomation.pathRequirementsNone')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {currentLlmStatusCopyKey && (
+                <div className="space-y-1">
+                  <p className="text-content-muted text-xs">{t('settingsAutomation.pathNextStepLabel')}</p>
+                  <p className="text-content-secondary text-sm">{t(currentLlmStatusCopyKey)}</p>
+                </div>
+              )}
+
+              {showPreferredCliCta && preferredCliSurface && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-muted bg-surface-elevated/70 p-3">
+                  <div className="space-y-1">
+                    <p className="font-medium text-content-strong text-sm">
+                      {t('settingsAutomation.preferredCliTitle')}
+                    </p>
+                    <p className="text-content-secondary text-sm">
+                      {t('settingsAutomation.preferredCliDescription', {
+                        surface: preferredCliSurface.display_name,
+                      })}
+                    </p>
+                  </div>
+                  <Button type="button" variant="secondary" size="sm" onClick={handleSwitchToPreferredCli}>
+                    {t('settingsAutomation.switchToPreferredCli')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
 
           {isCliAccessMode ? (
             <div className="rounded-lg border border-muted bg-surface-muted/80 p-4 text-content-secondary text-sm">
@@ -635,6 +760,7 @@ export default function AiAutomationTab({
               preferredCliSurface={preferredCliSurface}
               featureSnapshot={featureCapabilities}
               secretBackendCapabilities={secretBackendCapabilities}
+              onUsePreferredCli={showPreferredCliCta ? handleSwitchToPreferredCli : undefined}
             />
           )}
 
