@@ -152,6 +152,7 @@
       "credential_kind": "managed_oauth",
       "stability": "experimental",
       "preferred_for_product_auth": false,
+      "related_surface_ids": ["provider_surface.openai.subprocess_cli"],
       "catalog_strategy": "none",
       "supports": {
         "llm": true,

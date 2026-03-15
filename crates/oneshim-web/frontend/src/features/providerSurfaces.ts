@@ -120,12 +120,61 @@ export function providerSurfaceById(
   catalog: ProviderSurfaceCatalog,
   surfaceId: string | null | undefined,
 ): ProviderSurfaceSpec | undefined {
+  return providerSurfaceByIdFromList(catalog.surfaces, surfaceId)
+}
+
+export function providerSurfaceByIdFromList(
+  surfaces: ProviderSurfaceSpec[],
+  surfaceId: string | null | undefined,
+): ProviderSurfaceSpec | undefined {
   const normalized = (surfaceId ?? '').trim().toLowerCase()
   if (!normalized) {
     return undefined
   }
 
-  return catalog.surfaces.find((surface) => surface.surface_id.toLowerCase() === normalized)
+  return surfaces.find((surface) => surface.surface_id.toLowerCase() === normalized)
+}
+
+export function relatedProviderSurfaces(
+  catalog: ProviderSurfaceCatalog,
+  surface: ProviderSurfaceSpec | null | undefined,
+): ProviderSurfaceSpec[] {
+  return relatedProviderSurfacesFromList(catalog.surfaces, surface)
+}
+
+export function relatedProviderSurfacesFromList(
+  surfaces: ProviderSurfaceSpec[],
+  surface: ProviderSurfaceSpec | null | undefined,
+): ProviderSurfaceSpec[] {
+  if (!surface) {
+    return []
+  }
+
+  return surface.related_surface_ids
+    .map((surfaceId) => providerSurfaceByIdFromList(surfaces, surfaceId))
+    .filter((candidate): candidate is ProviderSurfaceSpec => candidate != null)
+}
+
+export function preferredRelatedProviderSurface(
+  catalog: ProviderSurfaceCatalog,
+  surface: ProviderSurfaceSpec | null | undefined,
+  executionKind?: string,
+  snapshot?: FeatureCapabilitySnapshot | null,
+): ProviderSurfaceSpec | undefined {
+  return preferredRelatedProviderSurfaceFromList(catalog.surfaces, surface, executionKind, snapshot)
+}
+
+export function preferredRelatedProviderSurfaceFromList(
+  surfaces: ProviderSurfaceSpec[],
+  surface: ProviderSurfaceSpec | null | undefined,
+  executionKind?: string,
+  snapshot?: FeatureCapabilitySnapshot | null,
+): ProviderSurfaceSpec | undefined {
+  const related = relatedProviderSurfacesFromList(surfaces, surface).filter(
+    (candidate) => executionKind == null || candidate.execution_kind === executionKind,
+  )
+
+  return sortProviderSurfaces(related, snapshot)[0]
 }
 
 export function resolveProviderTypeForSurface(

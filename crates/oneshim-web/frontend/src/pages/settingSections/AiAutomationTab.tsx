@@ -18,6 +18,7 @@ import {
   providerSurfaceMaturity,
   providerSurfaceStatusCopyKey,
 } from '../../features/featureCapabilities'
+import { preferredRelatedProviderSurfaceFromList } from '../../features/providerSurfaces'
 import { form } from '../../styles/tokens'
 import OAuthConnectionPanel from './OAuthConnectionPanel'
 import { isProviderOAuthAccessMode } from './oauth-panel-support'
@@ -161,14 +162,12 @@ export default function AiAutomationTab({
   const showLlmSurfaceSection = formData.ai_provider.llm_provider === 'Remote' || isCliAccessMode
   const oauthSurface =
     currentLlmSurface?.execution_kind === 'managed_http' ? currentLlmSurface : undefined
-  const preferredCliSurface = oauthSurface
-    ? allProviderSurfaces.find(
-        (surface) =>
-          surface.vendor_id === oauthSurface.vendor_id &&
-          surface.execution_kind === 'subprocess_cli' &&
-          surface.preferred_for_product_auth,
-      )
-    : undefined
+  const preferredCliSurface = preferredRelatedProviderSurfaceFromList(
+    allProviderSurfaces,
+    oauthSurface,
+    'subprocess_cli',
+    featureCapabilities,
+  )
 
   const accessModeOptions = [
     {

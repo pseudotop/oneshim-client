@@ -253,6 +253,7 @@ export interface ProviderSurfaceSpec {
   credential_kind: string
   stability: string
   preferred_for_product_auth: boolean
+  related_surface_ids: string[]
   catalog_strategy: string
   supports: ProviderSurfaceSupports
   default_models: SurfaceDefaultModels

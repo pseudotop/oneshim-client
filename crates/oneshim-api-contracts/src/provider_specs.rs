@@ -46,6 +46,8 @@ pub struct ProviderSurfaceSpec {
     #[serde(default)]
     pub preferred_for_product_auth: bool,
     #[serde(default)]
+    pub related_surface_ids: Vec<String>,
+    #[serde(default)]
     pub catalog_strategy: String,
     pub supports: ProviderSurfaceSupports,
     pub default_models: SurfaceDefaultModels,
@@ -536,6 +538,26 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                 surface.surface_id
             ));
         }
+        if surface
+            .related_surface_ids
+            .iter()
+            .any(|value| value.trim().is_empty())
+        {
+            return Err(format!(
+                "Surface '{}' contains an empty related_surface_id.",
+                surface.surface_id
+            ));
+        }
+        if surface
+            .related_surface_ids
+            .iter()
+            .any(|value| value.eq_ignore_ascii_case(&surface.surface_id))
+        {
+            return Err(format!(
+                "Surface '{}' cannot reference itself in related_surface_ids.",
+                surface.surface_id
+            ));
+        }
 
         let surface_provider_type = parse_provider_type(&surface.provider_type)?;
         let vendor_provider_type = catalog
@@ -670,6 +692,34 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
                         surface.surface_id
                     ));
                 }
+            }
+        }
+    }
+
+    for surface in &catalog.surfaces {
+        for related_surface_id in &surface.related_surface_ids {
+            let related_surface = catalog
+                .surfaces
+                .iter()
+                .find(|candidate| {
+                    candidate
+                        .surface_id
+                        .eq_ignore_ascii_case(related_surface_id)
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "Surface '{}' references unknown related_surface_id '{}'.",
+                        surface.surface_id, related_surface_id
+                    )
+                })?;
+            if !related_surface
+                .vendor_id
+                .eq_ignore_ascii_case(&surface.vendor_id)
+            {
+                return Err(format!(
+                    "Surface '{}' related_surface_id '{}' must share the same vendor.",
+                    surface.surface_id, related_surface_id
+                ));
             }
         }
     }
@@ -912,5 +962,40 @@ mod tests {
                 .expect("probe mode should resolve"),
             SubprocessAuthProbeMode::ClaudeAuthStatusJson
         );
+    }
+
+    #[test]
+    fn loads_related_surface_ids_from_catalog() {
+        let surface = provider_surface_spec("provider_surface.openai.managed_oauth")
+            .expect("managed oauth surface should exist");
+        assert_eq!(
+            surface.related_surface_ids,
+            vec!["provider_surface.openai.subprocess_cli".to_string()]
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_related_surface_id() {
+        let mut catalog = list_provider_surface_specs().expect("surface catalog should load");
+        catalog.surfaces[0].related_surface_ids = vec!["provider_surface.missing".to_string()];
+
+        let err =
+            validate_surface_catalog(&catalog).expect_err("unknown related surface should fail");
+        assert!(err.contains("unknown related_surface_id"));
+    }
+
+    #[test]
+    fn rejects_cross_vendor_related_surface_id() {
+        let mut catalog = list_provider_surface_specs().expect("surface catalog should load");
+        let managed = catalog
+            .surfaces
+            .iter_mut()
+            .find(|surface| surface.surface_id == "provider_surface.openai.managed_oauth")
+            .expect("managed oauth surface should exist");
+        managed.related_surface_ids = vec!["provider_surface.anthropic.subprocess_cli".to_string()];
+
+        let err = validate_surface_catalog(&catalog)
+            .expect_err("cross-vendor related surface should fail");
+        assert!(err.contains("must share the same vendor"));
     }
 }
