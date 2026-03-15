@@ -1,6 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { addToast } from './useToast'
 import { IS_TAURI } from '../utils/platform'
 
 type TauriEventPayload = {
@@ -15,13 +17,16 @@ export function useTauriEventBridge() {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
   const navigateRef = useRef(navigate)
   const pathnameRef = useRef(location.pathname)
   const queryClientRef = useRef(queryClient)
+  const tRef = useRef(t)
 
   navigateRef.current = navigate
   pathnameRef.current = location.pathname
   queryClientRef.current = queryClient
+  tRef.current = t
 
   useEffect(() => {
     if (!IS_TAURI) {
@@ -97,6 +102,15 @@ export function useTauriEventBridge() {
           !(await registerListener('tray-defer-update', () => {
             refreshUpdateStatus()
             navigateTo('/updates')
+          }))
+        ) {
+          return
+        }
+
+        if (
+          !(await registerListener('oauth-reauth-required', () => {
+            addToast('warning', tRef.current('settingsOAuth.reauthDescription'), 8000)
+            navigateTo('/settings')
           }))
         ) {
           return

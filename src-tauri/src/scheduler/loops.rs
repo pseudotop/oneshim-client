@@ -649,10 +649,12 @@ impl Scheduler {
     pub(super) fn spawn_oauth_refresh_loop(
         &self,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Option<tokio::task::JoinHandle<()>> {
         use super::config::OAUTH_REFRESH_INTERVAL_SECS;
         use oneshim_core::ports::oauth::TokenEvent;
         use std::time::Duration;
+        use tauri::Emitter;
 
         let coordinator = self.oauth_coordinator.as_ref()?.clone();
 
@@ -679,6 +681,26 @@ impl Scheduler {
                                     "OAuth re-authentication required — user must reconnect"
                                 );
                                 last_reauth_notify = Some(tokio::time::Instant::now());
+
+                                // Emit Tauri event for frontend toast
+                                if let Some(ref handle) = app_handle {
+                                    let payload = serde_json::json!({
+                                        "provider_id": provider_id,
+                                    });
+                                    if let Err(e) = handle.emit("oauth-reauth-required", &payload) {
+                                        warn!("Failed to emit oauth-reauth-required event: {e}");
+                                    }
+
+                                    // Native OS notification for background/minimized state
+                                    if let Err(e) = tauri_plugin_notification::NotificationExt::notification(handle)
+                                        .builder()
+                                        .title("ONESHIM")
+                                        .body("OAuth re-authentication required — please reconnect in Settings")
+                                        .show()
+                                    {
+                                        warn!("Failed to show native notification: {e}");
+                                    }
+                                }
                             }
                         }
                     }
@@ -691,9 +713,11 @@ impl Scheduler {
         }))
     }
 
+    #[allow(unused_variables)]
     pub(super) async fn run_scheduler_loops(
         &self,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+        app_handle: Option<tauri::AppHandle>,
     ) {
         let poll = self.config.poll_interval;
         let metrics_interval = self.config.metrics_interval;
@@ -755,7 +779,7 @@ impl Scheduler {
 
         // 10. OAuth token refresh (conditional — returns None if no coordinator)
         #[cfg(feature = "server")]
-        let oauth_task = self.spawn_oauth_refresh_loop(shutdown_rx.clone());
+        let oauth_task = self.spawn_oauth_refresh_loop(shutdown_rx.clone(), app_handle);
 
         let _ = shutdown_rx.changed().await;
         info!("ended received");
