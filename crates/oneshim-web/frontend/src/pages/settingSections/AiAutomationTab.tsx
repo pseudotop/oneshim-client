@@ -31,6 +31,59 @@ function toRfc3339OrNull(value: string): string | null {
   return date.toISOString()
 }
 
+function credentialBackendLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  backendKind: string | null | undefined,
+): string {
+  switch ((backendKind ?? '').trim()) {
+    case 'os_secret_store':
+      return t('settingsAutomation.backendOsSecretStore')
+    case 'file_secret_store':
+      return t('settingsAutomation.backendFileSecretStore')
+    case 'env':
+      return t('settingsAutomation.backendEnv')
+    case 'bridge_managed':
+      return t('settingsAutomation.backendBridgeManaged')
+    case 'legacy_config':
+      return t('settingsAutomation.backendLegacyConfig')
+    default:
+      return t('settingsAutomation.backendUnavailable')
+  }
+}
+
+function apiKeyPlaceholder(
+  t: ReturnType<typeof useTranslation>['t'],
+  settings: ExternalApiSettings | null | undefined,
+): string {
+  if (!settings) {
+    return t('settingsAutomation.apiKeyPlaceholder')
+  }
+
+  if (settings.secret_display_hint) {
+    return settings.secret_display_hint
+  }
+
+  if (settings.has_secret) {
+    return t('settingsAutomation.apiKeyStoredPlaceholder', {
+      backend: credentialBackendLabel(t, settings.backend_kind),
+    })
+  }
+
+  return t('settingsAutomation.apiKeyPlaceholder')
+}
+
+function shouldShowBackendManagedHint(settings: ExternalApiSettings | null | undefined): boolean {
+  if (!settings?.has_secret) {
+    return false
+  }
+
+  if (settings.api_key_masked.trim().length > 0) {
+    return false
+  }
+
+  return settings.backend_kind !== 'legacy_config' && settings.backend_kind !== 'unavailable'
+}
+
 interface AiAutomationTabProps extends SettingsFormTabProps {
   providerPresets: ProviderPreset[]
   modelCatalogNotice: Record<'ocr_api' | 'llm_api', string | null>
@@ -453,8 +506,15 @@ export default function AiAutomationTab({
                     type="password"
                     value={formData.ai_provider.ocr_api?.api_key_masked ?? ''}
                     onChange={(e) => onExternalApiChange('ocr_api', 'api_key_masked', e.target.value)}
-                    placeholder={t('settingsAutomation.apiKeyPlaceholder')}
+                    placeholder={apiKeyPlaceholder(t, formData.ai_provider.ocr_api)}
                   />
+                  {shouldShowBackendManagedHint(formData.ai_provider.ocr_api) && (
+                    <p className="mt-1 text-content-secondary text-xs">
+                      {t('settingsAutomation.apiKeyStoredHint', {
+                        backend: credentialBackendLabel(t, formData.ai_provider.ocr_api?.backend_kind),
+                      })}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="settings-ocr-model" className="mb-1 block text-content-secondary text-xs">
@@ -547,8 +607,15 @@ export default function AiAutomationTab({
                     type="password"
                     value={formData.ai_provider.llm_api?.api_key_masked ?? ''}
                     onChange={(e) => onExternalApiChange('llm_api', 'api_key_masked', e.target.value)}
-                    placeholder={t('settingsAutomation.apiKeyPlaceholder')}
+                    placeholder={apiKeyPlaceholder(t, formData.ai_provider.llm_api)}
                   />
+                  {shouldShowBackendManagedHint(formData.ai_provider.llm_api) && (
+                    <p className="mt-1 text-content-secondary text-xs">
+                      {t('settingsAutomation.apiKeyStoredHint', {
+                        backend: credentialBackendLabel(t, formData.ai_provider.llm_api?.backend_kind),
+                      })}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor="settings-llm-model" className="mb-1 block text-content-secondary text-xs">

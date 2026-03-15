@@ -745,10 +745,11 @@ fn endpoint_to_api_settings(
             .as_ref()
             .and_then(|binding| binding.secret_ref.as_ref())
             .is_some();
+    let masked_plaintext_secret = has_plaintext_secret.then(|| mask_api_key(&endpoint.api_key));
 
     ExternalApiSettings {
         endpoint: endpoint.endpoint.clone(),
-        api_key_masked: mask_api_key(&endpoint.api_key),
+        api_key_masked: masked_plaintext_secret.clone().unwrap_or_default(),
         model: endpoint.model.clone(),
         provider_type: format!("{:?}", endpoint.provider_type),
         timeout_secs: endpoint.timeout_secs,
@@ -756,7 +757,7 @@ fn endpoint_to_api_settings(
         backend_kind: credential_backend_kind_to_wire(backend_kind).to_string(),
         has_secret,
         can_edit_secret: matches!(auth_mode, CredentialAuthMode::ApiKey),
-        secret_display_hint: has_plaintext_secret.then(|| mask_api_key(&endpoint.api_key)),
+        secret_display_hint: masked_plaintext_secret,
         projection_enabled: endpoint
             .credential
             .as_ref()
@@ -1109,6 +1110,36 @@ mod tests {
         assert_eq!(llm_api.backend_kind, "os_secret_store");
         assert!(!llm_api.has_secret);
         assert!(!llm_api.can_edit_secret);
+        assert_eq!(llm_api.secret_display_hint, None);
+    }
+
+    #[test]
+    fn config_to_settings_keeps_backend_managed_api_key_without_fake_mask() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: Some(SecretRef {
+                    namespace: "provider/openai/llm".to_string(),
+                    key: "api_key".to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        });
+
+        let settings = config_to_settings(&config);
+        let llm_api = settings.ai_provider.llm_api.expect("llm api settings");
+
+        assert_eq!(llm_api.backend_kind, "os_secret_store");
+        assert!(llm_api.has_secret);
+        assert_eq!(llm_api.api_key_masked, "");
         assert_eq!(llm_api.secret_display_hint, None);
     }
 }
