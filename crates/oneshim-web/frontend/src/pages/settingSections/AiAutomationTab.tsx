@@ -84,6 +84,17 @@ function shouldShowBackendManagedHint(settings: ExternalApiSettings | null | und
   return settings.backend_kind !== 'legacy_config' && settings.backend_kind !== 'unavailable'
 }
 
+function supportsProjectionToggle(settings: ExternalApiSettings | null | undefined): boolean {
+  if (!settings) {
+    return false
+  }
+
+  return (
+    settings.auth_mode === 'api_key' &&
+    (settings.backend_kind === 'os_secret_store' || settings.backend_kind === 'file_secret_store')
+  )
+}
+
 interface AiAutomationTabProps extends SettingsFormTabProps {
   providerPresets: ProviderPreset[]
   modelCatalogNotice: Record<'ocr_api' | 'llm_api', string | null>
@@ -100,7 +111,7 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
   onExternalApiChange: (
     which: 'ocr_api' | 'llm_api',
     field: keyof ExternalApiSettings,
-    value: string | number | null,
+    value: string | number | boolean | null,
   ) => void
   resolveProviderType: (raw: string | null | undefined) => string
   onProviderTypeChange: (which: 'ocr_api' | 'llm_api', rawProviderType: string) => void
@@ -516,6 +527,16 @@ export default function AiAutomationTab({
                     </p>
                   )}
                 </div>
+                {supportsProjectionToggle(formData.ai_provider.ocr_api) && (
+                  <div className="md:col-span-2">
+                    <ToggleRow
+                      label={t('settingsAutomation.secretProjectionEnabled')}
+                      description={t('settingsAutomation.secretProjectionEnabledDescription')}
+                      checked={formData.ai_provider.ocr_api?.projection_enabled ?? false}
+                      onChange={(value) => onExternalApiChange('ocr_api', 'projection_enabled', value)}
+                    />
+                  </div>
+                )}
                 <div>
                   <label htmlFor="settings-ocr-model" className="mb-1 block text-content-secondary text-xs">
                     {t('settingsAutomation.model')}
@@ -617,6 +638,16 @@ export default function AiAutomationTab({
                     </p>
                   )}
                 </div>
+                {supportsProjectionToggle(formData.ai_provider.llm_api) && (
+                  <div className="md:col-span-2">
+                    <ToggleRow
+                      label={t('settingsAutomation.secretProjectionEnabled')}
+                      description={t('settingsAutomation.secretProjectionEnabledDescription')}
+                      checked={formData.ai_provider.llm_api?.projection_enabled ?? false}
+                      onChange={(value) => onExternalApiChange('llm_api', 'projection_enabled', value)}
+                    />
+                  </div>
+                )}
                 <div>
                   <label htmlFor="settings-llm-model" className="mb-1 block text-content-secondary text-xs">
                     {t('settingsAutomation.model')}

@@ -602,6 +602,8 @@
     "apiKeyPlaceholder": "APIキーを入力...",
     "apiKeyStoredPlaceholder": "{{backend}} に保存済み",
     "apiKeyStoredHint": "このシークレットは現在 {{backend}} に保存されています。ここで新しいキーを入力すると置き換えられます。",
+    "secretProjectionEnabled": "CLI プロジェクションを許可",
+    "secretProjectionEnabledDescription": "この保存済みシークレットに対して、ONESHIM 管理の CLI およびブリッジ互換フローを許可します。",
     "backendOsSecretStore": "OSシークレットストア",
     "backendFileSecretStore": "ファイルシークレットストア",
     "backendEnv": "環境変数",

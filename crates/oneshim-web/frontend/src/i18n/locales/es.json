@@ -602,6 +602,8 @@
     "apiKeyPlaceholder": "Ingrese la clave API...",
     "apiKeyStoredPlaceholder": "Guardada en {{backend}}",
     "apiKeyStoredHint": "Este secreto está almacenado actualmente en {{backend}}. Ingrese aquí una nueva clave para reemplazarlo.",
+    "secretProjectionEnabled": "Permitir proyeccion CLI",
+    "secretProjectionEnabledDescription": "Permite flujos de compatibilidad CLI y bridge gestionados por ONESHIM para este secreto almacenado.",
     "backendOsSecretStore": "almacén secreto del sistema",
     "backendFileSecretStore": "almacén secreto en archivo",
     "backendEnv": "entorno",

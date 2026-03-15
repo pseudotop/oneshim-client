@@ -396,7 +396,7 @@ export default function Settings() {
   const handleExternalApiChange = (
     which: 'ocr_api' | 'llm_api',
     field: keyof ExternalApiSettings,
-    value: string | number | null,
+    value: string | number | boolean | null,
   ) => {
     setFormData((current) => {
       if (!current) return current

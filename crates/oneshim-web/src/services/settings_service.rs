@@ -150,7 +150,11 @@ async fn persist_api_key_binding(
                 auth_mode: CredentialAuthMode::ApiKey,
                 backend_kind: CredentialBackendKind::LegacyConfig,
                 secret_ref: None,
-                projection_enabled: false,
+                projection_enabled: endpoint
+                    .credential
+                    .as_ref()
+                    .map(|binding| binding.projection_enabled)
+                    .unwrap_or(false),
             });
             return Ok(());
         }
@@ -189,7 +193,11 @@ async fn persist_api_key_binding(
             namespace,
             key: key.to_string(),
         }),
-        projection_enabled: false,
+        projection_enabled: endpoint
+            .credential
+            .as_ref()
+            .map(|binding| binding.projection_enabled)
+            .unwrap_or(false),
     });
     endpoint.api_key.clear();
 
@@ -837,13 +845,15 @@ fn api_settings_to_endpoint(
         settings.api_key_masked.clone()
     };
 
+    let credential = updated_credential_binding(settings, existing_endpoint)?;
+
     Ok(ExternalApiEndpoint {
         endpoint: settings.endpoint.clone(),
         api_key,
         model: settings.model.clone(),
         timeout_secs: settings.timeout_secs,
         provider_type: parse_ai_provider_type(&settings.provider_type)?,
-        credential: existing_endpoint.and_then(|endpoint| endpoint.credential.clone()),
+        credential,
     })
 }
 
@@ -867,6 +877,67 @@ fn derive_credential_backend_kind(
         CredentialAuthMode::CliBridge => CredentialBackendKind::BridgeManaged,
         CredentialAuthMode::ApiKey if has_plaintext_secret => CredentialBackendKind::LegacyConfig,
         CredentialAuthMode::ApiKey => default_backend_kind,
+    }
+}
+
+fn updated_credential_binding(
+    settings: &ExternalApiSettings,
+    existing_endpoint: Option<&ExternalApiEndpoint>,
+) -> Result<Option<CredentialBinding>, ApiError> {
+    let auth_mode = parse_credential_auth_mode(&settings.auth_mode)?;
+    let backend_kind = parse_credential_backend_kind(&settings.backend_kind)?;
+
+    if matches!(
+        auth_mode,
+        CredentialAuthMode::ManagedOAuth | CredentialAuthMode::CliBridge
+    ) {
+        return Ok(existing_endpoint.and_then(|endpoint| endpoint.credential.clone()));
+    }
+
+    if let Some(mut binding) = existing_endpoint.and_then(|endpoint| endpoint.credential.clone()) {
+        binding.projection_enabled = settings.projection_enabled;
+        return Ok(Some(binding));
+    }
+
+    if settings.projection_enabled
+        || !matches!(
+            backend_kind,
+            CredentialBackendKind::LegacyConfig | CredentialBackendKind::Unavailable
+        )
+    {
+        return Ok(Some(CredentialBinding {
+            auth_mode,
+            backend_kind,
+            secret_ref: None,
+            projection_enabled: settings.projection_enabled,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn parse_credential_auth_mode(value: &str) -> Result<CredentialAuthMode, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "api_key" | "apikey" => Ok(CredentialAuthMode::ApiKey),
+        "managed_oauth" | "managedoauth" => Ok(CredentialAuthMode::ManagedOAuth),
+        "cli_bridge" | "clibridge" => Ok(CredentialAuthMode::CliBridge),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 ai_provider.api.auth_mode 값: {value}"
+        ))),
+    }
+}
+
+fn parse_credential_backend_kind(value: &str) -> Result<CredentialBackendKind, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "os_secret_store" | "ossecretstore" => Ok(CredentialBackendKind::OsSecretStore),
+        "file_secret_store" | "filesecretstore" => Ok(CredentialBackendKind::FileSecretStore),
+        "env" => Ok(CredentialBackendKind::Env),
+        "bridge_managed" | "bridgemanaged" => Ok(CredentialBackendKind::BridgeManaged),
+        "legacy_config" | "legacyconfig" => Ok(CredentialBackendKind::LegacyConfig),
+        "unavailable" => Ok(CredentialBackendKind::Unavailable),
+        _ => Err(ApiError::BadRequest(format!(
+            "유효하지 않은 ai_provider.api.backend_kind 값: {value}"
+        ))),
     }
 }
 
@@ -1109,7 +1180,7 @@ mod tests {
             has_secret: true,
             can_edit_secret: true,
             secret_display_hint: None,
-            projection_enabled: false,
+            projection_enabled: true,
         });
 
         update_settings(&state, &settings)
@@ -1128,6 +1199,7 @@ mod tests {
         assert_eq!(endpoint.api_key, "");
         assert_eq!(binding.backend_kind, CredentialBackendKind::OsSecretStore);
         assert_eq!(binding.auth_mode, CredentialAuthMode::ApiKey);
+        assert!(binding.projection_enabled);
         let secret_ref = binding.secret_ref.expect("secret ref");
         assert_eq!(secret_ref.namespace, "provider/openai/llm");
         assert_eq!(secret_ref.key, "api_key");
@@ -1209,6 +1281,42 @@ mod tests {
         assert!(llm_api.has_secret);
         assert_eq!(llm_api.api_key_masked, "");
         assert_eq!(llm_api.secret_display_hint, None);
+    }
+
+    #[test]
+    fn apply_settings_to_config_preserves_projection_enabled_on_existing_binding() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: Some(SecretRef {
+                    namespace: "provider/openai/llm".to_string(),
+                    key: "api_key".to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        });
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        let llm_api = settings.ai_provider.llm_api.as_mut().expect("llm settings");
+        llm_api.projection_enabled = true;
+
+        apply_settings_to_config(&mut config, &settings).expect("config update");
+
+        let binding = config
+            .ai_provider
+            .llm_api
+            .as_ref()
+            .and_then(|endpoint| endpoint.credential.as_ref())
+            .expect("binding");
+        assert!(binding.projection_enabled);
     }
 
     #[tokio::test]

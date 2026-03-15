@@ -602,6 +602,8 @@
     "apiKeyPlaceholder": "输入 API 密钥...",
     "apiKeyStoredPlaceholder": "已存储在 {{backend}}",
     "apiKeyStoredHint": "此密钥当前存储在 {{backend}} 中。若在此输入新密钥，将会替换现有值。",
+    "secretProjectionEnabled": "允许 CLI 投影",
+    "secretProjectionEnabledDescription": "允许 ONESHIM 为此已存储密钥提供 CLI 和桥接兼容流程。",
     "backendOsSecretStore": "操作系统密钥存储",
     "backendFileSecretStore": "文件密钥存储",
     "backendEnv": "环境变量",

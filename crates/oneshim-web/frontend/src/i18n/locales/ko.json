@@ -602,6 +602,8 @@
     "apiKeyPlaceholder": "API 키 입력...",
     "apiKeyStoredPlaceholder": "{{backend}}에 저장됨",
     "apiKeyStoredHint": "이 비밀값은 현재 {{backend}}에 저장되어 있습니다. 여기서 새 키를 입력하면 교체됩니다.",
+    "secretProjectionEnabled": "CLI 프로젝션 허용",
+    "secretProjectionEnabledDescription": "이 저장된 비밀값에 대해 ONESHIM이 관리하는 CLI 및 브리지 호환 흐름을 허용합니다.",
     "backendOsSecretStore": "OS 비밀 저장소",
     "backendFileSecretStore": "파일 비밀 저장소",
     "backendEnv": "환경 변수",
