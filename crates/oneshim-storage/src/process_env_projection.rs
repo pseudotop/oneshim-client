@@ -4,10 +4,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use oneshim_core::config::AiProviderType;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::secret_projection::{
-    ProjectionTarget, ProjectionTemplate, SecretProjectionPort, SecretProjectionRequest,
-    SecretProjectionResult,
+    provider_api_key_cli_consumer_id, ProjectionTarget, ProjectionTemplate, SecretProjectionPort,
+    SecretProjectionRequest, SecretProjectionResult,
 };
 use oneshim_core::ports::secret_store::SecretStore;
 
@@ -32,6 +33,38 @@ impl ProcessEnvSecretProjection {
             templates: Arc::new(templates),
         }
     }
+
+    pub fn with_default_provider_api_key_cli_templates(secret_store: Arc<dyn SecretStore>) -> Self {
+        Self::new(secret_store, default_provider_api_key_cli_templates())
+    }
+}
+
+pub fn provider_api_key_cli_template(
+    provider_type: AiProviderType,
+) -> Result<ProjectionTemplate, CoreError> {
+    let (provider_id, env_names) = match provider_type {
+        AiProviderType::OpenAi => ("openai", vec!["OPENAI_API_KEY".to_string()]),
+        AiProviderType::Anthropic => ("anthropic", vec!["ANTHROPIC_API_KEY".to_string()]),
+        AiProviderType::Google => ("google", vec!["GOOGLE_API_KEY".to_string()]),
+        AiProviderType::Generic => ("generic", vec!["ONESHIM_GENERIC_API_KEY".to_string()]),
+    };
+
+    Ok(ProjectionTemplate::process_env(
+        provider_api_key_cli_consumer_id(provider_id)?,
+        env_names,
+    ))
+}
+
+pub fn default_provider_api_key_cli_templates() -> Vec<ProjectionTemplate> {
+    [
+        AiProviderType::OpenAi,
+        AiProviderType::Anthropic,
+        AiProviderType::Google,
+        AiProviderType::Generic,
+    ]
+    .into_iter()
+    .filter_map(|provider_type| provider_api_key_cli_template(provider_type).ok())
+    .collect()
 }
 
 #[async_trait]
@@ -83,7 +116,9 @@ impl SecretProjectionPort for ProcessEnvSecretProjection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oneshim_core::ports::secret_projection::{ProjectionPurpose, SecretProjectionPort};
+    use oneshim_core::ports::secret_projection::{
+        provider_api_key_cli_consumer_id, ProjectionPurpose, SecretProjectionPort,
+    };
     use oneshim_core::ports::secret_store::SecretStore;
     use std::sync::Mutex;
 
@@ -195,5 +230,24 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(err, CoreError::Config(_)));
+    }
+
+    #[test]
+    fn provider_api_key_cli_template_maps_openai_to_expected_env_name() {
+        let template = provider_api_key_cli_template(AiProviderType::OpenAi).unwrap();
+        assert_eq!(
+            template.consumer_id,
+            provider_api_key_cli_consumer_id("openai").unwrap()
+        );
+        assert_eq!(template.env_names, vec!["OPENAI_API_KEY".to_string()]);
+    }
+
+    #[test]
+    fn default_provider_api_key_cli_templates_include_google() {
+        let templates = default_provider_api_key_cli_templates();
+        assert!(templates.iter().any(|template| {
+            template.consumer_id == provider_api_key_cli_consumer_id("google").unwrap()
+                && template.env_names == vec!["GOOGLE_API_KEY".to_string()]
+        }));
     }
 }

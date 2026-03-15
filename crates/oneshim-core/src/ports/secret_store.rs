@@ -12,7 +12,7 @@ pub const DEFAULT_SECRET_PROFILE: &str = "default";
 pub const PROVIDER_API_KEY_SECRET_KEY: &str = "api_key";
 pub const PROVIDER_OAUTH_SESSION_SECRET_KEY: &str = "oauth_session";
 
-fn validate_secret_segment(raw: &str, field_name: &str) -> Result<String, CoreError> {
+pub fn validate_secret_segment(raw: &str, field_name: &str) -> Result<String, CoreError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(CoreError::InvalidArguments(format!(

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 
 use crate::error::CoreError;
+use crate::ports::secret_store::{provider_api_key_secret_ref, validate_secret_segment};
 
 /// Projection target for compatibility output generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +41,11 @@ impl ProjectionTemplate {
     }
 }
 
+pub fn provider_api_key_cli_consumer_id(provider_id: &str) -> Result<String, CoreError> {
+    let provider_id = validate_secret_segment(provider_id, "provider_id")?;
+    Ok(format!("provider/{provider_id}/api-key-cli"))
+}
+
 /// Request to project a canonical secret into a compatibility target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecretProjectionRequest {
@@ -48,6 +54,23 @@ pub struct SecretProjectionRequest {
     pub target: ProjectionTarget,
     pub purpose: ProjectionPurpose,
     pub consumer_id: String,
+}
+
+impl SecretProjectionRequest {
+    pub fn provider_api_key_process_env(
+        provider_id: &str,
+        profile_id: &str,
+        consumer_id: impl Into<String>,
+    ) -> Result<Self, CoreError> {
+        let (namespace, key) = provider_api_key_secret_ref(provider_id, profile_id)?;
+        Ok(Self {
+            namespace,
+            key: key.to_string(),
+            target: ProjectionTarget::ProcessEnv,
+            purpose: ProjectionPurpose::ProviderCliExecution,
+            consumer_id: consumer_id.into(),
+        })
+    }
 }
 
 /// Result of projecting a secret for compatibility use.
@@ -89,5 +112,27 @@ mod tests {
         assert_eq!(template.target, ProjectionTarget::ProcessEnv);
         assert_eq!(template.env_names, vec!["OPENAI_API_KEY".to_string()]);
         assert!(template.file_name_hint.is_none());
+    }
+
+    #[test]
+    fn provider_api_key_cli_consumer_id_uses_stable_shape() {
+        let consumer_id = provider_api_key_cli_consumer_id("openai").unwrap();
+        assert_eq!(consumer_id, "provider/openai/api-key-cli");
+    }
+
+    #[test]
+    fn provider_api_key_process_env_request_uses_secret_ref_shape() {
+        let request = SecretProjectionRequest::provider_api_key_process_env(
+            "openai",
+            "llm",
+            "provider/openai/api-key-cli",
+        )
+        .unwrap();
+
+        assert_eq!(request.namespace, "provider/openai/llm");
+        assert_eq!(request.key, "api_key");
+        assert_eq!(request.target, ProjectionTarget::ProcessEnv);
+        assert_eq!(request.purpose, ProjectionPurpose::ProviderCliExecution);
+        assert_eq!(request.consumer_id, "provider/openai/api-key-cli");
     }
 }
