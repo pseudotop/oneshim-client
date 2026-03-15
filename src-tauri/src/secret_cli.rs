@@ -49,14 +49,18 @@ impl SecretSurface {
 pub fn run(args: &[String], config_dir: &Path) -> i32 {
     match args.first().map(String::as_str) {
         Some("migrate") => cmd_migrate(config_dir),
+        Some("status") => cmd_status(&args[1..], config_dir),
         Some("env") => cmd_env(&args[1..], config_dir),
         Some("exec") => cmd_exec(&args[1..], config_dir),
         _ => {
-            eprintln!("Usage: oneshim secret <migrate|env|exec> ...");
+            eprintln!("Usage: oneshim secret <migrate|status|env|exec> ...");
             eprintln!();
             eprintln!("Commands:");
             eprintln!(
                 "  migrate             Move legacy plaintext provider API keys into the selected secret backend"
+            );
+            eprintln!(
+                "  status <llm|ocr>    Show credential backend, projection, and resolution state"
             );
             eprintln!(
                 "  env <llm|ocr>       Emit shell export lines for the configured provider API key"
@@ -64,6 +68,40 @@ pub fn run(args: &[String], config_dir: &Path) -> i32 {
             eprintln!(
                 "  exec <llm|ocr> -- <command...>    Run a child command with projected provider credentials"
             );
+            1
+        }
+    }
+}
+
+fn cmd_status(args: &[String], config_dir: &Path) -> i32 {
+    let Some(surface) = args.first().and_then(|value| SecretSurface::parse(value)) else {
+        eprintln!("Usage: oneshim secret status <llm|ocr>");
+        return 1;
+    };
+
+    let config_manager = match ConfigManager::with_path(config_dir.join(CONFIG_FILE_NAME)) {
+        Ok(manager) => manager,
+        Err(err) => {
+            eprintln!("Error: failed to load config: {err}");
+            return 1;
+        }
+    };
+    let config = config_manager.get();
+    let Some(endpoint) = endpoint_for_surface(&config.ai_provider, surface) else {
+        eprintln!(
+            "Error: no {} provider endpoint is configured. Save a remote provider in Settings first.",
+            surface.profile_id()
+        );
+        return 1;
+    };
+
+    match inspect_surface_status(endpoint, config_dir) {
+        Ok(status) => {
+            println!("{}", format_surface_status(surface, &status));
+            0
+        }
+        Err(err) => {
+            eprintln!("Error: {err}");
             1
         }
     }
@@ -320,6 +358,73 @@ fn ensure_projection_allowed(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SecretSurfaceStatus {
+    provider_type: String,
+    auth_mode: String,
+    backend_kind: String,
+    projection_enabled: bool,
+    plaintext_present: bool,
+    secret_ref_present: bool,
+    resolved_secret_available: bool,
+}
+
+fn inspect_surface_status(
+    endpoint: &ExternalApiEndpoint,
+    config_dir: &Path,
+) -> Result<SecretSurfaceStatus, String> {
+    let binding = endpoint.credential.as_ref();
+    let auth_mode = binding
+        .map(|value| value.auth_mode)
+        .unwrap_or(CredentialAuthMode::ApiKey);
+    let backend_kind = binding
+        .map(|value| value.backend_kind)
+        .unwrap_or(CredentialBackendKind::LegacyConfig);
+    let projection_enabled = binding
+        .map(|value| value.projection_enabled)
+        .unwrap_or(false);
+    let secret_ref_present = binding
+        .and_then(|value| value.secret_ref.as_ref())
+        .is_some();
+    let plaintext_present = !endpoint.api_key.trim().is_empty();
+
+    let desktop_secret_store = create_os_secret_store(config_dir);
+    let secret_store = create_secret_store_for_binding(binding, config_dir, desktop_secret_store)
+        .map_err(|err| err.to_string())?;
+    let runtime = build_runtime()?;
+    let resolved_secret_available =
+        match CredentialSource::from_api_key_endpoint(endpoint, secret_store)
+            .map_err(|err| err.to_string())
+        {
+            Ok(source) => runtime.block_on(source.resolve_bearer_token()).is_ok(),
+            Err(_) => false,
+        };
+
+    Ok(SecretSurfaceStatus {
+        provider_type: format!("{:?}", endpoint.provider_type),
+        auth_mode: format!("{auth_mode:?}"),
+        backend_kind: format!("{backend_kind:?}"),
+        projection_enabled,
+        plaintext_present,
+        secret_ref_present,
+        resolved_secret_available,
+    })
+}
+
+fn format_surface_status(surface: SecretSurface, status: &SecretSurfaceStatus) -> String {
+    format!(
+        "surface={}\nprovider_type={}\nauth_mode={}\nbackend_kind={}\nprojection_enabled={}\nplaintext_present={}\nsecret_ref_present={}\nresolved_secret_available={}",
+        surface.profile_id(),
+        status.provider_type,
+        status.auth_mode,
+        status.backend_kind,
+        status.projection_enabled,
+        status.plaintext_present,
+        status.secret_ref_present,
+        status.resolved_secret_available,
+    )
+}
+
 #[cfg(feature = "server")]
 fn ensure_migration_backend_writable(backend_kind: CredentialBackendKind) -> Result<(), String> {
     if matches!(
@@ -484,11 +589,30 @@ mod tests {
         assert!(ensure_projection_allowed(&endpoint, SecretSurface::Llm).is_ok());
     }
 
+    #[cfg(feature = "server")]
     #[test]
     fn migration_backend_guard_rejects_non_writable_backend() {
         let error = ensure_migration_backend_writable(CredentialBackendKind::Env).unwrap_err();
         assert!(error.contains("requires a writable backend"));
         assert!(ensure_migration_backend_writable(CredentialBackendKind::OsSecretStore).is_ok());
+    }
+
+    #[test]
+    fn format_surface_status_renders_expected_fields() {
+        let status = SecretSurfaceStatus {
+            provider_type: "OpenAi".to_string(),
+            auth_mode: "ApiKey".to_string(),
+            backend_kind: "OsSecretStore".to_string(),
+            projection_enabled: true,
+            plaintext_present: false,
+            secret_ref_present: true,
+            resolved_secret_available: true,
+        };
+
+        let rendered = format_surface_status(SecretSurface::Llm, &status);
+        assert!(rendered.contains("surface=llm"));
+        assert!(rendered.contains("projection_enabled=true"));
+        assert!(rendered.contains("resolved_secret_available=true"));
     }
 
     #[test]
