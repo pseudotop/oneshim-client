@@ -20,6 +20,7 @@ pub struct RemoteLlmProvider {
     credential: CredentialSource,
     model: String,
     provider_type: AiProviderType,
+    surface_id: Option<String>,
     #[allow(dead_code)]
     timeout_secs: u64,
 }
@@ -31,6 +32,7 @@ impl std::fmt::Debug for RemoteLlmProvider {
             .field("credential", &self.credential)
             .field("model", &self.model)
             .field("provider_type", &self.provider_type)
+            .field("surface_id", &self.surface_id)
             .finish()
     }
 }
@@ -62,9 +64,13 @@ impl RemoteLlmProvider {
             .model
             .clone()
             .or_else(|| {
-                provider_specs::default_llm_model(config.provider_type)
-                    .ok()
-                    .flatten()
+                provider_specs::resolved_default_model(
+                    config.provider_type,
+                    config.surface_id.as_deref(),
+                    provider_specs::SurfaceCapabilityKind::Llm,
+                )
+                .ok()
+                .flatten()
             })
             .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
 
@@ -100,6 +106,7 @@ impl RemoteLlmProvider {
             credential,
             model,
             provider_type: config.provider_type,
+            surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
         })
     }
@@ -122,9 +129,13 @@ impl RemoteLlmProvider {
             .model
             .clone()
             .or_else(|| {
-                provider_specs::default_llm_model(config.provider_type)
-                    .ok()
-                    .flatten()
+                provider_specs::resolved_default_model(
+                    config.provider_type,
+                    config.surface_id.as_deref(),
+                    provider_specs::SurfaceCapabilityKind::Llm,
+                )
+                .ok()
+                .flatten()
             })
             .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
 
@@ -160,6 +171,7 @@ impl RemoteLlmProvider {
             credential,
             model,
             provider_type: config.provider_type,
+            surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
         })
     }
@@ -219,8 +231,12 @@ Return JSON only."#
     }
 
     fn llm_request_shape(&self) -> Result<ProviderRequestShape, CoreError> {
-        provider_specs::request_shape(self.provider_type, ProviderTransportKind::Llm)
-            .map_err(CoreError::Internal)
+        provider_specs::resolved_request_shape(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)
     }
 
     fn uses_responses_api(&self) -> bool {
@@ -231,8 +247,12 @@ Return JSON only."#
     }
 
     fn llm_auth_scheme(&self) -> Result<ProviderAuthScheme, CoreError> {
-        provider_specs::auth_scheme(self.provider_type, ProviderTransportKind::Llm)
-            .map_err(CoreError::Internal)
+        provider_specs::resolved_auth_scheme(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)
     }
 
     /// Build the provider-specific request body given a system and user prompt.
@@ -805,5 +825,24 @@ mod tests {
         };
         let provider = RemoteLlmProvider::new(&config).unwrap();
         assert!(provider.uses_responses_api());
+    }
+
+    #[test]
+    fn managed_openai_surface_uses_surface_shape() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://chatgpt.com/backend-api/codex".to_string(),
+            api_key: "test-key".to_string(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+            credential: None,
+        };
+        let provider = RemoteLlmProvider::new(&config).unwrap();
+        assert_eq!(provider.model, "gpt-5.4");
+        assert_eq!(
+            provider.llm_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::OpenAiResponses
+        );
     }
 }

@@ -20,6 +20,7 @@ pub struct RemoteOcrProvider {
     credential: CredentialSource,
     model: Option<String>,
     provider_type: AiProviderType,
+    surface_id: Option<String>,
     #[allow(dead_code)]
     timeout_secs: u64,
 }
@@ -31,6 +32,7 @@ impl std::fmt::Debug for RemoteOcrProvider {
             .field("credential", &self.credential)
             .field("model", &self.model)
             .field("provider_type", &self.provider_type)
+            .field("surface_id", &self.surface_id)
             .finish()
     }
 }
@@ -144,13 +146,21 @@ fn apply_auth_headers(
 
 impl RemoteOcrProvider {
     fn ocr_request_shape(&self) -> Result<ProviderRequestShape, CoreError> {
-        provider_specs::request_shape(self.provider_type, ProviderTransportKind::Ocr)
-            .map_err(CoreError::Internal)
+        provider_specs::resolved_request_shape(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            ProviderTransportKind::Ocr,
+        )
+        .map_err(CoreError::Internal)
     }
 
     fn ocr_auth_scheme(&self) -> Result<ProviderAuthScheme, CoreError> {
-        provider_specs::auth_scheme(self.provider_type, ProviderTransportKind::Ocr)
-            .map_err(CoreError::Internal)
+        provider_specs::resolved_auth_scheme(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            ProviderTransportKind::Ocr,
+        )
+        .map_err(CoreError::Internal)
     }
 
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
@@ -161,9 +171,13 @@ impl RemoteOcrProvider {
         }
         let credential = CredentialSource::ApiKey(config.api_key.clone());
         let resolved_model = config.model.clone().or_else(|| {
-            provider_specs::default_ocr_model(config.provider_type)
-                .ok()
-                .flatten()
+            provider_specs::resolved_default_model(
+                config.provider_type,
+                config.surface_id.as_deref(),
+                provider_specs::SurfaceCapabilityKind::Ocr,
+            )
+            .ok()
+            .flatten()
         });
 
         let http_client = reqwest::Client::builder()
@@ -211,6 +225,7 @@ impl RemoteOcrProvider {
             credential,
             model: resolved_model,
             provider_type: config.provider_type,
+            surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
         })
     }
@@ -224,9 +239,13 @@ impl RemoteOcrProvider {
         credential: CredentialSource,
     ) -> Result<Self, CoreError> {
         let resolved_model = config.model.clone().or_else(|| {
-            provider_specs::default_ocr_model(config.provider_type)
-                .ok()
-                .flatten()
+            provider_specs::resolved_default_model(
+                config.provider_type,
+                config.surface_id.as_deref(),
+                provider_specs::SurfaceCapabilityKind::Ocr,
+            )
+            .ok()
+            .flatten()
         });
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
@@ -272,6 +291,7 @@ impl RemoteOcrProvider {
             credential,
             model: resolved_model,
             provider_type: config.provider_type,
+            surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
         })
     }
@@ -662,6 +682,25 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("retired as of"));
+    }
+
+    #[test]
+    fn google_surface_uses_surface_transport_shape() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://vision.googleapis.com/v1/images:annotate".to_string(),
+            api_key: "test-api-key-placeholder".to_string(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::Google,
+            surface_id: Some("provider_surface.google.direct_api".to_string()),
+            credential: None,
+        };
+
+        let provider = RemoteOcrProvider::new(&config).expect("google OCR provider should build");
+        assert_eq!(
+            provider.ocr_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::GoogleVisionAnnotate
+        );
     }
 
     #[test]

@@ -195,6 +195,25 @@ pub fn provider_surface_spec(surface_id: &str) -> Result<&'static ProviderSurfac
         .ok_or_else(|| format!("Provider surface spec for {surface_id} is missing."))
 }
 
+pub fn resolved_surface_spec(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<&'static ProviderSurfaceSpec, String> {
+    if let Some(surface_id) = surface_id.map(str::trim).filter(|value| !value.is_empty()) {
+        let surface = provider_surface_spec(surface_id)?;
+        let expected = provider_type_label(provider_type);
+        if !surface.provider_type.eq_ignore_ascii_case(expected) {
+            return Err(format!(
+                "Surface '{}' does not match provider_type '{}'.",
+                surface_id, expected
+            ));
+        }
+        return Ok(surface);
+    }
+
+    compatibility_surface_for_provider_type(provider_type)
+}
+
 pub fn transport_spec(
     provider_type: AiProviderType,
     kind: ProviderTransportKind,
@@ -203,6 +222,32 @@ pub fn transport_spec(
     match kind {
         ProviderTransportKind::Llm => Ok(&spec.transports.llm),
         ProviderTransportKind::Ocr => Ok(&spec.transports.ocr),
+        ProviderTransportKind::ModelCatalog => Err(
+            "Model catalog transport uses a dedicated shape and must be resolved separately."
+                .to_string(),
+        ),
+    }
+}
+
+pub fn resolved_transport_spec(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    kind: ProviderTransportKind,
+) -> Result<&'static ProviderTransportSpec, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    match kind {
+        ProviderTransportKind::Llm => surface.llm_transport.as_ref().ok_or_else(|| {
+            format!(
+                "Surface '{}' does not provide an llm_transport.",
+                surface.surface_id
+            )
+        }),
+        ProviderTransportKind::Ocr => surface.ocr_transport.as_ref().ok_or_else(|| {
+            format!(
+                "Surface '{}' does not provide an ocr_transport.",
+                surface.surface_id
+            )
+        }),
         ProviderTransportKind::ModelCatalog => Err(
             "Model catalog transport uses a dedicated shape and must be resolved separately."
                 .to_string(),
@@ -227,6 +272,26 @@ pub fn auth_scheme(
     parse_auth_scheme(raw)
 }
 
+pub fn resolved_auth_scheme(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    kind: ProviderTransportKind,
+) -> Result<ProviderAuthScheme, String> {
+    let raw = match kind {
+        ProviderTransportKind::Llm | ProviderTransportKind::Ocr => {
+            resolved_transport_spec(provider_type, surface_id, kind)?
+                .auth_scheme
+                .as_str()
+        }
+        ProviderTransportKind::ModelCatalog => {
+            resolved_model_catalog_transport(provider_type, surface_id)?
+                .auth_scheme
+                .as_str()
+        }
+    };
+    parse_auth_scheme(raw)
+}
+
 pub fn request_shape(
     provider_type: AiProviderType,
     kind: ProviderTransportKind,
@@ -234,12 +299,38 @@ pub fn request_shape(
     parse_request_shape(&transport_spec(provider_type, kind)?.request_shape)
 }
 
+pub fn resolved_request_shape(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    kind: ProviderTransportKind,
+) -> Result<ProviderRequestShape, String> {
+    parse_request_shape(&resolved_transport_spec(provider_type, surface_id, kind)?.request_shape)
+}
+
 pub fn model_catalog_response_shape(
     provider_type: AiProviderType,
 ) -> Result<ModelCatalogResponseShape, String> {
-    let raw = provider_spec(provider_type)?
-        .transports
-        .model_catalog
+    resolved_model_catalog_response_shape(provider_type, None)
+}
+
+pub fn resolved_model_catalog_transport(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<&'static ProviderModelCatalogTransportSpec, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
+    surface.model_catalog_transport.as_ref().ok_or_else(|| {
+        format!(
+            "Surface '{}' does not provide a model_catalog_transport.",
+            surface.surface_id
+        )
+    })
+}
+
+pub fn resolved_model_catalog_response_shape(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+) -> Result<ModelCatalogResponseShape, String> {
+    let raw = resolved_model_catalog_transport(provider_type, surface_id)?
         .response_shape
         .trim()
         .to_ascii_lowercase();
@@ -254,19 +345,11 @@ pub fn model_catalog_response_shape(
 }
 
 pub fn default_llm_model(provider_type: AiProviderType) -> Result<Option<String>, String> {
-    Ok(provider_spec(provider_type)?
-        .defaults
-        .llm_models
-        .first()
-        .cloned())
+    resolved_default_model(provider_type, None, SurfaceCapabilityKind::Llm)
 }
 
 pub fn default_ocr_model(provider_type: AiProviderType) -> Result<Option<String>, String> {
-    Ok(provider_spec(provider_type)?
-        .defaults
-        .ocr_models
-        .first()
-        .cloned())
+    resolved_default_model(provider_type, None, SurfaceCapabilityKind::Ocr)
 }
 
 pub fn default_surface_model(
@@ -274,6 +357,18 @@ pub fn default_surface_model(
     capability: SurfaceCapabilityKind,
 ) -> Result<Option<String>, String> {
     let surface = provider_surface_spec(surface_id)?;
+    Ok(match capability {
+        SurfaceCapabilityKind::Llm => surface.default_models.llm_models.first().cloned(),
+        SurfaceCapabilityKind::Ocr => surface.default_models.ocr_models.first().cloned(),
+    })
+}
+
+pub fn resolved_default_model(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    capability: SurfaceCapabilityKind,
+) -> Result<Option<String>, String> {
+    let surface = resolved_surface_spec(provider_type, surface_id)?;
     Ok(match capability {
         SurfaceCapabilityKind::Llm => surface.default_models.llm_models.first().cloned(),
         SurfaceCapabilityKind::Ocr => surface.default_models.ocr_models.first().cloned(),
@@ -662,6 +757,26 @@ fn compatibility_surface_from_vendor<'a>(
     })
 }
 
+fn compatibility_surface_for_provider_type(
+    provider_type: AiProviderType,
+) -> Result<&'static ProviderSurfaceSpec, String> {
+    let label = provider_type_label(provider_type);
+    let catalog = surface_catalog()?;
+    let vendor = catalog
+        .vendors
+        .iter()
+        .find(|vendor| vendor.provider_type.eq_ignore_ascii_case(label))
+        .ok_or_else(|| {
+            format!("Provider vendor for {label} is missing from the surface catalog.")
+        })?;
+    compatibility_surface_from_vendor(catalog, &vendor.vendor_id).ok_or_else(|| {
+        format!(
+            "Provider type '{}' does not define a direct_http compatibility surface.",
+            label
+        )
+    })
+}
+
 fn compatibility_preset_from_vendor(
     catalog: &ProviderSurfaceCatalog,
     vendor: &ProviderVendorSpec,
@@ -838,5 +953,16 @@ mod tests {
         })
         .expect_err("overlapping parameters should fail");
         assert!(err.contains("overlapping supported/unsupported"));
+    }
+
+    #[test]
+    fn resolves_openai_managed_surface_shape() {
+        let shape = resolved_request_shape(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.managed_oauth"),
+            ProviderTransportKind::Llm,
+        )
+        .expect("managed surface should resolve");
+        assert_eq!(shape, ProviderRequestShape::OpenAiResponses);
     }
 }
