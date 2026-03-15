@@ -1,5 +1,5 @@
 use axum::Json;
-use oneshim_api_contracts::provider_surface_specs::ProviderSurfaceCatalog;
+use oneshim_api_contracts::provider_specs::ProviderSurfaceCatalog;
 
 use crate::error::ApiError;
 use crate::services::ai_provider_spec_service;

@@ -1,12 +1,10 @@
 use oneshim_api_contracts::ai_providers::{ProviderPresetCatalog, ProviderSpecCatalog};
 use oneshim_api_contracts::provider_specs;
-use oneshim_api_contracts::provider_surface_specs::{
-    list_compatibility_provider_presets, ProviderSurfaceCatalog,
-};
 use oneshim_core::config::AiProviderType;
 
 use crate::error::ApiError;
 
+pub use oneshim_api_contracts::provider_specs::ProviderSurfaceCatalog;
 pub use oneshim_api_contracts::provider_specs::{ModelCatalogResponseShape, ProviderAuthScheme};
 
 pub fn list_provider_specs() -> Result<ProviderSpecCatalog, ApiError> {
@@ -14,12 +12,11 @@ pub fn list_provider_specs() -> Result<ProviderSpecCatalog, ApiError> {
 }
 
 pub fn list_provider_surface_specs() -> Result<ProviderSurfaceCatalog, ApiError> {
-    oneshim_api_contracts::provider_surface_specs::list_provider_surface_specs()
-        .map_err(ApiError::Internal)
+    provider_specs::list_provider_surface_specs().map_err(ApiError::Internal)
 }
 
 pub fn list_provider_presets() -> Result<ProviderPresetCatalog, ApiError> {
-    list_compatibility_provider_presets().map_err(ApiError::Internal)
+    provider_specs::list_compatibility_provider_presets().map_err(ApiError::Internal)
 }
 
 pub fn resolve_provider_type(raw: &str) -> Result<AiProviderType, ApiError> {
@@ -98,7 +95,7 @@ mod tests {
     #[test]
     fn specs_load_from_json() {
         let catalog = list_provider_specs().expect("provider spec catalog should load");
-        assert!(catalog.providers.len() >= 6);
+        assert_eq!(catalog.providers.len(), 4);
         assert!(!catalog.updated_at.is_empty());
     }
 

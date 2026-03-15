@@ -14,7 +14,6 @@ pub mod metrics;
 pub mod onboarding;
 pub mod processes;
 pub mod provider_specs;
-pub mod provider_surface_specs;
 pub mod reports;
 pub mod search;
 pub mod sessions;
