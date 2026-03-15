@@ -804,6 +804,7 @@ fn endpoint_to_api_settings(
     endpoint_kind: ApiEndpointKind,
     default_backend_kind: CredentialBackendKind,
 ) -> ExternalApiSettings {
+    let binding = endpoint.credential.as_ref();
     let auth_mode = endpoint
         .credential
         .as_ref()
@@ -818,11 +819,13 @@ fn endpoint_to_api_settings(
             derive_credential_backend_kind(auth_mode, has_plaintext_secret, default_backend_kind)
         });
     let has_secret = has_plaintext_secret
-        || endpoint
-            .credential
-            .as_ref()
-            .and_then(|binding| binding.secret_ref.as_ref())
-            .is_some();
+        || binding
+            .and_then(|value| value.secret_ref.as_ref())
+            .is_some()
+        || binding.is_some_and(|value| {
+            value.auth_mode == CredentialAuthMode::ApiKey
+                && value.backend_kind == CredentialBackendKind::Env
+        });
     let masked_plaintext_secret = has_plaintext_secret.then(|| mask_api_key(&endpoint.api_key));
 
     ExternalApiSettings {
@@ -836,10 +839,8 @@ fn endpoint_to_api_settings(
         has_secret,
         can_edit_secret: can_edit_secret(auth_mode, backend_kind),
         secret_display_hint: masked_plaintext_secret,
-        projection_enabled: endpoint
-            .credential
-            .as_ref()
-            .map(|binding| binding.projection_enabled)
+        projection_enabled: binding
+            .map(|value| value.projection_enabled)
             .unwrap_or(false),
     }
 }
@@ -1327,6 +1328,34 @@ mod tests {
 
         assert_eq!(llm_api.backend_kind, "os_secret_store");
         assert!(llm_api.has_secret);
+        assert_eq!(llm_api.api_key_masked, "");
+        assert_eq!(llm_api.secret_display_hint, None);
+    }
+
+    #[test]
+    fn config_to_settings_marks_env_bound_api_key_as_present_without_secret_ref() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+        config.ai_provider.llm_api = Some(ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::Env,
+                secret_ref: None,
+                projection_enabled: false,
+            }),
+        });
+
+        let settings = config_to_settings(&config, CredentialBackendKind::Env);
+        let llm_api = settings.ai_provider.llm_api.expect("llm api settings");
+
+        assert_eq!(llm_api.backend_kind, "env");
+        assert!(llm_api.has_secret);
+        assert!(!llm_api.can_edit_secret);
         assert_eq!(llm_api.api_key_masked, "");
         assert_eq!(llm_api.secret_display_hint, None);
     }
