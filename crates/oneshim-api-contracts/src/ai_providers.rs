@@ -1,6 +1,80 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderSpecCatalog {
+    pub version: u32,
+    #[serde(default)]
+    pub updated_at: String,
+    pub providers: Vec<ProviderSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderSpec {
+    pub provider_type: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub display_name: String,
+    pub transports: ProviderTransportSet,
+    pub defaults: ProviderDefaultModels,
+    pub parameters: ProviderParameterSet,
+    #[serde(default)]
+    pub references: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderTransportSet {
+    pub llm: ProviderTransportSpec,
+    pub ocr: ProviderTransportSpec,
+    pub model_catalog: ProviderModelCatalogTransportSpec,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderTransportSpec {
+    pub method: String,
+    pub url: String,
+    pub auth_scheme: String,
+    pub request_shape: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderModelCatalogTransportSpec {
+    pub method: String,
+    pub url: String,
+    pub auth_scheme: String,
+    pub response_shape: String,
+    #[serde(default = "default_true")]
+    pub llm_supported: bool,
+    #[serde(default = "default_true")]
+    pub ocr_supported: bool,
+    #[serde(default)]
+    pub ocr_notice: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderDefaultModels {
+    #[serde(default)]
+    pub llm_models: Vec<String>,
+    #[serde(default)]
+    pub ocr_models: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderParameterSet {
+    pub llm: ProviderParameterProfile,
+    pub ocr: ProviderParameterProfile,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProviderParameterProfile {
+    #[serde(default)]
+    pub supported: Vec<String>,
+    #[serde(default)]
+    pub unsupported: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProviderPresetCatalog {
     pub version: u32,
     #[serde(default)]

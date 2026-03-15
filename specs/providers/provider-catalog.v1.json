@@ -1,0 +1,292 @@
+{
+  "version": 1,
+  "updated_at": "2026-03-15T12:00:00Z",
+  "providers": [
+    {
+      "provider_type": "Anthropic",
+      "aliases": ["anthropic"],
+      "display_name": "Anthropic",
+      "transports": {
+        "llm": {
+          "method": "POST",
+          "url": "https://api.anthropic.com/v1/messages",
+          "auth_scheme": "x_api_key",
+          "request_shape": "anthropic_messages"
+        },
+        "ocr": {
+          "method": "POST",
+          "url": "https://api.anthropic.com/v1/messages",
+          "auth_scheme": "x_api_key",
+          "request_shape": "anthropic_vision_messages"
+        },
+        "model_catalog": {
+          "method": "GET",
+          "url": "https://api.anthropic.com/v1/models",
+          "auth_scheme": "x_api_key",
+          "response_shape": "standard_data_or_models",
+          "llm_supported": true,
+          "ocr_supported": true
+        }
+      },
+      "defaults": {
+        "llm_models": ["claude-sonnet-4-5", "claude-opus-4-1"],
+        "ocr_models": ["claude-sonnet-4-5", "claude-opus-4-1"]
+      },
+      "parameters": {
+        "llm": {
+          "supported": ["model", "messages", "system", "max_tokens", "temperature", "tools", "tool_choice", "stop_sequences", "thinking"],
+          "unsupported": ["response_format", "top_k"],
+          "notes": ["Anthropic uses the Messages API shape and documents beta/header-gated features separately."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens"],
+          "unsupported": ["response_format"],
+          "notes": ["Vision OCR is implemented through image content blocks on the Messages API."]
+        }
+      },
+      "references": [
+        "https://docs.anthropic.com/en/api/messages",
+        "https://docs.anthropic.com/en/api/models",
+        "https://docs.anthropic.com/ko/api/openai-sdk"
+      ]
+    },
+    {
+      "provider_type": "OpenAi",
+      "aliases": ["openai", "open_ai", "open-ai", "openai-compatible"],
+      "display_name": "OpenAI",
+      "transports": {
+        "llm": {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "auth_scheme": "bearer",
+          "request_shape": "openai_chat_completions"
+        },
+        "ocr": {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "auth_scheme": "bearer",
+          "request_shape": "openai_vision_chat_completions"
+        },
+        "model_catalog": {
+          "method": "GET",
+          "url": "https://api.openai.com/v1/models",
+          "auth_scheme": "bearer",
+          "response_shape": "standard_data_or_models",
+          "llm_supported": true,
+          "ocr_supported": true
+        }
+      },
+      "defaults": {
+        "llm_models": ["gpt-4.1", "gpt-4.1-mini", "o3-mini"],
+        "ocr_models": ["gpt-4.1", "gpt-4.1-mini"]
+      },
+      "parameters": {
+        "llm": {
+          "supported": ["model", "messages", "max_tokens", "max_output_tokens", "temperature", "top_p", "tools", "tool_choice", "response_format", "reasoning"],
+          "unsupported": [],
+          "notes": ["OpenAI currently spans Chat Completions and Responses API families, so parameter support is model- and endpoint-dependent."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens", "response_format"],
+          "unsupported": ["thinking"],
+          "notes": ["Vision OCR currently uses chat-completions style multimodal input in ONESHIM."]
+        }
+      },
+      "references": [
+        "https://platform.openai.com/docs/api-reference/chat",
+        "https://platform.openai.com/docs/api-reference/responses",
+        "https://platform.openai.com/docs/api-reference/models/list"
+      ]
+    },
+    {
+      "provider_type": "Google",
+      "aliases": ["google", "gemini"],
+      "display_name": "Google",
+      "transports": {
+        "llm": {
+          "method": "POST",
+          "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+          "auth_scheme": "x_goog_api_key",
+          "request_shape": "google_generate_content"
+        },
+        "ocr": {
+          "method": "POST",
+          "url": "https://vision.googleapis.com/v1/images:annotate",
+          "auth_scheme": "x_goog_api_key",
+          "request_shape": "google_vision_annotate"
+        },
+        "model_catalog": {
+          "method": "GET",
+          "url": "https://generativelanguage.googleapis.com/v1beta/models",
+          "auth_scheme": "x_goog_api_key",
+          "response_shape": "google_models",
+          "llm_supported": true,
+          "ocr_supported": false,
+          "ocr_notice": "Google Vision OCR endpoint does not expose a selectable model catalog."
+        }
+      },
+      "defaults": {
+        "llm_models": ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-pro"],
+        "ocr_models": []
+      },
+      "parameters": {
+        "llm": {
+          "supported": ["contents", "system_instruction", "temperature", "topP", "topK", "maxOutputTokens", "responseSchema", "tools", "thinking"],
+          "unsupported": ["response_format"],
+          "notes": ["Gemini model metadata is machine-readable and exposes token limits plus supported generation methods."]
+        },
+        "ocr": {
+          "supported": ["requests", "TEXT_DETECTION", "maxResults"],
+          "unsupported": ["model"],
+          "notes": ["Google OCR in ONESHIM is backed by Vision API, not Gemini multimodal generation."]
+        }
+      },
+      "references": [
+        "https://ai.google.dev/api/models#v1beta.models.list",
+        "https://ai.google.dev/api/generate-content",
+        "https://ai.google.dev/models/gemini"
+      ]
+    },
+    {
+      "provider_type": "Generic",
+      "aliases": ["generic"],
+      "display_name": "Generic",
+      "transports": {
+        "llm": {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "auth_scheme": "bearer",
+          "request_shape": "openai_chat_completions"
+        },
+        "ocr": {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "auth_scheme": "bearer",
+          "request_shape": "openai_vision_chat_completions"
+        },
+        "model_catalog": {
+          "method": "GET",
+          "url": "https://api.openai.com/v1/models",
+          "auth_scheme": "bearer",
+          "response_shape": "standard_data_or_models",
+          "llm_supported": true,
+          "ocr_supported": true
+        }
+      },
+      "defaults": {
+        "llm_models": ["gpt-4.1-mini", "o3-mini"],
+        "ocr_models": ["gpt-4.1-mini"]
+      },
+      "parameters": {
+        "llm": {
+          "supported": ["model", "messages", "temperature", "top_p", "max_tokens"],
+          "unsupported": [],
+          "notes": ["Generic is treated as OpenAI-compatible by default until a provider-specific spec is added."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens", "response_format"],
+          "unsupported": [],
+          "notes": ["Generic OCR follows the OpenAI-compatible multimodal chat shape."]
+        }
+      },
+      "references": [
+        "https://platform.openai.com/docs/api-reference/chat",
+        "https://platform.openai.com/docs/api-reference/models/list"
+      ]
+    },
+    {
+      "provider_type": "OpenRouter",
+      "aliases": ["openrouter"],
+      "display_name": "OpenRouter",
+      "transports": {
+        "llm": {
+          "method": "POST",
+          "url": "https://openrouter.ai/api/v1/chat/completions",
+          "auth_scheme": "bearer",
+          "request_shape": "openai_chat_completions"
+        },
+        "ocr": {
+          "method": "POST",
+          "url": "https://openrouter.ai/api/v1/chat/completions",
+          "auth_scheme": "bearer",
+          "request_shape": "openai_vision_chat_completions"
+        },
+        "model_catalog": {
+          "method": "GET",
+          "url": "https://openrouter.ai/api/v1/models",
+          "auth_scheme": "bearer",
+          "response_shape": "standard_data_or_models",
+          "llm_supported": true,
+          "ocr_supported": true
+        }
+      },
+      "defaults": {
+        "llm_models": ["openai/gpt-4.1-mini", "anthropic/claude-3.7-sonnet", "google/gemini-2.5-flash"],
+        "ocr_models": ["openai/gpt-4.1-mini"]
+      },
+      "parameters": {
+        "llm": {
+          "supported": ["model", "messages", "temperature", "top_p", "max_tokens", "response_format", "tools"],
+          "unsupported": [],
+          "notes": ["OpenRouter publishes supported parameter metadata per model and is a strong candidate for spec-driven integration."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens"],
+          "unsupported": [],
+          "notes": ["Actual OCR/vision behavior depends on the upstream routed model."]
+        }
+      },
+      "references": [
+        "https://openrouter.ai/docs/docs/overview/models",
+        "https://openrouter.ai/docs/api-reference/parameters/get-parameters"
+      ]
+    },
+    {
+      "provider_type": "xAI",
+      "aliases": ["xai"],
+      "display_name": "xAI",
+      "transports": {
+        "llm": {
+          "method": "POST",
+          "url": "https://api.x.ai/v1/chat/completions",
+          "auth_scheme": "bearer",
+          "request_shape": "openai_chat_completions"
+        },
+        "ocr": {
+          "method": "POST",
+          "url": "https://api.x.ai/v1/chat/completions",
+          "auth_scheme": "bearer",
+          "request_shape": "openai_vision_chat_completions"
+        },
+        "model_catalog": {
+          "method": "GET",
+          "url": "https://api.x.ai/v1/models",
+          "auth_scheme": "bearer",
+          "response_shape": "standard_data_or_models",
+          "llm_supported": true,
+          "ocr_supported": true
+        }
+      },
+      "defaults": {
+        "llm_models": ["grok-4-fast-reasoning", "grok-4-fast-non-reasoning"],
+        "ocr_models": ["grok-4-fast-non-reasoning"]
+      },
+      "parameters": {
+        "llm": {
+          "supported": ["model", "messages", "temperature", "top_p", "max_tokens"],
+          "unsupported": ["frequency_penalty", "presence_penalty", "stop"],
+          "notes": ["xAI documents model-specific unsupported parameters, especially for reasoning variants."]
+        },
+        "ocr": {
+          "supported": ["model", "messages", "max_tokens"],
+          "unsupported": ["frequency_penalty", "presence_penalty", "stop"],
+          "notes": ["Vision and OCR support are model-dependent and should be constrained by per-model capability metadata."]
+        }
+      },
+      "references": [
+        "https://docs.x.ai/docs/models/",
+        "https://docs.x.ai/docs/guides/chat-completions"
+      ]
+    }
+  ]
+}

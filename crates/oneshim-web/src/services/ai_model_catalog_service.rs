@@ -7,6 +7,9 @@ use serde_json::Value;
 
 use crate::error::ApiError;
 use crate::services::ai_provider_preset_service;
+use crate::services::ai_provider_spec_service::{
+    self, ModelCatalogResponseShape, ProviderAuthScheme,
+};
 use crate::services::settings_service::is_masked_key;
 use crate::AppState;
 
@@ -22,7 +25,7 @@ pub async fn fetch_provider_models(
 
     let endpoint = resolve_models_endpoint(provider_type, request.endpoint.as_deref());
     if let Some(notice) =
-        ai_provider_preset_service::ocr_model_catalog_notice_for_endpoint(provider_type, &endpoint)
+        ai_provider_preset_service::ocr_model_catalog_notice_for_endpoint(provider_type, &endpoint)?
     {
         return Ok(ProviderModelsResponse {
             models: Vec::new(),
@@ -36,17 +39,17 @@ pub async fn fetch_provider_models(
         .map_err(|e| ApiError::Internal(format!("Failed to create model discovery client: {e}")))?;
 
     let mut builder = client.get(&endpoint);
-    match provider_type {
-        AiProviderType::Anthropic => {
+    match ai_provider_spec_service::model_catalog_auth_scheme(provider_type)? {
+        ProviderAuthScheme::Bearer => {
+            builder = builder.header("Authorization", format!("Bearer {api_key}"));
+        }
+        ProviderAuthScheme::XApiKey => {
             builder = builder
                 .header("x-api-key", &api_key)
                 .header("anthropic-version", "2023-06-01");
         }
-        AiProviderType::Google => {
+        ProviderAuthScheme::XGoogApiKey => {
             builder = builder.header("x-goog-api-key", &api_key);
-        }
-        AiProviderType::OpenAi | AiProviderType::Generic => {
-            builder = builder.header("Authorization", format!("Bearer {api_key}"));
         }
     }
 
@@ -66,7 +69,10 @@ pub async fn fetch_provider_models(
         )));
     }
 
-    let mut models = parse_models(provider_type, &body)?;
+    let mut models = parse_models(
+        ai_provider_spec_service::model_catalog_response_shape(provider_type)?,
+        &body,
+    )?;
     models.sort_unstable();
     models.dedup();
 
@@ -80,15 +86,13 @@ pub async fn fetch_provider_models(
     })
 }
 
-fn parse_models(provider_type: AiProviderType, body: &str) -> Result<Vec<String>, ApiError> {
+fn parse_models(shape: ModelCatalogResponseShape, body: &str) -> Result<Vec<String>, ApiError> {
     let value: Value = serde_json::from_str(body)
         .map_err(|e| ApiError::BadRequest(format!("Invalid model catalog response JSON: {e}")))?;
 
-    match provider_type {
-        AiProviderType::Google => parse_google_models(&value),
-        AiProviderType::Anthropic | AiProviderType::OpenAi | AiProviderType::Generic => {
-            parse_standard_models(&value)
-        }
+    match shape {
+        ModelCatalogResponseShape::GoogleModels => parse_google_models(&value),
+        ModelCatalogResponseShape::StandardDataOrModels => parse_standard_models(&value),
     }
 }
 
@@ -275,24 +279,32 @@ fn resolve_models_endpoint(provider_type: AiProviderType, endpoint: Option<&str>
         AiProviderType::Anthropic => endpoint
             .as_deref()
             .and_then(derive_anthropic_models_endpoint)
-            .or_else(|| ai_provider_preset_service::default_model_catalog_endpoint(provider_type))
+            .or_else(|| {
+                ai_provider_preset_service::default_model_catalog_endpoint(provider_type).ok()
+            })
             .unwrap_or_else(|| "https://api.anthropic.com/v1/models".to_string()),
         AiProviderType::OpenAi => endpoint
             .as_deref()
             .and_then(derive_openai_models_endpoint)
-            .or_else(|| ai_provider_preset_service::default_model_catalog_endpoint(provider_type))
+            .or_else(|| {
+                ai_provider_preset_service::default_model_catalog_endpoint(provider_type).ok()
+            })
             .unwrap_or_else(|| "https://api.openai.com/v1/models".to_string()),
         AiProviderType::Google => endpoint
             .as_deref()
             .and_then(derive_google_models_endpoint)
-            .or_else(|| ai_provider_preset_service::default_model_catalog_endpoint(provider_type))
+            .or_else(|| {
+                ai_provider_preset_service::default_model_catalog_endpoint(provider_type).ok()
+            })
             .unwrap_or_else(|| {
                 "https://generativelanguage.googleapis.com/v1beta/models".to_string()
             }),
         AiProviderType::Generic => endpoint
             .as_deref()
             .map(ToString::to_string)
-            .or_else(|| ai_provider_preset_service::default_model_catalog_endpoint(provider_type))
+            .or_else(|| {
+                ai_provider_preset_service::default_model_catalog_endpoint(provider_type).ok()
+            })
             .unwrap_or_else(|| "https://api.openai.com/v1/models".to_string()),
     }
 }
