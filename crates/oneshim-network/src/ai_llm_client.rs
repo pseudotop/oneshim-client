@@ -36,6 +36,15 @@ impl std::fmt::Debug for RemoteLlmProvider {
 }
 
 impl RemoteLlmProvider {
+    fn fallback_llm_model(provider_type: AiProviderType) -> &'static str {
+        match provider_type {
+            AiProviderType::Anthropic => "claude-sonnet-4-20250514",
+            AiProviderType::OpenAi => "gpt-5.4",
+            AiProviderType::Google => "gemini-2.5-flash",
+            AiProviderType::Generic => "gpt-5-mini",
+        }
+    }
+
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
         if config.api_key.is_empty() {
             return Err(CoreError::Config(
@@ -57,7 +66,7 @@ impl RemoteLlmProvider {
                     .ok()
                     .flatten()
             })
-            .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+            .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
 
         match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
         {
@@ -117,7 +126,7 @@ impl RemoteLlmProvider {
                     .ok()
                     .flatten()
             })
-            .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+            .unwrap_or_else(|| Self::fallback_llm_model(config.provider_type).to_string());
 
         match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
         {
@@ -576,6 +585,7 @@ mod tests {
             model: Some("gpt-3.5-turbo".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: None,
         };
 
@@ -593,11 +603,12 @@ mod tests {
             model: None,
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: None,
         };
 
         let provider = RemoteLlmProvider::new(&config).expect("provider should initialize");
-        assert_eq!(provider.model, "gpt-5-mini");
+        assert_eq!(provider.model, "gpt-5.4");
         assert_eq!(
             provider.llm_request_shape().expect("shape should resolve"),
             ProviderRequestShape::OpenAiResponses
@@ -764,15 +775,16 @@ mod tests {
         let config = ExternalApiEndpoint {
             endpoint: "https://chatgpt.com/backend-api/codex".to_string(),
             api_key: "test-key".to_string(),
-            model: Some("gpt-4o".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: None,
         };
         let provider = RemoteLlmProvider::new(&config).unwrap();
         let body = provider.build_responses_api_body("system prompt", "user input");
 
-        assert_eq!(body["model"], "gpt-4o");
+        assert_eq!(body["model"], "gpt-5.4");
         assert_eq!(body["instructions"], "system prompt");
         assert_eq!(body["input"], "user input");
         assert_eq!(body["max_output_tokens"], 512);
@@ -785,9 +797,10 @@ mod tests {
         let config = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1/responses".to_string(),
             api_key: "test-key".to_string(),
-            model: Some("gpt-5-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: None,
         };
         let provider = RemoteLlmProvider::new(&config).unwrap();

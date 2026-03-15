@@ -520,8 +520,9 @@ mod tests {
     /// A model not present in the catalog at all must be Allowed.
     #[test]
     fn unknown_model_is_allowed() {
-        let decision = evaluate_model_lifecycle_now(AiProviderType::OpenAi, "gpt-4.1-mini")
-            .expect("evaluation should succeed");
+        let decision =
+            evaluate_model_lifecycle_now(AiProviderType::OpenAi, "unit-test-openai-model")
+                .expect("evaluation should succeed");
         assert_eq!(decision, ModelLifecycleDecision::Allowed);
     }
 
@@ -603,7 +604,7 @@ mod tests {
 
     #[test]
     fn enforce_returns_ok_for_allowed_model() {
-        enforce_model_lifecycle_now(AiProviderType::OpenAi, "gpt-4.1-mini")
+        enforce_model_lifecycle_now(AiProviderType::OpenAi, "unit-test-openai-model")
             .expect("unknown (allowed) model must not fail enforce");
     }
 

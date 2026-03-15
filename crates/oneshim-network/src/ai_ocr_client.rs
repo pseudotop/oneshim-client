@@ -602,6 +602,7 @@ mod tests {
             model: None,
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            surface_id: None,
             credential: None,
         };
         let result = RemoteOcrProvider::new(&config);
@@ -618,6 +619,7 @@ mod tests {
             model: None,
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            surface_id: None,
             credential: None,
         };
         let result = RemoteOcrProvider::new(&config);
@@ -632,6 +634,7 @@ mod tests {
             model: None,
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            surface_id: None,
             credential: None,
         };
 
@@ -651,6 +654,7 @@ mod tests {
             model: Some("gpt-3.5-turbo".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
             credential: None,
         };
 

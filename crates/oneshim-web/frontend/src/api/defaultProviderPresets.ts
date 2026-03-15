@@ -2,7 +2,7 @@ import type { ProviderPresetCatalog } from './client'
 
 export const DEFAULT_PROVIDER_PRESET_CATALOG: ProviderPresetCatalog = {
   version: 2,
-  updated_at: '2026-03-15T18:30:00Z',
+  updated_at: '2026-03-16T00:10:00Z',
   providers: [
     {
       provider_type: 'Anthropic',
@@ -12,8 +12,8 @@ export const DEFAULT_PROVIDER_PRESET_CATALOG: ProviderPresetCatalog = {
       ocr_endpoint: 'https://api.anthropic.com/v1/messages',
       model_catalog_endpoint: 'https://api.anthropic.com/v1/models',
       ocr_model_catalog_supported: true,
-      llm_models: ['claude-sonnet-4-20250514', 'claude-opus-4-1-20250805'],
-      ocr_models: ['claude-sonnet-4-20250514', 'claude-opus-4-1-20250805'],
+      llm_models: ['claude-sonnet-4-20250514', 'claude-opus-4-1-20250805', 'claude-opus-4-20250514'],
+      ocr_models: ['claude-sonnet-4-20250514', 'claude-opus-4-1-20250805', 'claude-opus-4-20250514'],
     },
     {
       provider_type: 'OpenAi',
@@ -23,8 +23,8 @@ export const DEFAULT_PROVIDER_PRESET_CATALOG: ProviderPresetCatalog = {
       ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
       model_catalog_endpoint: 'https://api.openai.com/v1/models',
       ocr_model_catalog_supported: true,
-      llm_models: ['gpt-5-mini', 'gpt-5.2', 'gpt-5-nano'],
-      ocr_models: ['gpt-5-mini', 'gpt-5.2'],
+      llm_models: ['gpt-5.4', 'gpt-5.2', 'gpt-5-mini'],
+      ocr_models: ['gpt-5.4', 'gpt-5-mini'],
     },
     {
       provider_type: 'Google',
@@ -36,7 +36,7 @@ export const DEFAULT_PROVIDER_PRESET_CATALOG: ProviderPresetCatalog = {
       model_catalog_endpoint: 'https://generativelanguage.googleapis.com/v1beta/models',
       ocr_model_catalog_supported: false,
       ocr_model_catalog_notice: 'Google Vision OCR endpoint does not expose a selectable model catalog.',
-      llm_models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
+      llm_models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview', 'gemini-3-pro-preview'],
       ocr_models: [],
     },
     {
@@ -47,7 +47,7 @@ export const DEFAULT_PROVIDER_PRESET_CATALOG: ProviderPresetCatalog = {
       ocr_endpoint: 'https://api.openai.com/v1/chat/completions',
       model_catalog_endpoint: 'https://api.openai.com/v1/models',
       ocr_model_catalog_supported: true,
-      llm_models: ['gpt-5-mini', 'gpt-5-nano'],
+      llm_models: ['gpt-5-mini', 'gpt-5.4'],
       ocr_models: ['gpt-5-mini'],
     },
   ],

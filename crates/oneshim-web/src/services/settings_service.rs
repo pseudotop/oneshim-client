@@ -1325,7 +1325,7 @@ mod tests {
         settings.ai_provider.llm_api = Some(ExternalApiSettings {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key_masked: "sk-secret-123456".to_string(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             provider_type: "OpenAi".to_string(),
             surface_id: None,
             timeout_secs: 30,
@@ -1366,7 +1366,7 @@ mod tests {
         config.ai_provider.llm_api = Some(ExternalApiEndpoint {
             endpoint: "https://api.example.com/v1".to_string(),
             api_key: "sk-test-1234567890".to_string(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 45,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -1392,7 +1392,7 @@ mod tests {
         config.ai_provider.llm_api = Some(ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -1420,7 +1420,7 @@ mod tests {
         config.ai_provider.llm_api = Some(ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -1451,7 +1451,7 @@ mod tests {
         config.ai_provider.llm_api = Some(ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -1480,7 +1480,7 @@ mod tests {
         config.ai_provider.llm_api = Some(ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -1519,7 +1519,7 @@ mod tests {
         settings.ai_provider.llm_api = Some(ExternalApiSettings {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key_masked: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             provider_type: "openai".to_string(),
             surface_id: None,
             timeout_secs: 30,
@@ -1545,7 +1545,7 @@ mod tests {
         settings.ai_provider.llm_api = Some(ExternalApiSettings {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key_masked: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             provider_type: "openai".to_string(),
             surface_id: None,
             timeout_secs: 30,
@@ -1571,7 +1571,7 @@ mod tests {
         settings.ai_provider.llm_api = Some(ExternalApiSettings {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key_masked: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             provider_type: "openai".to_string(),
             surface_id: Some("provider_surface.openai.direct_api".to_string()),
             timeout_secs: 30,
@@ -1598,7 +1598,7 @@ mod tests {
                 llm_api: Some(ExternalApiSettings {
                     endpoint: "https://api.openai.com/v1".to_string(),
                     api_key_masked: String::new(),
-                    model: Some("gpt-4.1-mini".to_string()),
+                    model: Some("gpt-5.4".to_string()),
                     provider_type: "OpenAi".to_string(),
                     surface_id: None,
                     timeout_secs: 30,
@@ -1630,7 +1630,7 @@ mod tests {
         config.ai_provider.llm_api = Some(ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -1688,7 +1688,7 @@ mod tests {
         settings.ai_provider.llm_api = Some(ExternalApiSettings {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key_masked: "sk-secret-123456".to_string(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             provider_type: "OpenAi".to_string(),
             surface_id: None,
             timeout_secs: 30,

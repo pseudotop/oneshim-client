@@ -281,7 +281,7 @@ mod tests {
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: "sk-legacy".to_string(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -307,7 +307,7 @@ mod tests {
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: "sk-legacy".to_string(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -332,7 +332,7 @@ mod tests {
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: "sk-legacy".to_string(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -353,7 +353,7 @@ mod tests {
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: "sk-legacy".to_string(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
@@ -383,7 +383,7 @@ mod tests {
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
-            model: Some("gpt-4.1-mini".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,

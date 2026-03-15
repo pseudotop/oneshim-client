@@ -571,18 +571,18 @@ export async function handleStandaloneRequest(
     const provider = String(payload?.provider_type ?? 'generic')
       .trim()
       .toLowerCase()
-    if (provider === 'google' || provider === 'gemini') {
-      return jsonResponse({
-        models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
-      })
-    }
     if (provider === 'anthropic') {
       return jsonResponse({
-        models: ['claude-sonnet-4-20250514', 'claude-opus-4-1-20250805'],
+        models: ['claude-sonnet-4-20250514', 'claude-opus-4-1-20250805', 'claude-opus-4-20250514'],
+      })
+    }
+    if (provider === 'google' || provider === 'gemini') {
+      return jsonResponse({
+        models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview', 'gemini-3-pro-preview'],
       })
     }
     return jsonResponse({
-      models: ['gpt-5-mini', 'gpt-5.2', 'gpt-5-nano'],
+      models: ['gpt-5.4', 'gpt-5.2', 'gpt-5-mini'],
     })
   }
   if (path === '/api/update/status' && method === 'GET') {

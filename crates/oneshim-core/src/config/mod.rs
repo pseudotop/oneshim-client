@@ -381,7 +381,7 @@ mod tests {
             llm_api: Some(ExternalApiEndpoint {
                 endpoint: "https://api.anthropic.com/v1/messages".to_string(),
                 api_key: "".to_string(),
-                model: Some("claude-sonnet-4-20250514".to_string()),
+                model: Some("claude-opus-4-1-20250805".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::Anthropic,
                 surface_id: None,
@@ -403,7 +403,7 @@ mod tests {
             llm_api: Some(ExternalApiEndpoint {
                 endpoint: "https://api.openai.com/v1".to_string(),
                 api_key: "".to_string(),
-                model: Some("gpt-5-mini".to_string()),
+                model: Some("gpt-5.4".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
                 surface_id: None,

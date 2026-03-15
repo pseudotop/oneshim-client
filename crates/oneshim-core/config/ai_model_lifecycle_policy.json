@@ -7,7 +7,7 @@
       "model": "gpt-3.5-turbo",
       "warn_at": "2025-07-01T00:00:00Z",
       "block_at": "2026-01-01T00:00:00Z",
-      "replacement": "gpt-5-mini",
+      "replacement": "gpt-5.4",
       "action": "warn_then_block"
     },
     {

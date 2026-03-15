@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-03-15T18:30:00Z",
+  "updated_at": "2026-03-16T00:10:00Z",
   "providers": [
     {
       "provider_type": "Anthropic",
@@ -29,8 +29,8 @@
         }
       },
       "defaults": {
-        "llm_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805"],
-        "ocr_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805"]
+        "llm_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"],
+        "ocr_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"]
       },
       "parameters": {
         "llm": {
@@ -77,8 +77,8 @@
         }
       },
       "defaults": {
-        "llm_models": ["gpt-5-mini", "gpt-5.2", "gpt-5-nano"],
-        "ocr_models": ["gpt-5-mini", "gpt-5.2"]
+        "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
+        "ocr_models": ["gpt-5.4", "gpt-5-mini"]
       },
       "parameters": {
         "llm": {
@@ -126,7 +126,7 @@
         }
       },
       "defaults": {
-        "llm_models": ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
+        "llm_models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-3-pro-preview"],
         "ocr_models": []
       },
       "parameters": {
@@ -174,7 +174,7 @@
         }
       },
       "defaults": {
-        "llm_models": ["gpt-5-mini", "gpt-5-nano"],
+        "llm_models": ["gpt-5-mini", "gpt-5.4"],
         "ocr_models": ["gpt-5-mini"]
       },
       "parameters": {
