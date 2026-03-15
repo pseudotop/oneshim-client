@@ -59,34 +59,48 @@ impl CredentialSource {
 
         if let Some(binding) = endpoint.credential.as_ref() {
             if binding.auth_mode == CredentialAuthMode::ApiKey {
-                if let Some(secret_store) = secret_store {
-                    if let Some(secret_ref) = binding.secret_ref.as_ref() {
-                        return Ok(Self::StoredSecret {
-                            namespace: secret_ref.namespace.clone(),
-                            key: secret_ref.key.clone(),
-                            secret_store,
-                            plaintext_fallback,
-                        });
+                if matches!(
+                    binding.backend_kind,
+                    CredentialBackendKind::LegacyConfig | CredentialBackendKind::Unavailable
+                ) {
+                    if let Some(plaintext_fallback) = plaintext_fallback {
+                        return Ok(Self::ApiKey(plaintext_fallback));
                     }
+                }
 
-                    if binding.backend_kind == CredentialBackendKind::Env {
-                        let profile_id = profile_id.ok_or_else(|| {
-                            CoreError::Config(
-                                "profile_id is required to resolve env-backed provider credentials"
-                                    .to_string(),
-                            )
-                        })?;
-                        let (namespace, key) = provider_api_key_secret_ref(
-                            provider_type_id(endpoint.provider_type),
-                            profile_id,
-                        )?;
-                        return Ok(Self::StoredSecret {
-                            namespace,
-                            key: key.to_string(),
-                            secret_store,
-                            plaintext_fallback,
-                        });
-                    }
+                let secret_store = secret_store.ok_or_else(|| {
+                    CoreError::Config(format!(
+                        "provider credential backend {:?} requires an initialized secret store",
+                        binding.backend_kind
+                    ))
+                })?;
+
+                if let Some(secret_ref) = binding.secret_ref.as_ref() {
+                    return Ok(Self::StoredSecret {
+                        namespace: secret_ref.namespace.clone(),
+                        key: secret_ref.key.clone(),
+                        secret_store,
+                        plaintext_fallback: None,
+                    });
+                }
+
+                if binding.backend_kind == CredentialBackendKind::Env {
+                    let profile_id = profile_id.ok_or_else(|| {
+                        CoreError::Config(
+                            "profile_id is required to resolve env-backed provider credentials"
+                                .to_string(),
+                        )
+                    })?;
+                    let (namespace, key) = provider_api_key_secret_ref(
+                        provider_type_id(endpoint.provider_type),
+                        profile_id,
+                    )?;
+                    return Ok(Self::StoredSecret {
+                        namespace,
+                        key: key.to_string(),
+                        secret_store,
+                        plaintext_fallback: None,
+                    });
                 }
             }
         }
@@ -287,7 +301,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stored_secret_falls_back_to_plaintext_when_backend_missing() {
+    async fn stored_secret_errors_when_backend_entry_is_missing() {
         let store = Arc::new(TestSecretStore::new());
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
@@ -307,8 +321,51 @@ mod tests {
         };
 
         let source = CredentialSource::from_api_key_endpoint(&endpoint, Some(store)).unwrap();
-        let token = source.resolve_bearer_token().await.unwrap();
-        assert_eq!(token, "sk-legacy");
+        let err = source.resolve_bearer_token().await.unwrap_err();
+        assert!(matches!(err, CoreError::Auth(_)));
+    }
+
+    #[test]
+    fn legacy_config_binding_uses_plaintext_without_secret_store() {
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: "sk-legacy".to_string(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::LegacyConfig,
+                secret_ref: None,
+                projection_enabled: false,
+            }),
+        };
+
+        let source = CredentialSource::from_api_key_endpoint(&endpoint, None).unwrap();
+        assert!(matches!(source, CredentialSource::ApiKey(_)));
+    }
+
+    #[test]
+    fn secret_bound_backend_requires_initialized_store() {
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: "sk-legacy".to_string(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: Some(SecretRef {
+                    namespace: "provider/openai/default".to_string(),
+                    key: "api_key".to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        };
+
+        let err = CredentialSource::from_api_key_endpoint(&endpoint, None).unwrap_err();
+        assert!(matches!(err, CoreError::Config(_)));
     }
 
     #[tokio::test]
