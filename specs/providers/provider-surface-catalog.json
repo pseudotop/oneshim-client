@@ -51,6 +51,15 @@
         "model_catalog": true,
         "context_bridge": false
       },
+      "llm_capabilities": {
+        "structured_output": false
+      },
+      "ocr_capabilities": {
+        "strategy": "multimodal_llm",
+        "supports_geometry": false,
+        "supports_confidence": false,
+        "requires_image_input_model": true
+      },
       "default_models": {
         "llm_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"],
         "ocr_models": ["claude-sonnet-4-20250514", "claude-opus-4-1-20250805", "claude-opus-4-20250514"]
@@ -138,6 +147,15 @@
         "ocr": true,
         "model_catalog": true,
         "context_bridge": false
+      },
+      "llm_capabilities": {
+        "structured_output": true
+      },
+      "ocr_capabilities": {
+        "strategy": "multimodal_llm",
+        "supports_geometry": true,
+        "supports_confidence": true,
+        "requires_image_input_model": true
       },
       "default_models": {
         "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
@@ -245,6 +263,15 @@
         "model_catalog": false,
         "context_bridge": false
       },
+      "llm_capabilities": {
+        "structured_output": false
+      },
+      "ocr_capabilities": {
+        "strategy": "none",
+        "supports_geometry": false,
+        "supports_confidence": false,
+        "requires_image_input_model": false
+      },
       "default_models": {
         "llm_models": ["gpt-5.4", "gpt-5.2", "gpt-5-mini"],
         "ocr_models": []
@@ -326,6 +353,15 @@
         "model_catalog": false,
         "context_bridge": true
       },
+      "llm_capabilities": {
+        "structured_output": true
+      },
+      "ocr_capabilities": {
+        "strategy": "none",
+        "supports_geometry": false,
+        "supports_confidence": false,
+        "requires_image_input_model": false
+      },
       "default_models": {
         "llm_models": ["gpt-5.4", "gpt-5.2-codex", "gpt-5.2"],
         "ocr_models": []
@@ -402,6 +438,15 @@
         "model_catalog": false,
         "context_bridge": true
       },
+      "llm_capabilities": {
+        "structured_output": true
+      },
+      "ocr_capabilities": {
+        "strategy": "none",
+        "supports_geometry": false,
+        "supports_confidence": false,
+        "requires_image_input_model": false
+      },
       "default_models": {
         "llm_models": ["claude-opus-4-6", "claude-sonnet-4", "sonnet", "opus"],
         "ocr_models": []
@@ -469,6 +514,15 @@
         "ocr": true,
         "model_catalog": true,
         "context_bridge": false
+      },
+      "llm_capabilities": {
+        "structured_output": true
+      },
+      "ocr_capabilities": {
+        "strategy": "vision_api",
+        "supports_geometry": true,
+        "supports_confidence": true,
+        "requires_image_input_model": false
       },
       "default_models": {
         "llm_models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-3-pro-preview"],
@@ -574,6 +628,15 @@
         "ocr": true,
         "model_catalog": true,
         "context_bridge": false
+      },
+      "llm_capabilities": {
+        "structured_output": true
+      },
+      "ocr_capabilities": {
+        "strategy": "multimodal_llm",
+        "supports_geometry": true,
+        "supports_confidence": true,
+        "requires_image_input_model": true
       },
       "default_models": {
         "llm_models": ["qwen3:8b", "gpt-oss:20b", "gemma3:4b"],
@@ -686,6 +749,15 @@
         "model_catalog": false,
         "context_bridge": true
       },
+      "llm_capabilities": {
+        "structured_output": true
+      },
+      "ocr_capabilities": {
+        "strategy": "none",
+        "supports_geometry": false,
+        "supports_confidence": false,
+        "requires_image_input_model": false
+      },
       "default_models": {
         "llm_models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
         "ocr_models": []
@@ -761,6 +833,15 @@
         "ocr": true,
         "model_catalog": true,
         "context_bridge": false
+      },
+      "llm_capabilities": {
+        "structured_output": false
+      },
+      "ocr_capabilities": {
+        "strategy": "multimodal_llm",
+        "supports_geometry": true,
+        "supports_confidence": true,
+        "requires_image_input_model": true
       },
       "default_models": {
         "llm_models": ["gpt-5-mini", "gpt-5.4"],

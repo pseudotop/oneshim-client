@@ -669,6 +669,8 @@
     "providerType": "Provider Type",
     "providerSurfaceLabel": "Provider Surface",
     "noCompatibleProviderSurface": "No compatible provider surface is available for this mode.",
+    "ocrStrategyMultimodal": "This OCR surface runs through a multimodal model. Prefer image-capable models and verify compatibility before saving custom model IDs.",
+    "ocrStrategyVisionApi": "This OCR surface runs through a dedicated vision API. Model selection may be limited or unavailable depending on the endpoint.",
     "managedOAuthSurfaceDescription": "This surface uses provider-managed OAuth. ONESHIM does not ask for an API key or editable endpoint here.",
     "subprocessSurfaceDescription": "This surface runs through an installed provider-owned CLI. Authentication and subscription entitlements stay with the provider CLI.",
     "subprocessExecutableHint": "Detected executable candidates: {{executables}}",

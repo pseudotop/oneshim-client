@@ -8,6 +8,7 @@ import type {
 
 export type EndpointSurfaceKind = 'ocr_api' | 'llm_api'
 export type UnknownModelPolicy = 'allow' | 'warn' | 'reject'
+export type OcrExecutionStrategy = 'none' | 'multimodal_llm' | 'vision_api'
 
 const STABILITY_RANK: Record<string, number> = {
   ga: 3,
@@ -340,4 +341,20 @@ export function surfaceUnknownModelPolicy(
   return endpointKind === 'ocr_api'
     ? surface.unknown_model_policy?.ocr ?? 'warn'
     : surface.unknown_model_policy?.llm ?? 'warn'
+}
+
+export function surfaceLlmStructuredOutput(
+  surface: ProviderSurfaceSpec | undefined,
+): boolean {
+  return surface?.llm_capabilities?.structured_output ?? false
+}
+
+export function surfaceOcrExecutionStrategy(
+  surface: ProviderSurfaceSpec | undefined,
+): OcrExecutionStrategy {
+  const strategy = surface?.ocr_capabilities?.strategy?.trim()
+  if (strategy === 'multimodal_llm' || strategy === 'vision_api') {
+    return strategy
+  }
+  return 'none'
 }

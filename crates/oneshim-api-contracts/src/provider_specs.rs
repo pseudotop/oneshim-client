@@ -51,6 +51,10 @@ pub struct ProviderSurfaceSpec {
     #[serde(default)]
     pub catalog_strategy: String,
     pub supports: ProviderSurfaceSupports,
+    #[serde(default)]
+    pub llm_capabilities: ProviderLlmCapabilities,
+    #[serde(default)]
+    pub ocr_capabilities: ProviderOcrCapabilities,
     pub default_models: SurfaceDefaultModels,
     pub parameter_profiles: ProviderParameterSet,
     #[serde(default)]
@@ -81,6 +85,24 @@ pub struct ProviderSurfaceSupports {
     pub model_catalog: bool,
     #[serde(default)]
     pub context_bridge: bool,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+pub struct ProviderLlmCapabilities {
+    #[serde(default)]
+    pub structured_output: bool,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ProviderOcrCapabilities {
+    #[serde(default = "default_ocr_strategy")]
+    pub strategy: String,
+    #[serde(default)]
+    pub supports_geometry: bool,
+    #[serde(default)]
+    pub supports_confidence: bool,
+    #[serde(default)]
+    pub requires_image_input_model: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -236,11 +258,26 @@ fn default_unknown_model_policy() -> ProviderUnknownModelPolicy {
     ProviderUnknownModelPolicy::Warn
 }
 
+fn default_ocr_strategy() -> String {
+    "none".to_string()
+}
+
 impl Default for ProviderUnknownModelPolicySet {
     fn default() -> Self {
         Self {
             llm: default_unknown_model_policy(),
             ocr: default_unknown_model_policy(),
+        }
+    }
+}
+
+impl Default for ProviderOcrCapabilities {
+    fn default() -> Self {
+        Self {
+            strategy: default_ocr_strategy(),
+            supports_geometry: false,
+            supports_confidence: false,
+            requires_image_input_model: false,
         }
     }
 }
@@ -1669,5 +1706,25 @@ mod tests {
         )
         .expect_err("unknown OCR model should be rejected");
         assert!(error.contains("not catalogued"));
+    }
+
+    #[test]
+    fn loads_surface_execution_capabilities_from_catalog() {
+        let catalog = provider_surface_catalog().expect("catalog should load");
+        let openai = catalog
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.openai.direct_api")
+            .expect("openai direct surface should exist");
+        assert!(openai.llm_capabilities.structured_output);
+
+        let google = catalog
+            .surfaces
+            .iter()
+            .find(|surface| surface.surface_id == "provider_surface.google.direct_api")
+            .expect("google direct surface should exist");
+        assert_eq!(google.ocr_capabilities.strategy, "vision_api");
+        assert!(google.ocr_capabilities.supports_geometry);
+        assert!(google.ocr_capabilities.supports_confidence);
     }
 }

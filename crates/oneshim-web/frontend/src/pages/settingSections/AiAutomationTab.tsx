@@ -24,6 +24,7 @@ import {
   defaultSurfaceEndpoint,
   type EndpointSurfaceKind,
   preferredRelatedProviderSurfaceFromList,
+  surfaceOcrExecutionStrategy,
   surfaceModelSupportsCapability,
   surfaceSupportsModelSelection,
 } from '../../features/providerSurfaces'
@@ -298,6 +299,7 @@ export default function AiAutomationTab({
     'ocr_api',
     formData.ai_provider.ocr_api?.model,
   )
+  const currentOcrStrategy = surfaceOcrExecutionStrategy(currentOcrSurface)
   const currentLlmModelSupport = surfaceModelSupportsCapability(
     currentLlmSurface,
     'llm_api',
@@ -924,6 +926,13 @@ export default function AiAutomationTab({
                   </Select>
                 </div>
                 <div className="md:col-span-2">{renderSurfaceStatus(currentOcrSurface, 'ocr_api')}</div>
+                {currentOcrStrategy !== 'none' && (
+                  <div className="md:col-span-2 rounded-md bg-surface-elevated/70 p-3 text-content-secondary text-xs">
+                    {currentOcrStrategy === 'multimodal_llm'
+                      ? t('settingsAutomation.ocrStrategyMultimodal')
+                      : t('settingsAutomation.ocrStrategyVisionApi')}
+                  </div>
+                )}
                 <div className="flex items-end">
                   <Button
                     type="button"

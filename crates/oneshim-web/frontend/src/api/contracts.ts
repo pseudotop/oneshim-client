@@ -285,6 +285,15 @@ export interface ProviderSurfaceSpec {
   related_surface_ids: string[]
   catalog_strategy: string
   supports: ProviderSurfaceSupports
+  llm_capabilities?: {
+    structured_output: boolean
+  } | null
+  ocr_capabilities?: {
+    strategy: string
+    supports_geometry: boolean
+    supports_confidence: boolean
+    requires_image_input_model: boolean
+  } | null
   default_models: SurfaceDefaultModels
   unknown_model_policy?: {
     llm: 'allow' | 'warn' | 'reject'
