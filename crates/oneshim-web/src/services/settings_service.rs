@@ -886,6 +886,7 @@ fn updated_credential_binding(
 ) -> Result<Option<CredentialBinding>, ApiError> {
     let auth_mode = parse_credential_auth_mode(&settings.auth_mode)?;
     let backend_kind = parse_credential_backend_kind(&settings.backend_kind)?;
+    validate_projection_binding(auth_mode, backend_kind, settings.projection_enabled)?;
 
     if matches!(
         auth_mode,
@@ -914,6 +915,36 @@ fn updated_credential_binding(
     }
 
     Ok(None)
+}
+
+fn validate_projection_binding(
+    auth_mode: CredentialAuthMode,
+    backend_kind: CredentialBackendKind,
+    projection_enabled: bool,
+) -> Result<(), ApiError> {
+    if !projection_enabled {
+        return Ok(());
+    }
+
+    if auth_mode != CredentialAuthMode::ApiKey {
+        return Err(ApiError::BadRequest(
+            "Projection can only be enabled for API-key credentials.".to_string(),
+        ));
+    }
+
+    if !matches!(
+        backend_kind,
+        CredentialBackendKind::OsSecretStore
+            | CredentialBackendKind::FileSecretStore
+            | CredentialBackendKind::BridgeManaged
+    ) {
+        return Err(ApiError::BadRequest(format!(
+            "Projection is not supported for backend kind {:?}.",
+            backend_kind
+        )));
+    }
+
+    Ok(())
 }
 
 fn parse_credential_auth_mode(value: &str) -> Result<CredentialAuthMode, ApiError> {
@@ -1176,7 +1207,7 @@ mod tests {
             provider_type: "OpenAi".to_string(),
             timeout_secs: 30,
             auth_mode: "api_key".to_string(),
-            backend_kind: "legacy_config".to_string(),
+            backend_kind: "os_secret_store".to_string(),
             has_secret: true,
             can_edit_secret: true,
             secret_display_hint: None,
@@ -1317,6 +1348,55 @@ mod tests {
             .and_then(|endpoint| endpoint.credential.as_ref())
             .expect("binding");
         assert!(binding.projection_enabled);
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_projection_enabled_for_env_backend() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::Env);
+        settings.ai_provider.llm_api = Some(ExternalApiSettings {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key_masked: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            provider_type: "openai".to_string(),
+            timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "env".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: true,
+        });
+
+        let err = apply_settings_to_config(&mut config, &settings).expect_err("projection guard");
+        assert!(matches!(err, ApiError::BadRequest(_)));
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_projection_enabled_for_managed_oauth() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::ProviderOAuth;
+        config.ai_provider.llm_provider = LlmProviderType::Remote;
+
+        let mut settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+        settings.ai_provider.llm_api = Some(ExternalApiSettings {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key_masked: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            provider_type: "openai".to_string(),
+            timeout_secs: 30,
+            auth_mode: "managed_oauth".to_string(),
+            backend_kind: "os_secret_store".to_string(),
+            has_secret: false,
+            can_edit_secret: false,
+            secret_display_hint: None,
+            projection_enabled: true,
+        });
+
+        let err = apply_settings_to_config(&mut config, &settings).expect_err("projection guard");
+        assert!(matches!(err, ApiError::BadRequest(_)));
     }
 
     #[tokio::test]
