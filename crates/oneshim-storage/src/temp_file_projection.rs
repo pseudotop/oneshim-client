@@ -50,7 +50,7 @@ impl TempFileSecretProjection {
     ) -> Self {
         Self::new(
             secret_store,
-            base_dir.join(DEFAULT_PROJECTION_DIR_NAME),
+            std::env::temp_dir().join(DEFAULT_PROJECTION_DIR_NAME),
             base_dir.join("temp-secret-projection-registry.json"),
             default_provider_api_key_temp_file_templates(),
         )
@@ -151,30 +151,38 @@ impl TempFileSecretProjection {
 
 pub fn provider_api_key_temp_file_template(
     provider_type: AiProviderType,
+    profile_id: &str,
 ) -> Result<ProjectionTemplate, CoreError> {
-    let (provider_id, file_name_hint) = match provider_type {
-        AiProviderType::OpenAi => ("openai", "openai-api-key"),
-        AiProviderType::Anthropic => ("anthropic", "anthropic-api-key"),
-        AiProviderType::Google => ("google", "google-api-key"),
-        AiProviderType::Generic => ("generic", "generic-api-key"),
+    let (provider_id, file_name_prefix) = match provider_type {
+        AiProviderType::OpenAi => ("openai", "openai"),
+        AiProviderType::Anthropic => ("anthropic", "anthropic"),
+        AiProviderType::Google => ("google", "google"),
+        AiProviderType::Generic => ("generic", "generic"),
     };
 
     Ok(ProjectionTemplate::temp_file(
-        provider_api_key_temp_file_consumer_id(provider_id)?,
-        file_name_hint,
+        provider_api_key_temp_file_consumer_id(provider_id, profile_id)?,
+        format!("{file_name_prefix}-{profile_id}-api-key"),
     ))
 }
 
 pub fn default_provider_api_key_temp_file_templates() -> Vec<ProjectionTemplate> {
-    [
+    let mut templates = Vec::new();
+
+    for provider_type in [
         AiProviderType::OpenAi,
         AiProviderType::Anthropic,
         AiProviderType::Google,
         AiProviderType::Generic,
-    ]
-    .into_iter()
-    .filter_map(|provider_type| provider_api_key_temp_file_template(provider_type).ok())
-    .collect()
+    ] {
+        for profile_id in ["llm", "ocr"] {
+            if let Ok(template) = provider_api_key_temp_file_template(provider_type, profile_id) {
+                templates.push(template);
+            }
+        }
+    }
+
+    templates
 }
 
 #[async_trait]
@@ -360,8 +368,8 @@ mod tests {
             temp_dir.path().join("proj"),
             temp_dir.path().join("registry.json"),
             vec![ProjectionTemplate::temp_file(
-                "provider/openai/api-key-temp-file",
-                "openai-api-key",
+                "provider/openai/llm/api-key-temp-file",
+                "openai-llm-api-key",
             )],
         );
 
@@ -372,7 +380,7 @@ mod tests {
                 target: ProjectionTarget::TempFile,
                 purpose:
                     oneshim_core::ports::secret_projection::ProjectionPurpose::ProviderCliExecution,
-                consumer_id: "provider/openai/api-key-temp-file".to_string(),
+                consumer_id: "provider/openai/llm/api-key-temp-file".to_string(),
             })
             .await
             .unwrap();
@@ -398,7 +406,7 @@ mod tests {
             .store("provider/openai/llm", "api_key", "sk-temp-file")
             .await
             .unwrap();
-        let consumer_id = provider_api_key_temp_file_consumer_id("openai").unwrap();
+        let consumer_id = provider_api_key_temp_file_consumer_id("openai", "llm").unwrap();
 
         let adapter = TempFileSecretProjection::new(
             secret_store,
@@ -406,7 +414,7 @@ mod tests {
             temp_dir.path().join("registry.json"),
             vec![ProjectionTemplate::temp_file(
                 consumer_id.clone(),
-                "openai-api-key",
+                "openai-llm-api-key",
             )],
         );
 
@@ -432,6 +440,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn project_temp_file_keeps_llm_and_ocr_consumers_separate() {
+        let temp_dir = TempDir::new().unwrap();
+        let secret_store = Arc::new(TestSecretStore::new());
+        secret_store
+            .store("provider/openai/llm", "api_key", "sk-llm")
+            .await
+            .unwrap();
+        secret_store
+            .store("provider/openai/ocr", "api_key", "sk-ocr")
+            .await
+            .unwrap();
+
+        let adapter = TempFileSecretProjection::new(
+            secret_store,
+            temp_dir.path().join("proj"),
+            temp_dir.path().join("registry.json"),
+            vec![
+                provider_api_key_temp_file_template(AiProviderType::OpenAi, "llm").unwrap(),
+                provider_api_key_temp_file_template(AiProviderType::OpenAi, "ocr").unwrap(),
+            ],
+        );
+
+        let llm_consumer_id = provider_api_key_temp_file_consumer_id("openai", "llm").unwrap();
+        let ocr_consumer_id = provider_api_key_temp_file_consumer_id("openai", "ocr").unwrap();
+
+        let llm_path = match adapter
+            .project(SecretProjectionRequest {
+                namespace: "provider/openai/llm".to_string(),
+                key: "api_key".to_string(),
+                target: ProjectionTarget::TempFile,
+                purpose: ProjectionPurpose::ProviderCliExecution,
+                consumer_id: llm_consumer_id,
+            })
+            .await
+            .unwrap()
+        {
+            SecretProjectionResult::TempFile { path, .. } => path,
+            _ => panic!("expected temp file result"),
+        };
+        let ocr_path = match adapter
+            .project(SecretProjectionRequest {
+                namespace: "provider/openai/ocr".to_string(),
+                key: "api_key".to_string(),
+                target: ProjectionTarget::TempFile,
+                purpose: ProjectionPurpose::ProviderCliExecution,
+                consumer_id: ocr_consumer_id,
+            })
+            .await
+            .unwrap()
+        {
+            SecretProjectionResult::TempFile { path, .. } => path,
+            _ => panic!("expected temp file result"),
+        };
+
+        assert!(llm_path.exists());
+        assert!(ocr_path.exists());
+        assert_ne!(llm_path, ocr_path);
+        assert_eq!(std::fs::read_to_string(llm_path).unwrap(), "sk-llm");
+        assert_eq!(std::fs::read_to_string(ocr_path).unwrap(), "sk-ocr");
+    }
+
+    #[tokio::test]
     async fn project_temp_file_errors_when_template_missing() {
         let temp_dir = TempDir::new().unwrap();
         let secret_store = Arc::new(TestSecretStore::new());
@@ -448,7 +518,7 @@ mod tests {
                 key: "api_key".to_string(),
                 target: ProjectionTarget::TempFile,
                 purpose: ProjectionPurpose::ProviderCliExecution,
-                consumer_id: "provider/openai/api-key-temp-file".to_string(),
+                consumer_id: "provider/openai/llm/api-key-temp-file".to_string(),
             })
             .await
             .unwrap_err();
@@ -458,12 +528,15 @@ mod tests {
 
     #[test]
     fn provider_api_key_temp_file_template_maps_openai_to_expected_shape() {
-        let template = provider_api_key_temp_file_template(AiProviderType::OpenAi).unwrap();
+        let template = provider_api_key_temp_file_template(AiProviderType::OpenAi, "llm").unwrap();
         assert_eq!(
             template.consumer_id,
-            provider_api_key_temp_file_consumer_id("openai").unwrap()
+            provider_api_key_temp_file_consumer_id("openai", "llm").unwrap()
         );
         assert_eq!(template.target, ProjectionTarget::TempFile);
-        assert_eq!(template.file_name_hint.as_deref(), Some("openai-api-key"));
+        assert_eq!(
+            template.file_name_hint.as_deref(),
+            Some("openai-llm-api-key")
+        );
     }
 }

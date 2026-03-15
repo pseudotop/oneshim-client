@@ -269,10 +269,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         &config_dir,
         desktop_secret_store.clone(),
         &provider_secret_backend,
-    )
-    .map_err(|err| -> Box<dyn std::error::Error> {
-        Box::new(std::io::Error::other(err.to_string()))
-    })?;
+    );
     #[cfg(feature = "server")]
     if is_writable_backend_kind(provider_secret_backend.backend_kind) {
         if let Some(secret_store) = provider_secret_store.clone() {

@@ -116,14 +116,25 @@ pub fn build_provider_secret_store_set(
     config_dir: &Path,
     os_secret_store: Option<Arc<dyn SecretStore>>,
     resolution: &ProviderSecretBackendResolution,
-) -> Result<SecretStoreSet, CoreError> {
-    Ok(SecretStoreSet {
+) -> SecretStoreSet {
+    let file_secret_store = if resolution.backend_kind == CredentialBackendKind::FileSecretStore {
+        resolution.secret_store.clone()
+    } else {
+        create_file_secret_store(config_dir).ok()
+    };
+    let env_secret_store = if resolution.backend_kind == CredentialBackendKind::Env {
+        resolution.secret_store.clone()
+    } else {
+        Some(create_env_secret_store())
+    };
+
+    SecretStoreSet {
         os_secret_store,
-        file_secret_store: Some(create_file_secret_store(config_dir)?),
-        env_secret_store: Some(create_env_secret_store()),
+        file_secret_store,
+        env_secret_store,
         default_backend_kind: resolution.backend_kind,
         fallback_backend_kind: resolution.fallback_backend_kind,
-    })
+    }
 }
 
 #[cfg(feature = "server")]

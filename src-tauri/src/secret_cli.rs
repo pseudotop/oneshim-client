@@ -384,8 +384,9 @@ fn resolve_temp_file_projection(
     surface: SecretSurface,
     config_dir: &Path,
 ) -> Result<std::path::PathBuf, String> {
-    let template = provider_api_key_temp_file_template(endpoint.provider_type)
-        .map_err(|err| err.to_string())?;
+    let template =
+        provider_api_key_temp_file_template(endpoint.provider_type, surface.profile_id())
+            .map_err(|err| err.to_string())?;
     let desktop_secret_store = create_os_secret_store(config_dir);
     let secret_store = create_secret_store_for_binding(
         endpoint.credential.as_ref(),
@@ -396,43 +397,80 @@ fn resolve_temp_file_projection(
     let runtime = build_runtime()?;
 
     if let Some(binding) = endpoint.credential.as_ref() {
-        if let Some(secret_store) = secret_store.clone() {
-            let request = if let Some(secret_ref) = binding.secret_ref.as_ref() {
-                Some(SecretProjectionRequest {
+        match binding.backend_kind {
+            CredentialBackendKind::OsSecretStore | CredentialBackendKind::FileSecretStore => {
+                let Some(secret_store) = secret_store.clone() else {
+                    return Err(format!(
+                        "configured secret backend {:?} is unavailable for {} projection",
+                        binding.backend_kind,
+                        surface.profile_id()
+                    ));
+                };
+                let Some(secret_ref) = binding.secret_ref.as_ref() else {
+                    return Err(format!(
+                        "{} secret binding is missing a secret reference",
+                        surface.profile_id()
+                    ));
+                };
+                let request = SecretProjectionRequest {
                     namespace: secret_ref.namespace.clone(),
                     key: secret_ref.key.clone(),
                     target: oneshim_core::ports::secret_projection::ProjectionTarget::TempFile,
                     purpose: ProjectionPurpose::ProviderCliExecution,
                     consumer_id: template.consumer_id.clone(),
-                })
-            } else if binding.backend_kind == CredentialBackendKind::Env {
-                Some(
-                    SecretProjectionRequest::provider_api_key_temp_file(
-                        provider_type_id(endpoint.provider_type),
-                        surface.profile_id(),
-                        provider_api_key_temp_file_consumer_id(provider_type_id(
-                            endpoint.provider_type,
-                        ))
-                        .map_err(|err| err.to_string())?,
-                    )
-                    .map_err(|err| err.to_string())?,
-                )
-            } else {
-                None
-            };
-
-            if let Some(request) = request {
+                };
                 let projection =
                     TempFileSecretProjection::with_default_provider_api_key_cli_templates(
                         secret_store,
                         config_dir,
                     );
-                if let Ok(SecretProjectionResult::TempFile { path, .. }) =
-                    runtime.block_on(projection.project(request))
-                {
-                    return Ok(path);
-                }
+                return match runtime.block_on(projection.project(request)) {
+                    Ok(SecretProjectionResult::TempFile { path, .. }) => Ok(path),
+                    Ok(_) => Err("temp-file projection returned an unexpected result".to_string()),
+                    Err(err) => Err(format!(
+                        "failed to project managed temp file for {}: {err}",
+                        surface.profile_id()
+                    )),
+                };
             }
+            CredentialBackendKind::Env => {
+                let Some(secret_store) = secret_store.clone() else {
+                    return Err(format!(
+                        "environment-backed secret store is unavailable for {} projection",
+                        surface.profile_id()
+                    ));
+                };
+                let request = SecretProjectionRequest::provider_api_key_temp_file(
+                    provider_type_id(endpoint.provider_type),
+                    surface.profile_id(),
+                    provider_api_key_temp_file_consumer_id(
+                        provider_type_id(endpoint.provider_type),
+                        surface.profile_id(),
+                    )
+                    .map_err(|err| err.to_string())?,
+                )
+                .map_err(|err| err.to_string())?;
+                let projection =
+                    TempFileSecretProjection::with_default_provider_api_key_cli_templates(
+                        secret_store,
+                        config_dir,
+                    );
+                return match runtime.block_on(projection.project(request)) {
+                    Ok(SecretProjectionResult::TempFile { path, .. }) => Ok(path),
+                    Ok(_) => Err("temp-file projection returned an unexpected result".to_string()),
+                    Err(err) => Err(format!(
+                        "failed to project environment-backed temp file for {}: {err}",
+                        surface.profile_id()
+                    )),
+                };
+            }
+            CredentialBackendKind::BridgeManaged => {
+                return Err(
+                    "bridge-managed provider credentials do not support temp-file projection yet"
+                        .to_string(),
+                );
+            }
+            CredentialBackendKind::LegacyConfig | CredentialBackendKind::Unavailable => {}
         }
     }
 
@@ -513,13 +551,18 @@ fn ensure_projection_allowed(
 
     if matches!(
         binding.backend_kind,
-        CredentialBackendKind::OsSecretStore
-            | CredentialBackendKind::FileSecretStore
-            | CredentialBackendKind::BridgeManaged
+        CredentialBackendKind::OsSecretStore | CredentialBackendKind::FileSecretStore
     ) && !binding.projection_enabled
     {
         return Err(format!(
             "{} secret projection is disabled. Enable CLI projection in Settings first.",
+            surface.profile_id()
+        ));
+    }
+
+    if binding.backend_kind == CredentialBackendKind::BridgeManaged {
+        return Err(format!(
+            "{} secret projection is not available for bridge-managed credentials yet.",
             surface.profile_id()
         ));
     }
@@ -777,6 +820,26 @@ mod tests {
         };
 
         assert!(ensure_projection_allowed(&endpoint, SecretSurface::Llm).is_ok());
+    }
+
+    #[test]
+    fn ensure_projection_allowed_rejects_bridge_managed_projection() {
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::BridgeManaged,
+                secret_ref: None,
+                projection_enabled: true,
+            }),
+        };
+
+        let error = ensure_projection_allowed(&endpoint, SecretSurface::Llm).unwrap_err();
+        assert!(error.contains("bridge-managed credentials"));
     }
 
     #[cfg(feature = "server")]
