@@ -8,6 +8,7 @@ use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
 use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
+use oneshim_core::ports::secret_store::SecretStore;
 use oneshim_core::ports::skill_loader::SkillLoader;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::element_finder::OcrElementFinder;
@@ -130,12 +131,14 @@ pub fn build_automation_runtime(
     frame_storage: Option<Arc<FrameFileStorage>>,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
     skill_loader: Option<Arc<dyn SkillLoader>>,
+    secret_store: Option<Arc<dyn SecretStore>>,
     #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AutomationRuntime, CoreError> {
     let adapters = resolve_ai_provider_adapters(
         ai_config,
         pii_filter_level,
         external_ocr_privacy_guard,
+        secret_store,
         #[cfg(feature = "server")]
         oauth_port,
     )?;
@@ -439,6 +442,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             #[cfg(feature = "server")]
             None,
         )
@@ -473,6 +477,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             #[cfg(feature = "server")]
             None,
         ) {
@@ -490,6 +495,7 @@ mod tests {
             model: Some("model-test".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            credential: None,
         };
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
@@ -506,6 +512,7 @@ mod tests {
             PiiFilterLevel::Standard,
             None,
             Some(remote_ocr_guard(&temp_dir)),
+            None,
             None,
             #[cfg(feature = "server")]
             None,
@@ -527,6 +534,7 @@ mod tests {
             model: Some("model-test".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            credential: None,
         };
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
@@ -539,6 +547,7 @@ mod tests {
         let result = build_automation_runtime(
             &config,
             PiiFilterLevel::Standard,
+            None,
             None,
             None,
             None,

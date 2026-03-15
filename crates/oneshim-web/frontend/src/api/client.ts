@@ -8,6 +8,7 @@ import type {
   OAuthConnectionStatus,
   OAuthFlowHandle,
   OAuthFlowStatus,
+  SecretBackendCapabilities,
   BackupArchive,
   BackupParams,
   CreateTagRequest,
@@ -711,4 +712,8 @@ export async function oauthRevoke(providerId: string): Promise<void> {
 
 export async function oauthConnectionStatus(providerId: string): Promise<OAuthConnectionStatus> {
   return tauriInvoke<OAuthConnectionStatus>('oauth_connection_status', { providerId })
+}
+
+export async function fetchSecretBackendCapabilities(): Promise<SecretBackendCapabilities> {
+  return tauriInvoke<SecretBackendCapabilities>('get_secret_backend_capabilities')
 }

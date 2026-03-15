@@ -37,6 +37,7 @@ use oneshim_core::config::WebConfig;
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
+use oneshim_core::ports::secret_store::SecretStore;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -62,6 +63,7 @@ pub struct AppState {
     pub frames_dir: Option<std::path::PathBuf>,
     pub event_tx: broadcast::Sender<RealtimeEvent>,
     pub config_manager: Option<ConfigManager>,
+    pub secret_store: Option<Arc<dyn SecretStore>>,
     pub audit_logger: Option<Arc<dyn AuditLogPort>>,
     pub automation_controller: Option<Arc<dyn AutomationPort>>,
     pub ai_runtime_status: Option<AiRuntimeStatus>,
@@ -85,6 +87,7 @@ impl WebServer {
                 frames_dir: None,
                 event_tx,
                 config_manager: None,
+                secret_store: None,
                 audit_logger: None,
                 automation_controller: None,
                 ai_runtime_status: None,
@@ -102,6 +105,11 @@ impl WebServer {
 
     pub fn with_config_manager(mut self, config_manager: ConfigManager) -> Self {
         self.state.config_manager = Some(config_manager);
+        self
+    }
+
+    pub fn with_secret_store(mut self, secret_store: Arc<dyn SecretStore>) -> Self {
+        self.state.secret_store = Some(secret_store);
         self
     }
 

@@ -595,6 +595,7 @@ mod tests {
             model: None,
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            credential: None,
         };
         let result = RemoteOcrProvider::new(&config);
         assert!(result.is_err());
@@ -610,6 +611,7 @@ mod tests {
             model: None,
             timeout_secs: 30,
             provider_type: AiProviderType::Generic,
+            credential: None,
         };
         let result = RemoteOcrProvider::new(&config);
         assert!(result.is_ok());
@@ -623,6 +625,7 @@ mod tests {
             model: Some("gpt-3.5-turbo".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            credential: None,
         };
 
         let result = RemoteOcrProvider::new(&config);

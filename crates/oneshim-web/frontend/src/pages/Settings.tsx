@@ -329,6 +329,12 @@ export default function Settings() {
     model: null,
     provider_type: 'Generic',
     timeout_secs: 30,
+    auth_mode: 'api_key',
+    backend_kind: 'legacy_config',
+    has_secret: false,
+    can_edit_secret: true,
+    secret_display_hint: null,
+    projection_enabled: false,
   })
 
   const handleExternalApiChange = (

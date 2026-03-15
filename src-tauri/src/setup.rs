@@ -8,6 +8,8 @@ use oneshim_core::config::{AiAccessMode, AppConfig};
 use oneshim_core::config_manager::ConfigManager;
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
+#[cfg(feature = "server")]
+use oneshim_core::ports::secret_store::SecretStore;
 use oneshim_core::ports::skill_loader::SkillLoader;
 use oneshim_core::ports::storage::StorageService;
 use oneshim_monitor::activity::ActivityTracker;
@@ -29,6 +31,7 @@ use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use oneshim_web::{AiRuntimeStatus, RealtimeEvent, WebServer};
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -80,6 +83,19 @@ pub struct OAuthState(pub Option<Arc<dyn oneshim_core::ports::oauth::OAuthPort>>
 #[allow(dead_code)] // Field is used via #[cfg(feature = "server")] in commands.rs
 pub struct OAuthCoordinatorState(pub OAuthCoordinator);
 
+/// Runtime-visible secret backend capability snapshot.
+#[derive(Debug, Clone, Serialize)]
+pub struct SecretBackendCapabilities {
+    pub os_secret_store_available: bool,
+    pub oauth_available: bool,
+    pub default_backend_kind: String,
+    pub byok_backend_kind: String,
+    pub fallback_backend_kind: String,
+}
+
+/// Managed Tauri state for secret backend capability reporting.
+pub struct SecretBackendState(pub SecretBackendCapabilities);
+
 fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
     data_dir
         .map(|d| PathBuf::from(d).join("oneshim.db"))
@@ -130,19 +146,21 @@ fn maybe_sync_cli_subscription_bridge(config: &AppConfig, data_dir: &std::path::
 /// Keychain availability is determined lazily when OAuth is actually used,
 /// which avoids write/delete prompts during normal app boot.
 #[cfg(feature = "server")]
-fn create_oauth_port(config_dir: &std::path::Path) -> Option<Arc<dyn OAuthPort>> {
+fn create_desktop_secret_store(config_dir: &std::path::Path) -> Option<Arc<dyn SecretStore>> {
     let registry_path = config_dir.join("oneshim-keychain-registry.json");
     match KeychainOps::new(registry_path) {
-        Ok(ops) => {
-            let secret_store = Arc::new(KeychainSecretStore::new(Arc::new(ops)));
-            let providers = vec![OAuthProviderConfig::openai_codex()];
-            Some(Arc::new(OAuthClient::new(secret_store, providers)) as Arc<dyn OAuthPort>)
-        }
+        Ok(ops) => Some(Arc::new(KeychainSecretStore::new(Arc::new(ops))) as Arc<dyn SecretStore>),
         Err(e) => {
             warn!("Failed to initialize OAuth secret store: {e}");
             None
         }
     }
+}
+
+#[cfg(feature = "server")]
+fn create_oauth_port(secret_store: Arc<dyn SecretStore>) -> Arc<dyn OAuthPort> {
+    let providers = vec![OAuthProviderConfig::openai_codex()];
+    Arc::new(OAuthClient::new(secret_store, providers)) as Arc<dyn OAuthPort>
 }
 
 #[cfg(feature = "server")]
@@ -194,6 +212,23 @@ fn oauth_runtime_error_status(
 fn should_fallback_to_noop(ai_config: &oneshim_core::config::AiProviderConfig) -> bool {
     ai_config.fallback_to_local && ai_config.access_mode != AiAccessMode::ProviderOAuth
 }
+
+fn secret_backend_capabilities(oauth_available: bool) -> SecretBackendCapabilities {
+    let default_backend_kind = if oauth_available {
+        "os_secret_store"
+    } else {
+        "unavailable"
+    };
+
+    SecretBackendCapabilities {
+        os_secret_store_available: oauth_available,
+        oauth_available,
+        default_backend_kind: default_backend_kind.to_string(),
+        byok_backend_kind: default_backend_kind.to_string(),
+        fallback_backend_kind: "legacy_config".to_string(),
+    }
+}
+
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
 pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let _app_handle = app.handle().clone();
@@ -232,7 +267,9 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
         .unwrap_or_else(|_| data_dir_path.clone());
     #[cfg(feature = "server")]
-    let oauth_port = create_oauth_port(&config_dir);
+    let desktop_secret_store = create_desktop_secret_store(&config_dir);
+    #[cfg(feature = "server")]
+    let oauth_port = desktop_secret_store.clone().map(create_oauth_port);
     #[cfg(feature = "server")]
     let oauth_coordinator: OAuthCoordinator = {
         use oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator;
@@ -413,6 +450,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     automation_frame_storage.clone(),
                     Some(external_ocr_privacy_guard.clone()),
                     skill_loader.clone(),
+                    desktop_secret_store.clone(),
                     validated_oauth_port,
                 )
             });
@@ -423,6 +461,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 automation_frame_storage,
                 Some(external_ocr_privacy_guard),
                 skill_loader,
+                None,
             );
             match runtime {
                 Ok(runtime) => {
@@ -513,6 +552,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 .with_update_control(web_update_control)
                 .with_bound_port_state(web_port_state)
                 .with_bound_port_notifier(bound_port_tx);
+            #[cfg(feature = "server")]
+            if let Some(secret_store) = desktop_secret_store.clone() {
+                web_server = web_server.with_secret_store(secret_store);
+            }
             if let Some(status) = ai_runtime_status {
                 web_server = web_server.with_ai_runtime_status(status);
             }
@@ -563,6 +606,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let frontend_web_port = web_port.load(Ordering::Relaxed);
 
     #[cfg(feature = "server")]
+    let oauth_available = oauth_port.is_some();
+    #[cfg(not(feature = "server"))]
+    let oauth_available = false;
+
+    #[cfg(feature = "server")]
     let oauth_state = OAuthState(oauth_port);
     #[cfg(not(feature = "server"))]
     let oauth_state = OAuthState(None);
@@ -571,6 +619,8 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let oauth_coordinator_state = OAuthCoordinatorState(oauth_coordinator);
     #[cfg(not(feature = "server"))]
     let oauth_coordinator_state = OAuthCoordinatorState(None);
+
+    let secret_backend_state = SecretBackendState(secret_backend_capabilities(oauth_available));
 
     app.manage(AppState {
         runtime_handle: handle,
@@ -585,6 +635,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     });
     app.manage(oauth_state);
     app.manage(oauth_coordinator_state);
+    app.manage(secret_backend_state);
 
     // 12. 시스템 트레이 초기화
     crate::tray::setup_tray(app)?;

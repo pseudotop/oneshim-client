@@ -180,6 +180,7 @@ fn build_llm_endpoint() -> ExternalApiEndpoint {
         model: optional_primary_value(SmokeTarget::Llm, "MODEL"),
         timeout_secs: resolve_timeout_secs(SmokeTarget::Llm),
         provider_type,
+        credential: None,
     }
 }
 
@@ -220,6 +221,7 @@ fn build_ocr_endpoint() -> ExternalApiEndpoint {
         model,
         timeout_secs: resolve_timeout_secs(SmokeTarget::Ocr),
         provider_type,
+        credential: None,
     }
 }
 

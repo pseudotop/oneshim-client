@@ -1,7 +1,8 @@
 // AI 프로바이더 설정 — AiProviderConfig 및 외부 엔드포인트 검증 오케스트레이터
 use super::super::enums::*;
 use super::ai_validation::{
-    ExternalApiEndpoint, OcrValidationConfig, SceneActionOverrideConfig, SceneIntelligenceConfig,
+    CredentialAuthMode, ExternalApiEndpoint, OcrValidationConfig, SceneActionOverrideConfig,
+    SceneIntelligenceConfig,
 };
 use crate::error::CoreError;
 use serde::{Deserialize, Serialize};
@@ -129,9 +130,13 @@ fn validate_remote_endpoint(
         )));
     }
 
-    if endpoint.api_key.trim().is_empty() {
+    let has_api_key_binding = endpoint.credential.as_ref().is_some_and(|binding| {
+        binding.auth_mode == CredentialAuthMode::ApiKey && binding.secret_ref.is_some()
+    });
+
+    if endpoint.api_key.trim().is_empty() && !has_api_key_binding {
         return Err(CoreError::Config(format!(
-            "`{field_name}.api_key` must not be empty."
+            "`{field_name}.api_key` must not be empty unless a credential binding is configured."
         )));
     }
 

@@ -17,7 +17,7 @@ pub async fn update_settings(
     State(state): State<AppState>,
     Json(settings): Json<AppSettings>,
 ) -> Result<Json<AppSettings>, ApiError> {
-    settings_service::update_settings(&state, &settings)?;
+    settings_service::update_settings(&state, &settings).await?;
     Ok(Json(settings))
 }
 
@@ -112,6 +112,12 @@ mod tests {
             model: None,
             provider_type: "Generic".to_string(),
             timeout_secs: 30,
+            auth_mode: "api_key".to_string(),
+            backend_kind: "legacy_config".to_string(),
+            has_secret: false,
+            can_edit_secret: true,
+            secret_display_hint: None,
+            projection_enabled: false,
         });
 
         settings_service::apply_settings_to_config(&mut app_config, &settings).unwrap();

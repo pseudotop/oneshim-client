@@ -5,8 +5,10 @@
 
 use std::sync::Arc;
 
+use crate::config::{CredentialAuthMode, ExternalApiEndpoint};
 use crate::error::CoreError;
 use crate::ports::oauth::OAuthPort;
+use crate::ports::secret_store::SecretStore;
 
 /// Source of authentication credentials for AI provider requests.
 #[derive(Clone)]
@@ -25,9 +27,51 @@ pub enum CredentialSource {
         /// API base URL for authenticated requests (differs per auth mode).
         api_base_url: String,
     },
+
+    /// Secret resolved from a backend-managed secret store.
+    StoredSecret {
+        namespace: String,
+        key: String,
+        secret_store: Arc<dyn SecretStore>,
+        plaintext_fallback: Option<String>,
+    },
 }
 
 impl CredentialSource {
+    /// Build an API-key credential source that prefers backend-managed secret
+    /// storage and falls back to the legacy plaintext config value.
+    pub fn from_api_key_endpoint(
+        endpoint: &ExternalApiEndpoint,
+        secret_store: Option<Arc<dyn SecretStore>>,
+    ) -> Result<Self, CoreError> {
+        let plaintext_fallback =
+            (!endpoint.api_key.trim().is_empty()).then(|| endpoint.api_key.clone());
+
+        if let Some(binding) = endpoint.credential.as_ref() {
+            if binding.auth_mode == CredentialAuthMode::ApiKey {
+                if let (Some(secret_ref), Some(secret_store)) =
+                    (binding.secret_ref.as_ref(), secret_store)
+                {
+                    return Ok(Self::StoredSecret {
+                        namespace: secret_ref.namespace.clone(),
+                        key: secret_ref.key.clone(),
+                        secret_store,
+                        plaintext_fallback,
+                    });
+                }
+            }
+        }
+
+        if let Some(plaintext_fallback) = plaintext_fallback {
+            return Ok(Self::ApiKey(plaintext_fallback));
+        }
+
+        Err(CoreError::Config(
+            "AI provider API key is not configured. Set it in Settings or connect a secret backend."
+                .to_string(),
+        ))
+    }
+
     /// Resolve to a bearer token string at request time.
     ///
     /// For `ApiKey`, returns the key directly.
@@ -46,6 +90,24 @@ impl CredentialSource {
                     provider: provider_id.clone(),
                     message: "not authenticated — please connect via OAuth".into(),
                 }),
+            Self::StoredSecret {
+                namespace,
+                key,
+                secret_store,
+                plaintext_fallback,
+            } => {
+                if let Some(secret) = secret_store.retrieve(namespace, key).await? {
+                    return Ok(secret);
+                }
+
+                if let Some(plaintext_fallback) = plaintext_fallback {
+                    return Ok(plaintext_fallback.clone());
+                }
+
+                Err(CoreError::Auth(format!(
+                    "credential backend entry not found for {namespace}.{key}"
+                )))
+            }
         }
     }
 
@@ -62,6 +124,7 @@ impl CredentialSource {
         match self {
             Self::ApiKey(_) => None,
             Self::ManagedOAuth { api_base_url, .. } => Some(api_base_url),
+            Self::StoredSecret { .. } => None,
         }
     }
 }
@@ -73,6 +136,9 @@ impl std::fmt::Debug for CredentialSource {
             Self::ManagedOAuth { provider_id, .. } => {
                 write!(f, "CredentialSource::ManagedOAuth({provider_id})")
             }
+            Self::StoredSecret { namespace, key, .. } => {
+                write!(f, "CredentialSource::StoredSecret({namespace}.{key})")
+            }
         }
     }
 }
@@ -80,6 +146,61 @@ impl std::fmt::Debug for CredentialSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{
+        AiProviderType, CredentialBackendKind, CredentialBinding, ExternalApiEndpoint, SecretRef,
+    };
+    use crate::ports::secret_store::SecretStore;
+    use async_trait::async_trait;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    struct TestSecretStore {
+        values: Mutex<HashMap<(String, String), String>>,
+    }
+
+    impl TestSecretStore {
+        fn new() -> Self {
+            Self {
+                values: Mutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl SecretStore for TestSecretStore {
+        async fn store(&self, namespace: &str, key: &str, value: &str) -> Result<(), CoreError> {
+            self.values
+                .lock()
+                .unwrap()
+                .insert((namespace.to_string(), key.to_string()), value.to_string());
+            Ok(())
+        }
+
+        async fn retrieve(&self, namespace: &str, key: &str) -> Result<Option<String>, CoreError> {
+            Ok(self
+                .values
+                .lock()
+                .unwrap()
+                .get(&(namespace.to_string(), key.to_string()))
+                .cloned())
+        }
+
+        async fn delete(&self, namespace: &str, key: &str) -> Result<(), CoreError> {
+            self.values
+                .lock()
+                .unwrap()
+                .remove(&(namespace.to_string(), key.to_string()));
+            Ok(())
+        }
+
+        async fn delete_namespace(&self, namespace: &str) -> Result<(), CoreError> {
+            self.values
+                .lock()
+                .unwrap()
+                .retain(|(existing_namespace, _), _| existing_namespace != namespace);
+            Ok(())
+        }
+    }
 
     #[tokio::test]
     async fn api_key_resolves_directly() {
@@ -95,5 +216,60 @@ mod tests {
         let debug = format!("{source:?}");
         assert!(!debug.contains("sk-secret"));
         assert!(debug.contains("****"));
+    }
+
+    #[tokio::test]
+    async fn stored_secret_prefers_backend_value() {
+        let store = Arc::new(TestSecretStore::new());
+        store
+            .store("provider/openai/default", "api_key", "sk-backend")
+            .await
+            .unwrap();
+
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: "sk-legacy".to_string(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: Some(SecretRef {
+                    namespace: "provider/openai/default".to_string(),
+                    key: "api_key".to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        };
+
+        let source = CredentialSource::from_api_key_endpoint(&endpoint, Some(store)).unwrap();
+        let token = source.resolve_bearer_token().await.unwrap();
+        assert_eq!(token, "sk-backend");
+    }
+
+    #[tokio::test]
+    async fn stored_secret_falls_back_to_plaintext_when_backend_missing() {
+        let store = Arc::new(TestSecretStore::new());
+        let endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: "sk-legacy".to_string(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::OsSecretStore,
+                secret_ref: Some(SecretRef {
+                    namespace: "provider/openai/default".to_string(),
+                    key: "api_key".to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        };
+
+        let source = CredentialSource::from_api_key_endpoint(&endpoint, Some(store)).unwrap();
+        let token = source.resolve_bearer_token().await.unwrap();
+        assert_eq!(token, "sk-legacy");
     }
 }

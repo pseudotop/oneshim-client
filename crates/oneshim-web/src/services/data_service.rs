@@ -100,6 +100,7 @@ mod tests {
             frames_dir: None,
             event_tx,
             config_manager: None,
+            secret_store: None,
             audit_logger: None,
             automation_controller: None,
             ai_runtime_status: None,

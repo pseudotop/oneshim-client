@@ -88,6 +88,7 @@ fn main() {
             commands::defer_update,
             commands::get_automation_status,
             commands::get_web_port,
+            commands::get_secret_backend_capabilities,
             commands::get_allowed_setting_keys,
             commands::oauth_start_flow,
             commands::oauth_flow_status,

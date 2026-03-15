@@ -254,7 +254,7 @@ impl Default for AiProviderSettings {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExternalApiSettings {
     pub endpoint: String,
     pub api_key_masked: String,
@@ -263,6 +263,18 @@ pub struct ExternalApiSettings {
     pub provider_type: String,
     #[serde(default = "default_external_timeout")]
     pub timeout_secs: u64,
+    #[serde(default = "default_credential_auth_mode")]
+    pub auth_mode: String,
+    #[serde(default = "default_credential_backend_kind")]
+    pub backend_kind: String,
+    #[serde(default)]
+    pub has_secret: bool,
+    #[serde(default = "default_true")]
+    pub can_edit_secret: bool,
+    #[serde(default)]
+    pub secret_display_hint: Option<String>,
+    #[serde(default)]
+    pub projection_enabled: bool,
 }
 
 fn default_external_timeout() -> u64 {
@@ -271,6 +283,36 @@ fn default_external_timeout() -> u64 {
 
 fn default_provider_type() -> String {
     "Generic".to_string()
+}
+
+fn default_credential_auth_mode() -> String {
+    "api_key".to_string()
+}
+
+fn default_credential_backend_kind() -> String {
+    "legacy_config".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for ExternalApiSettings {
+    fn default() -> Self {
+        Self {
+            endpoint: String::new(),
+            api_key_masked: String::new(),
+            model: None,
+            provider_type: default_provider_type(),
+            timeout_secs: default_external_timeout(),
+            auth_mode: default_credential_auth_mode(),
+            backend_kind: default_credential_backend_kind(),
+            has_secret: false,
+            can_edit_secret: default_true(),
+            secret_display_hint: None,
+            projection_enabled: false,
+        }
+    }
 }
 
 impl Default for AppSettings {

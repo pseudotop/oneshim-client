@@ -243,6 +243,7 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
@@ -250,6 +251,34 @@ mod tests {
         let result = config.validate_selected_remote_endpoints();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("api_key"));
+    }
+
+    #[test]
+    fn ai_provider_validation_accepts_remote_api_key_secret_binding() {
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Local,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.example.com/ocr".to_string(),
+                api_key: "".to_string(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::Generic,
+                credential: Some(CredentialBinding {
+                    auth_mode: CredentialAuthMode::ApiKey,
+                    backend_kind: CredentialBackendKind::OsSecretStore,
+                    secret_ref: Some(SecretRef {
+                        namespace: "provider/openai/default".to_string(),
+                        key: "api_key".to_string(),
+                    }),
+                    projection_enabled: false,
+                }),
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -263,6 +292,7 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                credential: None,
             }),
             llm_api: Some(ExternalApiEndpoint {
                 endpoint: "https://api.example.com/llm".to_string(),
@@ -270,6 +300,7 @@ mod tests {
                 model: Some("model-a".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
@@ -288,6 +319,7 @@ mod tests {
                 model: Some("gpt-3.5-turbo".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
@@ -309,6 +341,7 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
@@ -345,6 +378,7 @@ mod tests {
                 model: Some("claude-sonnet-4-5".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::Anthropic,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
@@ -365,6 +399,7 @@ mod tests {
                 model: Some("gpt-4.1-mini".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };

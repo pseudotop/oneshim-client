@@ -530,6 +530,7 @@ mod tests {
             model: Some("gpt-3.5-turbo".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            credential: None,
         };
 
         let result = RemoteLlmProvider::new(&config);
@@ -701,6 +702,7 @@ mod tests {
             model: Some("gpt-4o".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            credential: None,
         };
         let provider = RemoteLlmProvider::new(&config).unwrap();
         let body = provider.build_responses_api_body("system prompt", "user input");
@@ -721,6 +723,7 @@ mod tests {
             model: Some("gpt-4o".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            credential: None,
         };
         // API key credential → should NOT use Responses API.
         let provider = RemoteLlmProvider::new(&config).unwrap();

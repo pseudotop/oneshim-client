@@ -16,12 +16,15 @@ use oneshim_core::config::{
 use oneshim_core::config::{ExternalDataPolicy, OcrValidationConfig};
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::error::CoreError;
+#[cfg(feature = "server")]
+use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::llm_provider::LlmProvider;
 use oneshim_core::ports::monitor::ProcessMonitor;
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::ocr_provider::OcrProvider;
 use oneshim_core::ports::ocr_provider::OcrResult;
+use oneshim_core::ports::secret_store::SecretStore;
 #[cfg(feature = "server")]
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
 #[cfg(feature = "server")]
@@ -294,6 +297,7 @@ pub fn resolve_ai_provider_adapters(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    secret_store: Option<Arc<dyn SecretStore>>,
     #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AiProviderAdapters, CoreError> {
     match config.access_mode {
@@ -314,9 +318,14 @@ pub fn resolve_ai_provider_adapters(
             llm_fallback_reason: None,
         }),
         AiAccessMode::ProviderApiKey => {
-            let (ocr, ocr_source, ocr_fallback_reason) =
-                resolve_ocr_provider(config, pii_filter_level, external_ocr_privacy_guard.clone())?;
-            let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
+            let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
+                config,
+                pii_filter_level,
+                external_ocr_privacy_guard.clone(),
+                secret_store.clone(),
+            )?;
+            let (llm, llm_source, llm_fallback_reason) =
+                resolve_llm_provider(config, secret_store.clone())?;
             Ok(AiProviderAdapters {
                 ocr,
                 llm,
@@ -327,9 +336,14 @@ pub fn resolve_ai_provider_adapters(
             })
         }
         AiAccessMode::PlatformConnected => {
-            let (ocr, ocr_source, ocr_fallback_reason) =
-                resolve_ocr_provider(config, pii_filter_level, external_ocr_privacy_guard.clone())?;
-            let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
+            let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
+                config,
+                pii_filter_level,
+                external_ocr_privacy_guard.clone(),
+                secret_store.clone(),
+            )?;
+            let (llm, llm_source, llm_fallback_reason) =
+                resolve_llm_provider(config, secret_store.clone())?;
             Ok(AiProviderAdapters {
                 ocr,
                 llm,
@@ -360,6 +374,7 @@ pub fn resolve_ai_provider_adapters(
                     config,
                     pii_filter_level,
                     external_ocr_privacy_guard.clone(),
+                    secret_store,
                 )?;
                 let (llm, llm_source, llm_fallback_reason) =
                     resolve_llm_provider_oauth(config, oauth)?;
@@ -394,6 +409,7 @@ fn resolve_ocr_provider(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    secret_store: Option<Arc<dyn SecretStore>>,
 ) -> OcrProviderResolution {
     match config.ocr_provider {
         OcrProviderType::Local => Ok((
@@ -409,6 +425,8 @@ fn resolve_ocr_provider(
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
+                        let credential =
+                            CredentialSource::from_api_key_endpoint(endpoint, secret_store)?;
                         let privacy_guard =
                             external_ocr_privacy_guard.clone().ok_or_else(|| {
                                 CoreError::Config(
@@ -416,8 +434,9 @@ fn resolve_ocr_provider(
                                         .to_string(),
                                 )
                             })?;
-                        let remote =
-                            Arc::new(RemoteOcrProvider::new(endpoint)?) as Arc<dyn OcrProvider>;
+                        let remote = Arc::new(RemoteOcrProvider::new_with_credential(
+                            endpoint, credential,
+                        )?) as Arc<dyn OcrProvider>;
                         Ok(Arc::new(GuardedOcrProvider::new(
                             remote,
                             privacy_guard,
@@ -438,7 +457,11 @@ fn resolve_ocr_provider(
     }
 }
 
-fn resolve_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
+#[allow(unused_variables)]
+fn resolve_llm_provider(
+    config: &AiProviderConfig,
+    secret_store: Option<Arc<dyn SecretStore>>,
+) -> LlmProviderResolution {
     match config.llm_provider {
         LlmProviderType::Local => Ok((
             Arc::new(LocalLlmProvider::new()),
@@ -453,7 +476,11 @@ fn resolve_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.llm_api.as_ref(), "llm_api")?;
-                        Ok(Arc::new(RemoteLlmProvider::new(endpoint)?) as Arc<dyn LlmProvider>)
+                        let credential =
+                            CredentialSource::from_api_key_endpoint(endpoint, secret_store)?;
+                        Ok(Arc::new(RemoteLlmProvider::new_with_credential(
+                            endpoint, credential,
+                        )?) as Arc<dyn LlmProvider>)
                     },
                     || Arc::new(LocalLlmProvider::new()) as Arc<dyn LlmProvider>,
                 )
@@ -479,8 +506,6 @@ fn resolve_llm_provider_oauth(
     config: &AiProviderConfig,
     oauth_port: Arc<dyn OAuthPort>,
 ) -> LlmProviderResolution {
-    use oneshim_core::ports::credential_source::CredentialSource;
-
     // Currently the only supported OAuth provider. When adding more providers,
     // this should be derived from config (e.g., config.oauth_provider_id).
     let provider_id = "openai".to_string();
@@ -514,6 +539,7 @@ fn oauth_llm_endpoint(config: &AiProviderConfig) -> ExternalApiEndpoint {
         model: Some(DEFAULT_OPENAI_OAUTH_MODEL.to_string()),
         timeout_secs: 30,
         provider_type: AiProviderType::OpenAi,
+        credential: None,
     });
 
     if endpoint.endpoint.trim().is_empty() {
@@ -613,8 +639,8 @@ mod tests {
     use async_trait::async_trait;
     use oneshim_automation::audit::AuditLogger;
     use oneshim_core::config::{
-        AiAccessMode, AiProviderType, ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig,
-        PrivacyConfig,
+        AiAccessMode, AiProviderType, CredentialAuthMode, CredentialBackendKind, CredentialBinding,
+        ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig, PrivacyConfig, SecretRef,
     };
     use oneshim_core::consent::{ConsentManager, ConsentPermissions};
     use oneshim_core::models::context::{ProcessInfo, WindowInfo};
@@ -624,6 +650,8 @@ mod tests {
         OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort, RefreshResult,
     };
     use oneshim_core::ports::ocr_provider::OcrResult;
+    use oneshim_core::ports::secret_store::secret_env_var_name;
+    use oneshim_storage::env_secret_store::EnvSecretStore;
     use tempfile::TempDir;
     use tokio::sync::RwLock;
 
@@ -634,6 +662,7 @@ mod tests {
             model: Some("test-model".to_string()),
             timeout_secs: 5,
             provider_type: AiProviderType::Generic,
+            credential: None,
         }
     }
 
@@ -703,8 +732,9 @@ mod tests {
     #[test]
     fn resolves_local_providers_by_default() {
         let config = AiProviderConfig::default();
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None)
-            .expect("Failed to resolve default configuration");
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
+                .expect("Failed to resolve default configuration");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
@@ -742,6 +772,7 @@ mod tests {
             PiiFilterLevel::Standard,
             Some(privacy_guard),
             None,
+            None,
         )
         .expect("Failed to resolve remote configuration");
 
@@ -764,8 +795,9 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None)
-            .expect("Fallback configuration resolution should not fail");
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
+                .expect("Fallback configuration resolution should not fail");
 
         assert_eq!(adapters.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(adapters.llm_source, ProviderSource::LocalFallback);
@@ -792,7 +824,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None) {
+        match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None) {
             Ok(_) => panic!("Expected an error"),
             Err(CoreError::Config(msg)) => assert!(msg.contains("ocr_api")),
             Err(other) => panic!("Unexpected error type: {other}"),
@@ -811,8 +843,9 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None)
-            .expect("Failed to resolve local mode");
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
+                .expect("Failed to resolve local mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
         assert!(adapters.ocr_fallback_reason.is_none());
@@ -828,8 +861,9 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None)
-            .expect("Failed to resolve CLI mode");
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
+                .expect("Failed to resolve CLI mode");
         assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
         assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
         assert!(adapters.ocr_fallback_reason.is_none());
@@ -864,6 +898,7 @@ mod tests {
             &config,
             PiiFilterLevel::Standard,
             Some(privacy_guard),
+            None,
             None,
         )
         .expect("Failed to resolve platform mode");
@@ -966,7 +1001,8 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let result = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None);
+        let result =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None);
         assert!(
             result.is_err(),
             "Expected remote OCR resolution to require a privacy guard"
@@ -983,7 +1019,8 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let result = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None);
+        let result =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None);
         assert!(
             result.is_err(),
             "ProviderOAuth mode should require an OAuth port"
@@ -1001,8 +1038,13 @@ mod tests {
         };
 
         let oauth = Arc::new(FakeOAuthPort { connected: true }) as Arc<dyn OAuthPort>;
-        let result =
-            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, Some(oauth));
+        let result = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            Some(oauth),
+        );
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert!(err.to_string().contains("llm_provider=Remote"));
@@ -1017,12 +1059,80 @@ mod tests {
         };
 
         let oauth = Arc::new(FakeOAuthPort { connected: true }) as Arc<dyn OAuthPort>;
-        let adapters =
-            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, Some(oauth))
-                .expect("OAuth mode should resolve when a port is provided");
+        let adapters = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            Some(oauth),
+        )
+        .expect("OAuth mode should resolve when a port is provided");
 
         assert_eq!(adapters.llm_source, ProviderSource::OAuth);
         assert_eq!(adapters.llm.provider_name(), DEFAULT_OPENAI_OAUTH_MODEL);
+    }
+
+    #[test]
+    fn resolves_remote_providers_from_secret_binding_with_plaintext_empty() {
+        let namespace = "provider/openai/default";
+        let key = "api_key";
+        let mut snapshot = std::collections::HashMap::new();
+        snapshot.insert(
+            secret_env_var_name(namespace, key),
+            "sk-secret-store".to_string(),
+        );
+        let secret_store = Arc::new(EnvSecretStore::from_snapshot(snapshot));
+
+        let secret_bound_endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-4.1-mini".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::Env,
+                secret_ref: Some(SecretRef {
+                    namespace: namespace.to_string(),
+                    key: key.to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        };
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Remote,
+            ocr_api: Some(secret_bound_endpoint.clone()),
+            llm_api: Some(secret_bound_endpoint),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "mail".to_string(),
+                app_name: "Code".to_string(),
+                pid: 9,
+                bounds: None,
+            }),
+            None,
+        );
+        let adapters = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            Some(privacy_guard),
+            Some(secret_store),
+            None,
+        )
+        .expect("Secret-bound API key configuration should resolve");
+
+        assert_eq!(adapters.ocr_source, ProviderSource::Remote);
+        assert_eq!(adapters.llm_source, ProviderSource::Remote);
+        assert!(adapters.ocr_fallback_reason.is_none());
+        assert!(adapters.llm_fallback_reason.is_none());
+        assert!(adapters.ocr.is_external());
+        assert!(adapters.llm.is_external());
     }
 
     #[tokio::test]

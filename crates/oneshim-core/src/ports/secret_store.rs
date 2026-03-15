@@ -1,11 +1,86 @@
-//! Secret store port — secure storage for managed credentials.
+//! Secret store port — canonical storage for provider credentials.
 //!
-//! Secrets (OAuth tokens, refresh tokens) must never be stored in plaintext
-//! config. This port abstracts OS keychain or in-memory storage.
+//! Secrets (OAuth tokens, API keys, bridge credentials) must not default to
+//! plaintext config storage. This port abstracts OS keychain, explicit file
+//! backends, environment-backed sources, or in-memory test doubles.
 
 use async_trait::async_trait;
 
 use crate::error::CoreError;
+
+pub const DEFAULT_SECRET_PROFILE: &str = "default";
+pub const PROVIDER_API_KEY_SECRET_KEY: &str = "api_key";
+pub const PROVIDER_OAUTH_SESSION_SECRET_KEY: &str = "oauth_session";
+
+fn validate_secret_segment(raw: &str, field_name: &str) -> Result<String, CoreError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(CoreError::InvalidArguments(format!(
+            "{field_name} must not be empty"
+        )));
+    }
+
+    if !trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+    {
+        return Err(CoreError::InvalidArguments(format!(
+            "{field_name} must contain only ASCII alphanumeric characters, '.', '_' or '-'"
+        )));
+    }
+
+    Ok(trimmed.to_string())
+}
+
+pub fn provider_secret_namespace(provider_id: &str, profile_id: &str) -> Result<String, CoreError> {
+    let provider_id = validate_secret_segment(provider_id, "provider_id")?;
+    let profile_id = validate_secret_segment(profile_id, "profile_id")?;
+    Ok(format!("provider/{provider_id}/{profile_id}"))
+}
+
+pub fn provider_api_key_secret_ref(
+    provider_id: &str,
+    profile_id: &str,
+) -> Result<(String, &'static str), CoreError> {
+    Ok((
+        provider_secret_namespace(provider_id, profile_id)?,
+        PROVIDER_API_KEY_SECRET_KEY,
+    ))
+}
+
+pub fn provider_oauth_session_secret_ref(
+    provider_id: &str,
+    profile_id: &str,
+) -> Result<(String, &'static str), CoreError> {
+    Ok((
+        provider_secret_namespace(provider_id, profile_id)?,
+        PROVIDER_OAUTH_SESSION_SECRET_KEY,
+    ))
+}
+
+pub fn secret_env_var_name(namespace: &str, key: &str) -> String {
+    let normalized_namespace = namespace
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let normalized_key = key
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!("ONESHIM_SECRET_{normalized_namespace}_{normalized_key}")
+}
 
 /// Secure secret storage abstraction.
 ///
@@ -131,5 +206,30 @@ mod tests {
             store.retrieve("openrouter", "token").await.unwrap(),
             Some("or_tok".to_string())
         );
+    }
+
+    #[test]
+    fn provider_namespace_uses_stable_shape() {
+        let namespace = provider_secret_namespace("openai", DEFAULT_SECRET_PROFILE).unwrap();
+        assert_eq!(namespace, "provider/openai/default");
+    }
+
+    #[test]
+    fn provider_secret_ref_uses_api_key_key_name() {
+        let (namespace, key) = provider_api_key_secret_ref("openrouter", "team").unwrap();
+        assert_eq!(namespace, "provider/openrouter/team");
+        assert_eq!(key, PROVIDER_API_KEY_SECRET_KEY);
+    }
+
+    #[test]
+    fn provider_namespace_rejects_invalid_segments() {
+        let err = provider_secret_namespace("openai/codex", "default").unwrap_err();
+        assert!(matches!(err, CoreError::InvalidArguments(_)));
+    }
+
+    #[test]
+    fn env_secret_var_name_normalizes_namespace_and_key() {
+        let env_name = secret_env_var_name("provider/openai/default", "api_key");
+        assert_eq!(env_name, "ONESHIM_SECRET_PROVIDER_OPENAI_DEFAULT_API_KEY");
     }
 }

@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { OAuthConnectionStatus, OAuthFlowStatus } from '../../api/client'
-import { oauthCancelFlow, oauthConnectionStatus, oauthFlowStatus, oauthRevoke, oauthStartFlow } from '../../api/client'
+import {
+  fetchSecretBackendCapabilities,
+  oauthCancelFlow,
+  oauthConnectionStatus,
+  oauthFlowStatus,
+  oauthRevoke,
+  oauthStartFlow,
+} from '../../api/client'
 import { Button, Card } from '../../components/ui'
 import { isOAuthPanelAvailable } from './oauth-panel-support'
 
@@ -81,6 +88,11 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
       return
     }
     try {
+      const capabilities = await fetchSecretBackendCapabilities()
+      if (!capabilities.oauth_available || !capabilities.os_secret_store_available) {
+        setState({ phase: 'error', message: t('settingsOAuth.unavailable') })
+        return
+      }
       const status = await oauthConnectionStatus(providerId)
       if (status.connected) {
         setState({ phase: 'connected', status })
@@ -90,7 +102,7 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
     } catch (err) {
       setState(toErrorState(err))
     }
-  }, [providerId, toErrorState])
+  }, [providerId, t, toErrorState])
 
   useEffect(() => {
     refreshStatus()

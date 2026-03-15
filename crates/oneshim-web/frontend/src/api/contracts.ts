@@ -616,6 +616,12 @@ export interface ExternalApiSettings {
   model: string | null
   provider_type: string
   timeout_secs: number
+  auth_mode: string
+  backend_kind: string
+  has_secret: boolean
+  can_edit_secret: boolean
+  secret_display_hint: string | null
+  projection_enabled: boolean
 }
 
 // ── OAuth types ──────────────────────────────────────────────
@@ -638,6 +644,14 @@ export interface OAuthConnectionStatus {
   scopes: string[]
   api_base_url: string | null
   has_refresh_token?: boolean
+}
+
+export interface SecretBackendCapabilities {
+  os_secret_store_available: boolean
+  oauth_available: boolean
+  default_backend_kind: string
+  byok_backend_kind: string
+  fallback_backend_kind: string
 }
 
 export interface AutomationStatus {

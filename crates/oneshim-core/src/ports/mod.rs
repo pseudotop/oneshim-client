@@ -14,6 +14,7 @@ pub mod oauth;
 pub mod ocr_provider;
 pub mod overlay_driver;
 pub mod sandbox;
+pub mod secret_projection;
 pub mod secret_store;
 pub mod skill_loader;
 pub mod storage;

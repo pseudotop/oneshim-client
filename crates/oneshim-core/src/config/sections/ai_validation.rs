@@ -4,6 +4,43 @@ use crate::error::CoreError;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+// ── Credential metadata ─────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialBackendKind {
+    OsSecretStore,
+    FileSecretStore,
+    Env,
+    BridgeManaged,
+    LegacyConfig,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialAuthMode {
+    ApiKey,
+    ManagedOAuth,
+    CliBridge,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecretRef {
+    pub namespace: String,
+    pub key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CredentialBinding {
+    pub auth_mode: CredentialAuthMode,
+    pub backend_kind: CredentialBackendKind,
+    #[serde(default)]
+    pub secret_ref: Option<SecretRef>,
+    #[serde(default)]
+    pub projection_enabled: bool,
+}
+
 // ── ExternalApiEndpoint ────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,6 +53,8 @@ pub struct ExternalApiEndpoint {
     pub timeout_secs: u64,
     #[serde(default)]
     pub provider_type: AiProviderType,
+    #[serde(default)]
+    pub credential: Option<CredentialBinding>,
 }
 
 // ── OcrValidationConfig ────────────────────────────────────────────

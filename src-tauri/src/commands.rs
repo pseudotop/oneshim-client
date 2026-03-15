@@ -4,7 +4,9 @@ use std::sync::atomic::Ordering;
 use sysinfo::System;
 use tauri::command;
 
-use crate::setup::{AppState, OAuthCoordinatorState, OAuthState};
+use crate::setup::{
+    AppState, OAuthCoordinatorState, OAuthState, SecretBackendCapabilities, SecretBackendState,
+};
 use oneshim_web::update_control::UpdateAction;
 
 /// Recursively merge `patch` into `base`.
@@ -222,6 +224,14 @@ pub async fn get_allowed_setting_keys() -> Vec<String> {
 #[command]
 pub async fn get_web_port(state: tauri::State<'_, AppState>) -> Result<u16, String> {
     Ok(state.web_port.load(Ordering::Relaxed))
+}
+
+/// Secret backend capability snapshot for desktop runtime surfaces.
+#[command]
+pub async fn get_secret_backend_capabilities(
+    state: tauri::State<'_, SecretBackendState>,
+) -> Result<SecretBackendCapabilities, String> {
+    Ok(state.0.clone())
 }
 
 // ── OAuth IPC commands ──────────────────────────────────────
