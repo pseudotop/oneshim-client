@@ -5,13 +5,13 @@ use std::time::Duration;
 use crate::oauth_provider_registry::managed_oauth_provider_provisioning;
 use crate::setup::SecretBackendCapabilities;
 use crate::subprocess_provider::{
-    probe_for_surface_id, probe_known_cli_surfaces, runtime_ready_for_surface, ProbedSubprocessCli,
-    SubprocessCliAuthStatus,
+    probe_for_surface_id, probe_known_cli_surfaces, runtime_ready_for_surface,
+    runtime_supported_for_surface, ProbedSubprocessCli, SubprocessCliAuthStatus,
 };
 use oneshim_api_contracts::provider_specs::{
     parse_surface_execution_kind, parse_surface_placement_kind, parse_surface_stability,
-    provider_surface_catalog, subprocess_runtime_supported, ProviderAuthScheme,
-    ProviderSurfaceSpec, SurfaceExecutionKind, SurfacePlacementKind, SurfaceStability,
+    provider_surface_catalog, ProviderAuthScheme, ProviderSurfaceSpec, SurfaceExecutionKind,
+    SurfacePlacementKind, SurfaceStability,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -196,7 +196,7 @@ fn subprocess_cli_feature(
     detected_surfaces: &[ProbedSubprocessCli],
 ) -> FeatureCapability {
     let detected = probe_for_surface_id(detected_surfaces, &surface.surface_id);
-    let runtime_supported = subprocess_runtime_supported(&surface.surface_id).unwrap_or(false);
+    let runtime_supported = runtime_supported_for_surface(&surface.surface_id);
     let availability = match detected {
         Some(surface)
             if runtime_supported

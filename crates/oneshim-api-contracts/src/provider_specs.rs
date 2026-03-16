@@ -694,15 +694,6 @@ pub fn list_subprocess_surface_specs() -> Result<Vec<&'static ProviderSurfaceSpe
         .collect())
 }
 
-pub fn subprocess_runtime_supported(surface_id: &str) -> Result<bool, String> {
-    Ok(matches!(
-        subprocess_invocation_mode(surface_id)?,
-        SubprocessInvocationMode::CodexExecJson
-            | SubprocessInvocationMode::ClaudePrintJson
-            | SubprocessInvocationMode::GeminiCliPrompt
-    ))
-}
-
 pub fn resolved_parameter_profile(
     provider_type: AiProviderType,
     surface_id: Option<&str>,
@@ -1881,10 +1872,6 @@ mod tests {
             subprocess_auth_probe_mode("provider_surface.anthropic.subprocess_cli")
                 .expect("probe mode should resolve"),
             SubprocessAuthProbeMode::ClaudeAuthStatusJson
-        );
-        assert!(
-            subprocess_runtime_supported("provider_surface.google.subprocess_cli")
-                .expect("gemini subprocess runtime support should resolve")
         );
     }
 

@@ -1,21 +1,21 @@
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 use oneshim_api_contracts::ai_providers::ProviderTransportSpec;
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 use oneshim_api_contracts::provider_specs::{
     self, parse_surface_execution_kind, provider_surface_spec, ProviderTransportKind,
     SurfaceExecutionKind,
 };
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 use oneshim_core::config::{AiProviderConfig, AiProviderType, ExternalApiEndpoint};
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 use oneshim_core::error::CoreError;
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 use oneshim_network::oauth::provider_config::OAuthProviderConfig;
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 const GOOGLE_OAUTH_CLIENT_ID_ENV: &str = "ONESHIM_GOOGLE_OAUTH_CLIENT_ID";
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedOAuthProvisioning {
     pub env_vars: &'static [&'static str],
@@ -23,7 +23,7 @@ pub struct ManagedOAuthProvisioning {
     pub docs_url: Option<&'static str>,
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 pub fn configured_oauth_provider_configs() -> Vec<OAuthProviderConfig> {
     let mut providers = vec![OAuthProviderConfig::openai_codex()];
 
@@ -34,7 +34,7 @@ pub fn configured_oauth_provider_configs() -> Vec<OAuthProviderConfig> {
     providers
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 pub fn configured_oauth_provider_ids() -> Vec<String> {
     configured_oauth_provider_configs()
         .into_iter()
@@ -42,7 +42,7 @@ pub fn configured_oauth_provider_ids() -> Vec<String> {
         .collect()
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 pub fn selected_managed_oauth_provider_ids(
     config: &AiProviderConfig,
 ) -> Result<Vec<String>, CoreError> {
@@ -61,7 +61,7 @@ pub fn selected_managed_oauth_provider_ids(
     Ok(provider_ids)
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 pub fn managed_oauth_provider_provisioning(provider_id: &str) -> Option<ManagedOAuthProvisioning> {
     match provider_id.trim().to_ascii_lowercase().as_str() {
         "google" => Some(ManagedOAuthProvisioning {
@@ -75,7 +75,7 @@ pub fn managed_oauth_provider_provisioning(provider_id: &str) -> Option<ManagedO
     }
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 pub fn managed_oauth_provider_id_for_endpoint(
     endpoint: &ExternalApiEndpoint,
     kind: ProviderTransportKind,
@@ -84,7 +84,7 @@ pub fn managed_oauth_provider_id_for_endpoint(
     Ok(provider_type_id(endpoint.provider_type).to_string())
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 pub fn managed_oauth_transport_url_for_endpoint(
     endpoint: &ExternalApiEndpoint,
     kind: ProviderTransportKind,
@@ -92,7 +92,7 @@ pub fn managed_oauth_transport_url_for_endpoint(
     Ok(managed_oauth_transport_spec(endpoint, kind)?.url.clone())
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 fn managed_oauth_transport_spec<'a>(
     endpoint: &'a ExternalApiEndpoint,
     kind: ProviderTransportKind,
@@ -121,7 +121,7 @@ fn managed_oauth_transport_spec<'a>(
     Ok(spec)
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 fn maybe_push_managed_provider(
     provider_ids: &mut Vec<String>,
     endpoint: &ExternalApiEndpoint,
@@ -143,7 +143,7 @@ fn maybe_push_managed_provider(
     }
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 fn google_oauth_client_id() -> Option<String> {
     std::env::var(GOOGLE_OAUTH_CLIENT_ID_ENV)
         .ok()
@@ -151,7 +151,7 @@ fn google_oauth_client_id() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-#[cfg(any(feature = "server", test))]
+#[cfg(feature = "server")]
 fn provider_type_id(provider_type: AiProviderType) -> &'static str {
     match provider_type {
         AiProviderType::OpenAi => "openai",
@@ -162,7 +162,7 @@ fn provider_type_id(provider_type: AiProviderType) -> &'static str {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "server"))]
 mod tests {
     use super::*;
     use oneshim_core::config::{

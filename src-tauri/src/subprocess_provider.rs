@@ -1,10 +1,9 @@
 use async_trait::async_trait;
 use oneshim_api_contracts::provider_specs::{
     list_subprocess_surface_specs, provider_surface_spec as catalog_surface_spec,
-    subprocess_auth_probe_mode, subprocess_invocation_mode, subprocess_runtime_supported,
-    subprocess_supports_json_output, subprocess_transport as catalog_subprocess_transport,
-    surface_supports_capability, SubprocessAuthProbeMode, SubprocessInvocationMode,
-    SurfaceCapabilityKind,
+    subprocess_auth_probe_mode, subprocess_invocation_mode, subprocess_supports_json_output,
+    subprocess_transport as catalog_subprocess_transport, surface_supports_capability,
+    SubprocessAuthProbeMode, SubprocessInvocationMode, SurfaceCapabilityKind,
 };
 use oneshim_core::config::{AiProviderConfig, AiProviderType};
 use oneshim_core::error::CoreError;
@@ -14,7 +13,9 @@ use oneshim_core::ports::llm_provider::{
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
 use serde::Deserialize;
 use std::env;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::process::{Command as StdCommand, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -97,6 +98,24 @@ pub struct SubprocessOcrProvider {
     timeout: Duration,
 }
 
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+#[derive(Clone, Copy)]
+struct SubprocessInvocationRuntime {
+    llm_invoke:
+        for<'a> fn(&'a SubprocessLlmProvider, &'a str) -> BoxFuture<'a, Result<String, CoreError>>,
+    ocr_invoke: for<'a> fn(
+        &'a SubprocessOcrProvider,
+        &'a Path,
+        &'a Path,
+    ) -> BoxFuture<'a, Result<String, CoreError>>,
+}
+
+#[derive(Clone, Copy)]
+struct SubprocessAuthProbeRuntime {
+    probe: fn(&Path, &[String]) -> (SubprocessCliAuthStatus, Option<String>),
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct SubprocessOcrEnvelope {
     results: Vec<OcrResult>,
@@ -140,11 +159,8 @@ impl SubprocessLlmProvider {
         skill_ctx: &SkillContext,
     ) -> Result<InterpretedAction, CoreError> {
         let prompt = build_intent_prompt(screen_context, intent_hint, skill_ctx)?;
-        let raw = match invocation_mode_for_surface(&self.surface.surface_id)? {
-            SubprocessInvocationMode::CodexExecJson => self.run_codex(&prompt).await?,
-            SubprocessInvocationMode::ClaudePrintJson => self.run_claude(&prompt).await?,
-            SubprocessInvocationMode::GeminiCliPrompt => self.run_gemini(&prompt).await?,
-        };
+        let runtime = invocation_runtime_for_surface(&self.surface.surface_id)?;
+        let raw = (runtime.llm_invoke)(self, &prompt).await?;
 
         parse_interpreted_action_output(&raw)
     }
@@ -380,17 +396,8 @@ impl SubprocessOcrProvider {
             CoreError::Internal(format!("Failed to create subprocess OCR tempdir: {err}"))
         })?;
         let image_path = write_subprocess_ocr_image(temp_dir.path(), image, image_format)?;
-        let raw = match invocation_mode_for_surface(&self.surface.surface_id)? {
-            SubprocessInvocationMode::CodexExecJson => {
-                self.run_codex_ocr(temp_dir.path(), &image_path).await?
-            }
-            SubprocessInvocationMode::ClaudePrintJson => {
-                self.run_claude_ocr(temp_dir.path(), &image_path).await?
-            }
-            SubprocessInvocationMode::GeminiCliPrompt => {
-                self.run_gemini_ocr(temp_dir.path(), &image_path).await?
-            }
-        };
+        let runtime = invocation_runtime_for_surface(&self.surface.surface_id)?;
+        let raw = (runtime.ocr_invoke)(self, temp_dir.path(), &image_path).await?;
 
         parse_ocr_output(&raw)
     }
@@ -590,12 +597,87 @@ pub(crate) fn cli_id_for_surface_id(surface_id: &str) -> Result<String, String> 
     Ok(catalog_subprocess_transport(surface_id)?.tool_id.clone())
 }
 
+fn codex_llm_runtime<'a>(
+    provider: &'a SubprocessLlmProvider,
+    prompt: &'a str,
+) -> BoxFuture<'a, Result<String, CoreError>> {
+    Box::pin(provider.run_codex(prompt))
+}
+
+fn claude_llm_runtime<'a>(
+    provider: &'a SubprocessLlmProvider,
+    prompt: &'a str,
+) -> BoxFuture<'a, Result<String, CoreError>> {
+    Box::pin(provider.run_claude(prompt))
+}
+
+fn gemini_llm_runtime<'a>(
+    provider: &'a SubprocessLlmProvider,
+    prompt: &'a str,
+) -> BoxFuture<'a, Result<String, CoreError>> {
+    Box::pin(provider.run_gemini(prompt))
+}
+
+fn codex_ocr_runtime<'a>(
+    provider: &'a SubprocessOcrProvider,
+    workdir: &'a Path,
+    image_path: &'a Path,
+) -> BoxFuture<'a, Result<String, CoreError>> {
+    Box::pin(provider.run_codex_ocr(workdir, image_path))
+}
+
+fn claude_ocr_runtime<'a>(
+    provider: &'a SubprocessOcrProvider,
+    workdir: &'a Path,
+    image_path: &'a Path,
+) -> BoxFuture<'a, Result<String, CoreError>> {
+    Box::pin(provider.run_claude_ocr(workdir, image_path))
+}
+
+fn gemini_ocr_runtime<'a>(
+    provider: &'a SubprocessOcrProvider,
+    workdir: &'a Path,
+    image_path: &'a Path,
+) -> BoxFuture<'a, Result<String, CoreError>> {
+    Box::pin(provider.run_gemini_ocr(workdir, image_path))
+}
+
+fn invocation_runtime_for_mode(mode: SubprocessInvocationMode) -> SubprocessInvocationRuntime {
+    match mode {
+        SubprocessInvocationMode::CodexExecJson => SubprocessInvocationRuntime {
+            llm_invoke: codex_llm_runtime,
+            ocr_invoke: codex_ocr_runtime,
+        },
+        SubprocessInvocationMode::ClaudePrintJson => SubprocessInvocationRuntime {
+            llm_invoke: claude_llm_runtime,
+            ocr_invoke: claude_ocr_runtime,
+        },
+        SubprocessInvocationMode::GeminiCliPrompt => SubprocessInvocationRuntime {
+            llm_invoke: gemini_llm_runtime,
+            ocr_invoke: gemini_ocr_runtime,
+        },
+    }
+}
+
+fn invocation_runtime_for_surface(
+    surface_id: &str,
+) -> Result<SubprocessInvocationRuntime, CoreError> {
+    Ok(invocation_runtime_for_mode(invocation_mode_for_surface(
+        surface_id,
+    )?))
+}
+
 fn invocation_mode_for_surface(surface_id: &str) -> Result<SubprocessInvocationMode, CoreError> {
     subprocess_invocation_mode(surface_id).map_err(CoreError::Internal)
 }
 
 pub(crate) fn runtime_supported_for_surface(surface_id: &str) -> bool {
-    subprocess_runtime_supported(surface_id).unwrap_or(false)
+    invocation_mode_for_surface(surface_id)
+        .map(|mode| {
+            let _ = invocation_runtime_for_mode(mode);
+            true
+        })
+        .unwrap_or(false)
 }
 
 fn runtime_ready_for_auth_status(
@@ -637,6 +719,26 @@ fn auth_probe_command_for_surface(surface_id: &str) -> Result<Vec<String>, Strin
     Ok(catalog_subprocess_transport(surface_id)?
         .auth_probe_command
         .clone())
+}
+
+fn auth_probe_runtime_for_mode(
+    mode: SubprocessAuthProbeMode,
+) -> Option<SubprocessAuthProbeRuntime> {
+    match mode {
+        SubprocessAuthProbeMode::CodexLoginStatusText => Some(SubprocessAuthProbeRuntime {
+            probe: probe_codex_auth_status,
+        }),
+        SubprocessAuthProbeMode::ClaudeAuthStatusJson => Some(SubprocessAuthProbeRuntime {
+            probe: probe_claude_auth_status,
+        }),
+        SubprocessAuthProbeMode::None => None,
+    }
+}
+
+fn auth_probe_runtime_for_surface(
+    surface_id: &str,
+) -> Result<Option<SubprocessAuthProbeRuntime>, String> {
+    auth_probe_mode_for_surface(surface_id).map(auth_probe_runtime_for_mode)
 }
 
 fn append_model_flag(command: &mut Command, surface_id: &str, model: &str) {
@@ -802,18 +904,13 @@ fn surface_for_provider_surface_id(raw: &str) -> Option<String> {
 }
 
 fn probe_cli_surface(detected: DetectedSubprocessCli) -> ProbedSubprocessCli {
-    let (auth_status, auth_detail) = match auth_probe_mode_for_surface(&detected.surface_id) {
-        Ok(SubprocessAuthProbeMode::CodexLoginStatusText) => {
+    let (auth_status, auth_detail) = match auth_probe_runtime_for_surface(&detected.surface_id) {
+        Ok(Some(runtime)) => {
             let probe_args =
                 auth_probe_command_for_surface(&detected.surface_id).unwrap_or_default();
-            probe_codex_auth_status(&detected.executable_path, &probe_args)
+            (runtime.probe)(&detected.executable_path, &probe_args)
         }
-        Ok(SubprocessAuthProbeMode::ClaudeAuthStatusJson) => {
-            let probe_args =
-                auth_probe_command_for_surface(&detected.surface_id).unwrap_or_default();
-            probe_claude_auth_status(&detected.executable_path, &probe_args)
-        }
-        Ok(SubprocessAuthProbeMode::None) => (
+        Ok(None) => (
             SubprocessCliAuthStatus::Unknown,
             Some("auth_status_probe_not_implemented".to_string()),
         ),
@@ -1514,6 +1611,33 @@ mod tests {
             parse_claude_auth_status(r#"{"loggedIn":false,"authMethod":"none"}"#);
         assert_eq!(status, SubprocessCliAuthStatus::Unauthenticated);
         assert_eq!(detail.as_deref(), Some("cli_auth_required"));
+    }
+
+    #[test]
+    fn marks_catalog_subprocess_surfaces_as_runtime_supported() {
+        assert!(runtime_supported_for_surface(
+            "provider_surface.openai.subprocess_cli"
+        ));
+        assert!(runtime_supported_for_surface(
+            "provider_surface.anthropic.subprocess_cli"
+        ));
+        assert!(runtime_supported_for_surface(
+            "provider_surface.google.subprocess_cli"
+        ));
+    }
+
+    #[test]
+    fn resolves_auth_probe_runtime_from_catalog_mode() {
+        assert!(
+            auth_probe_runtime_for_surface("provider_surface.openai.subprocess_cli")
+                .expect("openai probe runtime should resolve")
+                .is_some()
+        );
+        assert!(
+            auth_probe_runtime_for_surface("provider_surface.google.subprocess_cli")
+                .expect("google probe runtime should resolve")
+                .is_none()
+        );
     }
 
     #[test]
