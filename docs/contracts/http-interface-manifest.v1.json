@@ -79,6 +79,7 @@
       "module": "integration",
       "operations": [
         { "method": "GET", "path": "/integration/v1/status" },
+        { "method": "GET", "path": "/integration/v1/audit" },
         { "method": "GET", "path": "/integration/v1/ai/provider-surfaces" },
         { "method": "POST", "path": "/integration/v1/ai/providers/models" }
       ]

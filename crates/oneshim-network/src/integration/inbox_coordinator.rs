@@ -234,6 +234,16 @@ mod tests {
                 .collect())
         }
 
+        async fn pending_count(&self) -> Result<usize, CoreError> {
+            Ok(self
+                .prompts
+                .lock()
+                .await
+                .values()
+                .filter(|prompt| prompt.status == IntegrationInboxItemStatus::Pending)
+                .count())
+        }
+
         async fn update_status(
             &self,
             prompt_id: &str,

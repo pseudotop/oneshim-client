@@ -146,6 +146,9 @@ struct BuiltIntegrationRuntime {
     status: IntegrationOutboundRuntimeStatus,
     auth: Option<Arc<dyn IntegrationAuthPort>>,
     session: Option<Arc<dyn IntegrationSessionPort>>,
+    outbox: Option<Arc<dyn oneshim_core::ports::integration::IntegrationOutboxPort>>,
+    inbox_store: Option<Arc<dyn oneshim_core::ports::integration::IntegrationInboxStorePort>>,
+    audit: Option<Arc<dyn oneshim_core::ports::integration::IntegrationAuditPort>>,
     runtime_loop: Option<IntegrationRuntimeLoop>,
 }
 
@@ -432,6 +435,10 @@ fn build_integration_runtime(
         auth_profile_kind: integration.auth_profile_kind.clone(),
         preferred_transports: preferred_transports.clone(),
         supported_auth_schemes: supported_auth_schemes.clone(),
+        outbox_pending_count: None,
+        inbox_pending_count: None,
+        outbox_ack_cursor: None,
+        inbox_ack_cursor: None,
         auth_status: None,
         current_session: None,
     };
@@ -441,6 +448,9 @@ fn build_integration_runtime(
             status,
             auth: auth_port,
             session: None,
+            outbox: None,
+            inbox_store: None,
+            audit: None,
             runtime_loop: None,
         });
     }
@@ -494,16 +504,16 @@ fn build_integration_runtime(
     let sync = Arc::new(PolicyAwareInsightSyncCoordinator::new(
         Arc::new(InsightSyncCoordinator::new(
             session.clone(),
-            outbox_store,
+            outbox_store.clone(),
             sync_transport,
             integration.max_batch_size,
         )) as Arc<dyn InsightSyncPort>,
         Arc::new(DefaultIntegrationEgressPolicy::default()),
-        audit_store,
+        audit_store.clone(),
     )) as Arc<dyn InsightSyncPort>;
     let inbox = Arc::new(IntegrationInboxCoordinator::new(
         session.clone(),
-        inbox_store,
+        inbox_store.clone(),
         inbox_transport,
         integration.max_batch_size,
     )) as Arc<dyn IntegrationInboxPort>;
@@ -512,6 +522,9 @@ fn build_integration_runtime(
         status,
         auth: auth_port,
         session: Some(session.clone()),
+        outbox: Some(outbox_store),
+        inbox_store: Some(inbox_store),
+        audit: Some(audit_store),
         runtime_loop: Some(IntegrationRuntimeLoop::new(
             session,
             sync,
@@ -592,6 +605,12 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let integration_auth = built_integration_runtime.auth.clone();
     #[cfg(feature = "server")]
     let integration_session = built_integration_runtime.session.clone();
+    #[cfg(feature = "server")]
+    let integration_outbox = built_integration_runtime.outbox.clone();
+    #[cfg(feature = "server")]
+    let integration_inbox_store = built_integration_runtime.inbox_store.clone();
+    #[cfg(feature = "server")]
+    let integration_audit = built_integration_runtime.audit.clone();
     #[cfg(feature = "server")]
     let integration_runtime_loop = built_integration_runtime.runtime_loop.clone();
     #[cfg(not(feature = "server"))]
@@ -744,6 +763,12 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         let web_integration_auth = integration_auth.clone();
         #[cfg(feature = "server")]
         let web_integration_session = integration_session.clone();
+        #[cfg(feature = "server")]
+        let web_integration_outbox = integration_outbox.clone();
+        #[cfg(feature = "server")]
+        let web_integration_inbox_store = integration_inbox_store.clone();
+        #[cfg(feature = "server")]
+        let web_integration_audit = integration_audit.clone();
         let (bound_port_tx, bound_port_rx) = tokio::sync::oneshot::channel::<u16>();
 
         let automation_frame_storage = match handle.block_on(async {
@@ -910,6 +935,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(feature = "server")]
             if let Some(session) = web_integration_session.clone() {
                 web_server = web_server.with_integration_session(session);
+            }
+            #[cfg(feature = "server")]
+            if let Some(outbox) = web_integration_outbox.clone() {
+                web_server = web_server.with_integration_outbox(outbox);
+            }
+            #[cfg(feature = "server")]
+            if let Some(inbox_store) = web_integration_inbox_store.clone() {
+                web_server = web_server.with_integration_inbox_store(inbox_store);
+            }
+            #[cfg(feature = "server")]
+            if let Some(audit) = web_integration_audit.clone() {
+                web_server = web_server.with_integration_audit(audit);
             }
             #[cfg(feature = "server")]
             if let Some(secret_store) = provider_secret_store.clone() {

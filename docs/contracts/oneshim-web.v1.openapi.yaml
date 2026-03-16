@@ -1596,6 +1596,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/integration/v1/audit":
+    get:
+      tags:
+        - integration
+      operationId: integration_get_integration_v1_audit
+      summary: "GET /integration/v1/audit"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/integration/v1/status":
     get:
       tags:

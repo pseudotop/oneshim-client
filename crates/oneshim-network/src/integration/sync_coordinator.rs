@@ -246,6 +246,10 @@ mod tests {
                 .collect())
         }
 
+        async fn pending_count(&self) -> Result<usize, CoreError> {
+            Ok(self.items.lock().await.len())
+        }
+
         async fn delete(&self, queue_ids: &[String]) -> Result<(), CoreError> {
             let mut guard = self.items.lock().await;
             guard.retain(|item| !queue_ids.contains(&item.queue_id));

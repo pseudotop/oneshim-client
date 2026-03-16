@@ -106,6 +106,9 @@ pub trait IntegrationOutboxPort: Send + Sync {
     /// List pending outbound packets in delivery order.
     async fn list_pending(&self, limit: usize) -> Result<Vec<QueuedInsightPacket>, CoreError>;
 
+    /// Count currently pending outbound packets.
+    async fn pending_count(&self) -> Result<usize, CoreError>;
+
     /// Remove acknowledged or successfully delivered queue items.
     async fn delete(&self, queue_ids: &[String]) -> Result<(), CoreError>;
 
@@ -145,6 +148,9 @@ pub trait IntegrationInboxStorePort: Send + Sync {
 
     /// List locally pending prompts/tasks.
     async fn list_pending(&self) -> Result<Vec<StoredProactivePrompt>, CoreError>;
+
+    /// Count currently pending prompts/tasks.
+    async fn pending_count(&self) -> Result<usize, CoreError>;
 
     /// Update the lifecycle state of a stored prompt/task.
     async fn update_status(

@@ -130,6 +130,10 @@ impl FileIntegrationStateInner {
             .collect()
     }
 
+    fn outbox_pending_count_sync(&self) -> usize {
+        self.registry.lock().outbox.len()
+    }
+
     fn delete_outbox_sync(&self, queue_ids: &[String]) -> Result<(), CoreError> {
         let mut registry = self.registry.lock();
         registry
@@ -173,6 +177,15 @@ impl FileIntegrationStateInner {
             .collect();
         prompts.sort_by_key(|prompt| prompt.received_at);
         prompts
+    }
+
+    fn inbox_pending_count_sync(&self) -> usize {
+        self.registry
+            .lock()
+            .inbox
+            .values()
+            .filter(|prompt| prompt.status == IntegrationInboxItemStatus::Pending)
+            .count()
     }
 
     fn update_inbox_status_sync(
@@ -349,6 +362,13 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
     }
 
+    async fn pending_count(&self) -> Result<usize, CoreError> {
+        let inner = self.inner.clone();
+        tokio::task::spawn_blocking(move || Ok(inner.outbox_pending_count_sync()))
+            .await
+            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+
     async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError> {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || Ok(inner.outbox_ack_cursor_sync()))
@@ -381,6 +401,13 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
     async fn list_pending(&self) -> Result<Vec<StoredProactivePrompt>, CoreError> {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || Ok(inner.list_inbox_pending_sync()))
+            .await
+            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+
+    async fn pending_count(&self) -> Result<usize, CoreError> {
+        let inner = self.inner.clone();
+        tokio::task::spawn_blocking(move || Ok(inner.inbox_pending_count_sync()))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
     }

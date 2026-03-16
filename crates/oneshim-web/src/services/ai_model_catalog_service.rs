@@ -749,6 +749,9 @@ mod tests {
             integration_runtime_status: None,
             integration_auth: None,
             integration_session: None,
+            integration_outbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
             update_control: None,
         }
     }

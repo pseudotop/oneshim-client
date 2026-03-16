@@ -30,6 +30,14 @@ pub struct IntegrationOutboundRuntimeStatus {
     #[serde(default)]
     pub supported_auth_schemes: Vec<IntegrationAuthScheme>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outbox_pending_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbox_pending_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outbox_ack_cursor: Option<IntegrationAckCursorSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbox_ack_cursor: Option<IntegrationAckCursorSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth_status: Option<IntegrationAuthStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_session: Option<IntegrationSessionSummary>,
@@ -55,6 +63,33 @@ pub struct IntegrationSessionSummary {
     pub requested_scopes: Vec<String>,
     #[serde(default)]
     pub granted_scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationAckCursorSummary {
+    pub stream_id: String,
+    pub cursor: String,
+    pub acknowledged_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationAuditRecordSummary {
+    pub record_id: String,
+    pub envelope_id: String,
+    pub packet_id: String,
+    pub disposition: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub privacy_classification: String,
+    pub capability_scope: String,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationAuditLogResponse {
+    pub schema_version: String,
+    #[serde(default)]
+    pub records: Vec<IntegrationAuditRecordSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,6 +268,18 @@ mod tests {
                 auth_profile_kind: IntegrationAuthProfileKind::EnvToken,
                 preferred_transports: vec![IntegrationTransportKind::WebSocket],
                 supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+                outbox_pending_count: Some(3),
+                inbox_pending_count: Some(2),
+                outbox_ack_cursor: Some(IntegrationAckCursorSummary {
+                    stream_id: "insights".to_string(),
+                    cursor: "cursor-1".to_string(),
+                    acknowledged_at: Utc::now(),
+                }),
+                inbox_ack_cursor: Some(IntegrationAckCursorSummary {
+                    stream_id: "prompts".to_string(),
+                    cursor: "cursor-2".to_string(),
+                    acknowledged_at: Utc::now(),
+                }),
                 auth_status: None,
                 current_session: Some(IntegrationSessionSummary {
                     status: oneshim_core::models::integration::IntegrationSessionStatus::Connected,
@@ -255,5 +302,6 @@ mod tests {
             json["outbound_runtime"]["current_session"]["granted_scopes"][0],
             serde_json::Value::String("insight:write".to_string())
         );
+        assert_eq!(json["outbound_runtime"]["outbox_pending_count"], 3);
     }
 }

@@ -172,6 +172,7 @@ pub fn api_routes() -> Router<AppState> {
 pub fn integration_routes() -> Router<AppState> {
     Router::new()
         .route("/status", get(handlers::integration::get_status))
+        .route("/audit", get(handlers::integration::get_audit))
         .route(
             "/ai/provider-surfaces",
             get(handlers::ai_provider_surfaces::list_provider_surfaces),
@@ -208,6 +209,9 @@ mod tests {
             integration_runtime_status: None,
             integration_auth: None,
             integration_session: None,
+            integration_outbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
             update_control: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
@@ -231,6 +235,9 @@ mod tests {
             integration_runtime_status: None,
             integration_auth: None,
             integration_session: None,
+            integration_outbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
             update_control: None,
         };
         let _app: Router<()> = integration_routes().with_state(state);
