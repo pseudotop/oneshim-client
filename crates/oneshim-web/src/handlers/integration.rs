@@ -11,49 +11,39 @@ use oneshim_api_contracts::integration::{
 use crate::{error::ApiError, services::integration_service, AppState};
 
 pub async fn get_status(State(state): State<AppState>) -> Json<IntegrationStatus> {
-    Json(
-        integration_service::IntegrationWebService::from_state(&state)
-            .build_status()
-            .await,
-    )
+    let context = integration_service::IntegrationWebContext::from_state(&state);
+    Json(context.status_queries().build_status().await)
 }
 
 pub async fn get_audit(
     State(state): State<AppState>,
 ) -> Json<oneshim_api_contracts::integration::IntegrationAuditLogResponse> {
-    Json(
-        integration_service::IntegrationWebService::from_state(&state)
-            .build_audit_log(50)
-            .await,
-    )
+    let context = integration_service::IntegrationWebContext::from_state(&state);
+    Json(context.audit_queries().build_audit_log(50).await)
 }
 
 pub async fn list_inbox(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationInboxResponse>, ApiError> {
-    Ok(Json(
-        integration_service::IntegrationWebService::from_state(&state)
-            .list_inbox()
-            .await?,
-    ))
+    let context = integration_service::IntegrationWebContext::from_state(&state);
+    Ok(Json(context.inbox_commands().list_inbox().await?))
 }
 
 pub async fn refresh_inbox(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationInboxRefreshResponse>, ApiError> {
-    Ok(Json(
-        integration_service::IntegrationWebService::from_state(&state)
-            .refresh_inbox()
-            .await?,
-    ))
+    let context = integration_service::IntegrationWebContext::from_state(&state);
+    Ok(Json(context.inbox_commands().refresh_inbox().await?))
 }
 
 pub async fn acknowledge_inbox_prompt(
     State(state): State<AppState>,
     Path(prompt_id): Path<String>,
 ) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
+    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        integration_service::IntegrationWebService::from_state(&state)
+        context
+            .inbox_commands()
             .acknowledge_inbox_prompt(&prompt_id)
             .await?,
     ))
@@ -64,8 +54,10 @@ pub async fn dismiss_inbox_prompt(
     Path(prompt_id): Path<String>,
     Json(request): Json<IntegrationInboxDismissRequest>,
 ) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
+    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        integration_service::IntegrationWebService::from_state(&state)
+        context
+            .inbox_commands()
             .dismiss_inbox_prompt(&prompt_id, request)
             .await?,
     ))
@@ -74,20 +66,16 @@ pub async fn dismiss_inbox_prompt(
 pub async fn get_auth_status(
     State(state): State<AppState>,
 ) -> Result<Json<oneshim_core::models::integration::IntegrationAuthStatus>, ApiError> {
-    Ok(Json(
-        integration_service::IntegrationWebService::from_state(&state)
-            .get_auth_status()
-            .await?,
-    ))
+    let context = integration_service::IntegrationWebContext::from_state(&state);
+    Ok(Json(context.auth_commands().get_auth_status().await?))
 }
 
 pub async fn start_device_authorization(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
+    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        integration_service::IntegrationWebService::from_state(&state)
-            .start_device_authorization()
-            .await?,
+        context.auth_commands().start_device_authorization().await?,
     ))
 }
 
@@ -95,8 +83,10 @@ pub async fn poll_device_authorization(
     State(state): State<AppState>,
     Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
+    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        integration_service::IntegrationWebService::from_state(&state)
+        context
+            .auth_commands()
             .poll_device_authorization(&request.flow_id)
             .await?,
     ))
@@ -106,8 +96,10 @@ pub async fn cancel_device_authorization(
     State(state): State<AppState>,
     Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
+    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        integration_service::IntegrationWebService::from_state(&state)
+        context
+            .auth_commands()
             .cancel_device_authorization(&request.flow_id)
             .await?,
     ))

@@ -118,7 +118,7 @@ impl IntegrationStatusConfigSnapshot {
 }
 
 #[derive(Clone)]
-pub struct IntegrationWebService {
+pub struct IntegrationWebContext {
     config: IntegrationStatusConfigSnapshot,
     automation_controller_configured: bool,
     ai_runtime_status: Option<crate::AiRuntimeStatus>,
@@ -131,7 +131,7 @@ pub struct IntegrationWebService {
     audit: Option<Arc<dyn oneshim_core::ports::integration::IntegrationAuditPort>>,
 }
 
-impl IntegrationWebService {
+impl IntegrationWebContext {
     pub fn from_state(state: &AppState) -> Self {
         Self {
             config: IntegrationStatusConfigSnapshot::from_state(state),
@@ -145,6 +145,22 @@ impl IntegrationWebService {
             inbox_store: state.integration_inbox_store.clone(),
             audit: state.integration_audit.clone(),
         }
+    }
+
+    pub fn status_queries(&self) -> IntegrationStatusQueryService {
+        IntegrationStatusQueryService { ctx: self.clone() }
+    }
+
+    pub fn audit_queries(&self) -> IntegrationAuditQueryService {
+        IntegrationAuditQueryService { ctx: self.clone() }
+    }
+
+    pub fn inbox_commands(&self) -> IntegrationInboxCommandService {
+        IntegrationInboxCommandService { ctx: self.clone() }
+    }
+
+    pub fn auth_commands(&self) -> IntegrationAuthCommandService {
+        IntegrationAuthCommandService { ctx: self.clone() }
     }
 
     fn inbox(
@@ -162,12 +178,21 @@ impl IntegrationWebService {
             ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
         })
     }
+}
 
+#[derive(Clone)]
+pub struct IntegrationStatusQueryService {
+    ctx: IntegrationWebContext,
+}
+
+impl IntegrationStatusQueryService {
     pub async fn build_status(&self) -> IntegrationStatus {
-        let mut outbound_runtime = self.runtime_status_seed.clone();
-        self.config.apply_to_runtime_status(&mut outbound_runtime);
+        let mut outbound_runtime = self.ctx.runtime_status_seed.clone();
+        self.ctx
+            .config
+            .apply_to_runtime_status(&mut outbound_runtime);
 
-        if let Some(auth_port) = self.auth.as_ref() {
+        if let Some(auth_port) = self.ctx.auth.as_ref() {
             match auth_port.current_auth_status().await {
                 Ok(auth_status) => {
                     outbound_runtime.auth_material_available = auth_status.authenticated;
@@ -179,7 +204,7 @@ impl IntegrationWebService {
             }
         }
 
-        if let Some(session_port) = self.session.as_ref() {
+        if let Some(session_port) = self.ctx.session.as_ref() {
             match session_port.current_session().await {
                 Ok(Some(current_session)) => {
                     outbound_runtime.current_session = Some(map_session_summary(current_session));
@@ -191,7 +216,7 @@ impl IntegrationWebService {
             }
         }
 
-        if let Some(outbox) = self.outbox.as_ref() {
+        if let Some(outbox) = self.ctx.outbox.as_ref() {
             match outbox.pending_count().await {
                 Ok(count) => outbound_runtime.outbox_pending_count = Some(count),
                 Err(error) => warn!(error = %error, "failed to read integration outbox count"),
@@ -204,7 +229,7 @@ impl IntegrationWebService {
             }
         }
 
-        if let Some(inbox_store) = self.inbox_store.as_ref() {
+        if let Some(inbox_store) = self.ctx.inbox_store.as_ref() {
             match inbox_store.pending_count().await {
                 Ok(count) => outbound_runtime.inbox_pending_count = Some(count),
                 Err(error) => warn!(error = %error, "failed to read integration inbox count"),
@@ -219,15 +244,22 @@ impl IntegrationWebService {
 
         IntegrationStatus {
             schema_version: INTEGRATION_STATUS_SCHEMA_VERSION.to_string(),
-            external_access_enabled: self.config.external_access_enabled,
-            automation_controller_configured: self.automation_controller_configured,
-            ai_runtime_status: self.ai_runtime_status.clone(),
+            external_access_enabled: self.ctx.config.external_access_enabled,
+            automation_controller_configured: self.ctx.automation_controller_configured,
+            ai_runtime_status: self.ctx.ai_runtime_status.clone(),
             outbound_runtime,
         }
     }
+}
 
+#[derive(Clone)]
+pub struct IntegrationAuditQueryService {
+    ctx: IntegrationWebContext,
+}
+
+impl IntegrationAuditQueryService {
     pub async fn build_audit_log(&self, limit: usize) -> IntegrationAuditLogResponse {
-        let records = if let Some(audit) = self.audit.as_ref() {
+        let records = if let Some(audit) = self.ctx.audit.as_ref() {
             match audit.recent_insight_decisions(limit).await {
                 Ok(records) => records.into_iter().map(map_audit_record).collect(),
                 Err(error) => {
@@ -244,9 +276,17 @@ impl IntegrationWebService {
             records,
         }
     }
+}
 
+#[derive(Clone)]
+pub struct IntegrationInboxCommandService {
+    ctx: IntegrationWebContext,
+}
+
+impl IntegrationInboxCommandService {
     pub async fn list_inbox(&self) -> Result<IntegrationInboxResponse, ApiError> {
         let prompts = self
+            .ctx
             .inbox()?
             .list_pending()
             .await?
@@ -265,7 +305,7 @@ impl IntegrationWebService {
     pub async fn refresh_inbox(&self) -> Result<IntegrationInboxRefreshResponse, ApiError> {
         Ok(IntegrationInboxRefreshResponse {
             schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
-            fetched_count: self.inbox()?.refresh().await?,
+            fetched_count: self.ctx.inbox()?.refresh().await?,
         })
     }
 
@@ -273,7 +313,7 @@ impl IntegrationWebService {
         &self,
         prompt_id: &str,
     ) -> Result<IntegrationInboxActionResponse, ApiError> {
-        self.inbox()?.acknowledge(prompt_id).await?;
+        self.ctx.inbox()?.acknowledge(prompt_id).await?;
         Ok(IntegrationInboxActionResponse {
             schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
             prompt_id: prompt_id.to_string(),
@@ -286,24 +326,31 @@ impl IntegrationWebService {
         prompt_id: &str,
         request: IntegrationInboxDismissRequest,
     ) -> Result<IntegrationInboxActionResponse, ApiError> {
-        self.inbox()?.dismiss(prompt_id, request.reason).await?;
+        self.ctx.inbox()?.dismiss(prompt_id, request.reason).await?;
         Ok(IntegrationInboxActionResponse {
             schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
             prompt_id: prompt_id.to_string(),
             status: "dismissed".to_string(),
         })
     }
+}
 
+#[derive(Clone)]
+pub struct IntegrationAuthCommandService {
+    ctx: IntegrationWebContext,
+}
+
+impl IntegrationAuthCommandService {
     pub async fn get_auth_status(
         &self,
     ) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, ApiError> {
-        Ok(self.auth()?.current_auth_status().await?)
+        Ok(self.ctx.auth()?.current_auth_status().await?)
     }
 
     pub async fn start_device_authorization(
         &self,
     ) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
-        let auth = self.auth()?;
+        let auth = self.ctx.auth()?;
         let flow = auth
             .start_device_authorization(&default_integration_runtime_scopes(), None)
             .await?;
@@ -318,7 +365,7 @@ impl IntegrationWebService {
         &self,
         flow_id: &str,
     ) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
-        let auth_status = self.auth()?.poll_device_authorization(flow_id).await?;
+        let auth_status = self.ctx.auth()?.poll_device_authorization(flow_id).await?;
         Ok(IntegrationDeviceAuthorizationCommandResult {
             flow: auth_status.pending_flow.clone(),
             auth_status,
@@ -329,7 +376,7 @@ impl IntegrationWebService {
         &self,
         flow_id: &str,
     ) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
-        let auth = self.auth()?;
+        let auth = self.ctx.auth()?;
         auth.cancel_device_authorization(flow_id).await?;
         let auth_status = auth.current_auth_status().await?;
         Ok(IntegrationDeviceAuthorizationCommandResult {
