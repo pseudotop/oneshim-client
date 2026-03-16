@@ -43,6 +43,8 @@ pub struct IntegrationConfig {
     pub heartbeat_interval_secs: u64,
     #[serde(default = "default_integration_sync_interval_secs")]
     pub sync_interval_secs: u64,
+    #[serde(default = "default_integration_produce_interval_secs")]
+    pub produce_interval_secs: u64,
     #[serde(default = "default_integration_inbox_refresh_interval_secs")]
     pub inbox_refresh_interval_secs: u64,
     #[serde(default = "default_integration_max_batch_size")]
@@ -68,6 +70,7 @@ impl Default for IntegrationConfig {
             connect_retry_secs: default_integration_connect_retry_secs(),
             heartbeat_interval_secs: default_integration_heartbeat_interval_secs(),
             sync_interval_secs: default_integration_sync_interval_secs(),
+            produce_interval_secs: default_integration_produce_interval_secs(),
             inbox_refresh_interval_secs: default_integration_inbox_refresh_interval_secs(),
             max_batch_size: default_integration_max_batch_size(),
             preferred_transports: default_integration_preferred_transports(),
@@ -90,6 +93,10 @@ pub(crate) fn default_integration_heartbeat_interval_secs() -> u64 {
 
 pub(crate) fn default_integration_sync_interval_secs() -> u64 {
     15
+}
+
+pub(crate) fn default_integration_produce_interval_secs() -> u64 {
+    30
 }
 
 pub(crate) fn default_integration_inbox_refresh_interval_secs() -> u64 {
@@ -126,6 +133,7 @@ mod tests {
         assert_eq!(config.connect_retry_secs, 15);
         assert_eq!(config.heartbeat_interval_secs, 30);
         assert_eq!(config.sync_interval_secs, 15);
+        assert_eq!(config.produce_interval_secs, 30);
         assert_eq!(config.inbox_refresh_interval_secs, 15);
         assert_eq!(config.max_batch_size, 50);
         assert_eq!(
@@ -162,6 +170,7 @@ mod tests {
             "connect_retry_secs": 25,
             "heartbeat_interval_secs": 45,
             "sync_interval_secs": 12,
+            "produce_interval_secs": 18,
             "inbox_refresh_interval_secs": 9,
             "max_batch_size": 24,
             "preferred_transports": ["web_socket", "https_long_poll"],
@@ -193,6 +202,7 @@ mod tests {
         assert_eq!(parsed.connect_retry_secs, 25);
         assert_eq!(parsed.heartbeat_interval_secs, 45);
         assert_eq!(parsed.sync_interval_secs, 12);
+        assert_eq!(parsed.produce_interval_secs, 18);
         assert_eq!(parsed.inbox_refresh_interval_secs, 9);
         assert_eq!(parsed.max_batch_size, 24);
     }

@@ -10,8 +10,8 @@ use oneshim_core::models::integration::{
     IntegrationSessionState, QueuedInsightPacket, StoredProactivePrompt,
 };
 use oneshim_core::ports::integration::{
-    IntegrationAuditPort, IntegrationInboxStorePort, IntegrationOutboxPort,
-    IntegrationSessionStorePort,
+    IntegrationAuditPort, IntegrationCheckpointStorePort, IntegrationInboxStorePort,
+    IntegrationOutboxPort, IntegrationSessionStorePort,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -24,6 +24,7 @@ struct FileIntegrationStateRegistry {
     outbox_ack_cursor: Option<IntegrationAckCursor>,
     inbox: BTreeMap<String, StoredProactivePrompt>,
     inbox_ack_cursor: Option<IntegrationAckCursor>,
+    producer_checkpoints: BTreeMap<String, String>,
     audit_records: Vec<IntegrationInsightAuditRecord>,
 }
 
@@ -38,6 +39,7 @@ impl FileIntegrationStateRegistry {
             outbox_ack_cursor: None,
             inbox: BTreeMap::new(),
             inbox_ack_cursor: None,
+            producer_checkpoints: BTreeMap::new(),
             audit_records: Vec::new(),
         }
     }
@@ -240,6 +242,22 @@ impl FileIntegrationStateInner {
         self.save_registry(&registry)
     }
 
+    fn load_checkpoint_sync(&self, namespace: &str) -> Option<String> {
+        self.registry
+            .lock()
+            .producer_checkpoints
+            .get(namespace)
+            .cloned()
+    }
+
+    fn store_checkpoint_sync(&self, namespace: &str, cursor: String) -> Result<(), CoreError> {
+        let mut registry = self.registry.lock();
+        registry
+            .producer_checkpoints
+            .insert(namespace.to_string(), cursor);
+        self.save_registry(&registry)
+    }
+
     fn record_audit_sync(&self, record: IntegrationInsightAuditRecord) -> Result<(), CoreError> {
         let mut registry = self.registry.lock();
         registry.audit_records.push(record);
@@ -295,6 +313,12 @@ impl FileIntegrationStateStore {
 
     pub fn audit_store(&self) -> FileIntegrationAuditStore {
         FileIntegrationAuditStore {
+            inner: self.inner.clone(),
+        }
+    }
+
+    pub fn checkpoint_store(&self) -> FileIntegrationCheckpointStore {
+        FileIntegrationCheckpointStore {
             inner: self.inner.clone(),
         }
     }
@@ -477,6 +501,30 @@ impl IntegrationAuditPort for FileIntegrationAuditStore {
     }
 }
 
+#[derive(Clone)]
+pub struct FileIntegrationCheckpointStore {
+    inner: Arc<FileIntegrationStateInner>,
+}
+
+#[async_trait]
+impl IntegrationCheckpointStorePort for FileIntegrationCheckpointStore {
+    async fn load_checkpoint(&self, namespace: &str) -> Result<Option<String>, CoreError> {
+        let inner = self.inner.clone();
+        let namespace = namespace.to_string();
+        tokio::task::spawn_blocking(move || Ok(inner.load_checkpoint_sync(&namespace)))
+            .await
+            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+
+    async fn store_checkpoint(&self, namespace: &str, cursor: String) -> Result<(), CoreError> {
+        let inner = self.inner.clone();
+        let namespace = namespace.to_string();
+        tokio::task::spawn_blocking(move || inner.store_checkpoint_sync(&namespace, cursor))
+            .await
+            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
@@ -487,8 +535,8 @@ mod tests {
         ProactivePromptCategory, ProactivePromptPriority, PromptProvenance,
     };
     use oneshim_core::ports::integration::{
-        IntegrationAuditPort, IntegrationInboxStorePort, IntegrationOutboxPort,
-        IntegrationSessionStorePort,
+        IntegrationAuditPort, IntegrationCheckpointStorePort, IntegrationInboxStorePort,
+        IntegrationOutboxPort, IntegrationSessionStorePort,
     };
 
     use super::*;
@@ -692,5 +740,47 @@ mod tests {
         assert_eq!(recent.len(), 2);
         assert_eq!(recent[0].record_id, "audit-2");
         assert_eq!(recent[1].record_id, "audit-1");
+    }
+
+    #[tokio::test]
+    async fn integration_checkpoint_store_roundtrips_namespaced_cursors() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store =
+            FileIntegrationStateStore::new(temp_dir.path().join("integration.json")).unwrap();
+        let checkpoints = store.checkpoint_store();
+
+        assert_eq!(
+            checkpoints
+                .load_checkpoint("focus.local_suggestions")
+                .await
+                .unwrap(),
+            None
+        );
+
+        checkpoints
+            .store_checkpoint("focus.local_suggestions", "42".to_string())
+            .await
+            .unwrap();
+        checkpoints
+            .store_checkpoint("focus.other_stream", "cursor-7".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            checkpoints
+                .load_checkpoint("focus.local_suggestions")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("42")
+        );
+        assert_eq!(
+            checkpoints
+                .load_checkpoint("focus.other_stream")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("cursor-7")
+        );
     }
 }

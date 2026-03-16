@@ -191,6 +191,13 @@ pub struct QueuedInsightPacket {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationInsightCandidate {
+    pub source_cursor: String,
+    pub envelope: IntegrationEnvelope,
+    pub packet: InsightPacket,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InsightSourceWindow {
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,

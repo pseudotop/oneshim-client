@@ -15,7 +15,8 @@ use oneshim_core::ports::integration::IntegrationAuthPort;
 use oneshim_core::ports::integration::IntegrationSessionPort;
 #[cfg(feature = "server")]
 use oneshim_core::ports::integration::{
-    InsightSyncPort, IntegrationAuthPort, IntegrationInboxPort,
+    InsightSyncPort, IntegrationAuthPort, IntegrationCheckpointStorePort, IntegrationInboxPort,
+    IntegrationInsightProducerPort, LocalSuggestionQueryPort,
 };
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
@@ -36,8 +37,10 @@ use oneshim_network::http_client::HttpApiClient;
 use oneshim_network::integration::{
     Ed25519DpopProofFactory, EnvIntegrationAuthPort, HttpsIntegrationTransportClient,
     HttpsIntegrationTransportConfig, InsightSyncCoordinator, IntegrationInboxCoordinator,
-    IntegrationRuntimeLoop, IntegrationRuntimeLoopProfile, IntegrationSessionCoordinator,
-    IntegrationSessionRuntimeProfile, NoopIntegrationRequestProofFactory, OidcDeviceFlowAuthConfig,
+    IntegrationInsightProducerCoordinator, IntegrationProducerRuntimeLoop,
+    IntegrationProducerRuntimeLoopProfile, IntegrationRuntimeLoop, IntegrationRuntimeLoopProfile,
+    IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile,
+    NoopIntegrationRequestProofFactory, OidcDeviceFlowAuthConfig,
     OidcDeviceFlowIntegrationAuthPort, PolicyAwareInsightSyncCoordinator,
 };
 #[cfg(feature = "server")]
@@ -67,6 +70,8 @@ use crate::cli_subscription_bridge::{
 };
 use crate::feature_capabilities::FeatureCapabilityState;
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
+#[cfg(feature = "server")]
+use crate::integration_insight_source::LocalSuggestionIntegrationSource;
 #[cfg(feature = "server")]
 use crate::integration_policy::DefaultIntegrationEgressPolicy;
 use crate::notification_manager::NotificationManager;
@@ -146,6 +151,8 @@ struct BuiltIntegrationRuntime {
     status: IntegrationOutboundRuntimeStatus,
     auth: Option<Arc<dyn IntegrationAuthPort>>,
     session: Option<Arc<dyn IntegrationSessionPort>>,
+    sync: Option<Arc<dyn InsightSyncPort>>,
+    checkpoint_store: Option<Arc<dyn IntegrationCheckpointStorePort>>,
     outbox: Option<Arc<dyn oneshim_core::ports::integration::IntegrationOutboxPort>>,
     inbox_store: Option<Arc<dyn oneshim_core::ports::integration::IntegrationInboxStorePort>>,
     audit: Option<Arc<dyn oneshim_core::ports::integration::IntegrationAuditPort>>,
@@ -448,6 +455,8 @@ fn build_integration_runtime(
             status,
             auth: auth_port,
             session: None,
+            sync: None,
+            checkpoint_store: None,
             outbox: None,
             inbox_store: None,
             audit: None,
@@ -499,6 +508,8 @@ fn build_integration_runtime(
         as Arc<dyn oneshim_core::ports::integration::IntegrationOutboxPort>;
     let inbox_store = Arc::new(integration_state_store.inbox_store())
         as Arc<dyn oneshim_core::ports::integration::IntegrationInboxStorePort>;
+    let checkpoint_store = Arc::new(integration_state_store.checkpoint_store())
+        as Arc<dyn IntegrationCheckpointStorePort>;
     let audit_store = Arc::new(integration_state_store.audit_store())
         as Arc<dyn oneshim_core::ports::integration::IntegrationAuditPort>;
     let sync = Arc::new(PolicyAwareInsightSyncCoordinator::new(
@@ -522,6 +533,8 @@ fn build_integration_runtime(
         status,
         auth: auth_port,
         session: Some(session.clone()),
+        sync: Some(sync.clone()),
+        checkpoint_store: Some(checkpoint_store),
         outbox: Some(outbox_store),
         inbox_store: Some(inbox_store),
         audit: Some(audit_store),
@@ -606,6 +619,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "server")]
     let integration_session = built_integration_runtime.session.clone();
     #[cfg(feature = "server")]
+    let integration_sync = built_integration_runtime.sync.clone();
+    #[cfg(feature = "server")]
+    let integration_checkpoint_store = built_integration_runtime.checkpoint_store.clone();
+    #[cfg(feature = "server")]
     let integration_outbox = built_integration_runtime.outbox.clone();
     #[cfg(feature = "server")]
     let integration_inbox_store = built_integration_runtime.inbox_store.clone();
@@ -617,6 +634,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let integration_runtime_status = IntegrationOutboundRuntimeStatus::default();
     #[cfg(not(feature = "server"))]
     let _integration_auth: Option<()> = None;
+    #[cfg(not(feature = "server"))]
+    let _integration_sync: Option<()> = None;
+    #[cfg(not(feature = "server"))]
+    let _integration_checkpoint_store: Option<()> = None;
     let web_port = Arc::new(AtomicU16::new(config.web.port));
     maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
 
@@ -704,10 +725,50 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     #[cfg(feature = "server")]
+    let integration_producer_loop = match (
+        integration_sync.clone(),
+        integration_checkpoint_store.clone(),
+    ) {
+        (Some(sync), Some(checkpoint_store)) => {
+            let device_id = config
+                .integration
+                .device_id
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| derive_integration_device_id(&config_dir));
+            let suggestion_query = sqlite_storage.clone() as Arc<dyn LocalSuggestionQueryPort>;
+            let producer = Arc::new(IntegrationInsightProducerCoordinator::new(
+                Arc::new(LocalSuggestionIntegrationSource::new(
+                    device_id,
+                    suggestion_query,
+                )),
+                checkpoint_store,
+                sync,
+                config.integration.max_batch_size,
+            )) as Arc<dyn IntegrationInsightProducerPort>;
+            Some(IntegrationProducerRuntimeLoop::new(
+                producer,
+                IntegrationProducerRuntimeLoopProfile {
+                    produce_interval: Duration::from_secs(config.integration.produce_interval_secs),
+                },
+            ))
+        }
+        _ => None,
+    };
+
+    #[cfg(feature = "server")]
     if let Some(runtime_loop) = integration_runtime_loop.clone() {
         let integration_shutdown_rx = shutdown_tx.subscribe();
         handle.spawn(async move {
             runtime_loop.run(integration_shutdown_rx).await;
+        });
+    }
+
+    #[cfg(feature = "server")]
+    if let Some(producer_loop) = integration_producer_loop.clone() {
+        let integration_shutdown_rx = shutdown_tx.subscribe();
+        handle.spawn(async move {
+            producer_loop.run(integration_shutdown_rx).await;
         });
     }
 
