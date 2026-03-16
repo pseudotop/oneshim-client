@@ -200,6 +200,7 @@
     "portRestart": "Requiere reinicio de la aplicación para aplicarse",
     "allowExternal": "Permitir acceso externo",
     "allowExternalDesc": "Permitir conexiones desde IPs diferentes a 127.0.0.1",
+    "allowExternalIntegrationOnly": "El acceso externo solo expone la API de integración. Configure web.integration_auth_token en config.json antes de activar esta opción.",
     "notifTitle": "Configuración de notificaciones",
     "notifEnabled": "Habilitar notificaciones",
     "notifEnabledDesc": "Habilitar/deshabilitar todas las notificaciones de escritorio",

@@ -200,6 +200,7 @@
     "portRestart": "Requires app restart to take effect",
     "allowExternal": "Allow External Access",
     "allowExternalDesc": "Allow connections from IPs other than 127.0.0.1",
+    "allowExternalIntegrationOnly": "External access only exposes the integration API. Configure web.integration_auth_token in config.json before enabling this toggle.",
     "notifTitle": "Notification Settings",
     "notifEnabled": "Enable Notifications",
     "notifEnabledDesc": "Enable/disable all desktop notifications",

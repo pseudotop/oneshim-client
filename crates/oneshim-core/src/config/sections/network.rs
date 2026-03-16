@@ -98,6 +98,8 @@ pub struct WebConfig {
     pub port: u16,
     #[serde(default)]
     pub allow_external: bool,
+    #[serde(default)]
+    pub integration_auth_token: Option<String>,
 }
 
 impl Default for WebConfig {
@@ -106,6 +108,7 @@ impl Default for WebConfig {
             enabled: default_web_enabled(),
             port: default_web_port(),
             allow_external: false,
+            integration_auth_token: None,
         }
     }
 }

@@ -200,6 +200,7 @@
     "portRestart": "変更の適用にはアプリの再起動が必要です",
     "allowExternal": "外部アクセスを許可",
     "allowExternalDesc": "127.0.0.1以外のIPからの接続を許可",
+    "allowExternalIntegrationOnly": "外部アクセスで公開されるのは統合APIのみです。このトグルを有効にする前に、config.json の web.integration_auth_token を設定してください。",
     "notifTitle": "通知設定",
     "notifEnabled": "通知を有効化",
     "notifEnabledDesc": "すべてのデスクトップ通知を有効化/無効化",

@@ -169,6 +169,19 @@ pub fn api_routes() -> Router<AppState> {
         .route("/update/stream", get(handlers::update::get_update_stream))
 }
 
+pub fn integration_routes() -> Router<AppState> {
+    Router::new()
+        .route("/status", get(handlers::integration::get_status))
+        .route(
+            "/ai/provider-surfaces",
+            get(handlers::ai_provider_surfaces::list_provider_surfaces),
+        )
+        .route(
+            "/ai/providers/models",
+            post(handlers::ai_models::discover_provider_models_for_integration),
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,5 +208,25 @@ mod tests {
             update_control: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
+    }
+
+    #[test]
+    fn integration_routes_compile() {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let (event_tx, _) = broadcast::channel(16);
+        let state = AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: None,
+            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::Unavailable,
+            secret_store: None,
+            secret_stores: None,
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            update_control: None,
+        };
+        let _app: Router<()> = integration_routes().with_state(state);
     }
 }

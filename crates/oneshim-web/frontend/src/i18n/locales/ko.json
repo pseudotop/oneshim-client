@@ -200,6 +200,7 @@
     "portRestart": "변경 시 앱 재시작 필요",
     "allowExternal": "외부 접근 허용",
     "allowExternalDesc": "127.0.0.1 외 IP 접속 허용",
+    "allowExternalIntegrationOnly": "외부 접근은 통합 API만 노출합니다. 이 토글을 켜기 전에 config.json의 web.integration_auth_token을 먼저 설정해야 합니다.",
     "notifTitle": "알림 설정",
     "notifEnabled": "알림 활성화",
     "notifEnabledDesc": "모든 데스크톱 알림 활성화/비활성화",

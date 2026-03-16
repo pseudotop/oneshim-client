@@ -664,6 +664,21 @@ pub(crate) fn apply_settings_to_config(
     config: &mut AppConfig,
     settings: &AppSettings,
 ) -> Result<(), ApiError> {
+    if settings.allow_external
+        && config
+            .web
+            .integration_auth_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return Err(ApiError::BadRequest(
+            "allow_external requires web.integration_auth_token to be configured in config.json before enabling external access."
+                .to_string(),
+        ));
+    }
+
     config.storage.retention_days = settings.retention_days;
     config.storage.max_storage_mb = settings.max_storage_mb as u64;
     config.web.port = settings.web_port;
@@ -1561,6 +1576,22 @@ mod tests {
 
         let result = update_settings(&state, &settings).await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_settings_to_config_rejects_allow_external_without_integration_token() {
+        let mut config = AppConfig::default_config();
+        let mut settings = AppSettings::default();
+        settings.allow_external = true;
+
+        let err = apply_settings_to_config(&mut config, &settings)
+            .expect_err("external access should require integration token");
+        match err {
+            ApiError::BadRequest(message) => {
+                assert!(message.contains("integration_auth_token"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[tokio::test]

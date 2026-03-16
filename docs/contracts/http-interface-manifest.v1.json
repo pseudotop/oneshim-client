@@ -1,7 +1,7 @@
 {
   "schema_version": "http.interface.manifest.v1",
   "document_version": 1,
-  "updated_at": "2026-03-15",
+  "updated_at": "2026-03-16",
   "source": {
     "routes_file": "crates/oneshim-web/src/routes.rs",
     "contracts_crate": "crates/oneshim-api-contracts"
@@ -73,6 +73,14 @@
       "operations": [
         { "method": "GET", "path": "/api/ai/provider-surfaces" },
         { "method": "POST", "path": "/api/ai/providers/models" }
+      ]
+    },
+    {
+      "module": "integration",
+      "operations": [
+        { "method": "GET", "path": "/integration/v1/status" },
+        { "method": "GET", "path": "/integration/v1/ai/provider-surfaces" },
+        { "method": "POST", "path": "/integration/v1/ai/providers/models" }
       ]
     },
     {

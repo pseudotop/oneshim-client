@@ -32,6 +32,10 @@ pub mod storage_port;
 pub mod update_control;
 
 use crate::storage_port::WebStorage;
+use axum::extract::{ConnectInfo, Request, State};
+use axum::middleware::{self, Next};
+use axum::response::IntoResponse;
+use axum::response::Response;
 use axum::Router;
 use oneshim_core::config::{CredentialBackendKind, WebConfig};
 use oneshim_core::config_manager::ConfigManager;
@@ -56,6 +60,7 @@ pub use oneshim_core::config::WebConfig as CoreWebConfig;
 const EVENT_CHANNEL_CAPACITY: usize = 256;
 
 const MAX_PORT_ATTEMPTS: u16 = 10;
+const INTEGRATION_TOKEN_HEADER: &str = "x-oneshim-integration-token";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -192,9 +197,16 @@ impl WebServer {
             .allow_methods(Any)
             .allow_headers(Any);
 
+        let internal_api =
+            routes::api_routes().route_layer(middleware::from_fn(require_loopback_client));
+        let integration_api = routes::integration_routes().route_layer(
+            middleware::from_fn_with_state(state.clone(), require_integration_auth),
+        );
+
         Router::new()
-            .nest("/api", routes::api_routes())
-            .fallback(embedded::serve_static)
+            .nest("/api", internal_api)
+            .nest("/integration/v1", integration_api)
+            .fallback(loopback_only_static)
             .layer(cors)
             .layer(TraceLayer::new_for_http())
             .with_state(state)
@@ -208,9 +220,19 @@ impl WebServer {
             mut bound_port_notifier,
         } = self;
 
-        let host = if config.allow_external {
+        let integration_auth_configured = config
+            .integration_auth_token
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty());
+        let host = if config.allow_external && integration_auth_configured {
             "0.0.0.0"
         } else {
+            if config.allow_external && !integration_auth_configured {
+                warn!(
+                    "External access requested but web.integration_auth_token is not configured; falling back to loopback-only binding"
+                );
+            }
             "127.0.0.1"
         };
 
@@ -247,19 +269,22 @@ impl WebServer {
                     }
                     info!("server started: http://{}", addr);
 
-                    axum::serve(listener, app)
-                        .with_graceful_shutdown(async move {
-                            loop {
-                                if *shutdown_rx.borrow() {
-                                    info!("server ended received");
-                                    break;
-                                }
-                                if shutdown_rx.changed().await.is_err() {
-                                    break;
-                                }
+                    axum::serve(
+                        listener,
+                        app.into_make_service_with_connect_info::<SocketAddr>(),
+                    )
+                    .with_graceful_shutdown(async move {
+                        loop {
+                            if *shutdown_rx.borrow() {
+                                info!("server ended received");
+                                break;
                             }
-                        })
-                        .await?;
+                            if shutdown_rx.changed().await.is_err() {
+                                break;
+                            }
+                        }
+                    })
+                    .await?;
 
                     info!("server ended");
                     return Ok(());
@@ -297,10 +322,103 @@ impl WebServer {
     }
 }
 
+async fn require_loopback_client(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if addr.ip().is_loopback() {
+        return next.run(request).await;
+    }
+
+    crate::error::ApiError::Forbidden(
+        "The internal /api surface is available only from loopback clients.".to_string(),
+    )
+    .into_response()
+}
+
+async fn require_integration_auth(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(config_manager) = state.config_manager.as_ref() else {
+        return crate::error::ApiError::ServiceUnavailable(
+            "Integration API is unavailable because config management is not initialized."
+                .to_string(),
+        )
+        .into_response();
+    };
+
+    let expected_token = config_manager
+        .get()
+        .web
+        .integration_auth_token
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if expected_token.is_empty() {
+        return crate::error::ApiError::ServiceUnavailable(
+            "Integration API is not configured. Set web.integration_auth_token in config.json before using external access."
+                .to_string(),
+        )
+        .into_response();
+    }
+
+    let header_token = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            request
+                .headers()
+                .get(INTEGRATION_TOKEN_HEADER)
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        });
+
+    if header_token.as_deref() != Some(expected_token.as_str()) {
+        return crate::error::ApiError::Unauthorized(
+            "Integration API requires a valid bearer token.".to_string(),
+        )
+        .into_response();
+    }
+
+    next.run(request).await
+}
+
+async fn loopback_only_static(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    uri: axum::http::Uri,
+) -> Response {
+    if addr.ip().is_loopback() {
+        return embedded::serve_static(uri).await;
+    }
+
+    crate::error::ApiError::Forbidden(
+        "The embedded dashboard is available only from loopback clients.".to_string(),
+    )
+    .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use axum::extract::connect_info::MockConnectInfo;
+    use axum::http::{Request, StatusCode};
+    use oneshim_core::config::AppConfig;
+    use oneshim_core::config_manager::ConfigManager;
     use oneshim_storage::sqlite::SqliteStorage;
+    use tempfile::tempdir;
+    use tower::ServiceExt;
 
     #[test]
     fn default_config() {
@@ -379,5 +497,84 @@ mod tests {
             let port = base_port.saturating_add(attempt);
             assert!(port >= base_port || port == u16::MAX);
         }
+    }
+
+    fn test_state_with_config_manager(config_manager: Option<ConfigManager>) -> AppState {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let (event_tx, _) = broadcast::channel(16);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager,
+            default_secret_backend_kind: CredentialBackendKind::Unavailable,
+            secret_store: None,
+            secret_stores: None,
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            update_control: None,
+        }
+    }
+
+    fn config_manager_with_integration_token(token: &str) -> ConfigManager {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        let manager = ConfigManager::with_path(config_path).unwrap();
+        let mut config = AppConfig::default_config();
+        config.web.integration_auth_token = Some(token.to_string());
+        manager.update(config).unwrap();
+        manager
+    }
+
+    #[tokio::test]
+    async fn internal_api_rejects_non_loopback_clients() {
+        let app = WebServer::build_router(test_state_with_config_manager(None)).layer(
+            MockConnectInfo(SocketAddr::from(([192, 168, 0, 10], 43000))),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ai/provider-surfaces")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn integration_api_requires_matching_token() {
+        let app = WebServer::build_router(test_state_with_config_manager(Some(
+            config_manager_with_integration_token("integration-secret"),
+        )))
+        .layer(MockConnectInfo(SocketAddr::from(([10, 0, 0, 24], 44000))));
+
+        let unauthorized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/integration/v1/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let authorized = app
+            .oneshot(
+                Request::builder()
+                    .uri("/integration/v1/status")
+                    .header("authorization", "Bearer integration-secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authorized.status(), StatusCode::OK);
     }
 }

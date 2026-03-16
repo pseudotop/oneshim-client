@@ -6,7 +6,7 @@ info:
     Auto-generated from docs/contracts/http-interface-manifest.v1.json.
     This snapshot is transport-level and contract-focused.
   x-oneshim-document-version: 1
-  x-oneshim-updated-at: "2026-03-15"
+  x-oneshim-updated-at: "2026-03-16"
   x-oneshim-routes-file: "crates/oneshim-web/src/routes.rs"
   x-oneshim-contracts-crate: "crates/oneshim-api-contracts"
 servers:
@@ -1539,6 +1539,69 @@ paths:
         - update
       operationId: update_get_api_update_stream
       summary: "GET /api/update/stream"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/integration/v1/ai/provider-surfaces":
+    get:
+      tags:
+        - integration
+      operationId: integration_get_integration_v1_ai_provider_surfaces
+      summary: "GET /integration/v1/ai/provider-surfaces"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/integration/v1/ai/providers/models":
+    post:
+      tags:
+        - integration
+      operationId: integration_post_integration_v1_ai_providers_models
+      summary: "POST /integration/v1/ai/providers/models"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/integration/v1/status":
+    get:
+      tags:
+        - integration
+      operationId: integration_get_integration_v1_status
+      summary: "GET /integration/v1/status"
       responses:
         "200":
           description: Success

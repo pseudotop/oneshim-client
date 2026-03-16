@@ -200,6 +200,7 @@
     "portRestart": "更改后需要重启应用才能生效",
     "allowExternal": "允许外部访问",
     "allowExternalDesc": "允许 127.0.0.1 以外的 IP 连接",
+    "allowExternalIntegrationOnly": "外部访问只会暴露集成 API。启用此开关前，请先在 config.json 中配置 web.integration_auth_token。",
     "notifTitle": "通知设置",
     "notifEnabled": "启用通知",
     "notifEnabledDesc": "启用/禁用所有桌面通知",
