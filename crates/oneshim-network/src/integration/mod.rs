@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod http_transport;
 pub mod inbox_coordinator;
 pub mod policy_sync;
@@ -5,6 +6,10 @@ pub mod session_coordinator;
 pub mod sync_coordinator;
 pub mod transport;
 
+pub use auth::{
+    EnvIntegrationAuthPort, NoopIntegrationRequestProofFactory, StaticIntegrationAuthPort,
+    StaticIntegrationRequestProofFactory,
+};
 pub use http_transport::{HttpsIntegrationTransportClient, HttpsIntegrationTransportConfig};
 pub use inbox_coordinator::IntegrationInboxCoordinator;
 pub use policy_sync::PolicyAwareInsightSyncCoordinator;
