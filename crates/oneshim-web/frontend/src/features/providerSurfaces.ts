@@ -4,6 +4,7 @@ import type {
   ProviderKnownModelSpec,
   ProviderSurfaceCatalog,
   ProviderSurfaceSpec,
+  ProviderVendorSpec,
 } from '../api/contracts'
 import { providerSurfaceAvailability } from './featureCapabilities'
 
@@ -31,8 +32,30 @@ const AVAILABILITY_RANK: Record<FeatureAvailability, number> = {
   unavailable: 0,
 }
 
-function normalizedProviderType(providerType: string | null | undefined): string {
-  return (providerType ?? '').trim() || 'Generic'
+function canonicalVendorSpec(
+  catalog: ProviderSurfaceCatalog,
+  rawProvider: string | null | undefined,
+): ProviderVendorSpec | undefined {
+  const normalized = (rawProvider ?? '').trim().toLowerCase()
+  if (!normalized) {
+    return catalog.vendors.find((vendor) => vendor.vendor_id.toLowerCase() === 'generic')
+  }
+
+  return catalog.vendors.find((vendor) => {
+    return (
+      vendor.vendor_id.toLowerCase() === normalized ||
+      vendor.provider_type.toLowerCase() === normalized ||
+      vendor.aliases.some((alias) => alias.toLowerCase() === normalized)
+    )
+  })
+}
+
+function normalizedProviderType(catalog: ProviderSurfaceCatalog, providerType: string | null | undefined): string {
+  return canonicalVendorSpec(catalog, providerType)?.provider_type ?? ((providerType ?? '').trim() || 'Generic')
+}
+
+function normalizedVendorId(catalog: ProviderSurfaceCatalog, providerType: string | null | undefined): string {
+  return canonicalVendorSpec(catalog, providerType)?.vendor_id ?? (((providerType ?? '').trim().toLowerCase()) || 'generic')
 }
 
 function compatibleExecutionKinds(accessMode: string | null | undefined, endpointKind: EndpointSurfaceKind): string[] {
@@ -176,9 +199,9 @@ export function deriveDefaultProviderSurfaceId(
   providerType: string | null | undefined,
   snapshot?: FeatureCapabilitySnapshot | null,
 ): string | null {
-  const normalizedProvider = normalizedProviderType(providerType)
+  const normalizedVendor = normalizedVendorId(catalog, providerType)
   const compatible = getCompatibleProviderSurfaces(catalog, accessMode, endpointKind, snapshot)
-  const vendorMatch = compatible.filter((surface) => surface.provider_type === normalizedProvider)
+  const vendorMatch = compatible.filter((surface) => surface.vendor_id.toLowerCase() === normalizedVendor)
   const rawCandidates = vendorMatch.length > 0 ? vendorMatch : compatible
   const candidates = [...rawCandidates].sort((left, right) => {
     const priorityDelta =
@@ -261,7 +284,7 @@ export function resolveProviderTypeForSurface(
   surfaceId: string | null | undefined,
   fallbackProviderType?: string | null,
 ): string {
-  return providerSurfaceById(catalog, surfaceId)?.provider_type ?? normalizedProviderType(fallbackProviderType)
+  return providerSurfaceById(catalog, surfaceId)?.provider_type ?? normalizedProviderType(catalog, fallbackProviderType)
 }
 
 export function defaultSurfaceEndpoint(

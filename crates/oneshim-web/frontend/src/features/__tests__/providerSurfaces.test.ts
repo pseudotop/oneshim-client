@@ -5,6 +5,7 @@ import {
   deriveDefaultProviderSurfaceId,
   getCompatibleProviderSurfaces,
   preferredRelatedProviderSurface,
+  resolveProviderTypeForSurface,
   surfaceKnownModel,
   surfaceModelSupportsCapability,
   surfaceSupportsModelSelection,
@@ -97,6 +98,24 @@ describe('provider surface defaults', () => {
     ).toBe(
       'provider_surface.generic.direct_api',
     )
+  })
+
+  it('matches provider aliases from the vendor catalog when deriving default surfaces', () => {
+    expect(
+      deriveDefaultProviderSurfaceId(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderApiKey', 'llm_api', 'open_ai'),
+    ).toBe('provider_surface.openai.direct_api')
+    expect(
+      deriveDefaultProviderSurfaceId(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderApiKey', 'llm_api', 'gemini'),
+    ).toBe('provider_surface.google.direct_api')
+    expect(
+      deriveDefaultProviderSurfaceId(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderApiKey', 'llm_api', 'llamaindex'),
+    ).toBe('provider_surface.generic.direct_api')
+  })
+
+  it('resolves fallback provider types through vendor aliases', () => {
+    expect(resolveProviderTypeForSurface(DEFAULT_PROVIDER_SURFACE_CATALOG, null, 'open_ai')).toBe('OpenAi')
+    expect(resolveProviderTypeForSurface(DEFAULT_PROVIDER_SURFACE_CATALOG, null, 'gemini')).toBe('Google')
+    expect(resolveProviderTypeForSurface(DEFAULT_PROVIDER_SURFACE_CATALOG, null, 'llamaindex')).toBe('Generic')
   })
 
   it('filters compatible surfaces for oauth llm mode', () => {
