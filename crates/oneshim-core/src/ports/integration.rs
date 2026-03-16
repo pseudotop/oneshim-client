@@ -95,6 +95,10 @@ pub trait IntegrationInboxPort: Send + Sync {
 #[async_trait]
 pub trait IntegrationInboxStorePort: Send + Sync {
     /// Upsert inbound prompts/tasks received from the remote side.
+    ///
+    /// Implementations must treat `prompt_id` as a durable identity and avoid
+    /// resetting local lifecycle state (for example, acknowledged or dismissed)
+    /// when the same prompt is redelivered by the remote side.
     async fn upsert_prompts(&self, prompts: Vec<StoredProactivePrompt>) -> Result<(), CoreError>;
 
     /// List locally pending prompts/tasks.

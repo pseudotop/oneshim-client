@@ -214,7 +214,11 @@ mod tests {
         ) -> Result<(), CoreError> {
             let mut guard = self.prompts.lock().await;
             for prompt in prompts {
-                guard.insert(prompt.prompt.prompt_id.clone(), prompt);
+                if let Some(existing) = guard.get_mut(&prompt.prompt.prompt_id) {
+                    existing.prompt = prompt.prompt;
+                } else {
+                    guard.insert(prompt.prompt.prompt_id.clone(), prompt);
+                }
             }
             Ok(())
         }
@@ -464,5 +468,46 @@ mod tests {
             prompts.get("prompt-2").unwrap().status,
             IntegrationInboxItemStatus::Expired
         );
+    }
+
+    #[tokio::test]
+    async fn refresh_does_not_resurrect_dismissed_prompt() {
+        let store = Arc::new(MockInboxStore {
+            prompts: Arc::new(Mutex::new(BTreeMap::from([(
+                "prompt-1".to_string(),
+                StoredProactivePrompt {
+                    prompt: prompt("prompt-1", None),
+                    received_at: Utc::now() - Duration::minutes(10),
+                    status: IntegrationInboxItemStatus::Dismissed,
+                    status_updated_at: Utc::now() - Duration::minutes(5),
+                    dismiss_reason: Some("already handled".to_string()),
+                },
+            )]))),
+            last_cursor: Arc::new(Mutex::new(None)),
+        });
+        let coordinator = IntegrationInboxCoordinator::new(
+            Arc::new(MockSessionPort {
+                state: Arc::new(Mutex::new(Some(prompt_read_session()))),
+            }),
+            store.clone(),
+            Arc::new(MockInboxTransport {
+                prompts: vec![prompt("prompt-1", None)],
+                ack_cursor: Some(IntegrationAckCursor {
+                    stream_id: "inbox".to_string(),
+                    cursor: "cursor-1".to_string(),
+                    acknowledged_at: Utc::now(),
+                }),
+            }),
+            10,
+        );
+
+        let refreshed = coordinator.refresh().await.unwrap();
+        assert_eq!(refreshed, 1);
+        assert!(coordinator.list_pending().await.unwrap().is_empty());
+
+        let prompts = store.prompts.lock().await;
+        let prompt = prompts.get("prompt-1").unwrap();
+        assert_eq!(prompt.status, IntegrationInboxItemStatus::Dismissed);
+        assert_eq!(prompt.dismiss_reason.as_deref(), Some("already handled"));
     }
 }
