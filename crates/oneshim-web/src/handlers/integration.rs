@@ -11,25 +11,41 @@ use oneshim_api_contracts::integration::{
 use crate::{error::ApiError, services::integration_service, AppState};
 
 pub async fn get_status(State(state): State<AppState>) -> Json<IntegrationStatus> {
-    Json(integration_service::build_status(&state).await)
+    Json(
+        integration_service::IntegrationWebService::from_state(&state)
+            .build_status()
+            .await,
+    )
 }
 
 pub async fn get_audit(
     State(state): State<AppState>,
 ) -> Json<oneshim_api_contracts::integration::IntegrationAuditLogResponse> {
-    Json(integration_service::build_audit_log(&state, 50).await)
+    Json(
+        integration_service::IntegrationWebService::from_state(&state)
+            .build_audit_log(50)
+            .await,
+    )
 }
 
 pub async fn list_inbox(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationInboxResponse>, ApiError> {
-    Ok(Json(integration_service::list_inbox(&state).await?))
+    Ok(Json(
+        integration_service::IntegrationWebService::from_state(&state)
+            .list_inbox()
+            .await?,
+    ))
 }
 
 pub async fn refresh_inbox(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationInboxRefreshResponse>, ApiError> {
-    Ok(Json(integration_service::refresh_inbox(&state).await?))
+    Ok(Json(
+        integration_service::IntegrationWebService::from_state(&state)
+            .refresh_inbox()
+            .await?,
+    ))
 }
 
 pub async fn acknowledge_inbox_prompt(
@@ -37,7 +53,9 @@ pub async fn acknowledge_inbox_prompt(
     Path(prompt_id): Path<String>,
 ) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
     Ok(Json(
-        integration_service::acknowledge_inbox_prompt(&state, &prompt_id).await?,
+        integration_service::IntegrationWebService::from_state(&state)
+            .acknowledge_inbox_prompt(&prompt_id)
+            .await?,
     ))
 }
 
@@ -47,21 +65,29 @@ pub async fn dismiss_inbox_prompt(
     Json(request): Json<IntegrationInboxDismissRequest>,
 ) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
     Ok(Json(
-        integration_service::dismiss_inbox_prompt(&state, &prompt_id, request).await?,
+        integration_service::IntegrationWebService::from_state(&state)
+            .dismiss_inbox_prompt(&prompt_id, request)
+            .await?,
     ))
 }
 
 pub async fn get_auth_status(
     State(state): State<AppState>,
 ) -> Result<Json<oneshim_core::models::integration::IntegrationAuthStatus>, ApiError> {
-    Ok(Json(integration_service::get_auth_status(&state).await?))
+    Ok(Json(
+        integration_service::IntegrationWebService::from_state(&state)
+            .get_auth_status()
+            .await?,
+    ))
 }
 
 pub async fn start_device_authorization(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
     Ok(Json(
-        integration_service::start_device_authorization(&state).await?,
+        integration_service::IntegrationWebService::from_state(&state)
+            .start_device_authorization()
+            .await?,
     ))
 }
 
@@ -70,7 +96,9 @@ pub async fn poll_device_authorization(
     Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
     Ok(Json(
-        integration_service::poll_device_authorization(&state, &request.flow_id).await?,
+        integration_service::IntegrationWebService::from_state(&state)
+            .poll_device_authorization(&request.flow_id)
+            .await?,
     ))
 }
 
@@ -79,7 +107,9 @@ pub async fn cancel_device_authorization(
     Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
     Ok(Json(
-        integration_service::cancel_device_authorization(&state, &request.flow_id).await?,
+        integration_service::IntegrationWebService::from_state(&state)
+            .cancel_device_authorization(&request.flow_id)
+            .await?,
     ))
 }
 

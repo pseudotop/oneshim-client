@@ -4,12 +4,13 @@ use oneshim_api_contracts::integration::{
     IntegrationAckCursorSummary, IntegrationAuditLogResponse, IntegrationAuditRecordSummary,
     IntegrationDeviceAuthorizationCommandResult, IntegrationInboxActionResponse,
     IntegrationInboxDismissRequest, IntegrationInboxPromptSummary, IntegrationInboxRefreshResponse,
-    IntegrationInboxResponse, IntegrationSessionSummary, IntegrationStatus,
+    IntegrationInboxResponse, IntegrationOutboundRuntimeStatus, IntegrationSessionSummary,
+    IntegrationStatus,
 };
 use oneshim_core::models::integration::{
-    default_integration_runtime_scopes, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
-    IntegrationSessionState, ProactivePromptCategory, ProactivePromptPriority,
-    StoredProactivePrompt,
+    default_integration_runtime_scopes, IntegrationAuthProfileKind, IntegrationInboxItemStatus,
+    IntegrationInsightAuditRecord, IntegrationSessionState, ProactivePromptCategory,
+    ProactivePromptPriority, StoredProactivePrompt,
 };
 use tracing::warn;
 
@@ -19,6 +20,324 @@ pub(crate) const INTEGRATION_STATUS_SCHEMA_VERSION: &str = "integration.status.v
 pub(crate) const INTEGRATION_AUDIT_SCHEMA_VERSION: &str = "integration.audit.v1";
 pub(crate) const INTEGRATION_INBOX_SCHEMA_VERSION: &str = "integration.inbox.v1";
 pub(crate) const INTEGRATION_INBOX_ACTION_SCHEMA_VERSION: &str = "integration.inbox-action.v1";
+
+#[derive(Debug, Clone, Default)]
+struct IntegrationStatusConfigSnapshot {
+    present: bool,
+    external_access_enabled: bool,
+    integration_enabled: bool,
+    bootstrap_configured: bool,
+    auth_profile_kind: IntegrationAuthProfileKind,
+    auth_source_configured: bool,
+    auth_token_env_var: Option<String>,
+    resource_indicator_configured: bool,
+}
+
+impl IntegrationStatusConfigSnapshot {
+    fn from_state(state: &AppState) -> Self {
+        let Some(config) = state
+            .config_manager
+            .as_ref()
+            .map(|config_manager| config_manager.get())
+        else {
+            return Self::default();
+        };
+
+        let auth_token_env_var = config
+            .integration
+            .auth_token_env_var
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let auth_source_configured = match config.integration.auth_profile_kind {
+            IntegrationAuthProfileKind::EnvToken => auth_token_env_var.is_some(),
+            IntegrationAuthProfileKind::OidcDeviceFlow => {
+                config
+                    .integration
+                    .oidc_device_flow
+                    .client_id
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty())
+                    && config
+                        .integration
+                        .oidc_device_flow
+                        .device_authorization_url
+                        .as_deref()
+                        .map(str::trim)
+                        .is_some_and(|value| !value.is_empty())
+                    && config
+                        .integration
+                        .oidc_device_flow
+                        .token_url
+                        .as_deref()
+                        .map(str::trim)
+                        .is_some_and(|value| !value.is_empty())
+            }
+        };
+
+        Self {
+            present: true,
+            external_access_enabled: config.web.allow_external,
+            integration_enabled: config.integration.enabled,
+            bootstrap_configured: config
+                .integration
+                .bootstrap_url
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty()),
+            auth_profile_kind: config.integration.auth_profile_kind.clone(),
+            auth_source_configured,
+            auth_token_env_var,
+            resource_indicator_configured: config
+                .integration
+                .resource_indicator
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty()),
+        }
+    }
+
+    fn apply_to_runtime_status(&self, outbound_runtime: &mut IntegrationOutboundRuntimeStatus) {
+        if !self.present {
+            return;
+        }
+        outbound_runtime.enabled = self.integration_enabled;
+        outbound_runtime.bootstrap_configured = self.bootstrap_configured;
+        outbound_runtime.auth_profile_kind = self.auth_profile_kind.clone();
+        outbound_runtime.auth_source_configured = self.auth_source_configured;
+        outbound_runtime.auth_material_available = self
+            .auth_token_env_var
+            .as_deref()
+            .and_then(|env_var| std::env::var(env_var).ok())
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false);
+        outbound_runtime.resource_indicator_configured = self.resource_indicator_configured;
+    }
+}
+
+#[derive(Clone)]
+pub struct IntegrationWebService {
+    config: IntegrationStatusConfigSnapshot,
+    automation_controller_configured: bool,
+    ai_runtime_status: Option<crate::AiRuntimeStatus>,
+    runtime_status_seed: IntegrationOutboundRuntimeStatus,
+    auth: Option<Arc<dyn oneshim_core::ports::integration::IntegrationAuthPort>>,
+    session: Option<Arc<dyn oneshim_core::ports::integration::IntegrationSessionPort>>,
+    outbox: Option<Arc<dyn oneshim_core::ports::integration::IntegrationOutboxPort>>,
+    inbox: Option<Arc<dyn oneshim_core::ports::integration::IntegrationInboxPort>>,
+    inbox_store: Option<Arc<dyn oneshim_core::ports::integration::IntegrationInboxStorePort>>,
+    audit: Option<Arc<dyn oneshim_core::ports::integration::IntegrationAuditPort>>,
+}
+
+impl IntegrationWebService {
+    pub fn from_state(state: &AppState) -> Self {
+        Self {
+            config: IntegrationStatusConfigSnapshot::from_state(state),
+            automation_controller_configured: state.automation_controller.is_some(),
+            ai_runtime_status: state.ai_runtime_status.clone(),
+            runtime_status_seed: state.integration_runtime_status.clone().unwrap_or_default(),
+            auth: state.integration_auth.clone(),
+            session: state.integration_session.clone(),
+            outbox: state.integration_outbox.clone(),
+            inbox: state.integration_inbox.clone(),
+            inbox_store: state.integration_inbox_store.clone(),
+            audit: state.integration_audit.clone(),
+        }
+    }
+
+    fn inbox(
+        &self,
+    ) -> Result<Arc<dyn oneshim_core::ports::integration::IntegrationInboxPort>, ApiError> {
+        self.inbox.clone().ok_or_else(|| {
+            ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
+        })
+    }
+
+    fn auth(
+        &self,
+    ) -> Result<Arc<dyn oneshim_core::ports::integration::IntegrationAuthPort>, ApiError> {
+        self.auth.clone().ok_or_else(|| {
+            ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
+        })
+    }
+
+    pub async fn build_status(&self) -> IntegrationStatus {
+        let mut outbound_runtime = self.runtime_status_seed.clone();
+        self.config.apply_to_runtime_status(&mut outbound_runtime);
+
+        if let Some(auth_port) = self.auth.as_ref() {
+            match auth_port.current_auth_status().await {
+                Ok(auth_status) => {
+                    outbound_runtime.auth_material_available = auth_status.authenticated;
+                    outbound_runtime.auth_status = Some(auth_status);
+                }
+                Err(error) => {
+                    warn!(error = %error, "failed to read integration auth status");
+                }
+            }
+        }
+
+        if let Some(session_port) = self.session.as_ref() {
+            match session_port.current_session().await {
+                Ok(Some(current_session)) => {
+                    outbound_runtime.current_session = Some(map_session_summary(current_session));
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    warn!(error = %error, "failed to read integration session state");
+                }
+            }
+        }
+
+        if let Some(outbox) = self.outbox.as_ref() {
+            match outbox.pending_count().await {
+                Ok(count) => outbound_runtime.outbox_pending_count = Some(count),
+                Err(error) => warn!(error = %error, "failed to read integration outbox count"),
+            }
+            match outbox.last_ack_cursor().await {
+                Ok(cursor) => {
+                    outbound_runtime.outbox_ack_cursor = cursor.map(map_ack_cursor_summary)
+                }
+                Err(error) => warn!(error = %error, "failed to read integration outbox cursor"),
+            }
+        }
+
+        if let Some(inbox_store) = self.inbox_store.as_ref() {
+            match inbox_store.pending_count().await {
+                Ok(count) => outbound_runtime.inbox_pending_count = Some(count),
+                Err(error) => warn!(error = %error, "failed to read integration inbox count"),
+            }
+            match inbox_store.last_ack_cursor().await {
+                Ok(cursor) => {
+                    outbound_runtime.inbox_ack_cursor = cursor.map(map_ack_cursor_summary)
+                }
+                Err(error) => warn!(error = %error, "failed to read integration inbox cursor"),
+            }
+        }
+
+        IntegrationStatus {
+            schema_version: INTEGRATION_STATUS_SCHEMA_VERSION.to_string(),
+            external_access_enabled: self.config.external_access_enabled,
+            automation_controller_configured: self.automation_controller_configured,
+            ai_runtime_status: self.ai_runtime_status.clone(),
+            outbound_runtime,
+        }
+    }
+
+    pub async fn build_audit_log(&self, limit: usize) -> IntegrationAuditLogResponse {
+        let records = if let Some(audit) = self.audit.as_ref() {
+            match audit.recent_insight_decisions(limit).await {
+                Ok(records) => records.into_iter().map(map_audit_record).collect(),
+                Err(error) => {
+                    warn!(error = %error, "failed to read integration audit records");
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        IntegrationAuditLogResponse {
+            schema_version: INTEGRATION_AUDIT_SCHEMA_VERSION.to_string(),
+            records,
+        }
+    }
+
+    pub async fn list_inbox(&self) -> Result<IntegrationInboxResponse, ApiError> {
+        let prompts = self
+            .inbox()?
+            .list_pending()
+            .await?
+            .into_iter()
+            .map(map_prompt)
+            .collect::<Vec<_>>();
+        let pending_count = prompts.len();
+
+        Ok(IntegrationInboxResponse {
+            schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
+            prompts,
+            pending_count,
+        })
+    }
+
+    pub async fn refresh_inbox(&self) -> Result<IntegrationInboxRefreshResponse, ApiError> {
+        Ok(IntegrationInboxRefreshResponse {
+            schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
+            fetched_count: self.inbox()?.refresh().await?,
+        })
+    }
+
+    pub async fn acknowledge_inbox_prompt(
+        &self,
+        prompt_id: &str,
+    ) -> Result<IntegrationInboxActionResponse, ApiError> {
+        self.inbox()?.acknowledge(prompt_id).await?;
+        Ok(IntegrationInboxActionResponse {
+            schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
+            prompt_id: prompt_id.to_string(),
+            status: "acknowledged".to_string(),
+        })
+    }
+
+    pub async fn dismiss_inbox_prompt(
+        &self,
+        prompt_id: &str,
+        request: IntegrationInboxDismissRequest,
+    ) -> Result<IntegrationInboxActionResponse, ApiError> {
+        self.inbox()?.dismiss(prompt_id, request.reason).await?;
+        Ok(IntegrationInboxActionResponse {
+            schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
+            prompt_id: prompt_id.to_string(),
+            status: "dismissed".to_string(),
+        })
+    }
+
+    pub async fn get_auth_status(
+        &self,
+    ) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, ApiError> {
+        Ok(self.auth()?.current_auth_status().await?)
+    }
+
+    pub async fn start_device_authorization(
+        &self,
+    ) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
+        let auth = self.auth()?;
+        let flow = auth
+            .start_device_authorization(&default_integration_runtime_scopes(), None)
+            .await?;
+        let auth_status = auth.current_auth_status().await?;
+        Ok(IntegrationDeviceAuthorizationCommandResult {
+            auth_status,
+            flow: Some(flow),
+        })
+    }
+
+    pub async fn poll_device_authorization(
+        &self,
+        flow_id: &str,
+    ) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
+        let auth_status = self.auth()?.poll_device_authorization(flow_id).await?;
+        Ok(IntegrationDeviceAuthorizationCommandResult {
+            flow: auth_status.pending_flow.clone(),
+            auth_status,
+        })
+    }
+
+    pub async fn cancel_device_authorization(
+        &self,
+        flow_id: &str,
+    ) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
+        let auth = self.auth()?;
+        auth.cancel_device_authorization(flow_id).await?;
+        let auth_status = auth.current_auth_status().await?;
+        Ok(IntegrationDeviceAuthorizationCommandResult {
+            flow: auth_status.pending_flow.clone(),
+            auth_status,
+        })
+    }
+}
 
 fn map_session_summary(state: IntegrationSessionState) -> IntegrationSessionSummary {
     IntegrationSessionSummary {
@@ -125,256 +444,4 @@ fn map_prompt(prompt: StoredProactivePrompt) -> IntegrationInboxPromptSummary {
         correlation_id: prompt.prompt.provenance.correlation_id,
         dismiss_reason: prompt.dismiss_reason,
     }
-}
-
-fn integration_inbox(
-    state: &AppState,
-) -> Result<Arc<dyn oneshim_core::ports::integration::IntegrationInboxPort>, ApiError> {
-    state.integration_inbox.clone().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
-    })
-}
-
-fn integration_auth(
-    state: &AppState,
-) -> Result<Arc<dyn oneshim_core::ports::integration::IntegrationAuthPort>, ApiError> {
-    state.integration_auth.clone().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
-    })
-}
-
-pub async fn build_status(state: &AppState) -> IntegrationStatus {
-    let config = state
-        .config_manager
-        .as_ref()
-        .map(|config_manager| config_manager.get());
-    let external_access_enabled = config
-        .as_ref()
-        .map(|config| config.web.allow_external)
-        .unwrap_or(false);
-    let mut outbound_runtime = state.integration_runtime_status.clone().unwrap_or_default();
-
-    if let Some(config) = config.as_ref() {
-        let auth_token_env_var = config
-            .integration
-            .auth_token_env_var
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        outbound_runtime.enabled = config.integration.enabled;
-        outbound_runtime.bootstrap_configured = config
-            .integration
-            .bootstrap_url
-            .as_deref()
-            .map(str::trim)
-            .is_some_and(|value| !value.is_empty());
-        outbound_runtime.auth_profile_kind = config.integration.auth_profile_kind.clone();
-        outbound_runtime.auth_source_configured = match config.integration.auth_profile_kind {
-            oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken => {
-                auth_token_env_var.is_some()
-            }
-            oneshim_core::models::integration::IntegrationAuthProfileKind::OidcDeviceFlow => {
-                config
-                    .integration
-                    .oidc_device_flow
-                    .client_id
-                    .as_deref()
-                    .map(str::trim)
-                    .is_some_and(|value| !value.is_empty())
-                    && config
-                        .integration
-                        .oidc_device_flow
-                        .device_authorization_url
-                        .as_deref()
-                        .map(str::trim)
-                        .is_some_and(|value| !value.is_empty())
-                    && config
-                        .integration
-                        .oidc_device_flow
-                        .token_url
-                        .as_deref()
-                        .map(str::trim)
-                        .is_some_and(|value| !value.is_empty())
-            }
-        };
-        outbound_runtime.auth_material_available = auth_token_env_var
-            .and_then(|env_var| std::env::var(env_var).ok())
-            .map(|value| !value.trim().is_empty())
-            .unwrap_or(false);
-        outbound_runtime.resource_indicator_configured = config
-            .integration
-            .resource_indicator
-            .as_deref()
-            .map(str::trim)
-            .is_some_and(|value| !value.is_empty());
-    }
-
-    if let Some(auth_port) = state.integration_auth.as_ref() {
-        match auth_port.current_auth_status().await {
-            Ok(auth_status) => {
-                outbound_runtime.auth_material_available = auth_status.authenticated;
-                outbound_runtime.auth_status = Some(auth_status);
-            }
-            Err(error) => {
-                warn!(error = %error, "failed to read integration auth status");
-            }
-        }
-    }
-
-    if let Some(session_port) = state.integration_session.as_ref() {
-        match session_port.current_session().await {
-            Ok(Some(current_session)) => {
-                outbound_runtime.current_session = Some(map_session_summary(current_session));
-            }
-            Ok(None) => {}
-            Err(error) => {
-                warn!(error = %error, "failed to read integration session state");
-            }
-        }
-    }
-
-    if let Some(outbox) = state.integration_outbox.as_ref() {
-        match outbox.pending_count().await {
-            Ok(count) => outbound_runtime.outbox_pending_count = Some(count),
-            Err(error) => warn!(error = %error, "failed to read integration outbox count"),
-        }
-        match outbox.last_ack_cursor().await {
-            Ok(cursor) => outbound_runtime.outbox_ack_cursor = cursor.map(map_ack_cursor_summary),
-            Err(error) => warn!(error = %error, "failed to read integration outbox cursor"),
-        }
-    }
-
-    if let Some(inbox_store) = state.integration_inbox_store.as_ref() {
-        match inbox_store.pending_count().await {
-            Ok(count) => outbound_runtime.inbox_pending_count = Some(count),
-            Err(error) => warn!(error = %error, "failed to read integration inbox count"),
-        }
-        match inbox_store.last_ack_cursor().await {
-            Ok(cursor) => outbound_runtime.inbox_ack_cursor = cursor.map(map_ack_cursor_summary),
-            Err(error) => warn!(error = %error, "failed to read integration inbox cursor"),
-        }
-    }
-
-    IntegrationStatus {
-        schema_version: INTEGRATION_STATUS_SCHEMA_VERSION.to_string(),
-        external_access_enabled,
-        automation_controller_configured: state.automation_controller.is_some(),
-        ai_runtime_status: state.ai_runtime_status.clone(),
-        outbound_runtime,
-    }
-}
-
-pub async fn build_audit_log(state: &AppState, limit: usize) -> IntegrationAuditLogResponse {
-    let records = if let Some(audit) = state.integration_audit.as_ref() {
-        match audit.recent_insight_decisions(limit).await {
-            Ok(records) => records.into_iter().map(map_audit_record).collect(),
-            Err(error) => {
-                warn!(error = %error, "failed to read integration audit records");
-                Vec::new()
-            }
-        }
-    } else {
-        Vec::new()
-    };
-
-    IntegrationAuditLogResponse {
-        schema_version: INTEGRATION_AUDIT_SCHEMA_VERSION.to_string(),
-        records,
-    }
-}
-
-pub async fn list_inbox(state: &AppState) -> Result<IntegrationInboxResponse, ApiError> {
-    let prompts = integration_inbox(state)?
-        .list_pending()
-        .await?
-        .into_iter()
-        .map(map_prompt)
-        .collect::<Vec<_>>();
-    let pending_count = prompts.len();
-
-    Ok(IntegrationInboxResponse {
-        schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
-        prompts,
-        pending_count,
-    })
-}
-
-pub async fn refresh_inbox(state: &AppState) -> Result<IntegrationInboxRefreshResponse, ApiError> {
-    Ok(IntegrationInboxRefreshResponse {
-        schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
-        fetched_count: integration_inbox(state)?.refresh().await?,
-    })
-}
-
-pub async fn acknowledge_inbox_prompt(
-    state: &AppState,
-    prompt_id: &str,
-) -> Result<IntegrationInboxActionResponse, ApiError> {
-    integration_inbox(state)?.acknowledge(prompt_id).await?;
-    Ok(IntegrationInboxActionResponse {
-        schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
-        prompt_id: prompt_id.to_string(),
-        status: "acknowledged".to_string(),
-    })
-}
-
-pub async fn dismiss_inbox_prompt(
-    state: &AppState,
-    prompt_id: &str,
-    request: IntegrationInboxDismissRequest,
-) -> Result<IntegrationInboxActionResponse, ApiError> {
-    integration_inbox(state)?
-        .dismiss(prompt_id, request.reason)
-        .await?;
-    Ok(IntegrationInboxActionResponse {
-        schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
-        prompt_id: prompt_id.to_string(),
-        status: "dismissed".to_string(),
-    })
-}
-
-pub async fn get_auth_status(
-    state: &AppState,
-) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, ApiError> {
-    Ok(integration_auth(state)?.current_auth_status().await?)
-}
-
-pub async fn start_device_authorization(
-    state: &AppState,
-) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
-    let auth = integration_auth(state)?;
-    let flow = auth
-        .start_device_authorization(&default_integration_runtime_scopes(), None)
-        .await?;
-    let auth_status = auth.current_auth_status().await?;
-    Ok(IntegrationDeviceAuthorizationCommandResult {
-        auth_status,
-        flow: Some(flow),
-    })
-}
-
-pub async fn poll_device_authorization(
-    state: &AppState,
-    flow_id: &str,
-) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
-    let auth_status = integration_auth(state)?
-        .poll_device_authorization(flow_id)
-        .await?;
-    Ok(IntegrationDeviceAuthorizationCommandResult {
-        flow: auth_status.pending_flow.clone(),
-        auth_status,
-    })
-}
-
-pub async fn cancel_device_authorization(
-    state: &AppState,
-    flow_id: &str,
-) -> Result<IntegrationDeviceAuthorizationCommandResult, ApiError> {
-    let auth = integration_auth(state)?;
-    auth.cancel_device_authorization(flow_id).await?;
-    let auth_status = auth.current_auth_status().await?;
-    Ok(IntegrationDeviceAuthorizationCommandResult {
-        flow: auth_status.pending_flow.clone(),
-        auth_status,
-    })
 }
