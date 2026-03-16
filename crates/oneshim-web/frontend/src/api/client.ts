@@ -28,7 +28,10 @@ import type {
   HeatmapResponse,
   HourlyMetrics,
   IdlePeriod,
+  IntegrationAuthStatus,
   IntegrationAuditLogResponse,
+  IntegrationDeviceAuthorizationCommandResult,
+  IntegrationDeviceAuthorizationFlowRequest,
   IntegrationInboxActionResponse,
   IntegrationInboxDismissRequest,
   IntegrationInboxRefreshResponse,
@@ -229,6 +232,44 @@ export async function fetchIntegrationStatus(): Promise<IntegrationStatus> {
 export async function fetchIntegrationAudit(): Promise<IntegrationAuditLogResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/integration/audit`)
   if (!res.ok) throw new Error('Integration audit query failed')
+  return res.json()
+}
+
+export async function fetchIntegrationAuthStatus(): Promise<IntegrationAuthStatus> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/auth/status`)
+  if (!res.ok) throw new Error('Integration auth status query failed')
+  return res.json()
+}
+
+export async function startIntegrationDeviceAuthorization(): Promise<IntegrationDeviceAuthorizationCommandResult> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/auth/device/start`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Integration device authorization start failed')
+  return res.json()
+}
+
+export async function pollIntegrationDeviceAuthorization(
+  request: IntegrationDeviceAuthorizationFlowRequest,
+): Promise<IntegrationDeviceAuthorizationCommandResult> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/auth/device/poll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) throw new Error('Integration device authorization poll failed')
+  return res.json()
+}
+
+export async function cancelIntegrationDeviceAuthorization(
+  request: IntegrationDeviceAuthorizationFlowRequest,
+): Promise<IntegrationDeviceAuthorizationCommandResult> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/auth/device/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) throw new Error('Integration device authorization cancel failed')
   return res.json()
 }
 

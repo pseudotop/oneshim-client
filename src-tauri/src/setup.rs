@@ -8,7 +8,9 @@ use oneshim_automation::sandbox::create_platform_sandbox;
 use oneshim_core::config::{AiAccessMode, AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
 #[cfg(feature = "server")]
-use oneshim_core::models::integration::IntegrationCapabilityScope;
+use oneshim_core::models::integration::{
+    default_integration_runtime_scopes, IntegrationCapabilityScope,
+};
 #[cfg(not(feature = "server"))]
 use oneshim_core::ports::integration::IntegrationAuthPort;
 #[cfg(feature = "server")]
@@ -550,11 +552,7 @@ fn build_integration_runtime(
             sync,
             inbox,
             IntegrationRuntimeLoopProfile {
-                requested_scopes: vec![
-                    IntegrationCapabilityScope::InsightWrite,
-                    IntegrationCapabilityScope::PromptRead,
-                    IntegrationCapabilityScope::SessionManage,
-                ],
+                requested_scopes: default_integration_runtime_scopes(),
                 connect_retry_interval: Duration::from_secs(integration.connect_retry_secs),
                 heartbeat_interval: Duration::from_secs(integration.heartbeat_interval_secs),
                 sync_interval: Duration::from_secs(integration.sync_interval_secs),

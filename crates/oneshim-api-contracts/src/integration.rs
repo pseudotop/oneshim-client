@@ -51,6 +51,11 @@ pub struct IntegrationDeviceAuthorizationCommandResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationDeviceAuthorizationFlowRequest {
+    pub flow_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrationSessionSummary {
     pub status: IntegrationSessionStatus,
     pub transport_kind: IntegrationTransportKind,

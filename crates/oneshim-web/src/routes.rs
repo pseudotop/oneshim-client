@@ -37,6 +37,22 @@ pub fn api_routes() -> Router<AppState> {
             get(handlers::integration::get_status),
         )
         .route("/integration/audit", get(handlers::integration::get_audit))
+        .route(
+            "/integration/auth/status",
+            get(handlers::integration::get_auth_status),
+        )
+        .route(
+            "/integration/auth/device/start",
+            post(handlers::integration::start_device_authorization),
+        )
+        .route(
+            "/integration/auth/device/poll",
+            post(handlers::integration::poll_device_authorization),
+        )
+        .route(
+            "/integration/auth/device/cancel",
+            post(handlers::integration::cancel_device_authorization),
+        )
         .route("/integration/inbox", get(handlers::integration::list_inbox))
         .route(
             "/integration/inbox/refresh",

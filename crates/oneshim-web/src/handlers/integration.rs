@@ -4,13 +4,15 @@ use axum::{
 };
 use oneshim_api_contracts::integration::{
     IntegrationAckCursorSummary, IntegrationAuditLogResponse, IntegrationAuditRecordSummary,
+    IntegrationDeviceAuthorizationCommandResult, IntegrationDeviceAuthorizationFlowRequest,
     IntegrationInboxActionResponse, IntegrationInboxDismissRequest, IntegrationInboxPromptSummary,
     IntegrationInboxRefreshResponse, IntegrationInboxResponse, IntegrationOutboundRuntimeStatus,
     IntegrationSessionSummary, IntegrationStatus,
 };
 use oneshim_core::models::integration::{
-    IntegrationInboxItemStatus, IntegrationInsightAuditRecord, IntegrationSessionState,
-    ProactivePromptCategory, ProactivePromptPriority, StoredProactivePrompt,
+    default_integration_runtime_scopes, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
+    IntegrationSessionState, ProactivePromptCategory, ProactivePromptPriority,
+    StoredProactivePrompt,
 };
 use tracing::warn;
 
@@ -338,21 +340,79 @@ pub async fn dismiss_inbox_prompt(
     }))
 }
 
+pub async fn get_auth_status(
+    State(state): State<AppState>,
+) -> Result<Json<oneshim_core::models::integration::IntegrationAuthStatus>, ApiError> {
+    let auth = state.integration_auth.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
+    })?;
+    Ok(Json(auth.current_auth_status().await?))
+}
+
+pub async fn start_device_authorization(
+    State(state): State<AppState>,
+) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
+    let auth = state.integration_auth.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
+    })?;
+    let flow = auth
+        .start_device_authorization(&default_integration_runtime_scopes(), None)
+        .await?;
+    let auth_status = auth.current_auth_status().await?;
+    Ok(Json(IntegrationDeviceAuthorizationCommandResult {
+        auth_status,
+        flow: Some(flow),
+    }))
+}
+
+pub async fn poll_device_authorization(
+    State(state): State<AppState>,
+    Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
+) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
+    let auth = state.integration_auth.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
+    })?;
+    let auth_status = auth.poll_device_authorization(&request.flow_id).await?;
+    Ok(Json(IntegrationDeviceAuthorizationCommandResult {
+        flow: auth_status.pending_flow.clone(),
+        auth_status,
+    }))
+}
+
+pub async fn cancel_device_authorization(
+    State(state): State<AppState>,
+    Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
+) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
+    let auth = state.integration_auth.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
+    })?;
+    auth.cancel_device_authorization(&request.flow_id).await?;
+    let auth_status = auth.current_auth_status().await?;
+    Ok(Json(IntegrationDeviceAuthorizationCommandResult {
+        flow: auth_status.pending_flow.clone(),
+        auth_status,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use oneshim_api_contracts::integration::IntegrationOutboundRuntimeStatus;
+    use oneshim_api_contracts::integration::{
+        IntegrationDeviceAuthorizationFlowRequest, IntegrationOutboundRuntimeStatus,
+    };
     use oneshim_core::error::CoreError;
     use oneshim_core::models::integration::{
-        InsightPacket, IntegrationAckCursor, IntegrationAuthScheme, IntegrationCapabilityScope,
+        InsightPacket, IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthProfileKind,
+        IntegrationAuthScheme, IntegrationAuthStatus, IntegrationAuthStatusKind,
+        IntegrationCapabilityScope, IntegrationDeviceAuthorizationFlow,
         IntegrationEgressDisposition, IntegrationEnvelope, IntegrationInboxItemStatus,
         IntegrationInsightAuditRecord, IntegrationPrivacyClassification, IntegrationSessionState,
         IntegrationSessionStatus, IntegrationTransportKind, ProactivePrompt,
         ProactivePromptCategory, ProactivePromptPriority, PromptProvenance, StoredProactivePrompt,
     };
     use oneshim_core::ports::integration::{
-        IntegrationAuditPort, IntegrationInboxPort, IntegrationInboxStorePort,
+        IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
         IntegrationOutboxPort, IntegrationSessionPort,
     };
     use oneshim_storage::sqlite::SqliteStorage;
@@ -396,6 +456,102 @@ mod tests {
     struct TestOutbox {
         pending_count: usize,
         last_ack_cursor: Option<IntegrationAckCursor>,
+    }
+
+    struct TestAuthPort {
+        status: Arc<Mutex<IntegrationAuthStatus>>,
+    }
+
+    #[async_trait]
+    impl IntegrationAuthPort for TestAuthPort {
+        async fn resolve_session_auth(
+            &self,
+            _requested_scopes: &[IntegrationCapabilityScope],
+            _resource_indicator: Option<&str>,
+        ) -> Result<IntegrationAuthContext, CoreError> {
+            Ok(IntegrationAuthContext {
+                access_token: "integration-token".to_string(),
+                scheme: IntegrationAuthScheme::BearerToken,
+                expires_at: None,
+                resource_indicator: Some("https://integration.example.com".to_string()),
+            })
+        }
+
+        async fn current_auth_status(&self) -> Result<IntegrationAuthStatus, CoreError> {
+            Ok(self.status.lock().await.clone())
+        }
+
+        async fn start_device_authorization(
+            &self,
+            requested_scopes: &[IntegrationCapabilityScope],
+            resource_indicator: Option<&str>,
+        ) -> Result<IntegrationDeviceAuthorizationFlow, CoreError> {
+            let flow = IntegrationDeviceAuthorizationFlow {
+                flow_id: "flow-1".to_string(),
+                user_code: "ABCD-EFGH".to_string(),
+                verification_uri: "https://verify.example.com".to_string(),
+                verification_uri_complete: Some(
+                    "https://verify.example.com?user_code=ABCD-EFGH".to_string(),
+                ),
+                expires_at: chrono::Utc::now() + chrono::Duration::minutes(10),
+                interval_secs: 5,
+                requested_scopes: requested_scopes.to_vec(),
+                resource_indicator: resource_indicator.map(str::to_string),
+            };
+            *self.status.lock().await = IntegrationAuthStatus {
+                profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
+                status: IntegrationAuthStatusKind::AwaitingUserAuthorization,
+                interactive: true,
+                authenticated: false,
+                expires_at: None,
+                resource_indicator: resource_indicator.map(str::to_string),
+                pending_flow: Some(flow.clone()),
+                message: Some("authorize the device".to_string()),
+            };
+            Ok(flow)
+        }
+
+        async fn poll_device_authorization(
+            &self,
+            flow_id: &str,
+        ) -> Result<IntegrationAuthStatus, CoreError> {
+            let mut status = self.status.lock().await;
+            if status
+                .pending_flow
+                .as_ref()
+                .map(|flow| flow.flow_id.as_str())
+                != Some(flow_id)
+            {
+                return Err(CoreError::NotFound {
+                    resource_type: "integration_device_flow".to_string(),
+                    id: flow_id.to_string(),
+                });
+            }
+            status.status = IntegrationAuthStatusKind::Ready;
+            status.authenticated = true;
+            status.pending_flow = None;
+            status.message = None;
+            Ok(status.clone())
+        }
+
+        async fn cancel_device_authorization(&self, flow_id: &str) -> Result<(), CoreError> {
+            let mut status = self.status.lock().await;
+            if status
+                .pending_flow
+                .as_ref()
+                .map(|flow| flow.flow_id.as_str())
+                != Some(flow_id)
+            {
+                return Err(CoreError::NotFound {
+                    resource_type: "integration_device_flow".to_string(),
+                    id: flow_id.to_string(),
+                });
+            }
+            status.status = IntegrationAuthStatusKind::Unauthenticated;
+            status.pending_flow = None;
+            status.message = Some("device authorization cancelled".to_string());
+            Ok(())
+        }
     }
 
     #[async_trait]
@@ -610,7 +766,18 @@ mod tests {
                 auth_status: None,
                 current_session: None,
             }),
-            integration_auth: None,
+            integration_auth: Some(Arc::new(TestAuthPort {
+                status: Arc::new(Mutex::new(IntegrationAuthStatus {
+                    profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
+                    status: IntegrationAuthStatusKind::Unauthenticated,
+                    interactive: true,
+                    authenticated: false,
+                    expires_at: None,
+                    resource_indicator: Some("https://integration.example.com".to_string()),
+                    pending_flow: None,
+                    message: Some("authorize the device".to_string()),
+                })),
+            }) as Arc<dyn IntegrationAuthPort>),
             integration_session: Some(Arc::new(TestSessionPort(Some(IntegrationSessionState {
                 session_id: "session-1".to_string(),
                 device_id: "device-1".to_string(),
@@ -747,5 +914,43 @@ mod tests {
         .unwrap()
         .0;
         assert_eq!(dismiss_response.status, "dismissed");
+    }
+
+    #[tokio::test]
+    async fn auth_handlers_roundtrip_device_authorization_flow() {
+        let state = test_state();
+
+        let auth_status = get_auth_status(State(state.clone())).await.unwrap().0;
+        assert_eq!(
+            auth_status.status,
+            IntegrationAuthStatusKind::Unauthenticated
+        );
+
+        let start_response = start_device_authorization(State(state.clone()))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(
+            start_response.auth_status.status,
+            IntegrationAuthStatusKind::AwaitingUserAuthorization
+        );
+        assert!(start_response
+            .flow
+            .as_ref()
+            .is_some_and(|flow| flow.requested_scopes.len() >= 4));
+
+        let poll_response = poll_device_authorization(
+            State(state),
+            Json(IntegrationDeviceAuthorizationFlowRequest {
+                flow_id: "flow-1".to_string(),
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!(
+            poll_response.auth_status.status,
+            IntegrationAuthStatusKind::Ready
+        );
     }
 }

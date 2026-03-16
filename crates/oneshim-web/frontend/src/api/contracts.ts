@@ -203,6 +203,28 @@ export interface IntegrationSessionSummary {
   granted_scopes: string[]
 }
 
+export interface IntegrationDeviceAuthorizationFlow {
+  flow_id: string
+  user_code: string
+  verification_uri: string
+  verification_uri_complete?: string | null
+  expires_at: string
+  interval_secs: number
+  requested_scopes: string[]
+  resource_indicator?: string | null
+}
+
+export interface IntegrationAuthStatus {
+  profile_kind: string
+  status: string
+  interactive: boolean
+  authenticated: boolean
+  expires_at?: string | null
+  resource_indicator?: string | null
+  pending_flow?: IntegrationDeviceAuthorizationFlow | null
+  message?: string | null
+}
+
 export interface IntegrationOutboundRuntimeStatus {
   enabled: boolean
   bootstrap_configured: boolean
@@ -217,7 +239,7 @@ export interface IntegrationOutboundRuntimeStatus {
   inbox_pending_count?: number | null
   outbox_ack_cursor?: IntegrationAckCursorSummary | null
   inbox_ack_cursor?: IntegrationAckCursorSummary | null
-  auth_status?: Record<string, unknown> | null
+  auth_status?: IntegrationAuthStatus | null
   current_session?: IntegrationSessionSummary | null
 }
 
@@ -281,6 +303,15 @@ export interface IntegrationInboxActionResponse {
 
 export interface IntegrationInboxDismissRequest {
   reason?: string | null
+}
+
+export interface IntegrationDeviceAuthorizationCommandResult {
+  auth_status: IntegrationAuthStatus
+  flow?: IntegrationDeviceAuthorizationFlow | null
+}
+
+export interface IntegrationDeviceAuthorizationFlowRequest {
+  flow_id: string
 }
 
 export interface PaginationMeta {

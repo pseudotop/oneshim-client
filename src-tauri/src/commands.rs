@@ -1,5 +1,5 @@
 use oneshim_api_contracts::integration::IntegrationDeviceAuthorizationCommandResult;
-use oneshim_core::models::integration::IntegrationCapabilityScope;
+use oneshim_core::models::integration::default_integration_runtime_scopes;
 use oneshim_core::ports::oauth::{OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus};
 use serde::Serialize;
 use std::sync::atomic::Ordering;
@@ -311,15 +311,6 @@ fn require_integration_auth(
         .ok_or_else(|| "Integration auth is not configured for this runtime".to_string())
 }
 
-fn default_integration_scopes() -> Vec<IntegrationCapabilityScope> {
-    vec![
-        IntegrationCapabilityScope::SessionManage,
-        IntegrationCapabilityScope::InsightWrite,
-        IntegrationCapabilityScope::PromptRead,
-        IntegrationCapabilityScope::PromptAck,
-    ]
-}
-
 #[command]
 pub async fn integration_auth_status(
     integration_auth: tauri::State<'_, IntegrationAuthState>,
@@ -336,7 +327,7 @@ pub async fn integration_start_device_authorization(
 ) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
     let port = require_integration_auth(&integration_auth)?;
     let flow = port
-        .start_device_authorization(&default_integration_scopes(), None)
+        .start_device_authorization(&default_integration_runtime_scopes(), None)
         .await
         .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
     let auth_status = port

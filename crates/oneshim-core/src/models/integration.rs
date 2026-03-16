@@ -169,6 +169,15 @@ impl IntegrationCapabilityScope {
     }
 }
 
+pub fn default_integration_runtime_scopes() -> Vec<IntegrationCapabilityScope> {
+    vec![
+        IntegrationCapabilityScope::SessionManage,
+        IntegrationCapabilityScope::InsightWrite,
+        IntegrationCapabilityScope::PromptRead,
+        IntegrationCapabilityScope::PromptAck,
+    ]
+}
+
 /// Privacy-filtered outbound packet sent to an integration backend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InsightPacket {
