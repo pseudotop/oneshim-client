@@ -746,6 +746,8 @@ mod tests {
             audit_logger: None,
             automation_controller: None,
             ai_runtime_status: None,
+            integration_runtime_status: None,
+            integration_session: None,
             update_control: None,
         }
     }

@@ -45,6 +45,8 @@ pub struct AppConfig {
     pub automation: AutomationConfig,
     #[serde(default)]
     pub ai_provider: AiProviderConfig,
+    #[serde(default)]
+    pub integration: IntegrationConfig,
     /// 아웃바운드 TLS 설정 — 기본값: 활성화
     #[serde(default)]
     pub tls: TlsConfig,
@@ -93,6 +95,7 @@ impl AppConfig {
             file_access: FileAccessConfig::default(),
             automation: AutomationConfig::default(),
             ai_provider: AiProviderConfig::default(),
+            integration: IntegrationConfig::default(),
             tls: TlsConfig::default(),
         }
     }
@@ -147,6 +150,7 @@ mod tests {
         let config = AppConfig::default_config();
         assert!(config.tls.enabled, "AppConfig 기본값: TLS 활성화");
         assert!(!config.tls.allow_self_signed);
+        assert!(!config.integration.enabled);
     }
 
     #[test]

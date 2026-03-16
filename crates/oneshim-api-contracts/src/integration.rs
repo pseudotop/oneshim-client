@@ -1,5 +1,8 @@
 use crate::stream::AiRuntimeStatus;
-use oneshim_core::models::integration::{IntegrationAuthScheme, IntegrationTransportKind};
+use chrono::{DateTime, Utc};
+use oneshim_core::models::integration::{
+    IntegrationAuthScheme, IntegrationSessionStatus, IntegrationTransportKind,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
@@ -8,6 +11,38 @@ pub struct IntegrationStatus {
     pub external_access_enabled: bool,
     pub automation_controller_configured: bool,
     pub ai_runtime_status: Option<AiRuntimeStatus>,
+    pub outbound_runtime: IntegrationOutboundRuntimeStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IntegrationOutboundRuntimeStatus {
+    pub enabled: bool,
+    pub bootstrap_configured: bool,
+    pub auth_source_configured: bool,
+    pub auth_material_available: bool,
+    pub runtime_configured: bool,
+    pub resource_indicator_configured: bool,
+    #[serde(default)]
+    pub preferred_transports: Vec<IntegrationTransportKind>,
+    #[serde(default)]
+    pub supported_auth_schemes: Vec<IntegrationAuthScheme>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_session: Option<IntegrationSessionSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationSessionSummary {
+    pub status: IntegrationSessionStatus,
+    pub transport_kind: IntegrationTransportKind,
+    pub auth_scheme: IntegrationAuthScheme,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_heartbeat_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub requested_scopes: Vec<String>,
+    #[serde(default)]
+    pub granted_scopes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +166,45 @@ mod tests {
                 .as_ref()
                 .map(|session| session.session_id.as_str()),
             Some("session-001")
+        );
+    }
+
+    #[test]
+    fn integration_status_roundtrip() {
+        let status = IntegrationStatus {
+            schema_version: "integration.status.v1".to_string(),
+            external_access_enabled: false,
+            automation_controller_configured: true,
+            ai_runtime_status: None,
+            outbound_runtime: IntegrationOutboundRuntimeStatus {
+                enabled: true,
+                bootstrap_configured: true,
+                auth_source_configured: true,
+                auth_material_available: true,
+                runtime_configured: true,
+                resource_indicator_configured: false,
+                preferred_transports: vec![IntegrationTransportKind::WebSocket],
+                supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+                current_session: Some(IntegrationSessionSummary {
+                    status: oneshim_core::models::integration::IntegrationSessionStatus::Connected,
+                    transport_kind: IntegrationTransportKind::WebSocket,
+                    auth_scheme: IntegrationAuthScheme::BearerToken,
+                    connected_at: None,
+                    last_heartbeat_at: None,
+                    requested_scopes: vec!["insight:write".to_string()],
+                    granted_scopes: vec!["insight:write".to_string()],
+                }),
+            },
+        };
+
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(
+            json["outbound_runtime"]["runtime_configured"],
+            serde_json::Value::Bool(true)
+        );
+        assert_eq!(
+            json["outbound_runtime"]["current_session"]["granted_scopes"][0],
+            serde_json::Value::String("insight:write".to_string())
         );
     }
 }
