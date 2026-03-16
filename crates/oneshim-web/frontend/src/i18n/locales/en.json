@@ -569,8 +569,8 @@
     "accessModeApiKeyDescription": "Use direct HTTP endpoints for provider-hosted or self-hosted services. API keys are only required when the selected surface expects them.",
     "accessModeCliLabel": "Installed provider CLI",
     "accessModeCliDescription": "Preferred for subscription-backed products. ONESHIM will guide users through installed provider-owned CLI flows.",
-    "accessModeOAuthLabel": "Direct OAuth compatibility",
-    "accessModeOAuthDescription": "Experimental compatibility path for managed OAuth surfaces. Prefer installed provider CLIs when available.",
+    "accessModeOAuthLabel": "Direct OAuth (experimental)",
+    "accessModeOAuthDescription": "Experimental managed OAuth path for supported provider surfaces. Prefer installed provider CLIs when available.",
     "accessModeLegacyLabel": "Legacy mode: {{mode}}",
     "accessModeLegacyDescription": "This configuration uses an older access path. Review and migrate it to a supported surface when possible.",
     "pathSummaryTitle": "Operational path",
@@ -589,7 +589,7 @@
     "preferredCliDescription": "Use {{surface}} when you want provider-managed auth and subscription entitlements to stay with the installed CLI.",
     "switchToPreferredCli": "Use preferred CLI path",
     "executionKindDirectHttp": "Direct provider HTTP API",
-    "executionKindManagedHttp": "Managed OAuth compatibility",
+    "executionKindManagedHttp": "Managed OAuth",
     "executionKindSubprocessCli": "Installed provider CLI",
     "placementProviderHosted": "Provider-hosted",
     "placementSelfHosted": "Self-hosted",
@@ -728,8 +728,8 @@
       "provider_surface": {
         "openai": {
           "managed_oauth": {
-            "available": "This compatibility path is available on this device. It is not the preferred setup path.",
-            "unavailable": "Direct OAuth compatibility is unavailable on this device. Desktop keychain support is required."
+            "available": "This experimental managed OAuth path is available on this device. It is not the preferred setup path.",
+            "unavailable": "Direct OAuth is unavailable on this device. Desktop keychain support is required."
           },
           "subprocess_cli": {
             "available": "Codex CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
@@ -770,8 +770,8 @@
     },
     "providerSurface": {
       "openaiManagedOAuth": {
-        "available": "This compatibility path is available on this device. It is not the preferred setup path.",
-        "unavailable": "Direct OAuth compatibility is unavailable on this device. Desktop keychain support is required."
+        "available": "This experimental managed OAuth path is available on this device. It is not the preferred setup path.",
+        "unavailable": "Direct OAuth is unavailable on this device. Desktop keychain support is required."
       },
       "openaiSubprocessCli": {
         "available": "Codex CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",

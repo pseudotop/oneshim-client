@@ -400,7 +400,7 @@ pub fn resolved_surface_spec(
         return Ok(surface);
     }
 
-    default_direct_surface_for_provider_type(provider_type)
+    default_direct_surface_spec(provider_type)
 }
 
 pub fn default_surface_id_for_access_mode(
@@ -1744,7 +1744,7 @@ fn preferred_direct_surface_from_vendor<'a>(
         })
 }
 
-fn default_direct_surface_for_provider_type(
+pub fn default_direct_surface_spec(
     provider_type: AiProviderType,
 ) -> Result<&'static ProviderSurfaceSpec, String> {
     let vendor_id = provider_vendor_id_or_default(provider_type);

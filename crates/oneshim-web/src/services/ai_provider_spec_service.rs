@@ -15,8 +15,12 @@ pub fn resolve_provider_type(raw: &str) -> Result<AiProviderType, ApiError> {
         .ok_or_else(|| ApiError::BadRequest(format!("Unsupported provider_type: {raw}")))
 }
 
-pub fn default_model_catalog_endpoint(provider_type: AiProviderType) -> Result<String, ApiError> {
-    default_model_catalog_endpoint_for_surface(provider_type, None)
+pub fn default_direct_model_catalog_endpoint(
+    provider_type: AiProviderType,
+) -> Result<String, ApiError> {
+    let surface =
+        provider_specs::default_direct_surface_spec(provider_type).map_err(ApiError::Internal)?;
+    default_model_catalog_endpoint_for_surface(provider_type, Some(surface.surface_id.as_str()))
 }
 
 pub fn default_model_catalog_endpoint_for_surface(
@@ -37,11 +41,13 @@ pub fn model_catalog_supported_for_surface(
     Ok(surface.supports.model_catalog && surface.model_catalog_transport.is_some())
 }
 
-pub fn ocr_model_catalog_notice_for_endpoint(
+pub fn ocr_model_catalog_notice_for_default_direct_endpoint(
     provider_type: AiProviderType,
     endpoint: &str,
 ) -> Result<Option<String>, ApiError> {
-    ocr_model_catalog_notice_for_surface(provider_type, None, endpoint)
+    let surface =
+        provider_specs::default_direct_surface_spec(provider_type).map_err(ApiError::Internal)?;
+    ocr_model_catalog_notice_for_surface(provider_type, Some(surface.surface_id.as_str()), endpoint)
 }
 
 pub fn ocr_model_catalog_notice_for_surface(
@@ -84,10 +90,12 @@ pub fn ocr_model_catalog_notice_for_surface(
     Ok(None)
 }
 
-pub fn model_catalog_response_shape(
+pub fn default_direct_model_catalog_response_shape(
     provider_type: AiProviderType,
 ) -> Result<ModelCatalogResponseShape, ApiError> {
-    model_catalog_response_shape_for_surface(provider_type, None)
+    let surface =
+        provider_specs::default_direct_surface_spec(provider_type).map_err(ApiError::Internal)?;
+    model_catalog_response_shape_for_surface(provider_type, Some(surface.surface_id.as_str()))
 }
 
 pub fn model_catalog_response_shape_for_surface(
@@ -98,10 +106,12 @@ pub fn model_catalog_response_shape_for_surface(
         .map_err(ApiError::Internal)
 }
 
-pub fn model_catalog_auth_scheme(
+pub fn default_direct_model_catalog_auth_scheme(
     provider_type: AiProviderType,
 ) -> Result<ProviderAuthScheme, ApiError> {
-    model_catalog_auth_scheme_for_surface(provider_type, None)
+    let surface =
+        provider_specs::default_direct_surface_spec(provider_type).map_err(ApiError::Internal)?;
+    model_catalog_auth_scheme_for_surface(provider_type, Some(surface.surface_id.as_str()))
 }
 
 pub fn model_catalog_auth_scheme_for_surface(
@@ -143,14 +153,14 @@ mod tests {
 
     #[test]
     fn returns_google_model_catalog_shape() {
-        let shape =
-            model_catalog_response_shape(AiProviderType::Google).expect("shape should resolve");
+        let shape = default_direct_model_catalog_response_shape(AiProviderType::Google)
+            .expect("shape should resolve");
         assert_eq!(shape, ModelCatalogResponseShape::GoogleModels);
     }
 
     #[test]
     fn returns_google_ocr_notice() {
-        let notice = ocr_model_catalog_notice_for_endpoint(
+        let notice = ocr_model_catalog_notice_for_default_direct_endpoint(
             AiProviderType::Google,
             "https://vision.googleapis.com/v1/images:annotate",
         )
