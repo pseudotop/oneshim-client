@@ -4540,6 +4540,7 @@ dependencies = [
  "chrono",
  "criterion",
  "crossbeam",
+ "ed25519-dalek",
  "eventsource-stream",
  "flate2",
  "futures",

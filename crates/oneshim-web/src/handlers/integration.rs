@@ -56,7 +56,35 @@ pub async fn get_status(State(state): State<AppState>) -> Json<IntegrationStatus
             .as_deref()
             .map(str::trim)
             .is_some_and(|value| !value.is_empty());
-        outbound_runtime.auth_source_configured = auth_token_env_var.is_some();
+        outbound_runtime.auth_profile_kind = config.integration.auth_profile_kind.clone();
+        outbound_runtime.auth_source_configured = match config.integration.auth_profile_kind {
+            oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken => {
+                auth_token_env_var.is_some()
+            }
+            oneshim_core::models::integration::IntegrationAuthProfileKind::OidcDeviceFlow => {
+                config
+                    .integration
+                    .oidc_device_flow
+                    .client_id
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty())
+                    && config
+                        .integration
+                        .oidc_device_flow
+                        .device_authorization_url
+                        .as_deref()
+                        .map(str::trim)
+                        .is_some_and(|value| !value.is_empty())
+                    && config
+                        .integration
+                        .oidc_device_flow
+                        .token_url
+                        .as_deref()
+                        .map(str::trim)
+                        .is_some_and(|value| !value.is_empty())
+            }
+        };
         outbound_runtime.auth_material_available = auth_token_env_var
             .and_then(|env_var| std::env::var(env_var).ok())
             .map(|value| !value.trim().is_empty())
@@ -67,6 +95,18 @@ pub async fn get_status(State(state): State<AppState>) -> Json<IntegrationStatus
             .as_deref()
             .map(str::trim)
             .is_some_and(|value| !value.is_empty());
+    }
+
+    if let Some(auth_port) = state.integration_auth.as_ref() {
+        match auth_port.current_auth_status().await {
+            Ok(auth_status) => {
+                outbound_runtime.auth_material_available = auth_status.authenticated;
+                outbound_runtime.auth_status = Some(auth_status);
+            }
+            Err(error) => {
+                warn!(error = %error, "failed to read integration auth status");
+            }
+        }
     }
 
     if let Some(session_port) = state.integration_session.as_ref() {
@@ -160,10 +200,14 @@ mod tests {
                 auth_material_available: false,
                 runtime_configured: true,
                 resource_indicator_configured: true,
+                auth_profile_kind:
+                    oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken,
                 preferred_transports: vec![IntegrationTransportKind::WebSocket],
                 supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+                auth_status: None,
                 current_session: None,
             }),
+            integration_auth: None,
             integration_session: Some(Arc::new(TestSessionPort(Some(IntegrationSessionState {
                 session_id: "session-1".to_string(),
                 device_id: "device-1".to_string(),

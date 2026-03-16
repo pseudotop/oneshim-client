@@ -206,6 +206,7 @@ mod tests {
             automation_controller: None,
             ai_runtime_status: None,
             integration_runtime_status: None,
+            integration_auth: None,
             integration_session: None,
             update_control: None,
         };
@@ -228,6 +229,7 @@ mod tests {
             automation_controller: None,
             ai_runtime_status: None,
             integration_runtime_status: None,
+            integration_auth: None,
             integration_session: None,
             update_control: None,
         };

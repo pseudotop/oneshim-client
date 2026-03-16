@@ -60,6 +60,14 @@ impl std::fmt::Debug for IntegrationAuthScheme {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationAuthProfileKind {
+    #[default]
+    EnvToken,
+    OidcDeviceFlow,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct IntegrationAuthContext {
     pub access_token: String,
@@ -79,6 +87,49 @@ impl std::fmt::Debug for IntegrationAuthContext {
             .field("resource_indicator", &self.resource_indicator)
             .finish()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationAuthStatusKind {
+    #[default]
+    Unconfigured,
+    Unauthenticated,
+    AwaitingUserAuthorization,
+    Ready,
+    Expired,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationDeviceAuthorizationFlow {
+    pub flow_id: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_uri_complete: Option<String>,
+    pub expires_at: DateTime<Utc>,
+    pub interval_secs: u64,
+    #[serde(default)]
+    pub requested_scopes: Vec<IntegrationCapabilityScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_indicator: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationAuthStatus {
+    pub profile_kind: IntegrationAuthProfileKind,
+    pub status: IntegrationAuthStatusKind,
+    pub interactive: bool,
+    pub authenticated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_indicator: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_flow: Option<IntegrationDeviceAuthorizationFlow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

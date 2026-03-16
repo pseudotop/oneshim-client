@@ -1,7 +1,8 @@
 use crate::stream::AiRuntimeStatus;
 use chrono::{DateTime, Utc};
 use oneshim_core::models::integration::{
-    IntegrationAuthScheme, IntegrationSessionStatus, IntegrationTransportKind,
+    IntegrationAuthProfileKind, IntegrationAuthScheme, IntegrationAuthStatus,
+    IntegrationDeviceAuthorizationFlow, IntegrationSessionStatus, IntegrationTransportKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -23,11 +24,22 @@ pub struct IntegrationOutboundRuntimeStatus {
     pub runtime_configured: bool,
     pub resource_indicator_configured: bool,
     #[serde(default)]
+    pub auth_profile_kind: IntegrationAuthProfileKind,
+    #[serde(default)]
     pub preferred_transports: Vec<IntegrationTransportKind>,
     #[serde(default)]
     pub supported_auth_schemes: Vec<IntegrationAuthScheme>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_status: Option<IntegrationAuthStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_session: Option<IntegrationSessionSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationDeviceAuthorizationCommandResult {
+    pub auth_status: IntegrationAuthStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow: Option<IntegrationDeviceAuthorizationFlow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,8 +205,10 @@ mod tests {
                 auth_material_available: true,
                 runtime_configured: true,
                 resource_indicator_configured: false,
+                auth_profile_kind: IntegrationAuthProfileKind::EnvToken,
                 preferred_transports: vec![IntegrationTransportKind::WebSocket],
                 supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+                auth_status: None,
                 current_session: Some(IntegrationSessionSummary {
                     status: oneshim_core::models::integration::IntegrationSessionStatus::Connected,
                     transport_kind: IntegrationTransportKind::WebSocket,

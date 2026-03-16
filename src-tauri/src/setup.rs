@@ -7,6 +7,7 @@ use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
 use oneshim_core::config::{AiAccessMode, AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::ports::integration::IntegrationAuthPort;
 #[cfg(feature = "server")]
 use oneshim_core::ports::integration::IntegrationSessionPort;
 #[cfg(feature = "server")]
@@ -26,9 +27,10 @@ use oneshim_network::batch_uploader::BatchUploader;
 use oneshim_network::http_client::HttpApiClient;
 #[cfg(feature = "server")]
 use oneshim_network::integration::{
-    EnvIntegrationAuthPort, HttpsIntegrationTransportClient, HttpsIntegrationTransportConfig,
-    IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile,
-    NoopIntegrationRequestProofFactory,
+    Ed25519DpopProofFactory, EnvIntegrationAuthPort, HttpsIntegrationTransportClient,
+    HttpsIntegrationTransportConfig, IntegrationSessionCoordinator,
+    IntegrationSessionRuntimeProfile, NoopIntegrationRequestProofFactory, OidcDeviceFlowAuthConfig,
+    OidcDeviceFlowIntegrationAuthPort,
 };
 #[cfg(feature = "server")]
 use oneshim_network::oauth::OAuthClient;
@@ -122,6 +124,10 @@ pub struct IntegrationSessionState(pub Option<Arc<dyn IntegrationSessionPort>>);
 #[cfg(not(feature = "server"))]
 #[allow(dead_code)]
 pub struct IntegrationSessionState(pub Option<()>);
+
+/// Managed state for outbound integration auth orchestration.
+#[allow(dead_code)]
+pub struct IntegrationAuthState(pub Option<Arc<dyn IntegrationAuthPort>>);
 
 fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
     data_dir
@@ -282,9 +288,11 @@ fn derive_integration_device_id(config_dir: &std::path::Path) -> String {
 fn build_integration_runtime(
     config: &AppConfig,
     config_dir: &std::path::Path,
+    secret_store: Option<Arc<dyn SecretStore>>,
 ) -> Result<
     (
         IntegrationOutboundRuntimeStatus,
+        Option<Arc<dyn IntegrationAuthPort>>,
         Option<Arc<dyn IntegrationSessionPort>>,
     ),
     oneshim_core::error::CoreError,
@@ -292,11 +300,14 @@ fn build_integration_runtime(
     let integration = &config.integration;
     let bootstrap_url = non_empty_config_value(integration.bootstrap_url.as_deref());
     let auth_token_env_var = non_empty_config_value(integration.auth_token_env_var.as_deref());
-    let auth_material_available = auth_token_env_var
-        .as_deref()
-        .and_then(|env_var| std::env::var(env_var).ok())
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
+    let oidc_client_id = non_empty_config_value(integration.oidc_device_flow.client_id.as_deref());
+    let oidc_device_authorization_url = non_empty_config_value(
+        integration
+            .oidc_device_flow
+            .device_authorization_url
+            .as_deref(),
+    );
+    let oidc_token_url = non_empty_config_value(integration.oidc_device_flow.token_url.as_deref());
 
     let preferred_transports = if integration.preferred_transports.is_empty() {
         IntegrationSessionRuntimeProfile::default().preferred_transports
@@ -310,30 +321,89 @@ fn build_integration_runtime(
         integration.supported_auth_schemes.clone()
     };
 
-    if supported_auth_schemes
-        .contains(&oneshim_core::models::integration::IntegrationAuthScheme::DpopBearer)
-    {
-        supported_auth_schemes.retain(|scheme| {
-            *scheme != oneshim_core::models::integration::IntegrationAuthScheme::DpopBearer
-        });
-        warn!(
-            "DPoP auth is configured for outbound integration, but a proof signer is not available yet; falling back to bearer token auth"
-        );
-    }
     if supported_auth_schemes.is_empty() {
         supported_auth_schemes
             .push(oneshim_core::models::integration::IntegrationAuthScheme::BearerToken);
     }
 
+    let auth_source_configured = match integration.auth_profile_kind {
+        oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken => {
+            auth_token_env_var.is_some()
+        }
+        oneshim_core::models::integration::IntegrationAuthProfileKind::OidcDeviceFlow => {
+            oidc_client_id.is_some()
+                && oidc_device_authorization_url.is_some()
+                && oidc_token_url.is_some()
+        }
+    };
+    let auth_material_available = match integration.auth_profile_kind {
+        oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken => {
+            auth_token_env_var
+                .as_deref()
+                .and_then(|env_var| std::env::var(env_var).ok())
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false)
+        }
+        oneshim_core::models::integration::IntegrationAuthProfileKind::OidcDeviceFlow => false,
+    };
+
+    let dpop_proof_factory: Arc<dyn oneshim_network::integration::IntegrationRequestProofFactory> =
+        if supported_auth_schemes
+            .contains(&oneshim_core::models::integration::IntegrationAuthScheme::DpopBearer)
+        {
+            Arc::new(Ed25519DpopProofFactory::new(secret_store.clone()))
+        } else {
+            Arc::new(NoopIntegrationRequestProofFactory)
+        };
+
+    let auth_port: Option<Arc<dyn IntegrationAuthPort>> = match integration.auth_profile_kind {
+        oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken => {
+            auth_token_env_var.clone().map(|env_var| {
+                Arc::new(EnvIntegrationAuthPort::new(
+                    env_var,
+                    supported_auth_schemes.first().cloned().unwrap_or_default(),
+                    None,
+                    integration.resource_indicator.clone(),
+                )) as Arc<dyn IntegrationAuthPort>
+            })
+        }
+        oneshim_core::models::integration::IntegrationAuthProfileKind::OidcDeviceFlow => {
+            match (
+                oidc_client_id.clone(),
+                oidc_device_authorization_url.clone(),
+                oidc_token_url.clone(),
+            ) {
+                (Some(client_id), Some(device_authorization_url), Some(token_url)) => {
+                    Some(Arc::new(OidcDeviceFlowIntegrationAuthPort::new(
+                        OidcDeviceFlowAuthConfig {
+                            client_id,
+                            device_authorization_url,
+                            token_url,
+                            default_scopes: integration.oidc_device_flow.scopes.clone(),
+                            resource_indicator: non_empty_config_value(
+                                integration.resource_indicator.as_deref(),
+                            ),
+                            scheme: supported_auth_schemes.first().cloned().unwrap_or_default(),
+                            request_timeout: Duration::from_secs(integration.request_timeout_secs),
+                        },
+                        dpop_proof_factory.clone(),
+                        secret_store.clone(),
+                    )?) as Arc<dyn IntegrationAuthPort>)
+                }
+                _ => None,
+            }
+        }
+    };
+
     let runtime_configured = integration.enabled
         && bootstrap_url.is_some()
-        && auth_token_env_var.is_some()
+        && auth_port.is_some()
         && !preferred_transports.is_empty();
 
     let status = IntegrationOutboundRuntimeStatus {
         enabled: integration.enabled,
         bootstrap_configured: bootstrap_url.is_some(),
-        auth_source_configured: auth_token_env_var.is_some(),
+        auth_source_configured,
         auth_material_available,
         runtime_configured,
         resource_indicator_configured: integration
@@ -341,13 +411,15 @@ fn build_integration_runtime(
             .as_deref()
             .map(str::trim)
             .is_some_and(|value| !value.is_empty()),
+        auth_profile_kind: integration.auth_profile_kind.clone(),
         preferred_transports: preferred_transports.clone(),
         supported_auth_schemes: supported_auth_schemes.clone(),
+        auth_status: None,
         current_session: None,
     };
 
     if !runtime_configured {
-        return Ok((status, None));
+        return Ok((status, auth_port, None));
     }
 
     let transport = Arc::new(HttpsIntegrationTransportClient::new(
@@ -355,13 +427,10 @@ fn build_integration_runtime(
             bootstrap_url.expect("runtime_configured requires bootstrap_url"),
             Duration::from_secs(integration.request_timeout_secs),
         ),
-        Arc::new(EnvIntegrationAuthPort::new(
-            auth_token_env_var.expect("runtime_configured requires auth token env var"),
-            supported_auth_schemes.first().cloned().unwrap_or_default(),
-            None,
-            integration.resource_indicator.clone(),
-        )),
-        Arc::new(NoopIntegrationRequestProofFactory),
+        auth_port
+            .clone()
+            .expect("runtime_configured requires an integration auth port"),
+        dpop_proof_factory,
     )?) as Arc<dyn oneshim_network::integration::IntegrationTransportClient>;
 
     let session = Arc::new(IntegrationSessionCoordinator::new_with_profile(
@@ -380,7 +449,7 @@ fn build_integration_runtime(
         },
     )) as Arc<dyn IntegrationSessionPort>;
 
-    Ok((status, Some(session)))
+    Ok((status, auth_port, Some(session)))
 }
 
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
@@ -430,14 +499,16 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     );
     let config = config_manager.get();
     #[cfg(feature = "server")]
-    let (integration_runtime_status, integration_session) =
-        build_integration_runtime(&config, &config_dir).map_err(
+    let (integration_runtime_status, integration_auth, integration_session) =
+        build_integration_runtime(&config, &config_dir, desktop_secret_store.clone()).map_err(
             |err| -> Box<dyn std::error::Error> {
                 Box::new(std::io::Error::other(err.to_string()))
             },
         )?;
     #[cfg(not(feature = "server"))]
     let integration_runtime_status = IntegrationOutboundRuntimeStatus::default();
+    #[cfg(not(feature = "server"))]
+    let _integration_auth: Option<()> = None;
     let web_port = Arc::new(AtomicU16::new(config.web.port));
     maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
 
@@ -572,6 +643,8 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         let web_update_control = update_control.clone();
         let web_port_state = web_port.clone();
         let web_integration_runtime_status = integration_runtime_status.clone();
+        #[cfg(feature = "server")]
+        let web_integration_auth = integration_auth.clone();
         #[cfg(feature = "server")]
         let web_integration_session = integration_session.clone();
         let (bound_port_tx, bound_port_rx) = tokio::sync::oneshot::channel::<u16>();
@@ -734,6 +807,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                 .with_bound_port_state(web_port_state)
                 .with_bound_port_notifier(bound_port_tx);
             #[cfg(feature = "server")]
+            if let Some(auth) = web_integration_auth.clone() {
+                web_server = web_server.with_integration_auth(auth);
+            }
+            #[cfg(feature = "server")]
             if let Some(session) = web_integration_session.clone() {
                 web_server = web_server.with_integration_session(session);
             }
@@ -831,6 +908,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     ));
     let feature_capability_state = FeatureCapabilityState(secret_backend_state.0.clone());
     #[cfg(feature = "server")]
+    let integration_auth_state = IntegrationAuthState(integration_auth);
+    #[cfg(not(feature = "server"))]
+    let integration_auth_state = IntegrationAuthState(None);
+    #[cfg(feature = "server")]
     let integration_session_state = IntegrationSessionState(integration_session);
     #[cfg(not(feature = "server"))]
     let integration_session_state = IntegrationSessionState(None);
@@ -850,6 +931,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(oauth_coordinator_state);
     app.manage(secret_backend_state);
     app.manage(feature_capability_state);
+    app.manage(integration_auth_state);
     app.manage(integration_session_state);
 
     // 12. 시스템 트레이 초기화
@@ -903,17 +985,19 @@ mod integration_tests {
         config.integration.enabled = true;
         config.integration.auth_token_env_var = Some("ONESHIM_TEST_INTEGRATION_TOKEN".to_string());
 
-        let (status, session) = build_integration_runtime(&config, temp_dir.path()).unwrap();
+        let (status, auth, session) =
+            build_integration_runtime(&config, temp_dir.path(), None).unwrap();
 
         assert!(status.enabled);
         assert!(!status.bootstrap_configured);
         assert!(status.auth_source_configured);
         assert!(!status.runtime_configured);
+        assert!(auth.is_some());
         assert!(session.is_none());
     }
 
     #[test]
-    fn build_integration_runtime_filters_unavailable_dpop_signing() {
+    fn build_integration_runtime_preserves_dpop_signing() {
         let temp_dir = TempDir::new().expect("temp dir");
         let mut config = AppConfig::default_config();
         config.integration.enabled = true;
@@ -922,12 +1006,14 @@ mod integration_tests {
         config.integration.auth_token_env_var = Some("ONESHIM_TEST_INTEGRATION_TOKEN".to_string());
         config.integration.supported_auth_schemes = vec![IntegrationAuthScheme::DpopBearer];
 
-        let (status, session) = build_integration_runtime(&config, temp_dir.path()).unwrap();
+        let (status, auth, session) =
+            build_integration_runtime(&config, temp_dir.path(), None).unwrap();
 
         assert_eq!(
             status.supported_auth_schemes,
-            vec![IntegrationAuthScheme::BearerToken]
+            vec![IntegrationAuthScheme::DpopBearer]
         );
+        assert!(auth.is_some());
         assert!(status.runtime_configured);
         assert!(session.is_some());
     }
@@ -944,7 +1030,7 @@ mod integration_tests {
         unsafe {
             std::env::set_var("ONESHIM_TEST_INTEGRATION_TOKEN", "token-value");
         }
-        let (status, _) = build_integration_runtime(&config, temp_dir.path()).unwrap();
+        let (status, _, _) = build_integration_runtime(&config, temp_dir.path(), None).unwrap();
         unsafe {
             std::env::remove_var("ONESHIM_TEST_INTEGRATION_TOKEN");
         }

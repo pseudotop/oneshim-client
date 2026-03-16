@@ -1,11 +1,28 @@
-use crate::models::integration::{IntegrationAuthScheme, IntegrationTransportKind};
+use crate::models::integration::{
+    IntegrationAuthProfileKind, IntegrationAuthScheme, IntegrationTransportKind,
+};
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct IntegrationOidcDeviceFlowConfig {
+    #[serde(default)]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub device_authorization_url: Option<String>,
+    #[serde(default)]
+    pub token_url: Option<String>,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct IntegrationConfig {
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
+    pub auth_profile_kind: IntegrationAuthProfileKind,
     #[serde(default)]
     pub bootstrap_url: Option<String>,
     #[serde(default)]
@@ -16,6 +33,8 @@ pub struct IntegrationConfig {
     pub resource_indicator: Option<String>,
     #[serde(default)]
     pub auth_token_env_var: Option<String>,
+    #[serde(default)]
+    pub oidc_device_flow: IntegrationOidcDeviceFlowConfig,
     #[serde(default = "default_integration_request_timeout_secs")]
     pub request_timeout_secs: u64,
     #[serde(default = "default_integration_preferred_transports")]
@@ -28,11 +47,13 @@ impl Default for IntegrationConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            auth_profile_kind: IntegrationAuthProfileKind::default(),
             bootstrap_url: None,
             device_id: None,
             device_label: None,
             resource_indicator: None,
             auth_token_env_var: None,
+            oidc_device_flow: IntegrationOidcDeviceFlowConfig::default(),
             request_timeout_secs: default_integration_request_timeout_secs(),
             preferred_transports: default_integration_preferred_transports(),
             supported_auth_schemes: default_integration_supported_auth_schemes(),
@@ -85,11 +106,18 @@ mod tests {
     fn integration_config_deserializes_custom_values() {
         let parsed: IntegrationConfig = serde_json::from_value(json!({
             "enabled": true,
+            "auth_profile_kind": "oidc_device_flow",
             "bootstrap_url": "https://integration.example.com/bootstrap",
             "device_id": "device-001",
             "device_label": "workstation",
             "resource_indicator": "https://integration.example.com",
             "auth_token_env_var": "ONESHIM_INTEGRATION_TOKEN",
+            "oidc_device_flow": {
+                "client_id": "desktop-client",
+                "device_authorization_url": "https://id.example.com/oauth/device/code",
+                "token_url": "https://id.example.com/oauth/token",
+                "scopes": ["openid", "profile", "offline_access"]
+            },
             "request_timeout_secs": 20,
             "preferred_transports": ["web_socket", "https_long_poll"],
             "supported_auth_schemes": ["bearer_token"]
@@ -101,7 +129,15 @@ mod tests {
             parsed.bootstrap_url.as_deref(),
             Some("https://integration.example.com/bootstrap")
         );
+        assert_eq!(
+            parsed.auth_profile_kind,
+            IntegrationAuthProfileKind::OidcDeviceFlow
+        );
         assert_eq!(parsed.device_id.as_deref(), Some("device-001"));
+        assert_eq!(
+            parsed.oidc_device_flow.client_id.as_deref(),
+            Some("desktop-client")
+        );
         assert_eq!(
             parsed.preferred_transports,
             vec![

@@ -14,6 +14,11 @@ use crate::error::CoreError;
 pub const DEFAULT_SECRET_PROFILE: &str = "default";
 pub const PROVIDER_API_KEY_SECRET_KEY: &str = "api_key";
 pub const PROVIDER_OAUTH_SESSION_SECRET_KEY: &str = "oauth_session";
+pub const INTEGRATION_AUTH_SECRET_NAMESPACE: &str = "integration/auth/default";
+pub const INTEGRATION_ACCESS_TOKEN_SECRET_KEY: &str = "access_token";
+pub const INTEGRATION_REFRESH_TOKEN_SECRET_KEY: &str = "refresh_token";
+pub const INTEGRATION_EXPIRES_AT_SECRET_KEY: &str = "expires_at";
+pub const INTEGRATION_DPOP_SIGNING_KEY_SECRET_KEY: &str = "dpop_signing_key";
 
 pub fn validate_secret_segment(raw: &str, field_name: &str) -> Result<String, CoreError> {
     let trimmed = raw.trim();

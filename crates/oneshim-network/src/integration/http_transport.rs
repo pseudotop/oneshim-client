@@ -639,6 +639,44 @@ mod tests {
         ) -> Result<IntegrationAuthContext, CoreError> {
             Ok(self.context.clone())
         }
+
+        async fn current_auth_status(
+            &self,
+        ) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, CoreError> {
+            Ok(oneshim_core::models::integration::IntegrationAuthStatus {
+                profile_kind:
+                    oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken,
+                status: oneshim_core::models::integration::IntegrationAuthStatusKind::Ready,
+                interactive: false,
+                authenticated: true,
+                expires_at: self.context.expires_at,
+                resource_indicator: self.context.resource_indicator.clone(),
+                pending_flow: None,
+                message: None,
+            })
+        }
+
+        async fn start_device_authorization(
+            &self,
+            _requested_scopes: &[IntegrationCapabilityScope],
+            _resource_indicator: Option<&str>,
+        ) -> Result<oneshim_core::models::integration::IntegrationDeviceAuthorizationFlow, CoreError>
+        {
+            Err(CoreError::InvalidArguments(
+                "static auth port does not support device authorization".to_string(),
+            ))
+        }
+
+        async fn poll_device_authorization(
+            &self,
+            _flow_id: &str,
+        ) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, CoreError> {
+            self.current_auth_status().await
+        }
+
+        async fn cancel_device_authorization(&self, _flow_id: &str) -> Result<(), CoreError> {
+            Ok(())
+        }
     }
 
     struct RecordingProofFactory {

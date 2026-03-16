@@ -42,7 +42,7 @@ use oneshim_core::config::{CredentialBackendKind, WebConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
-use oneshim_core::ports::integration::IntegrationSessionPort;
+use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -77,6 +77,7 @@ pub struct AppState {
     pub automation_controller: Option<Arc<dyn AutomationPort>>,
     pub ai_runtime_status: Option<AiRuntimeStatus>,
     pub integration_runtime_status: Option<IntegrationOutboundRuntimeStatus>,
+    pub integration_auth: Option<Arc<dyn IntegrationAuthPort>>,
     pub integration_session: Option<Arc<dyn IntegrationSessionPort>>,
     pub update_control: Option<update_control::UpdateControl>,
 }
@@ -105,6 +106,7 @@ impl WebServer {
                 automation_controller: None,
                 ai_runtime_status: None,
                 integration_runtime_status: None,
+                integration_auth: None,
                 integration_session: None,
                 update_control: None,
             },
@@ -161,6 +163,11 @@ impl WebServer {
         status: IntegrationOutboundRuntimeStatus,
     ) -> Self {
         self.state.integration_runtime_status = Some(status);
+        self
+    }
+
+    pub fn with_integration_auth(mut self, auth: Arc<dyn IntegrationAuthPort>) -> Self {
+        self.state.integration_auth = Some(auth);
         self
     }
 
@@ -533,6 +540,7 @@ mod tests {
             automation_controller: None,
             ai_runtime_status: None,
             integration_runtime_status: None,
+            integration_auth: None,
             integration_session: None,
             update_control: None,
         }

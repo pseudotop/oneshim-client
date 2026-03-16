@@ -8,7 +8,8 @@ pub mod sync_coordinator;
 pub mod transport;
 
 pub use auth::{
-    EnvIntegrationAuthPort, NoopIntegrationRequestProofFactory, StaticIntegrationAuthPort,
+    Ed25519DpopProofFactory, EnvIntegrationAuthPort, NoopIntegrationRequestProofFactory,
+    OidcDeviceFlowAuthConfig, OidcDeviceFlowIntegrationAuthPort, StaticIntegrationAuthPort,
     StaticIntegrationRequestProofFactory,
 };
 pub use cloudevents::{

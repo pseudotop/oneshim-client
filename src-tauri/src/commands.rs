@@ -1,3 +1,5 @@
+use oneshim_api_contracts::integration::IntegrationDeviceAuthorizationCommandResult;
+use oneshim_core::models::integration::IntegrationCapabilityScope;
 use oneshim_core::ports::oauth::{OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus};
 use serde::Serialize;
 use std::sync::atomic::Ordering;
@@ -10,7 +12,8 @@ use crate::feature_capabilities::{
     FeatureCapabilitySnapshot, FeatureCapabilityState, ProviderEndpointProbeResult,
 };
 use crate::setup::{
-    AppState, OAuthCoordinatorState, OAuthState, SecretBackendCapabilities, SecretBackendState,
+    AppState, IntegrationAuthState, OAuthCoordinatorState, OAuthState, SecretBackendCapabilities,
+    SecretBackendState,
 };
 use oneshim_web::update_control::UpdateAction;
 
@@ -297,6 +300,80 @@ pub async fn probe_provider_surface_endpoint(
     endpoint: String,
 ) -> Result<ProviderEndpointProbeResult, String> {
     Ok(probe_provider_surface_endpoint_impl(&surface_id, &endpoint_kind, &endpoint).await)
+}
+
+fn require_integration_auth(
+    state: &IntegrationAuthState,
+) -> Result<std::sync::Arc<dyn oneshim_core::ports::integration::IntegrationAuthPort>, String> {
+    state
+        .0
+        .clone()
+        .ok_or_else(|| "Integration auth is not configured for this runtime".to_string())
+}
+
+fn default_integration_scopes() -> Vec<IntegrationCapabilityScope> {
+    vec![
+        IntegrationCapabilityScope::SessionManage,
+        IntegrationCapabilityScope::InsightWrite,
+        IntegrationCapabilityScope::PromptRead,
+        IntegrationCapabilityScope::PromptAck,
+    ]
+}
+
+#[command]
+pub async fn integration_auth_status(
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, String> {
+    let port = require_integration_auth(&integration_auth)?;
+    port.current_auth_status()
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+}
+
+#[command]
+pub async fn integration_start_device_authorization(
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+    let port = require_integration_auth(&integration_auth)?;
+    let flow = port
+        .start_device_authorization(&default_integration_scopes(), None)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    let auth_status = port
+        .current_auth_status()
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    Ok(IntegrationDeviceAuthorizationCommandResult {
+        auth_status,
+        flow: Some(flow),
+    })
+}
+
+#[command]
+pub async fn integration_poll_device_authorization(
+    flow_id: String,
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+    let port = require_integration_auth(&integration_auth)?;
+    let auth_status = port
+        .poll_device_authorization(&flow_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    Ok(IntegrationDeviceAuthorizationCommandResult {
+        flow: auth_status.pending_flow.clone(),
+        auth_status,
+    })
+}
+
+#[command]
+pub async fn integration_cancel_device_authorization(
+    flow_id: String,
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<(), String> {
+    let port = require_integration_auth(&integration_auth)?;
+    port.cancel_device_authorization(&flow_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
 }
 
 // ── OAuth IPC commands ──────────────────────────────────────
