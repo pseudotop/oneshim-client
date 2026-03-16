@@ -6,24 +6,48 @@ use oneshim_api_contracts::provider_specs::{
     SurfaceExecutionKind,
 };
 #[cfg(feature = "server")]
-use oneshim_core::config::{AiProviderConfig, AiProviderType, ExternalApiEndpoint};
+use oneshim_core::config::{AiProviderConfig, ExternalApiEndpoint};
 #[cfg(feature = "server")]
 use oneshim_core::error::CoreError;
 #[cfg(feature = "server")]
 use oneshim_network::oauth::provider_config::OAuthProviderConfig;
 
 #[cfg(feature = "server")]
+const OPENAI_MANAGED_OAUTH_SURFACE_ID: &str = "provider_surface.openai.managed_oauth";
+#[cfg(feature = "server")]
 const GOOGLE_MANAGED_OAUTH_SURFACE_ID: &str = "provider_surface.google.managed_oauth";
 
 #[cfg(feature = "server")]
+#[derive(Clone, Copy)]
+struct ManagedOAuthProviderFactory {
+    surface_id: &'static str,
+    build: fn() -> Option<OAuthProviderConfig>,
+}
+
+#[cfg(feature = "server")]
+fn managed_oauth_provider_factories() -> [ManagedOAuthProviderFactory; 2] {
+    [
+        ManagedOAuthProviderFactory {
+            surface_id: OPENAI_MANAGED_OAUTH_SURFACE_ID,
+            build: build_openai_managed_oauth_provider,
+        },
+        ManagedOAuthProviderFactory {
+            surface_id: GOOGLE_MANAGED_OAUTH_SURFACE_ID,
+            build: build_google_managed_oauth_provider,
+        },
+    ]
+}
+
+#[cfg(feature = "server")]
 pub fn configured_oauth_provider_configs() -> Vec<OAuthProviderConfig> {
-    let mut providers = vec![OAuthProviderConfig::openai_codex()];
-
-    if let Some(client_id) = google_oauth_client_id() {
-        providers.push(OAuthProviderConfig::google_cloud_vision(client_id));
-    }
-
-    providers
+    managed_oauth_provider_factories()
+        .into_iter()
+        .filter_map(|factory| {
+            provider_surface_spec(factory.surface_id)
+                .ok()
+                .and_then(|_| (factory.build)())
+        })
+        .collect()
 }
 
 #[cfg(feature = "server")]
@@ -43,7 +67,11 @@ pub fn selected_managed_oauth_provider_ids(
     if let Some(endpoint) = config.llm_api.as_ref() {
         maybe_push_managed_provider(&mut provider_ids, endpoint, ProviderTransportKind::Llm)?;
     } else if config.llm_provider == oneshim_core::config::LlmProviderType::Remote {
-        provider_ids.push("openai".to_string());
+        provider_ids.push(
+            provider_surface_spec(OPENAI_MANAGED_OAUTH_SURFACE_ID)
+                .map(|surface| surface.vendor_id.clone())
+                .unwrap_or_else(|_| "openai".to_string()),
+        );
     }
 
     if let Some(endpoint) = config.ocr_api.as_ref() {
@@ -56,10 +84,9 @@ pub fn selected_managed_oauth_provider_ids(
 #[cfg(feature = "server")]
 pub fn managed_oauth_provider_id_for_endpoint(
     endpoint: &ExternalApiEndpoint,
-    kind: ProviderTransportKind,
+    _kind: ProviderTransportKind,
 ) -> Result<String, CoreError> {
-    managed_oauth_transport_spec(endpoint, kind)?;
-    Ok(provider_type_id(endpoint.provider_type).to_string())
+    Ok(managed_oauth_surface(endpoint)?.vendor_id.clone())
 }
 
 #[cfg(feature = "server")]
@@ -75,6 +102,21 @@ fn managed_oauth_transport_spec<'a>(
     endpoint: &'a ExternalApiEndpoint,
     kind: ProviderTransportKind,
 ) -> Result<&'a ProviderTransportSpec, CoreError> {
+    managed_oauth_surface(endpoint)?;
+    let spec = provider_specs::resolved_transport_spec(
+        endpoint.provider_type,
+        endpoint.surface_id.as_deref(),
+        kind,
+    )
+    .map_err(CoreError::Internal)?;
+
+    Ok(spec)
+}
+
+#[cfg(feature = "server")]
+fn managed_oauth_surface<'a>(
+    endpoint: &'a ExternalApiEndpoint,
+) -> Result<&'a oneshim_api_contracts::provider_specs::ProviderSurfaceSpec, CoreError> {
     let surface = provider_surface_spec(endpoint.surface_id.as_deref().ok_or_else(|| {
         CoreError::Config(
             "Managed OAuth endpoint is missing provider surface metadata.".to_string(),
@@ -88,15 +130,7 @@ fn managed_oauth_transport_spec<'a>(
             "Selected provider surface does not use managed OAuth transport.".to_string(),
         ));
     }
-
-    let spec = provider_specs::resolved_transport_spec(
-        endpoint.provider_type,
-        endpoint.surface_id.as_deref(),
-        kind,
-    )
-    .map_err(CoreError::Internal)?;
-
-    Ok(spec)
+    Ok(surface)
 }
 
 #[cfg(feature = "server")]
@@ -133,21 +167,21 @@ fn google_oauth_client_id() -> Option<String> {
 }
 
 #[cfg(feature = "server")]
-fn provider_type_id(provider_type: AiProviderType) -> &'static str {
-    match provider_type {
-        AiProviderType::OpenAi => "openai",
-        AiProviderType::Anthropic => "anthropic",
-        AiProviderType::Google => "google",
-        AiProviderType::Ollama => "ollama",
-        AiProviderType::Generic => "generic",
-    }
+fn build_openai_managed_oauth_provider() -> Option<OAuthProviderConfig> {
+    Some(OAuthProviderConfig::openai_codex())
+}
+
+#[cfg(feature = "server")]
+fn build_google_managed_oauth_provider() -> Option<OAuthProviderConfig> {
+    google_oauth_client_id().map(OAuthProviderConfig::google_cloud_vision)
 }
 
 #[cfg(all(test, feature = "server"))]
 mod tests {
     use super::*;
     use oneshim_core::config::{
-        CredentialAuthMode, CredentialBackendKind, CredentialBinding, ExternalApiEndpoint,
+        AiProviderType, CredentialAuthMode, CredentialBackendKind, CredentialBinding,
+        ExternalApiEndpoint,
     };
 
     fn managed_google_ocr_endpoint() -> ExternalApiEndpoint {
