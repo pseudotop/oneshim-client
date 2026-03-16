@@ -28,6 +28,12 @@ import type {
   HeatmapResponse,
   HourlyMetrics,
   IdlePeriod,
+  IntegrationAuditLogResponse,
+  IntegrationInboxActionResponse,
+  IntegrationInboxDismissRequest,
+  IntegrationInboxRefreshResponse,
+  IntegrationInboxResponse,
+  IntegrationStatus,
   Interruption,
   LocalSuggestion,
   PaginatedResponse,
@@ -211,6 +217,58 @@ export async function fetchStorageStats(): Promise<StorageStats> {
 export async function fetchSettings(): Promise<AppSettings> {
   const res = await fetchWithRetry(`${BASE_URL}/settings`)
   if (!res.ok) throw new Error('Settings query failed')
+  return res.json()
+}
+
+export async function fetchIntegrationStatus(): Promise<IntegrationStatus> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/status`)
+  if (!res.ok) throw new Error('Integration status query failed')
+  return res.json()
+}
+
+export async function fetchIntegrationAudit(): Promise<IntegrationAuditLogResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/audit`)
+  if (!res.ok) throw new Error('Integration audit query failed')
+  return res.json()
+}
+
+export async function fetchIntegrationInbox(): Promise<IntegrationInboxResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/inbox`)
+  if (!res.ok) throw new Error('Integration inbox query failed')
+  return res.json()
+}
+
+export async function refreshIntegrationInbox(): Promise<IntegrationInboxRefreshResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/inbox/refresh`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Integration inbox refresh failed')
+  return res.json()
+}
+
+export async function acknowledgeIntegrationPrompt(
+  promptId: string,
+): Promise<IntegrationInboxActionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/ack`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Integration prompt acknowledge failed')
+  return res.json()
+}
+
+export async function dismissIntegrationPrompt(
+  promptId: string,
+  request: IntegrationInboxDismissRequest = {},
+): Promise<IntegrationInboxActionResponse> {
+  const res = await fetchWithRetry(
+    `${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/dismiss`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+  )
+  if (!res.ok) throw new Error('Integration prompt dismiss failed')
   return res.json()
 }
 

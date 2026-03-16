@@ -159,6 +159,7 @@ struct BuiltIntegrationRuntime {
     sync: Option<Arc<dyn InsightSyncPort>>,
     checkpoint_store: Option<Arc<dyn IntegrationCheckpointStorePort>>,
     outbox: Option<Arc<dyn oneshim_core::ports::integration::IntegrationOutboxPort>>,
+    inbox: Option<Arc<dyn IntegrationInboxPort>>,
     inbox_store: Option<Arc<dyn oneshim_core::ports::integration::IntegrationInboxStorePort>>,
     audit: Option<Arc<dyn oneshim_core::ports::integration::IntegrationAuditPort>>,
     runtime_loop: Option<IntegrationRuntimeLoop>,
@@ -541,6 +542,7 @@ fn build_integration_runtime(
         sync: Some(sync.clone()),
         checkpoint_store: Some(checkpoint_store),
         outbox: Some(outbox_store),
+        inbox: Some(inbox.clone()),
         inbox_store: Some(inbox_store),
         audit: Some(audit_store),
         runtime_loop: Some(IntegrationRuntimeLoop::new(
@@ -629,6 +631,8 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let integration_checkpoint_store = built_integration_runtime.checkpoint_store.clone();
     #[cfg(feature = "server")]
     let integration_outbox = built_integration_runtime.outbox.clone();
+    #[cfg(feature = "server")]
+    let integration_inbox = built_integration_runtime.inbox.clone();
     #[cfg(feature = "server")]
     let integration_inbox_store = built_integration_runtime.inbox_store.clone();
     #[cfg(feature = "server")]
@@ -859,6 +863,8 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "server")]
         let web_integration_outbox = integration_outbox.clone();
         #[cfg(feature = "server")]
+        let web_integration_inbox = integration_inbox.clone();
+        #[cfg(feature = "server")]
         let web_integration_inbox_store = integration_inbox_store.clone();
         #[cfg(feature = "server")]
         let web_integration_audit = integration_audit.clone();
@@ -1032,6 +1038,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(feature = "server")]
             if let Some(outbox) = web_integration_outbox.clone() {
                 web_server = web_server.with_integration_outbox(outbox);
+            }
+            #[cfg(feature = "server")]
+            if let Some(inbox) = web_integration_inbox.clone() {
+                web_server = web_server.with_integration_inbox(inbox);
             }
             #[cfg(feature = "server")]
             if let Some(inbox_store) = web_integration_inbox_store.clone() {

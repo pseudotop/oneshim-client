@@ -43,8 +43,8 @@ use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
 use oneshim_core::ports::integration::{
-    IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxStorePort, IntegrationOutboxPort,
-    IntegrationSessionPort,
+    IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
+    IntegrationOutboxPort, IntegrationSessionPort,
 };
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
 use std::net::SocketAddr;
@@ -83,6 +83,7 @@ pub struct AppState {
     pub integration_auth: Option<Arc<dyn IntegrationAuthPort>>,
     pub integration_session: Option<Arc<dyn IntegrationSessionPort>>,
     pub integration_outbox: Option<Arc<dyn IntegrationOutboxPort>>,
+    pub integration_inbox: Option<Arc<dyn IntegrationInboxPort>>,
     pub integration_inbox_store: Option<Arc<dyn IntegrationInboxStorePort>>,
     pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
     pub update_control: Option<update_control::UpdateControl>,
@@ -115,6 +116,7 @@ impl WebServer {
                 integration_auth: None,
                 integration_session: None,
                 integration_outbox: None,
+                integration_inbox: None,
                 integration_inbox_store: None,
                 integration_audit: None,
                 update_control: None,
@@ -187,6 +189,11 @@ impl WebServer {
 
     pub fn with_integration_outbox(mut self, outbox: Arc<dyn IntegrationOutboxPort>) -> Self {
         self.state.integration_outbox = Some(outbox);
+        self
+    }
+
+    pub fn with_integration_inbox(mut self, inbox: Arc<dyn IntegrationInboxPort>) -> Self {
+        self.state.integration_inbox = Some(inbox);
         self
     }
 
@@ -570,6 +577,7 @@ mod tests {
             integration_auth: None,
             integration_session: None,
             integration_outbox: None,
+            integration_inbox: None,
             integration_inbox_store: None,
             integration_audit: None,
             update_control: None,

@@ -55,7 +55,40 @@ impl IntoResponse for ApiError {
 
 impl From<oneshim_core::error::CoreError> for ApiError {
     fn from(err: oneshim_core::error::CoreError) -> Self {
-        ApiError::Internal(err.to_string())
+        match err {
+            oneshim_core::error::CoreError::Validation { field, message } => {
+                ApiError::BadRequest(format!("{field}: {message}"))
+            }
+            oneshim_core::error::CoreError::Auth(message)
+            | oneshim_core::error::CoreError::ConsentRequired(message)
+            | oneshim_core::error::CoreError::OAuthError { message, .. }
+            | oneshim_core::error::CoreError::OAuthRefreshError { message, .. } => {
+                ApiError::Unauthorized(message)
+            }
+            oneshim_core::error::CoreError::NotFound { resource_type, id } => {
+                ApiError::NotFound(format!("{resource_type}: {id}"))
+            }
+            oneshim_core::error::CoreError::ServiceUnavailable(message)
+            | oneshim_core::error::CoreError::SandboxUnsupported(message) => {
+                ApiError::ServiceUnavailable(message)
+            }
+            oneshim_core::error::CoreError::PolicyDenied(message)
+            | oneshim_core::error::CoreError::PrivacyDenied(message)
+            | oneshim_core::error::CoreError::ProcessNotAllowed(message) => {
+                ApiError::Forbidden(message)
+            }
+            oneshim_core::error::CoreError::InvalidArguments(message)
+            | oneshim_core::error::CoreError::Config(message)
+            | oneshim_core::error::CoreError::Network(message)
+            | oneshim_core::error::CoreError::OcrError(message)
+            | oneshim_core::error::CoreError::SecretStoreError(message)
+            | oneshim_core::error::CoreError::ElementNotFound(message)
+            | oneshim_core::error::CoreError::SandboxInit(message)
+            | oneshim_core::error::CoreError::SandboxExecution(message) => {
+                ApiError::BadRequest(message)
+            }
+            other => ApiError::Internal(other.to_string()),
+        }
     }
 }
 

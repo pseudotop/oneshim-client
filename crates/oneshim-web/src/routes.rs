@@ -32,6 +32,24 @@ pub fn api_routes() -> Router<AppState> {
             "/ai/providers/models",
             post(handlers::ai_models::discover_provider_models),
         )
+        .route(
+            "/integration/status",
+            get(handlers::integration::get_status),
+        )
+        .route("/integration/audit", get(handlers::integration::get_audit))
+        .route("/integration/inbox", get(handlers::integration::list_inbox))
+        .route(
+            "/integration/inbox/refresh",
+            post(handlers::integration::refresh_inbox),
+        )
+        .route(
+            "/integration/inbox/{prompt_id}/ack",
+            post(handlers::integration::acknowledge_inbox_prompt),
+        )
+        .route(
+            "/integration/inbox/{prompt_id}/dismiss",
+            post(handlers::integration::dismiss_inbox_prompt),
+        )
         .route("/storage/stats", get(handlers::settings::get_storage_stats))
         .route("/data/range", delete(handlers::data::delete_data_range))
         .route("/data/all", delete(handlers::data::delete_all_data))
@@ -210,6 +228,7 @@ mod tests {
             integration_auth: None,
             integration_session: None,
             integration_outbox: None,
+            integration_inbox: None,
             integration_inbox_store: None,
             integration_audit: None,
             update_control: None,
@@ -236,6 +255,7 @@ mod tests {
             integration_auth: None,
             integration_session: None,
             integration_outbox: None,
+            integration_inbox: None,
             integration_inbox_store: None,
             integration_audit: None,
             update_control: None,

@@ -1,15 +1,25 @@
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use oneshim_api_contracts::integration::{
     IntegrationAckCursorSummary, IntegrationAuditLogResponse, IntegrationAuditRecordSummary,
-    IntegrationOutboundRuntimeStatus, IntegrationSessionSummary, IntegrationStatus,
+    IntegrationInboxActionResponse, IntegrationInboxDismissRequest, IntegrationInboxPromptSummary,
+    IntegrationInboxRefreshResponse, IntegrationInboxResponse, IntegrationOutboundRuntimeStatus,
+    IntegrationSessionSummary, IntegrationStatus,
 };
-use oneshim_core::models::integration::{IntegrationInsightAuditRecord, IntegrationSessionState};
+use oneshim_core::models::integration::{
+    IntegrationInboxItemStatus, IntegrationInsightAuditRecord, IntegrationSessionState,
+    ProactivePromptCategory, ProactivePromptPriority, StoredProactivePrompt,
+};
 use tracing::warn;
 
-use crate::AppState;
+use crate::{error::ApiError, AppState};
 
 const INTEGRATION_STATUS_SCHEMA_VERSION: &str = "integration.status.v1";
 const INTEGRATION_AUDIT_SCHEMA_VERSION: &str = "integration.audit.v1";
+const INTEGRATION_INBOX_SCHEMA_VERSION: &str = "integration.inbox.v1";
+const INTEGRATION_INBOX_ACTION_SCHEMA_VERSION: &str = "integration.inbox-action.v1";
 
 fn map_session_summary(state: IntegrationSessionState) -> IntegrationSessionSummary {
     IntegrationSessionSummary {
@@ -69,6 +79,52 @@ fn map_audit_record(record: IntegrationInsightAuditRecord) -> IntegrationAuditRe
         .to_string(),
         capability_scope: record.capability_scope.as_str().to_string(),
         occurred_at: record.occurred_at,
+    }
+}
+
+fn prompt_category_label(category: &ProactivePromptCategory) -> &'static str {
+    match category {
+        ProactivePromptCategory::Insight => "insight",
+        ProactivePromptCategory::Task => "task",
+        ProactivePromptCategory::Reminder => "reminder",
+        ProactivePromptCategory::Escalation => "escalation",
+    }
+}
+
+fn prompt_priority_label(priority: &ProactivePromptPriority) -> &'static str {
+    match priority {
+        ProactivePromptPriority::Low => "low",
+        ProactivePromptPriority::Medium => "medium",
+        ProactivePromptPriority::High => "high",
+        ProactivePromptPriority::Critical => "critical",
+    }
+}
+
+fn inbox_status_label(status: &IntegrationInboxItemStatus) -> &'static str {
+    match status {
+        IntegrationInboxItemStatus::Pending => "pending",
+        IntegrationInboxItemStatus::Acknowledged => "acknowledged",
+        IntegrationInboxItemStatus::Dismissed => "dismissed",
+        IntegrationInboxItemStatus::Expired => "expired",
+    }
+}
+
+fn map_prompt(prompt: StoredProactivePrompt) -> IntegrationInboxPromptSummary {
+    IntegrationInboxPromptSummary {
+        prompt_id: prompt.prompt.prompt_id,
+        category: prompt_category_label(&prompt.prompt.category).to_string(),
+        priority: prompt_priority_label(&prompt.prompt.priority).to_string(),
+        title: prompt.prompt.title,
+        body: prompt.prompt.body,
+        status: inbox_status_label(&prompt.status).to_string(),
+        received_at: prompt.received_at,
+        status_updated_at: prompt.status_updated_at,
+        presented_at: prompt.presented_at,
+        expires_at: prompt.prompt.expires_at,
+        source_system: prompt.prompt.provenance.source_system,
+        source_actor: prompt.prompt.provenance.source_actor,
+        correlation_id: prompt.prompt.provenance.correlation_id,
+        dismiss_reason: prompt.dismiss_reason,
     }
 }
 
@@ -214,6 +270,74 @@ pub async fn get_audit(State(state): State<AppState>) -> Json<IntegrationAuditLo
     })
 }
 
+pub async fn list_inbox(
+    State(state): State<AppState>,
+) -> Result<Json<IntegrationInboxResponse>, ApiError> {
+    let inbox = state.integration_inbox.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
+    })?;
+
+    let prompts = inbox
+        .list_pending()
+        .await?
+        .into_iter()
+        .map(map_prompt)
+        .collect::<Vec<_>>();
+    let pending_count = prompts.len();
+
+    Ok(Json(IntegrationInboxResponse {
+        schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
+        prompts,
+        pending_count,
+    }))
+}
+
+pub async fn refresh_inbox(
+    State(state): State<AppState>,
+) -> Result<Json<IntegrationInboxRefreshResponse>, ApiError> {
+    let inbox = state.integration_inbox.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
+    })?;
+
+    Ok(Json(IntegrationInboxRefreshResponse {
+        schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
+        fetched_count: inbox.refresh().await?,
+    }))
+}
+
+pub async fn acknowledge_inbox_prompt(
+    State(state): State<AppState>,
+    Path(prompt_id): Path<String>,
+) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
+    let inbox = state.integration_inbox.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
+    })?;
+
+    inbox.acknowledge(&prompt_id).await?;
+    Ok(Json(IntegrationInboxActionResponse {
+        schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
+        prompt_id,
+        status: "acknowledged".to_string(),
+    }))
+}
+
+pub async fn dismiss_inbox_prompt(
+    State(state): State<AppState>,
+    Path(prompt_id): Path<String>,
+    Json(request): Json<IntegrationInboxDismissRequest>,
+) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
+    let inbox = state.integration_inbox.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
+    })?;
+
+    inbox.dismiss(&prompt_id, request.reason).await?;
+    Ok(Json(IntegrationInboxActionResponse {
+        schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
+        prompt_id,
+        status: "dismissed".to_string(),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,15 +348,16 @@ mod tests {
         InsightPacket, IntegrationAckCursor, IntegrationAuthScheme, IntegrationCapabilityScope,
         IntegrationEgressDisposition, IntegrationEnvelope, IntegrationInboxItemStatus,
         IntegrationInsightAuditRecord, IntegrationPrivacyClassification, IntegrationSessionState,
-        IntegrationSessionStatus, IntegrationTransportKind, StoredProactivePrompt,
+        IntegrationSessionStatus, IntegrationTransportKind, ProactivePrompt,
+        ProactivePromptCategory, ProactivePromptPriority, PromptProvenance, StoredProactivePrompt,
     };
     use oneshim_core::ports::integration::{
-        IntegrationAuditPort, IntegrationInboxStorePort, IntegrationOutboxPort,
-        IntegrationSessionPort,
+        IntegrationAuditPort, IntegrationInboxPort, IntegrationInboxStorePort,
+        IntegrationOutboxPort, IntegrationSessionPort,
     };
     use oneshim_storage::sqlite::SqliteStorage;
     use std::sync::Arc;
-    use tokio::sync::broadcast;
+    use tokio::sync::{broadcast, Mutex};
 
     struct TestSessionPort(Option<IntegrationSessionState>);
 
@@ -326,8 +451,23 @@ mod tests {
             Ok(Vec::new())
         }
 
+        async fn list_unpresented(
+            &self,
+            _limit: usize,
+        ) -> Result<Vec<StoredProactivePrompt>, CoreError> {
+            Ok(Vec::new())
+        }
+
         async fn pending_count(&self) -> Result<usize, CoreError> {
             Ok(self.pending_count)
+        }
+
+        async fn mark_presented(
+            &self,
+            _prompt_id: &str,
+            _presented_at: chrono::DateTime<chrono::Utc>,
+        ) -> Result<(), CoreError> {
+            Ok(())
         }
 
         async fn update_status(
@@ -349,6 +489,52 @@ mod tests {
 
         async fn store_ack_cursor(&self, _cursor: IntegrationAckCursor) -> Result<(), CoreError> {
             Ok(())
+        }
+    }
+
+    struct TestInboxPort {
+        prompts: Arc<Mutex<Vec<StoredProactivePrompt>>>,
+    }
+
+    #[async_trait]
+    impl IntegrationInboxPort for TestInboxPort {
+        async fn refresh(&self) -> Result<usize, CoreError> {
+            Ok(self.prompts.lock().await.len())
+        }
+
+        async fn list_pending(&self) -> Result<Vec<StoredProactivePrompt>, CoreError> {
+            Ok(self.prompts.lock().await.clone())
+        }
+
+        async fn acknowledge(&self, prompt_id: &str) -> Result<(), CoreError> {
+            let mut prompts = self.prompts.lock().await;
+            let prompt = prompts
+                .iter_mut()
+                .find(|prompt| prompt.prompt.prompt_id == prompt_id)
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "integration_prompt".to_string(),
+                    id: prompt_id.to_string(),
+                })?;
+            prompt.status = IntegrationInboxItemStatus::Acknowledged;
+            Ok(())
+        }
+
+        async fn dismiss(&self, prompt_id: &str, reason: Option<String>) -> Result<(), CoreError> {
+            let mut prompts = self.prompts.lock().await;
+            let prompt = prompts
+                .iter_mut()
+                .find(|prompt| prompt.prompt.prompt_id == prompt_id)
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "integration_prompt".to_string(),
+                    id: prompt_id.to_string(),
+                })?;
+            prompt.status = IntegrationInboxItemStatus::Dismissed;
+            prompt.dismiss_reason = reason;
+            Ok(())
+        }
+
+        async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError> {
+            Ok(None)
         }
     }
 
@@ -374,6 +560,27 @@ mod tests {
     fn test_state() -> AppState {
         let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
         let (event_tx, _) = broadcast::channel(8);
+        let inbox_prompts = Arc::new(Mutex::new(vec![StoredProactivePrompt {
+            prompt: ProactivePrompt {
+                prompt_id: "prompt-1".to_string(),
+                category: ProactivePromptCategory::Reminder,
+                title: "Review insight".to_string(),
+                body: "A prompt arrived from integration.".to_string(),
+                priority: ProactivePromptPriority::Medium,
+                actions: Vec::new(),
+                expires_at: None,
+                provenance: PromptProvenance {
+                    source_system: "integration-server".to_string(),
+                    source_actor: Some("scheduler".to_string()),
+                    correlation_id: Some("corr-1".to_string()),
+                },
+            },
+            received_at: chrono::Utc::now(),
+            status: IntegrationInboxItemStatus::Pending,
+            status_updated_at: chrono::Utc::now(),
+            presented_at: None,
+            dismiss_reason: None,
+        }]));
         AppState {
             storage,
             frames_dir: None,
@@ -424,6 +631,9 @@ mod tests {
                     acknowledged_at: chrono::Utc::now(),
                 }),
             }) as Arc<dyn IntegrationOutboxPort>),
+            integration_inbox: Some(Arc::new(TestInboxPort {
+                prompts: inbox_prompts,
+            }) as Arc<dyn IntegrationInboxPort>),
             integration_inbox_store: Some(Arc::new(TestInboxStore {
                 pending_count: 2,
                 last_ack_cursor: Some(IntegrationAckCursor {
@@ -500,5 +710,42 @@ mod tests {
             response.records[0].privacy_classification,
             "derived_summary"
         );
+    }
+
+    #[tokio::test]
+    async fn list_inbox_returns_pending_prompts() {
+        let response = list_inbox(State(test_state())).await.unwrap().0;
+
+        assert_eq!(response.schema_version, INTEGRATION_INBOX_SCHEMA_VERSION);
+        assert_eq!(response.pending_count, 1);
+        assert_eq!(response.prompts.len(), 1);
+        assert_eq!(response.prompts[0].prompt_id, "prompt-1");
+        assert_eq!(response.prompts[0].status, "pending");
+    }
+
+    #[tokio::test]
+    async fn acknowledge_and_dismiss_inbox_prompt_return_action_status() {
+        let ack_response =
+            acknowledge_inbox_prompt(State(test_state()), Path("prompt-1".to_string()))
+                .await
+                .unwrap()
+                .0;
+        assert_eq!(
+            ack_response.schema_version,
+            INTEGRATION_INBOX_ACTION_SCHEMA_VERSION
+        );
+        assert_eq!(ack_response.status, "acknowledged");
+
+        let dismiss_response = dismiss_inbox_prompt(
+            State(test_state()),
+            Path("prompt-1".to_string()),
+            Json(IntegrationInboxDismissRequest {
+                reason: Some("handled locally".to_string()),
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!(dismiss_response.status, "dismissed");
     }
 }

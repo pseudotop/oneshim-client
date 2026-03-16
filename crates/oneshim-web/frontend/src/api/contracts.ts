@@ -187,6 +187,102 @@ export interface UpdateActionResponse {
 
 export type UpdateAction = 'Approve' | 'Defer' | 'CheckNow'
 
+export interface IntegrationAckCursorSummary {
+  stream_id: string
+  cursor: string
+  acknowledged_at: string
+}
+
+export interface IntegrationSessionSummary {
+  status: string
+  transport_kind: string
+  auth_scheme: string
+  connected_at?: string | null
+  last_heartbeat_at?: string | null
+  requested_scopes: string[]
+  granted_scopes: string[]
+}
+
+export interface IntegrationOutboundRuntimeStatus {
+  enabled: boolean
+  bootstrap_configured: boolean
+  auth_source_configured: boolean
+  auth_material_available: boolean
+  runtime_configured: boolean
+  resource_indicator_configured: boolean
+  auth_profile_kind: string
+  preferred_transports: string[]
+  supported_auth_schemes: string[]
+  outbox_pending_count?: number | null
+  inbox_pending_count?: number | null
+  outbox_ack_cursor?: IntegrationAckCursorSummary | null
+  inbox_ack_cursor?: IntegrationAckCursorSummary | null
+  auth_status?: Record<string, unknown> | null
+  current_session?: IntegrationSessionSummary | null
+}
+
+export interface IntegrationStatus {
+  schema_version: string
+  external_access_enabled: boolean
+  automation_controller_configured: boolean
+  ai_runtime_status?: Record<string, unknown> | null
+  outbound_runtime: IntegrationOutboundRuntimeStatus
+}
+
+export interface IntegrationAuditRecordSummary {
+  record_id: string
+  envelope_id: string
+  packet_id: string
+  disposition: string
+  reason?: string | null
+  privacy_classification: string
+  capability_scope: string
+  occurred_at: string
+}
+
+export interface IntegrationAuditLogResponse {
+  schema_version: string
+  records: IntegrationAuditRecordSummary[]
+}
+
+export interface IntegrationInboxPromptSummary {
+  prompt_id: string
+  category: string
+  priority: string
+  title: string
+  body: string
+  status: string
+  received_at: string
+  status_updated_at: string
+  presented_at?: string | null
+  expires_at?: string | null
+  source_system: string
+  source_actor?: string | null
+  correlation_id?: string | null
+  dismiss_reason?: string | null
+}
+
+export interface IntegrationInboxResponse {
+  schema_version: string
+  prompts: IntegrationInboxPromptSummary[]
+  pending_count: number
+}
+
+export interface IntegrationInboxRefreshResponse {
+  schema_version: string
+  fetched_count: number
+}
+
+export interface IntegrationInboxActionResponse {
+  schema_version: string
+  prompt_id: string
+  status: string
+}
+
+export interface IntegrationInboxDismissRequest {
+  reason?: string | null
+}
+
 export interface PaginationMeta {
   total: number
   offset: number

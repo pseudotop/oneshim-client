@@ -93,6 +93,56 @@ pub struct IntegrationAuditLogResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationInboxPromptSummary {
+    pub prompt_id: String,
+    pub category: String,
+    pub priority: String,
+    pub title: String,
+    pub body: String,
+    pub status: String,
+    pub received_at: DateTime<Utc>,
+    pub status_updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presented_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    pub source_system: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_actor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dismiss_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationInboxResponse {
+    pub schema_version: String,
+    #[serde(default)]
+    pub prompts: Vec<IntegrationInboxPromptSummary>,
+    pub pending_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationInboxRefreshResponse {
+    pub schema_version: String,
+    pub fetched_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationInboxActionResponse {
+    pub schema_version: String,
+    pub prompt_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IntegrationInboxDismissRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrationBootstrapRequest {
     pub client_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
