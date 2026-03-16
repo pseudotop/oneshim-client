@@ -7,6 +7,7 @@ pub mod credential_source;
 pub mod element_finder;
 pub mod focus_probe;
 pub mod input_driver;
+pub mod integration;
 pub mod llm_provider;
 pub mod monitor;
 pub mod notifier;
