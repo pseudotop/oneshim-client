@@ -79,6 +79,14 @@ pub enum IntegrationPrivacyClassification {
     UserApprovedAttachment,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationEgressDisposition {
+    Allow,
+    Deny,
+    RequireUserApproval,
+}
+
 /// Inbound prompt/task packet delivered to the desktop client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProactivePrompt {
@@ -191,6 +199,19 @@ pub struct IntegrationAckCursor {
     pub stream_id: String,
     pub cursor: String,
     pub acknowledged_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationInsightAuditRecord {
+    pub record_id: String,
+    pub envelope_id: String,
+    pub packet_id: String,
+    pub disposition: IntegrationEgressDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub privacy_classification: IntegrationPrivacyClassification,
+    pub capability_scope: IntegrationCapabilityScope,
+    pub occurred_at: DateTime<Utc>,
 }
 
 #[cfg(test)]

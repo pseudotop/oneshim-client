@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
 use crate::models::integration::{
-    InsightPacket, IntegrationAckCursor, IntegrationCapabilityScope, IntegrationEnvelope,
-    IntegrationInboxItemStatus, IntegrationSessionState, QueuedInsightPacket,
-    StoredProactivePrompt,
+    InsightPacket, IntegrationAckCursor, IntegrationCapabilityScope, IntegrationEgressDisposition,
+    IntegrationEnvelope, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
+    IntegrationSessionState, QueuedInsightPacket, StoredProactivePrompt,
 };
 
 #[async_trait]
@@ -122,14 +122,6 @@ pub trait IntegrationInboxStorePort: Send + Sync {
     async fn store_ack_cursor(&self, cursor: IntegrationAckCursor) -> Result<(), CoreError>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum IntegrationEgressDisposition {
-    Allow,
-    Deny,
-    RequireUserApproval,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrationEgressDecision {
     pub disposition: IntegrationEgressDisposition,
@@ -173,6 +165,15 @@ pub trait IntegrationEgressPolicyPort: Send + Sync {
         envelope: &IntegrationEnvelope,
         packet: &InsightPacket,
     ) -> Result<IntegrationEgressDecision, CoreError>;
+}
+
+#[async_trait]
+pub trait IntegrationAuditPort: Send + Sync {
+    /// Persist an auditable record for an outbound integration insight decision.
+    async fn record_insight_decision(
+        &self,
+        record: IntegrationInsightAuditRecord,
+    ) -> Result<(), CoreError>;
 }
 
 #[cfg(test)]
