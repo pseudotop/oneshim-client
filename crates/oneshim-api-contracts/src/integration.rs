@@ -72,6 +72,10 @@ pub struct IntegrationBootstrapSessionBinding {
     pub heartbeat_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disconnect_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub send_insights_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receive_prompts_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +148,12 @@ mod tests {
                 ),
                 disconnect_url: Some(
                     "https://integration.example.com/sessions/session-001".to_string(),
+                ),
+                send_insights_url: Some(
+                    "https://integration.example.com/sessions/session-001/insights".to_string(),
+                ),
+                receive_prompts_url: Some(
+                    "https://integration.example.com/sessions/session-001/prompts".to_string(),
                 ),
             }),
         };

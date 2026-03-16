@@ -9,16 +9,22 @@ use oneshim_api_contracts::integration::{
 };
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    IntegrationAuthContext, IntegrationAuthScheme, IntegrationCapabilityScope,
-    IntegrationTransportKind,
+    IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthScheme,
+    IntegrationCapabilityScope, IntegrationTransportKind, ProactivePrompt, QueuedInsightPacket,
 };
 use oneshim_core::ports::integration::IntegrationAuthPort;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use tokio::sync::RwLock;
 
 use super::transport::{
-    IntegrationRequestProofFactory, IntegrationTransportClient, IntegrationTransportConnectRequest,
-    IntegrationTransportConnectResponse,
+    IntegrationInboxTransportClient, IntegrationInboxTransportResponse,
+    IntegrationRequestProofFactory, IntegrationSyncTransportClient,
+    IntegrationSyncTransportResponse, IntegrationTransportClient,
+    IntegrationTransportConnectRequest, IntegrationTransportConnectResponse,
+};
+use super::{
+    insight_to_cloudevent, prompt_from_cloudevent, InsightCloudEventBatch,
+    InsightCloudEventBatchItem,
 };
 
 #[derive(Debug, Clone)]
@@ -40,15 +46,52 @@ impl HttpsIntegrationTransportConfig {
 struct SessionBinding {
     heartbeat_url: Option<String>,
     disconnect_url: Option<String>,
+    send_insights_url: Option<String>,
+    receive_prompts_url: Option<String>,
     auth: IntegrationAuthContext,
+}
+
+#[derive(Clone, Default)]
+pub struct HttpsIntegrationSessionBindings {
+    sessions: Arc<RwLock<HashMap<String, SessionBinding>>>,
+}
+
+impl HttpsIntegrationSessionBindings {
+    async fn insert(&self, session_id: String, binding: SessionBinding) {
+        self.sessions.write().await.insert(session_id, binding);
+    }
+
+    async fn get(&self, session_id: &str) -> Option<SessionBinding> {
+        self.sessions.read().await.get(session_id).cloned()
+    }
+
+    async fn remove(&self, session_id: &str) {
+        self.sessions.write().await.remove(session_id);
+    }
+}
+
+#[derive(Clone)]
+struct HttpsIntegrationHttpShared {
+    client: reqwest::Client,
+    proof_factory: Arc<dyn IntegrationRequestProofFactory>,
+    request_timeout: Duration,
 }
 
 pub struct HttpsIntegrationTransportClient {
     config: HttpsIntegrationTransportConfig,
-    client: reqwest::Client,
+    shared: HttpsIntegrationHttpShared,
     auth_port: Arc<dyn IntegrationAuthPort>,
-    proof_factory: Arc<dyn IntegrationRequestProofFactory>,
-    sessions: Arc<RwLock<HashMap<String, SessionBinding>>>,
+    session_bindings: HttpsIntegrationSessionBindings,
+}
+
+pub struct HttpsIntegrationSyncTransportClient {
+    shared: HttpsIntegrationHttpShared,
+    session_bindings: HttpsIntegrationSessionBindings,
+}
+
+pub struct HttpsIntegrationInboxTransportClient {
+    shared: HttpsIntegrationHttpShared,
+    session_bindings: HttpsIntegrationSessionBindings,
 }
 
 impl HttpsIntegrationTransportClient {
@@ -57,8 +100,9 @@ impl HttpsIntegrationTransportClient {
         auth_port: Arc<dyn IntegrationAuthPort>,
         proof_factory: Arc<dyn IntegrationRequestProofFactory>,
     ) -> Result<Self, CoreError> {
+        let request_timeout = config.request_timeout;
         let client = reqwest::Client::builder()
-            .timeout(config.request_timeout)
+            .timeout(request_timeout)
             .build()
             .map_err(|error| {
                 CoreError::Network(format!(
@@ -68,13 +112,32 @@ impl HttpsIntegrationTransportClient {
 
         Ok(Self {
             config,
-            client,
+            shared: HttpsIntegrationHttpShared {
+                client,
+                proof_factory,
+                request_timeout,
+            },
             auth_port,
-            proof_factory,
-            sessions: Arc::new(RwLock::new(HashMap::new())),
+            session_bindings: HttpsIntegrationSessionBindings::default(),
         })
     }
 
+    pub fn sync_transport(&self) -> HttpsIntegrationSyncTransportClient {
+        HttpsIntegrationSyncTransportClient {
+            shared: self.shared.clone(),
+            session_bindings: self.session_bindings.clone(),
+        }
+    }
+
+    pub fn inbox_transport(&self) -> HttpsIntegrationInboxTransportClient {
+        HttpsIntegrationInboxTransportClient {
+            shared: self.shared.clone(),
+            session_bindings: self.session_bindings.clone(),
+        }
+    }
+}
+
+impl HttpsIntegrationHttpShared {
     async fn build_headers(
         &self,
         auth: &IntegrationAuthContext,
@@ -150,7 +213,7 @@ impl HttpsIntegrationTransportClient {
         request.send().await.map_err(|error| {
             if error.is_timeout() {
                 CoreError::RequestTimeout {
-                    timeout_ms: self.config.request_timeout.as_millis() as u64,
+                    timeout_ms: self.request_timeout.as_millis() as u64,
                 }
             } else {
                 CoreError::Network(format!("integration transport request failed: {error}"))
@@ -277,6 +340,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
         };
 
         let response = self
+            .shared
             .send_with_auth(
                 reqwest::Method::POST,
                 &self.config.bootstrap_url,
@@ -285,6 +349,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
             )
             .await?;
         let response = self
+            .shared
             .check_response(response, "integration bootstrap request failed")
             .await?;
         let payload: IntegrationBootstrapResponse = response.json().await.map_err(|error| {
@@ -306,25 +371,37 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
             .clone()
             .or_else(|| request.preferred_transports.first().cloned())
             .unwrap_or_default();
-        Self::validate_selected_transport(&request, &payload, &transport_kind)?;
+        HttpsIntegrationHttpShared::validate_selected_transport(
+            &request,
+            &payload,
+            &transport_kind,
+        )?;
 
         let auth_scheme = payload
             .selected_auth_scheme
             .clone()
             .unwrap_or_else(|| auth.scheme.clone());
-        Self::validate_selected_auth_scheme(&request, &payload, &auth_scheme)?;
+        HttpsIntegrationHttpShared::validate_selected_auth_scheme(
+            &request,
+            &payload,
+            &auth_scheme,
+        )?;
 
-        let granted_scopes = Self::parse_granted_scopes(&request, &payload)?;
+        let granted_scopes = HttpsIntegrationHttpShared::parse_granted_scopes(&request, &payload)?;
         let connected_at = Utc::now();
 
-        self.sessions.write().await.insert(
-            session.session_id.clone(),
-            SessionBinding {
-                heartbeat_url: session.heartbeat_url.clone(),
-                disconnect_url: session.disconnect_url.clone(),
-                auth,
-            },
-        );
+        self.session_bindings
+            .insert(
+                session.session_id.clone(),
+                SessionBinding {
+                    heartbeat_url: session.heartbeat_url.clone(),
+                    disconnect_url: session.disconnect_url.clone(),
+                    send_insights_url: session.send_insights_url.clone(),
+                    receive_prompts_url: session.receive_prompts_url.clone(),
+                    auth,
+                },
+            )
+            .await;
 
         Ok(IntegrationTransportConnectResponse {
             session_id: session.session_id,
@@ -336,16 +413,14 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
     }
 
     async fn heartbeat(&self, session_id: &str) -> Result<chrono::DateTime<Utc>, CoreError> {
-        let binding = self
-            .sessions
-            .read()
-            .await
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| CoreError::NotFound {
-                resource_type: "integration_session".to_string(),
-                id: session_id.to_string(),
-            })?;
+        let binding =
+            self.session_bindings
+                .get(session_id)
+                .await
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "integration_session".to_string(),
+                    id: session_id.to_string(),
+                })?;
 
         let url = binding.heartbeat_url.ok_or_else(|| CoreError::Validation {
             field: "integration.session.heartbeat_url".to_string(),
@@ -353,6 +428,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
         })?;
 
         let response = self
+            .shared
             .send_with_auth(
                 reqwest::Method::POST,
                 &url,
@@ -360,22 +436,21 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                 Option::<&()>::None,
             )
             .await?;
-        self.check_response(response, "integration heartbeat request failed")
+        self.shared
+            .check_response(response, "integration heartbeat request failed")
             .await?;
         Ok(Utc::now())
     }
 
     async fn disconnect(&self, session_id: &str) -> Result<(), CoreError> {
-        let binding = self
-            .sessions
-            .read()
-            .await
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| CoreError::NotFound {
-                resource_type: "integration_session".to_string(),
-                id: session_id.to_string(),
-            })?;
+        let binding =
+            self.session_bindings
+                .get(session_id)
+                .await
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "integration_session".to_string(),
+                    id: session_id.to_string(),
+                })?;
 
         let url = binding
             .disconnect_url
@@ -385,6 +460,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
             })?;
 
         let response = self
+            .shared
             .send_with_auth(
                 reqwest::Method::DELETE,
                 &url,
@@ -392,10 +468,148 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                 Option::<&()>::None,
             )
             .await?;
-        self.check_response(response, "integration disconnect request failed")
+        self.shared
+            .check_response(response, "integration disconnect request failed")
             .await?;
-        self.sessions.write().await.remove(session_id);
+        self.session_bindings.remove(session_id).await;
         Ok(())
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PromptPullRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    after_stream_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    after_cursor: Option<String>,
+    #[serde(default)]
+    limit: usize,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PromptPullResponse {
+    #[serde(default)]
+    events: Vec<super::IntegrationCloudEvent<ProactivePrompt>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ack_cursor: Option<IntegrationAckCursor>,
+}
+
+#[async_trait]
+impl IntegrationSyncTransportClient for HttpsIntegrationSyncTransportClient {
+    async fn send_insights(
+        &self,
+        session_id: &str,
+        items: Vec<QueuedInsightPacket>,
+    ) -> Result<IntegrationSyncTransportResponse, CoreError> {
+        let binding =
+            self.session_bindings
+                .get(session_id)
+                .await
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "integration_session".to_string(),
+                    id: session_id.to_string(),
+                })?;
+        let url = binding
+            .send_insights_url
+            .ok_or_else(|| CoreError::Validation {
+                field: "integration.session.send_insights_url".to_string(),
+                message: "active integration session does not have an insight sync URL."
+                    .to_string(),
+            })?;
+
+        let batch = InsightCloudEventBatch {
+            items: items
+                .iter()
+                .map(|item| InsightCloudEventBatchItem {
+                    queue_id: item.queue_id.clone(),
+                    event: insight_to_cloudevent(&item.envelope, &item.packet),
+                })
+                .collect(),
+        };
+
+        let response = self
+            .shared
+            .send_with_auth(reqwest::Method::POST, &url, &binding.auth, Some(&batch))
+            .await?;
+        let response = self
+            .shared
+            .check_response(response, "integration insight sync request failed")
+            .await?;
+
+        #[derive(serde::Deserialize)]
+        struct InsightSyncResponseBody {
+            #[serde(default)]
+            accepted_ids: Vec<String>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            ack_cursor: Option<IntegrationAckCursor>,
+        }
+
+        let payload: InsightSyncResponseBody = response.json().await.map_err(|error| {
+            CoreError::Serialization(serde_json::Error::io(std::io::Error::other(format!(
+                "failed to parse integration sync response: {error}"
+            ))))
+        })?;
+
+        Ok(IntegrationSyncTransportResponse {
+            acknowledged_queue_ids: payload.accepted_ids,
+            ack_cursor: payload.ack_cursor,
+        })
+    }
+}
+
+#[async_trait]
+impl IntegrationInboxTransportClient for HttpsIntegrationInboxTransportClient {
+    async fn receive_prompts(
+        &self,
+        session_id: &str,
+        after_cursor: Option<IntegrationAckCursor>,
+        limit: usize,
+    ) -> Result<IntegrationInboxTransportResponse, CoreError> {
+        let binding =
+            self.session_bindings
+                .get(session_id)
+                .await
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "integration_session".to_string(),
+                    id: session_id.to_string(),
+                })?;
+        let url = binding
+            .receive_prompts_url
+            .ok_or_else(|| CoreError::Validation {
+                field: "integration.session.receive_prompts_url".to_string(),
+                message: "active integration session does not have a prompt receive URL."
+                    .to_string(),
+            })?;
+
+        let request = PromptPullRequest {
+            after_stream_id: after_cursor.as_ref().map(|cursor| cursor.stream_id.clone()),
+            after_cursor: after_cursor.map(|cursor| cursor.cursor),
+            limit,
+        };
+
+        let response = self
+            .shared
+            .send_with_auth(reqwest::Method::POST, &url, &binding.auth, Some(&request))
+            .await?;
+        let response = self
+            .shared
+            .check_response(response, "integration prompt pull request failed")
+            .await?;
+        let payload: PromptPullResponse = response.json().await.map_err(|error| {
+            CoreError::Serialization(serde_json::Error::io(std::io::Error::other(format!(
+                "failed to parse integration prompt pull response: {error}"
+            ))))
+        })?;
+
+        let mut prompts = Vec::with_capacity(payload.events.len());
+        for event in payload.events {
+            prompts.push(prompt_from_cloudevent(event)?);
+        }
+
+        Ok(IntegrationInboxTransportResponse {
+            prompts,
+            ack_cursor: payload.ack_cursor,
+        })
     }
 }
 
@@ -406,6 +620,10 @@ mod tests {
 
     use async_trait::async_trait;
     use mockito::Matcher;
+    use oneshim_core::models::integration::{
+        InsightPacket, InsightSourceWindow, IntegrationEnvelope, IntegrationMessageType,
+        IntegrationOrigin, IntegrationPrivacyClassification,
+    };
     use tokio::sync::Mutex;
 
     struct StaticAuthPort {
@@ -685,5 +903,268 @@ mod tests {
             }
             other => panic!("unexpected error: {other}"),
         }
+    }
+
+    #[tokio::test]
+    async fn sync_transport_posts_insight_cloudevents() {
+        let mut server = mockito::Server::new_async().await;
+        let insights_url = format!("{}/integration/sessions/session-010/insights", server.url());
+
+        let bootstrap = server
+            .mock("POST", "/integration/bootstrap")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "schema_version": "integration.bootstrap.v1",
+                    "supported_scopes": ["insight:write", "session:manage"],
+                    "granted_scopes": ["insight:write", "session:manage"],
+                    "supported_transports": ["web_socket"],
+                    "selected_transport": "web_socket",
+                    "supported_auth_schemes": ["bearer_token"],
+                    "selected_auth_scheme": "bearer_token",
+                    "session_required": true,
+                    "session": {
+                        "session_id": "session-010",
+                        "send_insights_url": insights_url
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let sync = server
+            .mock("POST", "/integration/sessions/session-010/insights")
+            .match_header("authorization", "Bearer access-token")
+            .match_body(Matcher::PartialJson(serde_json::json!({
+                "items": [{
+                    "queue_id": "queue-010",
+                    "event": {
+                        "type": "io.oneshim.integration.insight.v1",
+                        "oneshimscope": "insight:write",
+                        "data": {
+                            "packet_id": "packet-010"
+                        }
+                    }
+                }]
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "accepted_ids": ["queue-010"]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let client = HttpsIntegrationTransportClient::new(
+            HttpsIntegrationTransportConfig::new(
+                format!("{}/integration/bootstrap", server.url()),
+                Duration::from_secs(5),
+            ),
+            Arc::new(StaticAuthPort {
+                context: IntegrationAuthContext {
+                    access_token: "access-token".to_string(),
+                    scheme: IntegrationAuthScheme::BearerToken,
+                    expires_at: None,
+                    resource_indicator: None,
+                },
+            }),
+            Arc::new(RecordingProofFactory {
+                returned: None,
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }),
+        )
+        .unwrap();
+
+        let session = client
+            .connect(connect_request(&server.url()))
+            .await
+            .unwrap();
+        let response = client
+            .sync_transport()
+            .send_insights(
+                &session.session_id,
+                vec![QueuedInsightPacket {
+                    queue_id: "queue-010".to_string(),
+                    envelope: IntegrationEnvelope {
+                        envelope_id: "env-010".to_string(),
+                        schema_version: "integration.envelope.v1".to_string(),
+                        message_type: IntegrationMessageType::InsightPacket,
+                        timestamp: Utc::now(),
+                        nonce: "nonce-010".to_string(),
+                        origin: IntegrationOrigin {
+                            device_id: "device-001".to_string(),
+                            workspace_id: None,
+                            session_id: Some("session-010".to_string()),
+                            source: "desktop-client".to_string(),
+                        },
+                        capability_scope: IntegrationCapabilityScope::InsightWrite,
+                    },
+                    packet: InsightPacket {
+                        packet_id: "packet-010".to_string(),
+                        summary: "summary".to_string(),
+                        derived_tags: vec!["focus".to_string()],
+                        source_window: InsightSourceWindow {
+                            started_at: Utc::now(),
+                            ended_at: Utc::now(),
+                        },
+                        privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
+                        audit_reference_id: None,
+                    },
+                    queued_at: Utc::now(),
+                }],
+            )
+            .await
+            .unwrap();
+
+        bootstrap.assert_async().await;
+        sync.assert_async().await;
+        assert_eq!(
+            response.acknowledged_queue_ids,
+            vec!["queue-010".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn inbox_transport_parses_prompt_cloudevents() {
+        let mut server = mockito::Server::new_async().await;
+        let prompts_url = format!("{}/integration/sessions/session-011/prompts", server.url());
+
+        let bootstrap = server
+            .mock("POST", "/integration/bootstrap")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "schema_version": "integration.bootstrap.v1",
+                    "supported_scopes": ["prompt:read", "session:manage"],
+                    "granted_scopes": ["prompt:read", "session:manage"],
+                    "supported_transports": ["https_long_poll"],
+                    "selected_transport": "https_long_poll",
+                    "supported_auth_schemes": ["bearer_token"],
+                    "selected_auth_scheme": "bearer_token",
+                    "session_required": true,
+                    "session": {
+                        "session_id": "session-011",
+                        "receive_prompts_url": prompts_url
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let pull = server
+            .mock("POST", "/integration/sessions/session-011/prompts")
+            .match_header("authorization", "Bearer access-token")
+            .match_body(Matcher::PartialJson(serde_json::json!({
+                "after_stream_id": "prompt",
+                "after_cursor": "cursor-0",
+                "limit": 10
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "events": [{
+                        "specversion": "1.0",
+                        "id": "prompt-env-1",
+                        "source": "oneshim://devices/device-001",
+                        "type": "io.oneshim.integration.prompt.v1",
+                        "subject": "prompt-011",
+                        "time": Utc::now(),
+                        "datacontenttype": "application/json",
+                        "data": {
+                            "prompt_id": "prompt-011",
+                            "category": "task",
+                            "title": "title",
+                            "body": "body",
+                            "priority": "medium",
+                            "actions": [],
+                            "provenance": {
+                                "source_system": "integration"
+                            }
+                        },
+                        "oneshimscope": "prompt:read",
+                        "oneshimnonce": "nonce-011",
+                        "oneshimsessionid": "session-011",
+                        "oneshimpromptcategory": "task"
+                    }],
+                    "ack_cursor": {
+                        "stream_id": "prompt",
+                        "cursor": "cursor-1",
+                        "acknowledged_at": Utc::now()
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let client = HttpsIntegrationTransportClient::new(
+            HttpsIntegrationTransportConfig::new(
+                format!("{}/integration/bootstrap", server.url()),
+                Duration::from_secs(5),
+            ),
+            Arc::new(StaticAuthPort {
+                context: IntegrationAuthContext {
+                    access_token: "access-token".to_string(),
+                    scheme: IntegrationAuthScheme::BearerToken,
+                    expires_at: None,
+                    resource_indicator: None,
+                },
+            }),
+            Arc::new(RecordingProofFactory {
+                returned: None,
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }),
+        )
+        .unwrap();
+
+        let session = client
+            .connect(IntegrationTransportConnectRequest {
+                device_id: "device-001".to_string(),
+                client_version: "0.3.8".to_string(),
+                device_label: Some("macbook".to_string()),
+                requested_scopes: vec![
+                    IntegrationCapabilityScope::PromptRead,
+                    IntegrationCapabilityScope::SessionManage,
+                ],
+                preferred_transports: vec![IntegrationTransportKind::HttpsLongPoll],
+                supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+                resource_indicator: Some(server.url()),
+            })
+            .await
+            .unwrap();
+
+        let response = client
+            .inbox_transport()
+            .receive_prompts(
+                &session.session_id,
+                Some(IntegrationAckCursor {
+                    stream_id: "prompt".to_string(),
+                    cursor: "cursor-0".to_string(),
+                    acknowledged_at: Utc::now(),
+                }),
+                10,
+            )
+            .await
+            .unwrap();
+
+        bootstrap.assert_async().await;
+        pull.assert_async().await;
+        assert_eq!(response.prompts.len(), 1);
+        assert_eq!(response.prompts[0].prompt_id, "prompt-011");
+        assert_eq!(
+            response
+                .ack_cursor
+                .as_ref()
+                .map(|cursor| cursor.cursor.as_str()),
+            Some("cursor-1")
+        );
     }
 }
