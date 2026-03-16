@@ -5,7 +5,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::Utc;
 use oneshim_api_contracts::integration::{
-    IntegrationBootstrapRequest, IntegrationBootstrapResponse,
+    IntegrationBootstrapRequest, IntegrationBootstrapResponse, IntegrationSessionDisconnectPayload,
+    IntegrationSessionHeartbeatPayload,
 };
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
@@ -24,7 +25,7 @@ use super::transport::{
 };
 use super::{
     insight_to_cloudevent, prompt_from_cloudevent, InsightCloudEventBatch,
-    InsightCloudEventBatchItem,
+    InsightCloudEventBatchItem, WebSocketIntegrationControlChannel,
 };
 
 #[derive(Debug, Clone)]
@@ -42,13 +43,14 @@ impl HttpsIntegrationTransportConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct SessionBinding {
     heartbeat_url: Option<String>,
     disconnect_url: Option<String>,
     send_insights_url: Option<String>,
     receive_prompts_url: Option<String>,
     auth: IntegrationAuthContext,
+    live_control_channel: Option<Arc<WebSocketIntegrationControlChannel>>,
 }
 
 #[derive(Clone, Default)]
@@ -389,6 +391,24 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
 
         let granted_scopes = HttpsIntegrationHttpShared::parse_granted_scopes(&request, &payload)?;
         let connected_at = Utc::now();
+        let live_control_channel = if transport_kind == IntegrationTransportKind::WebSocket {
+            let channel_url = session
+                .channel_url
+                .clone()
+                .ok_or_else(|| CoreError::Validation {
+                    field: "integration.bootstrap.session.channel_url".to_string(),
+                    message: "websocket session transport requires a channel URL.".to_string(),
+                })?;
+            let headers = self
+                .shared
+                .build_headers(&auth, reqwest::Method::GET.as_str(), &channel_url)
+                .await?;
+            Some(Arc::new(
+                WebSocketIntegrationControlChannel::connect(&channel_url, headers).await?,
+            ))
+        } else {
+            None
+        };
 
         self.session_bindings
             .insert(
@@ -399,6 +419,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                     send_insights_url: session.send_insights_url.clone(),
                     receive_prompts_url: session.receive_prompts_url.clone(),
                     auth,
+                    live_control_channel,
                 },
             )
             .await;
@@ -421,6 +442,16 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 })?;
+
+        if let Some(channel) = binding.live_control_channel.clone() {
+            let heartbeat = IntegrationSessionHeartbeatPayload {
+                session_id: session_id.to_string(),
+                occurred_at: Utc::now(),
+                cursor_snapshot: Vec::new(),
+            };
+            channel.send_json(&heartbeat).await?;
+            return Ok(heartbeat.occurred_at);
+        }
 
         let url = binding.heartbeat_url.ok_or_else(|| CoreError::Validation {
             field: "integration.session.heartbeat_url".to_string(),
@@ -451,6 +482,19 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 })?;
+
+        if let Some(channel) = binding.live_control_channel.clone() {
+            channel
+                .send_json(&IntegrationSessionDisconnectPayload {
+                    session_id: session_id.to_string(),
+                    occurred_at: Utc::now(),
+                    reason: None,
+                })
+                .await?;
+            channel.close().await?;
+            self.session_bindings.remove(session_id).await;
+            return Ok(());
+        }
 
         let url = binding
             .disconnect_url
@@ -615,16 +659,22 @@ impl IntegrationInboxTransportClient for HttpsIntegrationInboxTransportClient {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc as StdArc, Mutex as StdMutex};
+
     use super::*;
     use crate::integration::IntegrationRequestProof;
 
     use async_trait::async_trait;
+    use futures::StreamExt;
     use mockito::Matcher;
     use oneshim_core::models::integration::{
         InsightPacket, InsightSourceWindow, IntegrationEnvelope, IntegrationMessageType,
         IntegrationOrigin, IntegrationPrivacyClassification,
     };
+    use tokio::net::TcpListener;
     use tokio::sync::Mutex;
+    use tokio_tungstenite::accept_hdr_async;
+    use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 
     struct StaticAuthPort {
         context: IntegrationAuthContext,
@@ -709,13 +759,68 @@ mod tests {
                 IntegrationCapabilityScope::InsightWrite,
                 IntegrationCapabilityScope::SessionManage,
             ],
-            preferred_transports: vec![IntegrationTransportKind::WebSocket],
+            preferred_transports: vec![
+                IntegrationTransportKind::WebSocket,
+                IntegrationTransportKind::HttpsLongPoll,
+            ],
             supported_auth_schemes: vec![
                 IntegrationAuthScheme::DpopBearer,
                 IntegrationAuthScheme::BearerToken,
             ],
             resource_indicator: Some(server_url.to_string()),
         }
+    }
+
+    async fn start_control_ws_server() -> (
+        String,
+        StdArc<StdMutex<Vec<String>>>,
+        StdArc<StdMutex<Vec<(String, String)>>>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let messages = StdArc::new(StdMutex::new(Vec::new()));
+        let headers = StdArc::new(StdMutex::new(Vec::new()));
+        let messages_task = messages.clone();
+        let headers_task = headers.clone();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let websocket =
+                accept_hdr_async(stream, move |request: &Request, response: Response| {
+                    if let Some(value) = request.headers().get("authorization") {
+                        headers_task.lock().unwrap().push((
+                            "authorization".to_string(),
+                            value.to_str().unwrap_or_default().to_string(),
+                        ));
+                    }
+                    if let Some(value) = request.headers().get("dpop") {
+                        headers_task.lock().unwrap().push((
+                            "dpop".to_string(),
+                            value.to_str().unwrap_or_default().to_string(),
+                        ));
+                    }
+                    Ok(response)
+                })
+                .await
+                .unwrap();
+
+            let (_writer, mut reader) = websocket.split();
+            while let Some(message) = reader.next().await {
+                match message.unwrap() {
+                    tokio_tungstenite::tungstenite::Message::Text(text) => {
+                        messages_task.lock().unwrap().push(text.to_string());
+                    }
+                    tokio_tungstenite::tungstenite::Message::Close(_) => break,
+                    _ => {}
+                }
+            }
+        });
+
+        (
+            format!("ws://{address}/integration/session-control"),
+            messages,
+            headers,
+        )
     }
 
     #[tokio::test]
@@ -741,15 +846,14 @@ mod tests {
                     "schema_version": "integration.bootstrap.v1",
                     "supported_scopes": ["insight:write", "session:manage"],
                     "granted_scopes": ["insight:write", "session:manage"],
-                    "supported_transports": ["web_socket"],
-                    "selected_transport": "web_socket",
+                    "supported_transports": ["https_long_poll"],
+                    "selected_transport": "https_long_poll",
                     "supported_auth_schemes": ["bearer_token"],
                     "selected_auth_scheme": "bearer_token",
                     "resource_indicator": server.url(),
                     "session_required": true,
                     "session": {
                         "session_id": "session-001",
-                        "channel_url": format!("wss://integration.example.com/sessions/{}", "session-001"),
                         "heartbeat_url": heartbeat_url,
                         "disconnect_url": disconnect_url
                     }
@@ -785,20 +889,19 @@ mod tests {
             .unwrap();
         bootstrap.assert_async().await;
         assert_eq!(response.session_id, "session-001");
-        assert_eq!(response.transport_kind, IntegrationTransportKind::WebSocket);
+        assert_eq!(
+            response.transport_kind,
+            IntegrationTransportKind::HttpsLongPoll
+        );
         assert_eq!(response.auth_scheme, IntegrationAuthScheme::BearerToken);
     }
 
     #[tokio::test]
-    async fn connect_heartbeat_and_disconnect_use_dpop_auth() {
+    async fn connect_heartbeat_and_disconnect_use_dpop_websocket_control_channel() {
         let mut server = mockito::Server::new_async().await;
         let bootstrap_url = format!("{}/integration/bootstrap", server.url());
-        let heartbeat_url = format!(
-            "{}/integration/sessions/session-002/heartbeat",
-            server.url()
-        );
-        let disconnect_url = format!("{}/integration/sessions/session-002", server.url());
         let proof_calls = Arc::new(Mutex::new(Vec::new()));
+        let (channel_url, live_messages, live_headers) = start_control_ws_server().await;
 
         let bootstrap = server
             .mock("POST", "/integration/bootstrap")
@@ -819,29 +922,11 @@ mod tests {
                     "session_required": true,
                     "session": {
                         "session_id": "session-002",
-                        "channel_url": format!("wss://integration.example.com/sessions/{}", "session-002"),
-                        "heartbeat_url": heartbeat_url,
-                        "disconnect_url": disconnect_url
+                        "channel_url": channel_url
                     }
                 })
                 .to_string(),
             )
-            .create_async()
-            .await;
-
-        let heartbeat = server
-            .mock("POST", "/integration/sessions/session-002/heartbeat")
-            .match_header("authorization", "DPoP access-token")
-            .match_header("dpop", "proof-token")
-            .with_status(204)
-            .create_async()
-            .await;
-
-        let disconnect = server
-            .mock("DELETE", "/integration/sessions/session-002")
-            .match_header("authorization", "DPoP access-token")
-            .match_header("dpop", "proof-token")
-            .with_status(204)
             .create_async()
             .await;
 
@@ -871,16 +956,31 @@ mod tests {
             .unwrap();
         client.heartbeat(&response.session_id).await.unwrap();
         client.disconnect(&response.session_id).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
 
         bootstrap.assert_async().await;
-        heartbeat.assert_async().await;
-        disconnect.assert_async().await;
 
         let calls = proof_calls.lock().await;
-        assert_eq!(calls.len(), 3);
+        assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].0, "POST");
-        assert_eq!(calls[1].0, "POST");
-        assert_eq!(calls[2].0, "DELETE");
+        assert_eq!(calls[1].0, "GET");
+
+        let live_headers = live_headers.lock().unwrap().clone();
+        assert!(live_headers
+            .iter()
+            .any(|(name, value)| { name == "authorization" && value == "DPoP access-token" }));
+        assert!(live_headers
+            .iter()
+            .any(|(name, value)| name == "dpop" && value == "proof-token"));
+
+        let live_messages = live_messages.lock().unwrap().clone();
+        assert_eq!(live_messages.len(), 2);
+        let heartbeat: IntegrationSessionHeartbeatPayload =
+            serde_json::from_str(&live_messages[0]).unwrap();
+        assert_eq!(heartbeat.session_id, "session-002");
+        let disconnect: IntegrationSessionDisconnectPayload =
+            serde_json::from_str(&live_messages[1]).unwrap();
+        assert_eq!(disconnect.session_id, "session-002");
     }
 
     #[tokio::test]
@@ -895,8 +995,8 @@ mod tests {
                     "schema_version": "integration.bootstrap.v1",
                     "supported_scopes": ["insight:write", "policy:read"],
                     "granted_scopes": ["policy:read"],
-                    "supported_transports": ["web_socket"],
-                    "selected_transport": "web_socket",
+                    "supported_transports": ["https_long_poll"],
+                    "selected_transport": "https_long_poll",
                     "supported_auth_schemes": ["bearer_token"],
                     "selected_auth_scheme": "bearer_token",
                     "session_required": true,
@@ -957,8 +1057,8 @@ mod tests {
                     "schema_version": "integration.bootstrap.v1",
                     "supported_scopes": ["insight:write", "session:manage"],
                     "granted_scopes": ["insight:write", "session:manage"],
-                    "supported_transports": ["web_socket"],
-                    "selected_transport": "web_socket",
+                    "supported_transports": ["https_long_poll"],
+                    "selected_transport": "https_long_poll",
                     "supported_auth_schemes": ["bearer_token"],
                     "selected_auth_scheme": "bearer_token",
                     "session_required": true,

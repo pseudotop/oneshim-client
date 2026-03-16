@@ -91,6 +91,22 @@ pub struct IntegrationBootstrapSessionBinding {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationSessionHeartbeatPayload {
+    pub session_id: String,
+    pub occurred_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cursor_snapshot: Vec<oneshim_core::models::integration::IntegrationAckCursor>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationSessionDisconnectPayload {
+    pub session_id: String,
+    pub occurred_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrationBootstrapResponse {
     pub schema_version: String,
     #[serde(default)]

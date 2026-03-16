@@ -2,6 +2,7 @@ pub mod auth;
 pub mod cloudevents;
 pub mod http_transport;
 pub mod inbox_coordinator;
+pub mod live_channel;
 pub mod policy_sync;
 pub mod session_coordinator;
 pub mod sync_coordinator;
@@ -22,6 +23,7 @@ pub use http_transport::{
     HttpsIntegrationTransportConfig,
 };
 pub use inbox_coordinator::IntegrationInboxCoordinator;
+pub use live_channel::WebSocketIntegrationControlChannel;
 pub use policy_sync::PolicyAwareInsightSyncCoordinator;
 pub use session_coordinator::{IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile};
 pub use sync_coordinator::InsightSyncCoordinator;
