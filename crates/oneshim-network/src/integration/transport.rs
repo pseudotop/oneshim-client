@@ -56,24 +56,24 @@ pub trait IntegrationRequestProofFactory: Send + Sync {
 }
 
 #[derive(Debug, Clone)]
-pub struct IntegrationSyncTransportResponse {
+pub struct IntegrationEgressTransportResponse {
     pub acknowledged_queue_ids: Vec<String>,
     pub ack_cursor: Option<IntegrationAckCursor>,
 }
 
-impl IntegrationSyncTransportResponse {
+impl IntegrationEgressTransportResponse {
     pub fn accepted_count(&self) -> usize {
         self.acknowledged_queue_ids.len()
     }
 }
 
 #[async_trait]
-pub trait IntegrationSyncTransportClient: Send + Sync {
+pub trait IntegrationEgressTransportClient: Send + Sync {
     async fn send_messages(
         &self,
         session_id: &str,
         items: Vec<QueuedIntegrationEgressMessage>,
-    ) -> Result<IntegrationSyncTransportResponse, CoreError>;
+    ) -> Result<IntegrationEgressTransportResponse, CoreError>;
 }
 
 #[derive(Debug, Clone)]

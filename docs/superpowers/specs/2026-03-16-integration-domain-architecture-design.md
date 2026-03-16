@@ -244,7 +244,7 @@ Suggested ports:
 - `IntegrationAuthPort`
 - `IntegrationPresencePort`
 
-### 2. `integration.sync`
+### 2. `integration.egress`
 
 Responsibilities:
 
@@ -256,7 +256,7 @@ Responsibilities:
 
 Suggested ports:
 
-- `InsightSyncPort`
+- `IntegrationEgressPort`
 - `IntegrationOutboxPort`
 - `IntegrationAckPort`
 

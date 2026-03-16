@@ -19,10 +19,10 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT
 use tokio::sync::RwLock;
 
 use super::transport::{
+    IntegrationEgressTransportClient, IntegrationEgressTransportResponse,
     IntegrationInboxTransportClient, IntegrationInboxTransportResponse,
-    IntegrationRequestProofFactory, IntegrationSyncTransportClient,
-    IntegrationSyncTransportResponse, IntegrationTransportClient,
-    IntegrationTransportConnectRequest, IntegrationTransportConnectResponse,
+    IntegrationRequestProofFactory, IntegrationTransportClient, IntegrationTransportConnectRequest,
+    IntegrationTransportConnectResponse,
 };
 use super::{
     outbound_message_to_cloudevent, prompt_from_cloudevent, IntegrationOutboundCloudEventBatch,
@@ -87,7 +87,7 @@ pub struct HttpsIntegrationTransportClient {
     session_bindings: HttpsIntegrationSessionBindings,
 }
 
-pub struct HttpsIntegrationSyncTransportClient {
+pub struct HttpsIntegrationEgressTransportClient {
     shared: HttpsIntegrationHttpShared,
     session_bindings: HttpsIntegrationSessionBindings,
 }
@@ -125,8 +125,8 @@ impl HttpsIntegrationTransportClient {
         })
     }
 
-    pub fn sync_transport(&self) -> HttpsIntegrationSyncTransportClient {
-        HttpsIntegrationSyncTransportClient {
+    pub fn egress_transport(&self) -> HttpsIntegrationEgressTransportClient {
+        HttpsIntegrationEgressTransportClient {
             shared: self.shared.clone(),
             session_bindings: self.session_bindings.clone(),
         }
@@ -540,12 +540,12 @@ struct PromptPullResponse {
 }
 
 #[async_trait]
-impl IntegrationSyncTransportClient for HttpsIntegrationSyncTransportClient {
+impl IntegrationEgressTransportClient for HttpsIntegrationEgressTransportClient {
     async fn send_messages(
         &self,
         session_id: &str,
         items: Vec<QueuedIntegrationEgressMessage>,
-    ) -> Result<IntegrationSyncTransportResponse, CoreError> {
+    ) -> Result<IntegrationEgressTransportResponse, CoreError> {
         let binding =
             self.session_bindings
                 .get(session_id)
@@ -600,24 +600,24 @@ impl IntegrationSyncTransportClient for HttpsIntegrationSyncTransportClient {
             .await?;
         let response = self
             .shared
-            .check_response(response, "integration insight sync request failed")
+            .check_response(response, "integration outbound event request failed")
             .await?;
 
         #[derive(serde::Deserialize)]
-        struct InsightSyncResponseBody {
+        struct OutboundEventResponseBody {
             #[serde(default)]
             accepted_ids: Vec<String>,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             ack_cursor: Option<IntegrationAckCursor>,
         }
 
-        let payload: InsightSyncResponseBody = response.json().await.map_err(|error| {
+        let payload: OutboundEventResponseBody = response.json().await.map_err(|error| {
             CoreError::Serialization(serde_json::Error::io(std::io::Error::other(format!(
-                "failed to parse integration sync response: {error}"
+                "failed to parse integration outbound event response: {error}"
             ))))
         })?;
 
-        Ok(IntegrationSyncTransportResponse {
+        Ok(IntegrationEgressTransportResponse {
             acknowledged_queue_ids: payload.accepted_ids,
             ack_cursor: payload.ack_cursor,
         })
@@ -1107,7 +1107,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_transport_posts_outbound_cloudevents() {
+    async fn egress_transport_posts_outbound_cloudevents() {
         let mut server = mockito::Server::new_async().await;
         let events_url = format!("{}/integration/sessions/session-010/events", server.url());
 
@@ -1135,7 +1135,7 @@ mod tests {
             .create_async()
             .await;
 
-        let sync = server
+        let egress = server
             .mock("POST", "/integration/sessions/session-010/events")
             .match_header("authorization", "Bearer access-token")
             .match_body(Matcher::PartialJson(serde_json::json!({
@@ -1186,7 +1186,7 @@ mod tests {
             .await
             .unwrap();
         let response = client
-            .sync_transport()
+            .egress_transport()
             .send_messages(
                 &session.session_id,
                 vec![QueuedIntegrationEgressMessage {
@@ -1223,7 +1223,7 @@ mod tests {
             .unwrap();
 
         bootstrap.assert_async().await;
-        sync.assert_async().await;
+        egress.assert_async().await;
         assert_eq!(
             response.acknowledged_queue_ids,
             vec!["queue-010".to_string()]
@@ -1231,7 +1231,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_transport_uses_websocket_channel_with_queue_id_extension() {
+    async fn egress_transport_uses_websocket_channel_with_queue_id_extension() {
         let mut server = mockito::Server::new_async().await;
         let (channel_url, live_messages, _live_headers, _outbound_tx) =
             start_session_ws_server(true).await;
@@ -1285,7 +1285,7 @@ mod tests {
             .await
             .unwrap();
         let response = client
-            .sync_transport()
+            .egress_transport()
             .send_messages(
                 &session.session_id,
                 vec![QueuedIntegrationEgressMessage {
@@ -1334,7 +1334,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_transport_posts_prompt_receipt_cloudevents() {
+    async fn egress_transport_posts_prompt_receipt_cloudevents() {
         let mut server = mockito::Server::new_async().await;
         let events_url = format!("{}/integration/sessions/session-011/events", server.url());
 
@@ -1362,7 +1362,7 @@ mod tests {
             .create_async()
             .await;
 
-        let sync = server
+        let egress = server
             .mock("POST", "/integration/sessions/session-011/events")
             .match_header("authorization", "Bearer access-token")
             .match_body(Matcher::PartialJson(serde_json::json!({
@@ -1426,7 +1426,7 @@ mod tests {
             .unwrap();
 
         let response = client
-            .sync_transport()
+            .egress_transport()
             .send_messages(
                 &session.session_id,
                 vec![QueuedIntegrationEgressMessage {
@@ -1462,7 +1462,7 @@ mod tests {
             .unwrap();
 
         bootstrap.assert_async().await;
-        sync.assert_async().await;
+        egress.assert_async().await;
         assert_eq!(
             response.acknowledged_queue_ids,
             vec!["queue-011".to_string()]

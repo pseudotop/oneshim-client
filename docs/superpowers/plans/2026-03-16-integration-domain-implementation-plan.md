@@ -65,7 +65,7 @@ Deliverables:
 Ports to add:
 
 - `IntegrationSessionPort`
-- `InsightSyncPort`
+- `IntegrationEgressPort`
 - `IntegrationInboxPort`
 - `IntegrationEgressPolicyPort`
 

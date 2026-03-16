@@ -4,27 +4,27 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    InsightPacket, IntegrationAckCursor, IntegrationEnvelope, IntegrationOutboundPayload,
+    IntegrationAckCursor, IntegrationEnvelope, IntegrationOutboundPayload,
     IntegrationSessionStatus, QueuedIntegrationEgressMessage,
 };
 use oneshim_core::ports::integration::{
-    InsightSyncPort, IntegrationOutboxPort, IntegrationSessionPort,
+    IntegrationEgressPort, IntegrationOutboxPort, IntegrationSessionPort,
 };
 
-use super::transport::IntegrationSyncTransportClient;
+use super::transport::IntegrationEgressTransportClient;
 
-pub struct InsightSyncCoordinator {
+pub struct IntegrationEgressCoordinator {
     session_port: Arc<dyn IntegrationSessionPort>,
     outbox: Arc<dyn IntegrationOutboxPort>,
-    transport: Arc<dyn IntegrationSyncTransportClient>,
+    transport: Arc<dyn IntegrationEgressTransportClient>,
     max_batch_size: usize,
 }
 
-impl InsightSyncCoordinator {
+impl IntegrationEgressCoordinator {
     pub fn new(
         session_port: Arc<dyn IntegrationSessionPort>,
         outbox: Arc<dyn IntegrationOutboxPort>,
-        transport: Arc<dyn IntegrationSyncTransportClient>,
+        transport: Arc<dyn IntegrationEgressTransportClient>,
         max_batch_size: usize,
     ) -> Self {
         Self {
@@ -57,7 +57,7 @@ impl InsightSyncCoordinator {
 
     fn acknowledged_queue_ids(
         sent_items: &[QueuedIntegrationEgressMessage],
-        response: &super::transport::IntegrationSyncTransportResponse,
+        response: &super::transport::IntegrationEgressTransportResponse,
     ) -> Result<Vec<String>, CoreError> {
         let sent_ids: BTreeSet<&str> = sent_items
             .iter()
@@ -69,7 +69,7 @@ impl InsightSyncCoordinator {
             .find(|queue_id| !sent_ids.contains(queue_id.as_str()))
         {
             return Err(CoreError::Internal(format!(
-                "integration sync transport acknowledged unknown queue id: {unknown_id}"
+                "integration egress transport acknowledged unknown queue id: {unknown_id}"
             )));
         }
 
@@ -78,15 +78,13 @@ impl InsightSyncCoordinator {
 }
 
 #[async_trait]
-impl InsightSyncPort for InsightSyncCoordinator {
-    async fn enqueue(
+impl IntegrationEgressPort for IntegrationEgressCoordinator {
+    async fn enqueue_message(
         &self,
         envelope: IntegrationEnvelope,
-        packet: InsightPacket,
+        payload: IntegrationOutboundPayload,
     ) -> Result<(), CoreError> {
-        self.outbox
-            .enqueue_message(envelope, IntegrationOutboundPayload::Insight(packet))
-            .await?;
+        self.outbox.enqueue_message(envelope, payload).await?;
         Ok(())
     }
 
@@ -101,7 +99,7 @@ impl InsightSyncPort for InsightSyncCoordinator {
         ) || session.session_id.is_empty()
         {
             return Err(CoreError::ServiceUnavailable(
-                "integration session is not ready for sync".to_string(),
+                "integration session is not ready for outbound egress".to_string(),
             ));
         }
 
@@ -144,7 +142,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use oneshim_core::models::integration::{
-        InsightSourceWindow, IntegrationCapabilityScope, IntegrationOrigin,
+        InsightPacket, InsightSourceWindow, IntegrationCapabilityScope, IntegrationOrigin,
         IntegrationOutboundPayload, IntegrationPrivacyClassification, IntegrationSessionState,
         IntegrationSessionStatus, QueuedIntegrationEgressMessage,
     };
@@ -152,7 +150,7 @@ mod tests {
     use tokio::sync::Mutex;
 
     use super::*;
-    use crate::integration::transport::IntegrationSyncTransportResponse;
+    use crate::integration::transport::IntegrationEgressTransportResponse;
 
     struct MockSessionPort {
         state: Arc<Mutex<Option<IntegrationSessionState>>>,
@@ -280,19 +278,19 @@ mod tests {
         }
     }
 
-    struct MockSyncTransport {
+    struct MockEgressTransport {
         acknowledged_queue_ids: Vec<String>,
         cursor: Option<IntegrationAckCursor>,
     }
 
     #[async_trait]
-    impl IntegrationSyncTransportClient for MockSyncTransport {
+    impl IntegrationEgressTransportClient for MockEgressTransport {
         async fn send_messages(
             &self,
             _session_id: &str,
             items: Vec<QueuedIntegrationEgressMessage>,
-        ) -> Result<IntegrationSyncTransportResponse, CoreError> {
-            Ok(IntegrationSyncTransportResponse {
+        ) -> Result<IntegrationEgressTransportResponse, CoreError> {
+            Ok(IntegrationEgressTransportResponse {
                 acknowledged_queue_ids: self
                     .acknowledged_queue_ids
                     .iter()
@@ -358,12 +356,12 @@ mod tests {
             items: Arc::new(Mutex::new(VecDeque::new())),
             last_cursor: Arc::new(Mutex::new(None)),
         });
-        let coordinator = InsightSyncCoordinator::new(
+        let coordinator = IntegrationEgressCoordinator::new(
             Arc::new(MockSessionPort {
                 state: Arc::new(Mutex::new(Some(connected_session()))),
             }),
             outbox.clone(),
-            Arc::new(MockSyncTransport {
+            Arc::new(MockEgressTransport {
                 acknowledged_queue_ids: vec!["queue-1".to_string()],
                 cursor: None,
             }),
@@ -374,7 +372,10 @@ mod tests {
         let IntegrationOutboundPayload::Insight(packet) = queued.payload else {
             panic!("expected insight payload");
         };
-        coordinator.enqueue(queued.envelope, packet).await.unwrap();
+        coordinator
+            .enqueue_insight(queued.envelope, packet)
+            .await
+            .unwrap();
 
         assert_eq!(outbox.list_pending(10).await.unwrap().len(), 1);
     }
@@ -388,12 +389,12 @@ mod tests {
             ]))),
             last_cursor: Arc::new(Mutex::new(None)),
         });
-        let coordinator = InsightSyncCoordinator::new(
+        let coordinator = IntegrationEgressCoordinator::new(
             Arc::new(MockSessionPort {
                 state: Arc::new(Mutex::new(Some(connected_session()))),
             }),
             outbox.clone(),
-            Arc::new(MockSyncTransport {
+            Arc::new(MockEgressTransport {
                 acknowledged_queue_ids: vec!["queue-1".to_string(), "queue-2".to_string()],
                 cursor: Some(IntegrationAckCursor {
                     stream_id: "insights".to_string(),
@@ -415,7 +416,7 @@ mod tests {
 
     #[tokio::test]
     async fn flush_requires_connected_session() {
-        let coordinator = InsightSyncCoordinator::new(
+        let coordinator = IntegrationEgressCoordinator::new(
             Arc::new(MockSessionPort {
                 state: Arc::new(Mutex::new(None)),
             }),
@@ -423,7 +424,7 @@ mod tests {
                 items: Arc::new(Mutex::new(VecDeque::from(vec![queued_item("1")]))),
                 last_cursor: Arc::new(Mutex::new(None)),
             }),
-            Arc::new(MockSyncTransport {
+            Arc::new(MockEgressTransport {
                 acknowledged_queue_ids: vec!["queue-1".to_string()],
                 cursor: None,
             }),
@@ -443,12 +444,12 @@ mod tests {
             ]))),
             last_cursor: Arc::new(Mutex::new(None)),
         });
-        let coordinator = InsightSyncCoordinator::new(
+        let coordinator = IntegrationEgressCoordinator::new(
             Arc::new(MockSessionPort {
                 state: Arc::new(Mutex::new(Some(connected_session()))),
             }),
             outbox.clone(),
-            Arc::new(MockSyncTransport {
+            Arc::new(MockEgressTransport {
                 acknowledged_queue_ids: vec!["queue-1".to_string()],
                 cursor: None,
             }),
@@ -468,7 +469,7 @@ mod tests {
             items: Arc::new(Mutex::new(VecDeque::from(vec![queued_item("1")]))),
             last_cursor: Arc::new(Mutex::new(None)),
         });
-        let coordinator = InsightSyncCoordinator::new(
+        let coordinator = IntegrationEgressCoordinator::new(
             Arc::new(MockSessionPort {
                 state: Arc::new(Mutex::new(Some(IntegrationSessionState {
                     session_id: "session-1".to_string(),
@@ -486,7 +487,7 @@ mod tests {
                 }))),
             }),
             outbox.clone(),
-            Arc::new(MockSyncTransport {
+            Arc::new(MockEgressTransport {
                 acknowledged_queue_ids: vec!["queue-1".to_string()],
                 cursor: None,
             }),

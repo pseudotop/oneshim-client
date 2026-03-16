@@ -5,21 +5,22 @@ use chrono::Utc;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
     InsightPacket, IntegrationAckCursor, IntegrationEgressDisposition, IntegrationEnvelope,
-    IntegrationInsightAuditRecord,
+    IntegrationInsightAuditRecord, IntegrationOutboundPayload,
 };
 use oneshim_core::ports::integration::{
-    InsightSyncPort, IntegrationAuditPort, IntegrationEgressDecision, IntegrationEgressPolicyPort,
+    IntegrationAuditPort, IntegrationEgressDecision, IntegrationEgressPolicyPort,
+    IntegrationEgressPort,
 };
 
-pub struct PolicyAwareInsightSyncCoordinator {
-    inner: Arc<dyn InsightSyncPort>,
+pub struct PolicyAwareIntegrationEgressCoordinator {
+    inner: Arc<dyn IntegrationEgressPort>,
     policy: Arc<dyn IntegrationEgressPolicyPort>,
     audit: Arc<dyn IntegrationAuditPort>,
 }
 
-impl PolicyAwareInsightSyncCoordinator {
+impl PolicyAwareIntegrationEgressCoordinator {
     pub fn new(
-        inner: Arc<dyn InsightSyncPort>,
+        inner: Arc<dyn IntegrationEgressPort>,
         policy: Arc<dyn IntegrationEgressPolicyPort>,
         audit: Arc<dyn IntegrationAuditPort>,
     ) -> Self {
@@ -49,32 +50,38 @@ impl PolicyAwareInsightSyncCoordinator {
 }
 
 #[async_trait]
-impl InsightSyncPort for PolicyAwareInsightSyncCoordinator {
-    async fn enqueue(
+impl IntegrationEgressPort for PolicyAwareIntegrationEgressCoordinator {
+    async fn enqueue_message(
         &self,
         envelope: IntegrationEnvelope,
-        packet: InsightPacket,
+        payload: IntegrationOutboundPayload,
     ) -> Result<(), CoreError> {
-        let decision = self.policy.authorize_insight(&envelope, &packet).await?;
+        if let IntegrationOutboundPayload::Insight(packet) = &payload {
+            let decision = self.policy.authorize_insight(&envelope, packet).await?;
 
-        if decision.audit_required {
-            self.audit
-                .record_insight_decision(Self::to_audit_record(&envelope, &packet, &decision))
-                .await?;
-        }
-
-        match decision.disposition {
-            IntegrationEgressDisposition::Allow => self.inner.enqueue(envelope, packet).await,
-            IntegrationEgressDisposition::Deny => Err(CoreError::PolicyDenied(
-                decision
-                    .reason
-                    .unwrap_or_else(|| "integration egress denied".to_string()),
-            )),
-            IntegrationEgressDisposition::RequireUserApproval => {
-                Err(CoreError::ConsentRequired(decision.reason.unwrap_or_else(
-                    || "integration egress requires user approval".to_string(),
-                )))
+            if decision.audit_required {
+                self.audit
+                    .record_insight_decision(Self::to_audit_record(&envelope, packet, &decision))
+                    .await?;
             }
+
+            match decision.disposition {
+                IntegrationEgressDisposition::Allow => {
+                    self.inner.enqueue_message(envelope, payload).await
+                }
+                IntegrationEgressDisposition::Deny => Err(CoreError::PolicyDenied(
+                    decision
+                        .reason
+                        .unwrap_or_else(|| "integration egress denied".to_string()),
+                )),
+                IntegrationEgressDisposition::RequireUserApproval => {
+                    Err(CoreError::ConsentRequired(decision.reason.unwrap_or_else(
+                        || "integration egress requires user approval".to_string(),
+                    )))
+                }
+            }
+        } else {
+            self.inner.enqueue_message(envelope, payload).await
         }
     }
 
@@ -101,16 +108,16 @@ mod tests {
         IntegrationPrivacyClassification,
     };
 
-    struct MockSync {
+    struct MockEgress {
         enqueued: Arc<Mutex<Vec<String>>>,
     }
 
     #[async_trait]
-    impl InsightSyncPort for MockSync {
-        async fn enqueue(
+    impl IntegrationEgressPort for MockEgress {
+        async fn enqueue_message(
             &self,
             envelope: IntegrationEnvelope,
-            _packet: InsightPacket,
+            _payload: IntegrationOutboundPayload,
         ) -> Result<(), CoreError> {
             self.enqueued.lock().await.push(envelope.envelope_id);
             Ok(())
@@ -205,8 +212,8 @@ mod tests {
     async fn enqueue_allows_and_audits_when_policy_allows() {
         let enqueued = Arc::new(Mutex::new(Vec::new()));
         let records = Arc::new(Mutex::new(Vec::new()));
-        let coordinator = PolicyAwareInsightSyncCoordinator::new(
-            Arc::new(MockSync {
+        let coordinator = PolicyAwareIntegrationEgressCoordinator::new(
+            Arc::new(MockEgress {
                 enqueued: enqueued.clone(),
             }),
             Arc::new(MockPolicy {
@@ -218,7 +225,7 @@ mod tests {
         );
 
         coordinator
-            .enqueue(sample_envelope(), sample_packet())
+            .enqueue_insight(sample_envelope(), sample_packet())
             .await
             .unwrap();
 
@@ -232,8 +239,8 @@ mod tests {
     async fn enqueue_denied_by_policy_does_not_queue() {
         let enqueued = Arc::new(Mutex::new(Vec::new()));
         let records = Arc::new(Mutex::new(Vec::new()));
-        let coordinator = PolicyAwareInsightSyncCoordinator::new(
-            Arc::new(MockSync {
+        let coordinator = PolicyAwareIntegrationEgressCoordinator::new(
+            Arc::new(MockEgress {
                 enqueued: enqueued.clone(),
             }),
             Arc::new(MockPolicy {
@@ -245,7 +252,7 @@ mod tests {
         );
 
         let err = coordinator
-            .enqueue(sample_envelope(), sample_packet())
+            .enqueue_insight(sample_envelope(), sample_packet())
             .await
             .expect_err("enqueue should fail");
 
@@ -258,8 +265,8 @@ mod tests {
     async fn enqueue_requires_user_approval_without_queueing() {
         let enqueued = Arc::new(Mutex::new(Vec::new()));
         let records = Arc::new(Mutex::new(Vec::new()));
-        let coordinator = PolicyAwareInsightSyncCoordinator::new(
-            Arc::new(MockSync {
+        let coordinator = PolicyAwareIntegrationEgressCoordinator::new(
+            Arc::new(MockEgress {
                 enqueued: enqueued.clone(),
             }),
             Arc::new(MockPolicy {
@@ -273,7 +280,7 @@ mod tests {
         );
 
         let err = coordinator
-            .enqueue(sample_envelope(), sample_packet())
+            .enqueue_insight(sample_envelope(), sample_packet())
             .await
             .expect_err("enqueue should fail");
 

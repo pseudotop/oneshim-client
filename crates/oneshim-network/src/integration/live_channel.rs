@@ -17,7 +17,7 @@ use oneshim_core::models::integration::{IntegrationAckCursor, ProactivePrompt};
 
 use super::cloudevents::{IntegrationCloudEvent, PromptCloudEventBatch};
 use super::prompt_from_cloudevent;
-use super::transport::IntegrationSyncTransportResponse;
+use super::transport::IntegrationEgressTransportResponse;
 
 type LiveWebSocketStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -134,7 +134,7 @@ impl WebSocketIntegrationSessionChannel {
         &self,
         expected_queue_ids: &[String],
         timeout: Duration,
-    ) -> Result<IntegrationSyncTransportResponse, CoreError> {
+    ) -> Result<IntegrationEgressTransportResponse, CoreError> {
         let expected: BTreeSet<String> = expected_queue_ids.iter().cloned().collect();
         let deadline = tokio::time::Instant::now() + timeout;
         let mut acknowledged = BTreeSet::new();
@@ -166,7 +166,7 @@ impl WebSocketIntegrationSessionChannel {
             }
 
             if acknowledged.len() == expected.len() {
-                return Ok(IntegrationSyncTransportResponse {
+                return Ok(IntegrationEgressTransportResponse {
                     acknowledged_queue_ids: acknowledged.into_iter().collect(),
                     ack_cursor,
                 });

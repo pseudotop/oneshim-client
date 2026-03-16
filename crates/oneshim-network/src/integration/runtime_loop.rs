@@ -6,7 +6,7 @@ use oneshim_core::models::integration::{
     IntegrationCapabilityScope, IntegrationSessionState, IntegrationSessionStatus,
 };
 use oneshim_core::ports::integration::{
-    InsightSyncPort, IntegrationInboxPort, IntegrationSessionPort,
+    IntegrationEgressPort, IntegrationInboxPort, IntegrationSessionPort,
 };
 use tokio::sync::watch;
 use tracing::warn;
@@ -16,7 +16,7 @@ pub struct IntegrationRuntimeLoopProfile {
     pub requested_scopes: Vec<IntegrationCapabilityScope>,
     pub connect_retry_interval: Duration,
     pub heartbeat_interval: Duration,
-    pub sync_interval: Duration,
+    pub egress_interval: Duration,
     pub inbox_refresh_interval: Duration,
 }
 
@@ -31,7 +31,7 @@ impl Default for IntegrationRuntimeLoopProfile {
             ],
             connect_retry_interval: Duration::from_secs(15),
             heartbeat_interval: Duration::from_secs(30),
-            sync_interval: Duration::from_secs(15),
+            egress_interval: Duration::from_secs(15),
             inbox_refresh_interval: Duration::from_secs(15),
         }
     }
@@ -40,7 +40,7 @@ impl Default for IntegrationRuntimeLoopProfile {
 #[derive(Clone)]
 pub struct IntegrationRuntimeLoop {
     session: Arc<dyn IntegrationSessionPort>,
-    sync: Arc<dyn InsightSyncPort>,
+    egress: Arc<dyn IntegrationEgressPort>,
     inbox: Arc<dyn IntegrationInboxPort>,
     profile: IntegrationRuntimeLoopProfile,
 }
@@ -48,13 +48,13 @@ pub struct IntegrationRuntimeLoop {
 impl IntegrationRuntimeLoop {
     pub fn new(
         session: Arc<dyn IntegrationSessionPort>,
-        sync: Arc<dyn InsightSyncPort>,
+        egress: Arc<dyn IntegrationEgressPort>,
         inbox: Arc<dyn IntegrationInboxPort>,
         profile: IntegrationRuntimeLoopProfile,
     ) -> Self {
         Self {
             session,
-            sync,
+            egress,
             inbox,
             profile,
         }
@@ -90,9 +90,9 @@ impl IntegrationRuntimeLoop {
         self.ensure_session_ready().await
     }
 
-    async fn run_sync_cycle(&self) -> Result<usize, CoreError> {
+    async fn run_egress_cycle(&self) -> Result<usize, CoreError> {
         self.ensure_session_ready().await?;
-        self.sync.flush().await
+        self.egress.flush().await
     }
 
     async fn run_inbox_cycle(&self) -> Result<usize, CoreError> {
@@ -119,12 +119,12 @@ impl IntegrationRuntimeLoop {
     pub async fn run(&self, mut shutdown_rx: watch::Receiver<bool>) {
         let mut connect_interval = tokio::time::interval(self.profile.connect_retry_interval);
         let mut heartbeat_interval = tokio::time::interval(self.profile.heartbeat_interval);
-        let mut sync_interval = tokio::time::interval(self.profile.sync_interval);
+        let mut egress_interval = tokio::time::interval(self.profile.egress_interval);
         let mut inbox_interval = tokio::time::interval(self.profile.inbox_refresh_interval);
 
         connect_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        sync_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        egress_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         inbox_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
@@ -139,9 +139,9 @@ impl IntegrationRuntimeLoop {
                         warn!(error = %error, "integration runtime heartbeat cycle failed");
                     }
                 }
-                _ = sync_interval.tick() => {
-                    if let Err(error) = self.run_sync_cycle().await {
-                        warn!(error = %error, "integration runtime sync cycle failed");
+                _ = egress_interval.tick() => {
+                    if let Err(error) = self.run_egress_cycle().await {
+                        warn!(error = %error, "integration runtime egress cycle failed");
                     }
                 }
                 _ = inbox_interval.tick() => {
@@ -231,16 +231,16 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct MockSyncPort {
+    struct MockEgressPort {
         flush_calls: Arc<Mutex<usize>>,
     }
 
     #[async_trait]
-    impl InsightSyncPort for MockSyncPort {
-        async fn enqueue(
+    impl IntegrationEgressPort for MockEgressPort {
+        async fn enqueue_message(
             &self,
             _envelope: oneshim_core::models::integration::IntegrationEnvelope,
-            _packet: oneshim_core::models::integration::InsightPacket,
+            _payload: oneshim_core::models::integration::IntegrationOutboundPayload,
         ) -> Result<(), CoreError> {
             Ok(())
         }
@@ -292,21 +292,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_cycle_connects_before_flushing() {
+    async fn egress_cycle_connects_before_flushing() {
         let session = Arc::new(MockSessionPort::default());
-        let sync = Arc::new(MockSyncPort::default());
+        let egress = Arc::new(MockEgressPort::default());
         let inbox = Arc::new(MockInboxPort::default());
         let runtime = IntegrationRuntimeLoop::new(
             session.clone(),
-            sync.clone(),
+            egress.clone(),
             inbox,
             IntegrationRuntimeLoopProfile::default(),
         );
 
-        runtime.run_sync_cycle().await.unwrap();
+        runtime.run_egress_cycle().await.unwrap();
 
         assert_eq!(*session.connect_calls.lock().await, 1);
-        assert_eq!(*sync.flush_calls.lock().await, 1);
+        assert_eq!(*egress.flush_calls.lock().await, 1);
     }
 
     #[tokio::test]
@@ -330,7 +330,7 @@ mod tests {
             });
         let runtime = IntegrationRuntimeLoop::new(
             session.clone(),
-            Arc::new(MockSyncPort::default()),
+            Arc::new(MockEgressPort::default()),
             Arc::new(MockInboxPort::default()),
             IntegrationRuntimeLoopProfile::default(),
         );

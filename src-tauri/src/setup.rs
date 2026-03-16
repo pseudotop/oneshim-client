@@ -17,8 +17,8 @@ use oneshim_core::ports::integration::IntegrationAuthPort;
 use oneshim_core::ports::integration::IntegrationSessionPort;
 #[cfg(feature = "server")]
 use oneshim_core::ports::integration::{
-    InsightSyncPort, IntegrationAuthPort, IntegrationCheckpointStorePort, IntegrationInboxPort,
-    IntegrationInsightProducerPort, LocalSuggestionQueryPort,
+    IntegrationAuthPort, IntegrationCheckpointStorePort, IntegrationEgressPort,
+    IntegrationInboxPort, IntegrationInsightProducerPort, LocalSuggestionQueryPort,
 };
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
@@ -38,12 +38,12 @@ use oneshim_network::http_client::HttpApiClient;
 #[cfg(feature = "server")]
 use oneshim_network::integration::{
     Ed25519DpopProofFactory, EnvIntegrationAuthPort, HttpsIntegrationTransportClient,
-    HttpsIntegrationTransportConfig, InsightSyncCoordinator, IntegrationInboxCoordinator,
+    HttpsIntegrationTransportConfig, IntegrationEgressCoordinator, IntegrationInboxCoordinator,
     IntegrationInsightProducerCoordinator, IntegrationProducerRuntimeLoop,
     IntegrationProducerRuntimeLoopProfile, IntegrationRuntimeLoop, IntegrationRuntimeLoopProfile,
     IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile,
     NoopIntegrationRequestProofFactory, OidcDeviceFlowAuthConfig,
-    OidcDeviceFlowIntegrationAuthPort, PolicyAwareInsightSyncCoordinator,
+    OidcDeviceFlowIntegrationAuthPort, PolicyAwareIntegrationEgressCoordinator,
 };
 #[cfg(feature = "server")]
 use oneshim_network::oauth::OAuthClient;
@@ -158,7 +158,7 @@ struct BuiltIntegrationRuntime {
     status: IntegrationOutboundRuntimeStatus,
     auth: Option<Arc<dyn IntegrationAuthPort>>,
     session: Option<Arc<dyn IntegrationSessionPort>>,
-    sync: Option<Arc<dyn InsightSyncPort>>,
+    egress: Option<Arc<dyn IntegrationEgressPort>>,
     checkpoint_store: Option<Arc<dyn IntegrationCheckpointStorePort>>,
     outbox: Option<Arc<dyn oneshim_core::ports::integration::IntegrationOutboxPort>>,
     inbox: Option<Arc<dyn IntegrationInboxPort>>,
@@ -463,7 +463,7 @@ fn build_integration_runtime(
             status,
             auth: auth_port,
             session: None,
-            sync: None,
+            egress: None,
             checkpoint_store: None,
             outbox: None,
             inbox_store: None,
@@ -488,8 +488,8 @@ fn build_integration_runtime(
     let session_store = Arc::new(integration_state_store.session_store())
         as Arc<dyn oneshim_core::ports::integration::IntegrationSessionStorePort>;
 
-    let sync_transport = Arc::new(transport.sync_transport())
-        as Arc<dyn oneshim_network::integration::IntegrationSyncTransportClient>;
+    let egress_transport = Arc::new(transport.egress_transport())
+        as Arc<dyn oneshim_network::integration::IntegrationEgressTransportClient>;
     let inbox_transport = Arc::new(transport.inbox_transport())
         as Arc<dyn oneshim_network::integration::IntegrationInboxTransportClient>;
     let transport =
@@ -524,16 +524,16 @@ fn build_integration_runtime(
         as Arc<dyn IntegrationCheckpointStorePort>;
     let audit_store = Arc::new(integration_state_store.audit_store())
         as Arc<dyn oneshim_core::ports::integration::IntegrationAuditPort>;
-    let sync = Arc::new(PolicyAwareInsightSyncCoordinator::new(
-        Arc::new(InsightSyncCoordinator::new(
+    let egress = Arc::new(PolicyAwareIntegrationEgressCoordinator::new(
+        Arc::new(IntegrationEgressCoordinator::new(
             session.clone(),
             outbox_store.clone(),
-            sync_transport,
+            egress_transport,
             integration.max_batch_size,
-        )) as Arc<dyn InsightSyncPort>,
+        )) as Arc<dyn IntegrationEgressPort>,
         Arc::new(DefaultIntegrationEgressPolicy::default()),
         audit_store.clone(),
-    )) as Arc<dyn InsightSyncPort>;
+    )) as Arc<dyn IntegrationEgressPort>;
     let inbox = Arc::new(IntegrationInboxCoordinator::new(
         integration_device_id,
         session.clone(),
@@ -547,7 +547,7 @@ fn build_integration_runtime(
         status,
         auth: auth_port,
         session: Some(session.clone()),
-        sync: Some(sync.clone()),
+        egress: Some(egress.clone()),
         checkpoint_store: Some(checkpoint_store),
         outbox: Some(outbox_store),
         inbox: Some(inbox.clone()),
@@ -555,13 +555,13 @@ fn build_integration_runtime(
         audit: Some(audit_store),
         runtime_loop: Some(IntegrationRuntimeLoop::new(
             session,
-            sync,
+            egress,
             inbox,
             IntegrationRuntimeLoopProfile {
                 requested_scopes: default_integration_runtime_scopes(),
                 connect_retry_interval: Duration::from_secs(integration.connect_retry_secs),
                 heartbeat_interval: Duration::from_secs(integration.heartbeat_interval_secs),
-                sync_interval: Duration::from_secs(integration.sync_interval_secs),
+                egress_interval: Duration::from_secs(integration.sync_interval_secs),
                 inbox_refresh_interval: Duration::from_secs(
                     integration.inbox_refresh_interval_secs,
                 ),
@@ -630,7 +630,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "server")]
     let integration_session = built_integration_runtime.session.clone();
     #[cfg(feature = "server")]
-    let integration_sync = built_integration_runtime.sync.clone();
+    let integration_egress = built_integration_runtime.egress.clone();
     #[cfg(feature = "server")]
     let integration_checkpoint_store = built_integration_runtime.checkpoint_store.clone();
     #[cfg(feature = "server")]
@@ -648,7 +648,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "server"))]
     let _integration_auth: Option<()> = None;
     #[cfg(not(feature = "server"))]
-    let _integration_sync: Option<()> = None;
+    let _integration_egress: Option<()> = None;
     #[cfg(not(feature = "server"))]
     let _integration_checkpoint_store: Option<()> = None;
     let web_port = Arc::new(AtomicU16::new(config.web.port));
@@ -739,10 +739,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "server")]
     let integration_producer_loop = match (
-        integration_sync.clone(),
+        integration_egress.clone(),
         integration_checkpoint_store.clone(),
     ) {
-        (Some(sync), Some(checkpoint_store)) => {
+        (Some(egress), Some(checkpoint_store)) => {
             let device_id = config
                 .integration
                 .device_id
@@ -756,7 +756,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     suggestion_query,
                 )),
                 checkpoint_store,
-                sync,
+                egress,
                 config.integration.max_batch_size,
             )) as Arc<dyn IntegrationInsightProducerPort>;
             Some(IntegrationProducerRuntimeLoop::new(

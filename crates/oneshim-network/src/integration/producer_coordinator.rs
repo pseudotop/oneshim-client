@@ -3,14 +3,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::integration::{
-    InsightSyncPort, IntegrationCheckpointStorePort, IntegrationInsightProducerPort,
+    IntegrationCheckpointStorePort, IntegrationEgressPort, IntegrationInsightProducerPort,
     IntegrationInsightSourcePort,
 };
 
 pub struct IntegrationInsightProducerCoordinator {
     source: Arc<dyn IntegrationInsightSourcePort>,
     checkpoint_store: Arc<dyn IntegrationCheckpointStorePort>,
-    sync: Arc<dyn InsightSyncPort>,
+    egress: Arc<dyn IntegrationEgressPort>,
     max_batch_size: usize,
 }
 
@@ -18,13 +18,13 @@ impl IntegrationInsightProducerCoordinator {
     pub fn new(
         source: Arc<dyn IntegrationInsightSourcePort>,
         checkpoint_store: Arc<dyn IntegrationCheckpointStorePort>,
-        sync: Arc<dyn InsightSyncPort>,
+        egress: Arc<dyn IntegrationEgressPort>,
         max_batch_size: usize,
     ) -> Self {
         Self {
             source,
             checkpoint_store,
-            sync,
+            egress,
             max_batch_size: max_batch_size.max(1),
         }
     }
@@ -42,8 +42,8 @@ impl IntegrationInsightProducerPort for IntegrationInsightProducerCoordinator {
 
         let mut produced = 0usize;
         for candidate in candidates {
-            self.sync
-                .enqueue(candidate.envelope, candidate.packet)
+            self.egress
+                .enqueue_insight(candidate.envelope, candidate.packet)
                 .await?;
             self.checkpoint_store
                 .store_checkpoint(namespace, candidate.source_cursor)
@@ -114,17 +114,22 @@ mod tests {
         }
     }
 
-    struct MockSync {
+    struct MockEgress {
         packet_ids: Arc<Mutex<Vec<String>>>,
     }
 
     #[async_trait]
-    impl InsightSyncPort for MockSync {
-        async fn enqueue(
+    impl IntegrationEgressPort for MockEgress {
+        async fn enqueue_message(
             &self,
             _envelope: IntegrationEnvelope,
-            packet: InsightPacket,
+            payload: oneshim_core::models::integration::IntegrationOutboundPayload,
         ) -> Result<(), CoreError> {
+            let oneshim_core::models::integration::IntegrationOutboundPayload::Insight(packet) =
+                payload
+            else {
+                panic!("expected insight payload");
+            };
             self.packet_ids.lock().await.push(packet.packet_id);
             Ok(())
         }
@@ -183,13 +188,13 @@ mod tests {
             cursor: Arc::new(Mutex::new(Some("0".to_string()))),
             stored: Arc::new(Mutex::new(Vec::new())),
         });
-        let sync = Arc::new(MockSync {
+        let egress = Arc::new(MockEgress {
             packet_ids: Arc::new(Mutex::new(Vec::new())),
         });
         let coordinator = IntegrationInsightProducerCoordinator::new(
             source.clone(),
             checkpoint.clone(),
-            sync.clone(),
+            egress.clone(),
             10,
         );
 
@@ -205,7 +210,7 @@ mod tests {
             vec!["1".to_string(), "2".to_string()]
         );
         assert_eq!(
-            sync.packet_ids.lock().await.clone(),
+            egress.packet_ids.lock().await.clone(),
             vec!["packet-1".to_string(), "packet-2".to_string()]
         );
     }

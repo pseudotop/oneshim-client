@@ -1,4 +1,4 @@
-//! Integration domain ports for outbound sync, inbound inbox delivery, and
+//! Integration domain ports for outbound egress, inbound inbox delivery, and
 //! session/auth orchestration.
 
 use async_trait::async_trait;
@@ -82,15 +82,25 @@ pub trait IntegrationAuthPort: Send + Sync {
 }
 
 #[async_trait]
-pub trait InsightSyncPort: Send + Sync {
+pub trait IntegrationEgressPort: Send + Sync {
+    /// Queue a typed outbound integration message for delivery.
+    async fn enqueue_message(
+        &self,
+        envelope: IntegrationEnvelope,
+        payload: IntegrationOutboundPayload,
+    ) -> Result<(), CoreError>;
+
     /// Queue a privacy-filtered outbound insight packet.
-    async fn enqueue(
+    async fn enqueue_insight(
         &self,
         envelope: IntegrationEnvelope,
         packet: InsightPacket,
-    ) -> Result<(), CoreError>;
+    ) -> Result<(), CoreError> {
+        self.enqueue_message(envelope, IntegrationOutboundPayload::Insight(packet))
+            .await
+    }
 
-    /// Flush queued packets to the remote integration backend.
+    /// Flush queued outbound messages to the remote integration backend.
     async fn flush(&self) -> Result<usize, CoreError>;
 
     /// Read the latest acknowledged cursor returned by the remote side.
