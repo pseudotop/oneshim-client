@@ -11,6 +11,7 @@ use oneshim_core::ports::secret_projection::{
     SecretProjectionRequest, SecretProjectionResult,
 };
 use oneshim_core::ports::secret_store::SecretStore;
+use oneshim_core::provider_surface::provider_projection_for_type;
 
 #[derive(Clone)]
 pub struct ProcessEnvSecretProjection {
@@ -42,17 +43,15 @@ impl ProcessEnvSecretProjection {
 pub fn provider_api_key_cli_template(
     provider_type: AiProviderType,
 ) -> Result<ProjectionTemplate, CoreError> {
-    let (provider_id, env_names) = match provider_type {
-        AiProviderType::OpenAi => ("openai", vec!["OPENAI_API_KEY".to_string()]),
-        AiProviderType::Anthropic => ("anthropic", vec!["ANTHROPIC_API_KEY".to_string()]),
-        AiProviderType::Google => ("google", vec!["GOOGLE_API_KEY".to_string()]),
-        AiProviderType::Ollama => ("ollama", vec!["OLLAMA_API_KEY".to_string()]),
-        AiProviderType::Generic => ("generic", vec!["ONESHIM_GENERIC_API_KEY".to_string()]),
-    };
+    let projection = provider_projection_for_type(provider_type).ok_or_else(|| {
+        CoreError::Config(format!(
+            "missing provider projection metadata for provider type '{provider_type:?}'"
+        ))
+    })?;
 
     Ok(ProjectionTemplate::process_env(
-        provider_api_key_cli_consumer_id(provider_id)?,
-        env_names,
+        provider_api_key_cli_consumer_id(&projection.vendor_id)?,
+        projection.api_key_env_vars.clone(),
     ))
 }
 

@@ -32,6 +32,16 @@ pub struct ProviderVendorSpec {
     #[serde(default)]
     pub aliases: Vec<String>,
     pub display_name: String,
+    #[serde(default)]
+    pub projection: Option<ProviderVendorProjectionSpec>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+pub struct ProviderVendorProjectionSpec {
+    #[serde(default)]
+    pub api_key_env_vars: Vec<String>,
+    #[serde(default)]
+    pub api_key_temp_file_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -1129,6 +1139,29 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
         }
 
         parse_provider_type(&vendor.provider_type)?;
+        if let Some(projection) = vendor.projection.as_ref() {
+            if projection
+                .api_key_env_vars
+                .iter()
+                .any(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "Vendor '{}' projection contains an empty api_key_env_vars entry.",
+                    vendor.vendor_id
+                ));
+            }
+            if projection
+                .api_key_temp_file_prefix
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(str::is_empty)
+            {
+                return Err(format!(
+                    "Vendor '{}' projection api_key_temp_file_prefix cannot be empty.",
+                    vendor.vendor_id
+                ));
+            }
+        }
 
         let provider_key = vendor.provider_type.trim().to_ascii_lowercase();
         for alias in &vendor.aliases {
@@ -1941,6 +1974,28 @@ mod tests {
         assert_eq!(
             provisioning.docs_url.as_deref(),
             Some("https://developers.google.com/identity/protocols/oauth2/native-app")
+        );
+    }
+
+    #[test]
+    fn loads_vendor_projection_metadata_from_catalog() {
+        let catalog = surface_catalog().expect("catalog should load");
+        let openai = catalog
+            .vendors
+            .iter()
+            .find(|vendor| vendor.vendor_id == "openai")
+            .expect("openai vendor should exist");
+        let projection = openai
+            .projection
+            .as_ref()
+            .expect("openai vendor should declare projection metadata");
+        assert_eq!(
+            projection.api_key_env_vars,
+            vec!["OPENAI_API_KEY".to_string()]
+        );
+        assert_eq!(
+            projection.api_key_temp_file_prefix.as_deref(),
+            Some("openai")
         );
     }
 

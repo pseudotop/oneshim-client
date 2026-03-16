@@ -6,31 +6,51 @@
       "vendor_id": "anthropic",
       "provider_type": "Anthropic",
       "aliases": ["anthropic"],
-      "display_name": "Anthropic"
+      "display_name": "Anthropic",
+      "projection": {
+        "api_key_env_vars": ["ANTHROPIC_API_KEY"],
+        "api_key_temp_file_prefix": "anthropic"
+      }
     },
     {
       "vendor_id": "openai",
       "provider_type": "OpenAi",
       "aliases": ["openai", "open_ai", "open-ai"],
-      "display_name": "OpenAI"
+      "display_name": "OpenAI",
+      "projection": {
+        "api_key_env_vars": ["OPENAI_API_KEY"],
+        "api_key_temp_file_prefix": "openai"
+      }
     },
     {
       "vendor_id": "google",
       "provider_type": "Google",
       "aliases": ["google", "gemini"],
-      "display_name": "Google"
+      "display_name": "Google",
+      "projection": {
+        "api_key_env_vars": ["GOOGLE_API_KEY"],
+        "api_key_temp_file_prefix": "google"
+      }
     },
     {
       "vendor_id": "ollama",
       "provider_type": "Ollama",
       "aliases": ["ollama"],
-      "display_name": "Ollama"
+      "display_name": "Ollama",
+      "projection": {
+        "api_key_env_vars": ["OLLAMA_API_KEY"],
+        "api_key_temp_file_prefix": "ollama"
+      }
     },
     {
       "vendor_id": "generic",
       "provider_type": "Generic",
       "aliases": ["generic", "openai-compatible", "openai_like", "openai-like", "openailike", "llamaindex", "llama-index", "lmstudio", "lm-studio", "vllm", "openai-compatible-local", "local-openai-compatible"],
-      "display_name": "Generic"
+      "display_name": "Generic",
+      "projection": {
+        "api_key_env_vars": ["ONESHIM_GENERIC_API_KEY"],
+        "api_key_temp_file_prefix": "generic"
+      }
     }
   ],
   "surfaces": [

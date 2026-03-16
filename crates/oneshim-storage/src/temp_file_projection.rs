@@ -12,6 +12,7 @@ use oneshim_core::ports::secret_projection::{
     SecretProjectionPort, SecretProjectionRequest, SecretProjectionResult,
 };
 use oneshim_core::ports::secret_store::SecretStore;
+use oneshim_core::provider_surface::provider_projection_for_type;
 use tempfile::Builder;
 
 const DEFAULT_PROJECTION_DIR_NAME: &str = "secret-projections";
@@ -153,17 +154,18 @@ pub fn provider_api_key_temp_file_template(
     provider_type: AiProviderType,
     profile_id: &str,
 ) -> Result<ProjectionTemplate, CoreError> {
-    let (provider_id, file_name_prefix) = match provider_type {
-        AiProviderType::OpenAi => ("openai", "openai"),
-        AiProviderType::Anthropic => ("anthropic", "anthropic"),
-        AiProviderType::Google => ("google", "google"),
-        AiProviderType::Ollama => ("ollama", "ollama"),
-        AiProviderType::Generic => ("generic", "generic"),
-    };
+    let projection = provider_projection_for_type(provider_type).ok_or_else(|| {
+        CoreError::Config(format!(
+            "missing provider projection metadata for provider type '{provider_type:?}'"
+        ))
+    })?;
 
     Ok(ProjectionTemplate::temp_file(
-        provider_api_key_temp_file_consumer_id(provider_id, profile_id)?,
-        format!("{file_name_prefix}-{profile_id}-api-key"),
+        provider_api_key_temp_file_consumer_id(&projection.vendor_id, profile_id)?,
+        format!(
+            "{}-{profile_id}-api-key",
+            projection.api_key_temp_file_prefix
+        ),
     ))
 }
 
