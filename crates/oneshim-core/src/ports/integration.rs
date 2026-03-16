@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::CoreError;
 use crate::models::integration::{
     InsightPacket, IntegrationAckCursor, IntegrationCapabilityScope, IntegrationEnvelope,
-    IntegrationSessionState, ProactivePrompt,
+    IntegrationSessionState, ProactivePrompt, QueuedInsightPacket,
 };
 
 #[async_trait]
@@ -42,6 +42,28 @@ pub trait InsightSyncPort: Send + Sync {
 
     /// Read the latest acknowledged cursor returned by the remote side.
     async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError>;
+}
+
+#[async_trait]
+pub trait IntegrationOutboxPort: Send + Sync {
+    /// Persist an outbound insight packet before transport delivery.
+    async fn enqueue_insight(
+        &self,
+        envelope: IntegrationEnvelope,
+        packet: InsightPacket,
+    ) -> Result<String, CoreError>;
+
+    /// List pending outbound packets in delivery order.
+    async fn list_pending(&self, limit: usize) -> Result<Vec<QueuedInsightPacket>, CoreError>;
+
+    /// Remove acknowledged or successfully delivered queue items.
+    async fn delete(&self, queue_ids: &[String]) -> Result<(), CoreError>;
+
+    /// Read the latest acknowledged cursor returned by the remote side.
+    async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError>;
+
+    /// Persist the latest acknowledged cursor from the remote side.
+    async fn store_ack_cursor(&self, cursor: IntegrationAckCursor) -> Result<(), CoreError>;
 }
 
 #[async_trait]

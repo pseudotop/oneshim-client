@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
-use oneshim_core::models::integration::IntegrationCapabilityScope;
+use oneshim_core::models::integration::{
+    IntegrationAckCursor, IntegrationCapabilityScope, QueuedInsightPacket,
+};
 
 #[derive(Debug, Clone)]
 pub struct IntegrationTransportConnectRequest {
@@ -26,4 +28,19 @@ pub trait IntegrationTransportClient: Send + Sync {
     async fn heartbeat(&self, session_id: &str) -> Result<DateTime<Utc>, CoreError>;
 
     async fn disconnect(&self, session_id: &str) -> Result<(), CoreError>;
+}
+
+#[derive(Debug, Clone)]
+pub struct IntegrationSyncTransportResponse {
+    pub accepted_count: usize,
+    pub ack_cursor: Option<IntegrationAckCursor>,
+}
+
+#[async_trait]
+pub trait IntegrationSyncTransportClient: Send + Sync {
+    async fn send_insights(
+        &self,
+        session_id: &str,
+        items: Vec<QueuedInsightPacket>,
+    ) -> Result<IntegrationSyncTransportResponse, CoreError>;
 }

@@ -58,6 +58,14 @@ pub struct InsightPacket {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueuedInsightPacket {
+    pub queue_id: String,
+    pub envelope: IntegrationEnvelope,
+    pub packet: InsightPacket,
+    pub queued_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InsightSourceWindow {
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
@@ -248,5 +256,43 @@ mod tests {
         assert_eq!(parsed.status, IntegrationSessionStatus::Connected);
         assert_eq!(parsed.granted_scopes.len(), 1);
         assert_eq!(parsed.ack_cursor.unwrap().cursor, "42");
+    }
+
+    #[test]
+    fn queued_insight_packet_roundtrip() {
+        let queued = QueuedInsightPacket {
+            queue_id: "queue-001".to_string(),
+            envelope: IntegrationEnvelope {
+                envelope_id: "env-001".to_string(),
+                schema_version: "integration.envelope.v1".to_string(),
+                message_type: IntegrationMessageType::InsightPacket,
+                timestamp: Utc::now(),
+                nonce: "nonce-001".to_string(),
+                origin: IntegrationOrigin {
+                    device_id: "device-001".to_string(),
+                    workspace_id: None,
+                    session_id: None,
+                    source: "desktop-client".to_string(),
+                },
+                capability_scope: IntegrationCapabilityScope::InsightWrite,
+            },
+            packet: InsightPacket {
+                packet_id: "packet-001".to_string(),
+                summary: "summary".to_string(),
+                derived_tags: vec!["focus".to_string()],
+                source_window: InsightSourceWindow {
+                    started_at: Utc::now(),
+                    ended_at: Utc::now(),
+                },
+                privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
+                audit_reference_id: Some("audit-001".to_string()),
+            },
+            queued_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&queued).unwrap();
+        let parsed: QueuedInsightPacket = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.queue_id, "queue-001");
+        assert_eq!(parsed.packet.packet_id, "packet-001");
     }
 }
