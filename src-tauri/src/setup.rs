@@ -7,9 +7,16 @@ use oneshim_automation::policy::PolicyClient;
 use oneshim_automation::sandbox::create_platform_sandbox;
 use oneshim_core::config::{AiAccessMode, AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
+#[cfg(feature = "server")]
+use oneshim_core::models::integration::IntegrationCapabilityScope;
+#[cfg(not(feature = "server"))]
 use oneshim_core::ports::integration::IntegrationAuthPort;
 #[cfg(feature = "server")]
 use oneshim_core::ports::integration::IntegrationSessionPort;
+#[cfg(feature = "server")]
+use oneshim_core::ports::integration::{
+    InsightSyncPort, IntegrationAuthPort, IntegrationInboxPort,
+};
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
 #[cfg(feature = "server")]
@@ -28,9 +35,10 @@ use oneshim_network::http_client::HttpApiClient;
 #[cfg(feature = "server")]
 use oneshim_network::integration::{
     Ed25519DpopProofFactory, EnvIntegrationAuthPort, HttpsIntegrationTransportClient,
-    HttpsIntegrationTransportConfig, IntegrationSessionCoordinator,
+    HttpsIntegrationTransportConfig, InsightSyncCoordinator, IntegrationInboxCoordinator,
+    IntegrationRuntimeLoop, IntegrationRuntimeLoopProfile, IntegrationSessionCoordinator,
     IntegrationSessionRuntimeProfile, NoopIntegrationRequestProofFactory, OidcDeviceFlowAuthConfig,
-    OidcDeviceFlowIntegrationAuthPort,
+    OidcDeviceFlowIntegrationAuthPort, PolicyAwareInsightSyncCoordinator,
 };
 #[cfg(feature = "server")]
 use oneshim_network::oauth::OAuthClient;
@@ -59,6 +67,8 @@ use crate::cli_subscription_bridge::{
 };
 use crate::feature_capabilities::FeatureCapabilityState;
 use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
+#[cfg(feature = "server")]
+use crate::integration_policy::DefaultIntegrationEgressPolicy;
 use crate::notification_manager::NotificationManager;
 #[cfg(feature = "server")]
 use crate::oauth_provider_registry::configured_oauth_provider_ids;
@@ -130,6 +140,14 @@ pub struct IntegrationSessionState(pub Option<()>);
 /// Managed state for outbound integration auth orchestration.
 #[allow(dead_code)]
 pub struct IntegrationAuthState(pub Option<Arc<dyn IntegrationAuthPort>>);
+
+#[cfg(feature = "server")]
+struct BuiltIntegrationRuntime {
+    status: IntegrationOutboundRuntimeStatus,
+    auth: Option<Arc<dyn IntegrationAuthPort>>,
+    session: Option<Arc<dyn IntegrationSessionPort>>,
+    runtime_loop: Option<IntegrationRuntimeLoop>,
+}
 
 fn resolve_db_path(data_dir: Option<&str>) -> PathBuf {
     data_dir
@@ -296,14 +314,7 @@ fn build_integration_runtime(
     config: &AppConfig,
     config_dir: &std::path::Path,
     secret_store: Option<Arc<dyn SecretStore>>,
-) -> Result<
-    (
-        IntegrationOutboundRuntimeStatus,
-        Option<Arc<dyn IntegrationAuthPort>>,
-        Option<Arc<dyn IntegrationSessionPort>>,
-    ),
-    oneshim_core::error::CoreError,
-> {
+) -> Result<BuiltIntegrationRuntime, oneshim_core::error::CoreError> {
     let integration = &config.integration;
     let bootstrap_url = non_empty_config_value(integration.bootstrap_url.as_deref());
     let auth_token_env_var = non_empty_config_value(integration.auth_token_env_var.as_deref());
@@ -426,10 +437,15 @@ fn build_integration_runtime(
     };
 
     if !runtime_configured {
-        return Ok((status, auth_port, None));
+        return Ok(BuiltIntegrationRuntime {
+            status,
+            auth: auth_port,
+            session: None,
+            runtime_loop: None,
+        });
     }
 
-    let transport = Arc::new(HttpsIntegrationTransportClient::new(
+    let transport = HttpsIntegrationTransportClient::new(
         HttpsIntegrationTransportConfig::new(
             bootstrap_url.expect("runtime_configured requires bootstrap_url"),
             Duration::from_secs(integration.request_timeout_secs),
@@ -438,12 +454,19 @@ fn build_integration_runtime(
             .clone()
             .expect("runtime_configured requires an integration auth port"),
         dpop_proof_factory,
-    )?) as Arc<dyn oneshim_network::integration::IntegrationTransportClient>;
+    )?;
 
     let integration_state_store =
         FileIntegrationStateStore::new(integration_state_store_path(config_dir))?;
     let session_store = Arc::new(integration_state_store.session_store())
         as Arc<dyn oneshim_core::ports::integration::IntegrationSessionStorePort>;
+
+    let sync_transport = Arc::new(transport.sync_transport())
+        as Arc<dyn oneshim_network::integration::IntegrationSyncTransportClient>;
+    let inbox_transport = Arc::new(transport.inbox_transport())
+        as Arc<dyn oneshim_network::integration::IntegrationInboxTransportClient>;
+    let transport =
+        Arc::new(transport) as Arc<dyn oneshim_network::integration::IntegrationTransportClient>;
 
     let session = Arc::new(IntegrationSessionCoordinator::new_with_profile_and_store(
         integration
@@ -462,7 +485,52 @@ fn build_integration_runtime(
         Some(session_store),
     )) as Arc<dyn IntegrationSessionPort>;
 
-    Ok((status, auth_port, Some(session)))
+    let outbox_store = Arc::new(integration_state_store.outbox_store())
+        as Arc<dyn oneshim_core::ports::integration::IntegrationOutboxPort>;
+    let inbox_store = Arc::new(integration_state_store.inbox_store())
+        as Arc<dyn oneshim_core::ports::integration::IntegrationInboxStorePort>;
+    let audit_store = Arc::new(integration_state_store.audit_store())
+        as Arc<dyn oneshim_core::ports::integration::IntegrationAuditPort>;
+    let sync = Arc::new(PolicyAwareInsightSyncCoordinator::new(
+        Arc::new(InsightSyncCoordinator::new(
+            session.clone(),
+            outbox_store,
+            sync_transport,
+            integration.max_batch_size,
+        )) as Arc<dyn InsightSyncPort>,
+        Arc::new(DefaultIntegrationEgressPolicy::default()),
+        audit_store,
+    )) as Arc<dyn InsightSyncPort>;
+    let inbox = Arc::new(IntegrationInboxCoordinator::new(
+        session.clone(),
+        inbox_store,
+        inbox_transport,
+        integration.max_batch_size,
+    )) as Arc<dyn IntegrationInboxPort>;
+
+    Ok(BuiltIntegrationRuntime {
+        status,
+        auth: auth_port,
+        session: Some(session.clone()),
+        runtime_loop: Some(IntegrationRuntimeLoop::new(
+            session,
+            sync,
+            inbox,
+            IntegrationRuntimeLoopProfile {
+                requested_scopes: vec![
+                    IntegrationCapabilityScope::InsightWrite,
+                    IntegrationCapabilityScope::PromptRead,
+                    IntegrationCapabilityScope::SessionManage,
+                ],
+                connect_retry_interval: Duration::from_secs(integration.connect_retry_secs),
+                heartbeat_interval: Duration::from_secs(integration.heartbeat_interval_secs),
+                sync_interval: Duration::from_secs(integration.sync_interval_secs),
+                inbox_refresh_interval: Duration::from_secs(
+                    integration.inbox_refresh_interval_secs,
+                ),
+            },
+        )),
+    })
 }
 
 /// Tauri setup 함수 — gui_runner.rs의 Agent + WebServer 초기화 이전
@@ -512,12 +580,20 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     );
     let config = config_manager.get();
     #[cfg(feature = "server")]
-    let (integration_runtime_status, integration_auth, integration_session) =
+    let built_integration_runtime =
         build_integration_runtime(&config, &config_dir, desktop_secret_store.clone()).map_err(
             |err| -> Box<dyn std::error::Error> {
                 Box::new(std::io::Error::other(err.to_string()))
             },
         )?;
+    #[cfg(feature = "server")]
+    let integration_runtime_status = built_integration_runtime.status.clone();
+    #[cfg(feature = "server")]
+    let integration_auth = built_integration_runtime.auth.clone();
+    #[cfg(feature = "server")]
+    let integration_session = built_integration_runtime.session.clone();
+    #[cfg(feature = "server")]
+    let integration_runtime_loop = built_integration_runtime.runtime_loop.clone();
     #[cfg(not(feature = "server"))]
     let integration_runtime_status = IntegrationOutboundRuntimeStatus::default();
     #[cfg(not(feature = "server"))]
@@ -607,6 +683,14 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // 6. broadcast channel (SSE events)
     let (event_tx, _event_rx) = broadcast::channel::<RealtimeEvent>(256);
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    #[cfg(feature = "server")]
+    if let Some(runtime_loop) = integration_runtime_loop.clone() {
+        let integration_shutdown_rx = shutdown_tx.subscribe();
+        handle.spawn(async move {
+            runtime_loop.run(integration_shutdown_rx).await;
+        });
+    }
 
     // 7. Agent 태스크 (gui_runner.rs run_agent 동일)
     let agent_storage: Arc<dyn StorageService> = sqlite_storage.clone();
@@ -998,15 +1082,15 @@ mod integration_tests {
         config.integration.enabled = true;
         config.integration.auth_token_env_var = Some("ONESHIM_TEST_INTEGRATION_TOKEN".to_string());
 
-        let (status, auth, session) =
-            build_integration_runtime(&config, temp_dir.path(), None).unwrap();
+        let runtime = build_integration_runtime(&config, temp_dir.path(), None).unwrap();
 
-        assert!(status.enabled);
-        assert!(!status.bootstrap_configured);
-        assert!(status.auth_source_configured);
-        assert!(!status.runtime_configured);
-        assert!(auth.is_some());
-        assert!(session.is_none());
+        assert!(runtime.status.enabled);
+        assert!(!runtime.status.bootstrap_configured);
+        assert!(runtime.status.auth_source_configured);
+        assert!(!runtime.status.runtime_configured);
+        assert!(runtime.auth.is_some());
+        assert!(runtime.session.is_none());
+        assert!(runtime.runtime_loop.is_none());
     }
 
     #[test]
@@ -1019,16 +1103,16 @@ mod integration_tests {
         config.integration.auth_token_env_var = Some("ONESHIM_TEST_INTEGRATION_TOKEN".to_string());
         config.integration.supported_auth_schemes = vec![IntegrationAuthScheme::DpopBearer];
 
-        let (status, auth, session) =
-            build_integration_runtime(&config, temp_dir.path(), None).unwrap();
+        let runtime = build_integration_runtime(&config, temp_dir.path(), None).unwrap();
 
         assert_eq!(
-            status.supported_auth_schemes,
+            runtime.status.supported_auth_schemes,
             vec![IntegrationAuthScheme::DpopBearer]
         );
-        assert!(auth.is_some());
-        assert!(status.runtime_configured);
-        assert!(session.is_some());
+        assert!(runtime.auth.is_some());
+        assert!(runtime.status.runtime_configured);
+        assert!(runtime.session.is_some());
+        assert!(runtime.runtime_loop.is_some());
     }
 
     #[test]
@@ -1043,12 +1127,12 @@ mod integration_tests {
         unsafe {
             std::env::set_var("ONESHIM_TEST_INTEGRATION_TOKEN", "token-value");
         }
-        let (status, _, _) = build_integration_runtime(&config, temp_dir.path(), None).unwrap();
+        let runtime = build_integration_runtime(&config, temp_dir.path(), None).unwrap();
         unsafe {
             std::env::remove_var("ONESHIM_TEST_INTEGRATION_TOKEN");
         }
 
-        assert!(status.auth_material_available);
+        assert!(runtime.status.auth_material_available);
     }
 }
 

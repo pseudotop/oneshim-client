@@ -153,6 +153,21 @@ mod tests {
             self.records.lock().await.push(record);
             Ok(())
         }
+
+        async fn recent_insight_decisions(
+            &self,
+            limit: usize,
+        ) -> Result<Vec<IntegrationInsightAuditRecord>, CoreError> {
+            Ok(self
+                .records
+                .lock()
+                .await
+                .iter()
+                .rev()
+                .take(limit)
+                .cloned()
+                .collect())
+        }
     }
 
     fn sample_envelope() -> IntegrationEnvelope {

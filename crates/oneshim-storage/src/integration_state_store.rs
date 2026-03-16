@@ -6,11 +6,12 @@ use async_trait::async_trait;
 use chrono::Utc;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    InsightPacket, IntegrationAckCursor, IntegrationInboxItemStatus, IntegrationSessionState,
-    QueuedInsightPacket, StoredProactivePrompt,
+    InsightPacket, IntegrationAckCursor, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
+    IntegrationSessionState, QueuedInsightPacket, StoredProactivePrompt,
 };
 use oneshim_core::ports::integration::{
-    IntegrationInboxStorePort, IntegrationOutboxPort, IntegrationSessionStorePort,
+    IntegrationAuditPort, IntegrationInboxStorePort, IntegrationOutboxPort,
+    IntegrationSessionStorePort,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -23,7 +24,10 @@ struct FileIntegrationStateRegistry {
     outbox_ack_cursor: Option<IntegrationAckCursor>,
     inbox: BTreeMap<String, StoredProactivePrompt>,
     inbox_ack_cursor: Option<IntegrationAckCursor>,
+    audit_records: Vec<IntegrationInsightAuditRecord>,
 }
+
+const MAX_AUDIT_RECORDS: usize = 512;
 
 impl FileIntegrationStateRegistry {
     fn new() -> Self {
@@ -34,6 +38,7 @@ impl FileIntegrationStateRegistry {
             outbox_ack_cursor: None,
             inbox: BTreeMap::new(),
             inbox_ack_cursor: None,
+            audit_records: Vec::new(),
         }
     }
 
@@ -221,6 +226,28 @@ impl FileIntegrationStateInner {
         registry.inbox_ack_cursor = Some(cursor);
         self.save_registry(&registry)
     }
+
+    fn record_audit_sync(&self, record: IntegrationInsightAuditRecord) -> Result<(), CoreError> {
+        let mut registry = self.registry.lock();
+        registry.audit_records.push(record);
+        if registry.audit_records.len() > MAX_AUDIT_RECORDS {
+            let overflow = registry.audit_records.len() - MAX_AUDIT_RECORDS;
+            registry.audit_records.drain(0..overflow);
+        }
+        self.save_registry(&registry)
+    }
+
+    fn recent_audit_sync(&self, limit: usize) -> Vec<IntegrationInsightAuditRecord> {
+        let registry = self.registry.lock();
+        let take = limit.max(1);
+        registry
+            .audit_records
+            .iter()
+            .rev()
+            .take(take)
+            .cloned()
+            .collect()
+    }
 }
 
 #[derive(Clone)]
@@ -249,6 +276,12 @@ impl FileIntegrationStateStore {
 
     pub fn inbox_store(&self) -> FileIntegrationInboxStore {
         FileIntegrationInboxStore {
+            inner: self.inner.clone(),
+        }
+    }
+
+    pub fn audit_store(&self) -> FileIntegrationAuditStore {
+        FileIntegrationAuditStore {
             inner: self.inner.clone(),
         }
     }
@@ -389,6 +422,34 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
     }
 }
 
+#[derive(Clone)]
+pub struct FileIntegrationAuditStore {
+    inner: Arc<FileIntegrationStateInner>,
+}
+
+#[async_trait]
+impl IntegrationAuditPort for FileIntegrationAuditStore {
+    async fn record_insight_decision(
+        &self,
+        record: IntegrationInsightAuditRecord,
+    ) -> Result<(), CoreError> {
+        let inner = self.inner.clone();
+        tokio::task::spawn_blocking(move || inner.record_audit_sync(record))
+            .await
+            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+
+    async fn recent_insight_decisions(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<IntegrationInsightAuditRecord>, CoreError> {
+        let inner = self.inner.clone();
+        tokio::task::spawn_blocking(move || Ok(inner.recent_audit_sync(limit)))
+            .await
+            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
@@ -399,7 +460,8 @@ mod tests {
         ProactivePromptCategory, ProactivePromptPriority, PromptProvenance,
     };
     use oneshim_core::ports::integration::{
-        IntegrationInboxStorePort, IntegrationOutboxPort, IntegrationSessionStorePort,
+        IntegrationAuditPort, IntegrationInboxStorePort, IntegrationOutboxPort,
+        IntegrationSessionStorePort,
     };
 
     use super::*;
@@ -557,5 +619,51 @@ mod tests {
         inbox.upsert_prompts(vec![expiring]).await.unwrap();
         assert_eq!(inbox.expire_stale().await.unwrap(), 1);
         assert!(inbox.list_pending().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn integration_audit_store_roundtrips_recent_records() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store =
+            FileIntegrationStateStore::new(temp_dir.path().join("integration.json")).unwrap();
+        let audit = store.audit_store();
+
+        audit
+            .record_insight_decision(IntegrationInsightAuditRecord {
+                record_id: "audit-1".to_string(),
+                envelope_id: "env-1".to_string(),
+                packet_id: "packet-1".to_string(),
+                disposition: oneshim_core::models::integration::IntegrationEgressDisposition::Allow,
+                reason: None,
+                privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
+                capability_scope: IntegrationCapabilityScope::InsightWrite,
+                occurred_at: Utc::now(),
+            })
+            .await
+            .unwrap();
+        audit
+            .record_insight_decision(IntegrationInsightAuditRecord {
+                record_id: "audit-2".to_string(),
+                envelope_id: "env-2".to_string(),
+                packet_id: "packet-2".to_string(),
+                disposition: oneshim_core::models::integration::IntegrationEgressDisposition::Deny,
+                reason: Some("policy denied".to_string()),
+                privacy_classification: IntegrationPrivacyClassification::DeviceLocal,
+                capability_scope: IntegrationCapabilityScope::InsightWrite,
+                occurred_at: Utc::now(),
+            })
+            .await
+            .unwrap();
+
+        let reloaded =
+            FileIntegrationStateStore::new(temp_dir.path().join("integration.json")).unwrap();
+        let recent = reloaded
+            .audit_store()
+            .recent_insight_decisions(10)
+            .await
+            .unwrap();
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].record_id, "audit-2");
+        assert_eq!(recent[1].record_id, "audit-1");
     }
 }

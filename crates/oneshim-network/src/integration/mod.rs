@@ -4,6 +4,7 @@ pub mod http_transport;
 pub mod inbox_coordinator;
 pub mod live_channel;
 pub mod policy_sync;
+pub mod runtime_loop;
 pub mod session_coordinator;
 pub mod sync_coordinator;
 pub mod transport;
@@ -25,6 +26,7 @@ pub use http_transport::{
 pub use inbox_coordinator::IntegrationInboxCoordinator;
 pub use live_channel::WebSocketIntegrationSessionChannel;
 pub use policy_sync::PolicyAwareInsightSyncCoordinator;
+pub use runtime_loop::{IntegrationRuntimeLoop, IntegrationRuntimeLoopProfile};
 pub use session_coordinator::{IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile};
 pub use sync_coordinator::InsightSyncCoordinator;
 pub use transport::{

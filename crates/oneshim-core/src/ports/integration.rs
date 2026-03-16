@@ -216,6 +216,12 @@ pub trait IntegrationAuditPort: Send + Sync {
         &self,
         record: IntegrationInsightAuditRecord,
     ) -> Result<(), CoreError>;
+
+    /// Read recent auditable insight decisions in reverse chronological order.
+    async fn recent_insight_decisions(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<IntegrationInsightAuditRecord>, CoreError>;
 }
 
 #[cfg(test)]

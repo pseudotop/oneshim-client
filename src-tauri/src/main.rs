@@ -20,6 +20,7 @@ mod event_bus;
 mod feature_capabilities;
 mod focus_analyzer;
 mod focus_probe_adapter;
+mod integration_policy;
 mod integrity_guard;
 mod lifecycle;
 #[cfg(target_os = "macos")]

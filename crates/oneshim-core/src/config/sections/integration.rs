@@ -37,6 +37,16 @@ pub struct IntegrationConfig {
     pub oidc_device_flow: IntegrationOidcDeviceFlowConfig,
     #[serde(default = "default_integration_request_timeout_secs")]
     pub request_timeout_secs: u64,
+    #[serde(default = "default_integration_connect_retry_secs")]
+    pub connect_retry_secs: u64,
+    #[serde(default = "default_integration_heartbeat_interval_secs")]
+    pub heartbeat_interval_secs: u64,
+    #[serde(default = "default_integration_sync_interval_secs")]
+    pub sync_interval_secs: u64,
+    #[serde(default = "default_integration_inbox_refresh_interval_secs")]
+    pub inbox_refresh_interval_secs: u64,
+    #[serde(default = "default_integration_max_batch_size")]
+    pub max_batch_size: usize,
     #[serde(default = "default_integration_preferred_transports")]
     pub preferred_transports: Vec<IntegrationTransportKind>,
     #[serde(default = "default_integration_supported_auth_schemes")]
@@ -55,6 +65,11 @@ impl Default for IntegrationConfig {
             auth_token_env_var: None,
             oidc_device_flow: IntegrationOidcDeviceFlowConfig::default(),
             request_timeout_secs: default_integration_request_timeout_secs(),
+            connect_retry_secs: default_integration_connect_retry_secs(),
+            heartbeat_interval_secs: default_integration_heartbeat_interval_secs(),
+            sync_interval_secs: default_integration_sync_interval_secs(),
+            inbox_refresh_interval_secs: default_integration_inbox_refresh_interval_secs(),
+            max_batch_size: default_integration_max_batch_size(),
             preferred_transports: default_integration_preferred_transports(),
             supported_auth_schemes: default_integration_supported_auth_schemes(),
         }
@@ -63,6 +78,26 @@ impl Default for IntegrationConfig {
 
 pub(crate) fn default_integration_request_timeout_secs() -> u64 {
     15
+}
+
+pub(crate) fn default_integration_connect_retry_secs() -> u64 {
+    15
+}
+
+pub(crate) fn default_integration_heartbeat_interval_secs() -> u64 {
+    30
+}
+
+pub(crate) fn default_integration_sync_interval_secs() -> u64 {
+    15
+}
+
+pub(crate) fn default_integration_inbox_refresh_interval_secs() -> u64 {
+    15
+}
+
+pub(crate) fn default_integration_max_batch_size() -> usize {
+    50
 }
 
 fn default_integration_preferred_transports() -> Vec<IntegrationTransportKind> {
@@ -88,6 +123,11 @@ mod tests {
         assert!(!config.enabled);
         assert!(config.bootstrap_url.is_none());
         assert_eq!(config.request_timeout_secs, 15);
+        assert_eq!(config.connect_retry_secs, 15);
+        assert_eq!(config.heartbeat_interval_secs, 30);
+        assert_eq!(config.sync_interval_secs, 15);
+        assert_eq!(config.inbox_refresh_interval_secs, 15);
+        assert_eq!(config.max_batch_size, 50);
         assert_eq!(
             config.preferred_transports,
             vec![
@@ -119,6 +159,11 @@ mod tests {
                 "scopes": ["openid", "profile", "offline_access"]
             },
             "request_timeout_secs": 20,
+            "connect_retry_secs": 25,
+            "heartbeat_interval_secs": 45,
+            "sync_interval_secs": 12,
+            "inbox_refresh_interval_secs": 9,
+            "max_batch_size": 24,
             "preferred_transports": ["web_socket", "https_long_poll"],
             "supported_auth_schemes": ["bearer_token"]
         }))
@@ -145,5 +190,10 @@ mod tests {
                 IntegrationTransportKind::HttpsLongPoll
             ]
         );
+        assert_eq!(parsed.connect_retry_secs, 25);
+        assert_eq!(parsed.heartbeat_interval_secs, 45);
+        assert_eq!(parsed.sync_interval_secs, 12);
+        assert_eq!(parsed.inbox_refresh_interval_secs, 9);
+        assert_eq!(parsed.max_batch_size, 24);
     }
 }
