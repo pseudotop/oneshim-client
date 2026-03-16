@@ -25,6 +25,8 @@ mod integration_insight_source;
 mod integration_policy;
 #[cfg(feature = "server")]
 mod integration_prompt_delivery;
+#[cfg(feature = "server")]
+mod integration_runtime;
 mod integrity_guard;
 mod lifecycle;
 #[cfg(target_os = "macos")]

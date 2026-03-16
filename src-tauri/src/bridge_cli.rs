@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn parse_user_scope_flag_accepts_default_and_flag() {
-        assert!(matches!(parse_user_scope_flag(&[]), Ok(_)));
+        assert!(parse_user_scope_flag(&[]).is_ok());
         assert_eq!(
             parse_user_scope_flag(&["--user-scope".to_string()]),
             Ok(true)
