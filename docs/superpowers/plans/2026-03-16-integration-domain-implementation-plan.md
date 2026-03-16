@@ -18,6 +18,13 @@ This plan is staged so each step can be reviewed before the next one lands.
 - Prefer standard envelopes and transport documentation
 - Avoid a large one-shot rewrite
 
+## Current Assessment
+
+- AI provider registration and provider-surface handling are no longer the critical path
+- The remaining architectural risk is concentrated in the integration domain
+- The current runtime is best described as "foundation plus bootstrap wiring", not as a finished external interoperability runtime
+- Any remaining phase wording that implies durable auth, persistence, or live delivery is already complete should be treated as stale and corrected below
+
 ## Phase 0: Boundary Lock-In
 
 Status:
@@ -73,12 +80,80 @@ Parallelizable work:
 - scope taxonomy
 - privacy classification taxonomy
 
-## Phase 2: Outbound Session Runtime
+## Phase 2: Standards-Profiled Auth Bootstrap
 
 Status:
 
-- foundation done
-- first HTTPS/WebSocket-oriented bootstrap adapter foundation done
+- standards profile selected
+- first bootstrap adapter foundation done
+- current env-token bootstrap is temporary
+- real OIDC / device bootstrap and real DPoP are not started
+
+Primary crates:
+
+- `oneshim-network`
+- `src-tauri`
+
+Deliverables:
+
+- OIDC / OAuth bootstrap profile for native app and device-flow cases
+- resource-scoped token handling
+- DPoP-capable request proof adapter
+- token refresh / rotation policy
+- explicit distinction between development bootstrap and production bootstrap
+
+Review gate:
+
+- auth review
+- threat review
+- standards review against the selected profile
+
+Parallelizable work:
+
+- bootstrap discovery/profile
+- OIDC/device auth wiring
+- request proof adapter
+
+## Phase 3: Durable Session Persistence
+
+Status:
+
+- not started
+
+Primary crates:
+
+- `oneshim-core`
+- `oneshim-network`
+- `src-tauri`
+
+Deliverables:
+
+- durable outbox adapter
+- durable inbox adapter
+- durable ack cursor persistence
+- reconnect-safe session state persistence
+- queue drain/backoff rules tied to persisted state
+
+Implementation note:
+
+Do not treat in-memory stores or in-memory session state as phase completion. This phase is complete only when restart-safe behavior is present.
+
+Review gate:
+
+- durability review
+- failure/restart review
+
+Parallelizable work:
+
+- outbox persistence
+- inbox persistence
+- ack/session state persistence
+
+## Phase 4: Live Session Channel
+
+Status:
+
+- transport-neutral foundation done
 - live bidirectional channel binding not started
 
 Primary crates:
@@ -88,15 +163,15 @@ Primary crates:
 
 Deliverables:
 
-- transport-neutral session orchestrator
+- live WebSocket channel over HTTPS
+- SSE or long-poll fallback binding
 - reconnect policy
 - heartbeat
-- ack cursor persistence
-- queue drain/backoff rules
+- queue drain/backpressure rules connected to the live channel
 
 Implementation note:
 
-Pick a first transport adapter, but keep port contracts transport-neutral.
+Do not start live-channel runtime work until Phase 2 and Phase 3 review gates are explicitly closed.
 
 Likely first adapter:
 
@@ -114,19 +189,21 @@ Review gate:
 
 - runtime review
 - reconnect/failure review
+- transport review
 
 Parallelizable work:
 
 - session runtime
-- ack/outbox persistence
-- token/session auth bootstrap
+- SSE/long-poll fallback
+- presence/heartbeat handling
 
-## Phase 3: Outbound Insight Sync
+## Phase 5: Outbound Insight Sync
 
 Status:
 
 - foundation done
-- standards-profiled envelope work not started
+- CloudEvents mapping started
+- delivery is not yet backed by durable runtime state
 
 Primary crates:
 
@@ -146,6 +223,7 @@ Review gate:
 
 - privacy/audit review
 - payload minimization review
+- delivery semantics review
 
 Parallelizable work:
 
@@ -153,12 +231,13 @@ Parallelizable work:
 - packet schema
 - CloudEvents mapping
 
-## Phase 4: Inbound Prompt Inbox
+## Phase 6: Inbound Prompt Inbox
 
 Status:
 
 - foundation done
-- transport binding and UI delivery refinements not started
+- transport binding started
+- durable persistence and UI delivery refinements not started
 
 Primary crates:
 
@@ -177,6 +256,7 @@ Review gate:
 
 - UX review
 - duplicate/expiry review
+- durable lifecycle review
 
 Parallelizable work:
 
@@ -184,7 +264,39 @@ Parallelizable work:
 - proactive prompt DTOs
 - notification presentation
 
-## Phase 5: Standards Documentation Layer
+## Phase 7: Operations, Policy, and Audit Surface
+
+Status:
+
+- policy/audit foundation done
+- operational visibility not started
+
+Primary crates:
+
+- `oneshim-core`
+- `src-tauri`
+- `oneshim-web`
+
+Deliverables:
+
+- integration status surface
+- audit visibility
+- policy decision visibility
+- retry/failure diagnostics
+- operator-safe runtime controls
+
+Review gate:
+
+- operations review
+- audit/privacy review
+
+Parallelizable work:
+
+- status UX
+- audit surfacing
+- failure diagnostics
+
+## Phase 8: Standards Documentation Layer
 
 Status:
 
@@ -216,7 +328,7 @@ Parallelizable work:
 - CloudEvents field mapping
 - review of naming/versioning
 
-## Phase 6: Agent Interop Adapter
+## Phase 9: Agent Interop Adapter
 
 Primary crates:
 
@@ -240,7 +352,17 @@ Review gate:
 
 ## Workstream Split For Parallelization
 
-Once Phase 1 is approved, the work can be parallelized into these domain streams:
+Parallelization should not start immediately after Phase 1.
+
+The correct threshold is:
+
+- Phase 1 contract review closed
+- Phase 2 auth/bootstrap review closed
+- Phase 3 durability review closed
+
+Only after that should the runtime-heavy streams land in parallel.
+
+Once those gates are closed, the work can be parallelized into these domain streams:
 
 ### Stream A: Session/Auth
 
@@ -290,15 +412,15 @@ Do not start the next phase without explicitly closing the current review.
 
 ## Recommended Immediate Next Step
 
-Start the first standards-profiled transport/bootstrap slice.
+Re-order the remaining work so auth and persistence are closed before live-channel expansion.
 
 Specifically:
 
-1. define the first transport adapter around outbound HTTPS/WebSocket semantics
-2. add DPoP-capable auth/bootstrap requirements to the session design
-3. draft AsyncAPI 3.1 channel structure and CloudEvents profile side by side
-4. confirm the current bootstrap/status DTOs remain narrow enough for the integration boundary
-5. review before any transport runtime work
+1. replace temporary env-token bootstrap with the real OIDC / device bootstrap slice
+2. define durable outbox / inbox / ack persistence boundaries
+3. tighten AsyncAPI 3.1 and CloudEvents delivery semantics around persisted cursors and redelivery
+4. only then bind the live WebSocket and SSE/long-poll runtime
+5. review before expanding background loops or external operator surfaces
 
 ## Success Criteria
 
@@ -308,3 +430,5 @@ The integration domain is ready for parallel implementation when:
 - the envelope and scope model are approved
 - privacy/audit hooks are part of the first contract, not bolted on later
 - outbound session is clearly separate from local `/api`
+- auth/bootstrap is not using temporary bootstrap material
+- durable persistence exists for outbox, inbox, and ack cursors

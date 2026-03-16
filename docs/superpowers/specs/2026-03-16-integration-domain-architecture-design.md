@@ -323,6 +323,38 @@ Optional controlled-environment adapter:
 
 The domain model must not depend on one transport.
 
+## Current Priority Adjustment
+
+At this point in the client, provider registration and provider-surface handling are no longer the primary architectural risk.
+
+The remaining critical path is the integration domain itself:
+
+- production-grade auth/bootstrap
+- durable outbox/inbox and ack persistence
+- live bidirectional delivery
+- operations, audit, and failure visibility
+
+That means the next iterations should not re-open provider/surface architecture unless a concrete new requirement forces it. The higher-value work is to harden the integration runtime around the boundaries already introduced.
+
+Two temporary implementation shortcuts must not be mistaken for end-state architecture:
+
+- env-token bootstrap auth
+- in-memory-only session/outbox/inbox state
+
+They are acceptable as foundation scaffolding, but not as completion criteria.
+
+## Execution Priority
+
+The remaining implementation should follow this order:
+
+1. close production auth/bootstrap
+2. close durable persistence and ack state
+3. tighten CloudEvents and AsyncAPI delivery semantics around persisted cursors
+4. bind the live WebSocket/SSE runtime
+5. expose operations, audit, and failure surfaces
+
+This ordering matters because live transport work without durable state or production auth would create a misleading sense of completion and force rework later.
+
 ## Data Model Principle
 
 Never send raw sensitive source data by default.
