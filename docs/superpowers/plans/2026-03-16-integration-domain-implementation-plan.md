@@ -22,7 +22,7 @@ This plan is staged so each step can be reviewed before the next one lands.
 
 Status:
 
-- mostly done
+- done
 
 Deliverables:
 
@@ -35,6 +35,11 @@ Review gate:
 - confirm no internal control-plane endpoint is externally reachable without explicit future design
 
 ## Phase 1: Core Integration Contracts
+
+Status:
+
+- foundation done
+- review closed
 
 Primary crates:
 
@@ -70,6 +75,11 @@ Parallelizable work:
 
 ## Phase 2: Outbound Session Runtime
 
+Status:
+
+- foundation done
+- first transport adapter not started
+
 Primary crates:
 
 - `oneshim-network`
@@ -89,7 +99,15 @@ Pick a first transport adapter, but keep port contracts transport-neutral.
 
 Likely first adapter:
 
-- WebSocket or gRPC bidirectional stream
+- WebSocket over HTTPS
+
+Fallback adapter:
+
+- HTTPS request/response + SSE or long-poll hybrid
+
+Optional controlled-environment adapter:
+
+- gRPC bidirectional stream
 
 Review gate:
 
@@ -104,6 +122,11 @@ Parallelizable work:
 
 ## Phase 3: Outbound Insight Sync
 
+Status:
+
+- foundation done
+- standards-profiled envelope work not started
+
 Primary crates:
 
 - `oneshim-core`
@@ -116,6 +139,7 @@ Deliverables:
 - privacy-filtered summary generation
 - batching and dedupe
 - CloudEvents-compatible envelope serialization
+- CESQL-friendly event attribute profile
 
 Review gate:
 
@@ -129,6 +153,11 @@ Parallelizable work:
 - CloudEvents mapping
 
 ## Phase 4: Inbound Prompt Inbox
+
+Status:
+
+- foundation done
+- transport binding and UI delivery refinements not started
 
 Primary crates:
 
@@ -158,14 +187,16 @@ Parallelizable work:
 
 Primary outputs:
 
-- AsyncAPI spec for session channels
+- AsyncAPI 3.1 spec for session channels
 - CloudEvents mapping guide
+- CloudEvents profile guidance for CESQL-friendly attributes
 - OpenAPI kept narrow for local and bootstrap HTTP surfaces
 
 Deliverables:
 
 - `docs/contracts/integration-asyncapi.yaml`
 - `docs/contracts/integration-event-envelope.md`
+- `docs/contracts/integration-cloudevents-profile.md`
 - explicit mapping from domain DTOs to CloudEvents attributes
 
 Review gate:
@@ -189,11 +220,12 @@ Primary crates:
 Deliverables:
 
 - MCP-compatible adapter layer for selected resources/tools/prompts
+- optional A2A adapter layer for external agent task interoperability
 
 Important:
 
 - this is not the main integration transport
-- it is an optional adapter over the integration domain
+- these are optional adapters over the integration domain
 
 Review gate:
 
@@ -252,14 +284,15 @@ Do not start the next phase without explicitly closing the current review.
 
 ## Recommended Immediate Next Step
 
-Implement Phase 1 only.
+Start the first standards-profiled transport/bootstrap slice.
 
 Specifically:
 
-1. add core integration envelope types
-2. add integration ports in `oneshim-core`
-3. add narrow `oneshim-api-contracts` DTOs for status/bootstrap only
-4. review before any transport runtime work
+1. define the first transport adapter around outbound HTTPS/WebSocket semantics
+2. add DPoP-capable auth/bootstrap requirements to the session design
+3. draft AsyncAPI 3.1 channel structure and CloudEvents profile side by side
+4. confirm the current bootstrap/status DTOs remain narrow enough for the integration boundary
+5. review before any transport runtime work
 
 ## Success Criteria
 

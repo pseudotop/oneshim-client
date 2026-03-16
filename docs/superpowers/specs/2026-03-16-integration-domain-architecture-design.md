@@ -90,7 +90,7 @@ Purpose:
 Properties:
 
 - adapter layer, not the top-level domain model
-- may expose MCP-compatible resources/tools/prompts later
+- may expose MCP-compatible or A2A-compatible adapters later
 
 ## Standards Mapping
 
@@ -103,6 +103,9 @@ Preferred standards:
 - OAuth 2.0 / OIDC
 - Native app guidance: RFC 8252
 - Device authorization flow where browser callback is not appropriate: RFC 8628
+- DPoP for replay-safe token-bound sessions: RFC 9449
+- Resource Indicators for resource-scoped access tokens: RFC 8707
+- Protected Resource Metadata for client bootstrap/discovery: RFC 9728
 
 Use for:
 
@@ -115,6 +118,7 @@ Use for:
 Preferred standard:
 
 - CloudEvents
+- CESQL-aware attribute naming and extension discipline
 
 Use for:
 
@@ -132,7 +136,7 @@ Rationale:
 
 Preferred standard:
 
-- AsyncAPI
+- AsyncAPI 3.1
 
 Use for:
 
@@ -148,19 +152,21 @@ Rationale:
 
 ### Agent/Tool Interoperability
 
-Preferred standard:
+Preferred standards:
 
-- MCP
+- MCP for tool/resource/prompt interoperability
+- A2A for future agent-to-agent task interoperability where needed
 
 Use for:
 
 - future external agent integrations
 - tool/resource/prompt adapters
+- optional peer-agent task delegation adapters
 
 Important:
 
-- MCP is an adapter-level interoperability standard
-- MCP is not the top-level sync/session/event model
+- MCP and A2A are adapter-level interoperability standards
+- neither is the top-level sync/session/event model
 
 ### HTTP Contract Documentation
 
@@ -193,10 +199,13 @@ Owns domain contracts and invariants:
 
 Implement transports and serializers:
 
-- HTTP/WebSocket/gRPC session adapter
-- CloudEvents serializer
-- AsyncAPI-generated or documented transport bindings
+- HTTPS/WebSocket session adapter
+- HTTPS request/response + SSE or long-poll adapter
+- optional gRPC session adapter for tightly controlled environments
+- CloudEvents serializer/profile
+- AsyncAPI 3.1-generated or documented transport bindings
 - MCP adapter if added later
+- A2A adapter if added later
 
 #### `src-tauri`
 
@@ -303,11 +312,14 @@ That means:
 - server responds on the same trusted session
 - proactive prompts arrive over the established channel
 
-Valid transport candidates:
+Preferred first transport candidates:
 
-- WebSocket
+- WebSocket over HTTPS
+- HTTPS request/response + SSE or long-poll hybrid
+
+Optional controlled-environment adapter:
+
 - gRPC bidirectional stream
-- HTTPS long-poll / SSE hybrid
 
 The domain model must not depend on one transport.
 
@@ -440,6 +452,7 @@ These are not goals of the integration domain itself:
 
 - exposing the full local dashboard/control plane publicly
 - treating MCP as the only integration standard
+- treating A2A as a replacement for the core integration domain
 - bypassing local privacy/policy/audit gates for server sync
 - assuming collaboration is the only future external use case
 
@@ -452,6 +465,8 @@ The client should keep:
 - local `/api` for first-party local control
 - outbound session-based integration for external systems
 - standards-based envelopes and contracts
-- optional MCP adapters as one interoperability layer
+- CloudEvents-compatible envelopes with CESQL-friendly attributes
+- AsyncAPI 3.1-documented channel contracts
+- optional MCP and A2A adapters as interoperability layers
 
 This architecture is broad enough for collaboration, external solutions, and future agent interoperability without turning the local control plane into the public API.
