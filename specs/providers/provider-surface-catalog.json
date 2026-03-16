@@ -280,6 +280,10 @@
       "preferred_for_product_auth": false,
       "related_surface_ids": ["provider_surface.openai.subprocess_cli"],
       "catalog_strategy": "none",
+      "provisioning": {
+        "docs_url": "https://developers.openai.com/codex/auth/",
+        "configuration_env_vars": []
+      },
       "supports": {
         "llm": true,
         "ocr": false,
@@ -646,6 +650,11 @@
       "stability": "experimental",
       "preferred_for_product_auth": false,
       "catalog_strategy": "none",
+      "provisioning": {
+        "setup_copy_key": "featureCapability.surface.provider_surface.google.managed_oauth.setup",
+        "docs_url": "https://developers.google.com/identity/protocols/oauth2/native-app",
+        "configuration_env_vars": ["ONESHIM_GOOGLE_OAUTH_CLIENT_ID"]
+      },
       "supports": {
         "llm": false,
         "ocr": true,

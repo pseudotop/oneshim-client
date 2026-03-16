@@ -74,7 +74,19 @@ pub struct ProviderSurfaceSpec {
     #[serde(default)]
     pub subprocess_transport: Option<SubprocessTransportSpec>,
     #[serde(default)]
+    pub provisioning: Option<ProviderSurfaceProvisioningSpec>,
+    #[serde(default)]
     pub references: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+pub struct ProviderSurfaceProvisioningSpec {
+    #[serde(default)]
+    pub configuration_env_vars: Vec<String>,
+    #[serde(default)]
+    pub setup_copy_key: Option<String>,
+    #[serde(default)]
+    pub docs_url: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -1259,6 +1271,41 @@ fn validate_surface_catalog(catalog: &ProviderSurfaceCatalog) -> Result<(), Stri
         validate_model_capability_profile(&surface.capability_rules.structured_output)?;
         let catalog_strategy = parse_model_catalog_strategy(&surface.catalog_strategy)?;
 
+        if let Some(provisioning) = surface.provisioning.as_ref() {
+            if provisioning
+                .configuration_env_vars
+                .iter()
+                .any(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "Surface '{}' provisioning contains an empty configuration_env_var entry.",
+                    surface.surface_id
+                ));
+            }
+            if provisioning
+                .setup_copy_key
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(str::is_empty)
+            {
+                return Err(format!(
+                    "Surface '{}' provisioning setup_copy_key cannot be empty.",
+                    surface.surface_id
+                ));
+            }
+            if provisioning
+                .docs_url
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(str::is_empty)
+            {
+                return Err(format!(
+                    "Surface '{}' provisioning docs_url cannot be empty.",
+                    surface.surface_id
+                ));
+            }
+        }
+
         if surface.supports.llm
             && surface.default_models.llm_models.is_empty()
             && !surface_declares_model_selection(surface, SurfaceCapabilityKind::Llm)
@@ -1872,6 +1919,28 @@ mod tests {
             subprocess_auth_probe_mode("provider_surface.anthropic.subprocess_cli")
                 .expect("probe mode should resolve"),
             SubprocessAuthProbeMode::ClaudeAuthStatusJson
+        );
+    }
+
+    #[test]
+    fn loads_managed_oauth_provisioning_from_catalog() {
+        let surface = provider_surface_spec("provider_surface.google.managed_oauth")
+            .expect("google managed surface should load");
+        let provisioning = surface
+            .provisioning
+            .as_ref()
+            .expect("google managed surface should declare provisioning");
+        assert_eq!(
+            provisioning.configuration_env_vars,
+            vec!["ONESHIM_GOOGLE_OAUTH_CLIENT_ID".to_string()]
+        );
+        assert_eq!(
+            provisioning.setup_copy_key.as_deref(),
+            Some("featureCapability.surface.provider_surface.google.managed_oauth.setup")
+        );
+        assert_eq!(
+            provisioning.docs_url.as_deref(),
+            Some("https://developers.google.com/identity/protocols/oauth2/native-app")
         );
     }
 

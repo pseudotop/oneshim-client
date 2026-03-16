@@ -1,8 +1,6 @@
 use serde::Serialize;
 use std::time::Duration;
 
-#[cfg(feature = "server")]
-use crate::oauth_provider_registry::managed_oauth_provider_provisioning;
 use crate::setup::SecretBackendCapabilities;
 use crate::subprocess_provider::{
     probe_for_surface_id, probe_known_cli_surfaces, runtime_ready_for_surface,
@@ -137,9 +135,8 @@ fn managed_oauth_feature(
         } else {
             None
         };
-    #[cfg(feature = "server")]
     let provisioning = (!provider_configured)
-        .then(|| managed_oauth_provider_provisioning(&surface.vendor_id))
+        .then_some(surface.provisioning.as_ref())
         .flatten();
     FeatureCapability {
         feature_id: surface.surface_id.clone(),
@@ -163,31 +160,16 @@ fn managed_oauth_feature(
                 "unavailable"
             },
         )),
-        #[cfg(feature = "server")]
         setup_copy_key: provisioning
             .as_ref()
-            .and_then(|value| value.setup_copy_key.map(|copy_key| copy_key.to_string())),
-        #[cfg(not(feature = "server"))]
-        setup_copy_key: None,
-        #[cfg(feature = "server")]
+            .and_then(|value| value.setup_copy_key.clone()),
         setup_docs_url: provisioning
             .as_ref()
-            .and_then(|value| value.docs_url.map(|docs_url| docs_url.to_string())),
-        #[cfg(not(feature = "server"))]
-        setup_docs_url: None,
-        #[cfg(feature = "server")]
+            .and_then(|value| value.docs_url.clone()),
         configuration_env_vars: provisioning
             .as_ref()
-            .map(|value| {
-                value
-                    .env_vars
-                    .iter()
-                    .map(|env_var| (*env_var).to_string())
-                    .collect()
-            })
+            .map(|value| value.configuration_env_vars.clone())
             .unwrap_or_default(),
-        #[cfg(not(feature = "server"))]
-        configuration_env_vars: Vec::new(),
     }
 }
 

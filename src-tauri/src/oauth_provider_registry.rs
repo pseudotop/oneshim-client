@@ -13,15 +13,7 @@ use oneshim_core::error::CoreError;
 use oneshim_network::oauth::provider_config::OAuthProviderConfig;
 
 #[cfg(feature = "server")]
-const GOOGLE_OAUTH_CLIENT_ID_ENV: &str = "ONESHIM_GOOGLE_OAUTH_CLIENT_ID";
-
-#[cfg(feature = "server")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ManagedOAuthProvisioning {
-    pub env_vars: &'static [&'static str],
-    pub setup_copy_key: Option<&'static str>,
-    pub docs_url: Option<&'static str>,
-}
+const GOOGLE_MANAGED_OAUTH_SURFACE_ID: &str = "provider_surface.google.managed_oauth";
 
 #[cfg(feature = "server")]
 pub fn configured_oauth_provider_configs() -> Vec<OAuthProviderConfig> {
@@ -59,20 +51,6 @@ pub fn selected_managed_oauth_provider_ids(
     }
 
     Ok(provider_ids)
-}
-
-#[cfg(feature = "server")]
-pub fn managed_oauth_provider_provisioning(provider_id: &str) -> Option<ManagedOAuthProvisioning> {
-    match provider_id.trim().to_ascii_lowercase().as_str() {
-        "google" => Some(ManagedOAuthProvisioning {
-            env_vars: &[GOOGLE_OAUTH_CLIENT_ID_ENV],
-            setup_copy_key: Some(
-                "featureCapability.surface.provider_surface.google.managed_oauth.setup",
-            ),
-            docs_url: Some("https://developers.google.com/identity/protocols/oauth2/native-app"),
-        }),
-        _ => None,
-    }
 }
 
 #[cfg(feature = "server")]
@@ -145,8 +123,11 @@ fn maybe_push_managed_provider(
 
 #[cfg(feature = "server")]
 fn google_oauth_client_id() -> Option<String> {
-    std::env::var(GOOGLE_OAUTH_CLIENT_ID_ENV)
+    provider_surface_spec(GOOGLE_MANAGED_OAUTH_SURFACE_ID)
         .ok()
+        .and_then(|surface| surface.provisioning.as_ref())
+        .and_then(|provisioning| provisioning.configuration_env_vars.first())
+        .and_then(|env_var| std::env::var(env_var).ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
@@ -210,17 +191,10 @@ mod tests {
     }
 
     #[test]
-    fn google_oauth_provisioning_includes_env_and_docs() {
-        let provisioning = managed_oauth_provider_provisioning("google")
-            .expect("google provisioning should exist");
-        assert_eq!(provisioning.env_vars, &[GOOGLE_OAUTH_CLIENT_ID_ENV]);
-        assert_eq!(
-            provisioning.setup_copy_key,
-            Some("featureCapability.surface.provider_surface.google.managed_oauth.setup")
-        );
-        assert_eq!(
-            provisioning.docs_url,
-            Some("https://developers.google.com/identity/protocols/oauth2/native-app")
-        );
+    fn google_oauth_client_id_uses_surface_provisioning_env_var() {
+        std::env::set_var("ONESHIM_GOOGLE_OAUTH_CLIENT_ID", "test-google-client-id");
+        let client_id = google_oauth_client_id();
+        std::env::remove_var("ONESHIM_GOOGLE_OAUTH_CLIENT_ID");
+        assert_eq!(client_id.as_deref(), Some("test-google-client-id"));
     }
 }
