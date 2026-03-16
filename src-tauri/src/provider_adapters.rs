@@ -345,42 +345,20 @@ pub fn resolve_ai_provider_adapters(
                 llm_fallback_reason,
             })
         }
-        AiAccessMode::ProviderApiKey => {
-            let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
-                config,
-                pii_filter_level,
-                external_ocr_privacy_guard.clone(),
-                secret_stores.clone(),
-            )?;
-            let (llm, llm_source, llm_fallback_reason) =
-                resolve_llm_provider(config, secret_stores.clone())?;
-            Ok(AiProviderAdapters {
-                ocr,
-                llm,
-                ocr_source,
-                llm_source,
-                ocr_fallback_reason,
-                llm_fallback_reason,
-            })
-        }
-        AiAccessMode::PlatformConnected => {
-            let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
-                config,
-                pii_filter_level,
-                external_ocr_privacy_guard.clone(),
-                secret_stores.clone(),
-            )?;
-            let (llm, llm_source, llm_fallback_reason) =
-                resolve_llm_provider(config, secret_stores.clone())?;
-            Ok(AiProviderAdapters {
-                ocr,
-                llm,
-                ocr_source: to_platform_source(ocr_source),
-                llm_source: to_platform_source(llm_source),
-                ocr_fallback_reason,
-                llm_fallback_reason,
-            })
-        }
+        AiAccessMode::ProviderApiKey => resolve_direct_surface_adapters(
+            config,
+            pii_filter_level,
+            external_ocr_privacy_guard,
+            secret_stores,
+            false,
+        ),
+        AiAccessMode::PlatformConnected => resolve_direct_surface_adapters(
+            config,
+            pii_filter_level,
+            external_ocr_privacy_guard,
+            secret_stores,
+            true,
+        ),
         AiAccessMode::ProviderOAuth => {
             #[cfg(feature = "server")]
             {
@@ -444,10 +422,39 @@ pub fn resolve_ai_provider_adapters(
     }
 }
 
-fn to_platform_source(source: ProviderSource) -> ProviderSource {
-    match source {
-        ProviderSource::Remote => ProviderSource::Platform,
-        other => other,
+fn resolve_direct_surface_adapters(
+    config: &AiProviderConfig,
+    pii_filter_level: PiiFilterLevel,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    secret_stores: Option<SecretStoreSet>,
+    platform_connected_labels: bool,
+) -> Result<AiProviderAdapters, CoreError> {
+    let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
+        config,
+        pii_filter_level,
+        external_ocr_privacy_guard,
+        secret_stores.clone(),
+    )?;
+    let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config, secret_stores)?;
+
+    Ok(AiProviderAdapters {
+        ocr,
+        llm,
+        ocr_source: relabel_platform_source(ocr_source, platform_connected_labels),
+        llm_source: relabel_platform_source(llm_source, platform_connected_labels),
+        ocr_fallback_reason,
+        llm_fallback_reason,
+    })
+}
+
+fn relabel_platform_source(
+    source: ProviderSource,
+    platform_connected_labels: bool,
+) -> ProviderSource {
+    if platform_connected_labels && matches!(source, ProviderSource::Remote) {
+        ProviderSource::Platform
+    } else {
+        source
     }
 }
 

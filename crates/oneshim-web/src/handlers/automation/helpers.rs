@@ -52,21 +52,24 @@ pub(super) fn infer_runtime_source(
     match access_mode {
         AiAccessMode::LocalModel => "local",
         AiAccessMode::ProviderSubscriptionCli => "cli-subscription",
-        AiAccessMode::ProviderApiKey => {
-            if provider_is_remote {
-                "remote"
-            } else {
-                "local"
-            }
-        }
-        AiAccessMode::PlatformConnected => {
-            if provider_is_remote {
-                "platform"
-            } else {
-                "local"
-            }
-        }
+        AiAccessMode::ProviderApiKey => infer_direct_runtime_source(provider_is_remote, false),
+        AiAccessMode::PlatformConnected => infer_direct_runtime_source(provider_is_remote, true),
         AiAccessMode::ProviderOAuth => "oauth",
+    }
+}
+
+fn infer_direct_runtime_source(
+    provider_is_remote: bool,
+    platform_connected_labels: bool,
+) -> &'static str {
+    if !provider_is_remote {
+        return "local";
+    }
+
+    if platform_connected_labels {
+        "platform"
+    } else {
+        "remote"
     }
 }
 
