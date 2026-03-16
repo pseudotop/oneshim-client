@@ -314,7 +314,7 @@ pub fn resolve_ai_provider_adapters(
     secret_stores: Option<SecretStoreSet>,
     #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AiProviderAdapters, CoreError> {
-    match config.access_mode {
+    match config.access_mode.normalized_for_ai_surfaces() {
         AiAccessMode::LocalModel => Ok(AiProviderAdapters {
             ocr: Arc::new(LocalOcrProvider::new()),
             llm: Arc::new(LocalLlmProvider::new()),
@@ -344,12 +344,6 @@ pub fn resolve_ai_provider_adapters(
             })
         }
         AiAccessMode::ProviderApiKey => resolve_direct_surface_adapters(
-            config,
-            pii_filter_level,
-            external_ocr_privacy_guard,
-            secret_stores,
-        ),
-        AiAccessMode::PlatformConnected => resolve_direct_surface_adapters(
             config,
             pii_filter_level,
             external_ocr_privacy_guard,
@@ -415,6 +409,7 @@ pub fn resolve_ai_provider_adapters(
                 ))
             }
         }
+        AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
     }
 }
 
@@ -1398,7 +1393,7 @@ mod tests {
     }
 
     #[test]
-    fn platform_mode_reuses_direct_remote_source_labels() {
+    fn legacy_platform_connected_config_reuses_direct_remote_sources() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::PlatformConnected,
             ocr_provider: OcrProviderType::Remote,
@@ -1426,7 +1421,7 @@ mod tests {
             None,
             None,
         )
-        .expect("Failed to resolve platform-connected compatibility mode");
+        .expect("Failed to resolve legacy platform-connected config");
         assert_eq!(adapters.ocr_source, ProviderSource::Remote);
         assert_eq!(adapters.llm_source, ProviderSource::Remote);
         assert!(adapters.ocr_fallback_reason.is_none());

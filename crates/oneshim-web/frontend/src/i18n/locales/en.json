@@ -571,8 +571,6 @@
     "accessModeCliDescription": "Preferred for subscription-backed products. ONESHIM will guide users through installed provider-owned CLI flows.",
     "accessModeOAuthLabel": "Direct OAuth (experimental)",
     "accessModeOAuthDescription": "Experimental managed OAuth path for supported provider surfaces. Prefer installed provider CLIs when available.",
-    "accessModeLegacyLabel": "Legacy mode: {{mode}}",
-    "accessModeLegacyDescription": "This configuration uses an older access path. Review and migrate it to a supported surface when possible.",
     "pathSummaryTitle": "Operational path",
     "pathSummarySurface": "Selected surface: {{surface}}",
     "pathExecutionLabel": "Execution path",

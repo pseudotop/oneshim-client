@@ -628,7 +628,6 @@ fn parse_ai_access_mode(value: &str) -> Result<AiAccessMode, ApiError> {
         "providersubscriptioncli" | "provider_subscription_cli" | "cli" | "subscription" => {
             Ok(AiAccessMode::ProviderSubscriptionCli)
         }
-        "platformconnected" | "platform_connected" | "platform" => Ok(AiAccessMode::ProviderApiKey),
         "provideroauth" | "provider_oauth" | "oauth" => Ok(AiAccessMode::ProviderOAuth),
         _ => Err(ApiError::BadRequest(format!(
             "Invalid ai_provider.access_mode value: {value}"
@@ -637,10 +636,7 @@ fn parse_ai_access_mode(value: &str) -> Result<AiAccessMode, ApiError> {
 }
 
 fn normalize_ai_access_mode_for_settings(value: AiAccessMode) -> AiAccessMode {
-    match value {
-        AiAccessMode::PlatformConnected => AiAccessMode::ProviderApiKey,
-        other => other,
-    }
+    value.normalized_for_ai_surfaces()
 }
 
 fn parse_ai_provider_type(value: &str) -> Result<AiProviderType, ApiError> {
@@ -1202,6 +1198,7 @@ fn access_mode_allows_surface_transport(
     endpoint_kind: ApiEndpointKind,
     transport: ProviderSurfaceTransport,
 ) -> bool {
+    let access_mode = normalize_ai_access_mode_for_settings(access_mode);
     match endpoint_kind {
         ApiEndpointKind::Llm => match access_mode {
             AiAccessMode::ProviderOAuth => matches!(
@@ -1211,9 +1208,10 @@ fn access_mode_allows_surface_transport(
             AiAccessMode::ProviderSubscriptionCli => {
                 transport == ProviderSurfaceTransport::SubprocessCli
             }
-            AiAccessMode::ProviderApiKey
-            | AiAccessMode::PlatformConnected
-            | AiAccessMode::LocalModel => transport == ProviderSurfaceTransport::DirectApi,
+            AiAccessMode::ProviderApiKey | AiAccessMode::LocalModel => {
+                transport == ProviderSurfaceTransport::DirectApi
+            }
+            AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
         },
         ApiEndpointKind::Ocr => match access_mode {
             AiAccessMode::ProviderOAuth => matches!(
@@ -1224,9 +1222,10 @@ fn access_mode_allows_surface_transport(
                 transport,
                 ProviderSurfaceTransport::DirectApi | ProviderSurfaceTransport::SubprocessCli
             ),
-            AiAccessMode::ProviderApiKey
-            | AiAccessMode::PlatformConnected
-            | AiAccessMode::LocalModel => transport == ProviderSurfaceTransport::DirectApi,
+            AiAccessMode::ProviderApiKey | AiAccessMode::LocalModel => {
+                transport == ProviderSurfaceTransport::DirectApi
+            }
+            AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
         },
     }
 }

@@ -571,8 +571,6 @@
     "accessModeCliDescription": "구독 기반 제품에 권장되는 경로입니다. ONESHIM은 설치된 provider-owned CLI 흐름을 안내하고 연동합니다.",
     "accessModeOAuthLabel": "직접 OAuth (실험적)",
     "accessModeOAuthDescription": "지원되는 provider surface를 위한 실험적 managed OAuth 경로입니다. 가능하면 설치된 provider CLI를 우선 사용하세요.",
-    "accessModeLegacyLabel": "레거시 모드: {{mode}}",
-    "accessModeLegacyDescription": "이 구성은 오래된 접근 경로를 사용합니다. 가능하면 지원되는 surface로 다시 맞추세요.",
     "pathSummaryTitle": "운영 경로",
     "pathSummarySurface": "선택된 surface: {{surface}}",
     "pathExecutionLabel": "실행 경로",

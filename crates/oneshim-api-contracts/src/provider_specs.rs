@@ -408,12 +408,11 @@ pub fn default_surface_id_for_access_mode(
     access_mode: AiAccessMode,
     capability: SurfaceCapabilityKind,
 ) -> Result<Option<&'static str>, String> {
-    let execution_kind = match access_mode {
+    let execution_kind = match access_mode.normalized_for_ai_surfaces() {
         AiAccessMode::ProviderOAuth => SurfaceExecutionKind::ManagedHttp,
         AiAccessMode::ProviderSubscriptionCli => SurfaceExecutionKind::SubprocessCli,
-        AiAccessMode::ProviderApiKey
-        | AiAccessMode::PlatformConnected
-        | AiAccessMode::LocalModel => SurfaceExecutionKind::DirectHttp,
+        AiAccessMode::ProviderApiKey | AiAccessMode::LocalModel => SurfaceExecutionKind::DirectHttp,
+        AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
     };
 
     let mut candidates = surface_catalog()?

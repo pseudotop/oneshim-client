@@ -63,8 +63,8 @@ impl AiProviderConfig {
         self.scene_action_override.validate()?;
         self.scene_intelligence.validate()?;
 
-        match self.access_mode {
-            AiAccessMode::ProviderApiKey | AiAccessMode::PlatformConnected => {
+        match self.access_mode.normalized_for_ai_surfaces() {
+            AiAccessMode::ProviderApiKey => {
                 if self.ocr_provider == OcrProviderType::Remote {
                     validate_remote_endpoint(self.ocr_api.as_ref(), "ocr_api")?;
                 }
@@ -109,6 +109,7 @@ impl AiProviderConfig {
                     )?;
                 }
             }
+            AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
         }
         Ok(())
     }

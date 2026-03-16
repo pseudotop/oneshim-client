@@ -174,12 +174,13 @@ pub fn default_provider_surface_id(
     provider_type: AiProviderType,
     access_mode: AiAccessMode,
 ) -> Option<&'static str> {
-    let expected_transport = match access_mode {
+    let expected_transport = match access_mode.normalized_for_ai_surfaces() {
         AiAccessMode::ProviderOAuth => ProviderSurfaceTransport::ManagedOAuth,
         AiAccessMode::ProviderSubscriptionCli => ProviderSurfaceTransport::SubprocessCli,
-        AiAccessMode::ProviderApiKey
-        | AiAccessMode::PlatformConnected
-        | AiAccessMode::LocalModel => ProviderSurfaceTransport::DirectApi,
+        AiAccessMode::ProviderApiKey | AiAccessMode::LocalModel => {
+            ProviderSurfaceTransport::DirectApi
+        }
+        AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
     };
 
     provider_surface_specs()?

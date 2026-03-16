@@ -53,6 +53,15 @@ pub enum AiAccessMode {
     ProviderOAuth,
 }
 
+impl AiAccessMode {
+    pub fn normalized_for_ai_surfaces(self) -> Self {
+        match self {
+            Self::PlatformConnected => Self::ProviderApiKey,
+            other => other,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AiProviderType {

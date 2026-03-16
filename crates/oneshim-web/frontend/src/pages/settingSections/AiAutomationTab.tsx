@@ -398,13 +398,8 @@ export default function AiAutomationTab({
   ]
 
   const currentAccessModeOption =
-    accessModeOptions.find((option) => option.value === formData.ai_provider.access_mode) ?? {
-      value: formData.ai_provider.access_mode,
-      label: t('settingsAutomation.accessModeLegacyLabel', { mode: formData.ai_provider.access_mode }),
-      description: t('settingsAutomation.accessModeLegacyDescription'),
-      maturity: 'deprecated' as const,
-      preferred: false,
-    }
+    accessModeOptions.find((option) => option.value === formData.ai_provider.access_mode) ??
+    accessModeOptions[0]
 
   const formatSurfaceOptionLabel = (surface: ProviderSurfaceSpec): string => {
     const labels = [surface.display_name, placementKindLabel(t, surface.placement_kind)]
