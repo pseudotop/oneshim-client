@@ -5,13 +5,11 @@
 
 use std::sync::Arc;
 
-use crate::config::{
-    AiProviderType, CredentialAuthMode, CredentialBackendKind, ExternalApiEndpoint,
-};
+use crate::config::{CredentialAuthMode, CredentialBackendKind, ExternalApiEndpoint};
 use crate::error::CoreError;
 use crate::ports::oauth::OAuthPort;
 use crate::ports::secret_store::{provider_api_key_secret_ref, SecretStore};
-use crate::provider_surface::provider_surface_uses_no_auth;
+use crate::provider_surface::{provider_surface_uses_no_auth, provider_vendor_id_or_default};
 
 /// Source of authentication credentials for AI provider requests.
 #[derive(Clone)]
@@ -104,7 +102,7 @@ impl CredentialSource {
                         )
                     })?;
                     let (namespace, key) = provider_api_key_secret_ref(
-                        provider_type_id(endpoint.provider_type),
+                        provider_vendor_id_or_default(endpoint.provider_type),
                         profile_id,
                     )?;
                     return Ok(Self::StoredSecret {
@@ -183,16 +181,6 @@ impl CredentialSource {
             Self::ManagedOAuth { api_base_url, .. } => Some(api_base_url),
             Self::StoredSecret { .. } => None,
         }
-    }
-}
-
-fn provider_type_id(provider_type: AiProviderType) -> &'static str {
-    match provider_type {
-        AiProviderType::OpenAi => "openai",
-        AiProviderType::Anthropic => "anthropic",
-        AiProviderType::Google => "google",
-        AiProviderType::Ollama => "ollama",
-        AiProviderType::Generic => "generic",
     }
 }
 

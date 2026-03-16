@@ -21,7 +21,8 @@ use oneshim_core::config::{
 };
 use oneshim_core::ports::secret_store::{provider_api_key_secret_ref, SecretStore, SecretStoreSet};
 use oneshim_core::provider_surface::{
-    canonical_provider_surface_id, provider_surface_spec, ProviderSurfaceTransport,
+    canonical_provider_surface_id, provider_surface_spec, provider_type_from_vendor_id,
+    provider_vendor_id_or_default, ProviderSurfaceTransport,
 };
 use std::sync::Arc;
 use tracing::warn;
@@ -635,18 +636,11 @@ fn parse_ai_access_mode(value: &str) -> Result<AiAccessMode, ApiError> {
 }
 
 fn parse_ai_provider_type(value: &str) -> Result<AiProviderType, ApiError> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "anthropic" => Ok(AiProviderType::Anthropic),
-        "openai" | "open_ai" => Ok(AiProviderType::OpenAi),
-        "google" => Ok(AiProviderType::Google),
-        "ollama" => Ok(AiProviderType::Ollama),
-        "llamaindex" | "llama-index" | "openai-compatible" | "openai-like" | "openai_like"
-        | "openailike" => Ok(AiProviderType::Generic),
-        "generic" => Ok(AiProviderType::Generic),
-        _ => Err(ApiError::BadRequest(format!(
+    provider_type_from_vendor_id(value).ok_or_else(|| {
+        ApiError::BadRequest(format!(
             "Invalid ai_provider.api.provider_type value: {value}"
-        ))),
-    }
+        ))
+    })
 }
 
 fn parse_llm_provider(value: &str) -> Result<LlmProviderType, ApiError> {
@@ -660,13 +654,7 @@ fn parse_llm_provider(value: &str) -> Result<LlmProviderType, ApiError> {
 }
 
 fn provider_type_id(value: AiProviderType) -> &'static str {
-    match value {
-        AiProviderType::Anthropic => "anthropic",
-        AiProviderType::OpenAi => "openai",
-        AiProviderType::Google => "google",
-        AiProviderType::Ollama => "ollama",
-        AiProviderType::Generic => "generic",
-    }
+    provider_vendor_id_or_default(value)
 }
 
 fn parse_external_data_policy(value: &str) -> Result<ExternalDataPolicy, ApiError> {

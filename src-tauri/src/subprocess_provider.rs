@@ -11,6 +11,7 @@ use oneshim_core::ports::llm_provider::{
     InterpretedAction, LlmProvider, ScreenContext, SkillContext,
 };
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
+use oneshim_core::provider_surface::provider_type_from_vendor_id;
 use serde::Deserialize;
 use std::env;
 use std::future::Future;
@@ -871,18 +872,12 @@ fn surface_for_provider_type(
     provider_type: AiProviderType,
     capability: SurfaceCapabilityKind,
 ) -> Option<String> {
-    let provider_label = match provider_type {
-        AiProviderType::Anthropic => "Anthropic",
-        AiProviderType::OpenAi => "OpenAi",
-        AiProviderType::Google => "Google",
-        AiProviderType::Ollama => return None,
-        AiProviderType::Generic => return None,
-    };
-
     list_subprocess_surface_specs()
         .ok()?
         .into_iter()
-        .filter(|surface| surface.provider_type.eq_ignore_ascii_case(provider_label))
+        .filter(|surface| {
+            provider_type_from_vendor_id(&surface.provider_type) == Some(provider_type)
+        })
         .filter(|surface| match capability {
             SurfaceCapabilityKind::Llm => surface.supports.llm,
             SurfaceCapabilityKind::Ocr => surface.supports.ocr,

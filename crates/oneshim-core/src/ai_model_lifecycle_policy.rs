@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::AiProviderType;
 use crate::error::CoreError;
-use crate::provider_surface::canonical_provider_surface_id;
+use crate::provider_surface::{
+    canonical_provider_surface_id, provider_type_from_vendor_id, provider_vendor_id_or_default,
+};
 
 const POLICY_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -379,26 +381,11 @@ fn provider_rule_matches(
 }
 
 fn parse_provider_type_label(raw: &str) -> Option<AiProviderType> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "anthropic" => Some(AiProviderType::Anthropic),
-        "openai" | "open_ai" | "open-ai" => Some(AiProviderType::OpenAi),
-        "google" | "gemini" => Some(AiProviderType::Google),
-        "ollama" => Some(AiProviderType::Ollama),
-        "llamaindex" | "llama-index" | "openai-compatible" | "openai-like" | "openai_like"
-        | "openailike" => Some(AiProviderType::Generic),
-        "generic" => Some(AiProviderType::Generic),
-        _ => None,
-    }
+    provider_type_from_vendor_id(raw)
 }
 
 fn provider_label(provider_type: AiProviderType) -> &'static str {
-    match provider_type {
-        AiProviderType::Anthropic => "anthropic",
-        AiProviderType::OpenAi => "openai",
-        AiProviderType::Google => "google",
-        AiProviderType::Ollama => "ollama",
-        AiProviderType::Generic => "generic",
-    }
+    provider_vendor_id_or_default(provider_type)
 }
 
 fn build_warning_message(

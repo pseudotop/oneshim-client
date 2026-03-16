@@ -12,6 +12,7 @@ use oneshim_core::ports::secret_projection::{
     provider_api_key_temp_file_consumer_id, ProjectionPurpose, SecretProjectionPort,
     SecretProjectionRequest, SecretProjectionResult,
 };
+use oneshim_core::provider_surface::provider_vendor_id_or_default;
 use oneshim_storage::process_env_projection::{
     provider_api_key_cli_template, ProcessEnvSecretProjection,
 };
@@ -441,10 +442,10 @@ fn resolve_temp_file_projection(
                     ));
                 };
                 let request = SecretProjectionRequest::provider_api_key_temp_file(
-                    provider_type_id(endpoint.provider_type),
+                    provider_vendor_id_or_default(endpoint.provider_type),
                     surface.profile_id(),
                     provider_api_key_temp_file_consumer_id(
-                        provider_type_id(endpoint.provider_type),
+                        provider_vendor_id_or_default(endpoint.provider_type),
                         surface.profile_id(),
                     )
                     .map_err(|err| err.to_string())?,
@@ -661,16 +662,6 @@ fn build_runtime() -> Result<tokio::runtime::Runtime, String> {
         .enable_all()
         .build()
         .map_err(|err| format!("failed to build CLI runtime: {err}"))
-}
-
-fn provider_type_id(provider_type: oneshim_core::config::AiProviderType) -> &'static str {
-    match provider_type {
-        oneshim_core::config::AiProviderType::OpenAi => "openai",
-        oneshim_core::config::AiProviderType::Anthropic => "anthropic",
-        oneshim_core::config::AiProviderType::Google => "google",
-        oneshim_core::config::AiProviderType::Ollama => "ollama",
-        oneshim_core::config::AiProviderType::Generic => "generic",
-    }
 }
 
 fn shell_quote(value: &str) -> String {

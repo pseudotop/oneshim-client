@@ -6,6 +6,7 @@ use oneshim_core::config::{
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::secret_store::{provider_api_key_secret_ref, SecretStore};
+use oneshim_core::provider_surface::provider_vendor_id_or_default;
 
 pub async fn migrate_legacy_provider_api_keys(
     config_manager: &ConfigManager,
@@ -52,7 +53,10 @@ async fn migrate_endpoint_if_needed(
         return Ok(false);
     }
 
-    let (namespace, key) = provider_api_key_secret_ref(provider_type_id(endpoint), profile_id)?;
+    let (namespace, key) = provider_api_key_secret_ref(
+        provider_vendor_id_or_default(endpoint.provider_type),
+        profile_id,
+    )?;
     secret_store.store(&namespace, key, api_key).await?;
 
     endpoint.credential = Some(CredentialBinding {
@@ -67,16 +71,6 @@ async fn migrate_endpoint_if_needed(
     endpoint.api_key.clear();
 
     Ok(true)
-}
-
-fn provider_type_id(endpoint: &ExternalApiEndpoint) -> &'static str {
-    match endpoint.provider_type {
-        oneshim_core::config::AiProviderType::OpenAi => "openai",
-        oneshim_core::config::AiProviderType::Anthropic => "anthropic",
-        oneshim_core::config::AiProviderType::Google => "google",
-        oneshim_core::config::AiProviderType::Ollama => "ollama",
-        oneshim_core::config::AiProviderType::Generic => "generic",
-    }
 }
 
 #[cfg(test)]

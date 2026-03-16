@@ -24,7 +24,9 @@ use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::ocr_provider::OcrProvider;
 use oneshim_core::ports::ocr_provider::OcrResult;
 use oneshim_core::ports::secret_store::SecretStoreSet;
-use oneshim_core::provider_surface::{provider_surface_spec, ProviderSurfaceTransport};
+use oneshim_core::provider_surface::{
+    provider_surface_spec, provider_vendor_id_or_default, ProviderSurfaceTransport,
+};
 #[cfg(feature = "server")]
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
 #[cfg(feature = "server")]
@@ -642,13 +644,7 @@ fn cli_subscription_unavailable_reason(
             }
         }
 
-        let provider_label = match provider_type {
-            AiProviderType::Anthropic => "anthropic",
-            AiProviderType::OpenAi => "openai",
-            AiProviderType::Google => "google",
-            AiProviderType::Ollama => "ollama",
-            AiProviderType::Generic => "generic",
-        };
+        let provider_label = provider_vendor_id_or_default(provider_type);
 
         return format!(
             "No supported installed CLI runtime was detected for provider '{provider_label}'."

@@ -2,7 +2,9 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use oneshim_core::config::{AiAccessMode, AiProviderType};
-use oneshim_core::provider_surface::canonical_provider_surface_id;
+use oneshim_core::provider_surface::{
+    canonical_provider_surface_id, provider_type_from_vendor_id, provider_vendor_id_or_default,
+};
 
 use crate::ai_providers::{
     ProviderModelCapabilityRules, ProviderModelCatalogTransportSpec, ProviderModelSupportStatus,
@@ -388,8 +390,8 @@ pub fn resolved_surface_spec(
 ) -> Result<&'static ProviderSurfaceSpec, String> {
     if let Some(surface_id) = surface_id.map(str::trim).filter(|value| !value.is_empty()) {
         let surface = provider_surface_spec(surface_id)?;
-        let expected = provider_type_label(provider_type);
-        if !surface.provider_type.eq_ignore_ascii_case(expected) {
+        let expected = provider_vendor_id_or_default(provider_type);
+        if provider_type_from_vendor_id(&surface.provider_type) != Some(provider_type) {
             return Err(format!(
                 "Surface '{}' does not match provider_type '{}'.",
                 surface_id, expected
@@ -414,11 +416,12 @@ pub fn default_surface_id_for_access_mode(
         | AiAccessMode::LocalModel => SurfaceExecutionKind::DirectHttp,
     };
 
-    let provider_label = provider_type_label(provider_type);
     let mut candidates = surface_catalog()?
         .surfaces
         .iter()
-        .filter(|surface| surface.provider_type.eq_ignore_ascii_case(provider_label))
+        .filter(|surface| {
+            provider_type_from_vendor_id(&surface.provider_type) == Some(provider_type)
+        })
         .filter(|surface| {
             parse_surface_execution_kind(&surface.execution_kind).ok() == Some(execution_kind)
         })
@@ -550,7 +553,7 @@ pub fn resolved_model_catalog_response_shape(
         "google_models" => Ok(ModelCatalogResponseShape::GoogleModels),
         _ => Err(format!(
             "Unsupported model catalog response shape '{raw}' for {}",
-            provider_type_label(provider_type)
+            provider_vendor_id_or_default(provider_type)
         )),
     }
 }
@@ -1743,19 +1746,19 @@ fn compatibility_surface_from_vendor<'a>(
 fn compatibility_surface_for_provider_type(
     provider_type: AiProviderType,
 ) -> Result<&'static ProviderSurfaceSpec, String> {
-    let label = provider_type_label(provider_type);
+    let vendor_id = provider_vendor_id_or_default(provider_type);
     let catalog = surface_catalog()?;
     let vendor = catalog
         .vendors
         .iter()
-        .find(|vendor| vendor.provider_type.eq_ignore_ascii_case(label))
+        .find(|vendor| vendor.vendor_id.eq_ignore_ascii_case(vendor_id))
         .ok_or_else(|| {
-            format!("Provider vendor for {label} is missing from the surface catalog.")
+            format!("Provider vendor for {vendor_id} is missing from the surface catalog.")
         })?;
     compatibility_surface_from_vendor(catalog, &vendor.vendor_id).ok_or_else(|| {
         format!(
             "Provider type '{}' does not define a direct_http compatibility surface.",
-            label
+            vendor_id
         )
     })
 }
@@ -1783,27 +1786,8 @@ fn parse_request_shape(raw: &str) -> Result<ProviderRequestShape, String> {
     }
 }
 
-fn provider_type_label(provider_type: AiProviderType) -> &'static str {
-    match provider_type {
-        AiProviderType::Anthropic => "Anthropic",
-        AiProviderType::OpenAi => "OpenAi",
-        AiProviderType::Google => "Google",
-        AiProviderType::Ollama => "Ollama",
-        AiProviderType::Generic => "Generic",
-    }
-}
-
 fn parse_provider_type_name(raw: &str) -> Option<AiProviderType> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "anthropic" => Some(AiProviderType::Anthropic),
-        "openai" | "open_ai" | "open-ai" => Some(AiProviderType::OpenAi),
-        "google" | "gemini" => Some(AiProviderType::Google),
-        "ollama" => Some(AiProviderType::Ollama),
-        "llamaindex" | "llama-index" | "openai-compatible" | "openai-like" | "openai_like"
-        | "openailike" => Some(AiProviderType::Generic),
-        "generic" => Some(AiProviderType::Generic),
-        _ => None,
-    }
+    provider_type_from_vendor_id(raw)
 }
 
 fn parse_provider_type(raw: &str) -> Result<AiProviderType, String> {

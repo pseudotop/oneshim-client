@@ -32,6 +32,14 @@ pub struct ProviderVendorProjection {
     pub api_key_temp_file_prefix: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderVendorInfo {
+    pub vendor_id: String,
+    pub provider_type: AiProviderType,
+    pub aliases: Vec<String>,
+    pub display_name: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct ProviderSurfaceCatalogDocument {
     vendors: Vec<ProviderSurfaceCatalogVendor>,
@@ -42,6 +50,10 @@ struct ProviderSurfaceCatalogDocument {
 struct ProviderSurfaceCatalogVendor {
     vendor_id: String,
     provider_type: String,
+    #[serde(default)]
+    aliases: Vec<String>,
+    #[serde(default)]
+    display_name: String,
     #[serde(default)]
     projection: Option<ProviderSurfaceCatalogVendorProjection>,
 }
@@ -84,6 +96,7 @@ static KNOWN_PROVIDER_SURFACES: OnceLock<Result<Vec<ProviderSurfaceSpec>, String
     OnceLock::new();
 static KNOWN_PROVIDER_VENDOR_PROJECTIONS: OnceLock<Result<Vec<ProviderVendorProjection>, String>> =
     OnceLock::new();
+static KNOWN_PROVIDER_VENDORS: OnceLock<Result<Vec<ProviderVendorInfo>, String>> = OnceLock::new();
 
 pub fn canonical_provider_surface_id(raw: &str) -> Option<&'static str> {
     provider_surface_spec(raw).map(|spec| spec.id.as_str())
@@ -114,6 +127,47 @@ pub fn provider_projection_for_type(
     provider_vendor_projections()?
         .iter()
         .find(|projection| projection.provider_type == provider_type)
+}
+
+pub fn provider_vendor_id(provider_type: AiProviderType) -> Option<&'static str> {
+    provider_vendors()?
+        .iter()
+        .find(|vendor| vendor.provider_type == provider_type)
+        .map(|vendor| vendor.vendor_id.as_str())
+}
+
+pub fn provider_vendor_id_or_default(provider_type: AiProviderType) -> &'static str {
+    provider_vendor_id(provider_type).unwrap_or_else(|| fallback_provider_vendor_id(provider_type))
+}
+
+pub fn provider_display_name(provider_type: AiProviderType) -> Option<&'static str> {
+    provider_vendors()?
+        .iter()
+        .find(|vendor| vendor.provider_type == provider_type)
+        .map(|vendor| vendor.display_name.as_str())
+}
+
+pub fn provider_display_name_or_default(provider_type: AiProviderType) -> &'static str {
+    provider_display_name(provider_type)
+        .unwrap_or_else(|| fallback_provider_display_name(provider_type))
+}
+
+pub fn provider_type_from_vendor_id(raw: &str) -> Option<AiProviderType> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    provider_vendors()?
+        .iter()
+        .find(|vendor| {
+            vendor.vendor_id.eq_ignore_ascii_case(&normalized)
+                || vendor
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.eq_ignore_ascii_case(&normalized))
+        })
+        .map(|vendor| vendor.provider_type)
 }
 
 pub fn default_provider_surface_id(
@@ -185,6 +239,38 @@ fn provider_vendor_projections() -> Option<&'static [ProviderVendorProjection]> 
     }
 }
 
+fn provider_vendors() -> Option<&'static [ProviderVendorInfo]> {
+    match KNOWN_PROVIDER_VENDORS.get_or_init(load_provider_vendors) {
+        Ok(vendors) => Some(vendors.as_slice()),
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to load provider vendor metadata inside oneshim-core."
+            );
+            None
+        }
+    }
+}
+
+fn load_provider_vendors() -> Result<Vec<ProviderVendorInfo>, String> {
+    let catalog =
+        serde_json::from_str::<ProviderSurfaceCatalogDocument>(PROVIDER_SURFACE_CATALOG_JSON)
+            .map_err(|error| format!("Failed to parse provider surface catalog JSON: {error}"))?;
+
+    catalog
+        .vendors
+        .into_iter()
+        .map(|vendor| {
+            Ok(ProviderVendorInfo {
+                vendor_id: vendor.vendor_id,
+                provider_type: parse_provider_type(&vendor.provider_type)?,
+                aliases: vendor.aliases,
+                display_name: vendor.display_name,
+            })
+        })
+        .collect()
+}
+
 fn load_provider_vendor_projections() -> Result<Vec<ProviderVendorProjection>, String> {
     let catalog =
         serde_json::from_str::<ProviderSurfaceCatalogDocument>(PROVIDER_SURFACE_CATALOG_JSON)
@@ -242,6 +328,26 @@ fn parse_transport(raw: &str) -> Result<ProviderSurfaceTransport, String> {
         other => Err(format!(
             "Unsupported execution_kind '{other}' in provider surface catalog."
         )),
+    }
+}
+
+fn fallback_provider_vendor_id(provider_type: AiProviderType) -> &'static str {
+    match provider_type {
+        AiProviderType::Anthropic => "anthropic",
+        AiProviderType::OpenAi => "openai",
+        AiProviderType::Google => "google",
+        AiProviderType::Ollama => "ollama",
+        AiProviderType::Generic => "generic",
+    }
+}
+
+fn fallback_provider_display_name(provider_type: AiProviderType) -> &'static str {
+    match provider_type {
+        AiProviderType::Anthropic => "Anthropic",
+        AiProviderType::OpenAi => "OpenAI",
+        AiProviderType::Google => "Google",
+        AiProviderType::Ollama => "Ollama",
+        AiProviderType::Generic => "Generic",
     }
 }
 
@@ -306,5 +412,18 @@ mod tests {
             vec!["OPENAI_API_KEY".to_string()]
         );
         assert_eq!(projection.api_key_temp_file_prefix, "openai");
+    }
+
+    #[test]
+    fn resolves_vendor_ids_and_aliases_from_catalog() {
+        assert_eq!(provider_vendor_id(AiProviderType::Google), Some("google"));
+        assert_eq!(
+            provider_type_from_vendor_id("gemini"),
+            Some(AiProviderType::Google)
+        );
+        assert_eq!(
+            provider_type_from_vendor_id("open_ai"),
+            Some(AiProviderType::OpenAi)
+        );
     }
 }
