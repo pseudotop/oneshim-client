@@ -38,6 +38,18 @@ pub trait IntegrationSessionPort: Send + Sync {
 }
 
 #[async_trait]
+pub trait IntegrationSessionStorePort: Send + Sync {
+    /// Load the last persisted integration session state, if one exists.
+    async fn load(&self) -> Result<Option<IntegrationSessionState>, CoreError>;
+
+    /// Persist the latest integration session state snapshot.
+    async fn store(&self, state: IntegrationSessionState) -> Result<(), CoreError>;
+
+    /// Clear any persisted integration session state.
+    async fn clear(&self) -> Result<(), CoreError>;
+}
+
+#[async_trait]
 pub trait IntegrationAuthPort: Send + Sync {
     /// Resolve outbound session auth material for the requested scopes and resource.
     async fn resolve_session_auth(

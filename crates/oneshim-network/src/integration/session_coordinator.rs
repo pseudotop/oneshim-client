@@ -6,7 +6,7 @@ use oneshim_core::models::integration::{
     IntegrationAckCursor, IntegrationAuthScheme, IntegrationCapabilityScope,
     IntegrationSessionState, IntegrationSessionStatus, IntegrationTransportKind,
 };
-use oneshim_core::ports::integration::IntegrationSessionPort;
+use oneshim_core::ports::integration::{IntegrationSessionPort, IntegrationSessionStorePort};
 use tokio::sync::RwLock;
 
 use super::transport::{IntegrationTransportClient, IntegrationTransportConnectRequest};
@@ -43,6 +43,7 @@ pub struct IntegrationSessionCoordinator {
     device_id: String,
     profile: IntegrationSessionRuntimeProfile,
     transport: Arc<dyn IntegrationTransportClient>,
+    session_store: Option<Arc<dyn IntegrationSessionStorePort>>,
     state: Arc<RwLock<Option<IntegrationSessionState>>>,
 }
 
@@ -63,10 +64,20 @@ impl IntegrationSessionCoordinator {
         transport: Arc<dyn IntegrationTransportClient>,
         profile: IntegrationSessionRuntimeProfile,
     ) -> Self {
+        Self::new_with_profile_and_store(device_id, transport, profile, None)
+    }
+
+    pub fn new_with_profile_and_store(
+        device_id: impl Into<String>,
+        transport: Arc<dyn IntegrationTransportClient>,
+        profile: IntegrationSessionRuntimeProfile,
+        session_store: Option<Arc<dyn IntegrationSessionStorePort>>,
+    ) -> Self {
         Self {
             device_id: device_id.into(),
             profile,
             transport,
+            session_store,
             state: Arc::new(RwLock::new(None)),
         }
     }
@@ -81,8 +92,7 @@ impl IntegrationSessionCoordinator {
     }
 
     async fn set_failed_state(&self, requested_scopes: Vec<IntegrationCapabilityScope>) {
-        let mut guard = self.state.write().await;
-        *guard = Some(IntegrationSessionState {
+        let state = IntegrationSessionState {
             session_id: String::new(),
             device_id: self.device_id.clone(),
             status: IntegrationSessionStatus::Failed,
@@ -93,7 +103,44 @@ impl IntegrationSessionCoordinator {
             requested_scopes,
             granted_scopes: Vec::new(),
             ack_cursors: Vec::new(),
-        });
+        };
+        let mut guard = self.state.write().await;
+        *guard = Some(state.clone());
+        drop(guard);
+        let _ = self.persist_state(state).await;
+    }
+
+    async fn persist_state(&self, state: IntegrationSessionState) -> Result<(), CoreError> {
+        if let Some(store) = &self.session_store {
+            store.store(state).await?;
+        }
+        Ok(())
+    }
+
+    async fn clear_persisted_state(&self) -> Result<(), CoreError> {
+        if let Some(store) = &self.session_store {
+            store.clear().await?;
+        }
+        Ok(())
+    }
+
+    async fn load_persisted_state(&self) -> Result<Option<IntegrationSessionState>, CoreError> {
+        if let Some(existing) = self.state.read().await.clone() {
+            return Ok(Some(existing));
+        }
+
+        let Some(store) = &self.session_store else {
+            return Ok(None);
+        };
+
+        let loaded = store.load().await?;
+        if let Some(state) = loaded.clone() {
+            let mut guard = self.state.write().await;
+            if guard.is_none() {
+                *guard = Some(state);
+            }
+        }
+        Ok(loaded)
     }
 }
 
@@ -103,7 +150,7 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
         &self,
         requested_scopes: Vec<IntegrationCapabilityScope>,
     ) -> Result<IntegrationSessionState, CoreError> {
-        if let Some(existing) = self.current_session().await? {
+        if let Some(existing) = self.load_persisted_state().await? {
             if Self::scopes_satisfied(&existing, &requested_scopes) {
                 match existing.status {
                     IntegrationSessionStatus::Connected => return Ok(existing),
@@ -178,11 +225,13 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
 
         let mut guard = self.state.write().await;
         *guard = Some(state.clone());
+        drop(guard);
+        self.persist_state(state.clone()).await?;
         Ok(state)
     }
 
     async fn current_session(&self) -> Result<Option<IntegrationSessionState>, CoreError> {
-        Ok(self.state.read().await.clone())
+        self.load_persisted_state().await
     }
 
     async fn heartbeat(&self, session_id: &str) -> Result<IntegrationSessionState, CoreError> {
@@ -214,7 +263,10 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
 
         state.status = IntegrationSessionStatus::Connected;
         state.last_heartbeat_at = Some(heartbeat_at);
-        Ok(state.clone())
+        let updated = state.clone();
+        drop(guard);
+        self.persist_state(updated.clone()).await?;
+        Ok(updated)
     }
 
     async fn store_ack_cursor(
@@ -244,7 +296,10 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
         } else {
             state.ack_cursors.push(cursor);
         }
-        Ok(state.clone())
+        let updated = state.clone();
+        drop(guard);
+        self.persist_state(updated.clone()).await?;
+        Ok(updated)
     }
 
     async fn disconnect(&self, session_id: &str) -> Result<(), CoreError> {
@@ -256,6 +311,8 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
             }
         }
         *guard = None;
+        drop(guard);
+        self.clear_persisted_state().await?;
         Ok(())
     }
 }
@@ -269,8 +326,9 @@ mod tests {
     use oneshim_core::error::CoreError;
     use oneshim_core::models::integration::{
         IntegrationAckCursor, IntegrationAuthScheme, IntegrationCapabilityScope,
-        IntegrationSessionStatus, IntegrationTransportKind,
+        IntegrationSessionState, IntegrationSessionStatus, IntegrationTransportKind,
     };
+    use oneshim_core::ports::integration::IntegrationSessionStorePort;
     use tokio::sync::Mutex;
 
     use super::*;
@@ -280,6 +338,28 @@ mod tests {
         calls: Arc<Mutex<Vec<String>>>,
         fail_connect: bool,
         fail_heartbeat: bool,
+    }
+
+    #[derive(Default)]
+    struct MockSessionStore {
+        state: Arc<Mutex<Option<IntegrationSessionState>>>,
+    }
+
+    #[async_trait]
+    impl IntegrationSessionStorePort for MockSessionStore {
+        async fn load(&self) -> Result<Option<IntegrationSessionState>, CoreError> {
+            Ok(self.state.lock().await.clone())
+        }
+
+        async fn store(&self, state: IntegrationSessionState) -> Result<(), CoreError> {
+            *self.state.lock().await = Some(state);
+            Ok(())
+        }
+
+        async fn clear(&self) -> Result<(), CoreError> {
+            *self.state.lock().await = None;
+            Ok(())
+        }
     }
 
     #[async_trait]
@@ -569,6 +649,41 @@ mod tests {
 
         assert_eq!(updated.ack_cursors.len(), 1);
         assert_eq!(updated.ack_cursors[0].cursor, "cursor-1");
+    }
+
+    #[tokio::test]
+    async fn current_session_loads_persisted_state_when_memory_is_empty() {
+        let store = Arc::new(MockSessionStore::default());
+        store
+            .store(IntegrationSessionState {
+                session_id: "persisted-session".to_string(),
+                device_id: "device-1".to_string(),
+                status: IntegrationSessionStatus::Connected,
+                transport_kind: IntegrationTransportKind::WebSocket,
+                auth_scheme: IntegrationAuthScheme::BearerToken,
+                connected_at: Some(Utc::now()),
+                last_heartbeat_at: Some(Utc::now()),
+                requested_scopes: vec![IntegrationCapabilityScope::InsightWrite],
+                granted_scopes: vec![IntegrationCapabilityScope::InsightWrite],
+                ack_cursors: vec![],
+            })
+            .await
+            .unwrap();
+
+        let coordinator = IntegrationSessionCoordinator::new_with_profile_and_store(
+            "device-1",
+            Arc::new(MockTransport {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                fail_connect: false,
+                fail_heartbeat: false,
+            }),
+            IntegrationSessionRuntimeProfile::default(),
+            Some(store),
+        );
+
+        let session = coordinator.current_session().await.unwrap().unwrap();
+        assert_eq!(session.session_id, "persisted-session");
+        assert_eq!(session.status, IntegrationSessionStatus::Connected);
     }
 
     #[tokio::test]

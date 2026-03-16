@@ -35,6 +35,8 @@ use oneshim_network::integration::{
 #[cfg(feature = "server")]
 use oneshim_network::oauth::OAuthClient;
 use oneshim_storage::frame_storage::FrameFileStorage;
+#[cfg(feature = "server")]
+use oneshim_storage::integration_state_store::FileIntegrationStateStore;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
@@ -285,6 +287,11 @@ fn derive_integration_device_id(config_dir: &std::path::Path) -> String {
 }
 
 #[cfg(feature = "server")]
+fn integration_state_store_path(config_dir: &std::path::Path) -> PathBuf {
+    config_dir.join("integration").join("state.json")
+}
+
+#[cfg(feature = "server")]
 fn build_integration_runtime(
     config: &AppConfig,
     config_dir: &std::path::Path,
@@ -433,7 +440,12 @@ fn build_integration_runtime(
         dpop_proof_factory,
     )?) as Arc<dyn oneshim_network::integration::IntegrationTransportClient>;
 
-    let session = Arc::new(IntegrationSessionCoordinator::new_with_profile(
+    let integration_state_store =
+        FileIntegrationStateStore::new(integration_state_store_path(config_dir))?;
+    let session_store = Arc::new(integration_state_store.session_store())
+        as Arc<dyn oneshim_core::ports::integration::IntegrationSessionStorePort>;
+
+    let session = Arc::new(IntegrationSessionCoordinator::new_with_profile_and_store(
         integration
             .device_id
             .clone()
@@ -447,6 +459,7 @@ fn build_integration_runtime(
             supported_auth_schemes,
             resource_indicator: non_empty_config_value(integration.resource_indicator.as_deref()),
         },
+        Some(session_store),
     )) as Arc<dyn IntegrationSessionPort>;
 
     Ok((status, auth_port, Some(session)))
