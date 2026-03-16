@@ -78,7 +78,8 @@ Parallelizable work:
 Status:
 
 - foundation done
-- first transport adapter not started
+- first HTTPS/WebSocket-oriented bootstrap adapter foundation done
+- live bidirectional channel binding not started
 
 Primary crates:
 
@@ -184,6 +185,11 @@ Parallelizable work:
 - notification presentation
 
 ## Phase 5: Standards Documentation Layer
+
+Status:
+
+- first contract drafts started
+- verification and naming review not started
 
 Primary outputs:
 
