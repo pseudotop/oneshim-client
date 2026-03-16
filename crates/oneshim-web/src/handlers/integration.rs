@@ -3,324 +3,42 @@ use axum::{
     Json,
 };
 use oneshim_api_contracts::integration::{
-    IntegrationAckCursorSummary, IntegrationAuditLogResponse, IntegrationAuditRecordSummary,
     IntegrationDeviceAuthorizationCommandResult, IntegrationDeviceAuthorizationFlowRequest,
-    IntegrationInboxActionResponse, IntegrationInboxDismissRequest, IntegrationInboxPromptSummary,
-    IntegrationInboxRefreshResponse, IntegrationInboxResponse, IntegrationOutboundRuntimeStatus,
-    IntegrationSessionSummary, IntegrationStatus,
+    IntegrationInboxActionResponse, IntegrationInboxDismissRequest,
+    IntegrationInboxRefreshResponse, IntegrationInboxResponse, IntegrationStatus,
 };
-use oneshim_core::models::integration::{
-    default_integration_runtime_scopes, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
-    IntegrationSessionState, ProactivePromptCategory, ProactivePromptPriority,
-    StoredProactivePrompt,
-};
-use tracing::warn;
 
-use crate::{error::ApiError, AppState};
-
-const INTEGRATION_STATUS_SCHEMA_VERSION: &str = "integration.status.v1";
-const INTEGRATION_AUDIT_SCHEMA_VERSION: &str = "integration.audit.v1";
-const INTEGRATION_INBOX_SCHEMA_VERSION: &str = "integration.inbox.v1";
-const INTEGRATION_INBOX_ACTION_SCHEMA_VERSION: &str = "integration.inbox-action.v1";
-
-fn map_session_summary(state: IntegrationSessionState) -> IntegrationSessionSummary {
-    IntegrationSessionSummary {
-        status: state.status,
-        transport_kind: state.transport_kind,
-        auth_scheme: state.auth_scheme,
-        connected_at: state.connected_at,
-        last_heartbeat_at: state.last_heartbeat_at,
-        requested_scopes: state
-            .requested_scopes
-            .iter()
-            .map(|scope| scope.as_str().to_string())
-            .collect(),
-        granted_scopes: state
-            .granted_scopes
-            .iter()
-            .map(|scope| scope.as_str().to_string())
-            .collect(),
-    }
-}
-
-fn map_ack_cursor_summary(
-    cursor: oneshim_core::models::integration::IntegrationAckCursor,
-) -> IntegrationAckCursorSummary {
-    IntegrationAckCursorSummary {
-        stream_id: cursor.stream_id,
-        cursor: cursor.cursor,
-        acknowledged_at: cursor.acknowledged_at,
-    }
-}
-
-fn map_audit_record(record: IntegrationInsightAuditRecord) -> IntegrationAuditRecordSummary {
-    IntegrationAuditRecordSummary {
-        record_id: record.record_id,
-        envelope_id: record.envelope_id,
-        packet_id: record.packet_id,
-        disposition: match record.disposition {
-            oneshim_core::models::integration::IntegrationEgressDisposition::Allow => "allow",
-            oneshim_core::models::integration::IntegrationEgressDisposition::Deny => "deny",
-            oneshim_core::models::integration::IntegrationEgressDisposition::RequireUserApproval => {
-                "require_user_approval"
-            }
-        }
-        .to_string(),
-        reason: record.reason,
-        privacy_classification: match record.privacy_classification {
-            oneshim_core::models::integration::IntegrationPrivacyClassification::DeviceLocal => {
-                "device_local"
-            }
-            oneshim_core::models::integration::IntegrationPrivacyClassification::DerivedSummary => {
-                "derived_summary"
-            }
-            oneshim_core::models::integration::IntegrationPrivacyClassification::UserApprovedAttachment => {
-                "user_approved_attachment"
-            }
-        }
-        .to_string(),
-        capability_scope: record.capability_scope.as_str().to_string(),
-        occurred_at: record.occurred_at,
-    }
-}
-
-fn prompt_category_label(category: &ProactivePromptCategory) -> &'static str {
-    match category {
-        ProactivePromptCategory::Insight => "insight",
-        ProactivePromptCategory::Task => "task",
-        ProactivePromptCategory::Reminder => "reminder",
-        ProactivePromptCategory::Escalation => "escalation",
-    }
-}
-
-fn prompt_priority_label(priority: &ProactivePromptPriority) -> &'static str {
-    match priority {
-        ProactivePromptPriority::Low => "low",
-        ProactivePromptPriority::Medium => "medium",
-        ProactivePromptPriority::High => "high",
-        ProactivePromptPriority::Critical => "critical",
-    }
-}
-
-fn inbox_status_label(status: &IntegrationInboxItemStatus) -> &'static str {
-    match status {
-        IntegrationInboxItemStatus::Pending => "pending",
-        IntegrationInboxItemStatus::Acknowledged => "acknowledged",
-        IntegrationInboxItemStatus::Dismissed => "dismissed",
-        IntegrationInboxItemStatus::Expired => "expired",
-    }
-}
-
-fn map_prompt(prompt: StoredProactivePrompt) -> IntegrationInboxPromptSummary {
-    IntegrationInboxPromptSummary {
-        prompt_id: prompt.prompt.prompt_id,
-        category: prompt_category_label(&prompt.prompt.category).to_string(),
-        priority: prompt_priority_label(&prompt.prompt.priority).to_string(),
-        title: prompt.prompt.title,
-        body: prompt.prompt.body,
-        status: inbox_status_label(&prompt.status).to_string(),
-        received_at: prompt.received_at,
-        status_updated_at: prompt.status_updated_at,
-        presented_at: prompt.presented_at,
-        expires_at: prompt.prompt.expires_at,
-        source_system: prompt.prompt.provenance.source_system,
-        source_actor: prompt.prompt.provenance.source_actor,
-        correlation_id: prompt.prompt.provenance.correlation_id,
-        dismiss_reason: prompt.dismiss_reason,
-    }
-}
+use crate::{error::ApiError, services::integration_service, AppState};
 
 pub async fn get_status(State(state): State<AppState>) -> Json<IntegrationStatus> {
-    let config = state
-        .config_manager
-        .as_ref()
-        .map(|config_manager| config_manager.get());
-    let external_access_enabled = config
-        .as_ref()
-        .map(|config| config.web.allow_external)
-        .unwrap_or(false);
-    let mut outbound_runtime = state
-        .integration_runtime_status
-        .clone()
-        .unwrap_or_else(IntegrationOutboundRuntimeStatus::default);
-    if let Some(config) = config.as_ref() {
-        let auth_token_env_var = config
-            .integration
-            .auth_token_env_var
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        outbound_runtime.enabled = config.integration.enabled;
-        outbound_runtime.bootstrap_configured = config
-            .integration
-            .bootstrap_url
-            .as_deref()
-            .map(str::trim)
-            .is_some_and(|value| !value.is_empty());
-        outbound_runtime.auth_profile_kind = config.integration.auth_profile_kind.clone();
-        outbound_runtime.auth_source_configured = match config.integration.auth_profile_kind {
-            oneshim_core::models::integration::IntegrationAuthProfileKind::EnvToken => {
-                auth_token_env_var.is_some()
-            }
-            oneshim_core::models::integration::IntegrationAuthProfileKind::OidcDeviceFlow => {
-                config
-                    .integration
-                    .oidc_device_flow
-                    .client_id
-                    .as_deref()
-                    .map(str::trim)
-                    .is_some_and(|value| !value.is_empty())
-                    && config
-                        .integration
-                        .oidc_device_flow
-                        .device_authorization_url
-                        .as_deref()
-                        .map(str::trim)
-                        .is_some_and(|value| !value.is_empty())
-                    && config
-                        .integration
-                        .oidc_device_flow
-                        .token_url
-                        .as_deref()
-                        .map(str::trim)
-                        .is_some_and(|value| !value.is_empty())
-            }
-        };
-        outbound_runtime.auth_material_available = auth_token_env_var
-            .and_then(|env_var| std::env::var(env_var).ok())
-            .map(|value| !value.trim().is_empty())
-            .unwrap_or(false);
-        outbound_runtime.resource_indicator_configured = config
-            .integration
-            .resource_indicator
-            .as_deref()
-            .map(str::trim)
-            .is_some_and(|value| !value.is_empty());
-    }
-
-    if let Some(auth_port) = state.integration_auth.as_ref() {
-        match auth_port.current_auth_status().await {
-            Ok(auth_status) => {
-                outbound_runtime.auth_material_available = auth_status.authenticated;
-                outbound_runtime.auth_status = Some(auth_status);
-            }
-            Err(error) => {
-                warn!(error = %error, "failed to read integration auth status");
-            }
-        }
-    }
-
-    if let Some(session_port) = state.integration_session.as_ref() {
-        match session_port.current_session().await {
-            Ok(Some(current_session)) => {
-                outbound_runtime.current_session = Some(map_session_summary(current_session));
-            }
-            Ok(None) => {}
-            Err(error) => {
-                warn!(error = %error, "failed to read integration session state");
-            }
-        }
-    }
-
-    if let Some(outbox) = state.integration_outbox.as_ref() {
-        match outbox.pending_count().await {
-            Ok(count) => outbound_runtime.outbox_pending_count = Some(count),
-            Err(error) => warn!(error = %error, "failed to read integration outbox count"),
-        }
-        match outbox.last_ack_cursor().await {
-            Ok(cursor) => outbound_runtime.outbox_ack_cursor = cursor.map(map_ack_cursor_summary),
-            Err(error) => warn!(error = %error, "failed to read integration outbox cursor"),
-        }
-    }
-
-    if let Some(inbox_store) = state.integration_inbox_store.as_ref() {
-        match inbox_store.pending_count().await {
-            Ok(count) => outbound_runtime.inbox_pending_count = Some(count),
-            Err(error) => warn!(error = %error, "failed to read integration inbox count"),
-        }
-        match inbox_store.last_ack_cursor().await {
-            Ok(cursor) => outbound_runtime.inbox_ack_cursor = cursor.map(map_ack_cursor_summary),
-            Err(error) => warn!(error = %error, "failed to read integration inbox cursor"),
-        }
-    }
-
-    Json(IntegrationStatus {
-        schema_version: INTEGRATION_STATUS_SCHEMA_VERSION.to_string(),
-        external_access_enabled,
-        automation_controller_configured: state.automation_controller.is_some(),
-        ai_runtime_status: state.ai_runtime_status.clone(),
-        outbound_runtime,
-    })
+    Json(integration_service::build_status(&state).await)
 }
 
-pub async fn get_audit(State(state): State<AppState>) -> Json<IntegrationAuditLogResponse> {
-    let records = if let Some(audit) = state.integration_audit.as_ref() {
-        match audit.recent_insight_decisions(50).await {
-            Ok(records) => records.into_iter().map(map_audit_record).collect(),
-            Err(error) => {
-                warn!(error = %error, "failed to read integration audit records");
-                Vec::new()
-            }
-        }
-    } else {
-        Vec::new()
-    };
-
-    Json(IntegrationAuditLogResponse {
-        schema_version: INTEGRATION_AUDIT_SCHEMA_VERSION.to_string(),
-        records,
-    })
+pub async fn get_audit(
+    State(state): State<AppState>,
+) -> Json<oneshim_api_contracts::integration::IntegrationAuditLogResponse> {
+    Json(integration_service::build_audit_log(&state, 50).await)
 }
 
 pub async fn list_inbox(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationInboxResponse>, ApiError> {
-    let inbox = state.integration_inbox.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
-    })?;
-
-    let prompts = inbox
-        .list_pending()
-        .await?
-        .into_iter()
-        .map(map_prompt)
-        .collect::<Vec<_>>();
-    let pending_count = prompts.len();
-
-    Ok(Json(IntegrationInboxResponse {
-        schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
-        prompts,
-        pending_count,
-    }))
+    Ok(Json(integration_service::list_inbox(&state).await?))
 }
 
 pub async fn refresh_inbox(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationInboxRefreshResponse>, ApiError> {
-    let inbox = state.integration_inbox.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
-    })?;
-
-    Ok(Json(IntegrationInboxRefreshResponse {
-        schema_version: INTEGRATION_INBOX_SCHEMA_VERSION.to_string(),
-        fetched_count: inbox.refresh().await?,
-    }))
+    Ok(Json(integration_service::refresh_inbox(&state).await?))
 }
 
 pub async fn acknowledge_inbox_prompt(
     State(state): State<AppState>,
     Path(prompt_id): Path<String>,
 ) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
-    let inbox = state.integration_inbox.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
-    })?;
-
-    inbox.acknowledge(&prompt_id).await?;
-    Ok(Json(IntegrationInboxActionResponse {
-        schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
-        prompt_id,
-        status: "acknowledged".to_string(),
-    }))
+    Ok(Json(
+        integration_service::acknowledge_inbox_prompt(&state, &prompt_id).await?,
+    ))
 }
 
 pub async fn dismiss_inbox_prompt(
@@ -328,75 +46,50 @@ pub async fn dismiss_inbox_prompt(
     Path(prompt_id): Path<String>,
     Json(request): Json<IntegrationInboxDismissRequest>,
 ) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
-    let inbox = state.integration_inbox.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration inbox runtime is not configured.".to_string())
-    })?;
-
-    inbox.dismiss(&prompt_id, request.reason).await?;
-    Ok(Json(IntegrationInboxActionResponse {
-        schema_version: INTEGRATION_INBOX_ACTION_SCHEMA_VERSION.to_string(),
-        prompt_id,
-        status: "dismissed".to_string(),
-    }))
+    Ok(Json(
+        integration_service::dismiss_inbox_prompt(&state, &prompt_id, request).await?,
+    ))
 }
 
 pub async fn get_auth_status(
     State(state): State<AppState>,
 ) -> Result<Json<oneshim_core::models::integration::IntegrationAuthStatus>, ApiError> {
-    let auth = state.integration_auth.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
-    })?;
-    Ok(Json(auth.current_auth_status().await?))
+    Ok(Json(integration_service::get_auth_status(&state).await?))
 }
 
 pub async fn start_device_authorization(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
-    let auth = state.integration_auth.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
-    })?;
-    let flow = auth
-        .start_device_authorization(&default_integration_runtime_scopes(), None)
-        .await?;
-    let auth_status = auth.current_auth_status().await?;
-    Ok(Json(IntegrationDeviceAuthorizationCommandResult {
-        auth_status,
-        flow: Some(flow),
-    }))
+    Ok(Json(
+        integration_service::start_device_authorization(&state).await?,
+    ))
 }
 
 pub async fn poll_device_authorization(
     State(state): State<AppState>,
     Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
-    let auth = state.integration_auth.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
-    })?;
-    let auth_status = auth.poll_device_authorization(&request.flow_id).await?;
-    Ok(Json(IntegrationDeviceAuthorizationCommandResult {
-        flow: auth_status.pending_flow.clone(),
-        auth_status,
-    }))
+    Ok(Json(
+        integration_service::poll_device_authorization(&state, &request.flow_id).await?,
+    ))
 }
 
 pub async fn cancel_device_authorization(
     State(state): State<AppState>,
     Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
-    let auth = state.integration_auth.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Integration auth runtime is not configured.".to_string())
-    })?;
-    auth.cancel_device_authorization(&request.flow_id).await?;
-    let auth_status = auth.current_auth_status().await?;
-    Ok(Json(IntegrationDeviceAuthorizationCommandResult {
-        flow: auth_status.pending_flow.clone(),
-        auth_status,
-    }))
+    Ok(Json(
+        integration_service::cancel_device_authorization(&state, &request.flow_id).await?,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::integration_service::{
+        INTEGRATION_AUDIT_SCHEMA_VERSION, INTEGRATION_INBOX_ACTION_SCHEMA_VERSION,
+        INTEGRATION_INBOX_SCHEMA_VERSION,
+    };
     use async_trait::async_trait;
     use oneshim_api_contracts::integration::{
         IntegrationDeviceAuthorizationFlowRequest, IntegrationOutboundRuntimeStatus,
