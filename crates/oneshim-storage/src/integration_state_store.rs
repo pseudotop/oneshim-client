@@ -159,6 +159,7 @@ impl FileIntegrationStateInner {
         for prompt in prompts {
             if let Some(existing) = registry.inbox.get_mut(&prompt.prompt.prompt_id) {
                 existing.prompt = prompt.prompt;
+                existing.presented_at = existing.presented_at.or(prompt.presented_at);
             } else {
                 registry
                     .inbox
@@ -178,6 +179,23 @@ impl FileIntegrationStateInner {
             .cloned()
             .collect();
         prompts.sort_by_key(|prompt| prompt.received_at);
+        prompts
+    }
+
+    fn list_inbox_unpresented_sync(&self, limit: usize) -> Vec<StoredProactivePrompt> {
+        let mut prompts: Vec<_> = self
+            .registry
+            .lock()
+            .inbox
+            .values()
+            .filter(|prompt| {
+                prompt.status == IntegrationInboxItemStatus::Pending
+                    && prompt.presented_at.is_none()
+            })
+            .cloned()
+            .collect();
+        prompts.sort_by_key(|prompt| prompt.received_at);
+        prompts.truncate(limit);
         prompts
     }
 
@@ -207,6 +225,23 @@ impl FileIntegrationStateInner {
         prompt.status = status;
         prompt.status_updated_at = Utc::now();
         prompt.dismiss_reason = reason;
+        self.save_registry(&registry)
+    }
+
+    fn mark_presented_sync(
+        &self,
+        prompt_id: &str,
+        presented_at: chrono::DateTime<Utc>,
+    ) -> Result<(), CoreError> {
+        let mut registry = self.registry.lock();
+        let prompt = registry
+            .inbox
+            .get_mut(prompt_id)
+            .ok_or_else(|| CoreError::NotFound {
+                resource_type: "integration_prompt".to_string(),
+                id: prompt_id.to_string(),
+            })?;
+        prompt.presented_at = Some(presented_at);
         self.save_registry(&registry)
     }
 
@@ -429,9 +464,31 @@ impl IntegrationInboxStorePort for FileIntegrationInboxStore {
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
     }
 
+    async fn list_unpresented(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<StoredProactivePrompt>, CoreError> {
+        let inner = self.inner.clone();
+        tokio::task::spawn_blocking(move || Ok(inner.list_inbox_unpresented_sync(limit)))
+            .await
+            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+
     async fn pending_count(&self) -> Result<usize, CoreError> {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || Ok(inner.inbox_pending_count_sync()))
+            .await
+            .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+
+    async fn mark_presented(
+        &self,
+        prompt_id: &str,
+        presented_at: chrono::DateTime<Utc>,
+    ) -> Result<(), CoreError> {
+        let inner = self.inner.clone();
+        let prompt_id = prompt_id.to_string();
+        tokio::task::spawn_blocking(move || inner.mark_presented_sync(&prompt_id, presented_at))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
     }
@@ -591,6 +648,7 @@ mod tests {
             received_at: Utc::now(),
             status: IntegrationInboxItemStatus::Pending,
             status_updated_at: Utc::now(),
+            presented_at: None,
             dismiss_reason: None,
         }
     }
@@ -677,12 +735,14 @@ mod tests {
             .update_status("prompt-1", IntegrationInboxItemStatus::Acknowledged, None)
             .await
             .unwrap();
+        inbox.mark_presented("prompt-1", Utc::now()).await.unwrap();
         inbox
             .upsert_prompts(vec![sample_prompt("prompt-1", "body-2")])
             .await
             .unwrap();
 
         assert!(inbox.list_pending().await.unwrap().is_empty());
+        assert!(inbox.list_unpresented(10).await.unwrap().is_empty());
 
         let expiring = StoredProactivePrompt {
             prompt: ProactivePrompt {
@@ -694,6 +754,17 @@ mod tests {
         inbox.upsert_prompts(vec![expiring]).await.unwrap();
         assert_eq!(inbox.expire_stale().await.unwrap(), 1);
         assert!(inbox.list_pending().await.unwrap().is_empty());
+
+        let reloaded =
+            FileIntegrationStateStore::new(temp_dir.path().join("integration.json")).unwrap();
+        let prompt = reloaded
+            .inbox_store()
+            .list_pending()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|prompt| prompt.prompt.prompt_id == "prompt-1");
+        assert!(prompt.is_none());
     }
 
     #[tokio::test]

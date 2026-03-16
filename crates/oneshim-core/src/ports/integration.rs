@@ -2,6 +2,7 @@
 //! session/auth orchestration.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
@@ -192,8 +193,19 @@ pub trait IntegrationInboxStorePort: Send + Sync {
     /// List locally pending prompts/tasks.
     async fn list_pending(&self) -> Result<Vec<StoredProactivePrompt>, CoreError>;
 
+    /// List locally pending prompts/tasks that have not yet been presented.
+    async fn list_unpresented(&self, limit: usize)
+        -> Result<Vec<StoredProactivePrompt>, CoreError>;
+
     /// Count currently pending prompts/tasks.
     async fn pending_count(&self) -> Result<usize, CoreError>;
+
+    /// Mark a prompt/task as presented to the local user experience.
+    async fn mark_presented(
+        &self,
+        prompt_id: &str,
+        presented_at: DateTime<Utc>,
+    ) -> Result<(), CoreError>;
 
     /// Update the lifecycle state of a stored prompt/task.
     async fn update_status(
@@ -211,6 +223,12 @@ pub trait IntegrationInboxStorePort: Send + Sync {
 
     /// Persist the latest acknowledged cursor from the remote side.
     async fn store_ack_cursor(&self, cursor: IntegrationAckCursor) -> Result<(), CoreError>;
+}
+
+#[async_trait]
+pub trait IntegrationPromptPresenterPort: Send + Sync {
+    /// Present a proactive prompt to the local desktop user experience.
+    async fn present_prompt(&self, prompt: &StoredProactivePrompt) -> Result<(), CoreError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

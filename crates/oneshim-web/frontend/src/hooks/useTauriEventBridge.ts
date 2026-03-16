@@ -9,8 +9,17 @@ type TauriEventPayload = {
   payload?: unknown
 }
 
+type IntegrationPromptPayload = {
+  title?: unknown
+  body?: unknown
+}
+
 function isRoutePath(payload: unknown): payload is string {
   return typeof payload === 'string' && payload.startsWith('/')
+}
+
+function isIntegrationPromptPayload(payload: unknown): payload is IntegrationPromptPayload {
+  return typeof payload === 'object' && payload !== null
 }
 
 export function useTauriEventBridge() {
@@ -111,6 +120,24 @@ export function useTauriEventBridge() {
           !(await registerListener('oauth-reauth-required', () => {
             addToast('warning', tRef.current('settingsOAuth.reauthDescription'), 8000)
             navigateTo('/settings')
+          }))
+        ) {
+          return
+        }
+
+        if (
+          !(await registerListener('integration-proactive-prompt', (event: TauriEventPayload) => {
+            if (!isIntegrationPromptPayload(event.payload)) {
+              return
+            }
+            const title =
+              typeof event.payload.title === 'string' ? event.payload.title.trim() : ''
+            const body =
+              typeof event.payload.body === 'string' ? event.payload.body.trim() : ''
+            const message = [title, body].filter(Boolean).join(': ')
+            if (message.length > 0) {
+              addToast('info', message, 10000)
+            }
           }))
         ) {
           return

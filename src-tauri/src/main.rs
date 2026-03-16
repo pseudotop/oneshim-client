@@ -23,6 +23,8 @@ mod focus_probe_adapter;
 #[cfg(feature = "server")]
 mod integration_insight_source;
 mod integration_policy;
+#[cfg(feature = "server")]
+mod integration_prompt_delivery;
 mod integrity_guard;
 mod lifecycle;
 #[cfg(target_os = "macos")]

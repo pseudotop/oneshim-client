@@ -74,6 +74,11 @@ use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::integration_insight_source::LocalSuggestionIntegrationSource;
 #[cfg(feature = "server")]
 use crate::integration_policy::DefaultIntegrationEgressPolicy;
+#[cfg(feature = "server")]
+use crate::integration_prompt_delivery::{
+    IntegrationInboxDeliveryCoordinator, IntegrationInboxDeliveryLoop,
+    IntegrationInboxDeliveryLoopProfile, TauriIntegrationPromptPresenter,
+};
 use crate::notification_manager::NotificationManager;
 #[cfg(feature = "server")]
 use crate::oauth_provider_registry::configured_oauth_provider_ids;
@@ -757,6 +762,25 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     #[cfg(feature = "server")]
+    let integration_delivery_loop = integration_inbox_store.clone().map(|inbox_store| {
+        let presenter = Arc::new(TauriIntegrationPromptPresenter::new(_app_handle.clone()))
+            as Arc<dyn oneshim_core::ports::integration::IntegrationPromptPresenterPort>;
+        let delivery = Arc::new(IntegrationInboxDeliveryCoordinator::new(
+            inbox_store,
+            presenter,
+            config.integration.max_batch_size,
+        ));
+        IntegrationInboxDeliveryLoop::new(
+            delivery,
+            IntegrationInboxDeliveryLoopProfile {
+                delivery_interval: Duration::from_secs(
+                    config.integration.inbox_refresh_interval_secs,
+                ),
+            },
+        )
+    });
+
+    #[cfg(feature = "server")]
     if let Some(runtime_loop) = integration_runtime_loop.clone() {
         let integration_shutdown_rx = shutdown_tx.subscribe();
         handle.spawn(async move {
@@ -769,6 +793,14 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         let integration_shutdown_rx = shutdown_tx.subscribe();
         handle.spawn(async move {
             producer_loop.run(integration_shutdown_rx).await;
+        });
+    }
+
+    #[cfg(feature = "server")]
+    if let Some(delivery_loop) = integration_delivery_loop.clone() {
+        let integration_shutdown_rx = shutdown_tx.subscribe();
+        handle.spawn(async move {
+            delivery_loop.run(integration_shutdown_rx).await;
         });
     }
 

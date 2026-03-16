@@ -241,6 +241,8 @@ pub struct StoredProactivePrompt {
     pub status: IntegrationInboxItemStatus,
     pub status_updated_at: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presented_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dismiss_reason: Option<String>,
 }
 
@@ -430,6 +432,7 @@ mod tests {
             received_at: Utc::now(),
             status: IntegrationInboxItemStatus::Pending,
             status_updated_at: Utc::now(),
+            presented_at: None,
             dismiss_reason: None,
         };
 

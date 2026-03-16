@@ -67,6 +67,7 @@ impl IntegrationInboxCoordinator {
                 received_at: now,
                 status: IntegrationInboxItemStatus::Pending,
                 status_updated_at: now,
+                presented_at: None,
                 dismiss_reason: None,
             })
             .collect()
@@ -234,6 +235,26 @@ mod tests {
                 .collect())
         }
 
+        async fn list_unpresented(
+            &self,
+            limit: usize,
+        ) -> Result<Vec<StoredProactivePrompt>, CoreError> {
+            let mut prompts: Vec<_> = self
+                .prompts
+                .lock()
+                .await
+                .values()
+                .filter(|prompt| {
+                    prompt.status == IntegrationInboxItemStatus::Pending
+                        && prompt.presented_at.is_none()
+                })
+                .cloned()
+                .collect();
+            prompts.sort_by_key(|prompt| prompt.received_at);
+            prompts.truncate(limit);
+            Ok(prompts)
+        }
+
         async fn pending_count(&self) -> Result<usize, CoreError> {
             Ok(self
                 .prompts
@@ -242,6 +263,22 @@ mod tests {
                 .values()
                 .filter(|prompt| prompt.status == IntegrationInboxItemStatus::Pending)
                 .count())
+        }
+
+        async fn mark_presented(
+            &self,
+            prompt_id: &str,
+            presented_at: chrono::DateTime<Utc>,
+        ) -> Result<(), CoreError> {
+            let mut guard = self.prompts.lock().await;
+            let prompt = guard
+                .get_mut(prompt_id)
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "integration_prompt".to_string(),
+                    id: prompt_id.to_string(),
+                })?;
+            prompt.presented_at = Some(presented_at);
+            Ok(())
         }
 
         async fn update_status(
@@ -435,6 +472,7 @@ mod tests {
                         received_at: Utc::now(),
                         status: IntegrationInboxItemStatus::Pending,
                         status_updated_at: Utc::now(),
+                        presented_at: None,
                         dismiss_reason: None,
                     },
                 ),
@@ -445,6 +483,7 @@ mod tests {
                         received_at: Utc::now(),
                         status: IntegrationInboxItemStatus::Pending,
                         status_updated_at: Utc::now(),
+                        presented_at: None,
                         dismiss_reason: None,
                     },
                 ),
@@ -496,6 +535,7 @@ mod tests {
                     received_at: Utc::now() - Duration::minutes(10),
                     status: IntegrationInboxItemStatus::Dismissed,
                     status_updated_at: Utc::now() - Duration::minutes(5),
+                    presented_at: None,
                     dismiss_reason: Some("already handled".to_string()),
                 },
             )]))),
