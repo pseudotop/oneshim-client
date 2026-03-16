@@ -23,7 +23,7 @@ type LiveWebSocketStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 #[derive(Default)]
 struct WebSocketIntegrationInboundState {
-    insight_acks: VecDeque<IntegrationAckPayload>,
+    outbound_acks: VecDeque<IntegrationAckPayload>,
     prompts: VecDeque<ProactivePrompt>,
 }
 
@@ -75,7 +75,7 @@ impl WebSocketIntegrationSessionChannel {
                 Ok(Message::Text(text)) => {
                     let mut changed = false;
                     if let Ok(ack) = serde_json::from_str::<IntegrationAckPayload>(&text) {
-                        inbound.lock().await.insight_acks.push_back(ack);
+                        inbound.lock().await.outbound_acks.push_back(ack);
                         changed = true;
                     } else if let Ok(event) =
                         serde_json::from_str::<IntegrationCloudEvent<ProactivePrompt>>(&text)
@@ -130,7 +130,7 @@ impl WebSocketIntegrationSessionChannel {
             .map_err(|err| CoreError::Network(format!("integration websocket send failed: {err}")))
     }
 
-    pub async fn wait_for_insight_ack(
+    pub async fn wait_for_outbound_ack(
         &self,
         expected_queue_ids: &[String],
         timeout: Duration,
@@ -144,7 +144,7 @@ impl WebSocketIntegrationSessionChannel {
             {
                 let mut inbound = self.inbound.lock().await;
                 let mut remaining = VecDeque::new();
-                while let Some(ack) = inbound.insight_acks.pop_front() {
+                while let Some(ack) = inbound.outbound_acks.pop_front() {
                     let mut ack = ack;
                     let mut unmatched_ids = Vec::new();
                     for queue_id in ack.acknowledged_ids {
@@ -162,7 +162,7 @@ impl WebSocketIntegrationSessionChannel {
                         remaining.push_back(ack);
                     }
                 }
-                inbound.insight_acks = remaining;
+                inbound.outbound_acks = remaining;
             }
 
             if acknowledged.len() == expected.len() {

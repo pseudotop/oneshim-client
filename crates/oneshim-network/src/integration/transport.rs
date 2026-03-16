@@ -3,7 +3,8 @@ use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
     IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthScheme,
-    IntegrationCapabilityScope, IntegrationTransportKind, ProactivePrompt, QueuedInsightPacket,
+    IntegrationCapabilityScope, IntegrationTransportKind, ProactivePrompt,
+    QueuedIntegrationEgressMessage,
 };
 
 #[derive(Debug, Clone)]
@@ -68,10 +69,10 @@ impl IntegrationSyncTransportResponse {
 
 #[async_trait]
 pub trait IntegrationSyncTransportClient: Send + Sync {
-    async fn send_insights(
+    async fn send_messages(
         &self,
         session_id: &str,
-        items: Vec<QueuedInsightPacket>,
+        items: Vec<QueuedIntegrationEgressMessage>,
     ) -> Result<IntegrationSyncTransportResponse, CoreError>;
 }
 

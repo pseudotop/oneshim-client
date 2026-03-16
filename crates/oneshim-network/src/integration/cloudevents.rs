@@ -1,11 +1,15 @@
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
-use oneshim_core::models::integration::{InsightPacket, IntegrationEnvelope, ProactivePrompt};
+use oneshim_core::models::integration::{
+    InsightPacket, IntegrationEnvelope, IntegrationOutboundPayload, IntegrationPromptReceipt,
+    ProactivePrompt,
+};
 use serde::{Deserialize, Serialize};
 
 const CLOUDEVENTS_SPEC_VERSION: &str = "1.0";
 const INSIGHT_EVENT_TYPE: &str = "io.oneshim.integration.insight.v1";
 const PROMPT_EVENT_TYPE: &str = "io.oneshim.integration.prompt.v1";
+const PROMPT_RECEIPT_EVENT_TYPE: &str = "io.oneshim.integration.prompt_receipt.v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrationCloudEvent<T> {
@@ -35,8 +39,8 @@ pub struct IntegrationCloudEvent<T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InsightCloudEventBatch {
-    pub items: Vec<InsightCloudEventBatchItem>,
+pub struct IntegrationOutboundCloudEventBatch {
+    pub items: Vec<IntegrationOutboundCloudEventBatchItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,9 +49,9 @@ pub struct PromptCloudEventBatch {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InsightCloudEventBatchItem {
+pub struct IntegrationOutboundCloudEventBatchItem {
     pub queue_id: String,
-    pub event: IntegrationCloudEvent<InsightPacket>,
+    pub event: IntegrationCloudEvent<serde_json::Value>,
 }
 
 pub fn insight_to_cloudevent(
@@ -98,12 +102,69 @@ pub fn prompt_from_cloudevent(
     Ok(event.data)
 }
 
+pub fn prompt_receipt_to_cloudevent(
+    envelope: &IntegrationEnvelope,
+    receipt: &IntegrationPromptReceipt,
+    queue_id: Option<&str>,
+) -> Result<IntegrationCloudEvent<serde_json::Value>, CoreError> {
+    Ok(IntegrationCloudEvent {
+        specversion: CLOUDEVENTS_SPEC_VERSION.to_string(),
+        id: envelope.envelope_id.clone(),
+        source: format!("oneshim://devices/{}", envelope.origin.device_id),
+        event_type: PROMPT_RECEIPT_EVENT_TYPE.to_string(),
+        subject: receipt.prompt_id.clone(),
+        time: envelope.timestamp,
+        datacontenttype: "application/json".to_string(),
+        data: serde_json::to_value(receipt).map_err(|error| {
+            CoreError::Serialization(serde_json::Error::io(std::io::Error::other(format!(
+                "failed to serialize prompt receipt CloudEvent payload: {error}"
+            ))))
+        })?,
+        dataschema: Some(envelope.schema_version.clone()),
+        oneshimscope: envelope.capability_scope.as_str().to_string(),
+        oneshimnonce: envelope.nonce.clone(),
+        oneshimsessionid: envelope.origin.session_id.clone(),
+        oneshimworkspaceid: envelope.origin.workspace_id.clone(),
+        oneshimprivacy: None,
+        oneshimpromptcategory: None,
+        oneshimqueueid: queue_id.map(str::to_string),
+    })
+}
+
+pub fn outbound_message_to_cloudevent(
+    envelope: &IntegrationEnvelope,
+    payload: &IntegrationOutboundPayload,
+    queue_id: Option<&str>,
+) -> Result<IntegrationCloudEvent<serde_json::Value>, CoreError> {
+    match payload {
+        IntegrationOutboundPayload::Insight(packet) => {
+            serde_json::to_value(insight_to_cloudevent(envelope, packet, queue_id))
+                .map_err(|error| {
+                    CoreError::Serialization(serde_json::Error::io(std::io::Error::other(format!(
+                        "failed to serialize insight CloudEvent payload: {error}"
+                    ))))
+                })
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|error| {
+                        CoreError::Serialization(serde_json::Error::io(std::io::Error::other(
+                            format!("failed to normalize insight CloudEvent payload: {error}"),
+                        )))
+                    })
+                })
+        }
+        IntegrationOutboundPayload::PromptReceipt(receipt) => {
+            prompt_receipt_to_cloudevent(envelope, receipt, queue_id)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use oneshim_core::models::integration::{
         InsightSourceWindow, IntegrationCapabilityScope, IntegrationMessageType, IntegrationOrigin,
-        IntegrationPrivacyClassification, ProactivePromptCategory, ProactivePromptPriority,
+        IntegrationOutboundPayload, IntegrationPrivacyClassification, IntegrationPromptReceipt,
+        IntegrationPromptReceiptAction, ProactivePromptCategory, ProactivePromptPriority,
         PromptProvenance,
     };
 
@@ -180,5 +241,39 @@ mod tests {
         };
 
         assert_eq!(prompt_from_cloudevent(event).unwrap().prompt_id, "prompt-1");
+    }
+
+    #[test]
+    fn outbound_prompt_receipt_maps_to_prompt_receipt_event_type() {
+        let event = outbound_message_to_cloudevent(
+            &IntegrationEnvelope {
+                envelope_id: "receipt-env-1".to_string(),
+                schema_version: "integration.prompt_receipt.v1".to_string(),
+                message_type: IntegrationMessageType::PromptReceipt,
+                timestamp: Utc::now(),
+                nonce: "nonce-receipt-1".to_string(),
+                origin: IntegrationOrigin {
+                    device_id: "device-1".to_string(),
+                    workspace_id: None,
+                    session_id: Some("session-1".to_string()),
+                    source: "desktop-client".to_string(),
+                },
+                capability_scope: IntegrationCapabilityScope::PromptAck,
+            },
+            &IntegrationOutboundPayload::PromptReceipt(IntegrationPromptReceipt {
+                receipt_id: "receipt-1".to_string(),
+                prompt_id: "prompt-1".to_string(),
+                action: IntegrationPromptReceiptAction::Dismissed,
+                occurred_at: Utc::now(),
+                reason: Some("handled".to_string()),
+            }),
+            Some("queue-1"),
+        )
+        .unwrap();
+
+        assert_eq!(event.event_type, PROMPT_RECEIPT_EVENT_TYPE);
+        assert_eq!(event.subject, "prompt-1");
+        assert_eq!(event.oneshimscope, "prompt:ack");
+        assert_eq!(event.oneshimqueueid.as_deref(), Some("queue-1"));
     }
 }

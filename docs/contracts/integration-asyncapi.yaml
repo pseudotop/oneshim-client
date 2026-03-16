@@ -34,13 +34,13 @@ channels:
         $ref: '#/components/messages/SessionHeartbeat'
       disconnect:
         $ref: '#/components/messages/SessionDisconnect'
-  integration.insights:
-    address: /v1/session/insights
+  integration.egress:
+    address: /v1/session/events
     messages:
-      insightEnvelope:
-        $ref: '#/components/messages/InsightEnvelope'
-      insightAck:
-        $ref: '#/components/messages/InsightAck'
+      outboundEventEnvelope:
+        $ref: '#/components/messages/OutboundEventEnvelope'
+      outboundEventAck:
+        $ref: '#/components/messages/OutboundEventAck'
   integration.prompts:
     address: /v1/session/prompts
     messages:
@@ -73,18 +73,18 @@ operations:
       $ref: '#/channels/session.control'
     messages:
       - $ref: '#/channels/session.control/messages/disconnect'
-  clientSendInsight:
+  clientSendOutboundEvent:
     action: send
     channel:
-      $ref: '#/channels/integration.insights'
+      $ref: '#/channels/integration.egress'
     messages:
-      - $ref: '#/channels/integration.insights/messages/insightEnvelope'
-  serverAckInsight:
+      - $ref: '#/channels/integration.egress/messages/outboundEventEnvelope'
+  serverAckOutboundEvent:
     action: receive
     channel:
-      $ref: '#/channels/integration.insights'
+      $ref: '#/channels/integration.egress'
     messages:
-      - $ref: '#/channels/integration.insights/messages/insightAck'
+      - $ref: '#/channels/integration.egress/messages/outboundEventAck'
   serverDeliverPrompt:
     action: receive
     channel:
@@ -119,14 +119,14 @@ components:
       title: Session disconnect request
       payload:
         $ref: '#/components/schemas/SessionDisconnectPayload'
-    InsightEnvelope:
-      name: InsightEnvelope
-      title: Outbound insight event
+    OutboundEventEnvelope:
+      name: OutboundEventEnvelope
+      title: Outbound integration event
       payload:
         $ref: '#/components/schemas/CloudEventEnvelope'
-    InsightAck:
-      name: InsightAck
-      title: Insight acknowledgement
+    OutboundEventAck:
+      name: OutboundEventAck
+      title: Outbound event acknowledgement
       payload:
         $ref: '#/components/schemas/IntegrationAckPayload'
     PromptEnvelope:
@@ -236,6 +236,14 @@ components:
                 - string
                 - "null"
             disconnect_url:
+              type:
+                - string
+                - "null"
+            send_events_url:
+              type:
+                - string
+                - "null"
+            receive_prompts_url:
               type:
                 - string
                 - "null"

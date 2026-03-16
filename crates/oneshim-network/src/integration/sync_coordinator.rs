@@ -4,8 +4,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    InsightPacket, IntegrationAckCursor, IntegrationEnvelope, IntegrationSessionStatus,
-    QueuedInsightPacket,
+    InsightPacket, IntegrationAckCursor, IntegrationEnvelope, IntegrationOutboundPayload,
+    IntegrationSessionStatus, QueuedIntegrationEgressMessage,
 };
 use oneshim_core::ports::integration::{
     InsightSyncPort, IntegrationOutboxPort, IntegrationSessionPort,
@@ -37,7 +37,7 @@ impl InsightSyncCoordinator {
 
     fn validate_scopes(
         session: &oneshim_core::models::integration::IntegrationSessionState,
-        items: &[QueuedInsightPacket],
+        items: &[QueuedIntegrationEgressMessage],
     ) -> Result<(), CoreError> {
         let missing_scope = items.iter().find_map(|item| {
             (!session
@@ -56,7 +56,7 @@ impl InsightSyncCoordinator {
     }
 
     fn acknowledged_queue_ids(
-        sent_items: &[QueuedInsightPacket],
+        sent_items: &[QueuedIntegrationEgressMessage],
         response: &super::transport::IntegrationSyncTransportResponse,
     ) -> Result<Vec<String>, CoreError> {
         let sent_ids: BTreeSet<&str> = sent_items
@@ -84,7 +84,9 @@ impl InsightSyncPort for InsightSyncCoordinator {
         envelope: IntegrationEnvelope,
         packet: InsightPacket,
     ) -> Result<(), CoreError> {
-        self.outbox.enqueue_insight(envelope, packet).await?;
+        self.outbox
+            .enqueue_message(envelope, IntegrationOutboundPayload::Insight(packet))
+            .await?;
         Ok(())
     }
 
@@ -111,7 +113,7 @@ impl InsightSyncPort for InsightSyncCoordinator {
 
         let response = self
             .transport
-            .send_insights(&session.session_id, items.clone())
+            .send_messages(&session.session_id, items.clone())
             .await?;
         let acknowledged_queue_ids = Self::acknowledged_queue_ids(&items, &response)?;
         let accepted_count = response.accepted_count();
@@ -143,8 +145,8 @@ mod tests {
     use chrono::Utc;
     use oneshim_core::models::integration::{
         InsightSourceWindow, IntegrationCapabilityScope, IntegrationOrigin,
-        IntegrationPrivacyClassification, IntegrationSessionState, IntegrationSessionStatus,
-        QueuedInsightPacket,
+        IntegrationOutboundPayload, IntegrationPrivacyClassification, IntegrationSessionState,
+        IntegrationSessionStatus, QueuedIntegrationEgressMessage,
     };
     use oneshim_core::ports::integration::{IntegrationOutboxPort, IntegrationSessionPort};
     use tokio::sync::Mutex;
@@ -214,28 +216,40 @@ mod tests {
     }
 
     struct MockOutbox {
-        items: Arc<Mutex<VecDeque<QueuedInsightPacket>>>,
+        items: Arc<Mutex<VecDeque<QueuedIntegrationEgressMessage>>>,
         last_cursor: Arc<Mutex<Option<IntegrationAckCursor>>>,
     }
 
     #[async_trait]
     impl IntegrationOutboxPort for MockOutbox {
-        async fn enqueue_insight(
+        async fn enqueue_message(
             &self,
             envelope: IntegrationEnvelope,
-            packet: InsightPacket,
+            payload: IntegrationOutboundPayload,
         ) -> Result<String, CoreError> {
-            let queue_id = format!("queue-{}", packet.packet_id);
-            self.items.lock().await.push_back(QueuedInsightPacket {
-                queue_id: queue_id.clone(),
-                envelope,
-                packet,
-                queued_at: Utc::now(),
-            });
+            let queue_id = format!(
+                "queue-{}",
+                match &payload {
+                    IntegrationOutboundPayload::Insight(packet) => packet.packet_id.clone(),
+                    IntegrationOutboundPayload::PromptReceipt(receipt) => receipt.prompt_id.clone(),
+                }
+            );
+            self.items
+                .lock()
+                .await
+                .push_back(QueuedIntegrationEgressMessage {
+                    queue_id: queue_id.clone(),
+                    envelope,
+                    payload,
+                    queued_at: Utc::now(),
+                });
             Ok(queue_id)
         }
 
-        async fn list_pending(&self, limit: usize) -> Result<Vec<QueuedInsightPacket>, CoreError> {
+        async fn list_pending(
+            &self,
+            limit: usize,
+        ) -> Result<Vec<QueuedIntegrationEgressMessage>, CoreError> {
             Ok(self
                 .items
                 .lock()
@@ -273,10 +287,10 @@ mod tests {
 
     #[async_trait]
     impl IntegrationSyncTransportClient for MockSyncTransport {
-        async fn send_insights(
+        async fn send_messages(
             &self,
             _session_id: &str,
-            items: Vec<QueuedInsightPacket>,
+            items: Vec<QueuedIntegrationEgressMessage>,
         ) -> Result<IntegrationSyncTransportResponse, CoreError> {
             Ok(IntegrationSyncTransportResponse {
                 acknowledged_queue_ids: self
@@ -290,8 +304,8 @@ mod tests {
         }
     }
 
-    fn queued_item(id: &str) -> QueuedInsightPacket {
-        QueuedInsightPacket {
+    fn queued_item(id: &str) -> QueuedIntegrationEgressMessage {
+        QueuedIntegrationEgressMessage {
             queue_id: format!("queue-{id}"),
             envelope: IntegrationEnvelope {
                 envelope_id: format!("env-{id}"),
@@ -308,7 +322,7 @@ mod tests {
                 },
                 capability_scope: IntegrationCapabilityScope::InsightWrite,
             },
-            packet: InsightPacket {
+            payload: IntegrationOutboundPayload::Insight(InsightPacket {
                 packet_id: id.to_string(),
                 summary: format!("summary-{id}"),
                 derived_tags: vec!["focus".to_string()],
@@ -318,7 +332,7 @@ mod tests {
                 },
                 privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
                 audit_reference_id: None,
-            },
+            }),
             queued_at: Utc::now(),
         }
     }
@@ -356,10 +370,11 @@ mod tests {
             10,
         );
 
-        coordinator
-            .enqueue(queued_item("1").envelope, queued_item("1").packet)
-            .await
-            .unwrap();
+        let queued = queued_item("1");
+        let IntegrationOutboundPayload::Insight(packet) = queued.payload else {
+            panic!("expected insight payload");
+        };
+        coordinator.enqueue(queued.envelope, packet).await.unwrap();
 
         assert_eq!(outbox.list_pending(10).await.unwrap().len(), 1);
     }

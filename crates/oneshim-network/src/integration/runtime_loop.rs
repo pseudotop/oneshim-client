@@ -26,6 +26,7 @@ impl Default for IntegrationRuntimeLoopProfile {
             requested_scopes: vec![
                 IntegrationCapabilityScope::InsightWrite,
                 IntegrationCapabilityScope::PromptRead,
+                IntegrationCapabilityScope::PromptAck,
                 IntegrationCapabilityScope::SessionManage,
             ],
             connect_retry_interval: Duration::from_secs(15),

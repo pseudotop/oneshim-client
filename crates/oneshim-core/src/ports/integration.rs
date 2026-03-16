@@ -10,8 +10,8 @@ use crate::models::integration::{
     InsightPacket, IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthStatus,
     IntegrationCapabilityScope, IntegrationDeviceAuthorizationFlow, IntegrationEgressDisposition,
     IntegrationEnvelope, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
-    IntegrationInsightCandidate, IntegrationSessionState, QueuedInsightPacket,
-    StoredProactivePrompt,
+    IntegrationInsightCandidate, IntegrationOutboundPayload, IntegrationPromptReceipt,
+    IntegrationSessionState, QueuedIntegrationEgressMessage, StoredProactivePrompt,
 };
 use crate::models::storage_records::LocalSuggestionRecord;
 
@@ -131,15 +131,18 @@ pub trait LocalSuggestionQueryPort: Send + Sync {
 
 #[async_trait]
 pub trait IntegrationOutboxPort: Send + Sync {
-    /// Persist an outbound insight packet before transport delivery.
-    async fn enqueue_insight(
+    /// Persist an outbound integration message before transport delivery.
+    async fn enqueue_message(
         &self,
         envelope: IntegrationEnvelope,
-        packet: InsightPacket,
+        payload: IntegrationOutboundPayload,
     ) -> Result<String, CoreError>;
 
-    /// List pending outbound packets in delivery order.
-    async fn list_pending(&self, limit: usize) -> Result<Vec<QueuedInsightPacket>, CoreError>;
+    /// List pending outbound messages in delivery order.
+    async fn list_pending(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<QueuedIntegrationEgressMessage>, CoreError>;
 
     /// Count currently pending outbound packets.
     async fn pending_count(&self) -> Result<usize, CoreError>;
@@ -152,6 +155,18 @@ pub trait IntegrationOutboxPort: Send + Sync {
 
     /// Persist the latest acknowledged cursor from the remote side.
     async fn store_ack_cursor(&self, cursor: IntegrationAckCursor) -> Result<(), CoreError>;
+}
+
+#[async_trait]
+pub trait IntegrationPromptReceiptStorePort: Send + Sync {
+    /// Persist a local inbox lifecycle transition and its corresponding outbound
+    /// prompt receipt message atomically.
+    async fn record_prompt_receipt(
+        &self,
+        prompt_id: &str,
+        envelope: IntegrationEnvelope,
+        receipt: IntegrationPromptReceipt,
+    ) -> Result<String, CoreError>;
 }
 
 #[async_trait]

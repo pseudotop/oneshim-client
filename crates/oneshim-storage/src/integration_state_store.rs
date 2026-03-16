@@ -6,12 +6,14 @@ use async_trait::async_trait;
 use chrono::Utc;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    InsightPacket, IntegrationAckCursor, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
-    IntegrationSessionState, QueuedInsightPacket, StoredProactivePrompt,
+    IntegrationAckCursor, IntegrationEnvelope, IntegrationInboxItemStatus,
+    IntegrationInsightAuditRecord, IntegrationOutboundPayload, IntegrationPromptReceipt,
+    IntegrationPromptReceiptAction, IntegrationSessionState, QueuedIntegrationEgressMessage,
+    StoredProactivePrompt,
 };
 use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationCheckpointStorePort, IntegrationInboxStorePort,
-    IntegrationOutboxPort, IntegrationSessionStorePort,
+    IntegrationOutboxPort, IntegrationPromptReceiptStorePort, IntegrationSessionStorePort,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -20,7 +22,7 @@ use uuid::Uuid;
 struct FileIntegrationStateRegistry {
     version: u32,
     session: Option<IntegrationSessionState>,
-    outbox: Vec<QueuedInsightPacket>,
+    outbox: Vec<QueuedIntegrationEgressMessage>,
     outbox_ack_cursor: Option<IntegrationAckCursor>,
     inbox: BTreeMap<String, StoredProactivePrompt>,
     inbox_ack_cursor: Option<IntegrationAckCursor>,
@@ -107,22 +109,22 @@ impl FileIntegrationStateInner {
 
     fn enqueue_outbox_sync(
         &self,
-        envelope: oneshim_core::models::integration::IntegrationEnvelope,
-        packet: InsightPacket,
+        envelope: IntegrationEnvelope,
+        payload: IntegrationOutboundPayload,
     ) -> Result<String, CoreError> {
         let mut registry = self.registry.lock();
         let queue_id = format!("integration_queue_{}", Uuid::new_v4());
-        registry.outbox.push(QueuedInsightPacket {
+        registry.outbox.push(QueuedIntegrationEgressMessage {
             queue_id: queue_id.clone(),
             envelope,
-            packet,
+            payload,
             queued_at: Utc::now(),
         });
         self.save_registry(&registry)?;
         Ok(queue_id)
     }
 
-    fn list_outbox_sync(&self, limit: usize) -> Vec<QueuedInsightPacket> {
+    fn list_outbox_sync(&self, limit: usize) -> Vec<QueuedIntegrationEgressMessage> {
         self.registry
             .lock()
             .outbox
@@ -226,6 +228,57 @@ impl FileIntegrationStateInner {
         prompt.status_updated_at = Utc::now();
         prompt.dismiss_reason = reason;
         self.save_registry(&registry)
+    }
+
+    fn record_prompt_receipt_sync(
+        &self,
+        prompt_id: &str,
+        envelope: IntegrationEnvelope,
+        receipt: IntegrationPromptReceipt,
+    ) -> Result<String, CoreError> {
+        if receipt.prompt_id != prompt_id {
+            return Err(CoreError::Validation {
+                field: "integration.prompt_receipt.prompt_id".to_string(),
+                message: "prompt receipt prompt_id does not match the stored prompt target"
+                    .to_string(),
+            });
+        }
+
+        let mut registry = self.registry.lock();
+        let prompt = registry
+            .inbox
+            .get_mut(prompt_id)
+            .ok_or_else(|| CoreError::NotFound {
+                resource_type: "integration_prompt".to_string(),
+                id: prompt_id.to_string(),
+            })?;
+
+        if prompt.status != IntegrationInboxItemStatus::Pending {
+            return Err(CoreError::Validation {
+                field: "integration.prompt_receipt.status".to_string(),
+                message: format!(
+                    "prompt receipts can only be recorded from the pending state, found {:?}",
+                    prompt.status
+                ),
+            });
+        }
+
+        prompt.status = receipt.action.to_inbox_status();
+        prompt.status_updated_at = receipt.occurred_at;
+        prompt.dismiss_reason = match receipt.action {
+            IntegrationPromptReceiptAction::Acknowledged => None,
+            IntegrationPromptReceiptAction::Dismissed => receipt.reason.clone(),
+        };
+
+        let queue_id = format!("integration_queue_{}", Uuid::new_v4());
+        registry.outbox.push(QueuedIntegrationEgressMessage {
+            queue_id: queue_id.clone(),
+            envelope,
+            payload: IntegrationOutboundPayload::PromptReceipt(receipt),
+            queued_at: Utc::now(),
+        });
+        self.save_registry(&registry)?;
+        Ok(queue_id)
     }
 
     fn mark_presented_sync(
@@ -395,18 +448,21 @@ pub struct FileIntegrationOutboxStore {
 
 #[async_trait]
 impl IntegrationOutboxPort for FileIntegrationOutboxStore {
-    async fn enqueue_insight(
+    async fn enqueue_message(
         &self,
-        envelope: oneshim_core::models::integration::IntegrationEnvelope,
-        packet: InsightPacket,
+        envelope: IntegrationEnvelope,
+        payload: IntegrationOutboundPayload,
     ) -> Result<String, CoreError> {
         let inner = self.inner.clone();
-        tokio::task::spawn_blocking(move || inner.enqueue_outbox_sync(envelope, packet))
+        tokio::task::spawn_blocking(move || inner.enqueue_outbox_sync(envelope, payload))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
     }
 
-    async fn list_pending(&self, limit: usize) -> Result<Vec<QueuedInsightPacket>, CoreError> {
+    async fn list_pending(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<QueuedIntegrationEgressMessage>, CoreError> {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || Ok(inner.list_outbox_sync(limit)))
             .await
@@ -440,6 +496,24 @@ impl IntegrationOutboxPort for FileIntegrationOutboxStore {
         tokio::task::spawn_blocking(move || inner.store_outbox_ack_cursor_sync(cursor))
             .await
             .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
+    }
+}
+
+#[async_trait]
+impl IntegrationPromptReceiptStorePort for FileIntegrationInboxStore {
+    async fn record_prompt_receipt(
+        &self,
+        prompt_id: &str,
+        envelope: IntegrationEnvelope,
+        receipt: IntegrationPromptReceipt,
+    ) -> Result<String, CoreError> {
+        let inner = self.inner.clone();
+        let prompt_id = prompt_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            inner.record_prompt_receipt_sync(&prompt_id, envelope, receipt)
+        })
+        .await
+        .map_err(|err| CoreError::Internal(format!("spawn_blocking: {err}")))?
     }
 }
 
@@ -586,14 +660,15 @@ impl IntegrationCheckpointStorePort for FileIntegrationCheckpointStore {
 mod tests {
     use chrono::Duration;
     use oneshim_core::models::integration::{
-        InsightSourceWindow, IntegrationCapabilityScope, IntegrationEnvelope,
+        InsightPacket, InsightSourceWindow, IntegrationCapabilityScope, IntegrationEnvelope,
         IntegrationInboxItemStatus, IntegrationMessageType, IntegrationOrigin,
-        IntegrationPrivacyClassification, IntegrationSessionStatus, ProactivePrompt,
+        IntegrationOutboundPayload, IntegrationPrivacyClassification, IntegrationPromptReceipt,
+        IntegrationPromptReceiptAction, IntegrationSessionStatus, ProactivePrompt,
         ProactivePromptCategory, ProactivePromptPriority, PromptProvenance,
     };
     use oneshim_core::ports::integration::{
         IntegrationAuditPort, IntegrationCheckpointStorePort, IntegrationInboxStorePort,
-        IntegrationOutboxPort, IntegrationSessionStorePort,
+        IntegrationOutboxPort, IntegrationPromptReceiptStorePort, IntegrationSessionStorePort,
     };
 
     use super::*;
@@ -693,7 +768,10 @@ mod tests {
         let outbox = store.outbox_store();
 
         let queue_id = outbox
-            .enqueue_insight(sample_envelope(), sample_packet("packet-1"))
+            .enqueue_message(
+                sample_envelope(),
+                IntegrationOutboundPayload::Insight(sample_packet("packet-1")),
+            )
             .await
             .unwrap();
         let items = outbox.list_pending(10).await.unwrap();
@@ -720,6 +798,123 @@ mod tests {
 
         outbox.delete(&[queue_id]).await.unwrap();
         assert!(outbox.list_pending(10).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn prompt_receipt_store_updates_inbox_and_outbox_atomically() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store =
+            FileIntegrationStateStore::new(temp_dir.path().join("integration.json")).unwrap();
+        let inbox = store.inbox_store();
+
+        inbox
+            .upsert_prompts(vec![sample_prompt("prompt-1", "body")])
+            .await
+            .unwrap();
+
+        let queue_id = inbox
+            .record_prompt_receipt(
+                "prompt-1",
+                IntegrationEnvelope {
+                    envelope_id: "env-receipt-1".to_string(),
+                    schema_version: "integration.prompt_receipt.v1".to_string(),
+                    message_type:
+                        oneshim_core::models::integration::IntegrationMessageType::PromptReceipt,
+                    timestamp: Utc::now(),
+                    nonce: "nonce-receipt-1".to_string(),
+                    origin: oneshim_core::models::integration::IntegrationOrigin {
+                        device_id: "device-1".to_string(),
+                        workspace_id: None,
+                        session_id: Some("session-1".to_string()),
+                        source: "desktop-client".to_string(),
+                    },
+                    capability_scope: IntegrationCapabilityScope::PromptAck,
+                },
+                IntegrationPromptReceipt {
+                    receipt_id: "receipt-1".to_string(),
+                    prompt_id: "prompt-1".to_string(),
+                    action: IntegrationPromptReceiptAction::Dismissed,
+                    occurred_at: Utc::now(),
+                    reason: Some("handled".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+
+        let prompt = inbox.list_pending().await.unwrap();
+        assert!(prompt.is_empty());
+
+        let outbox = store.outbox_store();
+        let queued = outbox.list_pending(10).await.unwrap();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].queue_id, queue_id);
+        match &queued[0].payload {
+            IntegrationOutboundPayload::PromptReceipt(receipt) => {
+                assert_eq!(receipt.prompt_id, "prompt-1");
+                assert_eq!(receipt.action, IntegrationPromptReceiptAction::Dismissed);
+            }
+            IntegrationOutboundPayload::Insight(_) => panic!("expected prompt receipt payload"),
+        }
+    }
+
+    #[tokio::test]
+    async fn prompt_receipt_store_rejects_duplicate_lifecycle_recording() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store =
+            FileIntegrationStateStore::new(temp_dir.path().join("integration.json")).unwrap();
+        let inbox = store.inbox_store();
+
+        inbox
+            .upsert_prompts(vec![sample_prompt("prompt-1", "body")])
+            .await
+            .unwrap();
+
+        let envelope = IntegrationEnvelope {
+            envelope_id: "env-receipt-1".to_string(),
+            schema_version: "integration.prompt_receipt.v1".to_string(),
+            message_type: oneshim_core::models::integration::IntegrationMessageType::PromptReceipt,
+            timestamp: Utc::now(),
+            nonce: "nonce-receipt-1".to_string(),
+            origin: oneshim_core::models::integration::IntegrationOrigin {
+                device_id: "device-1".to_string(),
+                workspace_id: None,
+                session_id: Some("session-1".to_string()),
+                source: "desktop-client".to_string(),
+            },
+            capability_scope: IntegrationCapabilityScope::PromptAck,
+        };
+
+        inbox
+            .record_prompt_receipt(
+                "prompt-1",
+                envelope.clone(),
+                IntegrationPromptReceipt {
+                    receipt_id: "receipt-1".to_string(),
+                    prompt_id: "prompt-1".to_string(),
+                    action: IntegrationPromptReceiptAction::Acknowledged,
+                    occurred_at: Utc::now(),
+                    reason: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let err = inbox
+            .record_prompt_receipt(
+                "prompt-1",
+                envelope,
+                IntegrationPromptReceipt {
+                    receipt_id: "receipt-2".to_string(),
+                    prompt_id: "prompt-1".to_string(),
+                    action: IntegrationPromptReceiptAction::Dismissed,
+                    occurred_at: Utc::now(),
+                    reason: Some("duplicate".to_string()),
+                },
+            )
+            .await
+            .expect_err("duplicate prompt receipt should fail");
+
+        assert!(matches!(err, CoreError::Validation { .. }));
     }
 
     #[tokio::test]

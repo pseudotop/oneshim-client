@@ -495,12 +495,14 @@ fn build_integration_runtime(
     let transport =
         Arc::new(transport) as Arc<dyn oneshim_network::integration::IntegrationTransportClient>;
 
+    let integration_device_id = integration
+        .device_id
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| derive_integration_device_id(config_dir));
+
     let session = Arc::new(IntegrationSessionCoordinator::new_with_profile_and_store(
-        integration
-            .device_id
-            .clone()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| derive_integration_device_id(config_dir)),
+        integration_device_id.clone(),
         transport,
         IntegrationSessionRuntimeProfile {
             client_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -516,6 +518,8 @@ fn build_integration_runtime(
         as Arc<dyn oneshim_core::ports::integration::IntegrationOutboxPort>;
     let inbox_store = Arc::new(integration_state_store.inbox_store())
         as Arc<dyn oneshim_core::ports::integration::IntegrationInboxStorePort>;
+    let receipt_store = Arc::new(integration_state_store.inbox_store())
+        as Arc<dyn oneshim_core::ports::integration::IntegrationPromptReceiptStorePort>;
     let checkpoint_store = Arc::new(integration_state_store.checkpoint_store())
         as Arc<dyn IntegrationCheckpointStorePort>;
     let audit_store = Arc::new(integration_state_store.audit_store())
@@ -531,8 +535,10 @@ fn build_integration_runtime(
         audit_store.clone(),
     )) as Arc<dyn InsightSyncPort>;
     let inbox = Arc::new(IntegrationInboxCoordinator::new(
+        integration_device_id,
         session.clone(),
         inbox_store.clone(),
+        receipt_store,
         inbox_transport,
         integration.max_batch_size,
     )) as Arc<dyn IntegrationInboxPort>;

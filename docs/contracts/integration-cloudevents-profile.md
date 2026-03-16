@@ -41,6 +41,7 @@ Recommended event types:
 
 - `io.oneshim.integration.insight.v1`
 - `io.oneshim.integration.prompt.v1`
+- `io.oneshim.integration.prompt_receipt.v1`
 - `io.oneshim.integration.session.v1`
 - `io.oneshim.integration.ack.v1`
 - `io.oneshim.integration.audit.v1`
@@ -49,7 +50,7 @@ Recommended event types:
 
 Recommended source shape:
 
-- `oneshim://device/{device_id}`
+- `oneshim://devices/{device_id}`
 
 If workspace context is relevant, keep it in an extension attribute rather than encoding it into multiple incompatible source formats.
 
@@ -57,8 +58,9 @@ If workspace context is relevant, keep it in an extension attribute rather than 
 
 Recommended `subject` values:
 
-- insight packet: `packet/{packet_id}`
-- proactive prompt: `prompt/{prompt_id}`
+- insight packet: `{packet_id}`
+- proactive prompt: `{prompt_id}`
+- prompt receipt: `{prompt_id}`
 - session state: `session/{session_id}`
 - ack event: `cursor/{stream_id}`
 
@@ -98,6 +100,7 @@ Examples of useful filters:
 - `oneshimscope = "insight:write"`
 - `oneshimprivacy = "derived_summary"`
 - `type = "io.oneshim.integration.prompt.v1" AND oneshimpromptcategory = "task"`
+- `type = "io.oneshim.integration.prompt_receipt.v1" AND oneshimscope = "prompt:ack"`
 
 ## Privacy Guidance
 
@@ -128,7 +131,7 @@ Sensitive content belongs in `data` only when policy and consent rules allow the
   "id": "env-001",
   "source": "oneshim://device/device-001",
   "type": "io.oneshim.integration.insight.v1",
-  "subject": "packet/packet-001",
+  "subject": "packet-001",
   "time": "2026-03-16T10:20:30Z",
   "datacontenttype": "application/json",
   "dataschema": "integration.envelope.v1",
@@ -154,7 +157,7 @@ Sensitive content belongs in `data` only when policy and consent rules allow the
   "id": "env-002",
   "source": "oneshim://device/device-001",
   "type": "io.oneshim.integration.prompt.v1",
-  "subject": "prompt/prompt-001",
+  "subject": "prompt-001",
   "time": "2026-03-16T10:25:00Z",
   "datacontenttype": "application/json",
   "dataschema": "integration.envelope.v1",
@@ -167,6 +170,31 @@ Sensitive content belongs in `data` only when policy and consent rules allow the
     "prompt_id": "prompt-001",
     "title": "Review the build failure",
     "body": "A teammate requested a quick triage on the failing pipeline."
+  }
+}
+```
+
+## Example: Outbound Prompt Receipt Event
+
+```json
+{
+  "specversion": "1.0",
+  "id": "env-003",
+  "source": "oneshim://devices/device-001",
+  "type": "io.oneshim.integration.prompt_receipt.v1",
+  "subject": "prompt-001",
+  "time": "2026-03-16T10:27:00Z",
+  "datacontenttype": "application/json",
+  "dataschema": "integration.prompt_receipt.v1",
+  "oneshimscope": "prompt:ack",
+  "oneshimnonce": "nonce-003",
+  "oneshimsessionid": "session-001",
+  "oneshimqueueid": "queue-003",
+  "data": {
+    "receipt_id": "receipt-001",
+    "prompt_id": "prompt-001",
+    "action": "dismissed",
+    "reason": "handled locally"
   }
 }
 ```

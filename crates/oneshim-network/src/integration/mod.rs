@@ -17,8 +17,9 @@ pub use auth::{
     StaticIntegrationRequestProofFactory,
 };
 pub use cloudevents::{
-    insight_to_cloudevent, prompt_from_cloudevent, InsightCloudEventBatch,
-    InsightCloudEventBatchItem, IntegrationCloudEvent, PromptCloudEventBatch,
+    insight_to_cloudevent, outbound_message_to_cloudevent, prompt_from_cloudevent,
+    prompt_receipt_to_cloudevent, IntegrationCloudEvent, IntegrationOutboundCloudEventBatch,
+    IntegrationOutboundCloudEventBatchItem, PromptCloudEventBatch,
 };
 pub use http_transport::{
     HttpsIntegrationInboxTransportClient, HttpsIntegrationSessionBindings,

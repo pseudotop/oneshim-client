@@ -175,7 +175,7 @@ pub struct IntegrationBootstrapSessionBinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disconnect_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub send_insights_url: Option<String>,
+    pub send_events_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receive_prompts_url: Option<String>,
 }
@@ -276,7 +276,7 @@ mod tests {
                 disconnect_url: Some(
                     "https://integration.example.com/sessions/session-001".to_string(),
                 ),
-                send_insights_url: Some(
+                send_events_url: Some(
                     "https://integration.example.com/sessions/session-001/insights".to_string(),
                 ),
                 receive_prompts_url: Some(

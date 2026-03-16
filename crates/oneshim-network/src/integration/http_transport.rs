@@ -11,7 +11,8 @@ use oneshim_api_contracts::integration::{
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
     IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthScheme,
-    IntegrationCapabilityScope, IntegrationTransportKind, ProactivePrompt, QueuedInsightPacket,
+    IntegrationCapabilityScope, IntegrationTransportKind, ProactivePrompt,
+    QueuedIntegrationEgressMessage,
 };
 use oneshim_core::ports::integration::IntegrationAuthPort;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -24,8 +25,8 @@ use super::transport::{
     IntegrationTransportConnectRequest, IntegrationTransportConnectResponse,
 };
 use super::{
-    insight_to_cloudevent, prompt_from_cloudevent, InsightCloudEventBatch,
-    InsightCloudEventBatchItem, WebSocketIntegrationSessionChannel,
+    outbound_message_to_cloudevent, prompt_from_cloudevent, IntegrationOutboundCloudEventBatch,
+    IntegrationOutboundCloudEventBatchItem, WebSocketIntegrationSessionChannel,
 };
 
 #[derive(Debug, Clone)]
@@ -47,7 +48,7 @@ impl HttpsIntegrationTransportConfig {
 struct SessionBinding {
     heartbeat_url: Option<String>,
     disconnect_url: Option<String>,
-    send_insights_url: Option<String>,
+    send_events_url: Option<String>,
     receive_prompts_url: Option<String>,
     auth: IntegrationAuthContext,
     live_session_channel: Option<Arc<WebSocketIntegrationSessionChannel>>,
@@ -416,7 +417,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                 SessionBinding {
                     heartbeat_url: session.heartbeat_url.clone(),
                     disconnect_url: session.disconnect_url.clone(),
-                    send_insights_url: session.send_insights_url.clone(),
+                    send_events_url: session.send_events_url.clone(),
                     receive_prompts_url: session.receive_prompts_url.clone(),
                     auth,
                     live_session_channel: live_control_channel,
@@ -540,10 +541,10 @@ struct PromptPullResponse {
 
 #[async_trait]
 impl IntegrationSyncTransportClient for HttpsIntegrationSyncTransportClient {
-    async fn send_insights(
+    async fn send_messages(
         &self,
         session_id: &str,
-        items: Vec<QueuedInsightPacket>,
+        items: Vec<QueuedIntegrationEgressMessage>,
     ) -> Result<IntegrationSyncTransportResponse, CoreError> {
         let binding =
             self.session_bindings
@@ -556,11 +557,11 @@ impl IntegrationSyncTransportClient for HttpsIntegrationSyncTransportClient {
         if let Some(channel) = binding.live_session_channel.clone() {
             for item in &items {
                 channel
-                    .send_json(&insight_to_cloudevent(
+                    .send_json(&outbound_message_to_cloudevent(
                         &item.envelope,
-                        &item.packet,
+                        &item.payload,
                         Some(&item.queue_id),
-                    ))
+                    )?)
                     .await?;
             }
             let expected_queue_ids = items
@@ -568,31 +569,30 @@ impl IntegrationSyncTransportClient for HttpsIntegrationSyncTransportClient {
                 .map(|item| item.queue_id.clone())
                 .collect::<Vec<_>>();
             return channel
-                .wait_for_insight_ack(&expected_queue_ids, self.shared.request_timeout)
+                .wait_for_outbound_ack(&expected_queue_ids, self.shared.request_timeout)
                 .await;
         }
 
         let url = binding
-            .send_insights_url
+            .send_events_url
             .ok_or_else(|| CoreError::Validation {
-                field: "integration.session.send_insights_url".to_string(),
-                message: "active integration session does not have an insight sync URL."
+                field: "integration.session.send_events_url".to_string(),
+                message: "active integration session does not have an outbound event URL."
                     .to_string(),
             })?;
 
-        let batch = InsightCloudEventBatch {
-            items: items
-                .iter()
-                .map(|item| InsightCloudEventBatchItem {
-                    queue_id: item.queue_id.clone(),
-                    event: insight_to_cloudevent(
-                        &item.envelope,
-                        &item.packet,
-                        Some(&item.queue_id),
-                    ),
-                })
-                .collect(),
-        };
+        let mut batch_items = Vec::with_capacity(items.len());
+        for item in &items {
+            batch_items.push(IntegrationOutboundCloudEventBatchItem {
+                queue_id: item.queue_id.clone(),
+                event: outbound_message_to_cloudevent(
+                    &item.envelope,
+                    &item.payload,
+                    Some(&item.queue_id),
+                )?,
+            });
+        }
+        let batch = IntegrationOutboundCloudEventBatch { items: batch_items };
 
         let response = self
             .shared
@@ -699,8 +699,8 @@ mod tests {
     use mockito::Matcher;
     use oneshim_core::models::integration::{
         InsightPacket, InsightSourceWindow, IntegrationEnvelope, IntegrationMessageType,
-        IntegrationOrigin, IntegrationPrivacyClassification, ProactivePromptCategory,
-        ProactivePromptPriority,
+        IntegrationOrigin, IntegrationOutboundPayload, IntegrationPrivacyClassification,
+        ProactivePromptCategory, ProactivePromptPriority, QueuedIntegrationEgressMessage,
     };
     use tokio::net::TcpListener;
     use tokio::sync::{mpsc, Mutex};
@@ -1107,9 +1107,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_transport_posts_insight_cloudevents() {
+    async fn sync_transport_posts_outbound_cloudevents() {
         let mut server = mockito::Server::new_async().await;
-        let insights_url = format!("{}/integration/sessions/session-010/insights", server.url());
+        let events_url = format!("{}/integration/sessions/session-010/events", server.url());
 
         let bootstrap = server
             .mock("POST", "/integration/bootstrap")
@@ -1127,7 +1127,7 @@ mod tests {
                     "session_required": true,
                     "session": {
                         "session_id": "session-010",
-                        "send_insights_url": insights_url
+                        "send_events_url": events_url
                     }
                 })
                 .to_string(),
@@ -1136,7 +1136,7 @@ mod tests {
             .await;
 
         let sync = server
-            .mock("POST", "/integration/sessions/session-010/insights")
+            .mock("POST", "/integration/sessions/session-010/events")
             .match_header("authorization", "Bearer access-token")
             .match_body(Matcher::PartialJson(serde_json::json!({
                 "items": [{
@@ -1187,9 +1187,9 @@ mod tests {
             .unwrap();
         let response = client
             .sync_transport()
-            .send_insights(
+            .send_messages(
                 &session.session_id,
-                vec![QueuedInsightPacket {
+                vec![QueuedIntegrationEgressMessage {
                     queue_id: "queue-010".to_string(),
                     envelope: IntegrationEnvelope {
                         envelope_id: "env-010".to_string(),
@@ -1205,7 +1205,7 @@ mod tests {
                         },
                         capability_scope: IntegrationCapabilityScope::InsightWrite,
                     },
-                    packet: InsightPacket {
+                    payload: IntegrationOutboundPayload::Insight(InsightPacket {
                         packet_id: "packet-010".to_string(),
                         summary: "summary".to_string(),
                         derived_tags: vec!["focus".to_string()],
@@ -1215,7 +1215,7 @@ mod tests {
                         },
                         privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
                         audit_reference_id: None,
-                    },
+                    }),
                     queued_at: Utc::now(),
                 }],
             )
@@ -1286,9 +1286,9 @@ mod tests {
             .unwrap();
         let response = client
             .sync_transport()
-            .send_insights(
+            .send_messages(
                 &session.session_id,
-                vec![QueuedInsightPacket {
+                vec![QueuedIntegrationEgressMessage {
                     queue_id: "queue-010-ws".to_string(),
                     envelope: IntegrationEnvelope {
                         envelope_id: "env-010-ws".to_string(),
@@ -1304,7 +1304,7 @@ mod tests {
                         },
                         capability_scope: IntegrationCapabilityScope::InsightWrite,
                     },
-                    packet: InsightPacket {
+                    payload: IntegrationOutboundPayload::Insight(InsightPacket {
                         packet_id: "packet-010-ws".to_string(),
                         summary: "summary".to_string(),
                         derived_tags: vec!["focus".to_string()],
@@ -1314,7 +1314,7 @@ mod tests {
                         },
                         privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
                         audit_reference_id: None,
-                    },
+                    }),
                     queued_at: Utc::now(),
                 }],
             )
@@ -1331,6 +1331,142 @@ mod tests {
         let event: crate::integration::cloudevents::IntegrationCloudEvent<InsightPacket> =
             serde_json::from_str(&live_messages[0]).unwrap();
         assert_eq!(event.oneshimqueueid.as_deref(), Some("queue-010-ws"));
+    }
+
+    #[tokio::test]
+    async fn sync_transport_posts_prompt_receipt_cloudevents() {
+        let mut server = mockito::Server::new_async().await;
+        let events_url = format!("{}/integration/sessions/session-011/events", server.url());
+
+        let bootstrap = server
+            .mock("POST", "/integration/bootstrap")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "schema_version": "integration.bootstrap.v1",
+                    "supported_scopes": ["prompt:ack", "session:manage"],
+                    "granted_scopes": ["prompt:ack", "session:manage"],
+                    "supported_transports": ["https_long_poll"],
+                    "selected_transport": "https_long_poll",
+                    "supported_auth_schemes": ["bearer_token"],
+                    "selected_auth_scheme": "bearer_token",
+                    "session_required": true,
+                    "session": {
+                        "session_id": "session-011",
+                        "send_events_url": events_url
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let sync = server
+            .mock("POST", "/integration/sessions/session-011/events")
+            .match_header("authorization", "Bearer access-token")
+            .match_body(Matcher::PartialJson(serde_json::json!({
+                "items": [{
+                    "queue_id": "queue-011",
+                    "event": {
+                        "type": "io.oneshim.integration.prompt_receipt.v1",
+                        "oneshimscope": "prompt:ack",
+                        "data": {
+                            "prompt_id": "prompt-011",
+                            "action": "acknowledged"
+                        }
+                    }
+                }]
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "accepted_ids": ["queue-011"]
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let client = HttpsIntegrationTransportClient::new(
+            HttpsIntegrationTransportConfig::new(
+                format!("{}/integration/bootstrap", server.url()),
+                Duration::from_secs(5),
+            ),
+            Arc::new(StaticAuthPort {
+                context: IntegrationAuthContext {
+                    access_token: "access-token".to_string(),
+                    scheme: IntegrationAuthScheme::BearerToken,
+                    expires_at: None,
+                    resource_indicator: None,
+                },
+            }),
+            Arc::new(RecordingProofFactory {
+                returned: None,
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }),
+        )
+        .unwrap();
+
+        let session = client
+            .connect(IntegrationTransportConnectRequest {
+                device_id: "device-001".to_string(),
+                client_version: "0.3.8".to_string(),
+                device_label: Some("macbook".to_string()),
+                requested_scopes: vec![
+                    IntegrationCapabilityScope::PromptAck,
+                    IntegrationCapabilityScope::SessionManage,
+                ],
+                preferred_transports: vec![IntegrationTransportKind::HttpsLongPoll],
+                supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+                resource_indicator: Some(server.url()),
+            })
+            .await
+            .unwrap();
+
+        let response = client
+            .sync_transport()
+            .send_messages(
+                &session.session_id,
+                vec![QueuedIntegrationEgressMessage {
+                    queue_id: "queue-011".to_string(),
+                    envelope: IntegrationEnvelope {
+                        envelope_id: "env-011".to_string(),
+                        schema_version: "integration.prompt_receipt.v1".to_string(),
+                        message_type: IntegrationMessageType::PromptReceipt,
+                        timestamp: Utc::now(),
+                        nonce: "nonce-011".to_string(),
+                        origin: IntegrationOrigin {
+                            device_id: "device-001".to_string(),
+                            workspace_id: None,
+                            session_id: Some("session-011".to_string()),
+                            source: "desktop-client".to_string(),
+                        },
+                        capability_scope: IntegrationCapabilityScope::PromptAck,
+                    },
+                    payload: IntegrationOutboundPayload::PromptReceipt(
+                        oneshim_core::models::integration::IntegrationPromptReceipt {
+                            receipt_id: "receipt-011".to_string(),
+                            prompt_id: "prompt-011".to_string(),
+                            action:
+                                oneshim_core::models::integration::IntegrationPromptReceiptAction::Acknowledged,
+                            occurred_at: Utc::now(),
+                            reason: None,
+                        },
+                    ),
+                    queued_at: Utc::now(),
+                }],
+            )
+            .await
+            .unwrap();
+
+        bootstrap.assert_async().await;
+        sync.assert_async().await;
+        assert_eq!(
+            response.acknowledged_queue_ids,
+            vec!["queue-011".to_string()]
+        );
     }
 
     #[tokio::test]

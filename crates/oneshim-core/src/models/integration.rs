@@ -20,6 +20,7 @@ pub enum IntegrationMessageType {
     ProactivePrompt,
     SessionState,
     Bootstrap,
+    PromptReceipt,
     Ack,
 }
 
@@ -192,10 +193,17 @@ pub struct InsightPacket {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QueuedInsightPacket {
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum IntegrationOutboundPayload {
+    Insight(InsightPacket),
+    PromptReceipt(IntegrationPromptReceipt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueuedIntegrationEgressMessage {
     pub queue_id: String,
     pub envelope: IntegrationEnvelope,
-    pub packet: InsightPacket,
+    pub payload: IntegrationOutboundPayload,
     pub queued_at: DateTime<Utc>,
 }
 
@@ -262,6 +270,32 @@ pub enum IntegrationInboxItemStatus {
     Acknowledged,
     Dismissed,
     Expired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationPromptReceiptAction {
+    Acknowledged,
+    Dismissed,
+}
+
+impl IntegrationPromptReceiptAction {
+    pub fn to_inbox_status(&self) -> IntegrationInboxItemStatus {
+        match self {
+            Self::Acknowledged => IntegrationInboxItemStatus::Acknowledged,
+            Self::Dismissed => IntegrationInboxItemStatus::Dismissed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationPromptReceipt {
+    pub receipt_id: String,
+    pub prompt_id: String,
+    pub action: IntegrationPromptReceiptAction,
+    pub occurred_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -480,8 +514,8 @@ mod tests {
     }
 
     #[test]
-    fn queued_insight_packet_roundtrip() {
-        let queued = QueuedInsightPacket {
+    fn queued_outbound_message_roundtrip() {
+        let queued = QueuedIntegrationEgressMessage {
             queue_id: "queue-001".to_string(),
             envelope: IntegrationEnvelope {
                 envelope_id: "env-001".to_string(),
@@ -497,7 +531,47 @@ mod tests {
                 },
                 capability_scope: IntegrationCapabilityScope::InsightWrite,
             },
-            packet: InsightPacket {
+            payload: IntegrationOutboundPayload::PromptReceipt(IntegrationPromptReceipt {
+                receipt_id: "receipt-001".to_string(),
+                prompt_id: "prompt-001".to_string(),
+                action: IntegrationPromptReceiptAction::Acknowledged,
+                occurred_at: Utc::now(),
+                reason: None,
+            }),
+            queued_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&queued).unwrap();
+        let parsed: QueuedIntegrationEgressMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.queue_id, "queue-001");
+        match parsed.payload {
+            IntegrationOutboundPayload::PromptReceipt(receipt) => {
+                assert_eq!(receipt.prompt_id, "prompt-001");
+                assert_eq!(receipt.action, IntegrationPromptReceiptAction::Acknowledged);
+            }
+            IntegrationOutboundPayload::Insight(_) => panic!("expected prompt receipt payload"),
+        }
+    }
+
+    #[test]
+    fn insight_outbound_message_roundtrip() {
+        let queued = QueuedIntegrationEgressMessage {
+            queue_id: "queue-002".to_string(),
+            envelope: IntegrationEnvelope {
+                envelope_id: "env-002".to_string(),
+                schema_version: "integration.envelope.v1".to_string(),
+                message_type: IntegrationMessageType::InsightPacket,
+                timestamp: Utc::now(),
+                nonce: "nonce-002".to_string(),
+                origin: IntegrationOrigin {
+                    device_id: "device-001".to_string(),
+                    workspace_id: None,
+                    session_id: None,
+                    source: "desktop-client".to_string(),
+                },
+                capability_scope: IntegrationCapabilityScope::InsightWrite,
+            },
+            payload: IntegrationOutboundPayload::Insight(InsightPacket {
                 packet_id: "packet-001".to_string(),
                 summary: "summary".to_string(),
                 derived_tags: vec!["focus".to_string()],
@@ -507,14 +581,20 @@ mod tests {
                 },
                 privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
                 audit_reference_id: Some("audit-001".to_string()),
-            },
+            }),
             queued_at: Utc::now(),
         };
 
         let json = serde_json::to_string(&queued).unwrap();
-        let parsed: QueuedInsightPacket = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.queue_id, "queue-001");
-        assert_eq!(parsed.packet.packet_id, "packet-001");
+        let parsed: QueuedIntegrationEgressMessage = serde_json::from_str(&json).unwrap();
+        match parsed.payload {
+            IntegrationOutboundPayload::Insight(packet) => {
+                assert_eq!(packet.packet_id, "packet-001");
+            }
+            IntegrationOutboundPayload::PromptReceipt(_) => {
+                panic!("expected insight payload")
+            }
+        }
     }
 
     #[test]

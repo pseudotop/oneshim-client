@@ -403,7 +403,7 @@ mod tests {
     };
     use oneshim_core::error::CoreError;
     use oneshim_core::models::integration::{
-        InsightPacket, IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthProfileKind,
+        IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthProfileKind,
         IntegrationAuthScheme, IntegrationAuthStatus, IntegrationAuthStatusKind,
         IntegrationCapabilityScope, IntegrationDeviceAuthorizationFlow,
         IntegrationEgressDisposition, IntegrationEnvelope, IntegrationInboxItemStatus,
@@ -556,10 +556,10 @@ mod tests {
 
     #[async_trait]
     impl IntegrationOutboxPort for TestOutbox {
-        async fn enqueue_insight(
+        async fn enqueue_message(
             &self,
             _envelope: IntegrationEnvelope,
-            _packet: InsightPacket,
+            _payload: oneshim_core::models::integration::IntegrationOutboundPayload,
         ) -> Result<String, CoreError> {
             Ok("queue-1".to_string())
         }
@@ -567,7 +567,7 @@ mod tests {
         async fn list_pending(
             &self,
             _limit: usize,
-        ) -> Result<Vec<oneshim_core::models::integration::QueuedInsightPacket>, CoreError>
+        ) -> Result<Vec<oneshim_core::models::integration::QueuedIntegrationEgressMessage>, CoreError>
         {
             Ok(Vec::new())
         }

@@ -4,32 +4,42 @@ use async_trait::async_trait;
 use chrono::Utc;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    IntegrationAckCursor, IntegrationCapabilityScope, IntegrationInboxItemStatus,
-    IntegrationSessionState, IntegrationSessionStatus, ProactivePrompt, StoredProactivePrompt,
+    IntegrationAckCursor, IntegrationCapabilityScope, IntegrationEnvelope,
+    IntegrationInboxItemStatus, IntegrationMessageType, IntegrationOrigin,
+    IntegrationPromptReceipt, IntegrationPromptReceiptAction, IntegrationSessionState,
+    IntegrationSessionStatus, ProactivePrompt, StoredProactivePrompt,
 };
 use oneshim_core::ports::integration::{
-    IntegrationInboxPort, IntegrationInboxStorePort, IntegrationSessionPort,
+    IntegrationInboxPort, IntegrationInboxStorePort, IntegrationPromptReceiptStorePort,
+    IntegrationSessionPort,
 };
+use uuid::Uuid;
 
 use super::transport::IntegrationInboxTransportClient;
 
 pub struct IntegrationInboxCoordinator {
+    device_id: String,
     session_port: Arc<dyn IntegrationSessionPort>,
     inbox_store: Arc<dyn IntegrationInboxStorePort>,
+    receipt_store: Arc<dyn IntegrationPromptReceiptStorePort>,
     transport: Arc<dyn IntegrationInboxTransportClient>,
     max_batch_size: usize,
 }
 
 impl IntegrationInboxCoordinator {
     pub fn new(
+        device_id: impl Into<String>,
         session_port: Arc<dyn IntegrationSessionPort>,
         inbox_store: Arc<dyn IntegrationInboxStorePort>,
+        receipt_store: Arc<dyn IntegrationPromptReceiptStorePort>,
         transport: Arc<dyn IntegrationInboxTransportClient>,
         max_batch_size: usize,
     ) -> Self {
         Self {
+            device_id: device_id.into(),
             session_port,
             inbox_store,
+            receipt_store,
             transport,
             max_batch_size: max_batch_size.max(1),
         }
@@ -72,6 +82,55 @@ impl IntegrationInboxCoordinator {
             })
             .collect()
     }
+
+    async fn build_receipt_envelope(
+        &self,
+        action: IntegrationPromptReceiptAction,
+    ) -> Result<IntegrationEnvelope, CoreError> {
+        let current_session = self.session_port.current_session().await?;
+        Ok(IntegrationEnvelope {
+            envelope_id: format!("integration-envelope-{}", Uuid::new_v4()),
+            schema_version: "integration.prompt_receipt.v1".to_string(),
+            message_type: IntegrationMessageType::PromptReceipt,
+            timestamp: Utc::now(),
+            nonce: Uuid::new_v4().to_string(),
+            origin: IntegrationOrigin {
+                device_id: current_session
+                    .as_ref()
+                    .map(|session| session.device_id.clone())
+                    .unwrap_or_else(|| self.device_id.clone()),
+                workspace_id: None,
+                session_id: current_session.map(|session| session.session_id),
+                source: "desktop-client".to_string(),
+            },
+            capability_scope: match action {
+                IntegrationPromptReceiptAction::Acknowledged
+                | IntegrationPromptReceiptAction::Dismissed => {
+                    IntegrationCapabilityScope::PromptAck
+                }
+            },
+        })
+    }
+
+    async fn record_prompt_receipt(
+        &self,
+        prompt_id: &str,
+        action: IntegrationPromptReceiptAction,
+        reason: Option<String>,
+    ) -> Result<(), CoreError> {
+        let envelope = self.build_receipt_envelope(action.clone()).await?;
+        let receipt = IntegrationPromptReceipt {
+            receipt_id: format!("integration-prompt-receipt-{}", Uuid::new_v4()),
+            prompt_id: prompt_id.to_string(),
+            action,
+            occurred_at: Utc::now(),
+            reason,
+        };
+        self.receipt_store
+            .record_prompt_receipt(prompt_id, envelope, receipt)
+            .await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -113,14 +172,16 @@ impl IntegrationInboxPort for IntegrationInboxCoordinator {
     }
 
     async fn acknowledge(&self, prompt_id: &str) -> Result<(), CoreError> {
-        self.inbox_store
-            .update_status(prompt_id, IntegrationInboxItemStatus::Acknowledged, None)
-            .await
+        self.record_prompt_receipt(
+            prompt_id,
+            IntegrationPromptReceiptAction::Acknowledged,
+            None,
+        )
+        .await
     }
 
     async fn dismiss(&self, prompt_id: &str, reason: Option<String>) -> Result<(), CoreError> {
-        self.inbox_store
-            .update_status(prompt_id, IntegrationInboxItemStatus::Dismissed, reason)
+        self.record_prompt_receipt(prompt_id, IntegrationPromptReceiptAction::Dismissed, reason)
             .await
     }
 
@@ -205,6 +266,7 @@ mod tests {
     struct MockInboxStore {
         prompts: Arc<Mutex<BTreeMap<String, StoredProactivePrompt>>>,
         last_cursor: Arc<Mutex<Option<IntegrationAckCursor>>>,
+        receipts: Arc<Mutex<Vec<IntegrationPromptReceipt>>>,
     }
 
     #[async_trait]
@@ -329,6 +391,29 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl IntegrationPromptReceiptStorePort for MockInboxStore {
+        async fn record_prompt_receipt(
+            &self,
+            prompt_id: &str,
+            _envelope: IntegrationEnvelope,
+            receipt: IntegrationPromptReceipt,
+        ) -> Result<String, CoreError> {
+            let mut prompts = self.prompts.lock().await;
+            let prompt = prompts
+                .get_mut(prompt_id)
+                .ok_or_else(|| CoreError::NotFound {
+                    resource_type: "integration_prompt".to_string(),
+                    id: prompt_id.to_string(),
+                })?;
+            prompt.status = receipt.action.to_inbox_status();
+            prompt.status_updated_at = receipt.occurred_at;
+            prompt.dismiss_reason = receipt.reason.clone();
+            self.receipts.lock().await.push(receipt);
+            Ok(format!("queue-{prompt_id}"))
+        }
+    }
+
     struct MockInboxTransport {
         prompts: Vec<ProactivePrompt>,
         ack_cursor: Option<IntegrationAckCursor>,
@@ -389,9 +474,12 @@ mod tests {
         let store = Arc::new(MockInboxStore {
             prompts: Arc::new(Mutex::new(BTreeMap::new())),
             last_cursor: Arc::new(Mutex::new(None)),
+            receipts: Arc::new(Mutex::new(Vec::new())),
         });
         let coordinator = IntegrationInboxCoordinator::new(
+            "device-1",
             session_port.clone(),
+            store.clone(),
             store.clone(),
             Arc::new(MockInboxTransport {
                 prompts: vec![prompt("1", None), prompt("2", None)],
@@ -426,6 +514,7 @@ mod tests {
     #[tokio::test]
     async fn refresh_requires_prompt_read_scope() {
         let coordinator = IntegrationInboxCoordinator::new(
+            "device-1",
             Arc::new(MockSessionPort {
                 state: Arc::new(Mutex::new(Some(IntegrationSessionState {
                     session_id: "session-1".to_string(),
@@ -445,6 +534,12 @@ mod tests {
             Arc::new(MockInboxStore {
                 prompts: Arc::new(Mutex::new(BTreeMap::new())),
                 last_cursor: Arc::new(Mutex::new(None)),
+                receipts: Arc::new(Mutex::new(Vec::new())),
+            }),
+            Arc::new(MockInboxStore {
+                prompts: Arc::new(Mutex::new(BTreeMap::new())),
+                last_cursor: Arc::new(Mutex::new(None)),
+                receipts: Arc::new(Mutex::new(Vec::new())),
             }),
             Arc::new(MockInboxTransport {
                 prompts: vec![prompt("1", None)],
@@ -489,11 +584,14 @@ mod tests {
                 ),
             ]))),
             last_cursor: Arc::new(Mutex::new(None)),
+            receipts: Arc::new(Mutex::new(Vec::new())),
         });
         let coordinator = IntegrationInboxCoordinator::new(
+            "device-1",
             Arc::new(MockSessionPort {
                 state: Arc::new(Mutex::new(Some(prompt_read_session()))),
             }),
+            store.clone(),
             store.clone(),
             Arc::new(MockInboxTransport {
                 prompts: Vec::new(),
@@ -523,6 +621,16 @@ mod tests {
             prompts.get("prompt-2").unwrap().status,
             IntegrationInboxItemStatus::Expired
         );
+        let receipts = store.receipts.lock().await;
+        assert_eq!(receipts.len(), 2);
+        assert_eq!(
+            receipts[0].action,
+            IntegrationPromptReceiptAction::Acknowledged
+        );
+        assert_eq!(
+            receipts[1].action,
+            IntegrationPromptReceiptAction::Dismissed
+        );
     }
 
     #[tokio::test]
@@ -540,11 +648,14 @@ mod tests {
                 },
             )]))),
             last_cursor: Arc::new(Mutex::new(None)),
+            receipts: Arc::new(Mutex::new(Vec::new())),
         });
         let coordinator = IntegrationInboxCoordinator::new(
+            "device-1",
             Arc::new(MockSessionPort {
                 state: Arc::new(Mutex::new(Some(prompt_read_session()))),
             }),
+            store.clone(),
             store.clone(),
             Arc::new(MockInboxTransport {
                 prompts: vec![prompt("prompt-1", None)],
