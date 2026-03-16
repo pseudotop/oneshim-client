@@ -49,16 +49,12 @@ pub enum AiAccessMode {
     ProviderApiKey,
     LocalModel,
     ProviderSubscriptionCli,
-    PlatformConnected,
     ProviderOAuth,
 }
 
 impl AiAccessMode {
     pub fn normalized_for_ai_surfaces(self) -> Self {
-        match self {
-            Self::PlatformConnected => Self::ProviderApiKey,
-            other => other,
-        }
+        self
     }
 }
 

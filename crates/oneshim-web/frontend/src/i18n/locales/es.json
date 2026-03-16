@@ -608,7 +608,6 @@
     "backendFileSecretStore": "almacén secreto en archivo",
     "backendEnv": "entorno",
     "backendBridgeManaged": "backend administrado por puente",
-    "backendLegacyConfig": "archivo de configuración",
     "backendUnavailable": "backend no disponible",
     "model": "Modelo",
     "timeoutSecs": "Tiempo de espera (seg)",

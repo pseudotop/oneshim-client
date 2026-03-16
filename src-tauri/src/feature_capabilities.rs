@@ -526,7 +526,7 @@ mod tests {
                 .collect(),
             default_backend_kind: "os_secret_store".into(),
             byok_backend_kind: "os_secret_store".into(),
-            fallback_backend_kind: "legacy_config".into(),
+            fallback_backend_kind: "unavailable".into(),
         }
     }
 

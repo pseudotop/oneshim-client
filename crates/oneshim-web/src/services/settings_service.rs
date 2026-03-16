@@ -181,19 +181,6 @@ async fn persist_api_key_binding(
                 "No writable provider secret backend is available; configure a secret backend before saving API keys.".to_string(),
             ));
         }
-        CredentialBackendKind::LegacyConfig => {
-            endpoint.credential = Some(CredentialBinding {
-                auth_mode: CredentialAuthMode::ApiKey,
-                backend_kind: CredentialBackendKind::LegacyConfig,
-                secret_ref: None,
-                projection_enabled: endpoint
-                    .credential
-                    .as_ref()
-                    .map(|binding| binding.projection_enabled)
-                    .unwrap_or(false),
-            });
-            return Ok(());
-        }
         CredentialBackendKind::BridgeManaged => {
             return Err(ApiError::BadRequest(
                 "Bridge-managed credentials cannot be edited from Settings.".to_string(),
@@ -850,9 +837,7 @@ fn endpoint_to_api_settings(
         .credential
         .as_ref()
         .map(|binding| binding.backend_kind)
-        .unwrap_or_else(|| {
-            derive_credential_backend_kind(auth_mode, has_plaintext_secret, default_backend_kind)
-        });
+        .unwrap_or_else(|| derive_credential_backend_kind(auth_mode, default_backend_kind));
     let has_secret = !no_auth_surface
         && (has_plaintext_secret
             || binding
@@ -1211,7 +1196,6 @@ fn access_mode_allows_surface_transport(
             AiAccessMode::ProviderApiKey | AiAccessMode::LocalModel => {
                 transport == ProviderSurfaceTransport::DirectApi
             }
-            AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
         },
         ApiEndpointKind::Ocr => match access_mode {
             AiAccessMode::ProviderOAuth => matches!(
@@ -1225,20 +1209,17 @@ fn access_mode_allows_surface_transport(
             AiAccessMode::ProviderApiKey | AiAccessMode::LocalModel => {
                 transport == ProviderSurfaceTransport::DirectApi
             }
-            AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
         },
     }
 }
 
 fn derive_credential_backend_kind(
     auth_mode: CredentialAuthMode,
-    has_plaintext_secret: bool,
     default_backend_kind: CredentialBackendKind,
 ) -> CredentialBackendKind {
     match auth_mode {
         CredentialAuthMode::ManagedOAuth => CredentialBackendKind::OsSecretStore,
         CredentialAuthMode::CliBridge => CredentialBackendKind::BridgeManaged,
-        CredentialAuthMode::ApiKey if has_plaintext_secret => CredentialBackendKind::LegacyConfig,
         CredentialAuthMode::ApiKey => default_backend_kind,
     }
 }
@@ -1287,12 +1268,7 @@ fn updated_credential_binding(
         return Ok(Some(binding));
     }
 
-    if settings.projection_enabled
-        || !matches!(
-            backend_kind,
-            CredentialBackendKind::LegacyConfig | CredentialBackendKind::Unavailable
-        )
-    {
+    if settings.projection_enabled || backend_kind != CredentialBackendKind::Unavailable {
         return Ok(Some(CredentialBinding {
             auth_mode,
             backend_kind,
@@ -1364,7 +1340,6 @@ fn parse_credential_backend_kind(value: &str) -> Result<CredentialBackendKind, A
         "file_secret_store" | "filesecretstore" => Ok(CredentialBackendKind::FileSecretStore),
         "env" => Ok(CredentialBackendKind::Env),
         "bridge_managed" | "bridgemanaged" => Ok(CredentialBackendKind::BridgeManaged),
-        "legacy_config" | "legacyconfig" => Ok(CredentialBackendKind::LegacyConfig),
         "unavailable" => Ok(CredentialBackendKind::Unavailable),
         _ => Err(ApiError::BadRequest(format!(
             "Invalid ai_provider.api.backend_kind value: {value}"
@@ -1376,9 +1351,7 @@ fn can_edit_secret(auth_mode: CredentialAuthMode, backend_kind: CredentialBacken
     matches!(auth_mode, CredentialAuthMode::ApiKey)
         && matches!(
             backend_kind,
-            CredentialBackendKind::OsSecretStore
-                | CredentialBackendKind::FileSecretStore
-                | CredentialBackendKind::LegacyConfig
+            CredentialBackendKind::OsSecretStore | CredentialBackendKind::FileSecretStore
         )
 }
 
@@ -1396,7 +1369,6 @@ fn credential_backend_kind_to_wire(value: CredentialBackendKind) -> &'static str
         CredentialBackendKind::FileSecretStore => "file_secret_store",
         CredentialBackendKind::Env => "env",
         CredentialBackendKind::BridgeManaged => "bridge_managed",
-        CredentialBackendKind::LegacyConfig => "legacy_config",
         CredentialBackendKind::Unavailable => "unavailable",
     }
 }
@@ -1528,7 +1500,7 @@ mod tests {
             frames_dir: None,
             event_tx,
             config_manager: None,
-            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::LegacyConfig,
+            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::Unavailable,
             secret_store: None,
             secret_stores: None,
             audit_logger: None,
@@ -1640,7 +1612,7 @@ mod tests {
     }
 
     #[test]
-    fn config_to_settings_marks_plaintext_api_keys_as_legacy_config() {
+    fn config_to_settings_maps_plaintext_api_keys_to_current_default_backend() {
         let mut config = AppConfig::default_config();
         config.ai_provider.llm_provider = LlmProviderType::Remote;
         config.ai_provider.llm_api = Some(ExternalApiEndpoint {
@@ -1657,7 +1629,7 @@ mod tests {
         let llm_api = settings.ai_provider.llm_api.expect("llm api settings");
 
         assert_eq!(llm_api.auth_mode, "api_key");
-        assert_eq!(llm_api.backend_kind, "legacy_config");
+        assert_eq!(llm_api.backend_kind, "os_secret_store");
         assert!(llm_api.has_secret);
         assert!(llm_api.can_edit_secret);
         assert_eq!(llm_api.secret_display_hint.as_deref(), Some("sk...7890"));
@@ -1715,16 +1687,6 @@ mod tests {
         assert!(!llm_api.has_secret);
         assert!(!llm_api.can_edit_secret);
         assert_eq!(llm_api.secret_display_hint, None);
-    }
-
-    #[test]
-    fn config_to_settings_normalizes_platform_connected_to_provider_api_key() {
-        let mut config = AppConfig::default_config();
-        config.ai_provider.access_mode = AiAccessMode::PlatformConnected;
-
-        let settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
-
-        assert_eq!(settings.ai_provider.access_mode, "ProviderApiKey");
     }
 
     #[test]
@@ -2078,7 +2040,7 @@ mod tests {
             surface_id: Some("provider_surface.openai.direct_api".to_string()),
             timeout_secs: 30,
             auth_mode: "api_key".to_string(),
-            backend_kind: "legacy_config".to_string(),
+            backend_kind: "os_secret_store".to_string(),
             has_secret: true,
             can_edit_secret: true,
             secret_display_hint: None,
@@ -2271,7 +2233,7 @@ mod tests {
             surface_id: Some("provider_surface.google.direct_api".to_string()),
             timeout_secs: 30,
             auth_mode: "api_key".to_string(),
-            backend_kind: "legacy_config".to_string(),
+            backend_kind: "os_secret_store".to_string(),
             has_secret: true,
             can_edit_secret: true,
             secret_display_hint: None,

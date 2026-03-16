@@ -56,8 +56,7 @@ use crate::oauth_provider_registry::{
 use crate::provider_adapters::ExternalOcrPrivacyGuard;
 #[cfg(feature = "server")]
 use crate::provider_secret_backend::{
-    build_provider_secret_store_set, create_os_secret_store, is_writable_backend_kind,
-    resolve_provider_secret_backend,
+    build_provider_secret_store_set, create_os_secret_store, resolve_provider_secret_backend,
 };
 use crate::scheduler::{Scheduler, SchedulerConfig, SchedulerStorage};
 use crate::update_coordinator;
@@ -221,7 +220,6 @@ fn credential_backend_kind_to_wire(value: CredentialBackendKind) -> &'static str
         CredentialBackendKind::FileSecretStore => "file_secret_store",
         CredentialBackendKind::Env => "env",
         CredentialBackendKind::BridgeManaged => "bridge_managed",
-        CredentialBackendKind::LegacyConfig => "legacy_config",
         CredentialBackendKind::Unavailable => "unavailable",
     }
 }
@@ -287,22 +285,6 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         desktop_secret_store.clone(),
         &provider_secret_backend,
     );
-    #[cfg(feature = "server")]
-    if is_writable_backend_kind(provider_secret_backend.backend_kind) {
-        if let Some(secret_store) = provider_secret_store.clone() {
-            match handle.block_on(
-                crate::credential_migration::migrate_legacy_provider_api_keys(
-                    &config_manager,
-                    secret_store,
-                    provider_secret_backend.backend_kind,
-                ),
-            ) {
-                Ok(true) => info!("Migrated legacy provider API keys into selected secret store"),
-                Ok(false) => {}
-                Err(err) => warn!("Legacy provider API key migration skipped: {err}"),
-            }
-        }
-    }
     let config = config_manager.get();
     let web_port = Arc::new(AtomicU16::new(config.web.port));
     maybe_sync_cli_subscription_bridge(&config, &data_dir_path);
@@ -685,7 +667,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         oauth_available,
         oauth_provider_ids,
         CredentialBackendKind::Unavailable,
-        CredentialBackendKind::LegacyConfig,
+        CredentialBackendKind::Unavailable,
     ));
     let feature_capability_state = FeatureCapabilityState(secret_backend_state.0.clone());
 
@@ -825,8 +807,6 @@ async fn run_agent(
         heartbeat_interval: Duration::from_millis(config.monitor.heartbeat_interval_ms),
         aggregation_interval: Duration::from_secs(3600),
         session_id,
-        offline_mode,
-        ai_access_mode: config.ai_provider.access_mode,
         external_data_policy: config.ai_provider.external_data_policy,
         privacy_config: config.privacy.clone(),
         idle_threshold_secs: 300,

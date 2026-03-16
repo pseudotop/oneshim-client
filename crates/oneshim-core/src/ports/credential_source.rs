@@ -37,13 +37,11 @@ pub enum CredentialSource {
         namespace: String,
         key: String,
         secret_store: Arc<dyn SecretStore>,
-        plaintext_fallback: Option<String>,
     },
 }
 
 impl CredentialSource {
-    /// Build an API-key credential source that prefers backend-managed secret
-    /// storage and falls back to the legacy plaintext config value.
+    /// Build an API-key credential source from the configured secret backend.
     pub fn from_api_key_endpoint(
         endpoint: &ExternalApiEndpoint,
         secret_store: Option<Arc<dyn SecretStore>>,
@@ -64,20 +62,8 @@ impl CredentialSource {
             return Ok(Self::NoAuth);
         }
 
-        let plaintext_fallback =
-            (!endpoint.api_key.trim().is_empty()).then(|| endpoint.api_key.clone());
-
         if let Some(binding) = endpoint.credential.as_ref() {
             if binding.auth_mode == CredentialAuthMode::ApiKey {
-                if matches!(
-                    binding.backend_kind,
-                    CredentialBackendKind::LegacyConfig | CredentialBackendKind::Unavailable
-                ) {
-                    if let Some(plaintext_fallback) = plaintext_fallback {
-                        return Ok(Self::ApiKey(plaintext_fallback));
-                    }
-                }
-
                 let secret_store = secret_store.ok_or_else(|| {
                     CoreError::Config(format!(
                         "provider credential backend {:?} requires an initialized secret store",
@@ -90,7 +76,6 @@ impl CredentialSource {
                         namespace: secret_ref.namespace.clone(),
                         key: secret_ref.key.clone(),
                         secret_store,
-                        plaintext_fallback: None,
                     });
                 }
 
@@ -109,18 +94,13 @@ impl CredentialSource {
                         namespace,
                         key: key.to_string(),
                         secret_store,
-                        plaintext_fallback: None,
                     });
                 }
             }
         }
 
-        if let Some(plaintext_fallback) = plaintext_fallback {
-            return Ok(Self::ApiKey(plaintext_fallback));
-        }
-
         Err(CoreError::Config(
-            "AI provider API key is not configured. Set it in Settings or connect a secret backend."
+            "AI provider API key is not configured in a supported secret backend. Save it through Settings or configure an environment-backed credential source."
                 .to_string(),
         ))
     }
@@ -148,14 +128,9 @@ impl CredentialSource {
                 namespace,
                 key,
                 secret_store,
-                plaintext_fallback,
             } => {
                 if let Some(secret) = secret_store.retrieve(namespace, key).await? {
                     return Ok(secret);
-                }
-
-                if let Some(plaintext_fallback) = plaintext_fallback {
-                    return Ok(plaintext_fallback.clone());
                 }
 
                 Err(CoreError::Auth(format!(
@@ -332,24 +307,19 @@ mod tests {
     }
 
     #[test]
-    fn legacy_config_binding_uses_plaintext_without_secret_store() {
+    fn plaintext_inline_api_keys_are_rejected_without_supported_binding() {
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
-            api_key: "sk-legacy".to_string(),
+            api_key: "sk-inline".to_string(),
             model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
-            credential: Some(CredentialBinding {
-                auth_mode: CredentialAuthMode::ApiKey,
-                backend_kind: CredentialBackendKind::LegacyConfig,
-                secret_ref: None,
-                projection_enabled: false,
-            }),
+            credential: None,
         };
 
-        let source = CredentialSource::from_api_key_endpoint(&endpoint, None).unwrap();
-        assert!(matches!(source, CredentialSource::ApiKey(_)));
+        let err = CredentialSource::from_api_key_endpoint(&endpoint, None).unwrap_err();
+        assert!(matches!(err, CoreError::Config(_)));
     }
 
     #[test]

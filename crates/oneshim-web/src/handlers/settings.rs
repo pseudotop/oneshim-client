@@ -114,7 +114,7 @@ mod tests {
             surface_id: None,
             timeout_secs: 30,
             auth_mode: "api_key".to_string(),
-            backend_kind: "legacy_config".to_string(),
+            backend_kind: "unavailable".to_string(),
             has_secret: false,
             can_edit_secret: true,
             secret_display_hint: None,

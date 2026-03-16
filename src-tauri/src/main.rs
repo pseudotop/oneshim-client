@@ -15,7 +15,6 @@ mod bridge_cli;
 mod cli_subscription_bridge;
 mod commands;
 #[cfg(any(feature = "server", test))]
-mod credential_migration;
 #[cfg(feature = "server")]
 mod event_bus;
 mod feature_capabilities;

@@ -417,7 +417,7 @@ mod tests {
                 event_tx,
                 config_manager: None,
                 default_secret_backend_kind:
-                    oneshim_core::config::CredentialBackendKind::LegacyConfig,
+                    oneshim_core::config::CredentialBackendKind::Unavailable,
                 secret_store: None,
                 secret_stores: None,
                 audit_logger: None,
@@ -436,7 +436,7 @@ mod tests {
                 event_tx,
                 config_manager: None,
                 default_secret_backend_kind:
-                    oneshim_core::config::CredentialBackendKind::LegacyConfig,
+                    oneshim_core::config::CredentialBackendKind::Unavailable,
                 secret_store: None,
                 secret_stores: None,
                 audit_logger: None,

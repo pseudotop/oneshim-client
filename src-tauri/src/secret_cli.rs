@@ -21,10 +21,6 @@ use oneshim_storage::temp_file_projection::{
 };
 use tempfile::Builder;
 
-#[cfg(feature = "server")]
-use crate::credential_migration::migrate_legacy_provider_api_keys;
-#[cfg(feature = "server")]
-use crate::provider_secret_backend::resolve_provider_secret_backend;
 use crate::provider_secret_backend::{create_os_secret_store, create_secret_store_for_binding};
 
 const CONFIG_FILE_NAME: &str = "config.json";
@@ -54,18 +50,14 @@ impl SecretSurface {
 
 pub fn run(args: &[String], config_dir: &Path) -> i32 {
     match args.first().map(String::as_str) {
-        Some("migrate") => cmd_migrate(config_dir),
         Some("status") => cmd_status(&args[1..], config_dir),
         Some("env") => cmd_env(&args[1..], config_dir),
         Some("file") => cmd_file(&args[1..], config_dir),
         Some("exec") => cmd_exec(&args[1..], config_dir),
         _ => {
-            eprintln!("Usage: oneshim secret <migrate|status|env|file|exec> ...");
+            eprintln!("Usage: oneshim secret <status|env|file|exec> ...");
             eprintln!();
             eprintln!("Commands:");
-            eprintln!(
-                "  migrate             Move legacy plaintext provider API keys into the selected secret backend"
-            );
             eprintln!(
                 "  status <llm|ocr>    Show credential backend, projection, and resolution state"
             );
@@ -115,72 +107,6 @@ fn cmd_status(args: &[String], config_dir: &Path) -> i32 {
             1
         }
     }
-}
-
-#[cfg(feature = "server")]
-fn cmd_migrate(config_dir: &Path) -> i32 {
-    let config_manager = match ConfigManager::with_path(config_dir.join(CONFIG_FILE_NAME)) {
-        Ok(manager) => manager,
-        Err(err) => {
-            eprintln!("Error: failed to load config: {err}");
-            return 1;
-        }
-    };
-
-    let desktop_secret_store = create_os_secret_store(config_dir);
-    let resolution = match resolve_provider_secret_backend(config_dir, desktop_secret_store) {
-        Ok(resolution) => resolution,
-        Err(err) => {
-            eprintln!("Error: failed to resolve provider secret backend: {err}");
-            return 1;
-        }
-    };
-
-    if let Err(message) = ensure_migration_backend_writable(resolution.backend_kind) {
-        eprintln!("Error: {message}");
-        return 1;
-    }
-
-    let Some(secret_store) = resolution.secret_store else {
-        eprintln!("Error: selected writable provider backend is unavailable.");
-        return 1;
-    };
-
-    let runtime = match build_runtime() {
-        Ok(runtime) => runtime,
-        Err(err) => {
-            eprintln!("Error: {err}");
-            return 1;
-        }
-    };
-
-    match runtime.block_on(migrate_legacy_provider_api_keys(
-        &config_manager,
-        secret_store,
-        resolution.backend_kind,
-    )) {
-        Ok(true) => {
-            println!(
-                "migrated legacy provider API keys to {:?}",
-                resolution.backend_kind
-            );
-            0
-        }
-        Ok(false) => {
-            println!("no legacy provider API keys found");
-            0
-        }
-        Err(err) => {
-            eprintln!("Error: failed to migrate legacy provider API keys: {err}");
-            1
-        }
-    }
-}
-
-#[cfg(not(feature = "server"))]
-fn cmd_migrate(_config_dir: &Path) -> i32 {
-    eprintln!("Error: secret migration requires the server feature.");
-    1
 }
 
 fn cmd_env(args: &[String], config_dir: &Path) -> i32 {
@@ -471,7 +397,7 @@ fn resolve_temp_file_projection(
                         .to_string(),
                 );
             }
-            CredentialBackendKind::LegacyConfig | CredentialBackendKind::Unavailable => {}
+            CredentialBackendKind::Unavailable => {}
         }
     }
 
@@ -593,7 +519,7 @@ fn inspect_surface_status(
         .unwrap_or(CredentialAuthMode::ApiKey);
     let backend_kind = binding
         .map(|value| value.backend_kind)
-        .unwrap_or(CredentialBackendKind::LegacyConfig);
+        .unwrap_or(CredentialBackendKind::Unavailable);
     let projection_enabled = binding
         .map(|value| value.projection_enabled)
         .unwrap_or(false);
@@ -640,21 +566,6 @@ fn format_surface_status(surface: SecretSurface, status: &SecretSurfaceStatus) -
         status.secret_ref_present,
         status.resolved_secret_available,
     )
-}
-
-#[cfg(feature = "server")]
-fn ensure_migration_backend_writable(backend_kind: CredentialBackendKind) -> Result<(), String> {
-    if matches!(
-        backend_kind,
-        CredentialBackendKind::OsSecretStore | CredentialBackendKind::FileSecretStore
-    ) {
-        return Ok(());
-    }
-
-    Err(format!(
-        "legacy credential migration requires a writable backend. Current backend: {:?}",
-        backend_kind
-    ))
 }
 
 fn build_runtime() -> Result<tokio::runtime::Runtime, String> {
@@ -838,14 +749,6 @@ mod tests {
         assert!(error.contains("bridge-managed credentials"));
     }
 
-    #[cfg(feature = "server")]
-    #[test]
-    fn migration_backend_guard_rejects_non_writable_backend() {
-        let error = ensure_migration_backend_writable(CredentialBackendKind::Env).unwrap_err();
-        assert!(error.contains("requires a writable backend"));
-        assert!(ensure_migration_backend_writable(CredentialBackendKind::OsSecretStore).is_ok());
-    }
-
     #[test]
     fn format_surface_status_renders_expected_fields() {
         let status = SecretSurfaceStatus {
@@ -865,7 +768,7 @@ mod tests {
     }
 
     #[test]
-    fn ensure_projection_allowed_keeps_legacy_plaintext_compatibility() {
+    fn ensure_projection_allowed_accepts_unbound_plaintext_status_only() {
         let endpoint = ExternalApiEndpoint {
             endpoint: "https://api.openai.com/v1".to_string(),
             api_key: "sk-test".to_string(),
@@ -873,12 +776,7 @@ mod tests {
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
             surface_id: None,
-            credential: Some(CredentialBinding {
-                auth_mode: CredentialAuthMode::ApiKey,
-                backend_kind: CredentialBackendKind::LegacyConfig,
-                secret_ref: None,
-                projection_enabled: false,
-            }),
+            credential: None,
         };
 
         assert!(ensure_projection_allowed(&endpoint, SecretSurface::Llm).is_ok());

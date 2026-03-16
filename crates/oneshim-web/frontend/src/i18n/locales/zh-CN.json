@@ -608,7 +608,6 @@
     "backendFileSecretStore": "文件密钥存储",
     "backendEnv": "环境变量",
     "backendBridgeManaged": "桥接托管后端",
-    "backendLegacyConfig": "配置文件",
     "backendUnavailable": "不可用后端",
     "model": "模型",
     "timeoutSecs": "超时时间（秒）",

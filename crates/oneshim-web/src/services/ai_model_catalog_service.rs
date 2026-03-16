@@ -740,7 +740,7 @@ mod tests {
             frames_dir: None,
             event_tx,
             config_manager: Some(config_manager),
-            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::LegacyConfig,
+            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::Unavailable,
             secret_store: Some(secret_store),
             secret_stores: None,
             audit_logger: None,

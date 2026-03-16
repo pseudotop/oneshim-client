@@ -122,9 +122,7 @@ impl SecretStoreSet {
             CredentialBackendKind::OsSecretStore => self.os_secret_store.clone(),
             CredentialBackendKind::FileSecretStore => self.file_secret_store.clone(),
             CredentialBackendKind::Env => self.env_secret_store.clone(),
-            CredentialBackendKind::BridgeManaged
-            | CredentialBackendKind::LegacyConfig
-            | CredentialBackendKind::Unavailable => None,
+            CredentialBackendKind::BridgeManaged | CredentialBackendKind::Unavailable => None,
         }
     }
 
@@ -146,8 +144,8 @@ impl Default for SecretStoreSet {
             os_secret_store: None,
             file_secret_store: None,
             env_secret_store: None,
-            default_backend_kind: CredentialBackendKind::LegacyConfig,
-            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+            default_backend_kind: CredentialBackendKind::Unavailable,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
         }
     }
 }
@@ -293,7 +291,7 @@ mod tests {
             file_secret_store: Some(file_store.clone()),
             env_secret_store: None,
             default_backend_kind: CredentialBackendKind::OsSecretStore,
-            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
         };
         let binding = CredentialBinding {
             auth_mode: crate::config::CredentialAuthMode::ApiKey,

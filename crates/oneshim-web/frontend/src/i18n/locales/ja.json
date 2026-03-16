@@ -608,7 +608,6 @@
     "backendFileSecretStore": "ファイルシークレットストア",
     "backendEnv": "環境変数",
     "backendBridgeManaged": "ブリッジ管理バックエンド",
-    "backendLegacyConfig": "設定ファイル",
     "backendUnavailable": "利用不可のバックエンド",
     "model": "モデル",
     "timeoutSecs": "タイムアウト (秒)",

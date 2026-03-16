@@ -412,7 +412,6 @@ pub fn default_surface_id_for_access_mode(
         AiAccessMode::ProviderOAuth => SurfaceExecutionKind::ManagedHttp,
         AiAccessMode::ProviderSubscriptionCli => SurfaceExecutionKind::SubprocessCli,
         AiAccessMode::ProviderApiKey | AiAccessMode::LocalModel => SurfaceExecutionKind::DirectHttp,
-        AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
     };
 
     let mut candidates = surface_catalog()?

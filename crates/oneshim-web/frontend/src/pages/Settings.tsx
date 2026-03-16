@@ -230,7 +230,7 @@ export default function Settings() {
     setModelCatalogLoading((current) => (current && targets.includes(current) ? null : current))
   }
 
-  const defaultByokBackendKind = secretBackendCapabilities?.byok_backend_kind ?? 'legacy_config'
+  const defaultByokBackendKind = secretBackendCapabilities?.byok_backend_kind ?? 'unavailable'
 
   const deriveEndpointAuthMode = (
     accessMode: string,
@@ -395,7 +395,7 @@ export default function Settings() {
       let changed = false
       const applyBackendDefault = (endpoint: ExternalApiSettings | null): ExternalApiSettings | null => {
         if (!endpoint) return endpoint
-        if (endpoint.backend_kind !== 'legacy_config') return endpoint
+        if (endpoint.backend_kind !== 'unavailable') return endpoint
         if (endpoint.has_secret || endpoint.api_key_masked.trim().length > 0) return endpoint
         changed = true
         return {

@@ -180,7 +180,6 @@ pub fn default_provider_surface_id(
         AiAccessMode::ProviderApiKey | AiAccessMode::LocalModel => {
             ProviderSurfaceTransport::DirectApi
         }
-        AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
     };
 
     provider_surface_specs()?

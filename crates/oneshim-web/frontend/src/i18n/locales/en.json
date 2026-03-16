@@ -652,7 +652,6 @@
     "backendFileSecretStore": "file secret store",
     "backendEnv": "environment",
     "backendBridgeManaged": "bridge-managed backend",
-    "backendLegacyConfig": "config file",
     "backendUnavailable": "unavailable backend",
     "model": "Model",
     "modelSelectionUnsupportedSurface": "This surface does not support selecting a model explicitly. ONESHIM will use the surface's built-in OCR or provider default path.",

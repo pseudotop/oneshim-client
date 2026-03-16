@@ -109,7 +109,6 @@ impl AiProviderConfig {
                     )?;
                 }
             }
-            AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
         }
         Ok(())
     }

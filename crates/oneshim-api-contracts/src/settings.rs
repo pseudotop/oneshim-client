@@ -292,7 +292,7 @@ fn default_credential_auth_mode() -> String {
 }
 
 fn default_credential_backend_kind() -> String {
-    "legacy_config".to_string()
+    "unavailable".to_string()
 }
 
 fn default_true() -> bool {

@@ -13,7 +13,6 @@ pub enum CredentialBackendKind {
     FileSecretStore,
     Env,
     BridgeManaged,
-    LegacyConfig,
     Unavailable,
 }
 

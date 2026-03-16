@@ -29,7 +29,6 @@ enum RequestedProviderSecretBackend {
     OsSecretStore,
     FileSecretStore,
     Env,
-    LegacyConfig,
 }
 
 pub fn create_os_secret_store(config_dir: &Path) -> Option<Arc<dyn SecretStore>> {
@@ -60,13 +59,13 @@ pub fn resolve_provider_secret_backend(
                 ProviderSecretBackendResolution {
                     secret_store: Some(secret_store),
                     backend_kind: CredentialBackendKind::OsSecretStore,
-                    fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+                    fallback_backend_kind: CredentialBackendKind::Unavailable,
                 }
             } else {
                 ProviderSecretBackendResolution {
                     secret_store: None,
                     backend_kind: CredentialBackendKind::Unavailable,
-                    fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+                    fallback_backend_kind: CredentialBackendKind::Unavailable,
                 }
             }
         }
@@ -75,17 +74,12 @@ pub fn resolve_provider_secret_backend(
                 config_dir,
             ))?)),
             backend_kind: CredentialBackendKind::FileSecretStore,
-            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
         },
         RequestedProviderSecretBackend::Env => ProviderSecretBackendResolution {
             secret_store: Some(Arc::new(EnvSecretStore::from_current_process())),
             backend_kind: CredentialBackendKind::Env,
-            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
-        },
-        RequestedProviderSecretBackend::LegacyConfig => ProviderSecretBackendResolution {
-            secret_store: None,
-            backend_kind: CredentialBackendKind::LegacyConfig,
-            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
         },
     };
 
@@ -105,9 +99,7 @@ pub fn create_secret_store_for_binding(
         CredentialBackendKind::OsSecretStore => Ok(os_secret_store),
         CredentialBackendKind::FileSecretStore => Ok(Some(create_file_secret_store(config_dir)?)),
         CredentialBackendKind::Env => Ok(Some(create_env_secret_store())),
-        CredentialBackendKind::BridgeManaged
-        | CredentialBackendKind::LegacyConfig
-        | CredentialBackendKind::Unavailable => Ok(None),
+        CredentialBackendKind::BridgeManaged | CredentialBackendKind::Unavailable => Ok(None),
     }
 }
 
@@ -137,7 +129,7 @@ pub fn build_provider_secret_store_set(
     }
 }
 
-#[cfg(feature = "server")]
+#[cfg(all(feature = "server", test))]
 pub fn is_writable_backend_kind(backend_kind: CredentialBackendKind) -> bool {
     matches!(
         backend_kind,
@@ -155,9 +147,8 @@ fn requested_provider_secret_backend() -> Result<RequestedProviderSecretBackend,
         "os_secret_store" | "os" | "keychain" => Ok(RequestedProviderSecretBackend::OsSecretStore),
         "file_secret_store" | "file" => Ok(RequestedProviderSecretBackend::FileSecretStore),
         "env" => Ok(RequestedProviderSecretBackend::Env),
-        "legacy_config" | "legacy" => Ok(RequestedProviderSecretBackend::LegacyConfig),
         other => Err(CoreError::Config(format!(
-            "Unsupported provider secret backend '{other}'. Expected auto, os_secret_store, file_secret_store, env, or legacy_config."
+            "Unsupported provider secret backend '{other}'. Expected auto, os_secret_store, file_secret_store, or env."
         ))),
     }
 }
@@ -192,7 +183,7 @@ mod tests {
         ));
         assert!(!is_writable_backend_kind(CredentialBackendKind::Env));
         assert!(!is_writable_backend_kind(
-            CredentialBackendKind::LegacyConfig
+            CredentialBackendKind::Unavailable
         ));
     }
 

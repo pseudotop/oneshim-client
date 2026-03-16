@@ -163,7 +163,7 @@ pub fn should_run_now(config: &AppConfig) -> bool {
 mod tests {
     use self::config::{PlatformEgressPolicy, REDACTED_WINDOW_TITLE};
     use super::*;
-    use oneshim_core::config::{AiAccessMode, ExternalDataPolicy, PiiFilterLevel, PrivacyConfig};
+    use oneshim_core::config::{ExternalDataPolicy, PiiFilterLevel, PrivacyConfig};
     use oneshim_core::models::event::{ContextEvent, Event};
     use std::time::Duration;
 
@@ -178,31 +178,25 @@ mod tests {
         let config = SchedulerConfig::default();
         assert_eq!(config.poll_interval, Duration::from_secs(1));
         assert_eq!(config.metrics_interval, Duration::from_secs(5));
-        assert_eq!(config.ai_access_mode, AiAccessMode::ProviderApiKey);
         assert_eq!(config.idle_threshold_secs, 300);
     }
 
     #[test]
-    fn platform_sync_enabled_only_for_platform_connected_mode() {
-        let mut config = SchedulerConfig {
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::ProviderApiKey,
+    fn platform_sync_is_disabled_in_current_ai_runtime() {
+        let config = SchedulerConfig {
             ..SchedulerConfig::default()
         };
 
         let policy = PlatformEgressPolicy::new(&config);
         assert!(!policy.is_enabled());
 
-        config.ai_access_mode = AiAccessMode::PlatformConnected;
         let policy = PlatformEgressPolicy::new(&config);
-        assert!(policy.is_enabled());
+        assert!(!policy.is_enabled());
     }
 
     #[test]
     fn strict_policy_redacts_window_title() {
         let config = SchedulerConfig {
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::PlatformConnected,
             external_data_policy: ExternalDataPolicy::PiiFilterStrict,
             ..SchedulerConfig::default()
         };
@@ -229,8 +223,6 @@ mod tests {
             ..PrivacyConfig::default()
         };
         let config = SchedulerConfig {
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::PlatformConnected,
             external_data_policy: ExternalDataPolicy::AllowFiltered,
             privacy_config: privacy,
             ..SchedulerConfig::default()
@@ -255,8 +247,6 @@ mod tests {
     #[test]
     fn sensitive_apps_are_skipped_from_upload() {
         let config = SchedulerConfig {
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::PlatformConnected,
             ..SchedulerConfig::default()
         };
         let policy = PlatformEgressPolicy::new(&config);

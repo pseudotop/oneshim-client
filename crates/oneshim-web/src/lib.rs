@@ -89,7 +89,7 @@ impl WebServer {
                 frames_dir: None,
                 event_tx,
                 config_manager: None,
-                default_secret_backend_kind: CredentialBackendKind::LegacyConfig,
+                default_secret_backend_kind: CredentialBackendKind::Unavailable,
                 secret_store: None,
                 secret_stores: None,
                 audit_logger: None,

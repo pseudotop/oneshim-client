@@ -1,5 +1,5 @@
 use base64::Engine;
-use oneshim_core::config::{AiAccessMode, ExternalDataPolicy, PrivacyConfig};
+use oneshim_core::config::{ExternalDataPolicy, PrivacyConfig};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::event::Event;
@@ -49,8 +49,7 @@ pub(super) struct PlatformEgressPolicy {
 impl PlatformEgressPolicy {
     pub(super) fn new(config: &SchedulerConfig) -> Self {
         Self {
-            enabled: !config.offline_mode
-                && config.ai_access_mode == AiAccessMode::PlatformConnected,
+            enabled: false,
             external_data_policy: config.external_data_policy,
             privacy_config: config.privacy_config.clone(),
         }

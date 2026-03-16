@@ -409,7 +409,6 @@ pub fn resolve_ai_provider_adapters(
                 ))
             }
         }
-        AiAccessMode::PlatformConnected => unreachable!("legacy access mode should normalize"),
     }
 }
 
@@ -952,7 +951,7 @@ mod tests {
         OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort, RefreshResult,
     };
     use oneshim_core::ports::ocr_provider::OcrResult;
-    use oneshim_core::ports::secret_store::secret_env_var_name;
+    use oneshim_core::ports::secret_store::{provider_api_key_secret_ref, secret_env_var_name};
     use oneshim_storage::env_secret_store::EnvSecretStore;
     use tempfile::TempDir;
     use tokio::sync::RwLock;
@@ -966,6 +965,42 @@ mod tests {
             provider_type: AiProviderType::Generic,
             surface_id: None,
             credential: None,
+        }
+    }
+
+    fn secret_bound_remote_endpoint(profile_id: &str) -> ExternalApiEndpoint {
+        let (namespace, key) = provider_api_key_secret_ref("generic", profile_id).unwrap();
+        ExternalApiEndpoint {
+            api_key: String::new(),
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::Env,
+                secret_ref: Some(SecretRef {
+                    namespace,
+                    key: key.to_string(),
+                }),
+                projection_enabled: false,
+            }),
+            ..remote_endpoint()
+        }
+    }
+
+    fn remote_secret_stores() -> SecretStoreSet {
+        let mut snapshot = std::collections::HashMap::new();
+        for profile_id in ["ocr", "llm"] {
+            let (namespace, key) = provider_api_key_secret_ref("generic", profile_id).unwrap();
+            snapshot.insert(
+                secret_env_var_name(&namespace, key),
+                "test-api-key".to_string(),
+            );
+        }
+        let secret_store = Arc::new(EnvSecretStore::from_snapshot(snapshot));
+        SecretStoreSet {
+            os_secret_store: None,
+            file_secret_store: None,
+            env_secret_store: Some(secret_store),
+            default_backend_kind: CredentialBackendKind::Env,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
         }
     }
 
@@ -1054,8 +1089,8 @@ mod tests {
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Remote,
-            ocr_api: Some(remote_endpoint()),
-            llm_api: Some(remote_endpoint()),
+            ocr_api: Some(secret_bound_remote_endpoint("ocr")),
+            llm_api: Some(secret_bound_remote_endpoint("llm")),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
@@ -1074,7 +1109,7 @@ mod tests {
             &config,
             PiiFilterLevel::Standard,
             Some(privacy_guard),
-            None,
+            Some(remote_secret_stores()),
             None,
         )
         .expect("Failed to resolve remote configuration");
@@ -1199,7 +1234,7 @@ mod tests {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderSubscriptionCli,
             ocr_provider: OcrProviderType::Remote,
-            ocr_api: Some(remote_endpoint()),
+            ocr_api: Some(secret_bound_remote_endpoint("ocr")),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
@@ -1219,7 +1254,7 @@ mod tests {
             &config,
             PiiFilterLevel::Standard,
             Some(privacy_guard),
-            None,
+            Some(remote_secret_stores()),
             &[],
         )
         .expect("CLI mode should allow direct remote OCR");
@@ -1393,13 +1428,13 @@ mod tests {
     }
 
     #[test]
-    fn legacy_platform_connected_config_reuses_direct_remote_sources() {
+    fn provider_api_key_config_reuses_direct_remote_sources() {
         let config = AiProviderConfig {
-            access_mode: AiAccessMode::PlatformConnected,
+            access_mode: AiAccessMode::ProviderApiKey,
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Remote,
-            ocr_api: Some(remote_endpoint()),
-            llm_api: Some(remote_endpoint()),
+            ocr_api: Some(secret_bound_remote_endpoint("ocr")),
+            llm_api: Some(secret_bound_remote_endpoint("llm")),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
@@ -1418,10 +1453,10 @@ mod tests {
             &config,
             PiiFilterLevel::Standard,
             Some(privacy_guard),
-            None,
+            Some(remote_secret_stores()),
             None,
         )
-        .expect("Failed to resolve legacy platform-connected config");
+        .expect("Failed to resolve provider API key config");
         assert_eq!(adapters.ocr_source, ProviderSource::Remote);
         assert_eq!(adapters.llm_source, ProviderSource::Remote);
         assert!(adapters.ocr_fallback_reason.is_none());
@@ -1516,13 +1551,18 @@ mod tests {
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Local,
-            ocr_api: Some(remote_endpoint()),
+            ocr_api: Some(secret_bound_remote_endpoint("ocr")),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
 
-        let result =
-            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None);
+        let result = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            Some(remote_secret_stores()),
+            None,
+        );
         assert!(
             result.is_err(),
             "Expected remote OCR resolution to require a privacy guard"
@@ -1680,7 +1720,7 @@ mod tests {
             file_secret_store: None,
             env_secret_store: Some(secret_store),
             default_backend_kind: CredentialBackendKind::Env,
-            fallback_backend_kind: CredentialBackendKind::LegacyConfig,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
         };
 
         let secret_bound_endpoint = ExternalApiEndpoint {

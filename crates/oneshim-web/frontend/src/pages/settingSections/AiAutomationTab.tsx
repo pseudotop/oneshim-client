@@ -62,8 +62,6 @@ function credentialBackendLabel(
       return t('settingsAutomation.backendEnv')
     case 'bridge_managed':
       return t('settingsAutomation.backendBridgeManaged')
-    case 'legacy_config':
-      return t('settingsAutomation.backendLegacyConfig')
     default:
       return t('settingsAutomation.backendUnavailable')
   }
@@ -99,7 +97,7 @@ function shouldShowBackendManagedHint(settings: ExternalApiSettings | null | und
     return false
   }
 
-  return settings.backend_kind !== 'legacy_config' && settings.backend_kind !== 'unavailable'
+  return settings.backend_kind !== 'unavailable'
 }
 
 function supportsProjectionToggle(settings: ExternalApiSettings | null | undefined): boolean {

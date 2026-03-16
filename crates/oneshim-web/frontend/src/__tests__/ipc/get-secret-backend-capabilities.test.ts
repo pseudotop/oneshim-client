@@ -14,7 +14,7 @@ describe('CRT-MK-M050: get_secret_backend_capabilities IPC contract', () => {
           oauth_provider_ids: ['openai', 'google'],
           default_backend_kind: 'os_secret_store',
           byok_backend_kind: 'os_secret_store',
-          fallback_backend_kind: 'legacy_config',
+          fallback_backend_kind: 'unavailable',
         }
       }
     })
@@ -33,6 +33,6 @@ describe('CRT-MK-M050: get_secret_backend_capabilities IPC contract', () => {
     expect(result.oauth_provider_ids).toEqual(['openai', 'google'])
     expect(result.default_backend_kind).toBe('os_secret_store')
     expect(result.byok_backend_kind).toBe('os_secret_store')
-    expect(result.fallback_backend_kind).toBe('legacy_config')
+    expect(result.fallback_backend_kind).toBe('unavailable')
   })
 })
