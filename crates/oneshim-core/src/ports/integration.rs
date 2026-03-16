@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
 use crate::models::integration::{
-    InsightPacket, IntegrationAckCursor, IntegrationCapabilityScope, IntegrationEgressDisposition,
-    IntegrationEnvelope, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
-    IntegrationSessionState, QueuedInsightPacket, StoredProactivePrompt,
+    InsightPacket, IntegrationAckCursor, IntegrationAuthContext, IntegrationCapabilityScope,
+    IntegrationEgressDisposition, IntegrationEnvelope, IntegrationInboxItemStatus,
+    IntegrationInsightAuditRecord, IntegrationSessionState, QueuedInsightPacket,
+    StoredProactivePrompt,
 };
 
 #[async_trait]
@@ -34,6 +35,16 @@ pub trait IntegrationSessionPort: Send + Sync {
 
     /// Disconnect an established integration session.
     async fn disconnect(&self, session_id: &str) -> Result<(), CoreError>;
+}
+
+#[async_trait]
+pub trait IntegrationAuthPort: Send + Sync {
+    /// Resolve outbound session auth material for the requested scopes and resource.
+    async fn resolve_session_auth(
+        &self,
+        requested_scopes: &[IntegrationCapabilityScope],
+        resource_indicator: Option<&str>,
+    ) -> Result<IntegrationAuthContext, CoreError>;
 }
 
 #[async_trait]

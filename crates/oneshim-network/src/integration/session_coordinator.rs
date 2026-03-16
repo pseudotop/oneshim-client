@@ -3,16 +3,45 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    IntegrationAckCursor, IntegrationCapabilityScope, IntegrationSessionState,
-    IntegrationSessionStatus,
+    IntegrationAckCursor, IntegrationAuthScheme, IntegrationCapabilityScope,
+    IntegrationSessionState, IntegrationSessionStatus, IntegrationTransportKind,
 };
 use oneshim_core::ports::integration::IntegrationSessionPort;
 use tokio::sync::RwLock;
 
 use super::transport::{IntegrationTransportClient, IntegrationTransportConnectRequest};
 
+#[derive(Debug, Clone)]
+pub struct IntegrationSessionRuntimeProfile {
+    pub client_version: String,
+    pub device_label: Option<String>,
+    pub preferred_transports: Vec<IntegrationTransportKind>,
+    pub supported_auth_schemes: Vec<IntegrationAuthScheme>,
+    pub resource_indicator: Option<String>,
+}
+
+impl Default for IntegrationSessionRuntimeProfile {
+    fn default() -> Self {
+        Self {
+            client_version: env!("CARGO_PKG_VERSION").to_string(),
+            device_label: None,
+            preferred_transports: vec![
+                IntegrationTransportKind::WebSocket,
+                IntegrationTransportKind::HttpsSse,
+                IntegrationTransportKind::HttpsLongPoll,
+            ],
+            supported_auth_schemes: vec![
+                IntegrationAuthScheme::DpopBearer,
+                IntegrationAuthScheme::BearerToken,
+            ],
+            resource_indicator: None,
+        }
+    }
+}
+
 pub struct IntegrationSessionCoordinator {
     device_id: String,
+    profile: IntegrationSessionRuntimeProfile,
     transport: Arc<dyn IntegrationTransportClient>,
     state: Arc<RwLock<Option<IntegrationSessionState>>>,
 }
@@ -22,8 +51,21 @@ impl IntegrationSessionCoordinator {
         device_id: impl Into<String>,
         transport: Arc<dyn IntegrationTransportClient>,
     ) -> Self {
+        Self::new_with_profile(
+            device_id,
+            transport,
+            IntegrationSessionRuntimeProfile::default(),
+        )
+    }
+
+    pub fn new_with_profile(
+        device_id: impl Into<String>,
+        transport: Arc<dyn IntegrationTransportClient>,
+        profile: IntegrationSessionRuntimeProfile,
+    ) -> Self {
         Self {
             device_id: device_id.into(),
+            profile,
             transport,
             state: Arc::new(RwLock::new(None)),
         }
@@ -44,6 +86,8 @@ impl IntegrationSessionCoordinator {
             session_id: String::new(),
             device_id: self.device_id.clone(),
             status: IntegrationSessionStatus::Failed,
+            transport_kind: IntegrationTransportKind::default(),
+            auth_scheme: IntegrationAuthScheme::default(),
             connected_at: None,
             last_heartbeat_at: None,
             requested_scopes,
@@ -79,6 +123,18 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
                 session_id: String::new(),
                 device_id: self.device_id.clone(),
                 status: IntegrationSessionStatus::Connecting,
+                transport_kind: self
+                    .profile
+                    .preferred_transports
+                    .first()
+                    .cloned()
+                    .unwrap_or_default(),
+                auth_scheme: self
+                    .profile
+                    .supported_auth_schemes
+                    .last()
+                    .cloned()
+                    .unwrap_or_default(),
                 connected_at: None,
                 last_heartbeat_at: None,
                 requested_scopes: requested_scopes.clone(),
@@ -91,7 +147,12 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
             .transport
             .connect(IntegrationTransportConnectRequest {
                 device_id: self.device_id.clone(),
+                client_version: self.profile.client_version.clone(),
+                device_label: self.profile.device_label.clone(),
                 requested_scopes: requested_scopes.clone(),
+                preferred_transports: self.profile.preferred_transports.clone(),
+                supported_auth_schemes: self.profile.supported_auth_schemes.clone(),
+                resource_indicator: self.profile.resource_indicator.clone(),
             })
             .await
         {
@@ -106,6 +167,8 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
             session_id: response.session_id,
             device_id: self.device_id.clone(),
             status: IntegrationSessionStatus::Connected,
+            transport_kind: response.transport_kind,
+            auth_scheme: response.auth_scheme,
             connected_at: Some(response.connected_at),
             last_heartbeat_at: Some(response.connected_at),
             requested_scopes,
@@ -205,7 +268,8 @@ mod tests {
     use chrono::{DateTime, Utc};
     use oneshim_core::error::CoreError;
     use oneshim_core::models::integration::{
-        IntegrationAckCursor, IntegrationCapabilityScope, IntegrationSessionStatus,
+        IntegrationAckCursor, IntegrationAuthScheme, IntegrationCapabilityScope,
+        IntegrationSessionStatus, IntegrationTransportKind,
     };
     use tokio::sync::Mutex;
 
@@ -237,6 +301,16 @@ mod tests {
                 session_id: "integration-session-1".to_string(),
                 connected_at: Utc::now(),
                 granted_scopes: request.requested_scopes,
+                transport_kind: request
+                    .preferred_transports
+                    .first()
+                    .cloned()
+                    .unwrap_or_default(),
+                auth_scheme: request
+                    .supported_auth_schemes
+                    .first()
+                    .cloned()
+                    .unwrap_or_default(),
             })
         }
 
@@ -281,6 +355,8 @@ mod tests {
         assert_eq!(session.session_id, "integration-session-1");
         assert_eq!(session.status, IntegrationSessionStatus::Connected);
         assert_eq!(session.granted_scopes.len(), 1);
+        assert_eq!(session.transport_kind, IntegrationTransportKind::WebSocket);
+        assert_eq!(session.auth_scheme, IntegrationAuthScheme::DpopBearer);
     }
 
     #[tokio::test]
@@ -493,5 +569,36 @@ mod tests {
 
         assert_eq!(updated.ack_cursors.len(), 1);
         assert_eq!(updated.ack_cursors[0].cursor, "cursor-1");
+    }
+
+    #[tokio::test]
+    async fn connect_uses_runtime_profile_metadata() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let coordinator = IntegrationSessionCoordinator::new_with_profile(
+            "device-1",
+            Arc::new(MockTransport {
+                calls: calls.clone(),
+                fail_connect: false,
+                fail_heartbeat: false,
+            }),
+            IntegrationSessionRuntimeProfile {
+                client_version: "9.9.9".to_string(),
+                device_label: Some("workstation".to_string()),
+                preferred_transports: vec![IntegrationTransportKind::HttpsLongPoll],
+                supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+                resource_indicator: Some("https://integration.example.com".to_string()),
+            },
+        );
+
+        let session = coordinator
+            .connect(vec![IntegrationCapabilityScope::SessionManage])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            session.transport_kind,
+            IntegrationTransportKind::HttpsLongPoll
+        );
+        assert_eq!(session.auth_scheme, IntegrationAuthScheme::BearerToken);
     }
 }

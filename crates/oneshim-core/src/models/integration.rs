@@ -33,6 +33,54 @@ pub struct IntegrationOrigin {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationTransportKind {
+    #[default]
+    WebSocket,
+    HttpsSse,
+    HttpsLongPoll,
+    GrpcBidirectional,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationAuthScheme {
+    #[default]
+    BearerToken,
+    DpopBearer,
+}
+
+impl std::fmt::Debug for IntegrationAuthScheme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BearerToken => f.write_str("BearerToken"),
+            Self::DpopBearer => f.write_str("DpopBearer"),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct IntegrationAuthContext {
+    pub access_token: String,
+    pub scheme: IntegrationAuthScheme,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_indicator: Option<String>,
+}
+
+impl std::fmt::Debug for IntegrationAuthContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IntegrationAuthContext")
+            .field("access_token", &"[REDACTED]")
+            .field("scheme", &self.scheme)
+            .field("expires_at", &self.expires_at)
+            .field("resource_indicator", &self.resource_indicator)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum IntegrationCapabilityScope {
@@ -42,6 +90,32 @@ pub enum IntegrationCapabilityScope {
     DevicePresenceWrite,
     SessionManage,
     PolicyRead,
+}
+
+impl IntegrationCapabilityScope {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::InsightWrite => "insight:write",
+            Self::PromptRead => "prompt:read",
+            Self::PromptAck => "prompt:ack",
+            Self::DevicePresenceWrite => "device_presence:write",
+            Self::SessionManage => "session:manage",
+            Self::PolicyRead => "policy:read",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        let normalized = raw.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "insight:write" => Some(Self::InsightWrite),
+            "prompt:read" => Some(Self::PromptRead),
+            "prompt:ack" => Some(Self::PromptAck),
+            "device_presence:write" => Some(Self::DevicePresenceWrite),
+            "session:manage" => Some(Self::SessionManage),
+            "policy:read" => Some(Self::PolicyRead),
+            _ => None,
+        }
+    }
 }
 
 /// Privacy-filtered outbound packet sent to an integration backend.
@@ -171,6 +245,10 @@ pub struct IntegrationSessionState {
     pub session_id: String,
     pub device_id: String,
     pub status: IntegrationSessionStatus,
+    #[serde(default)]
+    pub transport_kind: IntegrationTransportKind,
+    #[serde(default)]
+    pub auth_scheme: IntegrationAuthScheme,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connected_at: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -309,6 +387,8 @@ mod tests {
             session_id: "session-001".to_string(),
             device_id: "device-001".to_string(),
             status: IntegrationSessionStatus::Connected,
+            transport_kind: IntegrationTransportKind::WebSocket,
+            auth_scheme: IntegrationAuthScheme::BearerToken,
             connected_at: Some(Utc::now()),
             last_heartbeat_at: Some(Utc::now()),
             requested_scopes: vec![IntegrationCapabilityScope::SessionManage],
@@ -325,6 +405,8 @@ mod tests {
         assert_eq!(parsed.status, IntegrationSessionStatus::Connected);
         assert_eq!(parsed.granted_scopes.len(), 1);
         assert_eq!(parsed.ack_cursors[0].cursor, "42");
+        assert_eq!(parsed.transport_kind, IntegrationTransportKind::WebSocket);
+        assert_eq!(parsed.auth_scheme, IntegrationAuthScheme::BearerToken);
     }
 
     #[test]
@@ -363,5 +445,18 @@ mod tests {
         let parsed: QueuedInsightPacket = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.queue_id, "queue-001");
         assert_eq!(parsed.packet.packet_id, "packet-001");
+    }
+
+    #[test]
+    fn capability_scope_parse_roundtrip() {
+        assert_eq!(
+            IntegrationCapabilityScope::parse("prompt:read"),
+            Some(IntegrationCapabilityScope::PromptRead)
+        );
+        assert_eq!(
+            IntegrationCapabilityScope::PromptRead.as_str(),
+            "prompt:read"
+        );
+        assert_eq!(IntegrationCapabilityScope::parse("unknown"), None);
     }
 }

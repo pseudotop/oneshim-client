@@ -2,13 +2,19 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    IntegrationAckCursor, IntegrationCapabilityScope, ProactivePrompt, QueuedInsightPacket,
+    IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthScheme,
+    IntegrationCapabilityScope, IntegrationTransportKind, ProactivePrompt, QueuedInsightPacket,
 };
 
 #[derive(Debug, Clone)]
 pub struct IntegrationTransportConnectRequest {
     pub device_id: String,
+    pub client_version: String,
+    pub device_label: Option<String>,
     pub requested_scopes: Vec<IntegrationCapabilityScope>,
+    pub preferred_transports: Vec<IntegrationTransportKind>,
+    pub supported_auth_schemes: Vec<IntegrationAuthScheme>,
+    pub resource_indicator: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -16,6 +22,8 @@ pub struct IntegrationTransportConnectResponse {
     pub session_id: String,
     pub connected_at: DateTime<Utc>,
     pub granted_scopes: Vec<IntegrationCapabilityScope>,
+    pub transport_kind: IntegrationTransportKind,
+    pub auth_scheme: IntegrationAuthScheme,
 }
 
 #[async_trait]
@@ -28,6 +36,22 @@ pub trait IntegrationTransportClient: Send + Sync {
     async fn heartbeat(&self, session_id: &str) -> Result<DateTime<Utc>, CoreError>;
 
     async fn disconnect(&self, session_id: &str) -> Result<(), CoreError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntegrationRequestProof {
+    pub header_name: String,
+    pub header_value: String,
+}
+
+#[async_trait]
+pub trait IntegrationRequestProofFactory: Send + Sync {
+    async fn build_proof(
+        &self,
+        auth: &IntegrationAuthContext,
+        method: &str,
+        url: &str,
+    ) -> Result<Option<IntegrationRequestProof>, CoreError>;
 }
 
 #[derive(Debug, Clone)]

@@ -324,6 +324,8 @@ mod tests {
             session_id: "session-1".to_string(),
             device_id: "device-1".to_string(),
             status: IntegrationSessionStatus::Connected,
+            transport_kind: oneshim_core::models::integration::IntegrationTransportKind::WebSocket,
+            auth_scheme: oneshim_core::models::integration::IntegrationAuthScheme::BearerToken,
             connected_at: Some(Utc::now()),
             last_heartbeat_at: Some(Utc::now()),
             requested_scopes: vec![IntegrationCapabilityScope::PromptRead],
@@ -382,6 +384,10 @@ mod tests {
                     session_id: "session-1".to_string(),
                     device_id: "device-1".to_string(),
                     status: IntegrationSessionStatus::Connected,
+                    transport_kind:
+                        oneshim_core::models::integration::IntegrationTransportKind::WebSocket,
+                    auth_scheme:
+                        oneshim_core::models::integration::IntegrationAuthScheme::BearerToken,
                     connected_at: Some(Utc::now()),
                     last_heartbeat_at: Some(Utc::now()),
                     requested_scopes: vec![IntegrationCapabilityScope::InsightWrite],

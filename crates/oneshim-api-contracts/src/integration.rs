@@ -1,4 +1,5 @@
 use crate::stream::AiRuntimeStatus;
+use oneshim_core::models::integration::{IntegrationAuthScheme, IntegrationTransportKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
@@ -13,9 +14,29 @@ pub struct IntegrationStatus {
 pub struct IntegrationBootstrapRequest {
     pub client_version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_label: Option<String>,
+    pub nonce: String,
     #[serde(default)]
     pub requested_scopes: Vec<String>,
+    #[serde(default)]
+    pub preferred_transports: Vec<IntegrationTransportKind>,
+    #[serde(default)]
+    pub supported_auth_schemes: Vec<IntegrationAuthScheme>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_indicator: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationBootstrapSessionBinding {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heartbeat_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disconnect_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,8 +45,20 @@ pub struct IntegrationBootstrapResponse {
     #[serde(default)]
     pub supported_scopes: Vec<String>,
     #[serde(default)]
-    pub transport_hints: Vec<String>,
+    pub granted_scopes: Vec<String>,
+    #[serde(default)]
+    pub supported_transports: Vec<IntegrationTransportKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_transport: Option<IntegrationTransportKind>,
+    #[serde(default)]
+    pub supported_auth_schemes: Vec<IntegrationAuthScheme>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_auth_scheme: Option<IntegrationAuthScheme>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_indicator: Option<String>,
     pub session_required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<IntegrationBootstrapSessionBinding>,
 }
 
 #[cfg(test)]
@@ -36,14 +69,24 @@ mod tests {
     fn bootstrap_request_roundtrip() {
         let request = IntegrationBootstrapRequest {
             client_version: "0.3.8".to_string(),
+            device_id: Some("device-001".to_string()),
             device_label: Some("macbook".to_string()),
+            nonce: "nonce-001".to_string(),
             requested_scopes: vec!["insight:write".to_string(), "prompt:read".to_string()],
+            preferred_transports: vec![IntegrationTransportKind::WebSocket],
+            supported_auth_schemes: vec![
+                IntegrationAuthScheme::DpopBearer,
+                IntegrationAuthScheme::BearerToken,
+            ],
+            resource_indicator: Some("https://integration.example.com".to_string()),
         };
 
         let json = serde_json::to_string(&request).unwrap();
         let parsed: IntegrationBootstrapRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.client_version, "0.3.8");
         assert_eq!(parsed.requested_scopes.len(), 2);
+        assert_eq!(parsed.nonce, "nonce-001");
+        assert_eq!(parsed.preferred_transports.len(), 1);
     }
 
     #[test]
@@ -51,13 +94,43 @@ mod tests {
         let response = IntegrationBootstrapResponse {
             schema_version: "integration.bootstrap.v1".to_string(),
             supported_scopes: vec!["insight:write".to_string()],
-            transport_hints: vec!["websocket".to_string()],
+            granted_scopes: vec!["insight:write".to_string()],
+            supported_transports: vec![IntegrationTransportKind::WebSocket],
+            selected_transport: Some(IntegrationTransportKind::WebSocket),
+            supported_auth_schemes: vec![IntegrationAuthScheme::DpopBearer],
+            selected_auth_scheme: Some(IntegrationAuthScheme::DpopBearer),
+            resource_indicator: Some("https://integration.example.com".to_string()),
             session_required: true,
+            session: Some(IntegrationBootstrapSessionBinding {
+                session_id: "session-001".to_string(),
+                channel_url: Some("wss://integration.example.com/sessions/session-001".to_string()),
+                heartbeat_url: Some(
+                    "https://integration.example.com/sessions/session-001/heartbeat".to_string(),
+                ),
+                disconnect_url: Some(
+                    "https://integration.example.com/sessions/session-001".to_string(),
+                ),
+            }),
         };
 
         let json = serde_json::to_string(&response).unwrap();
         let parsed: IntegrationBootstrapResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.schema_version, "integration.bootstrap.v1");
         assert!(parsed.session_required);
+        assert_eq!(
+            parsed.selected_transport,
+            Some(IntegrationTransportKind::WebSocket)
+        );
+        assert_eq!(
+            parsed.selected_auth_scheme,
+            Some(IntegrationAuthScheme::DpopBearer)
+        );
+        assert_eq!(
+            parsed
+                .session
+                .as_ref()
+                .map(|session| session.session_id.as_str()),
+            Some("session-001")
+        );
     }
 }
