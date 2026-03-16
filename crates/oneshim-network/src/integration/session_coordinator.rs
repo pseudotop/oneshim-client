@@ -3,7 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    IntegrationCapabilityScope, IntegrationSessionState, IntegrationSessionStatus,
+    IntegrationAckCursor, IntegrationCapabilityScope, IntegrationSessionState,
+    IntegrationSessionStatus,
 };
 use oneshim_core::ports::integration::IntegrationSessionPort;
 use tokio::sync::RwLock;
@@ -59,12 +60,16 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
         requested_scopes: Vec<IntegrationCapabilityScope>,
     ) -> Result<IntegrationSessionState, CoreError> {
         if let Some(existing) = self.current_session().await? {
-            if matches!(
-                existing.status,
-                IntegrationSessionStatus::Connected | IntegrationSessionStatus::Degraded
-            ) && Self::scopes_satisfied(&existing, &requested_scopes)
-            {
-                return Ok(existing);
+            if Self::scopes_satisfied(&existing, &requested_scopes) {
+                match existing.status {
+                    IntegrationSessionStatus::Connected => return Ok(existing),
+                    IntegrationSessionStatus::Degraded if !existing.session_id.is_empty() => {
+                        if let Ok(state) = self.heartbeat(&existing.session_id).await {
+                            return Ok(state);
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -149,6 +154,28 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
         Ok(state.clone())
     }
 
+    async fn store_ack_cursor(
+        &self,
+        session_id: &str,
+        cursor: IntegrationAckCursor,
+    ) -> Result<IntegrationSessionState, CoreError> {
+        let mut guard = self.state.write().await;
+        let state = guard.as_mut().ok_or_else(|| CoreError::NotFound {
+            resource_type: "integration_session".to_string(),
+            id: session_id.to_string(),
+        })?;
+
+        if state.session_id != session_id {
+            return Err(CoreError::NotFound {
+                resource_type: "integration_session".to_string(),
+                id: session_id.to_string(),
+            });
+        }
+
+        state.ack_cursor = Some(cursor);
+        Ok(state.clone())
+    }
+
     async fn disconnect(&self, session_id: &str) -> Result<(), CoreError> {
         self.transport.disconnect(session_id).await?;
         let mut guard = self.state.write().await;
@@ -169,7 +196,9 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, Utc};
     use oneshim_core::error::CoreError;
-    use oneshim_core::models::integration::{IntegrationCapabilityScope, IntegrationSessionStatus};
+    use oneshim_core::models::integration::{
+        IntegrationAckCursor, IntegrationCapabilityScope, IntegrationSessionStatus,
+    };
     use tokio::sync::Mutex;
 
     use super::*;
@@ -178,6 +207,7 @@ mod tests {
     struct MockTransport {
         calls: Arc<Mutex<Vec<String>>>,
         fail_connect: bool,
+        fail_heartbeat: bool,
     }
 
     #[async_trait]
@@ -207,6 +237,11 @@ mod tests {
                 .lock()
                 .await
                 .push(format!("heartbeat:{session_id}"));
+            if self.fail_heartbeat {
+                return Err(CoreError::ServiceUnavailable(
+                    "heartbeat unavailable".to_string(),
+                ));
+            }
             Ok(Utc::now())
         }
 
@@ -226,6 +261,7 @@ mod tests {
             Arc::new(MockTransport {
                 calls: Arc::new(Mutex::new(Vec::new())),
                 fail_connect: false,
+                fail_heartbeat: false,
             }),
         );
 
@@ -247,6 +283,7 @@ mod tests {
             Arc::new(MockTransport {
                 calls: calls.clone(),
                 fail_connect: false,
+                fail_heartbeat: false,
             }),
         );
 
@@ -279,6 +316,7 @@ mod tests {
             Arc::new(MockTransport {
                 calls: Arc::new(Mutex::new(Vec::new())),
                 fail_connect: true,
+                fail_heartbeat: false,
             }),
         );
 
@@ -299,6 +337,7 @@ mod tests {
             Arc::new(MockTransport {
                 calls: Arc::new(Mutex::new(Vec::new())),
                 fail_connect: false,
+                fail_heartbeat: false,
             }),
         );
 
@@ -319,6 +358,7 @@ mod tests {
             Arc::new(MockTransport {
                 calls: Arc::new(Mutex::new(Vec::new())),
                 fail_connect: false,
+                fail_heartbeat: false,
             }),
         );
 
@@ -329,5 +369,126 @@ mod tests {
 
         coordinator.disconnect(&session.session_id).await.unwrap();
         assert!(coordinator.current_session().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn connect_revalidates_degraded_session_with_heartbeat() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let coordinator = IntegrationSessionCoordinator::new(
+            "device-1",
+            Arc::new(MockTransport {
+                calls: calls.clone(),
+                fail_connect: false,
+                fail_heartbeat: false,
+            }),
+        );
+
+        let session = coordinator
+            .connect(vec![IntegrationCapabilityScope::InsightWrite])
+            .await
+            .unwrap();
+        coordinator.state.write().await.as_mut().unwrap().status =
+            IntegrationSessionStatus::Degraded;
+
+        let reused = coordinator
+            .connect(vec![IntegrationCapabilityScope::InsightWrite])
+            .await
+            .unwrap();
+
+        assert_eq!(reused.session_id, session.session_id);
+        let recorded = calls.lock().await;
+        assert_eq!(
+            recorded
+                .iter()
+                .filter(|entry| entry.starts_with("connect:"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            recorded
+                .iter()
+                .filter(|entry| entry.starts_with("heartbeat:"))
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_reconnects_when_degraded_heartbeat_fails() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let coordinator = IntegrationSessionCoordinator::new(
+            "device-1",
+            Arc::new(MockTransport {
+                calls: calls.clone(),
+                fail_connect: false,
+                fail_heartbeat: true,
+            }),
+        );
+
+        coordinator
+            .connect(vec![IntegrationCapabilityScope::InsightWrite])
+            .await
+            .unwrap();
+        coordinator.state.write().await.as_mut().unwrap().status =
+            IntegrationSessionStatus::Degraded;
+
+        let session = coordinator
+            .connect(vec![IntegrationCapabilityScope::InsightWrite])
+            .await
+            .unwrap();
+
+        assert_eq!(session.status, IntegrationSessionStatus::Connected);
+        let recorded = calls.lock().await;
+        assert_eq!(
+            recorded
+                .iter()
+                .filter(|entry| entry.starts_with("connect:"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            recorded
+                .iter()
+                .filter(|entry| entry.starts_with("heartbeat:"))
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn store_ack_cursor_updates_session_state() {
+        let coordinator = IntegrationSessionCoordinator::new(
+            "device-1",
+            Arc::new(MockTransport {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                fail_connect: false,
+                fail_heartbeat: false,
+            }),
+        );
+
+        let session = coordinator
+            .connect(vec![IntegrationCapabilityScope::SessionManage])
+            .await
+            .unwrap();
+
+        let updated = coordinator
+            .store_ack_cursor(
+                &session.session_id,
+                IntegrationAckCursor {
+                    stream_id: "insights".to_string(),
+                    cursor: "cursor-1".to_string(),
+                    acknowledged_at: Utc::now(),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            updated
+                .ack_cursor
+                .as_ref()
+                .map(|cursor| cursor.cursor.as_str()),
+            Some("cursor-1")
+        );
     }
 }

@@ -24,6 +24,13 @@ pub trait IntegrationSessionPort: Send + Sync {
     /// Send a liveness heartbeat and return the refreshed session state.
     async fn heartbeat(&self, session_id: &str) -> Result<IntegrationSessionState, CoreError>;
 
+    /// Persist the latest acknowledged cursor for the active session.
+    async fn store_ack_cursor(
+        &self,
+        session_id: &str,
+        cursor: IntegrationAckCursor,
+    ) -> Result<IntegrationSessionState, CoreError>;
+
     /// Disconnect an established integration session.
     async fn disconnect(&self, session_id: &str) -> Result<(), CoreError>;
 }

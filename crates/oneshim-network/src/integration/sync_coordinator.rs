@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -34,8 +35,45 @@ impl InsightSyncCoordinator {
         }
     }
 
-    fn queue_ids(items: &[QueuedInsightPacket]) -> Vec<String> {
-        items.iter().map(|item| item.queue_id.clone()).collect()
+    fn validate_scopes(
+        session: &oneshim_core::models::integration::IntegrationSessionState,
+        items: &[QueuedInsightPacket],
+    ) -> Result<(), CoreError> {
+        let missing_scope = items.iter().find_map(|item| {
+            (!session
+                .granted_scopes
+                .contains(&item.envelope.capability_scope))
+            .then_some(item.envelope.capability_scope.clone())
+        });
+
+        if let Some(scope) = missing_scope {
+            return Err(CoreError::Auth(format!(
+                "integration session is missing required scope: {scope:?}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    fn acknowledged_queue_ids(
+        sent_items: &[QueuedInsightPacket],
+        response: &super::transport::IntegrationSyncTransportResponse,
+    ) -> Result<Vec<String>, CoreError> {
+        let sent_ids: BTreeSet<&str> = sent_items
+            .iter()
+            .map(|item| item.queue_id.as_str())
+            .collect();
+        if let Some(unknown_id) = response
+            .acknowledged_queue_ids
+            .iter()
+            .find(|queue_id| !sent_ids.contains(queue_id.as_str()))
+        {
+            return Err(CoreError::Internal(format!(
+                "integration sync transport acknowledged unknown queue id: {unknown_id}"
+            )));
+        }
+
+        Ok(response.acknowledged_queue_ids.clone())
     }
 }
 
@@ -69,18 +107,26 @@ impl InsightSyncPort for InsightSyncCoordinator {
         if items.is_empty() {
             return Ok(0);
         }
+        Self::validate_scopes(&session, &items)?;
 
         let response = self
             .transport
             .send_insights(&session.session_id, items.clone())
             .await?;
+        let acknowledged_queue_ids = Self::acknowledged_queue_ids(&items, &response)?;
+        let accepted_count = response.accepted_count();
 
-        self.outbox.delete(&Self::queue_ids(&items)).await?;
+        if !acknowledged_queue_ids.is_empty() {
+            self.outbox.delete(&acknowledged_queue_ids).await?;
+        }
         if let Some(cursor) = response.ack_cursor {
-            self.outbox.store_ack_cursor(cursor).await?;
+            self.outbox.store_ack_cursor(cursor.clone()).await?;
+            self.session_port
+                .store_ack_cursor(&session.session_id, cursor)
+                .await?;
         }
 
-        Ok(response.accepted_count)
+        Ok(accepted_count)
     }
 
     async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError> {
@@ -107,7 +153,7 @@ mod tests {
     use crate::integration::transport::IntegrationSyncTransportResponse;
 
     struct MockSessionPort {
-        state: Option<IntegrationSessionState>,
+        state: Arc<Mutex<Option<IntegrationSessionState>>>,
     }
 
     #[async_trait]
@@ -117,18 +163,41 @@ mod tests {
             _requested_scopes: Vec<IntegrationCapabilityScope>,
         ) -> Result<IntegrationSessionState, CoreError> {
             self.state
+                .lock()
+                .await
                 .clone()
                 .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))
         }
 
         async fn current_session(&self) -> Result<Option<IntegrationSessionState>, CoreError> {
-            Ok(self.state.clone())
+            Ok(self.state.lock().await.clone())
         }
 
         async fn heartbeat(&self, _session_id: &str) -> Result<IntegrationSessionState, CoreError> {
             self.state
+                .lock()
+                .await
                 .clone()
                 .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))
+        }
+
+        async fn store_ack_cursor(
+            &self,
+            session_id: &str,
+            cursor: IntegrationAckCursor,
+        ) -> Result<IntegrationSessionState, CoreError> {
+            let mut guard = self.state.lock().await;
+            let state = guard
+                .as_mut()
+                .ok_or_else(|| CoreError::ServiceUnavailable("no session".to_string()))?;
+            if state.session_id != session_id {
+                return Err(CoreError::NotFound {
+                    resource_type: "integration_session".to_string(),
+                    id: session_id.to_string(),
+                });
+            }
+            state.ack_cursor = Some(cursor);
+            Ok(state.clone())
         }
 
         async fn disconnect(&self, _session_id: &str) -> Result<(), CoreError> {
@@ -186,7 +255,7 @@ mod tests {
     }
 
     struct MockSyncTransport {
-        accepted_count: usize,
+        acknowledged_queue_ids: Vec<String>,
         cursor: Option<IntegrationAckCursor>,
     }
 
@@ -198,7 +267,12 @@ mod tests {
             items: Vec<QueuedInsightPacket>,
         ) -> Result<IntegrationSyncTransportResponse, CoreError> {
             Ok(IntegrationSyncTransportResponse {
-                accepted_count: self.accepted_count.min(items.len()),
+                acknowledged_queue_ids: self
+                    .acknowledged_queue_ids
+                    .iter()
+                    .filter(|queue_id| items.iter().any(|item| &item.queue_id == *queue_id))
+                    .cloned()
+                    .collect(),
                 ack_cursor: self.cursor.clone(),
             })
         }
@@ -258,11 +332,11 @@ mod tests {
         });
         let coordinator = InsightSyncCoordinator::new(
             Arc::new(MockSessionPort {
-                state: Some(connected_session()),
+                state: Arc::new(Mutex::new(Some(connected_session()))),
             }),
             outbox.clone(),
             Arc::new(MockSyncTransport {
-                accepted_count: 1,
+                acknowledged_queue_ids: vec!["queue-1".to_string()],
                 cursor: None,
             }),
             10,
@@ -287,11 +361,11 @@ mod tests {
         });
         let coordinator = InsightSyncCoordinator::new(
             Arc::new(MockSessionPort {
-                state: Some(connected_session()),
+                state: Arc::new(Mutex::new(Some(connected_session()))),
             }),
             outbox.clone(),
             Arc::new(MockSyncTransport {
-                accepted_count: 2,
+                acknowledged_queue_ids: vec!["queue-1".to_string(), "queue-2".to_string()],
                 cursor: Some(IntegrationAckCursor {
                     stream_id: "insights".to_string(),
                     cursor: "cursor-2".to_string(),
@@ -313,13 +387,15 @@ mod tests {
     #[tokio::test]
     async fn flush_requires_connected_session() {
         let coordinator = InsightSyncCoordinator::new(
-            Arc::new(MockSessionPort { state: None }),
+            Arc::new(MockSessionPort {
+                state: Arc::new(Mutex::new(None)),
+            }),
             Arc::new(MockOutbox {
                 items: Arc::new(Mutex::new(VecDeque::from(vec![queued_item("1")]))),
                 last_cursor: Arc::new(Mutex::new(None)),
             }),
             Arc::new(MockSyncTransport {
-                accepted_count: 1,
+                acknowledged_queue_ids: vec!["queue-1".to_string()],
                 cursor: None,
             }),
             10,
@@ -327,5 +403,65 @@ mod tests {
 
         let err = coordinator.flush().await.expect_err("flush should fail");
         assert!(matches!(err, CoreError::ServiceUnavailable(_)));
+    }
+
+    #[tokio::test]
+    async fn flush_only_clears_acknowledged_items() {
+        let outbox = Arc::new(MockOutbox {
+            items: Arc::new(Mutex::new(VecDeque::from(vec![
+                queued_item("1"),
+                queued_item("2"),
+            ]))),
+            last_cursor: Arc::new(Mutex::new(None)),
+        });
+        let coordinator = InsightSyncCoordinator::new(
+            Arc::new(MockSessionPort {
+                state: Arc::new(Mutex::new(Some(connected_session()))),
+            }),
+            outbox.clone(),
+            Arc::new(MockSyncTransport {
+                acknowledged_queue_ids: vec!["queue-1".to_string()],
+                cursor: None,
+            }),
+            10,
+        );
+
+        let flushed = coordinator.flush().await.unwrap();
+        assert_eq!(flushed, 1);
+        let pending = outbox.list_pending(10).await.unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].queue_id, "queue-2");
+    }
+
+    #[tokio::test]
+    async fn flush_requires_matching_session_scope() {
+        let outbox = Arc::new(MockOutbox {
+            items: Arc::new(Mutex::new(VecDeque::from(vec![queued_item("1")]))),
+            last_cursor: Arc::new(Mutex::new(None)),
+        });
+        let coordinator = InsightSyncCoordinator::new(
+            Arc::new(MockSessionPort {
+                state: Arc::new(Mutex::new(Some(IntegrationSessionState {
+                    session_id: "session-1".to_string(),
+                    device_id: "device-1".to_string(),
+                    status: IntegrationSessionStatus::Connected,
+                    connected_at: Some(Utc::now()),
+                    last_heartbeat_at: Some(Utc::now()),
+                    requested_scopes: vec![IntegrationCapabilityScope::PromptRead],
+                    granted_scopes: vec![IntegrationCapabilityScope::PromptRead],
+                    ack_cursor: None,
+                }))),
+            }),
+            outbox.clone(),
+            Arc::new(MockSyncTransport {
+                acknowledged_queue_ids: vec!["queue-1".to_string()],
+                cursor: None,
+            }),
+            10,
+        );
+
+        let err = coordinator.flush().await.expect_err("flush should fail");
+        assert!(matches!(err, CoreError::Auth(_)));
+        assert_eq!(outbox.list_pending(10).await.unwrap().len(), 1);
     }
 }

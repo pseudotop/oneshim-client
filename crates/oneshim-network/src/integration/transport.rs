@@ -32,8 +32,14 @@ pub trait IntegrationTransportClient: Send + Sync {
 
 #[derive(Debug, Clone)]
 pub struct IntegrationSyncTransportResponse {
-    pub accepted_count: usize,
+    pub acknowledged_queue_ids: Vec<String>,
     pub ack_cursor: Option<IntegrationAckCursor>,
+}
+
+impl IntegrationSyncTransportResponse {
+    pub fn accepted_count(&self) -> usize {
+        self.acknowledged_queue_ids.len()
+    }
 }
 
 #[async_trait]
