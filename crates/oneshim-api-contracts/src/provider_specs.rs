@@ -400,7 +400,7 @@ pub fn resolved_surface_spec(
         return Ok(surface);
     }
 
-    compatibility_surface_for_provider_type(provider_type)
+    default_direct_surface_for_provider_type(provider_type)
 }
 
 pub fn default_surface_id_for_access_mode(
@@ -1577,7 +1577,7 @@ fn stability_sort_key(raw: &str) -> i32 {
     }
 }
 
-fn compatibility_placement_sort_key(raw: &str) -> i32 {
+fn default_direct_surface_placement_sort_key(raw: &str) -> i32 {
     match parse_surface_placement_kind(raw).unwrap_or(SurfacePlacementKind::CustomHosted) {
         SurfacePlacementKind::ProviderHosted => 4,
         SurfacePlacementKind::CustomHosted => 3,
@@ -1715,7 +1715,7 @@ fn validate_parameter_usage(
     Ok(())
 }
 
-fn compatibility_surface_from_vendor<'a>(
+fn preferred_direct_surface_from_vendor<'a>(
     catalog: &'a ProviderSurfaceCatalog,
     vendor_id: &str,
 ) -> Option<&'a ProviderSurfaceSpec> {
@@ -1736,14 +1736,15 @@ fn compatibility_surface_from_vendor<'a>(
                     stability_sort_key(&left.stability).cmp(&stability_sort_key(&right.stability))
                 })
                 .then_with(|| {
-                    compatibility_placement_sort_key(&left.placement_kind)
-                        .cmp(&compatibility_placement_sort_key(&right.placement_kind))
+                    default_direct_surface_placement_sort_key(&left.placement_kind).cmp(
+                        &default_direct_surface_placement_sort_key(&right.placement_kind),
+                    )
                 })
                 .then_with(|| right.display_name.cmp(&left.display_name))
         })
 }
 
-fn compatibility_surface_for_provider_type(
+fn default_direct_surface_for_provider_type(
     provider_type: AiProviderType,
 ) -> Result<&'static ProviderSurfaceSpec, String> {
     let vendor_id = provider_vendor_id_or_default(provider_type);
@@ -1755,9 +1756,9 @@ fn compatibility_surface_for_provider_type(
         .ok_or_else(|| {
             format!("Provider vendor for {vendor_id} is missing from the surface catalog.")
         })?;
-    compatibility_surface_from_vendor(catalog, &vendor.vendor_id).ok_or_else(|| {
+    preferred_direct_surface_from_vendor(catalog, &vendor.vendor_id).ok_or_else(|| {
         format!(
-            "Provider type '{}' does not define a direct_http compatibility surface.",
+            "Provider type '{}' does not define a default direct_http surface.",
             vendor_id
         )
     })
@@ -1882,7 +1883,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_openai_direct_transport_without_compatibility_projection() {
+    fn resolves_openai_direct_transport_without_surface_projection() {
         let transport = transport_spec(AiProviderType::OpenAi, ProviderTransportKind::Llm)
             .expect("transport should resolve");
         assert_eq!(transport.url, "https://api.openai.com/v1/responses");

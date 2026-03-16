@@ -61,7 +61,6 @@ pub enum ProviderSource {
     Remote,
     LocalFallback,
     CliSubscription,
-    Platform,
     OAuth,
 }
 
@@ -72,7 +71,6 @@ impl ProviderSource {
             Self::Remote => "remote",
             Self::LocalFallback => "local-fallback",
             Self::CliSubscription => "cli-subscription",
-            Self::Platform => "platform",
             Self::OAuth => "oauth",
         }
     }
@@ -350,14 +348,12 @@ pub fn resolve_ai_provider_adapters(
             pii_filter_level,
             external_ocr_privacy_guard,
             secret_stores,
-            false,
         ),
         AiAccessMode::PlatformConnected => resolve_direct_surface_adapters(
             config,
             pii_filter_level,
             external_ocr_privacy_guard,
             secret_stores,
-            true,
         ),
         AiAccessMode::ProviderOAuth => {
             #[cfg(feature = "server")]
@@ -427,7 +423,6 @@ fn resolve_direct_surface_adapters(
     pii_filter_level: PiiFilterLevel,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
     secret_stores: Option<SecretStoreSet>,
-    platform_connected_labels: bool,
 ) -> Result<AiProviderAdapters, CoreError> {
     let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
         config,
@@ -440,22 +435,11 @@ fn resolve_direct_surface_adapters(
     Ok(AiProviderAdapters {
         ocr,
         llm,
-        ocr_source: relabel_platform_source(ocr_source, platform_connected_labels),
-        llm_source: relabel_platform_source(llm_source, platform_connected_labels),
+        ocr_source,
+        llm_source,
         ocr_fallback_reason,
         llm_fallback_reason,
     })
-}
-
-fn relabel_platform_source(
-    source: ProviderSource,
-    platform_connected_labels: bool,
-) -> ProviderSource {
-    if platform_connected_labels && matches!(source, ProviderSource::Remote) {
-        ProviderSource::Platform
-    } else {
-        source
-    }
 }
 
 fn configured_ocr_surface_transport(
@@ -781,7 +765,7 @@ fn resolve_llm_provider(
 /// Resolve LLM provider using OAuth-managed credentials.
 ///
 /// Uses surface metadata to resolve the provider ID and authenticated request
-/// URL. OpenAI keeps a compatibility fallback when `llm_api` is omitted.
+/// URL. OpenAI keeps a default managed surface fallback when `llm_api` is omitted.
 #[cfg(feature = "server")]
 fn resolve_llm_provider_oauth(
     config: &AiProviderConfig,
@@ -1414,7 +1398,7 @@ mod tests {
     }
 
     #[test]
-    fn platform_mode_marks_remote_as_platform_source() {
+    fn platform_mode_reuses_direct_remote_source_labels() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::PlatformConnected,
             ocr_provider: OcrProviderType::Remote,
@@ -1442,9 +1426,9 @@ mod tests {
             None,
             None,
         )
-        .expect("Failed to resolve platform mode");
-        assert_eq!(adapters.ocr_source, ProviderSource::Platform);
-        assert_eq!(adapters.llm_source, ProviderSource::Platform);
+        .expect("Failed to resolve platform-connected compatibility mode");
+        assert_eq!(adapters.ocr_source, ProviderSource::Remote);
+        assert_eq!(adapters.llm_source, ProviderSource::Remote);
         assert!(adapters.ocr_fallback_reason.is_none());
         assert!(adapters.llm_fallback_reason.is_none());
         assert!(adapters.ocr.is_external());

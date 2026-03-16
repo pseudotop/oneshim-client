@@ -100,7 +100,7 @@ async fn persist_api_key_bindings(
     secret_stores: Option<&SecretStoreSet>,
     default_backend_kind: CredentialBackendKind,
 ) -> Result<(), ApiError> {
-    let access_mode = config.ai_provider.access_mode;
+    let access_mode = normalize_ai_access_mode_for_settings(config.ai_provider.access_mode);
 
     if let Some(endpoint) = config.ai_provider.ocr_api.as_mut() {
         persist_api_key_binding(
@@ -498,7 +498,10 @@ fn config_to_settings(
             max_cpu_time_ms: config.automation.sandbox.max_cpu_time_ms,
         },
         ai_provider: AiProviderSettings {
-            access_mode: format!("{:?}", config.ai_provider.access_mode),
+            access_mode: format!(
+                "{:?}",
+                normalize_ai_access_mode_for_settings(config.ai_provider.access_mode)
+            ),
             ocr_provider: format!("{:?}", config.ai_provider.ocr_provider),
             llm_provider: format!("{:?}", config.ai_provider.llm_provider),
             external_data_policy: format!("{:?}", config.ai_provider.external_data_policy),
@@ -625,13 +628,18 @@ fn parse_ai_access_mode(value: &str) -> Result<AiAccessMode, ApiError> {
         "providersubscriptioncli" | "provider_subscription_cli" | "cli" | "subscription" => {
             Ok(AiAccessMode::ProviderSubscriptionCli)
         }
-        "platformconnected" | "platform_connected" | "platform" => {
-            Ok(AiAccessMode::PlatformConnected)
-        }
+        "platformconnected" | "platform_connected" | "platform" => Ok(AiAccessMode::ProviderApiKey),
         "provideroauth" | "provider_oauth" | "oauth" => Ok(AiAccessMode::ProviderOAuth),
         _ => Err(ApiError::BadRequest(format!(
             "Invalid ai_provider.access_mode value: {value}"
         ))),
+    }
+}
+
+fn normalize_ai_access_mode_for_settings(value: AiAccessMode) -> AiAccessMode {
+    match value {
+        AiAccessMode::PlatformConnected => AiAccessMode::ProviderApiKey,
+        other => other,
     }
 }
 
@@ -828,6 +836,7 @@ fn endpoint_to_api_settings(
     endpoint_kind: ApiEndpointKind,
     default_backend_kind: CredentialBackendKind,
 ) -> ExternalApiSettings {
+    let access_mode = normalize_ai_access_mode_for_settings(access_mode);
     let no_auth_surface = endpoint
         .surface_id
         .as_deref()
@@ -1707,6 +1716,16 @@ mod tests {
         assert!(!llm_api.has_secret);
         assert!(!llm_api.can_edit_secret);
         assert_eq!(llm_api.secret_display_hint, None);
+    }
+
+    #[test]
+    fn config_to_settings_normalizes_platform_connected_to_provider_api_key() {
+        let mut config = AppConfig::default_config();
+        config.ai_provider.access_mode = AiAccessMode::PlatformConnected;
+
+        let settings = config_to_settings(&config, CredentialBackendKind::OsSecretStore);
+
+        assert_eq!(settings.ai_provider.access_mode, "ProviderApiKey");
     }
 
     #[test]

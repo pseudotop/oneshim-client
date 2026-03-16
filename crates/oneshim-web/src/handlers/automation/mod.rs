@@ -168,7 +168,7 @@ mod tests {
         );
         assert_eq!(
             infer_runtime_source(AiAccessMode::PlatformConnected, true),
-            "platform"
+            "remote"
         );
         assert_eq!(
             infer_runtime_source(AiAccessMode::PlatformConnected, false),
