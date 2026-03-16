@@ -30,6 +30,8 @@ pub struct IntegrationCloudEvent<T> {
     pub oneshimprivacy: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oneshimpromptcategory: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oneshimqueueid: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +53,7 @@ pub struct InsightCloudEventBatchItem {
 pub fn insight_to_cloudevent(
     envelope: &IntegrationEnvelope,
     packet: &InsightPacket,
+    queue_id: Option<&str>,
 ) -> IntegrationCloudEvent<InsightPacket> {
     IntegrationCloudEvent {
         specversion: CLOUDEVENTS_SPEC_VERSION.to_string(),
@@ -79,6 +82,7 @@ pub fn insight_to_cloudevent(
         }
         .to_string()),
         oneshimpromptcategory: None,
+        oneshimqueueid: queue_id.map(str::to_string),
     }
 }
 
@@ -134,10 +138,11 @@ mod tests {
             audit_reference_id: None,
         };
 
-        let event = insight_to_cloudevent(&sample_envelope(), &packet);
+        let event = insight_to_cloudevent(&sample_envelope(), &packet, Some("queue-1"));
         assert_eq!(event.event_type, INSIGHT_EVENT_TYPE);
         assert_eq!(event.oneshimscope, "insight:write");
         assert_eq!(event.oneshimprivacy.as_deref(), Some("derived_summary"));
+        assert_eq!(event.oneshimqueueid.as_deref(), Some("queue-1"));
     }
 
     #[test]
@@ -171,6 +176,7 @@ mod tests {
             oneshimworkspaceid: None,
             oneshimprivacy: None,
             oneshimpromptcategory: Some("task".to_string()),
+            oneshimqueueid: None,
         };
 
         assert_eq!(prompt_from_cloudevent(event).unwrap().prompt_id, "prompt-1");

@@ -107,6 +107,15 @@ pub struct IntegrationSessionDisconnectPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationAckPayload {
+    pub session_id: String,
+    #[serde(default)]
+    pub acknowledged_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ack_cursor: Option<oneshim_core::models::integration::IntegrationAckCursor>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrationBootstrapResponse {
     pub schema_version: String,
     #[serde(default)]

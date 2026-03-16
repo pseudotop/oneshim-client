@@ -23,7 +23,7 @@ pub use http_transport::{
     HttpsIntegrationTransportConfig,
 };
 pub use inbox_coordinator::IntegrationInboxCoordinator;
-pub use live_channel::WebSocketIntegrationControlChannel;
+pub use live_channel::WebSocketIntegrationSessionChannel;
 pub use policy_sync::PolicyAwareInsightSyncCoordinator;
 pub use session_coordinator::{IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile};
 pub use sync_coordinator::InsightSyncCoordinator;

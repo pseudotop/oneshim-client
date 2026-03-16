@@ -80,6 +80,8 @@ Recommended extensions:
   - privacy classification for outbound insight/audit events
 - `oneshimpromptcategory`
   - prompt category for inbound proactive prompt events
+- `oneshimqueueid`
+  - client outbox queue id for delivery-level acknowledgements on live transports
 
 ## CESQL-Friendly Rules
 
@@ -134,6 +136,7 @@ Sensitive content belongs in `data` only when policy and consent rules allow the
   "oneshimnonce": "nonce-001",
   "oneshimsessionid": "session-001",
   "oneshimworkspaceid": "workspace-001",
+  "oneshimqueueid": "queue-001",
   "oneshimprivacy": "derived_summary",
   "data": {
     "packet_id": "packet-001",

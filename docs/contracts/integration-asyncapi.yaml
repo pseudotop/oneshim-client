@@ -314,6 +314,10 @@ components:
           type:
             - string
             - "null"
+        oneshimqueueid:
+          type:
+            - string
+            - "null"
         data:
           type: object
     AckCursor:

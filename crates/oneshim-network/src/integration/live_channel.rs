@@ -1,24 +1,40 @@
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
 use reqwest::header::HeaderMap;
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::{debug, warn};
 
+use oneshim_api_contracts::integration::IntegrationAckPayload;
 use oneshim_core::error::CoreError;
+use oneshim_core::models::integration::{IntegrationAckCursor, ProactivePrompt};
+
+use super::cloudevents::{IntegrationCloudEvent, PromptCloudEventBatch};
+use super::prompt_from_cloudevent;
+use super::transport::IntegrationSyncTransportResponse;
 
 type LiveWebSocketStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-#[derive(Clone)]
-pub struct WebSocketIntegrationControlChannel {
-    sender: Arc<Mutex<futures::stream::SplitSink<LiveWebSocketStream, Message>>>,
+#[derive(Default)]
+struct WebSocketIntegrationInboundState {
+    insight_acks: VecDeque<IntegrationAckPayload>,
+    prompts: VecDeque<ProactivePrompt>,
 }
 
-impl WebSocketIntegrationControlChannel {
+#[derive(Clone)]
+pub struct WebSocketIntegrationSessionChannel {
+    sender: Arc<Mutex<futures::stream::SplitSink<LiveWebSocketStream, Message>>>,
+    inbound: Arc<Mutex<WebSocketIntegrationInboundState>>,
+    notify: Arc<Notify>,
+}
+
+impl WebSocketIntegrationSessionChannel {
     pub async fn connect(url: &str, headers: HeaderMap) -> Result<Self, CoreError> {
         let mut request = url
             .into_client_request()
@@ -36,27 +52,71 @@ impl WebSocketIntegrationControlChannel {
             .map_err(|err| {
                 CoreError::Network(format!("integration websocket connect failed: {err}"))
             })?;
-        let (writer, mut reader) = stream.split();
+        let (writer, reader) = stream.split();
+        let inbound = Arc::new(Mutex::new(WebSocketIntegrationInboundState::default()));
+        let notify = Arc::new(Notify::new());
 
-        tokio::spawn(async move {
-            while let Some(message) = reader.next().await {
-                match message {
-                    Ok(Message::Close(_)) => break,
-                    Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
-                    Ok(Message::Text(_)) | Ok(Message::Binary(_)) => {}
-                    Ok(Message::Frame(_)) => {}
-                    Err(err) => {
-                        warn!("integration websocket read failed: {err}");
-                        break;
-                    }
-                }
-            }
-            debug!("integration websocket control channel reader ended");
-        });
+        tokio::spawn(Self::read_loop(reader, inbound.clone(), notify.clone()));
 
         Ok(Self {
             sender: Arc::new(Mutex::new(writer)),
+            inbound,
+            notify,
         })
+    }
+
+    async fn read_loop(
+        mut reader: futures::stream::SplitStream<LiveWebSocketStream>,
+        inbound: Arc<Mutex<WebSocketIntegrationInboundState>>,
+        notify: Arc<Notify>,
+    ) {
+        while let Some(message) = reader.next().await {
+            match message {
+                Ok(Message::Text(text)) => {
+                    let mut changed = false;
+                    if let Ok(ack) = serde_json::from_str::<IntegrationAckPayload>(&text) {
+                        inbound.lock().await.insight_acks.push_back(ack);
+                        changed = true;
+                    } else if let Ok(event) =
+                        serde_json::from_str::<IntegrationCloudEvent<ProactivePrompt>>(&text)
+                    {
+                        match prompt_from_cloudevent(event) {
+                            Ok(prompt) => {
+                                inbound.lock().await.prompts.push_back(prompt);
+                                changed = true;
+                            }
+                            Err(err) => {
+                                warn!("integration websocket prompt parse failed: {err}");
+                            }
+                        }
+                    } else if let Ok(batch) = serde_json::from_str::<PromptCloudEventBatch>(&text) {
+                        for event in batch.events {
+                            match prompt_from_cloudevent(event) {
+                                Ok(prompt) => {
+                                    inbound.lock().await.prompts.push_back(prompt);
+                                    changed = true;
+                                }
+                                Err(err) => {
+                                    warn!("integration websocket prompt parse failed: {err}");
+                                }
+                            }
+                        }
+                    }
+
+                    if changed {
+                        notify.notify_waiters();
+                    }
+                }
+                Ok(Message::Close(_)) => break,
+                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
+                Ok(Message::Binary(_)) | Ok(Message::Frame(_)) => {}
+                Err(err) => {
+                    warn!("integration websocket read failed: {err}");
+                    break;
+                }
+            }
+        }
+        debug!("integration websocket session channel reader ended");
     }
 
     pub async fn send_json<T: serde::Serialize>(&self, payload: &T) -> Result<(), CoreError> {
@@ -68,6 +128,75 @@ impl WebSocketIntegrationControlChannel {
             .send(Message::Text(text.into()))
             .await
             .map_err(|err| CoreError::Network(format!("integration websocket send failed: {err}")))
+    }
+
+    pub async fn wait_for_insight_ack(
+        &self,
+        expected_queue_ids: &[String],
+        timeout: Duration,
+    ) -> Result<IntegrationSyncTransportResponse, CoreError> {
+        let expected: BTreeSet<String> = expected_queue_ids.iter().cloned().collect();
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mut acknowledged = BTreeSet::new();
+        let mut ack_cursor: Option<IntegrationAckCursor> = None;
+
+        loop {
+            {
+                let mut inbound = self.inbound.lock().await;
+                let mut remaining = VecDeque::new();
+                while let Some(ack) = inbound.insight_acks.pop_front() {
+                    let mut ack = ack;
+                    let mut unmatched_ids = Vec::new();
+                    for queue_id in ack.acknowledged_ids {
+                        if expected.contains(&queue_id) {
+                            acknowledged.insert(queue_id);
+                        } else {
+                            unmatched_ids.push(queue_id);
+                        }
+                    }
+                    if ack.ack_cursor.is_some() {
+                        ack_cursor = ack.ack_cursor.clone();
+                    }
+                    if !unmatched_ids.is_empty() {
+                        ack.acknowledged_ids = unmatched_ids;
+                        remaining.push_back(ack);
+                    }
+                }
+                inbound.insight_acks = remaining;
+            }
+
+            if acknowledged.len() == expected.len() {
+                return Ok(IntegrationSyncTransportResponse {
+                    acknowledged_queue_ids: acknowledged.into_iter().collect(),
+                    ack_cursor,
+                });
+            }
+
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
+                return Err(CoreError::RequestTimeout {
+                    timeout_ms: timeout.as_millis() as u64,
+                });
+            }
+
+            tokio::time::timeout_at(deadline, self.notify.notified())
+                .await
+                .map_err(|_| CoreError::RequestTimeout {
+                    timeout_ms: timeout.as_millis() as u64,
+                })?;
+        }
+    }
+
+    pub async fn drain_prompts(&self, limit: usize) -> Vec<ProactivePrompt> {
+        let mut inbound = self.inbound.lock().await;
+        let mut drained = Vec::new();
+        for _ in 0..limit {
+            let Some(prompt) = inbound.prompts.pop_front() else {
+                break;
+            };
+            drained.push(prompt);
+        }
+        drained
     }
 
     pub async fn close(&self) -> Result<(), CoreError> {

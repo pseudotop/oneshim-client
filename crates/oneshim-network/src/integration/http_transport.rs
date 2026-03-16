@@ -25,7 +25,7 @@ use super::transport::{
 };
 use super::{
     insight_to_cloudevent, prompt_from_cloudevent, InsightCloudEventBatch,
-    InsightCloudEventBatchItem, WebSocketIntegrationControlChannel,
+    InsightCloudEventBatchItem, WebSocketIntegrationSessionChannel,
 };
 
 #[derive(Debug, Clone)]
@@ -50,7 +50,7 @@ struct SessionBinding {
     send_insights_url: Option<String>,
     receive_prompts_url: Option<String>,
     auth: IntegrationAuthContext,
-    live_control_channel: Option<Arc<WebSocketIntegrationControlChannel>>,
+    live_session_channel: Option<Arc<WebSocketIntegrationSessionChannel>>,
 }
 
 #[derive(Clone, Default)]
@@ -404,7 +404,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                 .build_headers(&auth, reqwest::Method::GET.as_str(), &channel_url)
                 .await?;
             Some(Arc::new(
-                WebSocketIntegrationControlChannel::connect(&channel_url, headers).await?,
+                WebSocketIntegrationSessionChannel::connect(&channel_url, headers).await?,
             ))
         } else {
             None
@@ -419,7 +419,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                     send_insights_url: session.send_insights_url.clone(),
                     receive_prompts_url: session.receive_prompts_url.clone(),
                     auth,
-                    live_control_channel,
+                    live_session_channel: live_control_channel,
                 },
             )
             .await;
@@ -443,7 +443,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                     id: session_id.to_string(),
                 })?;
 
-        if let Some(channel) = binding.live_control_channel.clone() {
+        if let Some(channel) = binding.live_session_channel.clone() {
             let heartbeat = IntegrationSessionHeartbeatPayload {
                 session_id: session_id.to_string(),
                 occurred_at: Utc::now(),
@@ -483,7 +483,7 @@ impl IntegrationTransportClient for HttpsIntegrationTransportClient {
                     id: session_id.to_string(),
                 })?;
 
-        if let Some(channel) = binding.live_control_channel.clone() {
+        if let Some(channel) = binding.live_session_channel.clone() {
             channel
                 .send_json(&IntegrationSessionDisconnectPayload {
                     session_id: session_id.to_string(),
@@ -553,6 +553,25 @@ impl IntegrationSyncTransportClient for HttpsIntegrationSyncTransportClient {
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 })?;
+        if let Some(channel) = binding.live_session_channel.clone() {
+            for item in &items {
+                channel
+                    .send_json(&insight_to_cloudevent(
+                        &item.envelope,
+                        &item.packet,
+                        Some(&item.queue_id),
+                    ))
+                    .await?;
+            }
+            let expected_queue_ids = items
+                .iter()
+                .map(|item| item.queue_id.clone())
+                .collect::<Vec<_>>();
+            return channel
+                .wait_for_insight_ack(&expected_queue_ids, self.shared.request_timeout)
+                .await;
+        }
+
         let url = binding
             .send_insights_url
             .ok_or_else(|| CoreError::Validation {
@@ -566,7 +585,11 @@ impl IntegrationSyncTransportClient for HttpsIntegrationSyncTransportClient {
                 .iter()
                 .map(|item| InsightCloudEventBatchItem {
                     queue_id: item.queue_id.clone(),
-                    event: insight_to_cloudevent(&item.envelope, &item.packet),
+                    event: insight_to_cloudevent(
+                        &item.envelope,
+                        &item.packet,
+                        Some(&item.queue_id),
+                    ),
                 })
                 .collect(),
         };
@@ -617,6 +640,13 @@ impl IntegrationInboxTransportClient for HttpsIntegrationInboxTransportClient {
                     resource_type: "integration_session".to_string(),
                     id: session_id.to_string(),
                 })?;
+        if let Some(channel) = binding.live_session_channel.clone() {
+            return Ok(IntegrationInboxTransportResponse {
+                prompts: channel.drain_prompts(limit).await,
+                ack_cursor: None,
+            });
+        }
+
         let url = binding
             .receive_prompts_url
             .ok_or_else(|| CoreError::Validation {
@@ -665,16 +695,18 @@ mod tests {
     use crate::integration::IntegrationRequestProof;
 
     use async_trait::async_trait;
-    use futures::StreamExt;
+    use futures::{SinkExt, StreamExt};
     use mockito::Matcher;
     use oneshim_core::models::integration::{
         InsightPacket, InsightSourceWindow, IntegrationEnvelope, IntegrationMessageType,
-        IntegrationOrigin, IntegrationPrivacyClassification,
+        IntegrationOrigin, IntegrationPrivacyClassification, ProactivePromptCategory,
+        ProactivePromptPriority,
     };
     use tokio::net::TcpListener;
-    use tokio::sync::Mutex;
+    use tokio::sync::{mpsc, Mutex};
     use tokio_tungstenite::accept_hdr_async;
     use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+    use tokio_tungstenite::tungstenite::Message;
 
     struct StaticAuthPort {
         context: IntegrationAuthContext,
@@ -771,15 +803,19 @@ mod tests {
         }
     }
 
-    async fn start_control_ws_server() -> (
+    async fn start_session_ws_server(
+        auto_ack_insights: bool,
+    ) -> (
         String,
         StdArc<StdMutex<Vec<String>>>,
         StdArc<StdMutex<Vec<(String, String)>>>,
+        mpsc::UnboundedSender<String>,
     ) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let messages = StdArc::new(StdMutex::new(Vec::new()));
         let headers = StdArc::new(StdMutex::new(Vec::new()));
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<String>();
         let messages_task = messages.clone();
         let headers_task = headers.clone();
 
@@ -804,14 +840,39 @@ mod tests {
                 .await
                 .unwrap();
 
-            let (_writer, mut reader) = websocket.split();
-            while let Some(message) = reader.next().await {
-                match message.unwrap() {
-                    tokio_tungstenite::tungstenite::Message::Text(text) => {
-                        messages_task.lock().unwrap().push(text.to_string());
+            let (mut writer, mut reader) = websocket.split();
+            loop {
+                tokio::select! {
+                    maybe_outbound = outbound_rx.recv() => {
+                        let Some(outbound) = maybe_outbound else {
+                            break;
+                        };
+                        writer.send(Message::Text(outbound.into())).await.unwrap();
                     }
-                    tokio_tungstenite::tungstenite::Message::Close(_) => break,
-                    _ => {}
+                    maybe_message = reader.next() => {
+                        let Some(message) = maybe_message else {
+                            break;
+                        };
+                        match message.unwrap() {
+                            Message::Text(text) => {
+                                let text = text.to_string();
+                                messages_task.lock().unwrap().push(text.clone());
+                                if auto_ack_insights {
+                                    if let Ok(event) = serde_json::from_str::<crate::integration::cloudevents::IntegrationCloudEvent<InsightPacket>>(&text) {
+                                        if let Some(queue_id) = event.oneshimqueueid {
+                                            let ack = serde_json::json!({
+                                                "session_id": event.oneshimsessionid.unwrap_or_else(|| "session-test".to_string()),
+                                                "acknowledged_ids": [queue_id],
+                                            });
+                                            writer.send(Message::Text(ack.to_string().into())).await.unwrap();
+                                        }
+                                    }
+                                }
+                            }
+                            Message::Close(_) => break,
+                            _ => {}
+                        }
+                    }
                 }
             }
         });
@@ -820,6 +881,7 @@ mod tests {
             format!("ws://{address}/integration/session-control"),
             messages,
             headers,
+            outbound_tx,
         )
     }
 
@@ -901,7 +963,8 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let bootstrap_url = format!("{}/integration/bootstrap", server.url());
         let proof_calls = Arc::new(Mutex::new(Vec::new()));
-        let (channel_url, live_messages, live_headers) = start_control_ws_server().await;
+        let (channel_url, live_messages, live_headers, _outbound_tx) =
+            start_session_ws_server(false).await;
 
         let bootstrap = server
             .mock("POST", "/integration/bootstrap")
@@ -1168,6 +1231,109 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sync_transport_uses_websocket_channel_with_queue_id_extension() {
+        let mut server = mockito::Server::new_async().await;
+        let (channel_url, live_messages, _live_headers, _outbound_tx) =
+            start_session_ws_server(true).await;
+
+        let bootstrap = server
+            .mock("POST", "/integration/bootstrap")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "schema_version": "integration.bootstrap.v1",
+                    "supported_scopes": ["insight:write", "session:manage"],
+                    "granted_scopes": ["insight:write", "session:manage"],
+                    "supported_transports": ["web_socket"],
+                    "selected_transport": "web_socket",
+                    "supported_auth_schemes": ["bearer_token"],
+                    "selected_auth_scheme": "bearer_token",
+                    "session_required": true,
+                    "session": {
+                        "session_id": "session-010-ws",
+                        "channel_url": channel_url
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let client = HttpsIntegrationTransportClient::new(
+            HttpsIntegrationTransportConfig::new(
+                format!("{}/integration/bootstrap", server.url()),
+                Duration::from_secs(5),
+            ),
+            Arc::new(StaticAuthPort {
+                context: IntegrationAuthContext {
+                    access_token: "access-token".to_string(),
+                    scheme: IntegrationAuthScheme::BearerToken,
+                    expires_at: None,
+                    resource_indicator: None,
+                },
+            }),
+            Arc::new(RecordingProofFactory {
+                returned: None,
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }),
+        )
+        .unwrap();
+
+        let session = client
+            .connect(connect_request(&server.url()))
+            .await
+            .unwrap();
+        let response = client
+            .sync_transport()
+            .send_insights(
+                &session.session_id,
+                vec![QueuedInsightPacket {
+                    queue_id: "queue-010-ws".to_string(),
+                    envelope: IntegrationEnvelope {
+                        envelope_id: "env-010-ws".to_string(),
+                        schema_version: "integration.envelope.v1".to_string(),
+                        message_type: IntegrationMessageType::InsightPacket,
+                        timestamp: Utc::now(),
+                        nonce: "nonce-010-ws".to_string(),
+                        origin: IntegrationOrigin {
+                            device_id: "device-001".to_string(),
+                            workspace_id: None,
+                            session_id: Some("session-010-ws".to_string()),
+                            source: "desktop-client".to_string(),
+                        },
+                        capability_scope: IntegrationCapabilityScope::InsightWrite,
+                    },
+                    packet: InsightPacket {
+                        packet_id: "packet-010-ws".to_string(),
+                        summary: "summary".to_string(),
+                        derived_tags: vec!["focus".to_string()],
+                        source_window: InsightSourceWindow {
+                            started_at: Utc::now(),
+                            ended_at: Utc::now(),
+                        },
+                        privacy_classification: IntegrationPrivacyClassification::DerivedSummary,
+                        audit_reference_id: None,
+                    },
+                    queued_at: Utc::now(),
+                }],
+            )
+            .await
+            .unwrap();
+
+        bootstrap.assert_async().await;
+        assert_eq!(
+            response.acknowledged_queue_ids,
+            vec!["queue-010-ws".to_string()]
+        );
+
+        let live_messages = live_messages.lock().unwrap().clone();
+        let event: crate::integration::cloudevents::IntegrationCloudEvent<InsightPacket> =
+            serde_json::from_str(&live_messages[0]).unwrap();
+        assert_eq!(event.oneshimqueueid.as_deref(), Some("queue-010-ws"));
+    }
+
+    #[tokio::test]
     async fn inbox_transport_parses_prompt_cloudevents() {
         let mut server = mockito::Server::new_async().await;
         let prompts_url = format!("{}/integration/sessions/session-011/prompts", server.url());
@@ -1304,5 +1470,146 @@ mod tests {
                 .map(|cursor| cursor.cursor.as_str()),
             Some("cursor-1")
         );
+    }
+
+    #[tokio::test]
+    async fn inbox_transport_drains_websocket_prompt_events() {
+        let mut server = mockito::Server::new_async().await;
+        let (channel_url, _live_messages, _live_headers, outbound_tx) =
+            start_session_ws_server(false).await;
+
+        let bootstrap = server
+            .mock("POST", "/integration/bootstrap")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "schema_version": "integration.bootstrap.v1",
+                    "supported_scopes": ["prompt:read", "session:manage"],
+                    "granted_scopes": ["prompt:read", "session:manage"],
+                    "supported_transports": ["web_socket"],
+                    "selected_transport": "web_socket",
+                    "supported_auth_schemes": ["bearer_token"],
+                    "selected_auth_scheme": "bearer_token",
+                    "session_required": true,
+                    "session": {
+                        "session_id": "session-011-ws",
+                        "channel_url": channel_url
+                    }
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+
+        let client = HttpsIntegrationTransportClient::new(
+            HttpsIntegrationTransportConfig::new(
+                format!("{}/integration/bootstrap", server.url()),
+                Duration::from_secs(5),
+            ),
+            Arc::new(StaticAuthPort {
+                context: IntegrationAuthContext {
+                    access_token: "access-token".to_string(),
+                    scheme: IntegrationAuthScheme::BearerToken,
+                    expires_at: None,
+                    resource_indicator: None,
+                },
+            }),
+            Arc::new(RecordingProofFactory {
+                returned: None,
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }),
+        )
+        .unwrap();
+
+        let session = client
+            .connect(IntegrationTransportConnectRequest {
+                device_id: "device-001".to_string(),
+                client_version: "0.3.8".to_string(),
+                device_label: Some("macbook".to_string()),
+                requested_scopes: vec![
+                    IntegrationCapabilityScope::PromptRead,
+                    IntegrationCapabilityScope::SessionManage,
+                ],
+                preferred_transports: vec![IntegrationTransportKind::WebSocket],
+                supported_auth_schemes: vec![IntegrationAuthScheme::BearerToken],
+                resource_indicator: Some(server.url()),
+            })
+            .await
+            .unwrap();
+
+        outbound_tx
+            .send(
+                serde_json::json!({
+                    "events": [{
+                        "specversion": "1.0",
+                        "id": "prompt-env-ws-1",
+                        "source": "oneshim://devices/device-001",
+                        "type": "io.oneshim.integration.prompt.v1",
+                        "subject": "prompt-011-ws",
+                        "time": Utc::now(),
+                        "datacontenttype": "application/json",
+                        "data": {
+                            "prompt_id": "prompt-011-ws",
+                            "category": "task",
+                            "title": "title",
+                            "body": "body",
+                            "priority": "medium",
+                            "actions": [],
+                            "provenance": {
+                                "source_system": "integration"
+                            }
+                        },
+                        "oneshimscope": "prompt:read",
+                        "oneshimnonce": "nonce-011-ws",
+                        "oneshimsessionid": "session-011-ws",
+                        "oneshimpromptcategory": "task"
+                    }, {
+                        "specversion": "1.0",
+                        "id": "prompt-env-ws-2",
+                        "source": "oneshim://devices/device-001",
+                        "type": "io.oneshim.integration.prompt.v1",
+                        "subject": "prompt-012-ws",
+                        "time": Utc::now(),
+                        "datacontenttype": "application/json",
+                        "data": {
+                            "prompt_id": "prompt-012-ws",
+                            "category": "reminder",
+                            "title": "title-2",
+                            "body": "body-2",
+                            "priority": "low",
+                            "actions": [],
+                            "provenance": {
+                                "source_system": "integration"
+                            }
+                        }
+                    ,
+                        "oneshimscope": "prompt:read",
+                        "oneshimnonce": "nonce-012-ws",
+                        "oneshimsessionid": "session-011-ws",
+                        "oneshimpromptcategory": "reminder"
+                    }]
+                })
+                .to_string(),
+            )
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let response = client
+            .inbox_transport()
+            .receive_prompts(&session.session_id, None, 10)
+            .await
+            .unwrap();
+
+        bootstrap.assert_async().await;
+        assert_eq!(response.prompts.len(), 2);
+        assert_eq!(response.prompts[0].prompt_id, "prompt-011-ws");
+        assert_eq!(response.prompts[0].category, ProactivePromptCategory::Task);
+        assert_eq!(
+            response.prompts[0].priority,
+            ProactivePromptPriority::Medium
+        );
+        assert_eq!(response.prompts[1].prompt_id, "prompt-012-ws");
+        assert!(response.ack_cursor.is_none());
     }
 }
