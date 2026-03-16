@@ -196,7 +196,15 @@ mod tests {
                     id: session_id.to_string(),
                 });
             }
-            state.ack_cursor = Some(cursor);
+            if let Some(existing) = state
+                .ack_cursors
+                .iter_mut()
+                .find(|existing| existing.stream_id == cursor.stream_id)
+            {
+                *existing = cursor;
+            } else {
+                state.ack_cursors.push(cursor);
+            }
             Ok(state.clone())
         }
 
@@ -320,7 +328,7 @@ mod tests {
             last_heartbeat_at: Some(Utc::now()),
             requested_scopes: vec![IntegrationCapabilityScope::InsightWrite],
             granted_scopes: vec![IntegrationCapabilityScope::InsightWrite],
-            ack_cursor: None,
+            ack_cursors: Vec::new(),
         }
     }
 
@@ -449,7 +457,7 @@ mod tests {
                     last_heartbeat_at: Some(Utc::now()),
                     requested_scopes: vec![IntegrationCapabilityScope::PromptRead],
                     granted_scopes: vec![IntegrationCapabilityScope::PromptRead],
-                    ack_cursor: None,
+                    ack_cursors: Vec::new(),
                 }))),
             }),
             outbox.clone(),

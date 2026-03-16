@@ -94,6 +94,25 @@ pub struct ProactivePrompt {
     pub provenance: PromptProvenance,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredProactivePrompt {
+    pub prompt: ProactivePrompt,
+    pub received_at: DateTime<Utc>,
+    pub status: IntegrationInboxItemStatus,
+    pub status_updated_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dismiss_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationInboxItemStatus {
+    Pending,
+    Acknowledged,
+    Dismissed,
+    Expired,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProactivePromptCategory {
@@ -152,8 +171,8 @@ pub struct IntegrationSessionState {
     pub requested_scopes: Vec<IntegrationCapabilityScope>,
     #[serde(default)]
     pub granted_scopes: Vec<IntegrationCapabilityScope>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ack_cursor: Option<IntegrationAckCursor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ack_cursors: Vec<IntegrationAckCursor>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -235,6 +254,35 @@ mod tests {
     }
 
     #[test]
+    fn stored_prompt_roundtrip() {
+        let stored = StoredProactivePrompt {
+            prompt: ProactivePrompt {
+                prompt_id: "prompt-001".to_string(),
+                category: ProactivePromptCategory::Insight,
+                title: "Review focus".to_string(),
+                body: "A server-side insight is ready.".to_string(),
+                priority: ProactivePromptPriority::Medium,
+                actions: Vec::new(),
+                expires_at: None,
+                provenance: PromptProvenance {
+                    source_system: "team-server".to_string(),
+                    source_actor: None,
+                    correlation_id: Some("corr-002".to_string()),
+                },
+            },
+            received_at: Utc::now(),
+            status: IntegrationInboxItemStatus::Pending,
+            status_updated_at: Utc::now(),
+            dismiss_reason: None,
+        };
+
+        let json = serde_json::to_string(&stored).unwrap();
+        let parsed: StoredProactivePrompt = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.prompt.prompt_id, "prompt-001");
+        assert_eq!(parsed.status, IntegrationInboxItemStatus::Pending);
+    }
+
+    #[test]
     fn session_state_roundtrip() {
         let state = IntegrationSessionState {
             session_id: "session-001".to_string(),
@@ -244,18 +292,18 @@ mod tests {
             last_heartbeat_at: Some(Utc::now()),
             requested_scopes: vec![IntegrationCapabilityScope::SessionManage],
             granted_scopes: vec![IntegrationCapabilityScope::SessionManage],
-            ack_cursor: Some(IntegrationAckCursor {
+            ack_cursors: vec![IntegrationAckCursor {
                 stream_id: "inbox".to_string(),
                 cursor: "42".to_string(),
                 acknowledged_at: Utc::now(),
-            }),
+            }],
         };
 
         let json = serde_json::to_string(&state).unwrap();
         let parsed: IntegrationSessionState = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.status, IntegrationSessionStatus::Connected);
         assert_eq!(parsed.granted_scopes.len(), 1);
-        assert_eq!(parsed.ack_cursor.unwrap().cursor, "42");
+        assert_eq!(parsed.ack_cursors[0].cursor, "42");
     }
 
     #[test]

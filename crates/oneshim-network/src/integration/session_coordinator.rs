@@ -48,7 +48,7 @@ impl IntegrationSessionCoordinator {
             last_heartbeat_at: None,
             requested_scopes,
             granted_scopes: Vec::new(),
-            ack_cursor: None,
+            ack_cursors: Vec::new(),
         });
     }
 }
@@ -83,7 +83,7 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
                 last_heartbeat_at: None,
                 requested_scopes: requested_scopes.clone(),
                 granted_scopes: Vec::new(),
-                ack_cursor: None,
+                ack_cursors: Vec::new(),
             });
         }
 
@@ -110,7 +110,7 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
             last_heartbeat_at: Some(response.connected_at),
             requested_scopes,
             granted_scopes: response.granted_scopes,
-            ack_cursor: None,
+            ack_cursors: Vec::new(),
         };
 
         let mut guard = self.state.write().await;
@@ -172,7 +172,15 @@ impl IntegrationSessionPort for IntegrationSessionCoordinator {
             });
         }
 
-        state.ack_cursor = Some(cursor);
+        if let Some(existing) = state
+            .ack_cursors
+            .iter_mut()
+            .find(|existing| existing.stream_id == cursor.stream_id)
+        {
+            *existing = cursor;
+        } else {
+            state.ack_cursors.push(cursor);
+        }
         Ok(state.clone())
     }
 
@@ -483,12 +491,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            updated
-                .ack_cursor
-                .as_ref()
-                .map(|cursor| cursor.cursor.as_str()),
-            Some("cursor-1")
-        );
+        assert_eq!(updated.ack_cursors.len(), 1);
+        assert_eq!(updated.ack_cursors[0].cursor, "cursor-1");
     }
 }

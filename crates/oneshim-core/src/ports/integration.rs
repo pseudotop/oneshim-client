@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::CoreError;
 use crate::models::integration::{
     InsightPacket, IntegrationAckCursor, IntegrationCapabilityScope, IntegrationEnvelope,
-    IntegrationSessionState, ProactivePrompt, QueuedInsightPacket,
+    IntegrationInboxItemStatus, IntegrationSessionState, QueuedInsightPacket,
+    StoredProactivePrompt,
 };
 
 #[async_trait]
@@ -75,14 +76,46 @@ pub trait IntegrationOutboxPort: Send + Sync {
 
 #[async_trait]
 pub trait IntegrationInboxPort: Send + Sync {
+    /// Pull new inbound prompts/tasks from the integration backend.
+    async fn refresh(&self) -> Result<usize, CoreError>;
+
     /// List pending inbound proactive prompts/tasks.
-    async fn list_pending(&self) -> Result<Vec<ProactivePrompt>, CoreError>;
+    async fn list_pending(&self) -> Result<Vec<StoredProactivePrompt>, CoreError>;
 
     /// Acknowledge receipt of a prompt/task.
     async fn acknowledge(&self, prompt_id: &str) -> Result<(), CoreError>;
 
     /// Dismiss a prompt/task with an optional local reason.
     async fn dismiss(&self, prompt_id: &str, reason: Option<String>) -> Result<(), CoreError>;
+
+    /// Read the latest acknowledged inbox cursor returned by the remote side.
+    async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError>;
+}
+
+#[async_trait]
+pub trait IntegrationInboxStorePort: Send + Sync {
+    /// Upsert inbound prompts/tasks received from the remote side.
+    async fn upsert_prompts(&self, prompts: Vec<StoredProactivePrompt>) -> Result<(), CoreError>;
+
+    /// List locally pending prompts/tasks.
+    async fn list_pending(&self) -> Result<Vec<StoredProactivePrompt>, CoreError>;
+
+    /// Update the lifecycle state of a stored prompt/task.
+    async fn update_status(
+        &self,
+        prompt_id: &str,
+        status: IntegrationInboxItemStatus,
+        reason: Option<String>,
+    ) -> Result<(), CoreError>;
+
+    /// Remove or mark expired prompts whose expiration time has passed.
+    async fn expire_stale(&self) -> Result<usize, CoreError>;
+
+    /// Read the latest acknowledged cursor returned by the remote side.
+    async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError>;
+
+    /// Persist the latest acknowledged cursor from the remote side.
+    async fn store_ack_cursor(&self, cursor: IntegrationAckCursor) -> Result<(), CoreError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

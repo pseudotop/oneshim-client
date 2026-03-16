@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    IntegrationAckCursor, IntegrationCapabilityScope, QueuedInsightPacket,
+    IntegrationAckCursor, IntegrationCapabilityScope, ProactivePrompt, QueuedInsightPacket,
 };
 
 #[derive(Debug, Clone)]
@@ -49,4 +49,20 @@ pub trait IntegrationSyncTransportClient: Send + Sync {
         session_id: &str,
         items: Vec<QueuedInsightPacket>,
     ) -> Result<IntegrationSyncTransportResponse, CoreError>;
+}
+
+#[derive(Debug, Clone)]
+pub struct IntegrationInboxTransportResponse {
+    pub prompts: Vec<ProactivePrompt>,
+    pub ack_cursor: Option<IntegrationAckCursor>,
+}
+
+#[async_trait]
+pub trait IntegrationInboxTransportClient: Send + Sync {
+    async fn receive_prompts(
+        &self,
+        session_id: &str,
+        after_cursor: Option<IntegrationAckCursor>,
+        limit: usize,
+    ) -> Result<IntegrationInboxTransportResponse, CoreError>;
 }
