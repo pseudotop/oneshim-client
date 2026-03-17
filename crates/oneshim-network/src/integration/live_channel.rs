@@ -31,7 +31,8 @@ struct WebSocketIntegrationInboundState {
 pub struct WebSocketIntegrationSessionChannel {
     sender: Arc<Mutex<futures::stream::SplitSink<LiveWebSocketStream, Message>>>,
     inbound: Arc<Mutex<WebSocketIntegrationInboundState>>,
-    notify: Arc<Notify>,
+    ack_notify: Arc<Notify>,
+    prompt_notify: Arc<Notify>,
 }
 
 impl WebSocketIntegrationSessionChannel {
@@ -54,36 +55,45 @@ impl WebSocketIntegrationSessionChannel {
             })?;
         let (writer, reader) = stream.split();
         let inbound = Arc::new(Mutex::new(WebSocketIntegrationInboundState::default()));
-        let notify = Arc::new(Notify::new());
+        let ack_notify = Arc::new(Notify::new());
+        let prompt_notify = Arc::new(Notify::new());
 
-        tokio::spawn(Self::read_loop(reader, inbound.clone(), notify.clone()));
+        tokio::spawn(Self::read_loop(
+            reader,
+            inbound.clone(),
+            ack_notify.clone(),
+            prompt_notify.clone(),
+        ));
 
         Ok(Self {
             sender: Arc::new(Mutex::new(writer)),
             inbound,
-            notify,
+            ack_notify,
+            prompt_notify,
         })
     }
 
     async fn read_loop(
         mut reader: futures::stream::SplitStream<LiveWebSocketStream>,
         inbound: Arc<Mutex<WebSocketIntegrationInboundState>>,
-        notify: Arc<Notify>,
+        ack_notify: Arc<Notify>,
+        prompt_notify: Arc<Notify>,
     ) {
         while let Some(message) = reader.next().await {
             match message {
                 Ok(Message::Text(text)) => {
-                    let mut changed = false;
+                    let mut ack_changed = false;
+                    let mut prompt_changed = false;
                     if let Ok(ack) = serde_json::from_str::<IntegrationAckPayload>(&text) {
                         inbound.lock().await.outbound_acks.push_back(ack);
-                        changed = true;
+                        ack_changed = true;
                     } else if let Ok(event) =
                         serde_json::from_str::<IntegrationCloudEvent<ProactivePrompt>>(&text)
                     {
                         match prompt_from_cloudevent(event) {
                             Ok(prompt) => {
                                 inbound.lock().await.prompts.push_back(prompt);
-                                changed = true;
+                                prompt_changed = true;
                             }
                             Err(err) => {
                                 warn!("integration websocket prompt parse failed: {err}");
@@ -94,7 +104,7 @@ impl WebSocketIntegrationSessionChannel {
                             match prompt_from_cloudevent(event) {
                                 Ok(prompt) => {
                                     inbound.lock().await.prompts.push_back(prompt);
-                                    changed = true;
+                                    prompt_changed = true;
                                 }
                                 Err(err) => {
                                     warn!("integration websocket prompt parse failed: {err}");
@@ -103,8 +113,11 @@ impl WebSocketIntegrationSessionChannel {
                         }
                     }
 
-                    if changed {
-                        notify.notify_waiters();
+                    if ack_changed {
+                        ack_notify.notify_waiters();
+                    }
+                    if prompt_changed {
+                        prompt_notify.notify_waiters();
                     }
                 }
                 Ok(Message::Close(_)) => break,
@@ -179,11 +192,22 @@ impl WebSocketIntegrationSessionChannel {
                 });
             }
 
-            tokio::time::timeout_at(deadline, self.notify.notified())
+            tokio::time::timeout_at(deadline, self.ack_notify.notified())
                 .await
                 .map_err(|_| CoreError::RequestTimeout {
                     timeout_ms: timeout.as_millis() as u64,
                 })?;
+        }
+    }
+
+    pub async fn wait_for_prompt_signal(&self, timeout: Duration) -> Result<bool, CoreError> {
+        if !self.inbound.lock().await.prompts.is_empty() {
+            return Ok(true);
+        }
+
+        match tokio::time::timeout(timeout, self.prompt_notify.notified()).await {
+            Ok(_) => Ok(!self.inbound.lock().await.prompts.is_empty()),
+            Err(_) => Ok(false),
         }
     }
 

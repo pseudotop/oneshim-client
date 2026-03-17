@@ -182,6 +182,39 @@ pub struct AiProviderSettings {
     pub fallback_to_local: bool,
     pub ocr_api: Option<ExternalApiSettings>,
     pub llm_api: Option<ExternalApiSettings>,
+    #[serde(default)]
+    pub active_profile_id: Option<String>,
+    #[serde(default)]
+    pub saved_profiles: Vec<SavedAiProviderProfile>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AiProviderProfileConfig {
+    pub access_mode: String,
+    pub ocr_provider: String,
+    pub llm_provider: String,
+    pub external_data_policy: String,
+    #[serde(default)]
+    pub allow_unredacted_external_ocr: bool,
+    #[serde(default)]
+    pub ocr_validation: OcrValidationSettings,
+    #[serde(default)]
+    pub scene_action_override: SceneActionOverrideSettings,
+    #[serde(default)]
+    pub scene_intelligence: SceneIntelligenceSettings,
+    pub fallback_to_local: bool,
+    pub ocr_api: Option<ExternalApiSettings>,
+    pub llm_api: Option<ExternalApiSettings>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedAiProviderProfile {
+    pub profile_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub ai_provider: AiProviderProfileConfig,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -250,6 +283,37 @@ impl Default for AiProviderSettings {
             fallback_to_local: true,
             ocr_api: None,
             llm_api: None,
+            active_profile_id: None,
+            saved_profiles: Vec::new(),
+        }
+    }
+}
+
+impl Default for AiProviderProfileConfig {
+    fn default() -> Self {
+        Self {
+            access_mode: "ProviderApiKey".to_string(),
+            ocr_provider: "Local".to_string(),
+            llm_provider: "Local".to_string(),
+            external_data_policy: "PiiFilterStrict".to_string(),
+            allow_unredacted_external_ocr: false,
+            ocr_validation: OcrValidationSettings::default(),
+            scene_action_override: SceneActionOverrideSettings::default(),
+            scene_intelligence: SceneIntelligenceSettings::default(),
+            fallback_to_local: true,
+            ocr_api: None,
+            llm_api: None,
+        }
+    }
+}
+
+impl Default for SavedAiProviderProfile {
+    fn default() -> Self {
+        Self {
+            profile_id: "ai-profile".to_string(),
+            name: "AI Profile".to_string(),
+            ai_provider: AiProviderProfileConfig::default(),
+            updated_at: None,
         }
     }
 }

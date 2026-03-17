@@ -8,99 +8,126 @@ use oneshim_api_contracts::integration::{
     IntegrationInboxRefreshResponse, IntegrationInboxResponse, IntegrationStatus,
 };
 
-use crate::{error::ApiError, services::integration_service, AppState};
+use crate::{
+    error::ApiError,
+    services::{
+        integration_service::{
+            IntegrationAuditQueryService, IntegrationAuthCommandService,
+            IntegrationInboxCommandService, IntegrationStatusQueryService,
+        },
+        web_contexts::IntegrationWebContext,
+    },
+};
 
-pub async fn get_status(State(state): State<AppState>) -> Json<IntegrationStatus> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
-    Json(context.status_queries().build_status().await)
+pub async fn get_status(State(context): State<IntegrationWebContext>) -> Json<IntegrationStatus> {
+    Json(
+        IntegrationStatusQueryService::new(context)
+            .build_status()
+            .await,
+    )
 }
 
 pub async fn get_audit(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
 ) -> Json<oneshim_api_contracts::integration::IntegrationAuditLogResponse> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
-    Json(context.audit_queries().build_audit_log(50).await)
+    Json(
+        IntegrationAuditQueryService::new(context)
+            .build_audit_log(50)
+            .await,
+    )
 }
 
 pub async fn list_inbox(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
 ) -> Result<Json<IntegrationInboxResponse>, ApiError> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
-    Ok(Json(context.inbox_commands().list_inbox().await?))
+    Ok(Json(
+        IntegrationInboxCommandService::new(context)
+            .list_inbox()
+            .await?,
+    ))
 }
 
 pub async fn refresh_inbox(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
 ) -> Result<Json<IntegrationInboxRefreshResponse>, ApiError> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
-    Ok(Json(context.inbox_commands().refresh_inbox().await?))
+    Ok(Json(
+        IntegrationInboxCommandService::new(context)
+            .refresh_inbox()
+            .await?,
+    ))
 }
 
 pub async fn acknowledge_inbox_prompt(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
     Path(prompt_id): Path<String>,
 ) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        context
-            .inbox_commands()
+        IntegrationInboxCommandService::new(context)
             .acknowledge_inbox_prompt(&prompt_id)
             .await?,
     ))
 }
 
 pub async fn dismiss_inbox_prompt(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
     Path(prompt_id): Path<String>,
     Json(request): Json<IntegrationInboxDismissRequest>,
 ) -> Result<Json<IntegrationInboxActionResponse>, ApiError> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        context
-            .inbox_commands()
+        IntegrationInboxCommandService::new(context)
             .dismiss_inbox_prompt(&prompt_id, request)
             .await?,
     ))
 }
 
 pub async fn get_auth_status(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
 ) -> Result<Json<oneshim_core::models::integration::IntegrationAuthStatus>, ApiError> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
-    Ok(Json(context.auth_commands().get_auth_status().await?))
+    Ok(Json(
+        IntegrationAuthCommandService::new(context)
+            .get_auth_status()
+            .await?,
+    ))
 }
 
 pub async fn start_device_authorization(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        context.auth_commands().start_device_authorization().await?,
+        IntegrationAuthCommandService::new(context)
+            .start_device_authorization()
+            .await?,
     ))
 }
 
 pub async fn poll_device_authorization(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
     Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        context
-            .auth_commands()
+        IntegrationAuthCommandService::new(context)
             .poll_device_authorization(&request.flow_id)
             .await?,
     ))
 }
 
 pub async fn cancel_device_authorization(
-    State(state): State<AppState>,
+    State(context): State<IntegrationWebContext>,
     Json(request): Json<IntegrationDeviceAuthorizationFlowRequest>,
 ) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
-    let context = integration_service::IntegrationWebContext::from_state(&state);
     Ok(Json(
-        context
-            .auth_commands()
+        IntegrationAuthCommandService::new(context)
             .cancel_device_authorization(&request.flow_id)
+            .await?,
+    ))
+}
+
+pub async fn reset_auth_state(
+    State(context): State<IntegrationWebContext>,
+) -> Result<Json<IntegrationDeviceAuthorizationCommandResult>, ApiError> {
+    Ok(Json(
+        IntegrationAuthCommandService::new(context)
+            .reset_auth_state()
             .await?,
     ))
 }
@@ -112,6 +139,7 @@ mod tests {
         INTEGRATION_AUDIT_SCHEMA_VERSION, INTEGRATION_INBOX_ACTION_SCHEMA_VERSION,
         INTEGRATION_INBOX_SCHEMA_VERSION,
     };
+    use crate::AppState;
     use async_trait::async_trait;
     use oneshim_api_contracts::integration::{
         IntegrationDeviceAuthorizationFlowRequest, IntegrationOutboundRuntimeStatus,
@@ -122,13 +150,14 @@ mod tests {
         IntegrationAuthScheme, IntegrationAuthStatus, IntegrationAuthStatusKind,
         IntegrationCapabilityScope, IntegrationDeviceAuthorizationFlow,
         IntegrationEgressDisposition, IntegrationEnvelope, IntegrationInboxItemStatus,
-        IntegrationInsightAuditRecord, IntegrationPrivacyClassification, IntegrationSessionState,
+        IntegrationInsightAuditRecord, IntegrationPrivacyClassification,
+        IntegrationRuntimeLaneTelemetry, IntegrationRuntimeTelemetry, IntegrationSessionState,
         IntegrationSessionStatus, IntegrationTransportKind, ProactivePrompt,
         ProactivePromptCategory, ProactivePromptPriority, PromptProvenance, StoredProactivePrompt,
     };
     use oneshim_core::ports::integration::{
         IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
-        IntegrationOutboxPort, IntegrationSessionPort,
+        IntegrationOutboxPort, IntegrationRuntimeTelemetryPort, IntegrationSessionPort,
     };
     use oneshim_storage::sqlite::SqliteStorage;
     use std::sync::Arc;
@@ -265,6 +294,15 @@ mod tests {
             status.status = IntegrationAuthStatusKind::Unauthenticated;
             status.pending_flow = None;
             status.message = Some("device authorization cancelled".to_string());
+            Ok(())
+        }
+
+        async fn reset_auth_state(&self) -> Result<(), CoreError> {
+            let mut status = self.status.lock().await;
+            status.status = IntegrationAuthStatusKind::Unauthenticated;
+            status.authenticated = false;
+            status.pending_flow = None;
+            status.message = Some("integration auth state reset".to_string());
             Ok(())
         }
     }
@@ -428,6 +466,16 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct TestTelemetryPort(IntegrationRuntimeTelemetry);
+
+    #[async_trait]
+    impl IntegrationRuntimeTelemetryPort for TestTelemetryPort {
+        async fn snapshot(&self) -> Result<IntegrationRuntimeTelemetry, CoreError> {
+            Ok(self.0.clone())
+        }
+    }
+
     fn test_state() -> AppState {
         let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
         let (event_tx, _) = broadcast::channel(8);
@@ -480,6 +528,7 @@ mod tests {
                 inbox_ack_cursor: None,
                 auth_status: None,
                 current_session: None,
+                runtime_telemetry: None,
             }),
             integration_auth: Some(Arc::new(TestAuthPort {
                 status: Arc::new(Mutex::new(IntegrationAuthStatus {
@@ -534,13 +583,38 @@ mod tests {
                 capability_scope: IntegrationCapabilityScope::InsightWrite,
                 occurred_at: chrono::Utc::now(),
             }])) as Arc<dyn IntegrationAuditPort>),
+            integration_runtime_telemetry: Some(Arc::new(TestTelemetryPort(
+                IntegrationRuntimeTelemetry {
+                    connect: IntegrationRuntimeLaneTelemetry {
+                        consecutive_failures: 2,
+                        last_success_at: None,
+                        last_failure_at: Some(chrono::Utc::now()),
+                        backoff_until: Some(chrono::Utc::now()),
+                        last_error: Some("connect failed".to_string()),
+                    },
+                    heartbeat: IntegrationRuntimeLaneTelemetry::default(),
+                    egress: IntegrationRuntimeLaneTelemetry {
+                        consecutive_failures: 0,
+                        last_success_at: Some(chrono::Utc::now()),
+                        last_failure_at: None,
+                        backoff_until: None,
+                        last_error: None,
+                    },
+                    inbox: IntegrationRuntimeLaneTelemetry::default(),
+                },
+            ))
+                as Arc<dyn IntegrationRuntimeTelemetryPort>),
             update_control: None,
         }
     }
 
+    fn test_context() -> IntegrationWebContext {
+        IntegrationWebContext::from_state(&test_state())
+    }
+
     #[tokio::test]
     async fn get_status_merges_runtime_snapshot_and_current_session() {
-        let response = get_status(State(test_state())).await.0;
+        let response = get_status(State(test_context())).await.0;
 
         assert!(response.outbound_runtime.enabled);
         assert!(response.outbound_runtime.runtime_configured);
@@ -578,11 +652,33 @@ mod tests {
                 .map(|cursor| cursor.stream_id.as_str()),
             Some("prompts")
         );
+        assert_eq!(
+            response
+                .outbound_runtime
+                .runtime_telemetry
+                .as_ref()
+                .map(|telemetry| telemetry.connect.consecutive_failures),
+            Some(2)
+        );
+        assert_eq!(
+            response
+                .outbound_runtime
+                .runtime_telemetry
+                .as_ref()
+                .and_then(|telemetry| telemetry.connect.last_error.as_deref()),
+            Some("connect failed")
+        );
+        assert!(response
+            .outbound_runtime
+            .runtime_telemetry
+            .as_ref()
+            .and_then(|telemetry| telemetry.egress.last_success_at)
+            .is_some());
     }
 
     #[tokio::test]
     async fn get_audit_returns_recent_integration_records() {
-        let response = get_audit(State(test_state())).await.0;
+        let response = get_audit(State(test_context())).await.0;
 
         assert_eq!(response.schema_version, INTEGRATION_AUDIT_SCHEMA_VERSION);
         assert_eq!(response.records.len(), 1);
@@ -596,7 +692,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_inbox_returns_pending_prompts() {
-        let response = list_inbox(State(test_state())).await.unwrap().0;
+        let response = list_inbox(State(test_context())).await.unwrap().0;
 
         assert_eq!(response.schema_version, INTEGRATION_INBOX_SCHEMA_VERSION);
         assert_eq!(response.pending_count, 1);
@@ -608,7 +704,7 @@ mod tests {
     #[tokio::test]
     async fn acknowledge_and_dismiss_inbox_prompt_return_action_status() {
         let ack_response =
-            acknowledge_inbox_prompt(State(test_state()), Path("prompt-1".to_string()))
+            acknowledge_inbox_prompt(State(test_context()), Path("prompt-1".to_string()))
                 .await
                 .unwrap()
                 .0;
@@ -619,7 +715,7 @@ mod tests {
         assert_eq!(ack_response.status, "acknowledged");
 
         let dismiss_response = dismiss_inbox_prompt(
-            State(test_state()),
+            State(test_context()),
             Path("prompt-1".to_string()),
             Json(IntegrationInboxDismissRequest {
                 reason: Some("handled locally".to_string()),
@@ -634,14 +730,15 @@ mod tests {
     #[tokio::test]
     async fn auth_handlers_roundtrip_device_authorization_flow() {
         let state = test_state();
+        let context = IntegrationWebContext::from_state(&state);
 
-        let auth_status = get_auth_status(State(state.clone())).await.unwrap().0;
+        let auth_status = get_auth_status(State(context.clone())).await.unwrap().0;
         assert_eq!(
             auth_status.status,
             IntegrationAuthStatusKind::Unauthenticated
         );
 
-        let start_response = start_device_authorization(State(state.clone()))
+        let start_response = start_device_authorization(State(context.clone()))
             .await
             .unwrap()
             .0;
@@ -655,7 +752,7 @@ mod tests {
             .is_some_and(|flow| flow.requested_scopes.len() >= 4));
 
         let poll_response = poll_device_authorization(
-            State(state),
+            State(context),
             Json(IntegrationDeviceAuthorizationFlowRequest {
                 flow_id: "flow-1".to_string(),
             }),
@@ -667,5 +764,27 @@ mod tests {
             poll_response.auth_status.status,
             IntegrationAuthStatusKind::Ready
         );
+    }
+
+    #[tokio::test]
+    async fn reset_auth_state_clears_pending_device_authorization_flow() {
+        let state = test_state();
+        let context = IntegrationWebContext::from_state(&state);
+
+        let start_response = start_device_authorization(State(context.clone()))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(
+            start_response.auth_status.status,
+            IntegrationAuthStatusKind::AwaitingUserAuthorization
+        );
+
+        let reset_response = reset_auth_state(State(context)).await.unwrap().0;
+        assert_eq!(
+            reset_response.auth_status.status,
+            IntegrationAuthStatusKind::Unauthenticated
+        );
+        assert!(reset_response.flow.is_none());
     }
 }

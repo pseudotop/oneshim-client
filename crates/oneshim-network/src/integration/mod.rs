@@ -8,6 +8,7 @@ pub mod policy_egress;
 pub mod producer_coordinator;
 pub mod producer_loop;
 pub mod runtime_loop;
+pub mod runtime_telemetry;
 pub mod session_coordinator;
 pub mod transport;
 
@@ -33,6 +34,7 @@ pub use policy_egress::PolicyAwareIntegrationEgressCoordinator;
 pub use producer_coordinator::IntegrationInsightProducerCoordinator;
 pub use producer_loop::{IntegrationProducerRuntimeLoop, IntegrationProducerRuntimeLoopProfile};
 pub use runtime_loop::{IntegrationRuntimeLoop, IntegrationRuntimeLoopProfile};
+pub use runtime_telemetry::{IntegrationRuntimeLane, IntegrationRuntimeTelemetryHandle};
 pub use session_coordinator::{IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile};
 pub use transport::{
     IntegrationEgressTransportClient, IntegrationEgressTransportResponse,

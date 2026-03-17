@@ -6,6 +6,7 @@ use oneshim_core::models::integration::{
     IntegrationCapabilityScope, IntegrationTransportKind, ProactivePrompt,
     QueuedIntegrationEgressMessage,
 };
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct IntegrationTransportConnectRequest {
@@ -90,4 +91,13 @@ pub trait IntegrationInboxTransportClient: Send + Sync {
         after_cursor: Option<IntegrationAckCursor>,
         limit: usize,
     ) -> Result<IntegrationInboxTransportResponse, CoreError>;
+
+    async fn wait_for_remote_signal(
+        &self,
+        _session_id: &str,
+        timeout: Duration,
+    ) -> Result<bool, CoreError> {
+        tokio::time::sleep(timeout).await;
+        Ok(false)
+    }
 }

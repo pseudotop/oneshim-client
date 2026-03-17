@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
@@ -8,8 +9,10 @@ use oneshim_core::models::integration::{
     IntegrationSessionStatus, QueuedIntegrationEgressMessage,
 };
 use oneshim_core::ports::integration::{
-    IntegrationEgressPort, IntegrationOutboxPort, IntegrationSessionPort,
+    IntegrationEgressPort, IntegrationEgressSignalPort, IntegrationOutboxPort,
+    IntegrationSessionPort,
 };
+use tokio::sync::Notify;
 
 use super::transport::IntegrationEgressTransportClient;
 
@@ -18,6 +21,7 @@ pub struct IntegrationEgressCoordinator {
     outbox: Arc<dyn IntegrationOutboxPort>,
     transport: Arc<dyn IntegrationEgressTransportClient>,
     max_batch_size: usize,
+    flush_notify: Arc<Notify>,
 }
 
 impl IntegrationEgressCoordinator {
@@ -32,6 +36,7 @@ impl IntegrationEgressCoordinator {
             outbox,
             transport,
             max_batch_size: max_batch_size.max(1),
+            flush_notify: Arc::new(Notify::new()),
         }
     }
 
@@ -78,6 +83,16 @@ impl IntegrationEgressCoordinator {
 }
 
 #[async_trait]
+impl IntegrationEgressSignalPort for IntegrationEgressCoordinator {
+    async fn wait_for_pending_egress(&self, timeout: Duration) -> Result<bool, CoreError> {
+        match tokio::time::timeout(timeout, self.flush_notify.notified()).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+}
+
+#[async_trait]
 impl IntegrationEgressPort for IntegrationEgressCoordinator {
     async fn enqueue_message(
         &self,
@@ -85,6 +100,7 @@ impl IntegrationEgressPort for IntegrationEgressCoordinator {
         payload: IntegrationOutboundPayload,
     ) -> Result<(), CoreError> {
         self.outbox.enqueue_message(envelope, payload).await?;
+        self.flush_notify.notify_waiters();
         Ok(())
     }
 

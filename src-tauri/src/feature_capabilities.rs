@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::time::Duration;
 
-use crate::setup::SecretBackendCapabilities;
+use crate::runtime_state::SecretBackendCapabilities;
 use crate::subprocess_provider::{
     probe_for_surface_id, probe_known_cli_surfaces, runtime_ready_for_surface,
     runtime_supported_for_surface, ProbedSubprocessCli, SubprocessCliAuthStatus,

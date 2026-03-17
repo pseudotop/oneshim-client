@@ -2,7 +2,8 @@ use crate::stream::AiRuntimeStatus;
 use chrono::{DateTime, Utc};
 use oneshim_core::models::integration::{
     IntegrationAuthProfileKind, IntegrationAuthScheme, IntegrationAuthStatus,
-    IntegrationDeviceAuthorizationFlow, IntegrationSessionStatus, IntegrationTransportKind,
+    IntegrationDeviceAuthorizationFlow, IntegrationRuntimeTelemetry, IntegrationSessionStatus,
+    IntegrationTransportKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +42,8 @@ pub struct IntegrationOutboundRuntimeStatus {
     pub auth_status: Option<IntegrationAuthStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_session: Option<IntegrationSessionSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_telemetry: Option<IntegrationRuntimeTelemetry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -336,6 +339,7 @@ mod tests {
                     acknowledged_at: Utc::now(),
                 }),
                 auth_status: None,
+                runtime_telemetry: None,
                 current_session: Some(IntegrationSessionSummary {
                     status: oneshim_core::models::integration::IntegrationSessionStatus::Connected,
                     transport_kind: IntegrationTransportKind::WebSocket,

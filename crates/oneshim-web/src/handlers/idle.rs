@@ -3,30 +3,21 @@ use axum::Json;
 use oneshim_api_contracts::idle::IdlePeriodResponse;
 
 use crate::error::ApiError;
-use crate::AppState;
+use crate::services::idle_service::IdleQueryService;
+use crate::services::web_contexts::StorageWebContext;
 
 use super::TimeRangeQuery;
 
 /// GET /api/idle?from=&to=
 pub async fn get_idle_periods(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Query(params): Query<TimeRangeQuery>,
 ) -> Result<Json<Vec<IdlePeriodResponse>>, ApiError> {
-    let from = params.from_datetime();
-    let to = params.to_datetime();
-
-    let periods = state.storage.get_idle_periods(from, to).await?;
-
-    let response: Vec<IdlePeriodResponse> = periods
-        .into_iter()
-        .map(|p| IdlePeriodResponse {
-            start_time: p.start_time.to_rfc3339(),
-            end_time: p.end_time.map(|dt| dt.to_rfc3339()),
-            duration_secs: p.duration_secs,
-        })
-        .collect();
-
-    Ok(Json(response))
+    Ok(Json(
+        IdleQueryService::new(context)
+            .get_idle_periods(&params)
+            .await?,
+    ))
 }
 
 #[cfg(test)]

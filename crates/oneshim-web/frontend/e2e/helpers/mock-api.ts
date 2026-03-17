@@ -439,6 +439,12 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
     },
   ])
   await mockStaticJson(page, '**/api/focus/suggestions**', [])
+  await mockStaticJson(page, '**/api/ai/provider-surfaces**', {
+    version: 1,
+    updated_at: '2026-03-01T00:00:00Z',
+    vendors: [],
+    surfaces: [],
+  })
   await mockStaticJson(page, '**/api/automation/status**', fallbackAutomationStatus)
   await mockStaticJson(page, '**/api/automation/audit**', fallbackAuditLogs)
   await mockStaticJson(page, '**/api/automation/stats**', {

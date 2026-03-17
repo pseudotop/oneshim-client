@@ -4,6 +4,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 use crate::error::CoreError;
 use crate::models::integration::{
@@ -11,7 +12,8 @@ use crate::models::integration::{
     IntegrationCapabilityScope, IntegrationDeviceAuthorizationFlow, IntegrationEgressDisposition,
     IntegrationEnvelope, IntegrationInboxItemStatus, IntegrationInsightAuditRecord,
     IntegrationInsightCandidate, IntegrationOutboundPayload, IntegrationPromptReceipt,
-    IntegrationSessionState, QueuedIntegrationEgressMessage, StoredProactivePrompt,
+    IntegrationRuntimeTelemetry, IntegrationSessionState, QueuedIntegrationEgressMessage,
+    StoredProactivePrompt,
 };
 use crate::models::storage_records::LocalSuggestionRecord;
 
@@ -53,6 +55,12 @@ pub trait IntegrationSessionStorePort: Send + Sync {
 }
 
 #[async_trait]
+pub trait IntegrationRuntimeTelemetryPort: Send + Sync {
+    /// Return the latest runtime telemetry snapshot for integration background loops.
+    async fn snapshot(&self) -> Result<IntegrationRuntimeTelemetry, CoreError>;
+}
+
+#[async_trait]
 pub trait IntegrationAuthPort: Send + Sync {
     /// Resolve outbound session auth material for the requested scopes and resource.
     async fn resolve_session_auth(
@@ -79,6 +87,10 @@ pub trait IntegrationAuthPort: Send + Sync {
 
     /// Cancel a pending device authorization flow.
     async fn cancel_device_authorization(&self, flow_id: &str) -> Result<(), CoreError>;
+
+    /// Clear locally persisted auth material and pending bootstrap state so the
+    /// client can recover from a broken or stale device authorization flow.
+    async fn reset_auth_state(&self) -> Result<(), CoreError>;
 }
 
 #[async_trait]
@@ -204,6 +216,20 @@ pub trait IntegrationInboxPort: Send + Sync {
 
     /// Read the latest acknowledged inbox cursor returned by the remote side.
     async fn last_ack_cursor(&self) -> Result<Option<IntegrationAckCursor>, CoreError>;
+}
+
+#[async_trait]
+pub trait IntegrationEgressSignalPort: Send + Sync {
+    /// Wait for a local outbound egress signal, returning `true` when a signal
+    /// was observed before the timeout expires.
+    async fn wait_for_pending_egress(&self, timeout: Duration) -> Result<bool, CoreError>;
+}
+
+#[async_trait]
+pub trait IntegrationInboxSignalPort: Send + Sync {
+    /// Wait for a remote inbox signal, returning `true` when a signal was
+    /// observed before the timeout expires.
+    async fn wait_for_remote_prompt_signal(&self, timeout: Duration) -> Result<bool, CoreError>;
 }
 
 #[async_trait]

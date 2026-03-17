@@ -133,6 +133,32 @@ pub struct IntegrationAuthStatus {
     pub message: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IntegrationRuntimeLaneTelemetry {
+    #[serde(default)]
+    pub consecutive_failures: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_success_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_failure_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backoff_until: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IntegrationRuntimeTelemetry {
+    #[serde(default)]
+    pub connect: IntegrationRuntimeLaneTelemetry,
+    #[serde(default)]
+    pub heartbeat: IntegrationRuntimeLaneTelemetry,
+    #[serde(default)]
+    pub egress: IntegrationRuntimeLaneTelemetry,
+    #[serde(default)]
+    pub inbox: IntegrationRuntimeLaneTelemetry,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum IntegrationCapabilityScope {

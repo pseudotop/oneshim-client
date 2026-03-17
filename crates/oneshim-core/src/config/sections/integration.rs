@@ -49,6 +49,10 @@ pub struct IntegrationConfig {
     pub inbox_refresh_interval_secs: u64,
     #[serde(default = "default_integration_max_batch_size")]
     pub max_batch_size: usize,
+    #[serde(default = "default_integration_max_stored_prompts")]
+    pub max_stored_prompts: usize,
+    #[serde(default = "default_integration_redact_completed_prompt_bodies")]
+    pub redact_completed_prompt_bodies: bool,
     #[serde(default = "default_integration_preferred_transports")]
     pub preferred_transports: Vec<IntegrationTransportKind>,
     #[serde(default = "default_integration_supported_auth_schemes")]
@@ -73,6 +77,8 @@ impl Default for IntegrationConfig {
             produce_interval_secs: default_integration_produce_interval_secs(),
             inbox_refresh_interval_secs: default_integration_inbox_refresh_interval_secs(),
             max_batch_size: default_integration_max_batch_size(),
+            max_stored_prompts: default_integration_max_stored_prompts(),
+            redact_completed_prompt_bodies: default_integration_redact_completed_prompt_bodies(),
             preferred_transports: default_integration_preferred_transports(),
             supported_auth_schemes: default_integration_supported_auth_schemes(),
         }
@@ -107,6 +113,14 @@ pub(crate) fn default_integration_max_batch_size() -> usize {
     50
 }
 
+pub(crate) fn default_integration_max_stored_prompts() -> usize {
+    256
+}
+
+pub(crate) fn default_integration_redact_completed_prompt_bodies() -> bool {
+    true
+}
+
 fn default_integration_preferred_transports() -> Vec<IntegrationTransportKind> {
     vec![
         IntegrationTransportKind::WebSocket,
@@ -136,6 +150,8 @@ mod tests {
         assert_eq!(config.produce_interval_secs, 30);
         assert_eq!(config.inbox_refresh_interval_secs, 15);
         assert_eq!(config.max_batch_size, 50);
+        assert_eq!(config.max_stored_prompts, 256);
+        assert!(config.redact_completed_prompt_bodies);
         assert_eq!(
             config.preferred_transports,
             vec![
@@ -173,6 +189,8 @@ mod tests {
             "produce_interval_secs": 18,
             "inbox_refresh_interval_secs": 9,
             "max_batch_size": 24,
+            "max_stored_prompts": 96,
+            "redact_completed_prompt_bodies": false,
             "preferred_transports": ["web_socket", "https_long_poll"],
             "supported_auth_schemes": ["bearer_token"]
         }))
@@ -205,5 +223,7 @@ mod tests {
         assert_eq!(parsed.produce_interval_secs, 18);
         assert_eq!(parsed.inbox_refresh_interval_secs, 9);
         assert_eq!(parsed.max_batch_size, 24);
+        assert_eq!(parsed.max_stored_prompts, 96);
+        assert!(!parsed.redact_completed_prompt_bodies);
     }
 }

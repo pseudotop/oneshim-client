@@ -1,0 +1,59 @@
+use oneshim_api_contracts::events::EventResponse;
+
+use crate::error::ApiError;
+use crate::services::events_assembler::assemble_event_response;
+use crate::services::web_contexts::StorageWebContext;
+use oneshim_api_contracts::common::TimeRangeQuery;
+
+#[derive(Clone)]
+pub struct EventsQueryService {
+    ctx: StorageWebContext,
+}
+
+pub struct EventPage {
+    pub data: Vec<EventResponse>,
+    pub total: u64,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+}
+
+impl EventsQueryService {
+    pub fn new(ctx: StorageWebContext) -> Self {
+        Self { ctx }
+    }
+
+    pub async fn get_events(&self, params: &TimeRangeQuery) -> Result<EventPage, ApiError> {
+        let from = params.from_datetime();
+        let to = params.to_datetime();
+        let limit = params.limit_or_default();
+        let offset = params.offset_or_default();
+
+        let total = self
+            .ctx
+            .storage
+            .count_events_in_range(&from.to_rfc3339(), &to.to_rfc3339())
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
+
+        let fetch_limit = limit + offset;
+        let data: Vec<EventResponse> = self
+            .ctx
+            .storage
+            .get_events(from, to, fetch_limit)
+            .await?
+            .into_iter()
+            .skip(offset)
+            .map(assemble_event_response)
+            .collect();
+
+        let has_more = (offset + data.len()) < total as usize;
+
+        Ok(EventPage {
+            data,
+            total,
+            offset,
+            limit,
+            has_more,
+        })
+    }
+}

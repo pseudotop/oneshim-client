@@ -840,6 +840,18 @@ export async function handleStandaloneRequest(
     return jsonResponse(payload, 201)
   }
 
+  const presetUpdateMatch = path.match(/^\/api\/automation\/presets\/([^/]+)$/)
+  if (presetUpdateMatch && method === 'PUT') {
+    const presetId = decodeURIComponent(presetUpdateMatch[1])
+    const payload = body as WorkflowPreset | null
+    if (!payload) return jsonResponse({ error: 'Invalid preset' }, 400)
+    const existingIndex = state.presets.findIndex((preset) => preset.id === presetId)
+    if (existingIndex < 0) return jsonResponse({ error: 'Preset not found' }, 404)
+    const nextPreset = { ...payload, id: presetId }
+    state.presets = state.presets.map((preset, index) => (index === existingIndex ? nextPreset : preset))
+    return jsonResponse(nextPreset)
+  }
+
   const presetDeleteMatch = path.match(/^\/api\/automation\/presets\/([^/]+)$/)
   if (presetDeleteMatch && method === 'DELETE') {
     const presetId = decodeURIComponent(presetDeleteMatch[1])

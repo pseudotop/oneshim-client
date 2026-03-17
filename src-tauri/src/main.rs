@@ -8,12 +8,20 @@
 //! iced GUI에서 Tauri v2로 마이그레이션된 데스크톱 에이전트.
 //! 시스템 트레이, WebView 대시보드, IPC 커맨드를 통합 관리합니다.
 
+mod agent_runtime;
+mod agent_runtime_support;
+mod app_runtime_launch;
 mod auth_cli;
+mod automation_controller_builder;
 mod automation_runtime;
 mod autostart;
+mod background_runtime;
+mod bootstrap_preflight;
+mod bootstrap_runtime;
 mod bridge_cli;
 mod cli_subscription_bridge;
 mod commands;
+mod desktop_startup;
 #[cfg(any(feature = "server", test))]
 #[cfg(feature = "server")]
 mod event_bus;
@@ -28,6 +36,7 @@ mod integration_prompt_delivery;
 #[cfg(feature = "server")]
 mod integration_runtime;
 mod integrity_guard;
+mod launch_resources;
 mod lifecycle;
 #[cfg(target_os = "macos")]
 mod macos_integration;
@@ -38,14 +47,21 @@ mod platform_accessibility;
 mod platform_overlay;
 mod provider_adapters;
 mod provider_secret_backend;
+mod runtime_bridges;
+mod runtime_state;
 mod scheduler;
 mod secret_cli;
+#[cfg(feature = "server")]
+mod server_runtime_context;
 mod setup;
 mod skill_loader;
+mod storage_runtime;
 mod subprocess_provider;
 mod tray;
 mod update_coordinator;
+mod update_runtime;
 mod updater;
+mod web_server_runtime;
 mod workflow_intelligence;
 
 use tauri::{Manager, RunEvent};
@@ -122,6 +138,7 @@ fn main() {
             commands::integration_start_device_authorization,
             commands::integration_poll_device_authorization,
             commands::integration_cancel_device_authorization,
+            commands::integration_reset_auth_state,
             commands::oauth_start_flow,
             commands::oauth_flow_status,
             commands::oauth_cancel_flow,
@@ -134,7 +151,7 @@ fn main() {
     app.run(|app_handle, event| match event {
         RunEvent::Exit => {
             info!("Tauri exit: sending shutdown signal");
-            if let Some(state) = app_handle.try_state::<setup::AppState>() {
+            if let Some(state) = app_handle.try_state::<runtime_state::AppState>() {
                 if state.shutdown_tx.send(true).is_err() {
                     warn!("shutdown signal send failed (receivers already dropped)");
                 }

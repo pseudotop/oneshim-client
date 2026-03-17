@@ -1,78 +1,35 @@
 use axum::extract::{Query, State};
 use axum::Json;
-use chrono::{Duration, Utc};
-use oneshim_api_contracts::metrics::{HourlyMetricsResponse, HourlyQuery, MetricsResponse};
+#[cfg(test)]
+use oneshim_api_contracts::metrics::MetricsResponse;
+use oneshim_api_contracts::metrics::{HourlyMetricsResponse, HourlyQuery};
 
 use crate::error::ApiError;
-use crate::AppState;
+use crate::services::metrics_service::MetricsQueryService;
+use crate::services::web_contexts::StorageWebContext;
 
 use super::TimeRangeQuery;
 
 /// GET /api/metrics?from=&to=&limit=
 pub async fn get_metrics(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Query(params): Query<TimeRangeQuery>,
-) -> Result<Json<Vec<MetricsResponse>>, ApiError> {
-    let from = params.from_datetime();
-    let to = params.to_datetime();
-    let limit = params.limit_or_default();
-
-    let metrics = state.storage.get_metrics(from, to, limit).await?;
-
-    let response: Vec<MetricsResponse> = metrics
-        .into_iter()
-        .map(|m| {
-            let memory_percent = if m.memory_total > 0 {
-                (m.memory_used as f64 / m.memory_total as f64) * 100.0
-            } else {
-                0.0
-            };
-
-            MetricsResponse {
-                timestamp: m.timestamp.to_rfc3339(),
-                cpu_usage: m.cpu_usage as f64,
-                memory_used: m.memory_used,
-                memory_total: m.memory_total,
-                memory_percent,
-                disk_used: m.disk_used,
-                disk_total: m.disk_total,
-                network_upload: m.network.as_ref().map(|n| n.upload_speed).unwrap_or(0),
-                network_download: m.network.as_ref().map(|n| n.download_speed).unwrap_or(0),
-            }
-        })
-        .collect();
-
-    Ok(Json(response))
+) -> Result<Json<Vec<oneshim_api_contracts::metrics::MetricsResponse>>, ApiError> {
+    Ok(Json(
+        MetricsQueryService::new(context)
+            .get_metrics(&params)
+            .await?,
+    ))
 }
 
 /// GET /api/metrics/hourly?hours=24
 pub async fn get_hourly_metrics(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Query(params): Query<HourlyQuery>,
 ) -> Result<Json<Vec<HourlyMetricsResponse>>, ApiError> {
-    let hours = params.hours.unwrap_or(24);
-    let now = Utc::now();
-
-    let from = (now - Duration::hours(hours as i64))
-        .format("%Y-%m-%dT%H:00:00Z")
-        .to_string();
-
-    let rows = state
-        .storage
-        .list_hourly_metrics_since(&from)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-        .into_iter()
-        .map(|row| HourlyMetricsResponse {
-            hour: row.hour,
-            cpu_avg: row.cpu_avg,
-            cpu_max: row.cpu_max,
-            memory_avg: row.memory_avg,
-            memory_max: row.memory_max,
-            sample_count: row.sample_count,
-        })
-        .collect();
-
-    Ok(Json(rows))
+    Ok(Json(
+        MetricsQueryService::new(context).get_hourly_metrics(&params)?,
+    ))
 }
 
 #[cfg(test)]

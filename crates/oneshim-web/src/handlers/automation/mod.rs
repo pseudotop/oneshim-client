@@ -1,5 +1,4 @@
 mod execution;
-mod helpers;
 mod scene;
 
 pub use execution::{
@@ -11,7 +10,6 @@ pub use scene::{get_automation_scene, get_automation_scene_calibration};
 
 #[cfg(test)]
 mod tests {
-    use super::helpers::*;
     use chrono::Utc;
     use oneshim_api_contracts::automation::{
         AuditEntryDto, AuditQuery, AutomationStatsDto, AutomationStatusDto,
@@ -23,6 +21,10 @@ mod tests {
     use oneshim_core::models::ui_scene::{UiScene, UI_SCENE_SCHEMA_VERSION};
 
     use crate::error::ApiError;
+    use crate::services::automation_service::helpers::*;
+    use crate::services::automation_service::{
+        AUTOMATION_AUDIT_SCHEMA_VERSION, AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION,
+    };
 
     use oneshim_api_contracts::automation::ExecuteSceneActionRequest;
 

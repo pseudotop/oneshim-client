@@ -225,6 +225,21 @@ export interface IntegrationAuthStatus {
   message?: string | null
 }
 
+export interface IntegrationRuntimeLaneTelemetry {
+  consecutive_failures: number
+  last_success_at?: string | null
+  last_failure_at?: string | null
+  backoff_until?: string | null
+  last_error?: string | null
+}
+
+export interface IntegrationRuntimeTelemetry {
+  connect: IntegrationRuntimeLaneTelemetry
+  heartbeat: IntegrationRuntimeLaneTelemetry
+  egress: IntegrationRuntimeLaneTelemetry
+  inbox: IntegrationRuntimeLaneTelemetry
+}
+
 export interface IntegrationOutboundRuntimeStatus {
   enabled: boolean
   bootstrap_configured: boolean
@@ -241,6 +256,7 @@ export interface IntegrationOutboundRuntimeStatus {
   inbox_ack_cursor?: IntegrationAckCursorSummary | null
   auth_status?: IntegrationAuthStatus | null
   current_session?: IntegrationSessionSummary | null
+  runtime_telemetry?: IntegrationRuntimeTelemetry | null
 }
 
 export interface IntegrationStatus {
@@ -841,7 +857,7 @@ export interface SandboxSettings {
   max_cpu_time_ms: number
 }
 
-export interface AiProviderSettings {
+export interface AiProviderProfileConfig {
   access_mode: string
   ocr_provider: string
   llm_provider: string
@@ -853,6 +869,18 @@ export interface AiProviderSettings {
   fallback_to_local: boolean
   ocr_api: ExternalApiSettings | null
   llm_api: ExternalApiSettings | null
+}
+
+export interface SavedAiProviderProfile {
+  profile_id: string
+  name: string
+  ai_provider: AiProviderProfileConfig
+  updated_at?: string | null
+}
+
+export interface AiProviderSettings extends AiProviderProfileConfig {
+  active_profile_id?: string | null
+  saved_profiles?: SavedAiProviderProfile[]
 }
 
 export interface SceneActionOverrideSettings {
@@ -1024,6 +1052,7 @@ export interface WorkflowPreset {
   steps: WorkflowStep[]
   builtin: boolean
   platform: string | null
+  ai_profile_id?: string | null
 }
 
 export interface WorkflowStep {

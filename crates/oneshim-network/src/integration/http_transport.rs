@@ -18,6 +18,8 @@ use oneshim_core::ports::integration::IntegrationAuthPort;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use tokio::sync::RwLock;
 
+use crate::resilience::extract_retry_after;
+
 use super::transport::{
     IntegrationEgressTransportClient, IntegrationEgressTransportResponse,
     IntegrationInboxTransportClient, IntegrationInboxTransportResponse,
@@ -234,6 +236,7 @@ impl HttpsIntegrationHttpShared {
             return Ok(response);
         }
 
+        let retry_after = extract_retry_after(&response);
         let body = response
             .text()
             .await
@@ -242,7 +245,7 @@ impl HttpsIntegrationHttpShared {
         match status.as_u16() {
             401 | 403 => Err(CoreError::Auth(format!("{context}: {body}"))),
             429 => Err(CoreError::RateLimit {
-                retry_after_secs: 60,
+                retry_after_secs: retry_after,
             }),
             503 => Err(CoreError::ServiceUnavailable(body)),
             _ => Err(CoreError::Network(format!(
@@ -685,6 +688,23 @@ impl IntegrationInboxTransportClient for HttpsIntegrationInboxTransportClient {
             ack_cursor: payload.ack_cursor,
         })
     }
+
+    async fn wait_for_remote_signal(
+        &self,
+        session_id: &str,
+        timeout: Duration,
+    ) -> Result<bool, CoreError> {
+        let Some(binding) = self.session_bindings.get(session_id).await else {
+            return Ok(false);
+        };
+
+        let Some(channel) = binding.live_session_channel else {
+            tokio::time::sleep(timeout).await;
+            return Ok(false);
+        };
+
+        channel.wait_for_prompt_signal(timeout).await
+    }
 }
 
 #[cfg(test)]
@@ -757,6 +777,10 @@ mod tests {
         }
 
         async fn cancel_device_authorization(&self, _flow_id: &str) -> Result<(), CoreError> {
+            Ok(())
+        }
+
+        async fn reset_auth_state(&self) -> Result<(), CoreError> {
             Ok(())
         }
     }

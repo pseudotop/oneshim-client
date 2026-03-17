@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useDeferredValue, useEffect, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
 import {
+  type AiProviderProfileConfig,
   type AiProviderSettings,
   type AppSettings,
   type AutomationSettings,
@@ -10,12 +12,10 @@ import {
   type ExportDataType,
   type ExportFormat,
   type ExternalApiSettings,
-  fetchFeatureCapabilities,
   exportData,
   type FeatureCapabilitySnapshot,
+  fetchFeatureCapabilities,
   fetchProviderSurfaces,
-  probeProviderSurfaceEndpoint,
-  type ProviderEndpointProbeResult,
   fetchSecretBackendCapabilities,
   fetchSettings,
   fetchStorageStats,
@@ -25,10 +25,13 @@ import {
   type OcrValidationSettings as OcrValidationSettingsType,
   type PrivacySettings as PrivacySettingsType,
   type ProviderDiscoveredModel,
+  type ProviderEndpointProbeResult,
   type ProviderModelsResponse,
   type ProviderSurfaceSpec,
   postUpdateAction,
+  probeProviderSurfaceEndpoint,
   type SandboxSettings,
+  type SavedAiProviderProfile,
   type SceneActionOverrideSettings as SceneActionOverrideSettingsType,
   type SceneIntelligenceSettings as SceneIntelligenceSettingsType,
   type ScheduleSettings as ScheduleSettingsType,
@@ -40,10 +43,12 @@ import {
 import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../api/defaultProviderSurfaceCatalog'
 import { isStandaloneModeEnabled } from '../api/standalone'
 import { Button, Spinner, Tabs } from '../components/ui'
+import { useShellLayoutContext } from '../contexts/ShellLayoutContext'
 import {
   defaultSurfaceEndpoint,
   defaultSurfaceModel,
   deriveDefaultProviderSurfaceId,
+  type EndpointSurfaceKind,
   getCompatibleProviderSurfaces,
   providerSurfaceById,
   resolveProviderTypeForSurface,
@@ -51,9 +56,8 @@ import {
   surfaceCompatibleWithAccessMode,
   surfaceKnownModel,
   surfaceOcrRequiresStructuredOutputModel,
-  surfaceUnknownModelPolicy,
   surfaceSupportsModelSelection,
-  type EndpointSurfaceKind,
+  surfaceUnknownModelPolicy,
 } from '../features/providerSurfaces'
 import { useToast } from '../hooks/useToast'
 import { colors, typography } from '../styles/tokens'
@@ -63,14 +67,22 @@ import { AiAutomationTab, DataStorageTab, GeneralTab, MonitoringTab, PrivacyTab 
 
 type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'data'
 
+function isSettingsTabId(value: string | null): value is SettingsTabId {
+  return (
+    value === 'general' ||
+    value === 'privacy' ||
+    value === 'monitoring' ||
+    value === 'ai-automation' ||
+    value === 'data'
+  )
+}
+
 function backendAllowsSecretEditing(backendKind: string): boolean {
   return backendKind !== 'env' && backendKind !== 'bridge_managed' && backendKind !== 'unavailable'
 }
 
 function supportsProjectionFor(authMode: string, backendKind: string): boolean {
-  return (
-    authMode === 'api_key' && (backendKind === 'os_secret_store' || backendKind === 'file_secret_store')
-  )
+  return authMode === 'api_key' && (backendKind === 'os_secret_store' || backendKind === 'file_secret_store')
 }
 
 function modelDiscoverySensitiveField(field: keyof ExternalApiSettings): boolean {
@@ -85,11 +97,50 @@ function modelDiscoverySensitiveField(field: keyof ExternalApiSettings): boolean
   )
 }
 
+function cloneExternalApiSettings(endpoint: ExternalApiSettings | null | undefined): ExternalApiSettings | null {
+  return endpoint ? { ...endpoint } : null
+}
+
+function cloneAiProviderProfileConfig(
+  aiProvider: AiProviderProfileConfig | AiProviderSettings,
+): AiProviderProfileConfig {
+  return {
+    access_mode: aiProvider.access_mode,
+    ocr_provider: aiProvider.ocr_provider,
+    llm_provider: aiProvider.llm_provider,
+    external_data_policy: aiProvider.external_data_policy,
+    allow_unredacted_external_ocr: aiProvider.allow_unredacted_external_ocr,
+    ocr_validation: { ...aiProvider.ocr_validation },
+    scene_action_override: { ...aiProvider.scene_action_override },
+    scene_intelligence: { ...aiProvider.scene_intelligence },
+    fallback_to_local: aiProvider.fallback_to_local,
+    ocr_api: cloneExternalApiSettings(aiProvider.ocr_api),
+    llm_api: cloneExternalApiSettings(aiProvider.llm_api),
+  }
+}
+
+function normalizeSavedProfileName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function slugifySavedProfileId(value: string): string {
+  const normalized = normalizeSavedProfileName(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized || 'ai-profile'
+}
+
 export default function Settings() {
   const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { sidebarCollapsed } = useShellLayoutContext()
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
-  const [activeTab, setActiveTab] = useState<SettingsTabId>('general')
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(() => {
+    const tab = searchParams.get('tab')
+    return isSettingsTabId(tab) ? tab : 'general'
+  })
   const [formData, setFormData] = useState<AppSettings | null>(null)
   const formDataRef = useRef<AppSettings | null>(null)
   const lastLoadedSettingsRef = useRef<string | null>(null)
@@ -183,24 +234,32 @@ export default function Settings() {
 
   const { data: ocrEndpointProbe, isFetching: ocrEndpointProbeLoading } = useQuery<ProviderEndpointProbeResult>({
     queryKey: ['provider-endpoint-probe', 'ocr_api', currentOcrSurface?.surface_id ?? null, deferredOcrEndpoint],
-    queryFn: () =>
-      probeProviderSurfaceEndpoint({
-        surface_id: currentOcrSurface!.surface_id,
+    queryFn: () => {
+      if (!currentOcrSurface) {
+        throw new Error('OCR endpoint probe requested without an active surface')
+      }
+      return probeProviderSurfaceEndpoint({
+        surface_id: currentOcrSurface.surface_id,
         endpoint_kind: 'ocr_api',
         endpoint: deferredOcrEndpoint,
-      }),
+      })
+    },
     enabled: shouldProbeProviderEndpoint(currentOcrSurface, deferredOcrEndpoint),
     retry: 0,
   })
 
   const { data: llmEndpointProbe, isFetching: llmEndpointProbeLoading } = useQuery<ProviderEndpointProbeResult>({
     queryKey: ['provider-endpoint-probe', 'llm_api', currentLlmSurface?.surface_id ?? null, deferredLlmEndpoint],
-    queryFn: () =>
-      probeProviderSurfaceEndpoint({
-        surface_id: currentLlmSurface!.surface_id,
+    queryFn: () => {
+      if (!currentLlmSurface) {
+        throw new Error('LLM endpoint probe requested without an active surface')
+      }
+      return probeProviderSurfaceEndpoint({
+        surface_id: currentLlmSurface.surface_id,
         endpoint_kind: 'llm_api',
         endpoint: deferredLlmEndpoint,
-      }),
+      })
+    },
     enabled: shouldProbeProviderEndpoint(currentLlmSurface, deferredLlmEndpoint),
     retry: 0,
   })
@@ -232,138 +291,215 @@ export default function Settings() {
 
   const defaultByokBackendKind = secretBackendCapabilities?.byok_backend_kind ?? 'unavailable'
 
-  const deriveEndpointAuthMode = (
-    accessMode: string,
-    endpointKind: EndpointSurfaceKind,
-    surface: ProviderSurfaceSpec | undefined,
-  ): string => {
-    if (surface?.execution_kind === 'managed_http') {
-      return 'managed_oauth'
-    }
+  const deriveEndpointAuthMode = useCallback(
+    (accessMode: string, endpointKind: EndpointSurfaceKind, surface: ProviderSurfaceSpec | undefined): string => {
+      if (surface?.execution_kind === 'managed_http') {
+        return 'managed_oauth'
+      }
 
-    if (surface?.execution_kind === 'subprocess_cli') {
-      return 'cli_bridge'
-    }
+      if (surface?.execution_kind === 'subprocess_cli') {
+        return 'cli_bridge'
+      }
 
-    if (accessMode === 'ProviderOAuth' && endpointKind === 'llm_api') {
-      return 'managed_oauth'
-    }
+      if (accessMode === 'ProviderOAuth' && endpointKind === 'llm_api') {
+        return 'managed_oauth'
+      }
 
-    if (accessMode === 'ProviderSubscriptionCli' && endpointKind === 'llm_api') {
-      return 'cli_bridge'
-    }
+      if (accessMode === 'ProviderSubscriptionCli' && endpointKind === 'llm_api') {
+        return 'cli_bridge'
+      }
 
-    return 'api_key'
-  }
+      return 'api_key'
+    },
+    [],
+  )
 
-  const deriveEndpointBackendKind = (authMode: string): string => {
-    switch (authMode) {
-      case 'managed_oauth':
-        return 'os_secret_store'
-      case 'cli_bridge':
-        return 'bridge_managed'
-      default:
-        return defaultByokBackendKind
-    }
-  }
+  const deriveEndpointBackendKind = useCallback(
+    (authMode: string): string => {
+      switch (authMode) {
+        case 'managed_oauth':
+          return 'os_secret_store'
+        case 'cli_bridge':
+          return 'bridge_managed'
+        default:
+          return defaultByokBackendKind
+      }
+    },
+    [defaultByokBackendKind],
+  )
 
-  const normalizeEndpointSettings = (
-    accessMode: string,
-    endpointKind: EndpointSurfaceKind,
-    endpoint: ExternalApiSettings | null | undefined,
-    requestedSurface?: ProviderSurfaceSpec,
-  ): ExternalApiSettings | null => {
-    const seed = endpoint ?? defaultExternalApiSettings(accessMode, endpointKind)
-    if (!seed) {
-      return null
-    }
+  const defaultExternalApiSettings = useCallback(
+    (accessMode: string, endpointKind: EndpointSurfaceKind): ExternalApiSettings => {
+      const surfaceId = deriveDefaultProviderSurfaceId(
+        providerCatalog,
+        accessMode,
+        endpointKind,
+        'Generic',
+        featureCapabilities,
+      )
+      const surface = providerSurfaceById(providerCatalog, surfaceId)
+      const authMode = deriveEndpointAuthMode(accessMode, endpointKind, surface)
+      const backendKind = deriveEndpointBackendKind(authMode)
 
-    const seedProviderType = resolveProviderTypeForSurface(
+      return {
+        endpoint: defaultSurfaceEndpoint(surface, endpointKind),
+        api_key_masked: '',
+        model: defaultSurfaceModel(surface, endpointKind),
+        provider_type: surface?.provider_type ?? 'Generic',
+        surface_id: surfaceId,
+        timeout_secs: 30,
+        auth_mode: authMode,
+        backend_kind: backendKind,
+        has_secret: false,
+        can_edit_secret: backendAllowsSecretEditing(backendKind) && authMode === 'api_key',
+        secret_display_hint: null,
+        projection_enabled: false,
+      }
+    },
+    [deriveEndpointAuthMode, deriveEndpointBackendKind, featureCapabilities, providerCatalog],
+  )
+
+  const normalizeEndpointSettings = useCallback(
+    (
+      accessMode: string,
+      endpointKind: EndpointSurfaceKind,
+      endpoint: ExternalApiSettings | null | undefined,
+      requestedSurface?: ProviderSurfaceSpec,
+    ): ExternalApiSettings | null => {
+      const seed = endpoint ?? defaultExternalApiSettings(accessMode, endpointKind)
+      if (!seed) {
+        return null
+      }
+
+      const seedProviderType = resolveProviderTypeForSurface(
+        providerCatalog,
+        requestedSurface?.surface_id ?? seed.surface_id,
+        requestedSurface?.provider_type ?? seed.provider_type,
+      )
+      const previousSurface = providerSurfaceById(providerCatalog, seed.surface_id)
+      const preservedSurface =
+        !requestedSurface && surfaceCompatibleWithAccessMode(previousSurface, accessMode, endpointKind)
+          ? previousSurface
+          : undefined
+      const surfaceId =
+        requestedSurface?.surface_id ??
+        preservedSurface?.surface_id ??
+        deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, seedProviderType, featureCapabilities)
+      const nextSurface = requestedSurface ?? preservedSurface ?? providerSurfaceById(providerCatalog, surfaceId)
+      const providerType = resolveProviderTypeForSurface(
+        providerCatalog,
+        nextSurface?.surface_id ?? surfaceId,
+        nextSurface?.provider_type ?? seedProviderType,
+      )
+      const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, endpointKind)
+      const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, endpointKind)
+      const previousDefaultModel = defaultSurfaceModel(previousSurface, endpointKind)
+      const nextDefaultModel = defaultSurfaceModel(nextSurface, endpointKind)
+      const supportsModelSelection = surfaceSupportsModelSelection(nextSurface, endpointKind)
+      const previousProviderType = resolveProviderTypeForSurface(providerCatalog, seed.surface_id, seed.provider_type)
+      const authMode = deriveEndpointAuthMode(accessMode, endpointKind, nextSurface)
+      const backendKind = deriveEndpointBackendKind(authMode)
+      const currentModel = seed.model?.trim() ?? ''
+      const knownNextModel = surfaceKnownModel(nextSurface, currentModel)
+      const knownNextModelSupported = knownNextModel
+        ? endpointKind === 'ocr_api'
+          ? knownNextModel.capabilities.ocr && knownNextModel.capabilities.image_input
+          : knownNextModel.capabilities.llm
+        : null
+      const providerChanged = previousProviderType !== providerType
+      const executionChanged = previousSurface?.execution_kind !== nextSurface?.execution_kind
+      const shouldResetModelForSurfaceChange =
+        Boolean(currentModel) &&
+        previousSurface?.surface_id !== nextSurface?.surface_id &&
+        (knownNextModelSupported === false || (!knownNextModel && (providerChanged || executionChanged)))
+
+      return {
+        ...seed,
+        endpoint:
+          !seed.endpoint.trim() || seed.endpoint === previousDefaultEndpoint ? nextDefaultEndpoint : seed.endpoint,
+        model: !supportsModelSelection
+          ? null
+          : shouldResetModelForSurfaceChange
+            ? nextDefaultModel
+            : !seed.model?.trim() || seed.model === previousDefaultModel
+              ? nextDefaultModel
+              : seed.model,
+        provider_type: providerType,
+        surface_id: surfaceId,
+        auth_mode: authMode,
+        backend_kind: backendKind,
+        can_edit_secret: backendAllowsSecretEditing(backendKind) && authMode === 'api_key',
+        projection_enabled: supportsProjectionFor(authMode, backendKind) ? seed.projection_enabled : false,
+      }
+    },
+    [
+      defaultExternalApiSettings,
+      deriveEndpointAuthMode,
+      deriveEndpointBackendKind,
+      featureCapabilities,
       providerCatalog,
-      requestedSurface?.surface_id ?? seed.surface_id,
-      requestedSurface?.provider_type ?? seed.provider_type,
-    )
-    const previousSurface = providerSurfaceById(providerCatalog, seed.surface_id)
-    const preservedSurface =
-      !requestedSurface && surfaceCompatibleWithAccessMode(previousSurface, accessMode, endpointKind)
-        ? previousSurface
-        : undefined
-    const surfaceId =
-      requestedSurface?.surface_id ??
-      preservedSurface?.surface_id ??
-      deriveDefaultProviderSurfaceId(providerCatalog, accessMode, endpointKind, seedProviderType, featureCapabilities)
-    const nextSurface = requestedSurface ?? preservedSurface ?? providerSurfaceById(providerCatalog, surfaceId)
-    const providerType = resolveProviderTypeForSurface(
-      providerCatalog,
-      nextSurface?.surface_id ?? surfaceId,
-      nextSurface?.provider_type ?? seedProviderType,
-    )
-    const previousDefaultEndpoint = defaultSurfaceEndpoint(previousSurface, endpointKind)
-    const nextDefaultEndpoint = defaultSurfaceEndpoint(nextSurface, endpointKind)
-    const previousDefaultModel = defaultSurfaceModel(previousSurface, endpointKind)
-    const nextDefaultModel = defaultSurfaceModel(nextSurface, endpointKind)
-    const supportsModelSelection = surfaceSupportsModelSelection(nextSurface, endpointKind)
-    const previousProviderType = resolveProviderTypeForSurface(
-      providerCatalog,
-      seed.surface_id,
-      seed.provider_type,
-    )
-    const authMode = deriveEndpointAuthMode(accessMode, endpointKind, nextSurface)
-    const backendKind = deriveEndpointBackendKind(authMode)
-    const currentModel = seed.model?.trim() ?? ''
-    const knownNextModel = surfaceKnownModel(nextSurface, currentModel)
-    const knownNextModelSupported = knownNextModel
-      ? endpointKind === 'ocr_api'
-        ? knownNextModel.capabilities.ocr && knownNextModel.capabilities.image_input
-        : knownNextModel.capabilities.llm
-      : null
-    const providerChanged = previousProviderType !== providerType
-    const executionChanged = previousSurface?.execution_kind !== nextSurface?.execution_kind
-    const shouldResetModelForSurfaceChange =
-      Boolean(currentModel) &&
-      previousSurface?.surface_id !== nextSurface?.surface_id &&
-      (knownNextModelSupported === false || (!knownNextModel && (providerChanged || executionChanged)))
+    ],
+  )
 
-    return {
-      ...seed,
-      endpoint:
-        !seed.endpoint.trim() || seed.endpoint === previousDefaultEndpoint ? nextDefaultEndpoint : seed.endpoint,
-      model: !supportsModelSelection
-        ? null
-        : shouldResetModelForSurfaceChange
-          ? nextDefaultModel
-          : !seed.model?.trim() || seed.model === previousDefaultModel
-          ? nextDefaultModel
-          : seed.model,
-      provider_type: providerType,
-      surface_id: surfaceId,
-      auth_mode: authMode,
-      backend_kind: backendKind,
-      can_edit_secret: backendAllowsSecretEditing(backendKind) && authMode === 'api_key',
-      projection_enabled: supportsProjectionFor(authMode, backendKind) ? seed.projection_enabled : false,
-    }
-  }
+  const normalizeAiProviderProfileConfig = useCallback(
+    (config: AiProviderProfileConfig): AiProviderProfileConfig => {
+      const next = cloneAiProviderProfileConfig(config)
 
-  const sanitizeLoadedSettings = (incoming: AppSettings): AppSettings => {
-    const aiProvider = { ...incoming.ai_provider }
+      if (next.ocr_provider === 'Remote') {
+        next.ocr_api = normalizeEndpointSettings(next.access_mode, 'ocr_api', next.ocr_api)
+      }
 
-    if (aiProvider.ocr_provider === 'Remote') {
-      aiProvider.ocr_api = normalizeEndpointSettings(aiProvider.access_mode, 'ocr_api', aiProvider.ocr_api)
-    }
+      if (next.llm_provider === 'Remote') {
+        next.llm_api = normalizeEndpointSettings(next.access_mode, 'llm_api', next.llm_api)
+      }
 
-    if (aiProvider.llm_provider === 'Remote') {
-      aiProvider.llm_api = normalizeEndpointSettings(aiProvider.access_mode, 'llm_api', aiProvider.llm_api)
-    }
+      return next
+    },
+    [normalizeEndpointSettings],
+  )
 
-    return {
-      ...incoming,
-      ai_provider: aiProvider,
-    }
-  }
+  const normalizeSavedProfiles = useCallback(
+    (profiles: SavedAiProviderProfile[] | null | undefined): SavedAiProviderProfile[] =>
+      (profiles ?? []).map((profile) => ({
+        profile_id: profile.profile_id,
+        name: normalizeSavedProfileName(profile.name),
+        ai_provider: normalizeAiProviderProfileConfig(profile.ai_provider),
+        updated_at: profile.updated_at ?? null,
+      })),
+    [normalizeAiProviderProfileConfig],
+  )
+
+  const sanitizeLoadedSettings = useCallback(
+    (incoming: AppSettings): AppSettings => {
+      const normalizedProfiles = normalizeSavedProfiles(incoming.ai_provider.saved_profiles)
+      const aiProvider = {
+        ...normalizeAiProviderProfileConfig(incoming.ai_provider),
+        active_profile_id: normalizedProfiles.some(
+          (profile) => profile.profile_id === incoming.ai_provider.active_profile_id,
+        )
+          ? (incoming.ai_provider.active_profile_id ?? null)
+          : null,
+        saved_profiles: normalizedProfiles,
+      }
+
+      return {
+        ...incoming,
+        ai_provider: aiProvider,
+      }
+    },
+    [normalizeAiProviderProfileConfig, normalizeSavedProfiles],
+  )
 
   useEffect(() => {
     formDataRef.current = formData
   }, [formData])
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (isSettingsTabId(tab) && tab !== activeTab) {
+      setActiveTab(tab)
+    }
+  }, [activeTab, searchParams])
 
   useEffect(() => {
     if (settings) {
@@ -382,7 +518,7 @@ export default function Settings() {
       })
       lastLoadedSettingsRef.current = serialized
     }
-  }, [settings, providerCatalog, featureCapabilities])
+  }, [sanitizeLoadedSettings, settings])
 
   useEffect(() => {
     if (!secretBackendCapabilities) {
@@ -461,6 +597,62 @@ export default function Settings() {
 
     return nextAiProvider
   }
+
+  const markAiProviderAsCustom = useCallback(
+    (aiProvider: AiProviderSettings): AiProviderSettings => {
+      const savedProfiles = normalizeSavedProfiles(aiProvider.saved_profiles)
+      return {
+        ...aiProvider,
+        active_profile_id: savedProfiles.some((profile) => profile.profile_id === aiProvider.active_profile_id)
+          ? (aiProvider.active_profile_id ?? null)
+          : null,
+        saved_profiles: savedProfiles,
+      }
+    },
+    [normalizeSavedProfiles],
+  )
+
+  const createSavedAiProviderProfile = useCallback(
+    (
+      currentAiProvider: AiProviderSettings,
+      existingProfiles: SavedAiProviderProfile[],
+      requestedName: string,
+    ): SavedAiProviderProfile | null => {
+      const normalizedName = normalizeSavedProfileName(requestedName)
+      if (!normalizedName) {
+        return null
+      }
+
+      const activeProfile = currentAiProvider.active_profile_id
+        ? existingProfiles.find((profile) => profile.profile_id === currentAiProvider.active_profile_id)
+        : undefined
+      const matchedByName = existingProfiles.find(
+        (profile) => profile.name.localeCompare(normalizedName, undefined, { sensitivity: 'base' }) === 0,
+      )
+      const profileId =
+        activeProfile?.name === normalizedName
+          ? activeProfile.profile_id
+          : (matchedByName?.profile_id ?? slugifySavedProfileId(normalizedName))
+
+      const usedIds = new Set(
+        existingProfiles.filter((profile) => profile.profile_id !== profileId).map((profile) => profile.profile_id),
+      )
+      let nextProfileId = profileId
+      let suffix = 2
+      while (usedIds.has(nextProfileId)) {
+        nextProfileId = `${profileId}-${suffix}`
+        suffix += 1
+      }
+
+      return {
+        profile_id: nextProfileId,
+        name: normalizedName,
+        ai_provider: normalizeAiProviderProfileConfig(currentAiProvider),
+        updated_at: new Date().toISOString(),
+      }
+    },
+    [normalizeAiProviderProfileConfig],
+  )
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
@@ -600,7 +792,7 @@ export default function Settings() {
             if (field === 'access_mode' && typeof value === 'string') {
               return {
                 ...current,
-                ai_provider: applyAccessModeDefaults(current.ai_provider, value),
+                ai_provider: markAiProviderAsCustom(applyAccessModeDefaults(current.ai_provider, value)),
               }
             }
 
@@ -624,7 +816,7 @@ export default function Settings() {
 
             return {
               ...current,
-              ai_provider: nextAiProvider,
+              ai_provider: markAiProviderAsCustom(nextAiProvider),
             }
           })()
         : current,
@@ -636,13 +828,13 @@ export default function Settings() {
       current
         ? {
             ...current,
-            ai_provider: {
+            ai_provider: markAiProviderAsCustom({
               ...current.ai_provider,
               ocr_validation: {
                 ...current.ai_provider.ocr_validation,
                 [field]: value,
               },
-            },
+            }),
           }
         : current,
     )
@@ -656,13 +848,13 @@ export default function Settings() {
       current
         ? {
             ...current,
-            ai_provider: {
+            ai_provider: markAiProviderAsCustom({
               ...current.ai_provider,
               scene_action_override: {
                 ...current.ai_provider.scene_action_override,
                 [field]: value,
               },
-            },
+            }),
           }
         : current,
     )
@@ -673,47 +865,16 @@ export default function Settings() {
       current
         ? {
             ...current,
-            ai_provider: {
+            ai_provider: markAiProviderAsCustom({
               ...current.ai_provider,
               scene_intelligence: {
                 ...current.ai_provider.scene_intelligence,
                 [field]: value,
               },
-            },
+            }),
           }
         : current,
     )
-  }
-
-  const defaultExternalApiSettings = (
-    accessMode: string,
-    endpointKind: EndpointSurfaceKind,
-  ): ExternalApiSettings => {
-    const surfaceId = deriveDefaultProviderSurfaceId(
-      providerCatalog,
-      accessMode,
-      endpointKind,
-      'Generic',
-      featureCapabilities,
-    )
-    const surface = providerSurfaceById(providerCatalog, surfaceId)
-    const authMode = deriveEndpointAuthMode(accessMode, endpointKind, surface)
-    const backendKind = deriveEndpointBackendKind(authMode)
-
-    return {
-      endpoint: defaultSurfaceEndpoint(surface, endpointKind),
-      api_key_masked: '',
-      model: defaultSurfaceModel(surface, endpointKind),
-      provider_type: surface?.provider_type ?? 'Generic',
-      surface_id: surfaceId,
-      timeout_secs: 30,
-      auth_mode: authMode,
-      backend_kind: backendKind,
-      has_secret: false,
-      can_edit_secret: backendAllowsSecretEditing(backendKind) && authMode === 'api_key',
-      secret_display_hint: null,
-      projection_enabled: false,
-    }
   }
 
   const resolveEndpointSurface = (which: 'ocr_api' | 'llm_api'): ProviderSurfaceSpec | undefined =>
@@ -733,10 +894,10 @@ export default function Settings() {
 
       return {
         ...current,
-        ai_provider: {
+        ai_provider: markAiProviderAsCustom({
           ...current.ai_provider,
           [which]: { ...existing, [field]: value },
-        },
+        }),
       }
     })
   }
@@ -809,9 +970,7 @@ export default function Settings() {
     }
     const discoveredModels =
       modelCatalogDetails[which].length > 0
-        ? modelCatalogDetails[which]
-            .filter((detail) => isAllowedDiscoveredModel(detail))
-            .map((detail) => detail.id)
+        ? modelCatalogDetails[which].filter((detail) => isAllowedDiscoveredModel(detail)).map((detail) => detail.id)
         : modelCatalog[which]
     const allowedSurfaceModels =
       which === 'ocr_api'
@@ -908,12 +1067,116 @@ export default function Settings() {
       const existing = current.ai_provider[which] ?? defaultExternalApiSettings(current.ai_provider.access_mode, which)
       return {
         ...current,
-        ai_provider: {
+        ai_provider: markAiProviderAsCustom({
           ...current.ai_provider,
           [which]: normalizeEndpointSettings(current.ai_provider.access_mode, which, existing, nextSurface),
+        }),
+      }
+    })
+  }
+
+  const handleSelectAiProviderProfile = (profileId: string | null) => {
+    resetModelDiscoveryState(['ocr_api', 'llm_api'])
+    setFormData((current) => {
+      if (!current) return current
+
+      const savedProfiles = normalizeSavedProfiles(current.ai_provider.saved_profiles)
+      if (!profileId) {
+        return {
+          ...current,
+          ai_provider: {
+            ...current.ai_provider,
+            active_profile_id: null,
+            saved_profiles: savedProfiles,
+          },
+        }
+      }
+
+      const selectedProfile = savedProfiles.find((profile) => profile.profile_id === profileId)
+      if (!selectedProfile) {
+        return {
+          ...current,
+          ai_provider: {
+            ...current.ai_provider,
+            active_profile_id: null,
+            saved_profiles: savedProfiles,
+          },
+        }
+      }
+
+      return {
+        ...current,
+        ai_provider: {
+          ...normalizeAiProviderProfileConfig(selectedProfile.ai_provider),
+          active_profile_id: selectedProfile.profile_id,
+          saved_profiles: savedProfiles,
         },
       }
     })
+  }
+
+  const handleSaveAiProviderProfile = (requestedName: string) => {
+    let savedProfileName: string | null = null
+    setFormData((current) => {
+      if (!current) return current
+
+      const savedProfiles = normalizeSavedProfiles(current.ai_provider.saved_profiles)
+      const nextProfile = createSavedAiProviderProfile(current.ai_provider, savedProfiles, requestedName)
+      if (!nextProfile) {
+        return current
+      }
+
+      const nextProfiles = [
+        ...savedProfiles.filter((profile) => profile.profile_id !== nextProfile.profile_id),
+        nextProfile,
+      ].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+      savedProfileName = nextProfile.name
+
+      return {
+        ...current,
+        ai_provider: {
+          ...current.ai_provider,
+          active_profile_id: nextProfile.profile_id,
+          saved_profiles: nextProfiles,
+        },
+      }
+    })
+
+    if (savedProfileName) {
+      showToast('success', t('settingsAutomation.profileSavedSuccess', { name: savedProfileName }), 3000)
+    } else {
+      showToast('error', t('settingsAutomation.profileNameRequired'), 4000)
+    }
+  }
+
+  const handleDeleteAiProviderProfile = (profileId: string) => {
+    let deletedProfileName: string | null = null
+    setFormData((current) => {
+      if (!current) return current
+
+      const savedProfiles = normalizeSavedProfiles(current.ai_provider.saved_profiles)
+      const profileToDelete = savedProfiles.find((profile) => profile.profile_id === profileId)
+      if (!profileToDelete) {
+        return current
+      }
+
+      deletedProfileName = profileToDelete.name
+      return {
+        ...current,
+        ai_provider: {
+          ...current.ai_provider,
+          active_profile_id:
+            current.ai_provider.active_profile_id === profileId
+              ? null
+              : (current.ai_provider.active_profile_id ?? null),
+          saved_profiles: savedProfiles.filter((profile) => profile.profile_id !== profileId),
+        },
+      }
+    })
+
+    if (deletedProfileName) {
+      showToast('success', t('settingsAutomation.profileDeletedSuccess', { name: deletedProfileName }), 3000)
+    }
   }
 
   const handleModelDiscoveryResult = (
@@ -1054,11 +1317,11 @@ export default function Settings() {
     { id: 'data', label: t('settings.tabs.dataStorage') },
   ]
 
-  const saveDisabled =
-    !settings ||
-    !formData ||
-    saveMutation.isPending ||
-    JSON.stringify(formData) === lastLoadedSettingsRef.current
+  const serializedFormData = formData ? JSON.stringify(formData) : null
+  const hasUnsavedChanges = Boolean(
+    settings && formData && serializedFormData && serializedFormData !== lastLoadedSettingsRef.current,
+  )
+  const saveDisabled = !settings || !formData || saveMutation.isPending || !hasUnsavedChanges
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1066,6 +1329,23 @@ export default function Settings() {
       return
     }
     saveMutation.mutate(formData)
+  }
+
+  const handleTabChange = (tab: SettingsTabId) => {
+    setActiveTab(tab)
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('tab', tab)
+    setSearchParams(nextParams, { replace: true })
+  }
+
+  const handleRevertChanges = () => {
+    const lastLoaded = lastLoadedSettingsRef.current
+    if (!lastLoaded) {
+      return
+    }
+
+    const parsed = JSON.parse(lastLoaded) as AppSettings
+    setFormData(parsed)
   }
 
   if (settingsLoading || !formData) {
@@ -1078,20 +1358,53 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-full space-y-6 p-6">
+    <div className="min-h-full space-y-6 p-6 pb-28">
       <div className="flex items-center justify-between">
-        <h1 className={cn(typography.h1, colors.text.primary)}>{t('settings.title')}</h1>
+        <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('settings.title')}</h1>
       </div>
 
-      <Tabs
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab as SettingsTabId)}
-        ariaLabel={t('settings.title')}
-        idBase="settings"
-      />
+      {sidebarCollapsed && (
+        <Tabs
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={(tab) => handleTabChange(tab as SettingsTabId)}
+          ariaLabel={t('settings.title')}
+          idBase="settings"
+        />
+      )}
 
-      <form className="space-y-6" onSubmit={handleSubmit}>
+      {hasUnsavedChanges && (
+        <div className="pointer-events-none fixed right-6 bottom-10 z-30 flex justify-end">
+          <div className="pointer-events-auto flex items-center gap-4 rounded-xl border border-muted bg-surface-overlay px-4 py-3 shadow-2xl">
+            <div className="min-w-0">
+              <p className={cn('font-semibold text-sm', colors.text.primary)}>{t('settings.unsavedChanges')}</p>
+              <p className={cn('text-xs', colors.text.secondary)}>{t('settings.unsavedChangesHint')}</p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              onClick={handleRevertChanges}
+              disabled={saveMutation.isPending}
+            >
+              {t('settings.revertChanges')}
+            </Button>
+            <Button
+              data-testid="settings-save-floating"
+              type="submit"
+              form="settings-form"
+              variant="primary"
+              size="lg"
+              isLoading={saveMutation.isPending}
+              disabled={saveDisabled}
+            >
+              {saveMutation.isPending ? t('settings.saving') : t('settings.saveSettings')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <form id="settings-form" className="space-y-6" onSubmit={handleSubmit}>
         <div
           id="settings-panel-general"
           role="tabpanel"
@@ -1181,6 +1494,9 @@ export default function Settings() {
               onExternalApiChange={handleExternalApiChange}
               resolveProviderSurface={resolveEndpointSurface}
               onProviderSurfaceChange={handleProviderSurfaceChange}
+              onSelectAiProviderProfile={handleSelectAiProviderProfile}
+              onSaveAiProviderProfile={handleSaveAiProviderProfile}
+              onDeleteAiProviderProfile={handleDeleteAiProviderProfile}
               onDiscoverModels={(which) => void discoverModels(which)}
               getModelOptions={getModelOptions}
               canDiscoverModels={canDiscoverModels}

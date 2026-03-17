@@ -12,8 +12,11 @@ import {
   fetchAutomationStatus,
   fetchPolicies,
   fetchPresets,
+  fetchSettings,
   type PresetRunResult,
   runPreset,
+  type SavedAiProviderProfile,
+  updatePreset,
   type WorkflowPreset,
 } from '../api/client'
 import { EmptyState, ListSkeleton, Select, Skeleton, StatCardsSkeleton } from '../components/ui'
@@ -46,6 +49,23 @@ const sourceBadgeColorByValue: Record<string, 'default' | 'info' | 'warning' | '
   'local-fallback': 'warning',
   'cli-subscription': 'success',
   platform: 'primary',
+}
+
+function resolvePresetProfileLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  preset: WorkflowPreset,
+  savedProfiles: SavedAiProviderProfile[],
+): string {
+  if (!preset.ai_profile_id) {
+    return t('automation.profileUsesActive')
+  }
+
+  const profile = savedProfiles.find((item) => item.profile_id === preset.ai_profile_id)
+  if (!profile) {
+    return t('automation.profileMissing', { profileId: preset.ai_profile_id })
+  }
+
+  return profile.name
 }
 
 function Automation() {
@@ -91,6 +111,11 @@ function Automation() {
     queryFn: fetchPresets,
   })
 
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: fetchSettings,
+  })
+
   const runPresetMutation = useMutation({
     mutationFn: runPreset,
     onSuccess: () => {
@@ -103,6 +128,18 @@ function Automation() {
     mutationFn: deletePreset,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['presets'] })
+    },
+  })
+
+  const updatePresetMutation = useMutation({
+    mutationFn: ({ id, preset }: { id: string; preset: WorkflowPreset }) => updatePreset(id, preset),
+    onSuccess: (_preset, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['presets'] })
+      addToast('success', t('automation.profileBindingSaved', { name: variables.preset.name }))
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : t('automation.profileBindingSaveError')
+      addToast('error', message)
     },
   })
 
@@ -136,6 +173,21 @@ function Automation() {
   }
 
   const getFeedback = (presetId: string): RunFeedback | undefined => runFeedbacks.find((f) => f.presetId === presetId)
+  const savedAiProfiles = settingsData?.ai_provider.saved_profiles ?? []
+
+  const handlePresetProfileChange = async (preset: WorkflowPreset, profileId: string) => {
+    try {
+      await updatePresetMutation.mutateAsync({
+        id: preset.id,
+        preset: {
+          ...preset,
+          ai_profile_id: profileId.trim().length > 0 ? profileId : null,
+        },
+      })
+    } catch {
+      // handled by mutation onError
+    }
+  }
 
   const statusBadge = (s: string) => {
     switch (s) {
@@ -211,7 +263,7 @@ function Automation() {
 
   return (
     <div className="min-h-full space-y-6 p-6">
-      <h1 className={cn(typography.h1, colors.text.primary)}>{t('automation.title')}</h1>
+      <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('automation.title')}</h1>
 
       {/* UI note */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
@@ -439,6 +491,45 @@ function Automation() {
                       )}
                     </div>
                   )}
+
+                  <div className="mt-3 space-y-2 rounded-md border border-muted/80 bg-surface-subtle/60 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-content-secondary text-xs">{t('automation.aiProfile')}</span>
+                      <Badge color="default" size="sm">
+                        {resolvePresetProfileLabel(t, preset, savedAiProfiles)}
+                      </Badge>
+                    </div>
+                    {!preset.builtin ? (
+                      savedAiProfiles.length > 0 ? (
+                        <Select
+                          value={preset.ai_profile_id ?? ''}
+                          selectSize="sm"
+                          onChange={(e) => void handlePresetProfileChange(preset, e.target.value)}
+                          disabled={updatePresetMutation.isPending}
+                        >
+                          <option value="">{t('automation.useActiveProfile')}</option>
+                          {savedAiProfiles.map((profile) => (
+                            <option key={profile.profile_id} value={profile.profile_id}>
+                              {profile.name}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <div className="space-y-1 text-xs">
+                          <p className="text-content-secondary">{t('automation.noSavedAiProfiles')}</p>
+                          <button
+                            type="button"
+                            onClick={() => navigate('/settings?tab=ai-automation')}
+                            className={cn('text-accent-teal underline-offset-2 hover:underline', interaction.focusRing)}
+                          >
+                            {t('automation.manageAiProfiles')}
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      <p className="text-content-muted text-xs">{t('automation.builtinProfileBindingReadonly')}</p>
+                    )}
+                  </div>
 
                   <div className="mt-auto flex items-center space-x-2 pt-3">
                     <Button

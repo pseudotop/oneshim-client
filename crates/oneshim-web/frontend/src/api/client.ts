@@ -707,6 +707,19 @@ export async function createPreset(preset: WorkflowPreset): Promise<WorkflowPres
   return res.json()
 }
 
+export async function updatePreset(id: string, preset: WorkflowPreset): Promise<WorkflowPreset> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/presets/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(preset),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to update preset' }))
+    throw new Error(err.error || 'Failed to update preset')
+  }
+  return res.json()
+}
+
 export async function deletePreset(id: string): Promise<void> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/presets/${id}`, {
     method: 'DELETE',

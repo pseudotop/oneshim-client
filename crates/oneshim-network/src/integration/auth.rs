@@ -83,6 +83,12 @@ impl IntegrationAuthPort for StaticIntegrationAuthPort {
             "static integration auth does not support device authorization".to_string(),
         ))
     }
+
+    async fn reset_auth_state(&self) -> Result<(), CoreError> {
+        Err(CoreError::InvalidArguments(
+            "static integration auth does not support auth reset".to_string(),
+        ))
+    }
 }
 
 pub struct EnvIntegrationAuthPort {
@@ -187,6 +193,12 @@ impl IntegrationAuthPort for EnvIntegrationAuthPort {
             "env-token integration auth does not support device authorization".to_string(),
         ))
     }
+
+    async fn reset_auth_state(&self) -> Result<(), CoreError> {
+        Err(CoreError::InvalidArguments(
+            "env-token integration auth does not support auth reset".to_string(),
+        ))
+    }
 }
 
 pub struct NoopIntegrationRequestProofFactory;
@@ -263,6 +275,7 @@ pub struct OidcDeviceFlowIntegrationAuthPort {
     auth_material: Arc<RwLock<Option<StoredAuthMaterial>>>,
     pending_flows: Arc<RwLock<HashMap<String, PendingDeviceAuthorization>>>,
     last_error: Arc<RwLock<Option<String>>>,
+    refresh_lock: Arc<Mutex<()>>,
 }
 
 impl OidcDeviceFlowIntegrationAuthPort {
@@ -288,6 +301,49 @@ impl OidcDeviceFlowIntegrationAuthPort {
             auth_material: Arc::new(RwLock::new(None)),
             pending_flows: Arc::new(RwLock::new(HashMap::new())),
             last_error: Arc::new(RwLock::new(None)),
+            refresh_lock: Arc::new(Mutex::new(())),
+        })
+    }
+
+    async fn refresh_access_token_if_needed(
+        &self,
+        refresh_token: &str,
+    ) -> Result<StoredAuthMaterial, CoreError> {
+        let _guard = self.refresh_lock.lock().await;
+
+        if let Some(material) = self.load_material().await? {
+            let is_expired = material
+                .expires_at
+                .is_some_and(|expires_at| expires_at <= Utc::now());
+            if !is_expired {
+                return Ok(material);
+            }
+
+            if let Some(current_refresh_token) = material.refresh_token.as_deref() {
+                return self.refresh_access_token(current_refresh_token).await;
+            }
+        }
+
+        self.refresh_access_token(refresh_token).await
+    }
+
+    async fn find_reusable_pending_flow(
+        &self,
+        requested_scopes: &[IntegrationCapabilityScope],
+        resource_indicator: Option<&str>,
+    ) -> Option<IntegrationDeviceAuthorizationFlow> {
+        let now = Utc::now();
+        let expected_resource_indicator = resource_indicator.map(str::to_string);
+        let mut pending_flows = self.pending_flows.write().await;
+        pending_flows.retain(|_, entry| entry.flow.expires_at > now);
+        pending_flows.values().find_map(|entry| {
+            let same_scopes = entry.flow.requested_scopes.len() == requested_scopes.len()
+                && requested_scopes
+                    .iter()
+                    .all(|scope| entry.flow.requested_scopes.contains(scope));
+            let same_resource_indicator =
+                entry.flow.resource_indicator == expected_resource_indicator;
+            (same_scopes && same_resource_indicator).then(|| entry.flow.clone())
         })
     }
 
@@ -530,7 +586,7 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
                 .is_some_and(|expires_at| expires_at <= Utc::now());
             let material = if is_expired {
                 if let Some(refresh_token) = material.refresh_token.as_deref() {
-                    self.refresh_access_token(refresh_token).await?
+                    self.refresh_access_token_if_needed(refresh_token).await?
                 } else {
                     return Err(CoreError::Auth(
                         "integration device authorization has expired; re-authorize the device"
@@ -562,24 +618,60 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
 
     async fn current_auth_status(&self) -> Result<IntegrationAuthStatus, CoreError> {
         if let Some(material) = self.load_material().await? {
-            let status = if material
+            let is_expired = material
                 .expires_at
-                .is_some_and(|expires_at| expires_at <= Utc::now())
-            {
-                IntegrationAuthStatusKind::Expired
+                .is_some_and(|expires_at| expires_at <= Utc::now());
+            let material = if is_expired {
+                if let Some(refresh_token) = material.refresh_token.as_deref() {
+                    match self.refresh_access_token_if_needed(refresh_token).await {
+                        Ok(refreshed) => {
+                            *self.last_error.write().await = None;
+                            refreshed
+                        }
+                        Err(error) => {
+                            let message = format!(
+                                "integration auth refresh failed; re-authorize the device: {error}"
+                            );
+                            *self.last_error.write().await = Some(message.clone());
+                            return Ok(IntegrationAuthStatus {
+                                profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
+                                status: IntegrationAuthStatusKind::Error,
+                                interactive: true,
+                                authenticated: false,
+                                expires_at: material.expires_at,
+                                resource_indicator: material.resource_indicator,
+                                pending_flow: None,
+                                message: Some(message),
+                            });
+                        }
+                    }
+                } else {
+                    material
+                }
             } else {
-                IntegrationAuthStatusKind::Ready
+                material
             };
-            let authenticated = status == IntegrationAuthStatusKind::Ready;
             return Ok(IntegrationAuthStatus {
                 profile_kind: IntegrationAuthProfileKind::OidcDeviceFlow,
-                status,
+                status: if material
+                    .expires_at
+                    .is_some_and(|expires_at| expires_at <= Utc::now())
+                {
+                    IntegrationAuthStatusKind::Expired
+                } else {
+                    IntegrationAuthStatusKind::Ready
+                },
                 interactive: true,
-                authenticated,
+                authenticated: !material
+                    .expires_at
+                    .is_some_and(|expires_at| expires_at <= Utc::now()),
                 expires_at: material.expires_at,
                 resource_indicator: material.resource_indicator,
                 pending_flow: None,
-                message: if !authenticated {
+                message: if material
+                    .expires_at
+                    .is_some_and(|expires_at| expires_at <= Utc::now())
+                {
                     Some(
                         "integration device authorization expired; re-authorize or refresh"
                             .to_string(),
@@ -630,6 +722,14 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
         requested_scopes: &[IntegrationCapabilityScope],
         resource_indicator: Option<&str>,
     ) -> Result<IntegrationDeviceAuthorizationFlow, CoreError> {
+        if let Some(flow) = self
+            .find_reusable_pending_flow(requested_scopes, resource_indicator)
+            .await
+        {
+            *self.last_error.write().await = None;
+            return Ok(flow);
+        }
+
         let mut form = vec![("client_id".to_string(), self.config.client_id.clone())];
         if let Some(scope) = self.combined_scope_string(requested_scopes) {
             form.push(("scope".to_string(), scope));
@@ -803,7 +903,21 @@ impl IntegrationAuthPort for OidcDeviceFlowIntegrationAuthPort {
     }
 
     async fn cancel_device_authorization(&self, flow_id: &str) -> Result<(), CoreError> {
-        self.pending_flows.write().await.remove(flow_id);
+        let removed = self.pending_flows.write().await.remove(flow_id);
+        if removed.is_none() {
+            return Err(CoreError::NotFound {
+                resource_type: "integration_device_authorization_flow".to_string(),
+                id: flow_id.to_string(),
+            });
+        }
+        *self.last_error.write().await = None;
+        Ok(())
+    }
+
+    async fn reset_auth_state(&self) -> Result<(), CoreError> {
+        self.pending_flows.write().await.clear();
+        self.clear_material().await?;
+        *self.last_error.write().await = None;
         Ok(())
     }
 }
@@ -1248,6 +1362,295 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("access-token-1")
+        );
+    }
+
+    #[tokio::test]
+    async fn start_device_authorization_reuses_matching_pending_flow() {
+        let mut server = mockito::Server::new_async().await;
+        let device_endpoint = format!("{}/oauth/device/code", server.url());
+        let token_endpoint = format!("{}/oauth/token", server.url());
+
+        let device_mock = server
+            .mock("POST", "/oauth/device/code")
+            .match_body(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("client_id".into(), "desktop-client".into()),
+                Matcher::UrlEncoded("scope".into(), "openid prompt:read".into()),
+                Matcher::UrlEncoded("resource".into(), "https://integration.example.com".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "device_code": "device-code-2",
+                    "user_code": "IJKL-MNOP",
+                    "verification_uri": "https://id.example.com/activate",
+                    "verification_uri_complete": "https://id.example.com/activate?user_code=IJKL-MNOP",
+                    "expires_in": 900,
+                    "interval": 5
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let port = OidcDeviceFlowIntegrationAuthPort::new(
+            OidcDeviceFlowAuthConfig {
+                client_id: "desktop-client".to_string(),
+                device_authorization_url: device_endpoint,
+                token_url: token_endpoint,
+                default_scopes: vec!["openid".to_string()],
+                resource_indicator: Some("https://integration.example.com".to_string()),
+                scheme: IntegrationAuthScheme::BearerToken,
+                request_timeout: Duration::from_secs(5),
+            },
+            Arc::new(NoopIntegrationRequestProofFactory),
+            None,
+        )
+        .unwrap();
+
+        let first = port
+            .start_device_authorization(
+                &[IntegrationCapabilityScope::PromptRead],
+                Some("https://integration.example.com"),
+            )
+            .await
+            .unwrap();
+        let second = port
+            .start_device_authorization(
+                &[IntegrationCapabilityScope::PromptRead],
+                Some("https://integration.example.com"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(first.flow_id, second.flow_id);
+        assert_eq!(first.user_code, second.user_code);
+        device_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn current_auth_status_refreshes_expired_material_when_refresh_token_exists() {
+        let mut server = mockito::Server::new_async().await;
+        let token_endpoint = format!("{}/oauth/token", server.url());
+
+        let refresh_mock = server
+            .mock("POST", "/oauth/token")
+            .match_body(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("grant_type".into(), "refresh_token".into()),
+                Matcher::UrlEncoded("client_id".into(), "desktop-client".into()),
+                Matcher::UrlEncoded("refresh_token".into(), "refresh-token-2".into()),
+                Matcher::UrlEncoded("resource".into(), "https://integration.example.com".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "access_token": "access-token-2",
+                    "refresh_token": "refresh-token-2b",
+                    "token_type": "Bearer",
+                    "expires_in": 3600
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let secret_store = Arc::new(InMemorySecretStore::default()) as Arc<dyn SecretStore>;
+        secret_store
+            .store(
+                INTEGRATION_AUTH_SECRET_NAMESPACE,
+                INTEGRATION_ACCESS_TOKEN_SECRET_KEY,
+                "expired-access-token",
+            )
+            .await
+            .unwrap();
+        secret_store
+            .store(
+                INTEGRATION_AUTH_SECRET_NAMESPACE,
+                INTEGRATION_REFRESH_TOKEN_SECRET_KEY,
+                "refresh-token-2",
+            )
+            .await
+            .unwrap();
+        secret_store
+            .store(
+                INTEGRATION_AUTH_SECRET_NAMESPACE,
+                INTEGRATION_EXPIRES_AT_SECRET_KEY,
+                &(Utc::now() - chrono::Duration::minutes(5)).to_rfc3339(),
+            )
+            .await
+            .unwrap();
+
+        let port = OidcDeviceFlowIntegrationAuthPort::new(
+            OidcDeviceFlowAuthConfig {
+                client_id: "desktop-client".to_string(),
+                device_authorization_url: format!("{}/oauth/device/code", server.url()),
+                token_url: token_endpoint,
+                default_scopes: vec!["openid".to_string()],
+                resource_indicator: Some("https://integration.example.com".to_string()),
+                scheme: IntegrationAuthScheme::BearerToken,
+                request_timeout: Duration::from_secs(5),
+            },
+            Arc::new(NoopIntegrationRequestProofFactory),
+            Some(secret_store.clone()),
+        )
+        .unwrap();
+
+        let status = port.current_auth_status().await.unwrap();
+        assert_eq!(status.status, IntegrationAuthStatusKind::Ready);
+        assert!(status.authenticated);
+        assert_eq!(
+            secret_store
+                .retrieve(
+                    INTEGRATION_AUTH_SECRET_NAMESPACE,
+                    INTEGRATION_ACCESS_TOKEN_SECRET_KEY
+                )
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("access-token-2")
+        );
+        assert_eq!(
+            secret_store
+                .retrieve(
+                    INTEGRATION_AUTH_SECRET_NAMESPACE,
+                    INTEGRATION_REFRESH_TOKEN_SECRET_KEY
+                )
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("refresh-token-2b")
+        );
+        refresh_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn cancel_device_authorization_requires_existing_flow() {
+        let port = OidcDeviceFlowIntegrationAuthPort::new(
+            OidcDeviceFlowAuthConfig {
+                client_id: "desktop-client".to_string(),
+                device_authorization_url: "https://id.example.com/oauth/device/code".to_string(),
+                token_url: "https://id.example.com/oauth/token".to_string(),
+                default_scopes: vec!["openid".to_string()],
+                resource_indicator: Some("https://integration.example.com".to_string()),
+                scheme: IntegrationAuthScheme::BearerToken,
+                request_timeout: Duration::from_secs(5),
+            },
+            Arc::new(NoopIntegrationRequestProofFactory),
+            None,
+        )
+        .unwrap();
+
+        let error = port
+            .cancel_device_authorization("missing-flow")
+            .await
+            .unwrap_err();
+        assert!(matches!(error, CoreError::NotFound { .. }));
+    }
+
+    #[tokio::test]
+    async fn reset_auth_state_clears_pending_flow_and_stored_material() {
+        let mut server = mockito::Server::new_async().await;
+        let device_endpoint = format!("{}/oauth/device/code", server.url());
+        let token_endpoint = format!("{}/oauth/token", server.url());
+
+        let _device_mock = server
+            .mock("POST", "/oauth/device/code")
+            .match_body(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("client_id".into(), "desktop-client".into()),
+                Matcher::UrlEncoded("scope".into(), "openid prompt:read".into()),
+                Matcher::UrlEncoded("resource".into(), "https://integration.example.com".into()),
+            ]))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "device_code": "device-code-3",
+                    "user_code": "QRST-UVWX",
+                    "verification_uri": "https://id.example.com/activate",
+                    "verification_uri_complete": "https://id.example.com/activate?user_code=QRST-UVWX",
+                    "expires_in": 900,
+                    "interval": 5
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let secret_store = Arc::new(InMemorySecretStore::default()) as Arc<dyn SecretStore>;
+        secret_store
+            .store(
+                INTEGRATION_AUTH_SECRET_NAMESPACE,
+                INTEGRATION_ACCESS_TOKEN_SECRET_KEY,
+                "stale-access-token",
+            )
+            .await
+            .unwrap();
+        secret_store
+            .store(
+                INTEGRATION_AUTH_SECRET_NAMESPACE,
+                INTEGRATION_REFRESH_TOKEN_SECRET_KEY,
+                "stale-refresh-token",
+            )
+            .await
+            .unwrap();
+
+        let port = OidcDeviceFlowIntegrationAuthPort::new(
+            OidcDeviceFlowAuthConfig {
+                client_id: "desktop-client".to_string(),
+                device_authorization_url: device_endpoint,
+                token_url: token_endpoint,
+                default_scopes: vec!["openid".to_string()],
+                resource_indicator: Some("https://integration.example.com".to_string()),
+                scheme: IntegrationAuthScheme::BearerToken,
+                request_timeout: Duration::from_secs(5),
+            },
+            Arc::new(NoopIntegrationRequestProofFactory),
+            Some(secret_store.clone()),
+        )
+        .unwrap();
+
+        let flow = port
+            .start_device_authorization(
+                &[IntegrationCapabilityScope::PromptRead],
+                Some("https://integration.example.com"),
+            )
+            .await
+            .unwrap();
+
+        assert!(!flow.flow_id.is_empty());
+
+        port.reset_auth_state().await.unwrap();
+
+        let status_after_reset = port.current_auth_status().await.unwrap();
+        assert_eq!(
+            status_after_reset.status,
+            IntegrationAuthStatusKind::Unauthenticated
+        );
+        assert!(status_after_reset.pending_flow.is_none());
+        assert_eq!(
+            secret_store
+                .retrieve(
+                    INTEGRATION_AUTH_SECRET_NAMESPACE,
+                    INTEGRATION_ACCESS_TOKEN_SECRET_KEY
+                )
+                .await
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            secret_store
+                .retrieve(
+                    INTEGRATION_AUTH_SECRET_NAMESPACE,
+                    INTEGRATION_REFRESH_TOKEN_SECRET_KEY
+                )
+                .await
+                .unwrap(),
+            None
         );
     }
 }

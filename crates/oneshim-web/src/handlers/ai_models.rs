@@ -2,35 +2,33 @@ use axum::{extract::State, Json};
 use oneshim_api_contracts::ai_providers::{ProviderModelsRequest, ProviderModelsResponse};
 
 use crate::error::ApiError;
-use crate::services::ai_model_catalog_service;
-use crate::AppState;
+use crate::services::ai_model_catalog_web_service::AiModelCatalogQueryService;
+use crate::services::web_contexts::AiModelCatalogWebContext;
 
 pub async fn discover_provider_models(
-    State(state): State<AppState>,
+    State(context): State<AiModelCatalogWebContext>,
     Json(request): Json<ProviderModelsRequest>,
 ) -> Result<Json<ProviderModelsResponse>, ApiError> {
-    let response = ai_model_catalog_service::fetch_provider_models(&request, &state).await?;
+    let response = AiModelCatalogQueryService::new(context)
+        .discover_provider_models(&request)
+        .await?;
     Ok(Json(response))
 }
 
 pub async fn discover_provider_models_for_integration(
-    State(state): State<AppState>,
+    State(context): State<AiModelCatalogWebContext>,
     Json(request): Json<ProviderModelsRequest>,
 ) -> Result<Json<ProviderModelsResponse>, ApiError> {
-    if request.use_saved_secret {
-        return Err(ApiError::BadRequest(
-            "Integration model discovery requires caller-supplied credentials and does not permit use_saved_secret."
-                .to_string(),
-        ));
-    }
-
-    let response = ai_model_catalog_service::fetch_provider_models(&request, &state).await?;
+    let response = AiModelCatalogQueryService::new(context)
+        .discover_provider_models_for_integration(&request)
+        .await?;
     Ok(Json(response))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AppState;
     use axum::Json;
     use oneshim_storage::sqlite::SqliteStorage;
     use std::sync::Arc;
@@ -57,8 +55,13 @@ mod tests {
             integration_inbox: None,
             integration_inbox_store: None,
             integration_audit: None,
+            integration_runtime_telemetry: None,
             update_control: None,
         }
+    }
+
+    fn test_context() -> AiModelCatalogWebContext {
+        AiModelCatalogWebContext::from_state(&test_state())
     }
 
     #[tokio::test]
@@ -72,7 +75,7 @@ mod tests {
             use_saved_secret: true,
         };
 
-        let err = discover_provider_models_for_integration(State(test_state()), Json(request))
+        let err = discover_provider_models_for_integration(State(test_context()), Json(request))
             .await
             .expect_err("integration discovery should reject saved secrets");
 

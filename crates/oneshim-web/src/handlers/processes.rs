@@ -1,41 +1,25 @@
 use axum::extract::{Query, State};
 use axum::Json;
-use oneshim_api_contracts::processes::{ProcessEntryResponse, ProcessSnapshotResponse};
+#[cfg(test)]
+use oneshim_api_contracts::processes::ProcessEntryResponse;
+use oneshim_api_contracts::processes::ProcessSnapshotResponse;
 
 use crate::error::ApiError;
-use crate::AppState;
+use crate::services::processes_service::ProcessesQueryService;
+use crate::services::web_contexts::StorageWebContext;
 
 use super::TimeRangeQuery;
 
 /// GET /api/processes?from=&to=&limit=
 pub async fn get_processes(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Query(params): Query<TimeRangeQuery>,
 ) -> Result<Json<Vec<ProcessSnapshotResponse>>, ApiError> {
-    let from = params.from_datetime();
-    let to = params.to_datetime();
-    let limit = params.limit_or_default();
-
-    let snapshots = state.storage.get_process_snapshots(from, to, limit).await?;
-
-    let response: Vec<ProcessSnapshotResponse> = snapshots
-        .into_iter()
-        .map(|s| ProcessSnapshotResponse {
-            timestamp: s.timestamp.to_rfc3339(),
-            processes: s
-                .processes
-                .into_iter()
-                .map(|p| ProcessEntryResponse {
-                    pid: p.pid,
-                    name: p.name,
-                    cpu_usage: p.cpu_usage as f64,
-                    memory_bytes: p.memory_bytes,
-                })
-                .collect(),
-        })
-        .collect();
-
-    Ok(Json(response))
+    Ok(Json(
+        ProcessesQueryService::new(context)
+            .get_processes(&params)
+            .await?,
+    ))
 }
 
 #[cfg(test)]

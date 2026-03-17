@@ -3,148 +3,78 @@ use axum::Json;
 use oneshim_api_contracts::tags::{CreateTagRequest, TagResponse, UpdateTagRequest};
 
 use crate::error::ApiError;
-use crate::AppState;
+use crate::services::tags_service::{TagsCommandService, TagsQueryService};
+use crate::services::web_contexts::StorageWebContext;
 
 /// GET /api/tags
-pub async fn list_tags(State(state): State<AppState>) -> Result<Json<Vec<TagResponse>>, ApiError> {
-    let tags = state.storage.get_all_tags()?;
-
-    let response: Vec<TagResponse> = tags
-        .into_iter()
-        .map(|t| TagResponse {
-            id: t.id,
-            name: t.name,
-            color: t.color,
-            created_at: t.created_at,
-        })
-        .collect();
-
-    Ok(Json(response))
+pub async fn list_tags(
+    State(context): State<StorageWebContext>,
+) -> Result<Json<Vec<TagResponse>>, ApiError> {
+    Ok(Json(TagsQueryService::new(context).list_tags()?))
 }
 
 /// POST /api/tags
 pub async fn create_tag(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Json(req): Json<CreateTagRequest>,
 ) -> Result<Json<TagResponse>, ApiError> {
-    let color = req.color.unwrap_or_else(|| "#3b82f6".to_string());
-
-    let tag = state.storage.create_tag(&req.name, &color)?;
-
-    Ok(Json(TagResponse {
-        id: tag.id,
-        name: tag.name,
-        color: tag.color,
-        created_at: tag.created_at,
-    }))
+    Ok(Json(TagsCommandService::new(context).create_tag(&req)?))
 }
 
 /// GET /api/tags/:id
 pub async fn get_tag(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Path(tag_id): Path<i64>,
 ) -> Result<Json<TagResponse>, ApiError> {
-    let tag = state
-        .storage
-        .get_tag(tag_id)?
-        .ok_or_else(|| ApiError::NotFound(format!("Tag ID: {tag_id}")))?;
-
-    Ok(Json(TagResponse {
-        id: tag.id,
-        name: tag.name,
-        color: tag.color,
-        created_at: tag.created_at,
-    }))
+    Ok(Json(TagsQueryService::new(context).get_tag(tag_id)?))
 }
 
 /// PUT /api/tags/:id
 pub async fn update_tag(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Path(tag_id): Path<i64>,
     Json(req): Json<UpdateTagRequest>,
 ) -> Result<Json<TagResponse>, ApiError> {
-    let updated = state.storage.update_tag(tag_id, &req.name, &req.color)?;
-
-    if !updated {
-        return Err(ApiError::NotFound(format!("Tag ID: {tag_id}")));
-    }
-
-    let tag = state
-        .storage
-        .get_tag(tag_id)?
-        .ok_or_else(|| ApiError::NotFound(format!("Tag ID: {tag_id}")))?;
-
-    Ok(Json(TagResponse {
-        id: tag.id,
-        name: tag.name,
-        color: tag.color,
-        created_at: tag.created_at,
-    }))
+    Ok(Json(
+        TagsCommandService::new(context).update_tag(tag_id, &req)?,
+    ))
 }
 
 /// DELETE /api/tags/:id
 pub async fn delete_tag(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Path(tag_id): Path<i64>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let deleted = state.storage.delete_tag(tag_id)?;
-
-    if !deleted {
-        return Err(ApiError::NotFound(format!("Tag ID: {tag_id}")));
-    }
-
-    Ok(Json(
-        serde_json::json!({ "message": "태그가 delete되었습니다" }),
-    ))
+    Ok(Json(TagsCommandService::new(context).delete_tag(tag_id)?))
 }
 
 /// GET /api/frames/:frame_id/tags
 pub async fn get_frame_tags(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Path(frame_id): Path<i64>,
 ) -> Result<Json<Vec<TagResponse>>, ApiError> {
-    let tags = state.storage.get_tags_for_frame(frame_id)?;
-
-    let response: Vec<TagResponse> = tags
-        .into_iter()
-        .map(|t| TagResponse {
-            id: t.id,
-            name: t.name,
-            color: t.color,
-            created_at: t.created_at,
-        })
-        .collect();
-
-    Ok(Json(response))
+    Ok(Json(
+        TagsQueryService::new(context).get_frame_tags(frame_id)?,
+    ))
 }
 
 /// POST /api/frames/:frame_id/tags/:tag_id
 pub async fn add_tag_to_frame(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Path((frame_id, tag_id)): Path<(i64, i64)>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    state.storage.add_tag_to_frame(frame_id, tag_id)?;
-
     Ok(Json(
-        serde_json::json!({ "message": "태그가 add되었습니다" }),
+        TagsCommandService::new(context).add_tag_to_frame(frame_id, tag_id)?,
     ))
 }
 
 /// DELETE /api/frames/:frame_id/tags/:tag_id
 pub async fn remove_tag_from_frame(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Path((frame_id, tag_id)): Path<(i64, i64)>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let removed = state.storage.remove_tag_from_frame(frame_id, tag_id)?;
-
-    if !removed {
-        return Err(ApiError::NotFound(format!(
-            "frame {frame_id}에 태그 {tag_id}가 none"
-        )));
-    }
-
     Ok(Json(
-        serde_json::json!({ "message": "태그가 제거되었습니다" }),
+        TagsCommandService::new(context).remove_tag_from_frame(frame_id, tag_id)?,
     ))
 }
 

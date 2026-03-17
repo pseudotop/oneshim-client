@@ -53,6 +53,10 @@ pub fn api_routes() -> Router<AppState> {
             "/integration/auth/device/cancel",
             post(handlers::integration::cancel_device_authorization),
         )
+        .route(
+            "/integration/auth/reset",
+            post(handlers::integration::reset_auth_state),
+        )
         .route("/integration/inbox", get(handlers::integration::list_inbox))
         .route(
             "/integration/inbox/refresh",
@@ -247,6 +251,7 @@ mod tests {
             integration_inbox: None,
             integration_inbox_store: None,
             integration_audit: None,
+            integration_runtime_telemetry: None,
             update_control: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
@@ -274,6 +279,7 @@ mod tests {
             integration_inbox: None,
             integration_inbox_store: None,
             integration_audit: None,
+            integration_runtime_telemetry: None,
             update_control: None,
         };
         let _app: Router<()> = integration_routes().with_state(state);

@@ -76,6 +76,22 @@
       ]
     },
     {
+      "module": "integration_api",
+      "operations": [
+        { "method": "GET", "path": "/api/integration/status" },
+        { "method": "GET", "path": "/api/integration/audit" },
+        { "method": "GET", "path": "/api/integration/auth/status" },
+        { "method": "POST", "path": "/api/integration/auth/device/start" },
+        { "method": "POST", "path": "/api/integration/auth/device/poll" },
+        { "method": "POST", "path": "/api/integration/auth/device/cancel" },
+        { "method": "POST", "path": "/api/integration/auth/reset" },
+        { "method": "GET", "path": "/api/integration/inbox" },
+        { "method": "POST", "path": "/api/integration/inbox/refresh" },
+        { "method": "POST", "path": "/api/integration/inbox/{prompt_id}/ack" },
+        { "method": "POST", "path": "/api/integration/inbox/{prompt_id}/dismiss" }
+      ]
+    },
+    {
       "module": "integration",
       "operations": [
         { "method": "GET", "path": "/integration/v1/status" },

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -10,8 +11,8 @@ use oneshim_core::models::integration::{
     IntegrationSessionStatus, ProactivePrompt, StoredProactivePrompt,
 };
 use oneshim_core::ports::integration::{
-    IntegrationInboxPort, IntegrationInboxStorePort, IntegrationPromptReceiptStorePort,
-    IntegrationSessionPort,
+    IntegrationInboxPort, IntegrationInboxSignalPort, IntegrationInboxStorePort,
+    IntegrationPromptReceiptStorePort, IntegrationSessionPort,
 };
 use uuid::Uuid;
 
@@ -130,6 +131,22 @@ impl IntegrationInboxCoordinator {
             .record_prompt_receipt(prompt_id, envelope, receipt)
             .await?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl IntegrationInboxSignalPort for IntegrationInboxCoordinator {
+    async fn wait_for_remote_prompt_signal(&self, timeout: Duration) -> Result<bool, CoreError> {
+        let Some(session) = self.session_port.current_session().await? else {
+            return Ok(false);
+        };
+        if Self::session_ready_for_inbox(&session).is_err() {
+            return Ok(false);
+        }
+
+        self.transport
+            .wait_for_remote_signal(&session.session_id, timeout)
+            .await
     }
 }
 

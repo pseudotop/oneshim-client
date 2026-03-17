@@ -4,64 +4,34 @@ use futures::stream::Stream;
 use oneshim_api_contracts::update::{UpdateActionRequest, UpdateActionResponse, UpdateStatus};
 use std::convert::Infallible;
 use std::time::Duration;
-use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::StreamExt;
 
 use crate::error::ApiError;
-use crate::AppState;
+use crate::services::update_service::{
+    UpdateCommandService, UpdateQueryService, UpdateStreamService,
+};
+use crate::services::web_contexts::UpdateWebContext;
 
 pub async fn get_update_status(
-    State(state): State<AppState>,
+    State(context): State<UpdateWebContext>,
 ) -> Result<Json<UpdateStatus>, ApiError> {
-    let Some(control) = state.update_control else {
-        return Err(ApiError::NotFound(
-            "Update control is not enabled".to_string(),
-        ));
-    };
-
-    let snapshot = control.state.read().await.clone();
-    Ok(Json(snapshot))
+    Ok(Json(UpdateQueryService::new(context).get_status().await?))
 }
 
 pub async fn post_update_action(
-    State(state): State<AppState>,
+    State(context): State<UpdateWebContext>,
     Json(body): Json<UpdateActionRequest>,
 ) -> Result<Json<UpdateActionResponse>, ApiError> {
-    let Some(control) = state.update_control else {
-        return Err(ApiError::NotFound(
-            "Update control is not enabled".to_string(),
-        ));
-    };
-
-    control
-        .action_tx
-        .send(body.action)
-        .map_err(|e| ApiError::Internal(format!("Failed to send update action: {}", e)))?;
-
-    let snapshot = control.state.read().await.clone();
-    Ok(Json(UpdateActionResponse {
-        accepted: true,
-        status: snapshot,
-    }))
+    Ok(Json(
+        UpdateCommandService::new(context)
+            .post_action(&body)
+            .await?,
+    ))
 }
 
 pub async fn get_update_stream(
-    State(state): State<AppState>,
+    State(context): State<UpdateWebContext>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    let Some(control) = state.update_control else {
-        return Err(ApiError::NotFound(
-            "Update control is not enabled".to_string(),
-        ));
-    };
-
-    let rx = control.subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(|result| match result {
-        Ok(status) => {
-            let json = serde_json::to_string(&status).ok()?;
-            Some(Ok(Event::default().event("update_status").data(json)))
-        }
-        Err(_) => None,
-    });
+    let stream = UpdateStreamService::new(context).event_stream()?;
 
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
@@ -73,6 +43,7 @@ pub async fn get_update_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::web_contexts::UpdateWebContext;
     use crate::update_control::{UpdateAction, UpdateControl, UpdatePhase};
     use crate::AppState;
     use oneshim_storage::sqlite::SqliteStorage;
@@ -104,8 +75,13 @@ mod tests {
             integration_inbox: None,
             integration_inbox_store: None,
             integration_audit: None,
+            integration_runtime_telemetry: None,
             update_control: Some(control),
         }
+    }
+
+    fn context_from_state(state: &AppState) -> UpdateWebContext {
+        UpdateWebContext::from_state(state)
     }
 
     #[tokio::test]
@@ -123,7 +99,7 @@ mod tests {
             guard.message = Some("pending".to_string());
         }
 
-        let response = get_update_status(State(state))
+        let response = get_update_status(State(context_from_state(&state)))
             .await
             .expect("status endpoint should return payload")
             .0;
@@ -137,7 +113,7 @@ mod tests {
         let state = make_state_with_update_control().await;
 
         let response = post_update_action(
-            State(state),
+            State(context_from_state(&state)),
             Json(UpdateActionRequest {
                 action: UpdateAction::CheckNow,
             }),

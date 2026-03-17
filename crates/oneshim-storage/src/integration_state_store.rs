@@ -32,6 +32,21 @@ struct FileIntegrationStateRegistry {
 
 const MAX_AUDIT_RECORDS: usize = 512;
 
+#[derive(Debug, Clone)]
+pub struct IntegrationStateStorePolicy {
+    pub max_stored_prompts: usize,
+    pub redact_completed_prompt_bodies: bool,
+}
+
+impl Default for IntegrationStateStorePolicy {
+    fn default() -> Self {
+        Self {
+            max_stored_prompts: 256,
+            redact_completed_prompt_bodies: true,
+        }
+    }
+}
+
 impl FileIntegrationStateRegistry {
     fn new() -> Self {
         Self {
@@ -72,19 +87,58 @@ impl FileIntegrationStateRegistry {
 
 struct FileIntegrationStateInner {
     registry_path: PathBuf,
+    policy: IntegrationStateStorePolicy,
     registry: parking_lot::Mutex<FileIntegrationStateRegistry>,
 }
 
 impl FileIntegrationStateInner {
-    fn new(registry_path: PathBuf) -> Result<Self, CoreError> {
+    fn new(registry_path: PathBuf, policy: IntegrationStateStorePolicy) -> Result<Self, CoreError> {
         if let Some(parent) = registry_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let registry = FileIntegrationStateRegistry::load_or_default(&registry_path)?;
         Ok(Self {
             registry_path,
+            policy,
             registry: parking_lot::Mutex::new(registry),
         })
+    }
+
+    fn redact_prompt_body_if_needed(
+        &self,
+        prompt: &mut StoredProactivePrompt,
+        status: IntegrationInboxItemStatus,
+    ) {
+        if self.policy.redact_completed_prompt_bodies
+            && status != IntegrationInboxItemStatus::Pending
+        {
+            prompt.prompt.body.clear();
+        }
+    }
+
+    fn prune_inbox_locked(&self, registry: &mut FileIntegrationStateRegistry) {
+        let max_stored_prompts = self.policy.max_stored_prompts.max(1);
+        if registry.inbox.len() <= max_stored_prompts {
+            return;
+        }
+
+        let overflow = registry.inbox.len() - max_stored_prompts;
+        let mut candidates: Vec<_> = registry
+            .inbox
+            .values()
+            .map(|prompt| {
+                (
+                    prompt.status == IntegrationInboxItemStatus::Pending,
+                    prompt.received_at,
+                    prompt.prompt.prompt_id.clone(),
+                )
+            })
+            .collect();
+        candidates.sort_by_key(|entry| (entry.0, entry.1));
+
+        for (_, _, prompt_id) in candidates.into_iter().take(overflow) {
+            registry.inbox.remove(&prompt_id);
+        }
     }
 
     fn save_registry(&self, registry: &FileIntegrationStateRegistry) -> Result<(), CoreError> {
@@ -168,6 +222,7 @@ impl FileIntegrationStateInner {
                     .insert(prompt.prompt.prompt_id.clone(), prompt);
             }
         }
+        self.prune_inbox_locked(&mut registry);
         self.save_registry(&registry)
     }
 
@@ -224,9 +279,10 @@ impl FileIntegrationStateInner {
                 resource_type: "integration_prompt".to_string(),
                 id: prompt_id.to_string(),
             })?;
-        prompt.status = status;
+        prompt.status = status.clone();
         prompt.status_updated_at = Utc::now();
         prompt.dismiss_reason = reason;
+        self.redact_prompt_body_if_needed(prompt, status);
         self.save_registry(&registry)
     }
 
@@ -269,6 +325,7 @@ impl FileIntegrationStateInner {
             IntegrationPromptReceiptAction::Acknowledged => None,
             IntegrationPromptReceiptAction::Dismissed => receipt.reason.clone(),
         };
+        self.redact_prompt_body_if_needed(prompt, prompt.status.clone());
 
         let queue_id = format!("integration_queue_{}", Uuid::new_v4());
         registry.outbox.push(QueuedIntegrationEgressMessage {
@@ -311,6 +368,7 @@ impl FileIntegrationStateInner {
             {
                 prompt.status = IntegrationInboxItemStatus::Expired;
                 prompt.status_updated_at = now;
+                self.redact_prompt_body_if_needed(prompt, IntegrationInboxItemStatus::Expired);
                 expired += 1;
             }
         }
@@ -376,8 +434,15 @@ pub struct FileIntegrationStateStore {
 
 impl FileIntegrationStateStore {
     pub fn new(registry_path: PathBuf) -> Result<Self, CoreError> {
+        Self::with_policy(registry_path, IntegrationStateStorePolicy::default())
+    }
+
+    pub fn with_policy(
+        registry_path: PathBuf,
+        policy: IntegrationStateStorePolicy,
+    ) -> Result<Self, CoreError> {
         Ok(Self {
-            inner: Arc::new(FileIntegrationStateInner::new(registry_path)?),
+            inner: Arc::new(FileIntegrationStateInner::new(registry_path, policy)?),
         })
     }
 
@@ -960,6 +1025,75 @@ mod tests {
             .into_iter()
             .find(|prompt| prompt.prompt.prompt_id == "prompt-1");
         assert!(prompt.is_none());
+    }
+
+    #[tokio::test]
+    async fn integration_inbox_store_redacts_completed_prompt_bodies_by_default() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store =
+            FileIntegrationStateStore::new(temp_dir.path().join("integration.json")).unwrap();
+        let inbox = store.inbox_store();
+
+        inbox
+            .upsert_prompts(vec![sample_prompt("prompt-redact", "body-secret")])
+            .await
+            .unwrap();
+        inbox
+            .update_status("prompt-redact", IntegrationInboxItemStatus::Dismissed, None)
+            .await
+            .unwrap();
+
+        let registry = FileIntegrationStateRegistry::load_or_default(
+            &temp_dir.path().join("integration.json"),
+        )
+        .unwrap();
+        assert_eq!(
+            registry
+                .inbox
+                .get("prompt-redact")
+                .map(|prompt| prompt.prompt.body.as_str()),
+            Some("")
+        );
+    }
+
+    #[tokio::test]
+    async fn integration_inbox_store_prunes_oldest_completed_prompts_when_retention_limit_exceeded()
+    {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store = FileIntegrationStateStore::with_policy(
+            temp_dir.path().join("integration.json"),
+            IntegrationStateStorePolicy {
+                max_stored_prompts: 2,
+                redact_completed_prompt_bodies: true,
+            },
+        )
+        .unwrap();
+        let inbox = store.inbox_store();
+
+        let mut first = sample_prompt("prompt-1", "body-1");
+        first.received_at = Utc::now() - Duration::minutes(3);
+        first.status = IntegrationInboxItemStatus::Acknowledged;
+
+        let mut second = sample_prompt("prompt-2", "body-2");
+        second.received_at = Utc::now() - Duration::minutes(2);
+        second.status = IntegrationInboxItemStatus::Dismissed;
+
+        let mut third = sample_prompt("prompt-3", "body-3");
+        third.received_at = Utc::now() - Duration::minutes(1);
+
+        inbox
+            .upsert_prompts(vec![first, second, third])
+            .await
+            .unwrap();
+
+        let registry = FileIntegrationStateRegistry::load_or_default(
+            &temp_dir.path().join("integration.json"),
+        )
+        .unwrap();
+        assert_eq!(registry.inbox.len(), 2);
+        assert!(!registry.inbox.contains_key("prompt-1"));
+        assert!(registry.inbox.contains_key("prompt-2"));
+        assert!(registry.inbox.contains_key("prompt-3"));
     }
 
     #[tokio::test]

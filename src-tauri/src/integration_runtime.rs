@@ -10,9 +10,10 @@ use oneshim_core::models::integration::{
 };
 use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationAuthPort, IntegrationCheckpointStorePort,
-    IntegrationEgressPort, IntegrationInboxPort, IntegrationInboxStorePort,
-    IntegrationInsightProducerPort, IntegrationOutboxPort, IntegrationPromptPresenterPort,
-    IntegrationPromptReceiptStorePort, IntegrationSessionPort, LocalSuggestionQueryPort,
+    IntegrationEgressPort, IntegrationEgressSignalPort, IntegrationInboxPort,
+    IntegrationInboxSignalPort, IntegrationInboxStorePort, IntegrationInsightProducerPort,
+    IntegrationOutboxPort, IntegrationPromptPresenterPort, IntegrationPromptReceiptStorePort,
+    IntegrationRuntimeTelemetryPort, IntegrationSessionPort, LocalSuggestionQueryPort,
 };
 use oneshim_core::ports::secret_store::SecretStore;
 use oneshim_network::integration::{
@@ -21,11 +22,14 @@ use oneshim_network::integration::{
     IntegrationInboxTransportClient, IntegrationInsightProducerCoordinator,
     IntegrationProducerRuntimeLoop, IntegrationProducerRuntimeLoopProfile,
     IntegrationRequestProofFactory, IntegrationRuntimeLoop, IntegrationRuntimeLoopProfile,
-    IntegrationSessionCoordinator, IntegrationSessionRuntimeProfile, IntegrationTransportClient,
+    IntegrationRuntimeTelemetryHandle, IntegrationSessionCoordinator,
+    IntegrationSessionRuntimeProfile, IntegrationTransportClient,
     NoopIntegrationRequestProofFactory, OidcDeviceFlowAuthConfig,
     OidcDeviceFlowIntegrationAuthPort, PolicyAwareIntegrationEgressCoordinator,
 };
-use oneshim_storage::integration_state_store::FileIntegrationStateStore;
+use oneshim_storage::integration_state_store::{
+    FileIntegrationStateStore, IntegrationStateStorePolicy,
+};
 use tokio::sync::watch;
 
 use crate::integration_insight_source::LocalSuggestionIntegrationSource;
@@ -44,6 +48,7 @@ pub(crate) struct IntegrationRuntimeBindings {
     pub inbox: Option<Arc<dyn IntegrationInboxPort>>,
     pub inbox_store: Option<Arc<dyn IntegrationInboxStorePort>>,
     pub audit: Option<Arc<dyn IntegrationAuditPort>>,
+    pub telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
 }
 
 #[derive(Clone)]
@@ -283,6 +288,7 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
             inbox_ack_cursor: None,
             auth_status: None,
             current_session: None,
+            runtime_telemetry: None,
         };
 
         let mut bundle = IntegrationRuntimeBundle {
@@ -294,6 +300,7 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
                 inbox: None,
                 inbox_store: None,
                 audit: None,
+                telemetry: None,
             },
             egress: None,
             checkpoint_store: None,
@@ -318,8 +325,13 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
             dpop_proof_factory,
         )?;
 
-        let integration_state_store =
-            FileIntegrationStateStore::new(integration_state_store_path(self.config_dir))?;
+        let integration_state_store = FileIntegrationStateStore::with_policy(
+            integration_state_store_path(self.config_dir),
+            IntegrationStateStorePolicy {
+                max_stored_prompts: integration.max_stored_prompts,
+                redact_completed_prompt_bodies: integration.redact_completed_prompt_bodies,
+            },
+        )?;
         let session_store = Arc::new(integration_state_store.session_store())
             as Arc<dyn oneshim_core::ports::integration::IntegrationSessionStorePort>;
         let egress_transport = Arc::new(transport.egress_transport())
@@ -359,37 +371,47 @@ impl<'a> IntegrationRuntimeBuilder<'a> {
             as Arc<dyn IntegrationCheckpointStorePort>;
         let audit =
             Arc::new(integration_state_store.audit_store()) as Arc<dyn IntegrationAuditPort>;
+        let runtime_telemetry = IntegrationRuntimeTelemetryHandle::default();
 
+        let base_egress = Arc::new(IntegrationEgressCoordinator::new(
+            session.clone(),
+            outbox.clone(),
+            egress_transport,
+            integration.max_batch_size,
+        ));
+        let egress_signal = base_egress.clone() as Arc<dyn IntegrationEgressSignalPort>;
         let egress = Arc::new(PolicyAwareIntegrationEgressCoordinator::new(
-            Arc::new(IntegrationEgressCoordinator::new(
-                session.clone(),
-                outbox.clone(),
-                egress_transport,
-                integration.max_batch_size,
-            )) as Arc<dyn IntegrationEgressPort>,
+            base_egress as Arc<dyn IntegrationEgressPort>,
             Arc::new(DefaultIntegrationEgressPolicy::default()),
             audit.clone(),
         )) as Arc<dyn IntegrationEgressPort>;
-        let inbox = Arc::new(IntegrationInboxCoordinator::new(
+        let base_inbox = Arc::new(IntegrationInboxCoordinator::new(
             device_id.clone(),
             session.clone(),
             inbox_store.clone(),
             receipt_store,
             inbox_transport,
             integration.max_batch_size,
-        )) as Arc<dyn IntegrationInboxPort>;
+        ));
+        let inbox_signal = base_inbox.clone() as Arc<dyn IntegrationInboxSignalPort>;
+        let inbox = base_inbox as Arc<dyn IntegrationInboxPort>;
 
         bundle.bindings.session = Some(session.clone());
         bundle.bindings.outbox = Some(outbox);
         bundle.bindings.inbox = Some(inbox.clone());
         bundle.bindings.inbox_store = Some(inbox_store);
         bundle.bindings.audit = Some(audit.clone());
+        bundle.bindings.telemetry =
+            Some(Arc::new(runtime_telemetry.clone()) as Arc<dyn IntegrationRuntimeTelemetryPort>);
         bundle.egress = Some(egress.clone());
         bundle.checkpoint_store = Some(checkpoint_store);
         bundle.runtime_loop = Some(IntegrationRuntimeLoop::new(
             session,
             egress,
             inbox,
+            Some(egress_signal),
+            Some(inbox_signal),
+            Some(runtime_telemetry),
             IntegrationRuntimeLoopProfile {
                 requested_scopes: default_integration_runtime_scopes(),
                 connect_retry_interval: Duration::from_secs(integration.connect_retry_secs),

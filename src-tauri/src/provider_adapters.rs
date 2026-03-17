@@ -677,9 +677,10 @@ fn resolve_ocr_provider(
                         let secret_store = secret_stores
                             .as_ref()
                             .and_then(|stores| stores.for_binding(endpoint.credential.as_ref()));
+                        let profile_id = config.active_secret_profile_id_or("ocr");
                         let credential = CredentialSource::from_api_key_endpoint_for_profile(
                             endpoint,
-                            Some("ocr"),
+                            Some(profile_id),
                             secret_store,
                         )?;
                         let privacy_guard =
@@ -734,9 +735,10 @@ fn resolve_llm_provider(
                         let secret_store = secret_stores
                             .as_ref()
                             .and_then(|stores| stores.for_binding(endpoint.credential.as_ref()));
+                        let profile_id = config.active_secret_profile_id_or("llm");
                         let credential = CredentialSource::from_api_key_endpoint_for_profile(
                             endpoint,
-                            Some("llm"),
+                            Some(profile_id),
                             secret_store,
                         )?;
                         Ok(Arc::new(RemoteLlmProvider::new_with_credential(

@@ -24,6 +24,8 @@ This plan is staged so each step can be reviewed before the next one lands.
 - The remaining architectural risk is concentrated in the integration domain
 - The current runtime is best described as "foundation plus bootstrap wiring", not as a finished external interoperability runtime
 - Any remaining phase wording that implies durable auth, persistence, or live delivery is already complete should be treated as stale and corrected below
+- A client-local fake integration server is allowed as a consumer-side compatibility harness, but it is not the cross-project contract authority
+- See `docs/architecture/ADR-010-local-integration-harness-boundary.md`
 
 ## Phase 0: Boundary Lock-In
 
@@ -257,6 +259,38 @@ Review gate:
 - UX review
 - duplicate/expiry review
 - durable lifecycle review
+
+## Phase 7: Contract Validation And Compatibility Harness
+
+Status:
+
+- client contract profile exists
+- local fake integration server harness started
+- upstream cross-project validation still recommended
+
+Primary artifacts:
+
+- `docs/contracts/integration-asyncapi.yaml`
+- `docs/contracts/integration-cloudevents-profile.md`
+- `docs/architecture/ADR-010-local-integration-harness-boundary.md`
+- `crates/oneshim-network/tests/fake_integration_server/`
+
+Deliverables:
+
+- consumer-side compatibility harness for client integration runtime
+- scenario coverage for bootstrap/session/egress/inbox flows
+- explicit separation between local compatibility validation and cross-project contract authority
+- agreed scenario list for end-to-end contract validation
+
+Implementation note:
+
+The local fake server is allowed for client-side compatibility testing. It must not be treated as sufficient proof of upstream parity or as the sole owner of remote semantics.
+
+Review gate:
+
+- compatibility harness review
+- transport/auth review
+- delivery semantics review
 
 Parallelizable work:
 

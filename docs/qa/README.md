@@ -7,6 +7,8 @@ This directory is the canonical location for manual/reviewed QA execution result
 - QA criteria/checklists (stable definitions):
   - `docs/guides/uiux-qa-sheet.md`
   - `docs/guides/replay-uiux-qa-sheet.md`
+  - `docs/qa/ai-integration-readiness-checklist.md`
+  - `docs/qa/local-debug-ai-integration-smoke.md`
 - Actual QA run outputs (mutable run evidence):
   - `docs/qa/runs/*.md`
 - CI machine artifacts (screenshots, Playwright HTML, logs):

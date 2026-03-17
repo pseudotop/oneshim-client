@@ -1,30 +1,41 @@
+use crate::{
+    error::ApiError,
+    services::{
+        settings_query_service::SettingsQueryService, settings_web_service::SettingsCommandService,
+        web_contexts::SettingsWebContext,
+    },
+};
 use axum::{extract::State, Json};
 use oneshim_api_contracts::settings::{AppSettings, StorageStats};
 
-use crate::{error::ApiError, services::settings_service, AppState};
-
 pub async fn get_storage_stats(
-    State(state): State<AppState>,
+    State(context): State<SettingsWebContext>,
 ) -> Result<Json<StorageStats>, ApiError> {
-    Ok(Json(settings_service::get_storage_stats(&state)?))
+    Ok(Json(
+        SettingsQueryService::new(context).get_storage_stats()?,
+    ))
 }
 
-pub async fn get_settings(State(state): State<AppState>) -> Result<Json<AppSettings>, ApiError> {
-    Ok(Json(settings_service::get_settings(&state)))
+pub async fn get_settings(
+    State(context): State<SettingsWebContext>,
+) -> Result<Json<AppSettings>, ApiError> {
+    Ok(Json(SettingsQueryService::new(context).get_settings()))
 }
 
 pub async fn update_settings(
-    State(state): State<AppState>,
+    State(context): State<SettingsWebContext>,
     Json(settings): Json<AppSettings>,
 ) -> Result<Json<AppSettings>, ApiError> {
-    settings_service::update_settings(&state, &settings).await?;
+    SettingsCommandService::new(context)
+        .update_settings(&settings)
+        .await?;
     Ok(Json(settings))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::settings_service;
+    use crate::services::{settings_assembler, settings_service};
     use oneshim_api_contracts::settings::ExternalApiSettings;
     use oneshim_core::config::AppConfig;
 
@@ -66,12 +77,12 @@ mod tests {
     #[test]
     fn mask_api_key_works() {
         assert_eq!(
-            settings_service::mask_api_key("sk-1234567890abcdef"),
+            settings_assembler::mask_api_key("sk-1234567890abcdef"),
             "sk...cdef"
         );
-        assert_eq!(settings_service::mask_api_key("short"), "***");
-        assert_eq!(settings_service::mask_api_key("12345678"), "***");
-        assert_eq!(settings_service::mask_api_key("123456789"), "12...6789");
+        assert_eq!(settings_assembler::mask_api_key("short"), "***");
+        assert_eq!(settings_assembler::mask_api_key("12345678"), "***");
+        assert_eq!(settings_assembler::mask_api_key("123456789"), "12...6789");
     }
 
     #[test]

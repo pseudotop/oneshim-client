@@ -11,7 +11,7 @@ use crate::feature_capabilities::{
     probe_provider_surface_endpoint as probe_provider_surface_endpoint_impl,
     FeatureCapabilitySnapshot, FeatureCapabilityState, ProviderEndpointProbeResult,
 };
-use crate::setup::{
+use crate::runtime_state::{
     AppState, IntegrationAuthState, OAuthCoordinatorState, OAuthState, SecretBackendCapabilities,
     SecretBackendState,
 };
@@ -365,6 +365,24 @@ pub async fn integration_cancel_device_authorization(
     port.cancel_device_authorization(&flow_id)
         .await
         .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+}
+
+#[command]
+pub async fn integration_reset_auth_state(
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+    let port = require_integration_auth(&integration_auth)?;
+    port.reset_auth_state()
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    let auth_status = port
+        .current_auth_status()
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    Ok(IntegrationDeviceAuthorizationCommandResult {
+        flow: auth_status.pending_flow.clone(),
+        auth_status,
+    })
 }
 
 // ── OAuth IPC commands ──────────────────────────────────────

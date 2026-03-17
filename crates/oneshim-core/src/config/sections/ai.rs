@@ -37,9 +37,69 @@ pub struct AiProviderConfig {
     pub scene_intelligence: SceneIntelligenceConfig,
     #[serde(default = "default_true")]
     pub fallback_to_local: bool,
+    #[serde(default)]
+    pub active_profile_id: Option<String>,
+    #[serde(default)]
+    pub saved_profiles: Vec<SavedAiProviderProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiProviderProfileConfig {
+    #[serde(default)]
+    pub access_mode: AiAccessMode,
+    #[serde(default)]
+    pub ocr_provider: OcrProviderType,
+    #[serde(default)]
+    pub llm_provider: LlmProviderType,
+    #[serde(default)]
+    pub ocr_api: Option<ExternalApiEndpoint>,
+    #[serde(default)]
+    pub llm_api: Option<ExternalApiEndpoint>,
+    #[serde(default)]
+    pub external_data_policy: ExternalDataPolicy,
+    #[serde(default)]
+    pub allow_unredacted_external_ocr: bool,
+    #[serde(default)]
+    pub ocr_validation: OcrValidationConfig,
+    #[serde(default)]
+    pub scene_action_override: SceneActionOverrideConfig,
+    #[serde(default)]
+    pub scene_intelligence: SceneIntelligenceConfig,
+    #[serde(default = "default_true")]
+    pub fallback_to_local: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedAiProviderProfile {
+    pub profile_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub ai_provider: AiProviderProfileConfig,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 impl Default for AiProviderConfig {
+    fn default() -> Self {
+        Self {
+            access_mode: AiAccessMode::default(),
+            ocr_provider: OcrProviderType::default(),
+            llm_provider: LlmProviderType::default(),
+            ocr_api: None,
+            llm_api: None,
+            external_data_policy: ExternalDataPolicy::default(),
+            allow_unredacted_external_ocr: false,
+            ocr_validation: OcrValidationConfig::default(),
+            scene_action_override: SceneActionOverrideConfig::default(),
+            scene_intelligence: SceneIntelligenceConfig::default(),
+            fallback_to_local: true,
+            active_profile_id: None,
+            saved_profiles: Vec::new(),
+        }
+    }
+}
+
+impl Default for AiProviderProfileConfig {
     fn default() -> Self {
         Self {
             access_mode: AiAccessMode::default(),
@@ -57,7 +117,26 @@ impl Default for AiProviderConfig {
     }
 }
 
+impl Default for SavedAiProviderProfile {
+    fn default() -> Self {
+        Self {
+            profile_id: "ai-profile".to_string(),
+            name: "AI Profile".to_string(),
+            ai_provider: AiProviderProfileConfig::default(),
+            updated_at: None,
+        }
+    }
+}
+
 impl AiProviderConfig {
+    pub fn active_secret_profile_id_or<'a>(&'a self, fallback_profile_id: &'a str) -> &'a str {
+        self.active_profile_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(fallback_profile_id)
+    }
+
     pub fn validate_selected_remote_endpoints(&self) -> Result<(), CoreError> {
         self.ocr_validation.validate()?;
         self.scene_action_override.validate()?;

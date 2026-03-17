@@ -16,6 +16,7 @@ pub mod connectivity;
 pub mod http_client;
 pub mod integration;
 pub mod oauth;
+pub mod resilience;
 pub mod sse_client;
 pub mod ws_client;
 

@@ -44,7 +44,7 @@ use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
 use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
-    IntegrationOutboxPort, IntegrationSessionPort,
+    IntegrationOutboxPort, IntegrationRuntimeTelemetryPort, IntegrationSessionPort,
 };
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
 use std::net::SocketAddr;
@@ -86,6 +86,29 @@ pub struct AppState {
     pub integration_inbox: Option<Arc<dyn IntegrationInboxPort>>,
     pub integration_inbox_store: Option<Arc<dyn IntegrationInboxStorePort>>,
     pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
+    pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
+    pub update_control: Option<update_control::UpdateControl>,
+}
+
+#[derive(Clone, Default)]
+pub struct WebServerRuntimeBindings {
+    pub event_tx: Option<broadcast::Sender<RealtimeEvent>>,
+    pub frames_dir: Option<std::path::PathBuf>,
+    pub config_manager: Option<ConfigManager>,
+    pub default_secret_backend_kind: Option<CredentialBackendKind>,
+    pub secret_store: Option<Arc<dyn SecretStore>>,
+    pub secret_stores: Option<SecretStoreSet>,
+    pub audit_logger: Option<Arc<dyn AuditLogPort>>,
+    pub automation_controller: Option<Arc<dyn AutomationPort>>,
+    pub ai_runtime_status: Option<AiRuntimeStatus>,
+    pub integration_runtime_status: Option<IntegrationOutboundRuntimeStatus>,
+    pub integration_auth: Option<Arc<dyn IntegrationAuthPort>>,
+    pub integration_session: Option<Arc<dyn IntegrationSessionPort>>,
+    pub integration_outbox: Option<Arc<dyn IntegrationOutboxPort>>,
+    pub integration_inbox: Option<Arc<dyn IntegrationInboxPort>>,
+    pub integration_inbox_store: Option<Arc<dyn IntegrationInboxStorePort>>,
+    pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
+    pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
     pub update_control: Option<update_control::UpdateControl>,
 }
 
@@ -119,6 +142,7 @@ impl WebServer {
                 integration_inbox: None,
                 integration_inbox_store: None,
                 integration_audit: None,
+                integration_runtime_telemetry: None,
                 update_control: None,
             },
             bound_port_state: None,
@@ -231,6 +255,64 @@ impl WebServer {
 
     pub fn with_bound_port_notifier(mut self, bound_port_notifier: oneshot::Sender<u16>) -> Self {
         self.bound_port_notifier = Some(bound_port_notifier);
+        self
+    }
+
+    pub fn with_runtime_bindings(mut self, bindings: WebServerRuntimeBindings) -> Self {
+        if let Some(event_tx) = bindings.event_tx {
+            self.state.event_tx = event_tx;
+        }
+        if let Some(frames_dir) = bindings.frames_dir {
+            self.state.frames_dir = Some(frames_dir);
+        }
+        if let Some(config_manager) = bindings.config_manager {
+            self.state.config_manager = Some(config_manager);
+        }
+        if let Some(default_secret_backend_kind) = bindings.default_secret_backend_kind {
+            self.state.default_secret_backend_kind = default_secret_backend_kind;
+        }
+        if let Some(secret_store) = bindings.secret_store {
+            self.state.secret_store = Some(secret_store);
+        }
+        if let Some(secret_stores) = bindings.secret_stores {
+            self.state.secret_stores = Some(secret_stores);
+        }
+        if let Some(audit_logger) = bindings.audit_logger {
+            self.state.audit_logger = Some(audit_logger);
+        }
+        if let Some(automation_controller) = bindings.automation_controller {
+            self.state.automation_controller = Some(automation_controller);
+        }
+        if let Some(ai_runtime_status) = bindings.ai_runtime_status {
+            self.state.ai_runtime_status = Some(ai_runtime_status);
+        }
+        if let Some(integration_runtime_status) = bindings.integration_runtime_status {
+            self.state.integration_runtime_status = Some(integration_runtime_status);
+        }
+        if let Some(integration_auth) = bindings.integration_auth {
+            self.state.integration_auth = Some(integration_auth);
+        }
+        if let Some(integration_session) = bindings.integration_session {
+            self.state.integration_session = Some(integration_session);
+        }
+        if let Some(integration_outbox) = bindings.integration_outbox {
+            self.state.integration_outbox = Some(integration_outbox);
+        }
+        if let Some(integration_inbox) = bindings.integration_inbox {
+            self.state.integration_inbox = Some(integration_inbox);
+        }
+        if let Some(integration_inbox_store) = bindings.integration_inbox_store {
+            self.state.integration_inbox_store = Some(integration_inbox_store);
+        }
+        if let Some(integration_audit) = bindings.integration_audit {
+            self.state.integration_audit = Some(integration_audit);
+        }
+        if let Some(integration_runtime_telemetry) = bindings.integration_runtime_telemetry {
+            self.state.integration_runtime_telemetry = Some(integration_runtime_telemetry);
+        }
+        if let Some(update_control) = bindings.update_control {
+            self.state.update_control = Some(update_control);
+        }
         self
     }
 
@@ -508,6 +590,57 @@ mod tests {
         assert_eq!(server.url(), "http://localhost:11091");
     }
 
+    #[test]
+    fn web_server_runtime_bindings_apply_scalar_runtime_state() {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let (event_tx, _) = broadcast::channel(16);
+        let ai_runtime_status = AiRuntimeStatus {
+            ocr_source: "remote".to_string(),
+            llm_source: "subprocess_cli".to_string(),
+            ocr_fallback_reason: None,
+            llm_fallback_reason: None,
+        };
+        let integration_runtime_status = IntegrationOutboundRuntimeStatus {
+            enabled: true,
+            runtime_telemetry: None,
+            ..IntegrationOutboundRuntimeStatus::default()
+        };
+        let frames_dir = std::path::PathBuf::from("/tmp/oneshim-web-runtime-bindings");
+
+        let server = WebServer::new(storage, WebConfig::default()).with_runtime_bindings(
+            WebServerRuntimeBindings {
+                event_tx: Some(event_tx.clone()),
+                frames_dir: Some(frames_dir.clone()),
+                default_secret_backend_kind: Some(CredentialBackendKind::Env),
+                ai_runtime_status: Some(ai_runtime_status.clone()),
+                integration_runtime_status: Some(integration_runtime_status.clone()),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(server.state.event_tx.receiver_count(), 0);
+        assert_eq!(server.state.frames_dir.as_ref(), Some(&frames_dir));
+        assert_eq!(
+            server.state.default_secret_backend_kind,
+            CredentialBackendKind::Env
+        );
+        let applied_ai_runtime_status = server.state.ai_runtime_status.as_ref().unwrap();
+        assert_eq!(
+            applied_ai_runtime_status.ocr_source,
+            ai_runtime_status.ocr_source
+        );
+        assert_eq!(
+            applied_ai_runtime_status.llm_source,
+            ai_runtime_status.llm_source
+        );
+        let applied_integration_runtime_status =
+            server.state.integration_runtime_status.as_ref().unwrap();
+        assert_eq!(
+            applied_integration_runtime_status.enabled,
+            integration_runtime_status.enabled
+        );
+    }
+
     #[tokio::test]
     async fn web_server_fallback_updates_bound_port_state() {
         let reserved_listener =
@@ -580,6 +713,7 @@ mod tests {
             integration_inbox: None,
             integration_inbox_store: None,
             integration_audit: None,
+            integration_runtime_telemetry: None,
             update_control: None,
         }
     }
