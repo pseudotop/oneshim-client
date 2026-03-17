@@ -1,15 +1,34 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
   AiProviderSettings,
   AutomationSettings,
   ExternalApiSettings,
+  FeatureCapabilitySnapshot,
   OcrValidationSettings as OcrValidationSettingsType,
-  ProviderPreset,
+  ProviderEndpointProbeResult,
+  ProviderSurfaceSpec,
   SandboxSettings,
   SceneActionOverrideSettings as SceneActionOverrideSettingsType,
   SceneIntelligenceSettings as SceneIntelligenceSettingsType,
+  SecretBackendCapabilities,
 } from '../../api/client'
-import { Button, Card, CardTitle, Input, Select } from '../../components/ui'
+import { Badge, Button, Card, CardTitle, Input, Select } from '../../components/ui'
+import {
+  findFeatureCapability,
+  maturityBadgeColor,
+  providerSurfaceAvailability,
+  providerSurfaceMaturity,
+  providerSurfaceStatusCopyKey,
+} from '../../features/featureCapabilities'
+import {
+  defaultSurfaceEndpoint,
+  type EndpointSurfaceKind,
+  preferredRelatedProviderSurfaceFromList,
+  surfaceModelSupportsCapability,
+  surfaceOcrExecutionStrategy,
+  surfaceSupportsModelSelection,
+} from '../../features/providerSurfaces'
 import { form } from '../../styles/tokens'
 import OAuthConnectionPanel from './OAuthConnectionPanel'
 import { isProviderOAuthAccessMode } from './oauth-panel-support'
@@ -31,10 +50,161 @@ function toRfc3339OrNull(value: string): string | null {
   return date.toISOString()
 }
 
+function credentialBackendLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  backendKind: string | null | undefined,
+): string {
+  switch ((backendKind ?? '').trim()) {
+    case 'os_secret_store':
+      return t('settingsAutomation.backendOsSecretStore')
+    case 'file_secret_store':
+      return t('settingsAutomation.backendFileSecretStore')
+    case 'env':
+      return t('settingsAutomation.backendEnv')
+    case 'bridge_managed':
+      return t('settingsAutomation.backendBridgeManaged')
+    default:
+      return t('settingsAutomation.backendUnavailable')
+  }
+}
+
+function apiKeyPlaceholder(
+  t: ReturnType<typeof useTranslation>['t'],
+  settings: ExternalApiSettings | null | undefined,
+): string {
+  if (!settings) {
+    return t('settingsAutomation.apiKeyPlaceholder')
+  }
+
+  if (settings.secret_display_hint) {
+    return settings.secret_display_hint
+  }
+
+  if (settings.has_secret) {
+    return t('settingsAutomation.apiKeyStoredPlaceholder', {
+      backend: credentialBackendLabel(t, settings.backend_kind),
+    })
+  }
+
+  return t('settingsAutomation.apiKeyPlaceholder')
+}
+
+function shouldShowBackendManagedHint(settings: ExternalApiSettings | null | undefined): boolean {
+  if (!settings?.has_secret) {
+    return false
+  }
+
+  if (settings.api_key_masked.trim().length > 0) {
+    return false
+  }
+
+  return settings.backend_kind !== 'unavailable'
+}
+
+function supportsProjectionToggle(settings: ExternalApiSettings | null | undefined): boolean {
+  if (!settings) {
+    return false
+  }
+
+  return (
+    settings.auth_mode === 'api_key' &&
+    (settings.backend_kind === 'os_secret_store' || settings.backend_kind === 'file_secret_store')
+  )
+}
+
+function executionKindLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  executionKind: string | null | undefined,
+): string {
+  switch ((executionKind ?? '').trim()) {
+    case 'managed_http':
+      return t('settingsAutomation.executionKindManagedHttp')
+    case 'subprocess_cli':
+      return t('settingsAutomation.executionKindSubprocessCli')
+    default:
+      return t('settingsAutomation.executionKindDirectHttp')
+  }
+}
+
+function placementKindLabel(
+  t: ReturnType<typeof useTranslation>['t'],
+  placementKind: string | null | undefined,
+): string {
+  switch ((placementKind ?? '').trim()) {
+    case 'self_hosted':
+      return t('settingsAutomation.placementSelfHosted')
+    case 'installed_cli':
+      return t('settingsAutomation.placementInstalledCli')
+    case 'custom_hosted':
+      return t('settingsAutomation.placementCustomHosted')
+    default:
+      return t('settingsAutomation.placementProviderHosted')
+  }
+}
+
+function placementKindDescription(
+  t: ReturnType<typeof useTranslation>['t'],
+  placementKind: string | null | undefined,
+): string {
+  switch ((placementKind ?? '').trim()) {
+    case 'self_hosted':
+      return t('settingsAutomation.placementDescriptionSelfHosted')
+    case 'installed_cli':
+      return t('settingsAutomation.placementDescriptionInstalledCli')
+    case 'custom_hosted':
+      return t('settingsAutomation.placementDescriptionCustomHosted')
+    default:
+      return t('settingsAutomation.placementDescriptionProviderHosted')
+  }
+}
+
+function requirementLabel(t: ReturnType<typeof useTranslation>['t'], requirement: string): string {
+  if (requirement === 'os_secret_store') {
+    return t('settingsAutomation.requirementOsSecretStore')
+  }
+
+  if (requirement.startsWith('local_server:')) {
+    return t('settingsAutomation.requirementLocalServer', { service: requirement.slice(13) })
+  }
+
+  if (requirement.startsWith('cli:')) {
+    return t('settingsAutomation.requirementCli', { tool: requirement.slice(4) })
+  }
+
+  if (requirement.startsWith('local_service:')) {
+    return t('settingsAutomation.requirementLocalService', { service: requirement.slice(14) })
+  }
+
+  if (requirement.startsWith('endpoint:')) {
+    return t('settingsAutomation.requirementEndpoint', { target: requirement.slice(9) })
+  }
+
+  return requirement
+}
+
+function surfaceAuthScheme(surface: ProviderSurfaceSpec | undefined, endpointKind: EndpointSurfaceKind): string | null {
+  if (!surface) {
+    return null
+  }
+
+  const transport = endpointKind === 'ocr_api' ? surface.ocr_transport : surface.llm_transport
+  return transport?.auth_scheme ?? null
+}
+
+function surfaceUsesNoAuth(surface: ProviderSurfaceSpec | undefined, endpointKind: EndpointSurfaceKind): boolean {
+  return surfaceAuthScheme(surface, endpointKind) === 'none'
+}
+
 interface AiAutomationTabProps extends SettingsFormTabProps {
-  providerPresets: ProviderPreset[]
+  allProviderSurfaces: ProviderSurfaceSpec[]
+  providerSurfaceOptions: Record<'ocr_api' | 'llm_api', ProviderSurfaceSpec[]>
+  featureCapabilities?: FeatureCapabilitySnapshot | null
+  secretBackendCapabilities?: SecretBackendCapabilities | null
   modelCatalogNotice: Record<'ocr_api' | 'llm_api', string | null>
+  modelCompatibilityNotice: Record<'ocr_api' | 'llm_api', string | null>
   modelCatalogLoading: 'ocr_api' | 'llm_api' | null
+  endpointProbeResult: Record<'ocr_api' | 'llm_api', ProviderEndpointProbeResult | null>
+  endpointProbeLoading: Record<'ocr_api' | 'llm_api', boolean>
   onAutomationChange: (field: keyof AutomationSettings, value: boolean) => void
   onSandboxChange: (field: keyof SandboxSettings, value: boolean | string | number | string[]) => void
   onAiProviderChange: (
@@ -47,19 +217,29 @@ interface AiAutomationTabProps extends SettingsFormTabProps {
   onExternalApiChange: (
     which: 'ocr_api' | 'llm_api',
     field: keyof ExternalApiSettings,
-    value: string | number | null,
+    value: string | number | boolean | null,
   ) => void
-  resolveProviderType: (raw: string | null | undefined) => string
-  onProviderTypeChange: (which: 'ocr_api' | 'llm_api', rawProviderType: string) => void
+  resolveProviderSurface: (which: 'ocr_api' | 'llm_api') => ProviderSurfaceSpec | undefined
+  onProviderSurfaceChange: (which: 'ocr_api' | 'llm_api', surfaceId: string) => void
+  onSelectAiProviderProfile: (profileId: string | null) => void
+  onSaveAiProviderProfile: (name: string) => void
+  onDeleteAiProviderProfile: (profileId: string) => void
   onDiscoverModels: (which: 'ocr_api' | 'llm_api') => void
   getModelOptions: (which: 'ocr_api' | 'llm_api') => string[]
+  canDiscoverModels: (which: 'ocr_api' | 'llm_api') => boolean
 }
 
 export default function AiAutomationTab({
   formData,
-  providerPresets,
+  allProviderSurfaces,
+  providerSurfaceOptions,
+  featureCapabilities,
+  secretBackendCapabilities,
   modelCatalogNotice,
+  modelCompatibilityNotice,
   modelCatalogLoading,
+  endpointProbeResult,
+  endpointProbeLoading,
   onAutomationChange,
   onSandboxChange,
   onAiProviderChange,
@@ -67,12 +247,304 @@ export default function AiAutomationTab({
   onSceneActionOverrideChange,
   onSceneIntelligenceChange,
   onExternalApiChange,
-  resolveProviderType,
-  onProviderTypeChange,
+  resolveProviderSurface,
+  onProviderSurfaceChange,
+  onSelectAiProviderProfile,
+  onSaveAiProviderProfile,
+  onDeleteAiProviderProfile,
   onDiscoverModels,
   getModelOptions,
+  canDiscoverModels,
 }: AiAutomationTabProps) {
   const { t } = useTranslation()
+  const savedProfiles = formData.ai_provider.saved_profiles ?? []
+  const activeSavedProfile =
+    savedProfiles.find((profile) => profile.profile_id === formData.ai_provider.active_profile_id) ?? null
+  const [profileNameDraft, setProfileNameDraft] = useState('')
+  const currentOcrSurface = resolveProviderSurface('ocr_api')
+  const currentLlmSurface = resolveProviderSurface('llm_api')
+  const isCliAccessMode = formData.ai_provider.access_mode === 'ProviderSubscriptionCli'
+  const isOAuthAccessMode = isProviderOAuthAccessMode(formData.ai_provider.access_mode)
+  const showOcrRemoteSection = formData.ai_provider.ocr_provider === 'Remote'
+  const showLlmSurfaceSection = formData.ai_provider.llm_provider === 'Remote' || isCliAccessMode
+  const currentLlmFeature = currentLlmSurface
+    ? findFeatureCapability(featureCapabilities, currentLlmSurface.surface_id)
+    : null
+  const currentLlmMaturity = providerSurfaceMaturity(currentLlmSurface, featureCapabilities)
+  const currentLlmRequirements = currentLlmFeature?.requires ?? []
+  const oauthPanels = [
+    { endpointKind: 'llm_api' as const, surface: currentLlmSurface },
+    { endpointKind: 'ocr_api' as const, surface: currentOcrSurface },
+  ].flatMap((entry) => {
+    if (!entry.surface || entry.surface.execution_kind !== 'managed_http') {
+      return []
+    }
+
+    const preferredCliSurface = preferredRelatedProviderSurfaceFromList(
+      allProviderSurfaces,
+      entry.surface,
+      'subprocess_cli',
+      featureCapabilities,
+    )
+    const preferredCliAvailability = providerSurfaceAvailability(preferredCliSurface, featureCapabilities)
+    return [
+      {
+        endpointKind: entry.endpointKind,
+        oauthSurface: entry.surface,
+        preferredCliSurface,
+        showPreferredCliCta:
+          Boolean(preferredCliSurface) &&
+          preferredCliAvailability !== 'unavailable' &&
+          entry.surface.surface_id !== preferredCliSurface?.surface_id,
+      },
+    ]
+  })
+  const currentLlmPreferredCli = oauthPanels.find((entry) => entry.endpointKind === 'llm_api')
+  const currentOcrUsesNoAuth = surfaceUsesNoAuth(currentOcrSurface, 'ocr_api')
+  const currentLlmUsesNoAuth = surfaceUsesNoAuth(currentLlmSurface, 'llm_api')
+  const currentOcrSupportsModelSelection = surfaceSupportsModelSelection(currentOcrSurface, 'ocr_api')
+  const currentLlmSupportsModelSelection = surfaceSupportsModelSelection(currentLlmSurface, 'llm_api')
+  const currentOcrModelSupport = surfaceModelSupportsCapability(
+    currentOcrSurface,
+    'ocr_api',
+    formData.ai_provider.ocr_api?.model,
+  )
+  const currentOcrStrategy = surfaceOcrExecutionStrategy(currentOcrSurface)
+  const currentLlmModelSupport = surfaceModelSupportsCapability(
+    currentLlmSurface,
+    'llm_api',
+    formData.ai_provider.llm_api?.model,
+  )
+
+  const usesCustomSelfHostedEndpoint = (
+    surface: ProviderSurfaceSpec | undefined,
+    endpointKind: EndpointSurfaceKind,
+  ): boolean => {
+    if (!surface || surface.execution_kind !== 'direct_http' || surface.placement_kind !== 'self_hosted') {
+      return false
+    }
+
+    const configuredEndpoint =
+      endpointKind === 'ocr_api'
+        ? formData.ai_provider.ocr_api?.endpoint?.trim()
+        : formData.ai_provider.llm_api?.endpoint?.trim()
+    const catalogEndpoint = defaultSurfaceEndpoint(surface, endpointKind).trim()
+
+    return Boolean(configuredEndpoint && catalogEndpoint && configuredEndpoint !== catalogEndpoint)
+  }
+
+  const surfaceAvailabilityForEndpoint = (
+    surface: ProviderSurfaceSpec | undefined,
+    endpointKind: EndpointSurfaceKind,
+  ) => {
+    const endpointProbe = endpointProbeResult[endpointKind]
+    if (endpointProbe) {
+      return endpointProbe.availability
+    }
+
+    return usesCustomSelfHostedEndpoint(surface, endpointKind)
+      ? 'partially_available'
+      : providerSurfaceAvailability(surface, featureCapabilities)
+  }
+
+  const surfaceStatusCopyKeyForEndpoint = (
+    surface: ProviderSurfaceSpec | undefined,
+    endpointKind: EndpointSurfaceKind,
+  ) => {
+    const endpointProbe = endpointProbeResult[endpointKind]
+    if (endpointProbe) {
+      return endpointProbe.status_copy_key
+    }
+
+    return usesCustomSelfHostedEndpoint(surface, endpointKind)
+      ? null
+      : providerSurfaceStatusCopyKey(surface, featureCapabilities)
+  }
+
+  const currentLlmAvailability = surfaceAvailabilityForEndpoint(currentLlmSurface, 'llm_api')
+  const currentLlmStatusCopyKey = surfaceStatusCopyKeyForEndpoint(currentLlmSurface, 'llm_api')
+  const llmProviderLocked = isOAuthAccessMode || isCliAccessMode
+  const llmProviderLockReason = isCliAccessMode
+    ? t('settingsAutomation.providerSelectionLockedCli')
+    : isOAuthAccessMode
+      ? t('settingsAutomation.providerSelectionLockedOAuth')
+      : null
+  const effectiveLlmProvider = isCliAccessMode ? 'Remote' : formData.ai_provider.llm_provider
+  const activeOcrPathSummary =
+    formData.ai_provider.ocr_provider === 'Remote' && currentOcrSurface
+      ? t('settingsAutomation.activePathRemoteSurface', { surface: currentOcrSurface.display_name })
+      : formData.ai_provider.ocr_provider === 'Remote'
+        ? t('settingsAutomation.activePathRemote')
+        : t('settingsAutomation.activePathLocal')
+  const activeLlmPathSummary =
+    effectiveLlmProvider === 'Remote' && currentLlmSurface
+      ? t('settingsAutomation.activePathRemoteSurface', { surface: currentLlmSurface.display_name })
+      : effectiveLlmProvider === 'Remote'
+        ? t('settingsAutomation.activePathRemote')
+        : t('settingsAutomation.activePathLocal')
+
+  useEffect(() => {
+    setProfileNameDraft(activeSavedProfile?.name ?? '')
+  }, [activeSavedProfile?.profile_id])
+
+  const handleSwitchToPreferredCli = (
+    endpointKind: EndpointSurfaceKind,
+    preferredCliSurface: ProviderSurfaceSpec | undefined,
+  ) => {
+    onAiProviderChange('access_mode', 'ProviderSubscriptionCli')
+    if (preferredCliSurface) {
+      onProviderSurfaceChange(endpointKind, preferredCliSurface.surface_id)
+    }
+  }
+
+  const accessModeOptions = [
+    {
+      value: 'ProviderApiKey',
+      label: t('settingsAutomation.accessModeApiKeyLabel'),
+      description: t('settingsAutomation.accessModeApiKeyDescription'),
+      maturity: 'stable' as const,
+      preferred: false,
+    },
+    {
+      value: 'ProviderSubscriptionCli',
+      label: t('settingsAutomation.accessModeCliLabel'),
+      description: t('settingsAutomation.accessModeCliDescription'),
+      maturity: 'beta' as const,
+      preferred: true,
+    },
+    {
+      value: 'ProviderOAuth',
+      label: t('settingsAutomation.accessModeOAuthLabel'),
+      description: t('settingsAutomation.accessModeOAuthDescription'),
+      maturity: 'experimental' as const,
+      preferred: false,
+    },
+  ]
+
+  const currentAccessModeOption =
+    accessModeOptions.find((option) => option.value === formData.ai_provider.access_mode) ?? accessModeOptions[0]
+
+  const formatSurfaceOptionLabel = (surface: ProviderSurfaceSpec): string => {
+    const labels = [surface.display_name, placementKindLabel(t, surface.placement_kind)]
+    if (surface.preferred_for_product_auth) {
+      labels.push(t('featureCapability.preferredPath'))
+    }
+
+    const maturity = providerSurfaceMaturity(surface, featureCapabilities)
+    if (maturity !== 'stable') {
+      labels.push(t(`featureCapability.maturity.${maturity}`))
+    }
+
+    const availability = providerSurfaceAvailability(surface, featureCapabilities)
+    if (availability !== 'available') {
+      labels.push(t(`featureCapability.availability.${availability}`))
+    }
+
+    return labels.join(' · ')
+  }
+
+  const renderSurfaceStatus = (surface: ProviderSurfaceSpec | undefined, endpointKind: EndpointSurfaceKind) => {
+    if (!surface) {
+      return null
+    }
+
+    const feature = findFeatureCapability(featureCapabilities, surface.surface_id)
+    const maturity = providerSurfaceMaturity(surface, featureCapabilities)
+    const customSelfHostedEndpoint = usesCustomSelfHostedEndpoint(surface, endpointKind)
+    const endpointProbe = endpointProbeResult[endpointKind]
+    const availability = surfaceAvailabilityForEndpoint(surface, endpointKind)
+    const statusCopyKey = surfaceStatusCopyKeyForEndpoint(surface, endpointKind)
+    const setupCopyKey = endpointProbe ? null : (feature?.setup_copy_key ?? null)
+    const setupDocsUrl = endpointProbe ? null : (feature?.setup_docs_url ?? null)
+    const setupEnvVars = endpointProbe ? [] : (feature?.configuration_env_vars ?? [])
+
+    return (
+      <div className="space-y-2 rounded-lg border border-muted bg-surface-muted/80 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge color="default" size="sm">
+            {placementKindLabel(t, surface.placement_kind)}
+          </Badge>
+          <Badge color={maturityBadgeColor(maturity)} size="sm">
+            {t(`featureCapability.maturity.${maturity}`)}
+          </Badge>
+          {surface.preferred_for_product_auth && (
+            <Badge color="info" size="sm">
+              {t('featureCapability.preferredPath')}
+            </Badge>
+          )}
+          <span className="text-content-secondary text-xs">{t(`featureCapability.availability.${availability}`)}</span>
+        </div>
+        {statusCopyKey && <p className="text-content-secondary text-xs">{t(statusCopyKey)}</p>}
+        {customSelfHostedEndpoint && !endpointProbe && !endpointProbeLoading[endpointKind] && (
+          <p className="text-content-secondary text-xs">{t('settingsAutomation.selfHostedCustomEndpointStatus')}</p>
+        )}
+        {setupCopyKey && (
+          <div className="space-y-2 rounded-md border border-muted bg-surface-elevated/70 p-3">
+            <p className="text-content-muted text-xs">{t('featureCapability.setupTitle')}</p>
+            <p className="text-content-secondary text-xs">{t(setupCopyKey)}</p>
+            {setupEnvVars.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-content-muted text-xs">{t('featureCapability.setupEnvVars')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {setupEnvVars.map((envVar) => (
+                    <Badge key={envVar} color="default" size="sm">
+                      <code>{envVar}</code>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {setupDocsUrl && (
+              <a
+                href={setupDocsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex text-accent text-xs underline"
+              >
+                {t('featureCapability.openSetupDocs')}
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const showDirectApiFields = (surface: ProviderSurfaceSpec | undefined): boolean =>
+    (surface?.execution_kind ?? 'direct_http') === 'direct_http'
+
+  const showManagedHttpFields = (surface: ProviderSurfaceSpec | undefined): boolean =>
+    surface?.execution_kind === 'managed_http'
+
+  const showSubprocessFields = (surface: ProviderSurfaceSpec | undefined): boolean =>
+    surface?.execution_kind === 'subprocess_cli'
+
+  const handleSavedProfileSelection = (profileId: string) => {
+    const nextProfile = savedProfiles.find((profile) => profile.profile_id === profileId) ?? null
+    if (nextProfile) {
+      setProfileNameDraft(nextProfile.name)
+    }
+    onSelectAiProviderProfile(profileId || null)
+  }
+
+  const handleSaveCurrentProfile = () => {
+    const nextName = profileNameDraft.trim() || activeSavedProfile?.name || ''
+    if (!nextName) {
+      return
+    }
+    setProfileNameDraft(nextName)
+    onSaveAiProviderProfile(nextName)
+  }
+
+  const handleDeleteCurrentProfile = () => {
+    if (!activeSavedProfile) {
+      return
+    }
+    setProfileNameDraft('')
+    onDeleteAiProviderProfile(activeSavedProfile.profile_id)
+  }
+
+  const saveProfileDisabled = !profileNameDraft.trim() && !activeSavedProfile?.name
 
   return (
     <div className="space-y-6">
@@ -108,9 +580,9 @@ export default function AiAutomationTab({
                 value={formData.sandbox.profile}
                 onChange={(e) => onSandboxChange('profile', e.target.value)}
               >
-                <option value="Permissive">Permissive</option>
-                <option value="Standard">Standard</option>
-                <option value="Strict">Strict</option>
+                <option value="Permissive">{t('settingsAutomation.sandboxProfilePermissive')}</option>
+                <option value="Standard">{t('settingsAutomation.sandboxProfileStandard')}</option>
+                <option value="Strict">{t('settingsAutomation.sandboxProfileStrict')}</option>
               </Select>
             </div>
 
@@ -127,6 +599,323 @@ export default function AiAutomationTab({
       <Card id="section-ai" variant="default" padding="lg">
         <CardTitle className="mb-4">{t('settingsAutomation.aiTitle')}</CardTitle>
         <div className="space-y-4">
+          <div className="space-y-3 rounded-lg border border-muted p-4">
+            <div>
+              <label htmlFor="settings-ai-access-mode" className={form.label}>
+                {t('settingsAutomation.accessModeLabel')}
+              </label>
+              <Select
+                id="settings-ai-access-mode"
+                value={formData.ai_provider.access_mode}
+                onChange={(e) => onAiProviderChange('access_mode', e.target.value)}
+              >
+                {accessModeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+                {!accessModeOptions.some((option) => option.value === formData.ai_provider.access_mode) && (
+                  <option value={formData.ai_provider.access_mode}>{currentAccessModeOption.label}</option>
+                )}
+              </Select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge color={maturityBadgeColor(currentAccessModeOption.maturity)} size="sm">
+                {t(`featureCapability.maturity.${currentAccessModeOption.maturity}`)}
+              </Badge>
+              {currentAccessModeOption.preferred && (
+                <Badge color="info" size="sm">
+                  {t('featureCapability.preferredPath')}
+                </Badge>
+              )}
+            </div>
+            <p className="text-content-secondary text-sm">{currentAccessModeOption.description}</p>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-muted p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="font-medium text-content-strong text-sm">{t('settingsAutomation.savedProfilesTitle')}</p>
+                <p className="text-content-secondary text-sm">{t('settingsAutomation.savedProfilesDescription')}</p>
+              </div>
+              {activeSavedProfile ? (
+                <Badge color="info" size="sm">
+                  {t('settingsAutomation.savedProfilesActiveBadge')}
+                </Badge>
+              ) : null}
+            </div>
+
+            <div>
+              <label htmlFor="settings-ai-provider-profile" className={form.label}>
+                {t('settingsAutomation.savedProfilesSelectLabel')}
+              </label>
+              <Select
+                id="settings-ai-provider-profile"
+                value={formData.ai_provider.active_profile_id ?? ''}
+                onChange={(e) => handleSavedProfileSelection(e.target.value)}
+              >
+                <option value="">{t('settingsAutomation.savedProfilesCustomOption')}</option>
+                {savedProfiles.map((profile) => (
+                  <option key={profile.profile_id} value={profile.profile_id}>
+                    {profile.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <div>
+                <label htmlFor="settings-ai-provider-profile-name" className={form.label}>
+                  {t('settingsAutomation.savedProfilesNameLabel')}
+                </label>
+                <Input
+                  id="settings-ai-provider-profile-name"
+                  type="text"
+                  value={profileNameDraft}
+                  onChange={(e) => setProfileNameDraft(e.target.value)}
+                  placeholder={t('settingsAutomation.savedProfilesNamePlaceholder')}
+                />
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleSaveCurrentProfile}
+                  disabled={saveProfileDisabled}
+                >
+                  {activeSavedProfile
+                    ? t('settingsAutomation.savedProfilesUpdateAction')
+                    : t('settingsAutomation.savedProfilesSaveAction')}
+                </Button>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={handleDeleteCurrentProfile}
+                  disabled={!activeSavedProfile}
+                >
+                  {t('settingsAutomation.savedProfilesDeleteAction')}
+                </Button>
+              </div>
+            </div>
+
+            <p className="text-content-secondary text-xs">
+              {activeSavedProfile
+                ? t('settingsAutomation.savedProfilesSelectedHint', { name: activeSavedProfile.name })
+                : t('settingsAutomation.savedProfilesCustomHint')}
+            </p>
+          </div>
+
+          {showOcrRemoteSection && currentOcrSurface && (
+            <div className="space-y-3 rounded-lg border border-muted bg-surface-muted/80 p-4">
+              <div className="space-y-1">
+                <p className="font-medium text-content-strong text-sm">
+                  OCR {t('settingsAutomation.providerSurfaceLabel')}
+                </p>
+                <p className="text-content-secondary text-sm">
+                  {t('settingsAutomation.pathSummarySurface', { surface: currentOcrSurface.display_name })}
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="settings-ocr-provider-surface" className="mb-1 block text-content-secondary text-xs">
+                  {t('settingsAutomation.providerSurfaceLabel')}
+                </label>
+                <Select
+                  id="settings-ocr-provider-surface"
+                  value={
+                    formData.ai_provider.ocr_api?.surface_id ?? resolveProviderSurface('ocr_api')?.surface_id ?? ''
+                  }
+                  disabled={providerSurfaceOptions.ocr_api.length === 0}
+                  onChange={(e) => onProviderSurfaceChange('ocr_api', e.target.value)}
+                >
+                  {providerSurfaceOptions.ocr_api.length === 0 ? (
+                    <option value="">{t('settingsAutomation.noCompatibleProviderSurface')}</option>
+                  ) : (
+                    providerSurfaceOptions.ocr_api.map((surface) => (
+                      <option key={surface.surface_id} value={surface.surface_id}>
+                        {formatSurfaceOptionLabel(surface)}
+                      </option>
+                    ))
+                  )}
+                </Select>
+              </div>
+
+              {renderSurfaceStatus(currentOcrSurface, 'ocr_api')}
+
+              {currentOcrStrategy !== 'none' && (
+                <div className="rounded-md bg-surface-elevated/70 p-3 text-content-secondary text-xs">
+                  {currentOcrStrategy === 'multimodal_llm'
+                    ? t('settingsAutomation.ocrStrategyMultimodal')
+                    : t('settingsAutomation.ocrStrategyVisionApi')}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showLlmSurfaceSection && currentLlmSurface && (
+            <div className="space-y-3 rounded-lg border border-muted bg-surface-muted/80 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="font-medium text-content-strong text-sm">
+                    LLM {t('settingsAutomation.providerSurfaceLabel')}
+                  </p>
+                  <p className="text-content-secondary text-sm">
+                    {t('settingsAutomation.pathSummarySurface', { surface: currentLlmSurface.display_name })}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge color={maturityBadgeColor(currentLlmMaturity)} size="sm">
+                    {t(`featureCapability.maturity.${currentLlmMaturity}`)}
+                  </Badge>
+                  {currentLlmSurface.preferred_for_product_auth && (
+                    <Badge color="info" size="sm">
+                      {t('featureCapability.preferredPath')}
+                    </Badge>
+                  )}
+                  <Badge color={currentLlmAvailability === 'available' ? 'success' : 'warning'} size="sm">
+                    {t(`featureCapability.availability.${currentLlmAvailability}`)}
+                  </Badge>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="settings-llm-provider-surface" className="mb-1 block text-content-secondary text-xs">
+                  {t('settingsAutomation.providerSurfaceLabel')}
+                </label>
+                <Select
+                  id="settings-llm-provider-surface"
+                  value={
+                    formData.ai_provider.llm_api?.surface_id ?? resolveProviderSurface('llm_api')?.surface_id ?? ''
+                  }
+                  disabled={providerSurfaceOptions.llm_api.length === 0}
+                  onChange={(e) => onProviderSurfaceChange('llm_api', e.target.value)}
+                >
+                  {providerSurfaceOptions.llm_api.length === 0 ? (
+                    <option value="">{t('settingsAutomation.noCompatibleProviderSurface')}</option>
+                  ) : (
+                    providerSurfaceOptions.llm_api.map((surface) => (
+                      <option key={surface.surface_id} value={surface.surface_id}>
+                        {formatSurfaceOptionLabel(surface)}
+                      </option>
+                    ))
+                  )}
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <p className="text-content-muted text-xs">{t('settingsAutomation.pathExecutionLabel')}</p>
+                  <p className="text-content-secondary text-sm">
+                    {executionKindLabel(t, currentLlmSurface.execution_kind)}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-content-muted text-xs">{t('settingsAutomation.pathPlacementLabel')}</p>
+                  <p className="text-content-secondary text-sm">
+                    {placementKindLabel(t, currentLlmSurface.placement_kind)}
+                  </p>
+                  <p className="text-content-muted text-xs">
+                    {placementKindDescription(t, currentLlmSurface.placement_kind)}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-content-muted text-xs">{t('settingsAutomation.pathRequirementsLabel')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {currentLlmRequirements.length > 0 ? (
+                      currentLlmRequirements.map((requirement) => (
+                        <Badge key={requirement} color="default" size="sm">
+                          {requirementLabel(t, requirement)}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-content-secondary text-sm">
+                        {t('settingsAutomation.pathRequirementsNone')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {currentLlmStatusCopyKey && (
+                <div className="space-y-1">
+                  <p className="text-content-muted text-xs">{t('settingsAutomation.pathNextStepLabel')}</p>
+                  <p className="text-content-secondary text-sm">{t(currentLlmStatusCopyKey)}</p>
+                </div>
+              )}
+
+              {currentLlmPreferredCli?.showPreferredCliCta && currentLlmPreferredCli.preferredCliSurface && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-muted bg-surface-elevated/70 p-3">
+                  <div className="space-y-1">
+                    <p className="font-medium text-content-strong text-sm">
+                      {t('settingsAutomation.preferredCliTitle')}
+                    </p>
+                    <p className="text-content-secondary text-sm">
+                      {t('settingsAutomation.preferredCliDescription', {
+                        surface: currentLlmPreferredCli.preferredCliSurface.display_name,
+                      })}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      handleSwitchToPreferredCli(
+                        currentLlmPreferredCli.endpointKind,
+                        currentLlmPreferredCli.preferredCliSurface,
+                      )
+                    }
+                  >
+                    {t('settingsAutomation.switchToPreferredCli')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-3 rounded-lg border border-muted bg-surface-muted/80 p-4">
+            <div className="space-y-1">
+              <p className="font-medium text-content-strong text-sm">{t('settingsAutomation.activeRoutingTitle')}</p>
+              <p className="text-content-secondary text-sm">{t('settingsAutomation.activeRoutingDescription')}</p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="space-y-2 rounded-md border border-muted/70 bg-surface-elevated/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-content text-sm">{t('settingsAutomation.ocrProvider')}</span>
+                  <Badge color={formData.ai_provider.ocr_provider === 'Remote' ? 'info' : 'default'} size="sm">
+                    {formData.ai_provider.ocr_provider === 'Remote'
+                      ? t('settingsAutomation.providerRemote')
+                      : t('settingsAutomation.providerLocal')}
+                  </Badge>
+                </div>
+                <p className="text-content-secondary text-sm">{activeOcrPathSummary}</p>
+              </div>
+              <div className="space-y-2 rounded-md border border-muted/70 bg-surface-elevated/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-content text-sm">{t('settingsAutomation.llmProvider')}</span>
+                    {llmProviderLocked && (
+                      <Badge color="warning" size="sm">
+                        {t('settingsAutomation.providerSelectionLockedBadge')}
+                      </Badge>
+                    )}
+                  </div>
+                  <Badge color={effectiveLlmProvider === 'Remote' ? 'info' : 'default'} size="sm">
+                    {effectiveLlmProvider === 'Remote'
+                      ? t('settingsAutomation.providerRemote')
+                      : t('settingsAutomation.providerLocal')}
+                  </Badge>
+                </div>
+                <p className="text-content-secondary text-sm">{activeLlmPathSummary}</p>
+                {llmProviderLocked && llmProviderLockReason && (
+                  <p className="text-content-muted text-xs">{llmProviderLockReason}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label htmlFor="settings-ocr-provider" className={form.label}>
@@ -137,22 +926,38 @@ export default function AiAutomationTab({
                 value={formData.ai_provider.ocr_provider}
                 onChange={(e) => onAiProviderChange('ocr_provider', e.target.value)}
               >
-                <option value="Local">Local</option>
-                <option value="Remote">Remote</option>
+                <option value="Local">{t('settingsAutomation.providerLocal')}</option>
+                <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
               </Select>
             </div>
             <div>
               <label htmlFor="settings-llm-provider" className={form.label}>
                 {t('settingsAutomation.llmProvider')}
               </label>
+              {llmProviderLocked && (
+                <div className="mb-2 flex items-center gap-2">
+                  <Badge color="warning" size="sm">
+                    {t('settingsAutomation.providerSelectionLockedBadge')}
+                  </Badge>
+                  <span className="text-content-secondary text-xs">{llmProviderLockReason}</span>
+                </div>
+              )}
               <Select
                 id="settings-llm-provider"
-                value={formData.ai_provider.llm_provider}
+                value={isCliAccessMode ? 'Remote' : formData.ai_provider.llm_provider}
+                disabled={llmProviderLocked}
                 onChange={(e) => onAiProviderChange('llm_provider', e.target.value)}
               >
-                <option value="Local">Local</option>
-                <option value="Remote">Remote</option>
+                <option value="Local">{t('settingsAutomation.providerLocal')}</option>
+                <option value="Remote">{t('settingsAutomation.providerRemote')}</option>
               </Select>
+              {llmProviderLocked && (
+                <p className="mt-1 text-content-secondary text-xs">
+                  {isCliAccessMode
+                    ? t('settingsAutomation.cliModeProviderSummary')
+                    : t('settingsAutomation.oauthLlmProviderPinned')}
+                </p>
+              )}
             </div>
           </div>
 
@@ -165,9 +970,9 @@ export default function AiAutomationTab({
               value={formData.ai_provider.external_data_policy}
               onChange={(e) => onAiProviderChange('external_data_policy', e.target.value)}
             >
-              <option value="PiiFilterStrict">PII Filter Strict</option>
-              <option value="PiiFilterStandard">PII Filter Standard</option>
-              <option value="AllowFiltered">Allow Filtered</option>
+              <option value="PiiFilterStrict">{t('settingsAutomation.dataPolicyStrict')}</option>
+              <option value="PiiFilterStandard">{t('settingsAutomation.dataPolicyStandard')}</option>
+              <option value="AllowFiltered">{t('settingsAutomation.dataPolicyAllowFiltered')}</option>
             </Select>
           </div>
 
@@ -397,84 +1202,128 @@ export default function AiAutomationTab({
             onChange={(value) => onAiProviderChange('fallback_to_local', value)}
           />
 
-          {isProviderOAuthAccessMode(formData.ai_provider.access_mode) && (
-            <OAuthConnectionPanel providerId="openai" providerName="OpenAI" />
-          )}
+          {isOAuthAccessMode &&
+            oauthPanels.map((panel) => (
+              <OAuthConnectionPanel
+                key={`${panel.endpointKind}:${panel.oauthSurface.surface_id}`}
+                providerId={panel.oauthSurface.vendor_id}
+                providerName={
+                  panel.oauthSurface.provider_type === 'OpenAi' ? 'OpenAI' : panel.oauthSurface.display_name
+                }
+                oauthSurface={panel.oauthSurface}
+                preferredCliSurface={panel.preferredCliSurface}
+                featureSnapshot={featureCapabilities}
+                secretBackendCapabilities={secretBackendCapabilities}
+                onUsePreferredCli={
+                  panel.showPreferredCliCta
+                    ? () => handleSwitchToPreferredCli(panel.endpointKind, panel.preferredCliSurface)
+                    : undefined
+                }
+              />
+            ))}
 
-          {formData.ai_provider.ocr_provider === 'Remote' && (
+          {showOcrRemoteSection && (
             <div className="space-y-3 rounded-lg border border-muted p-4">
               <h4 className="font-medium text-content-strong text-sm">OCR {t('settingsAutomation.externalApi')}</h4>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label htmlFor="settings-ocr-provider-type" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.providerType')}
-                  </label>
-                  <Select
-                    id="settings-ocr-provider-type"
-                    value={resolveProviderType(formData.ai_provider.ocr_api?.provider_type)}
-                    onChange={(e) => onProviderTypeChange('ocr_api', e.target.value)}
-                  >
-                    {providerPresets.map((preset) => (
-                      <option key={preset.provider_type} value={preset.provider_type}>
-                        {preset.display_name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
                 <div className="flex items-end">
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
+                    disabled={!canDiscoverModels('ocr_api')}
                     isLoading={modelCatalogLoading === 'ocr_api'}
                     onClick={() => onDiscoverModels('ocr_api')}
                   >
                     {t('settingsAutomation.loadModels')}
                   </Button>
                 </div>
-                <div>
-                  <label htmlFor="settings-ocr-endpoint" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.endpoint')}
-                  </label>
-                  <Input
-                    id="settings-ocr-endpoint"
-                    type="text"
-                    value={formData.ai_provider.ocr_api?.endpoint ?? ''}
-                    onChange={(e) => onExternalApiChange('ocr_api', 'endpoint', e.target.value)}
-                    placeholder={t('settingsAutomation.endpointPlaceholderOcr', 'https://api.example.com/ocr')}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="settings-ocr-api-key" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.apiKey')}
-                  </label>
-                  <Input
-                    id="settings-ocr-api-key"
-                    type="password"
-                    value={formData.ai_provider.ocr_api?.api_key_masked ?? ''}
-                    onChange={(e) => onExternalApiChange('ocr_api', 'api_key_masked', e.target.value)}
-                    placeholder={t('settingsAutomation.apiKeyPlaceholder')}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="settings-ocr-model" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.model')}
-                  </label>
-                  <Input
-                    id="settings-ocr-model"
-                    type="text"
-                    list="ocr-model-catalog"
-                    value={formData.ai_provider.ocr_api?.model ?? ''}
-                    onChange={(e) => onExternalApiChange('ocr_api', 'model', e.target.value || null)}
-                  />
-                  {getModelOptions('ocr_api').length > 0 && (
-                    <datalist id="ocr-model-catalog">
-                      {getModelOptions('ocr_api').map((modelName) => (
-                        <option key={modelName} value={modelName} />
-                      ))}
-                    </datalist>
-                  )}
-                </div>
+                {showDirectApiFields(currentOcrSurface) && (
+                  <>
+                    <div>
+                      <label htmlFor="settings-ocr-endpoint" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.endpoint')}
+                      </label>
+                      <Input
+                        id="settings-ocr-endpoint"
+                        type="text"
+                        value={formData.ai_provider.ocr_api?.endpoint ?? ''}
+                        onChange={(e) => onExternalApiChange('ocr_api', 'endpoint', e.target.value)}
+                        placeholder={t('settingsAutomation.endpointPlaceholderOcr', 'https://api.example.com/ocr')}
+                      />
+                    </div>
+                    {!currentOcrUsesNoAuth ? (
+                      <div>
+                        <label htmlFor="settings-ocr-api-key" className="mb-1 block text-content-secondary text-xs">
+                          {t('settingsAutomation.apiKey')}
+                        </label>
+                        <Input
+                          id="settings-ocr-api-key"
+                          type="password"
+                          value={formData.ai_provider.ocr_api?.api_key_masked ?? ''}
+                          onChange={(e) => onExternalApiChange('ocr_api', 'api_key_masked', e.target.value)}
+                          placeholder={apiKeyPlaceholder(t, formData.ai_provider.ocr_api)}
+                        />
+                        {shouldShowBackendManagedHint(formData.ai_provider.ocr_api) && (
+                          <p className="mt-1 text-content-secondary text-xs">
+                            {t('settingsAutomation.apiKeyStoredHint', {
+                              backend: credentialBackendLabel(t, formData.ai_provider.ocr_api?.backend_kind),
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs md:col-span-2">
+                        {placementKindDescription(t, currentOcrSurface?.placement_kind)}
+                      </div>
+                    )}
+                    {currentOcrUsesNoAuth && (
+                      <div className="rounded-md bg-surface-elevated/70 p-3 text-content-secondary text-xs md:col-span-2">
+                        {t('settingsAutomation.noAuthSurfaceDescription')}
+                      </div>
+                    )}
+                    {!currentOcrUsesNoAuth && supportsProjectionToggle(formData.ai_provider.ocr_api) && (
+                      <div className="md:col-span-2">
+                        <ToggleRow
+                          label={t('settingsAutomation.secretProjectionEnabled')}
+                          description={t('settingsAutomation.secretProjectionEnabledDescription')}
+                          checked={formData.ai_provider.ocr_api?.projection_enabled ?? false}
+                          onChange={(value) => onExternalApiChange('ocr_api', 'projection_enabled', value)}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+                {currentOcrSupportsModelSelection ? (
+                  <div>
+                    <label htmlFor="settings-ocr-model" className="mb-1 block text-content-secondary text-xs">
+                      {t('settingsAutomation.model')}
+                    </label>
+                    <Input
+                      id="settings-ocr-model"
+                      type="text"
+                      list="ocr-model-catalog"
+                      value={formData.ai_provider.ocr_api?.model ?? ''}
+                      onChange={(e) => onExternalApiChange('ocr_api', 'model', e.target.value || null)}
+                    />
+                    {getModelOptions('ocr_api').length > 0 && (
+                      <datalist id="ocr-model-catalog">
+                        {getModelOptions('ocr_api').map((modelName) => (
+                          <option key={modelName} value={modelName} />
+                        ))}
+                      </datalist>
+                    )}
+                    {(modelCompatibilityNotice.ocr_api || currentOcrModelSupport === false) && (
+                      <p className="mt-1 text-semantic-warning text-xs">
+                        {modelCompatibilityNotice.ocr_api ?? t('settingsAutomation.ocrModelUnsupported')}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs">
+                    {t('settingsAutomation.modelSelectionUnsupportedSurface')}
+                  </div>
+                )}
                 <div>
                   <label htmlFor="settings-ocr-timeout" className="mb-1 block text-content-secondary text-xs">
                     {t('settingsAutomation.timeoutSecs')}
@@ -492,83 +1341,137 @@ export default function AiAutomationTab({
               {modelCatalogNotice.ocr_api && (
                 <p className="text-content-secondary text-xs">{modelCatalogNotice.ocr_api}</p>
               )}
+              {!canDiscoverModels('ocr_api') && !modelCatalogNotice.ocr_api && (
+                <p className="text-content-secondary text-xs">
+                  {t('settingsAutomation.modelDiscoveryUnsupportedSurface')}
+                </p>
+              )}
             </div>
           )}
 
-          {formData.ai_provider.llm_provider === 'Remote' && (
+          {showLlmSurfaceSection && (
             <div className="space-y-3 rounded-lg border border-muted p-4">
               <h4 className="font-medium text-content-strong text-sm">LLM {t('settingsAutomation.externalApi')}</h4>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label htmlFor="settings-llm-provider-type" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.providerType')}
-                  </label>
-                  <Select
-                    id="settings-llm-provider-type"
-                    value={resolveProviderType(formData.ai_provider.llm_api?.provider_type)}
-                    onChange={(e) => onProviderTypeChange('llm_api', e.target.value)}
-                  >
-                    {providerPresets.map((preset) => (
-                      <option key={preset.provider_type} value={preset.provider_type}>
-                        {preset.display_name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    isLoading={modelCatalogLoading === 'llm_api'}
-                    onClick={() => onDiscoverModels('llm_api')}
-                  >
-                    {t('settingsAutomation.loadModels')}
-                  </Button>
-                </div>
-                <div>
-                  <label htmlFor="settings-llm-endpoint" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.endpoint')}
-                  </label>
-                  <Input
-                    id="settings-llm-endpoint"
-                    type="text"
-                    value={formData.ai_provider.llm_api?.endpoint ?? ''}
-                    onChange={(e) => onExternalApiChange('llm_api', 'endpoint', e.target.value)}
-                    placeholder={t('settingsAutomation.endpointPlaceholderLlm', 'https://api.example.com/llm')}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="settings-llm-api-key" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.apiKey')}
-                  </label>
-                  <Input
-                    id="settings-llm-api-key"
-                    type="password"
-                    value={formData.ai_provider.llm_api?.api_key_masked ?? ''}
-                    onChange={(e) => onExternalApiChange('llm_api', 'api_key_masked', e.target.value)}
-                    placeholder={t('settingsAutomation.apiKeyPlaceholder')}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="settings-llm-model" className="mb-1 block text-content-secondary text-xs">
-                    {t('settingsAutomation.model')}
-                  </label>
-                  <Input
-                    id="settings-llm-model"
-                    type="text"
-                    list="llm-model-catalog"
-                    value={formData.ai_provider.llm_api?.model ?? ''}
-                    onChange={(e) => onExternalApiChange('llm_api', 'model', e.target.value || null)}
-                  />
-                  {getModelOptions('llm_api').length > 0 && (
-                    <datalist id="llm-model-catalog">
-                      {getModelOptions('llm_api').map((modelName) => (
-                        <option key={modelName} value={modelName} />
-                      ))}
-                    </datalist>
-                  )}
-                </div>
+                {showDirectApiFields(currentLlmSurface) && (
+                  <>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!canDiscoverModels('llm_api')}
+                        isLoading={modelCatalogLoading === 'llm_api'}
+                        onClick={() => onDiscoverModels('llm_api')}
+                      >
+                        {t('settingsAutomation.loadModels')}
+                      </Button>
+                    </div>
+                    <div>
+                      <label htmlFor="settings-llm-endpoint" className="mb-1 block text-content-secondary text-xs">
+                        {t('settingsAutomation.endpoint')}
+                      </label>
+                      <Input
+                        id="settings-llm-endpoint"
+                        type="text"
+                        value={formData.ai_provider.llm_api?.endpoint ?? ''}
+                        onChange={(e) => onExternalApiChange('llm_api', 'endpoint', e.target.value)}
+                        placeholder={t('settingsAutomation.endpointPlaceholderLlm', 'https://api.example.com/llm')}
+                      />
+                    </div>
+                    {!currentLlmUsesNoAuth ? (
+                      <div>
+                        <label htmlFor="settings-llm-api-key" className="mb-1 block text-content-secondary text-xs">
+                          {t('settingsAutomation.apiKey')}
+                        </label>
+                        <Input
+                          id="settings-llm-api-key"
+                          type="password"
+                          value={formData.ai_provider.llm_api?.api_key_masked ?? ''}
+                          onChange={(e) => onExternalApiChange('llm_api', 'api_key_masked', e.target.value)}
+                          placeholder={apiKeyPlaceholder(t, formData.ai_provider.llm_api)}
+                        />
+                        {shouldShowBackendManagedHint(formData.ai_provider.llm_api) && (
+                          <p className="mt-1 text-content-secondary text-xs">
+                            {t('settingsAutomation.apiKeyStoredHint', {
+                              backend: credentialBackendLabel(t, formData.ai_provider.llm_api?.backend_kind),
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs md:col-span-2">
+                        {placementKindDescription(t, currentLlmSurface?.placement_kind)}
+                      </div>
+                    )}
+                    {currentLlmUsesNoAuth && (
+                      <div className="rounded-md bg-surface-elevated/70 p-3 text-content-secondary text-xs md:col-span-2">
+                        {t('settingsAutomation.noAuthSurfaceDescription')}
+                      </div>
+                    )}
+                    {!currentLlmUsesNoAuth && supportsProjectionToggle(formData.ai_provider.llm_api) && (
+                      <div className="md:col-span-2">
+                        <ToggleRow
+                          label={t('settingsAutomation.secretProjectionEnabled')}
+                          description={t('settingsAutomation.secretProjectionEnabledDescription')}
+                          checked={formData.ai_provider.llm_api?.projection_enabled ?? false}
+                          onChange={(value) => onExternalApiChange('llm_api', 'projection_enabled', value)}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+                {showManagedHttpFields(currentLlmSurface) && (
+                  <div className="rounded-lg border border-muted bg-surface-muted/80 p-3 md:col-span-2">
+                    <p className="text-content-secondary text-sm">
+                      {t('settingsAutomation.managedOAuthSurfaceDescription')}
+                    </p>
+                  </div>
+                )}
+                {showSubprocessFields(currentLlmSurface) && (
+                  <div className="rounded-lg border border-muted bg-surface-muted/80 p-3 md:col-span-2">
+                    <p className="text-content-secondary text-sm">
+                      {t('settingsAutomation.subprocessSurfaceDescription')}
+                    </p>
+                    {currentLlmSurface?.subprocess_transport?.executable_candidates?.length ? (
+                      <p className="mt-2 text-content-muted text-xs">
+                        {t('settingsAutomation.subprocessExecutableHint', {
+                          executables: currentLlmSurface.subprocess_transport.executable_candidates.join(', '),
+                        })}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+                {currentLlmSupportsModelSelection ? (
+                  <div>
+                    <label htmlFor="settings-llm-model" className="mb-1 block text-content-secondary text-xs">
+                      {t('settingsAutomation.model')}
+                    </label>
+                    <Input
+                      id="settings-llm-model"
+                      type="text"
+                      list="llm-model-catalog"
+                      value={formData.ai_provider.llm_api?.model ?? ''}
+                      onChange={(e) => onExternalApiChange('llm_api', 'model', e.target.value || null)}
+                    />
+                    {getModelOptions('llm_api').length > 0 && (
+                      <datalist id="llm-model-catalog">
+                        {getModelOptions('llm_api').map((modelName) => (
+                          <option key={modelName} value={modelName} />
+                        ))}
+                      </datalist>
+                    )}
+                    {(modelCompatibilityNotice.llm_api || currentLlmModelSupport === false) && (
+                      <p className="mt-1 text-semantic-warning text-xs">
+                        {modelCompatibilityNotice.llm_api ?? t('settingsAutomation.llmModelUnsupported')}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-surface-muted/80 p-3 text-content-secondary text-xs">
+                    {t('settingsAutomation.modelSelectionUnsupportedSurface')}
+                  </div>
+                )}
                 <div>
                   <label htmlFor="settings-llm-timeout" className="mb-1 block text-content-secondary text-xs">
                     {t('settingsAutomation.timeoutSecs')}
@@ -583,9 +1486,16 @@ export default function AiAutomationTab({
                   />
                 </div>
               </div>
-              {modelCatalogNotice.llm_api && (
+              {showDirectApiFields(currentLlmSurface) && modelCatalogNotice.llm_api && (
                 <p className="text-content-secondary text-xs">{modelCatalogNotice.llm_api}</p>
               )}
+              {showDirectApiFields(currentLlmSurface) &&
+                !canDiscoverModels('llm_api') &&
+                !modelCatalogNotice.llm_api && (
+                  <p className="text-content-secondary text-xs">
+                    {t('settingsAutomation.modelDiscoveryUnsupportedSurface')}
+                  </p>
+                )}
             </div>
           )}
         </div>

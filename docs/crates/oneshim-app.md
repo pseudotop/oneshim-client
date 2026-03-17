@@ -58,7 +58,6 @@ Reference: `docs/research/cli-subscription-bridge-research.md`
   - `LocalModel`
   - `ProviderApiKey`
   - `ProviderSubscriptionCli`
-  - `PlatformConnected`
 - Fallback behavior:
   - Remote init failure can fall back to local providers when `fallback_to_local=true`
 - OCR privacy gate:
@@ -268,7 +267,7 @@ The installers and updater share the same release assets/checksum/signature side
 ## Execution Flow
 
 1. `main.rs` / `gui_runner.rs` loads config and wires DI (storage, monitor, network, vision, automation, web).
-2. Access mode is evaluated (`LocalModel`, `ProviderApiKey`, `ProviderSubscriptionCli`, `PlatformConnected`) and AI adapters are resolved.
+2. Access mode is evaluated (`LocalModel`, `ProviderApiKey`, `ProviderSubscriptionCli`, `ProviderOAuth`) and AI adapters are resolved.
 3. Optional CLI subscription bridge artifacts are synced in subscription mode.
 4. Scheduler starts 9 loops and optional subsystems (notification/focus/realtime).
 5. Web server serves API + embedded frontend and consumes shared realtime events.

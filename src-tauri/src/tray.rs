@@ -70,7 +70,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
             }
             "approve_update" => {
                 focus_main_window(app);
-                if let Some(state) = app.try_state::<crate::setup::AppState>() {
+                if let Some(state) = app.try_state::<crate::runtime_state::AppState>() {
                     use oneshim_web::update_control::UpdateAction;
                     if let Err(e) = state.update_action_tx.send(UpdateAction::Approve) {
                         warn!("tray: approve_update send failed: {e}");
@@ -81,7 +81,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
             }
             "defer_update" => {
                 focus_main_window(app);
-                if let Some(state) = app.try_state::<crate::setup::AppState>() {
+                if let Some(state) = app.try_state::<crate::runtime_state::AppState>() {
                     use oneshim_web::update_control::UpdateAction;
                     if let Err(e) = state.update_action_tx.send(UpdateAction::Defer) {
                         warn!("tray: defer_update send failed: {e}");

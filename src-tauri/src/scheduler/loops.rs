@@ -733,7 +733,6 @@ impl Scheduler {
         let egress_policy = Arc::new(PlatformEgressPolicy::new(&self.config));
 
         info!(
-            access_mode = ?self.config.ai_access_mode,
             platform_sync_enabled = egress_policy.is_enabled(),
             "플랫폼 egress policy 적용"
         );

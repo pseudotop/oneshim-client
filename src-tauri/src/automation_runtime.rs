@@ -8,6 +8,7 @@ use oneshim_core::models::intent::{ElementBounds, IntentConfig, UiElement};
 use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::input_driver::InputDriver;
+use oneshim_core::ports::secret_store::SecretStoreSet;
 use oneshim_core::ports::skill_loader::SkillLoader;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::element_finder::OcrElementFinder;
@@ -130,12 +131,14 @@ pub fn build_automation_runtime(
     frame_storage: Option<Arc<FrameFileStorage>>,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
     skill_loader: Option<Arc<dyn SkillLoader>>,
+    secret_stores: Option<SecretStoreSet>,
     #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AutomationRuntime, CoreError> {
     let adapters = resolve_ai_provider_adapters(
         ai_config,
         pii_filter_level,
         external_ocr_privacy_guard,
+        secret_stores,
         #[cfg(feature = "server")]
         oauth_port,
     )?;
@@ -274,7 +277,10 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     #[cfg(feature = "server")]
-    use oneshim_core::config::{AiAccessMode, AiProviderType, ExternalApiEndpoint, PrivacyConfig};
+    use oneshim_core::config::{
+        AiAccessMode, AiProviderType, CredentialAuthMode, CredentialBackendKind, CredentialBinding,
+        ExternalApiEndpoint, PrivacyConfig, SecretRef,
+    };
     use oneshim_core::config::{AiProviderConfig, LlmProviderType, OcrProviderType};
     #[cfg(feature = "server")]
     use oneshim_core::consent::{ConsentManager, ConsentPermissions};
@@ -285,6 +291,12 @@ mod tests {
     #[cfg(feature = "server")]
     use oneshim_core::ports::monitor::ProcessMonitor;
     use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
+    #[cfg(feature = "server")]
+    use oneshim_core::ports::secret_store::{
+        provider_api_key_secret_ref, secret_env_var_name, SecretStoreSet,
+    };
+    #[cfg(feature = "server")]
+    use oneshim_storage::env_secret_store::EnvSecretStore;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -389,6 +401,48 @@ mod tests {
         )
     }
 
+    #[cfg(feature = "server")]
+    fn secret_bound_remote_endpoint(profile_id: &str) -> ExternalApiEndpoint {
+        let (namespace, key) = provider_api_key_secret_ref("generic", profile_id).unwrap();
+        ExternalApiEndpoint {
+            endpoint: "https://api.example.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("model-test".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Generic,
+            surface_id: None,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::Env,
+                secret_ref: Some(SecretRef {
+                    namespace,
+                    key: key.to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        }
+    }
+
+    #[cfg(feature = "server")]
+    fn remote_secret_stores() -> SecretStoreSet {
+        let mut snapshot = std::collections::HashMap::new();
+        for profile_id in ["ocr", "llm"] {
+            let (namespace, key) = provider_api_key_secret_ref("generic", profile_id).unwrap();
+            snapshot.insert(
+                secret_env_var_name(&namespace, key),
+                "test-api-key".to_string(),
+            );
+        }
+        let secret_store = Arc::new(EnvSecretStore::from_snapshot(snapshot));
+        SecretStoreSet {
+            os_secret_store: None,
+            file_secret_store: None,
+            env_secret_store: Some(secret_store),
+            default_backend_kind: CredentialBackendKind::Env,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
+        }
+    }
+
     #[tokio::test]
     async fn latest_frame_finder_reads_frame_and_matches_text() {
         let temp_dir = TempDir::new().unwrap();
@@ -439,6 +493,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             #[cfg(feature = "server")]
             None,
         )
@@ -473,6 +528,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             #[cfg(feature = "server")]
             None,
         ) {
@@ -484,18 +540,13 @@ mod tests {
     #[test]
     #[cfg(feature = "server")]
     fn build_runtime_uses_remote_sources_when_endpoints_are_valid() {
-        let endpoint = ExternalApiEndpoint {
-            endpoint: "https://api.example.com/v1".to_string(),
-            api_key: "test-key".to_string(),
-            model: Some("model-test".to_string()),
-            timeout_secs: 30,
-            provider_type: AiProviderType::Generic,
-        };
+        let ocr_endpoint = secret_bound_remote_endpoint("ocr");
+        let llm_endpoint = secret_bound_remote_endpoint("llm");
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Remote,
-            ocr_api: Some(endpoint.clone()),
-            llm_api: Some(endpoint),
+            ocr_api: Some(ocr_endpoint),
+            llm_api: Some(llm_endpoint),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
@@ -507,6 +558,7 @@ mod tests {
             None,
             Some(remote_ocr_guard(&temp_dir)),
             None,
+            Some(remote_secret_stores()),
             #[cfg(feature = "server")]
             None,
         )
@@ -521,17 +573,11 @@ mod tests {
     #[test]
     #[cfg(feature = "server")]
     fn build_runtime_requires_external_ocr_privacy_guard_for_remote_ocr() {
-        let endpoint = ExternalApiEndpoint {
-            endpoint: "https://api.example.com/v1".to_string(),
-            api_key: "test-key".to_string(),
-            model: Some("model-test".to_string()),
-            timeout_secs: 30,
-            provider_type: AiProviderType::Generic,
-        };
+        let ocr_endpoint = secret_bound_remote_endpoint("ocr");
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Local,
-            ocr_api: Some(endpoint),
+            ocr_api: Some(ocr_endpoint),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
@@ -542,6 +588,7 @@ mod tests {
             None,
             None,
             None,
+            Some(remote_secret_stores()),
             #[cfg(feature = "server")]
             None,
         );

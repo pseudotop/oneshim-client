@@ -187,6 +187,149 @@ export interface UpdateActionResponse {
 
 export type UpdateAction = 'Approve' | 'Defer' | 'CheckNow'
 
+export interface IntegrationAckCursorSummary {
+  stream_id: string
+  cursor: string
+  acknowledged_at: string
+}
+
+export interface IntegrationSessionSummary {
+  status: string
+  transport_kind: string
+  auth_scheme: string
+  connected_at?: string | null
+  last_heartbeat_at?: string | null
+  requested_scopes: string[]
+  granted_scopes: string[]
+}
+
+export interface IntegrationDeviceAuthorizationFlow {
+  flow_id: string
+  user_code: string
+  verification_uri: string
+  verification_uri_complete?: string | null
+  expires_at: string
+  interval_secs: number
+  requested_scopes: string[]
+  resource_indicator?: string | null
+}
+
+export interface IntegrationAuthStatus {
+  profile_kind: string
+  status: string
+  interactive: boolean
+  authenticated: boolean
+  expires_at?: string | null
+  resource_indicator?: string | null
+  pending_flow?: IntegrationDeviceAuthorizationFlow | null
+  message?: string | null
+}
+
+export interface IntegrationRuntimeLaneTelemetry {
+  consecutive_failures: number
+  last_success_at?: string | null
+  last_failure_at?: string | null
+  backoff_until?: string | null
+  last_error?: string | null
+}
+
+export interface IntegrationRuntimeTelemetry {
+  connect: IntegrationRuntimeLaneTelemetry
+  heartbeat: IntegrationRuntimeLaneTelemetry
+  egress: IntegrationRuntimeLaneTelemetry
+  inbox: IntegrationRuntimeLaneTelemetry
+}
+
+export interface IntegrationOutboundRuntimeStatus {
+  enabled: boolean
+  bootstrap_configured: boolean
+  auth_source_configured: boolean
+  auth_material_available: boolean
+  runtime_configured: boolean
+  resource_indicator_configured: boolean
+  auth_profile_kind: string
+  preferred_transports: string[]
+  supported_auth_schemes: string[]
+  outbox_pending_count?: number | null
+  inbox_pending_count?: number | null
+  outbox_ack_cursor?: IntegrationAckCursorSummary | null
+  inbox_ack_cursor?: IntegrationAckCursorSummary | null
+  auth_status?: IntegrationAuthStatus | null
+  current_session?: IntegrationSessionSummary | null
+  runtime_telemetry?: IntegrationRuntimeTelemetry | null
+}
+
+export interface IntegrationStatus {
+  schema_version: string
+  external_access_enabled: boolean
+  automation_controller_configured: boolean
+  ai_runtime_status?: Record<string, unknown> | null
+  outbound_runtime: IntegrationOutboundRuntimeStatus
+}
+
+export interface IntegrationAuditRecordSummary {
+  record_id: string
+  envelope_id: string
+  packet_id: string
+  disposition: string
+  reason?: string | null
+  privacy_classification: string
+  capability_scope: string
+  occurred_at: string
+}
+
+export interface IntegrationAuditLogResponse {
+  schema_version: string
+  records: IntegrationAuditRecordSummary[]
+}
+
+export interface IntegrationInboxPromptSummary {
+  prompt_id: string
+  category: string
+  priority: string
+  title: string
+  body: string
+  status: string
+  received_at: string
+  status_updated_at: string
+  presented_at?: string | null
+  expires_at?: string | null
+  source_system: string
+  source_actor?: string | null
+  correlation_id?: string | null
+  dismiss_reason?: string | null
+}
+
+export interface IntegrationInboxResponse {
+  schema_version: string
+  prompts: IntegrationInboxPromptSummary[]
+  pending_count: number
+}
+
+export interface IntegrationInboxRefreshResponse {
+  schema_version: string
+  fetched_count: number
+}
+
+export interface IntegrationInboxActionResponse {
+  schema_version: string
+  prompt_id: string
+  status: string
+}
+
+export interface IntegrationInboxDismissRequest {
+  reason?: string | null
+}
+
+export interface IntegrationDeviceAuthorizationCommandResult {
+  auth_status: IntegrationAuthStatus
+  flow?: IntegrationDeviceAuthorizationFlow | null
+}
+
+export interface IntegrationDeviceAuthorizationFlowRequest {
+  flow_id: string
+}
+
 export interface PaginationMeta {
   total: number
   offset: number
@@ -212,30 +355,172 @@ export interface ProviderModelsRequest {
   provider_type: string
   api_key: string
   endpoint?: string | null
+  surface?: string | null
+  surface_id?: string | null
+  use_saved_secret?: boolean
+}
+
+export type ProviderModelSupportStatus = 'supported' | 'unsupported' | 'unknown'
+
+export interface ProviderDiscoveredModel {
+  id: string
+  display_name?: string | null
+  llm_support?: ProviderModelSupportStatus | null
+  supports_ocr?: boolean | null
+  ocr_support?: ProviderModelSupportStatus | null
+  image_input_support?: ProviderModelSupportStatus | null
+  structured_output_support?: ProviderModelSupportStatus | null
+  capability_source?: string | null
 }
 
 export interface ProviderModelsResponse {
   models: string[]
+  model_details?: ProviderDiscoveredModel[]
   notice?: string | null
 }
 
-export interface ProviderPreset {
-  provider_type: string
-  aliases: string[]
-  display_name: string
-  llm_endpoint: string
-  ocr_endpoint: string
-  model_catalog_endpoint: string
-  ocr_model_catalog_supported: boolean
-  ocr_model_catalog_notice?: string | null
+export interface ProviderSurfaceSupports {
+  llm: boolean
+  ocr: boolean
+  model_catalog: boolean
+  context_bridge: boolean
+}
+
+export interface SurfaceDefaultModels {
   llm_models: string[]
   ocr_models: string[]
 }
 
-export interface ProviderPresetCatalog {
+export interface ProviderKnownModelCapabilities {
+  llm: boolean
+  ocr: boolean
+  image_input: boolean
+}
+
+export interface ProviderKnownModelSpec {
+  id: string
+  display_name?: string | null
+  aliases: string[]
+  id_prefixes: string[]
+  capabilities: ProviderKnownModelCapabilities
+  notes: string[]
+}
+
+export interface SubprocessTransportSpec {
+  tool_id: string
+  executable_candidates: string[]
+  auth_probe_command: string[]
+  auth_probe_mode: string
+  invocation_mode: string
+  model_flag?: string | null
+  json_output_supported: boolean
+}
+
+export interface ProviderSurfaceSpec {
+  surface_id: string
+  vendor_id: string
+  provider_type: string
+  display_name: string
+  execution_kind: string
+  placement_kind: string
+  credential_kind: string
+  stability: string
+  preferred_for_product_auth: boolean
+  related_surface_ids?: string[]
+  catalog_strategy: string
+  supports: ProviderSurfaceSupports
+  llm_capabilities?: {
+    structured_output: boolean
+  } | null
+  ocr_capabilities?: {
+    strategy: string
+    supports_geometry: boolean
+    supports_confidence: boolean
+    requires_image_input_model: boolean
+    requires_structured_output_model: boolean
+  } | null
+  default_models: SurfaceDefaultModels
+  capability_rules?: {
+    llm: {
+      default_support: string
+      allow_patterns: string[]
+      deny_patterns: string[]
+    }
+    ocr: {
+      default_support: string
+      allow_patterns: string[]
+      deny_patterns: string[]
+    }
+    image_input: {
+      default_support: string
+      allow_patterns: string[]
+      deny_patterns: string[]
+    }
+    structured_output: {
+      default_support: string
+      allow_patterns: string[]
+      deny_patterns: string[]
+    }
+  } | null
+  unknown_model_policy?: {
+    llm: 'allow' | 'warn' | 'reject'
+    ocr: 'allow' | 'warn' | 'reject'
+  } | null
+  known_models: ProviderKnownModelSpec[]
+  parameter_profiles: {
+    llm: {
+      supported: string[]
+      unsupported: string[]
+      notes: string[]
+    }
+    ocr: {
+      supported: string[]
+      unsupported: string[]
+      notes: string[]
+    }
+  }
+  llm_transport?: {
+    method: string
+    url: string
+    auth_scheme: string
+    request_shape: string
+  } | null
+  ocr_transport?: {
+    method: string
+    url: string
+    auth_scheme: string
+    request_shape: string
+  } | null
+  model_catalog_transport?: {
+    method: string
+    url: string
+    auth_scheme: string
+    response_shape: string
+    llm_supported: boolean
+    ocr_supported: boolean
+    ocr_notice?: string | null
+  } | null
+  availability_probe?: {
+    method: string
+    url: string
+    auth_scheme: string
+  } | null
+  subprocess_transport?: SubprocessTransportSpec | null
+  references: string[]
+}
+
+export interface ProviderVendorSpec {
+  vendor_id: string
+  provider_type: string
+  aliases: string[]
+  display_name: string
+}
+
+export interface ProviderSurfaceCatalog {
   version: number
   updated_at: string
-  providers: ProviderPreset[]
+  vendors: ProviderVendorSpec[]
+  surfaces: ProviderSurfaceSpec[]
 }
 
 export interface DeleteRangeRequest {
@@ -572,7 +857,7 @@ export interface SandboxSettings {
   max_cpu_time_ms: number
 }
 
-export interface AiProviderSettings {
+export interface AiProviderProfileConfig {
   access_mode: string
   ocr_provider: string
   llm_provider: string
@@ -584,6 +869,18 @@ export interface AiProviderSettings {
   fallback_to_local: boolean
   ocr_api: ExternalApiSettings | null
   llm_api: ExternalApiSettings | null
+}
+
+export interface SavedAiProviderProfile {
+  profile_id: string
+  name: string
+  ai_provider: AiProviderProfileConfig
+  updated_at?: string | null
+}
+
+export interface AiProviderSettings extends AiProviderProfileConfig {
+  active_profile_id?: string | null
+  saved_profiles?: SavedAiProviderProfile[]
 }
 
 export interface SceneActionOverrideSettings {
@@ -615,7 +912,14 @@ export interface ExternalApiSettings {
   api_key_masked: string
   model: string | null
   provider_type: string
+  surface_id?: string | null
   timeout_secs: number
+  auth_mode: string
+  backend_kind: string
+  has_secret: boolean
+  can_edit_secret: boolean
+  secret_display_hint: string | null
+  projection_enabled: boolean
 }
 
 // ── OAuth types ──────────────────────────────────────────────
@@ -638,6 +942,45 @@ export interface OAuthConnectionStatus {
   scopes: string[]
   api_base_url: string | null
   has_refresh_token?: boolean
+}
+
+export interface SecretBackendCapabilities {
+  os_secret_store_available: boolean
+  oauth_available: boolean
+  oauth_provider_ids: string[]
+  default_backend_kind: string
+  byok_backend_kind: string
+  fallback_backend_kind: string
+}
+
+export type FeatureMaturity = 'stable' | 'beta' | 'experimental' | 'deprecated'
+
+export type FeatureAvailability = 'available' | 'unavailable' | 'partially_available'
+
+export interface FeatureCapability {
+  feature_id: string
+  maturity: FeatureMaturity
+  availability: FeatureAvailability
+  preferred: boolean
+  requires: string[]
+  status_reason: string | null
+  status_copy_key: string | null
+  setup_copy_key: string | null
+  setup_docs_url: string | null
+  configuration_env_vars: string[]
+}
+
+export interface FeatureCapabilitySnapshot {
+  features: FeatureCapability[]
+}
+
+export interface ProviderEndpointProbeResult {
+  surface_id: string
+  endpoint_kind: string
+  endpoint: string
+  availability: FeatureAvailability
+  status_reason: string | null
+  status_copy_key: string | null
 }
 
 export interface AutomationStatus {
@@ -709,6 +1052,7 @@ export interface WorkflowPreset {
   steps: WorkflowStep[]
   builtin: boolean
   platform: string | null
+  ai_profile_id?: string | null
 }
 
 export interface WorkflowStep {

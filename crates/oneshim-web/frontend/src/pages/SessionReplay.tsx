@@ -345,7 +345,7 @@ export default function SessionReplay() {
     <div className="min-h-full space-y-4 p-6">
       {/* UI note */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className={cn(typography.h1, colors.text.primary)}>{t('replay.title', 'session 리플레이')}</h1>
+        <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('replay.title', 'session 리플레이')}</h1>
         <DateRangePicker
           onRangeChange={handleDateRangeChange}
           initialFrom={fromDate.split('T')[0]}

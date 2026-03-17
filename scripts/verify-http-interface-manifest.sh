@@ -38,7 +38,7 @@ if ! jq -e '
   and (.groups | type == "array" and length > 0)
   and (
     [.groups[].operations[] |
-      (.path | startswith("/api/"))
+      ((.path | startswith("/api/")) or (.path | startswith("/integration/v1/")))
       and (.method | IN("GET", "POST", "PUT", "DELETE"))
     ] | all
   )
@@ -66,7 +66,9 @@ readarray_compat route_paths < <(
 )
 
 readarray_compat manifest_paths < <(
-  jq -r '.groups[].operations[].path' "$MANIFEST_PATH" | sed 's#^/api##' | sort -u
+  jq -r '.groups[].operations[].path' "$MANIFEST_PATH" \
+    | sed -e 's#^/api##' -e 's#^/integration/v1##' \
+    | sort -u
 )
 
 if [[ ${#route_paths[@]} -eq 0 ]]; then

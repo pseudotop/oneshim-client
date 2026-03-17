@@ -88,9 +88,9 @@ impl SuggestionReceiver {
 }
 ```
 
-**와이어링 위치**: `oneshim-app/src/main.rs` (또는 `app.rs`)에서 수동 와이어링. DI 프레임워크 미사용.
+**와이어링 위치**: `oneshim-app` composition root(`src-tauri/src/main.rs`, `src-tauri/src/setup.rs`, 그리고 app-layer builder/coordinator`)에서 수동 와이어링. DI 프레임워크는 사용하지 않는다.
 
-**근거**: Rust 생태계에는 Spring/Guice 같은 DI 프레임워크가 필요 없다. 생성자 주입은 컴파일 타임에 검증되며, 테스트 시 mock 주입이 용이하다.
+**근거**: Rust 생태계에는 Spring/Guice 같은 DI 프레임워크가 필요 없다. 생성자 주입은 컴파일 타임에 검증되며, 테스트 시 mock 주입이 용이하다. composition root를 얇게 유지하는 현재 기준은 ADR-009가 추가로 규정한다.
 
 ### 4. 모듈 가시성 규칙
 
@@ -140,14 +140,20 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-vision
               ←  oneshim-network
               ←  oneshim-storage
-              ←  oneshim-suggestion  ←  oneshim-network
-              ←  oneshim-ui          ←  oneshim-suggestion
-              ←  oneshim-app         ←  (모두)
+              ←  oneshim-suggestion
+              ←  oneshim-automation
+              ←  oneshim-web         ←  oneshim-api-contracts
+              ←  oneshim-ui
+              ←  oneshim-app         ←  (runtime adapter 전반)
 ```
 
 **금지**: 어댑터 crate 간 직접 의존 (oneshim-monitor → oneshim-storage 등). 모든 cross-crate 통신은 `oneshim-core`의 trait을 통해서만.
 
-**예외**: `oneshim-suggestion → oneshim-network` (SSE 수신 필요), `oneshim-ui → oneshim-suggestion` (제안 표시 필요)
+**예외**: 현재 workspace에 이미 존재하는 legacy adapter-to-adapter edge는 명시적 예외로만 유지되며, architecture review 없이 확장하면 안 된다. 현재 delivery/composition baseline은 ADR-009가 추가로 제한한다.
+
+**현재 상태**:
+- `WebStorage`의 canonical 정의는 `oneshim-core/src/ports/web_storage.rs`에 있다.
+- `oneshim-web/src/storage_port.rs`는 crate 내부 편의를 위한 re-export shim일 뿐, port 정의 위치가 아니다.
 
 ---
 
@@ -168,3 +174,4 @@ oneshim-core  ←  oneshim-monitor
 - Phase 1부터 모든 코드가 이 패턴을 따름
 - `oneshim-core`에 구현된 trait/model이 계약(contract) 역할
 - 새 crate 추가 시 이 ADR 참조 필수
+- delivery layer, composition root, integration plane, AI/provider baseline은 ADR-009를 함께 기준으로 본다

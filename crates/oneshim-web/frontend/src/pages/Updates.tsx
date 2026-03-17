@@ -22,7 +22,7 @@ export default function Updates() {
     <div className="min-h-full space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className={cn(typography.h1, colors.text.primary)}>{t('updates.title')}</h1>
+          <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('updates.title')}</h1>
           <Badge color="info">{__APP_VERSION__}</Badge>
         </div>
       </div>

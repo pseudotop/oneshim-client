@@ -1,10 +1,20 @@
+use oneshim_api_contracts::integration::IntegrationDeviceAuthorizationCommandResult;
+use oneshim_core::models::integration::default_integration_runtime_scopes;
 use oneshim_core::ports::oauth::{OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus};
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use sysinfo::System;
 use tauri::command;
 
-use crate::setup::{AppState, OAuthCoordinatorState, OAuthState};
+use crate::feature_capabilities::{
+    build_feature_capability_snapshot,
+    probe_provider_surface_endpoint as probe_provider_surface_endpoint_impl,
+    FeatureCapabilitySnapshot, FeatureCapabilityState, ProviderEndpointProbeResult,
+};
+use crate::runtime_state::{
+    AppState, IntegrationAuthState, OAuthCoordinatorState, OAuthState, SecretBackendCapabilities,
+    SecretBackendState,
+};
 use oneshim_web::update_control::UpdateAction;
 
 /// Recursively merge `patch` into `base`.
@@ -67,12 +77,21 @@ pub async fn get_metrics(_state: tauri::State<'_, AppState>) -> Result<MetricsRe
 const REDACTED_PATHS: &[(&str, &[&str])] = &[
     ("server", &["base_url", "api_key"]),
     ("ai_provider", &["ocr_api.api_key", "llm_api.api_key"]),
+    ("web", &["integration_auth_token"]),
+    ("tls", &["enabled", "allow_self_signed"]),
     (
-        "tls",
-        &["ca_cert_path", "client_cert_path", "client_key_path"],
+        "grpc",
+        &[
+            "grpc_endpoint",
+            "tls_domain_name",
+            "tls_ca_cert_path",
+            "tls_client_cert_path",
+            "tls_client_key_path",
+        ],
     ),
-    ("grpc", &["server_url"]),
 ];
+
+const FORBIDDEN_ALLOWED_SUBPATHS: &[(&str, &[&str])] = &[("web", &["integration_auth_token"])];
 
 /// WebView에서 수정 가능한 설정 키 화이트리스트.
 /// update_setting + get_allowed_setting_keys에서 공유.
@@ -152,6 +171,8 @@ pub async fn update_setting(
         }
     }
 
+    reject_forbidden_allowed_subpaths(&patch)?;
+
     // Deep-merge allowed keys into current config.
     // This preserves existing sub-keys that the patch does not mention,
     // preventing silent resets to struct defaults (e.g. privacy.pii_filter_level).
@@ -173,6 +194,36 @@ pub async fn update_setting(
         .config_manager
         .update(new_config)
         .map_err(|e| e.to_string())
+}
+
+fn reject_forbidden_allowed_subpaths(patch: &serde_json::Value) -> Result<(), String> {
+    for &(section, fields) in FORBIDDEN_ALLOWED_SUBPATHS {
+        let Some(section_value) = patch.get(section) else {
+            continue;
+        };
+
+        for &field in fields {
+            let mut target = section_value;
+            let mut found = true;
+            for part in field.split('.') {
+                if let Some(next) = target.get(part) {
+                    target = next;
+                } else {
+                    found = false;
+                    break;
+                }
+            }
+
+            if found {
+                return Err(format!(
+                    "modifying '{}.{}' from the WebView is not permitted",
+                    section, field
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// 업데이트 상태 조회
@@ -222,6 +273,116 @@ pub async fn get_allowed_setting_keys() -> Vec<String> {
 #[command]
 pub async fn get_web_port(state: tauri::State<'_, AppState>) -> Result<u16, String> {
     Ok(state.web_port.load(Ordering::Relaxed))
+}
+
+/// Secret backend capability snapshot for desktop runtime surfaces.
+#[command]
+pub async fn get_secret_backend_capabilities(
+    state: tauri::State<'_, SecretBackendState>,
+) -> Result<SecretBackendCapabilities, String> {
+    Ok(state.0.clone())
+}
+
+/// Generic feature capability + maturity snapshot for desktop runtime surfaces.
+#[command]
+pub async fn get_feature_capabilities(
+    state: tauri::State<'_, FeatureCapabilityState>,
+) -> Result<FeatureCapabilitySnapshot, String> {
+    let secret_backend = state.0.clone();
+    Ok(build_feature_capability_snapshot(&secret_backend).await)
+}
+
+/// Probe the currently configured provider endpoint for a direct/self-hosted surface.
+#[command]
+pub async fn probe_provider_surface_endpoint(
+    surface_id: String,
+    endpoint_kind: String,
+    endpoint: String,
+) -> Result<ProviderEndpointProbeResult, String> {
+    Ok(probe_provider_surface_endpoint_impl(&surface_id, &endpoint_kind, &endpoint).await)
+}
+
+fn require_integration_auth(
+    state: &IntegrationAuthState,
+) -> Result<std::sync::Arc<dyn oneshim_core::ports::integration::IntegrationAuthPort>, String> {
+    state
+        .0
+        .clone()
+        .ok_or_else(|| "Integration auth is not configured for this runtime".to_string())
+}
+
+#[command]
+pub async fn integration_auth_status(
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<oneshim_core::models::integration::IntegrationAuthStatus, String> {
+    let port = require_integration_auth(&integration_auth)?;
+    port.current_auth_status()
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+}
+
+#[command]
+pub async fn integration_start_device_authorization(
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+    let port = require_integration_auth(&integration_auth)?;
+    let flow = port
+        .start_device_authorization(&default_integration_runtime_scopes(), None)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    let auth_status = port
+        .current_auth_status()
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    Ok(IntegrationDeviceAuthorizationCommandResult {
+        auth_status,
+        flow: Some(flow),
+    })
+}
+
+#[command]
+pub async fn integration_poll_device_authorization(
+    flow_id: String,
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+    let port = require_integration_auth(&integration_auth)?;
+    let auth_status = port
+        .poll_device_authorization(&flow_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    Ok(IntegrationDeviceAuthorizationCommandResult {
+        flow: auth_status.pending_flow.clone(),
+        auth_status,
+    })
+}
+
+#[command]
+pub async fn integration_cancel_device_authorization(
+    flow_id: String,
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<(), String> {
+    let port = require_integration_auth(&integration_auth)?;
+    port.cancel_device_authorization(&flow_id)
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())
+}
+
+#[command]
+pub async fn integration_reset_auth_state(
+    integration_auth: tauri::State<'_, IntegrationAuthState>,
+) -> Result<IntegrationDeviceAuthorizationCommandResult, String> {
+    let port = require_integration_auth(&integration_auth)?;
+    port.reset_auth_state()
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    let auth_status = port
+        .current_auth_status()
+        .await
+        .map_err(|e: oneshim_core::error::CoreError| e.to_string())?;
+    Ok(IntegrationDeviceAuthorizationCommandResult {
+        flow: auth_status.pending_flow.clone(),
+        auth_status,
+    })
 }
 
 // ── OAuth IPC commands ──────────────────────────────────────
@@ -383,18 +544,36 @@ mod tests {
     #[test]
     fn redact_masks_tls_paths() {
         let mut config = json!({
-            "tls": {
-                "ca_cert_path": "/etc/ssl/ca.pem",
-                "client_cert_path": "/etc/ssl/client.pem",
-                "client_key_path": "/etc/ssl/client.key",
-                "verify": true
+            "grpc": {
+                "grpc_endpoint": "https://grpc.example.com:50051",
+                "tls_domain_name": "grpc.example.com",
+                "tls_ca_cert_path": "/etc/ssl/ca.pem",
+                "tls_client_cert_path": "/etc/ssl/client.pem",
+                "tls_client_key_path": "/etc/ssl/client.key",
+                "use_tls": true
             }
         });
         redact_sensitive_fields(&mut config);
-        assert_eq!(config["tls"]["ca_cert_path"], "[REDACTED]");
-        assert_eq!(config["tls"]["client_cert_path"], "[REDACTED]");
-        assert_eq!(config["tls"]["client_key_path"], "[REDACTED]");
-        assert_eq!(config["tls"]["verify"], true);
+        assert_eq!(config["grpc"]["grpc_endpoint"], "[REDACTED]");
+        assert_eq!(config["grpc"]["tls_domain_name"], "[REDACTED]");
+        assert_eq!(config["grpc"]["tls_ca_cert_path"], "[REDACTED]");
+        assert_eq!(config["grpc"]["tls_client_cert_path"], "[REDACTED]");
+        assert_eq!(config["grpc"]["tls_client_key_path"], "[REDACTED]");
+        assert_eq!(config["grpc"]["use_tls"], true);
+    }
+
+    #[test]
+    fn redact_masks_web_integration_auth_token() {
+        let mut config = json!({
+            "web": {
+                "port": 10090,
+                "allow_external": true,
+                "integration_auth_token": "secret-token"
+            }
+        });
+        redact_sensitive_fields(&mut config);
+        assert_eq!(config["web"]["integration_auth_token"], "[REDACTED]");
+        assert_eq!(config["web"]["port"], 10090);
     }
 
     #[test]
@@ -449,7 +628,18 @@ mod tests {
         let sections: Vec<&str> = REDACTED_PATHS.iter().map(|(s, _)| *s).collect();
         assert!(sections.contains(&"server"));
         assert!(sections.contains(&"ai_provider"));
-        assert!(sections.contains(&"tls"));
+        assert!(sections.contains(&"web"));
         assert!(sections.contains(&"grpc"));
+    }
+
+    #[test]
+    fn reject_forbidden_allowed_subpaths_rejects_web_integration_token() {
+        let patch = json!({
+            "web": {
+                "integration_auth_token": "secret-token"
+            }
+        });
+        let err = reject_forbidden_allowed_subpaths(&patch).expect_err("forbidden subpath");
+        assert!(err.contains("web.integration_auth_token"));
     }
 }

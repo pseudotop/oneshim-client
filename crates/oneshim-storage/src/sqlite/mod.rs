@@ -1,6 +1,7 @@
 pub(crate) mod edge_intelligence;
 mod events;
 mod frames;
+mod integration_query_impl;
 mod maintenance;
 mod metrics;
 mod tags;

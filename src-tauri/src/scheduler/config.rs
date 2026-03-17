@@ -1,5 +1,5 @@
 use base64::Engine;
-use oneshim_core::config::{AiAccessMode, ExternalDataPolicy, PrivacyConfig};
+use oneshim_core::config::{ExternalDataPolicy, PrivacyConfig};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::event::Event;
@@ -53,8 +53,7 @@ pub(super) struct PlatformEgressPolicy {
 impl PlatformEgressPolicy {
     pub(super) fn new(config: &SchedulerConfig) -> Self {
         Self {
-            enabled: !config.offline_mode
-                && config.ai_access_mode == AiAccessMode::PlatformConnected,
+            enabled: config.upload_enabled,
             external_data_policy: config.external_data_policy,
             privacy_config: config.privacy_config.clone(),
         }
@@ -134,11 +133,10 @@ pub struct SchedulerConfig {
     pub heartbeat_interval: Duration,
     pub aggregation_interval: Duration,
     pub session_id: String,
-    pub offline_mode: bool,
-    pub ai_access_mode: AiAccessMode,
     pub external_data_policy: ExternalDataPolicy,
     pub privacy_config: PrivacyConfig,
     pub idle_threshold_secs: u64,
+    pub upload_enabled: bool,
 }
 
 impl Default for SchedulerConfig {
@@ -153,11 +151,10 @@ impl Default for SchedulerConfig {
             heartbeat_interval: Duration::from_secs(30),
             aggregation_interval: Duration::from_secs(3600), // 1 hour
             session_id: String::new(),                       // set by caller
-            offline_mode: false,
-            ai_access_mode: AiAccessMode::default(),
             external_data_policy: ExternalDataPolicy::default(),
             privacy_config: PrivacyConfig::default(),
             idle_threshold_secs: 300, // 5 min
+            upload_enabled: false,
         }
     }
 }

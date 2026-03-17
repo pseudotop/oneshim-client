@@ -61,12 +61,15 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
 
   const handleClick = useCallback(
     (item: NavItem) => {
-      if (isActive(item.to) && !sidebarCollapsed) {
-        onToggleSidebar()
-      } else {
-        navigate(item.to)
-        if (sidebarCollapsed) onToggleSidebar()
+      if (isActive(item.to)) {
+        if (sidebarCollapsed) {
+          onToggleSidebar()
+        }
+        return
       }
+
+      navigate(item.to)
+      if (sidebarCollapsed) onToggleSidebar()
     },
     [isActive, sidebarCollapsed, onToggleSidebar, navigate],
   )

@@ -1,11 +1,94 @@
-//! Secret store port — secure storage for managed credentials.
+//! Secret store port — canonical storage for provider credentials.
 //!
-//! Secrets (OAuth tokens, refresh tokens) must never be stored in plaintext
-//! config. This port abstracts OS keychain or in-memory storage.
+//! Secrets (OAuth tokens, API keys, bridge credentials) must not default to
+//! plaintext config storage. This port abstracts OS keychain, explicit file
+//! backends, environment-backed sources, or in-memory test doubles.
+
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::config::{CredentialBackendKind, CredentialBinding};
 use crate::error::CoreError;
+
+pub const DEFAULT_SECRET_PROFILE: &str = "default";
+pub const PROVIDER_API_KEY_SECRET_KEY: &str = "api_key";
+pub const PROVIDER_OAUTH_SESSION_SECRET_KEY: &str = "oauth_session";
+pub const INTEGRATION_AUTH_SECRET_NAMESPACE: &str = "integration/auth/default";
+pub const INTEGRATION_ACCESS_TOKEN_SECRET_KEY: &str = "access_token";
+pub const INTEGRATION_REFRESH_TOKEN_SECRET_KEY: &str = "refresh_token";
+pub const INTEGRATION_EXPIRES_AT_SECRET_KEY: &str = "expires_at";
+pub const INTEGRATION_DPOP_SIGNING_KEY_SECRET_KEY: &str = "dpop_signing_key";
+
+pub fn validate_secret_segment(raw: &str, field_name: &str) -> Result<String, CoreError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(CoreError::InvalidArguments(format!(
+            "{field_name} must not be empty"
+        )));
+    }
+
+    if !trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+    {
+        return Err(CoreError::InvalidArguments(format!(
+            "{field_name} must contain only ASCII alphanumeric characters, '.', '_' or '-'"
+        )));
+    }
+
+    Ok(trimmed.to_string())
+}
+
+pub fn provider_secret_namespace(provider_id: &str, profile_id: &str) -> Result<String, CoreError> {
+    let provider_id = validate_secret_segment(provider_id, "provider_id")?;
+    let profile_id = validate_secret_segment(profile_id, "profile_id")?;
+    Ok(format!("provider/{provider_id}/{profile_id}"))
+}
+
+pub fn provider_api_key_secret_ref(
+    provider_id: &str,
+    profile_id: &str,
+) -> Result<(String, &'static str), CoreError> {
+    Ok((
+        provider_secret_namespace(provider_id, profile_id)?,
+        PROVIDER_API_KEY_SECRET_KEY,
+    ))
+}
+
+pub fn provider_oauth_session_secret_ref(
+    provider_id: &str,
+    profile_id: &str,
+) -> Result<(String, &'static str), CoreError> {
+    Ok((
+        provider_secret_namespace(provider_id, profile_id)?,
+        PROVIDER_OAUTH_SESSION_SECRET_KEY,
+    ))
+}
+
+pub fn secret_env_var_name(namespace: &str, key: &str) -> String {
+    let normalized_namespace = namespace
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let normalized_key = key
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!("ONESHIM_SECRET_{normalized_namespace}_{normalized_key}")
+}
 
 /// Secure secret storage abstraction.
 ///
@@ -24,6 +107,52 @@ pub trait SecretStore: Send + Sync {
 
     /// Delete all secrets under a namespace.
     async fn delete_namespace(&self, namespace: &str) -> Result<(), CoreError>;
+}
+
+#[derive(Clone)]
+pub struct SecretStoreSet {
+    pub os_secret_store: Option<Arc<dyn SecretStore>>,
+    pub file_secret_store: Option<Arc<dyn SecretStore>>,
+    pub env_secret_store: Option<Arc<dyn SecretStore>>,
+    pub default_backend_kind: CredentialBackendKind,
+    pub fallback_backend_kind: CredentialBackendKind,
+}
+
+impl SecretStoreSet {
+    pub fn for_backend_kind(
+        &self,
+        backend_kind: CredentialBackendKind,
+    ) -> Option<Arc<dyn SecretStore>> {
+        match backend_kind {
+            CredentialBackendKind::OsSecretStore => self.os_secret_store.clone(),
+            CredentialBackendKind::FileSecretStore => self.file_secret_store.clone(),
+            CredentialBackendKind::Env => self.env_secret_store.clone(),
+            CredentialBackendKind::BridgeManaged | CredentialBackendKind::Unavailable => None,
+        }
+    }
+
+    pub fn for_binding(&self, binding: Option<&CredentialBinding>) -> Option<Arc<dyn SecretStore>> {
+        let backend_kind = binding
+            .map(|value| value.backend_kind)
+            .unwrap_or(self.default_backend_kind);
+        self.for_backend_kind(backend_kind)
+    }
+
+    pub fn default_store(&self) -> Option<Arc<dyn SecretStore>> {
+        self.for_backend_kind(self.default_backend_kind)
+    }
+}
+
+impl Default for SecretStoreSet {
+    fn default() -> Self {
+        Self {
+            os_secret_store: None,
+            file_secret_store: None,
+            env_secret_store: None,
+            default_backend_kind: CredentialBackendKind::Unavailable,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -131,5 +260,56 @@ mod tests {
             store.retrieve("openrouter", "token").await.unwrap(),
             Some("or_tok".to_string())
         );
+    }
+
+    #[test]
+    fn provider_namespace_uses_stable_shape() {
+        let namespace = provider_secret_namespace("openai", DEFAULT_SECRET_PROFILE).unwrap();
+        assert_eq!(namespace, "provider/openai/default");
+    }
+
+    #[test]
+    fn provider_secret_ref_uses_api_key_key_name() {
+        let (namespace, key) = provider_api_key_secret_ref("openrouter", "team").unwrap();
+        assert_eq!(namespace, "provider/openrouter/team");
+        assert_eq!(key, PROVIDER_API_KEY_SECRET_KEY);
+    }
+
+    #[test]
+    fn provider_namespace_rejects_invalid_segments() {
+        let err = provider_secret_namespace("openai/codex", "default").unwrap_err();
+        assert!(matches!(err, CoreError::InvalidArguments(_)));
+    }
+
+    #[test]
+    fn env_secret_var_name_normalizes_namespace_and_key() {
+        let env_name = secret_env_var_name("provider/openai/default", "api_key");
+        assert_eq!(env_name, "ONESHIM_SECRET_PROVIDER_OPENAI_DEFAULT_API_KEY");
+    }
+
+    #[test]
+    fn secret_store_set_uses_binding_backend_kind() {
+        let os_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
+        let file_store: Arc<dyn SecretStore> = Arc::new(InMemorySecretStore::new());
+        let stores = SecretStoreSet {
+            os_secret_store: Some(os_store.clone()),
+            file_secret_store: Some(file_store.clone()),
+            env_secret_store: None,
+            default_backend_kind: CredentialBackendKind::OsSecretStore,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
+        };
+        let binding = CredentialBinding {
+            auth_mode: crate::config::CredentialAuthMode::ApiKey,
+            backend_kind: CredentialBackendKind::FileSecretStore,
+            secret_ref: None,
+            projection_enabled: false,
+        };
+
+        let selected = stores.for_binding(Some(&binding)).expect("selected store");
+        assert!(Arc::ptr_eq(&selected, &file_store));
+        assert!(Arc::ptr_eq(
+            &stores.default_store().expect("default store"),
+            &os_store
+        ));
     }
 }

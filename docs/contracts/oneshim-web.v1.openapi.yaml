@@ -6,24 +6,18 @@ info:
     Auto-generated from docs/contracts/http-interface-manifest.v1.json.
     This snapshot is transport-level and contract-focused.
   x-oneshim-document-version: 1
-  x-oneshim-updated-at: "2026-02-26"
+  x-oneshim-updated-at: "2026-03-16"
   x-oneshim-routes-file: "crates/oneshim-web/src/routes.rs"
   x-oneshim-contracts-crate: "crates/oneshim-api-contracts"
 servers:
   - url: /
 paths:
-  "/api/ai/providers/models":
-    post:
+  "/api/ai/provider-surfaces":
+    get:
       tags:
         - ai_providers
-      operationId: ai_providers_post_api_ai_providers_models
-      summary: "POST /api/ai/providers/models"
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GenericObject'
+      operationId: ai_providers_get_api_ai_provider_surfaces
+      summary: "GET /api/ai/provider-surfaces"
       responses:
         "200":
           description: Success
@@ -37,12 +31,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  "/api/ai/providers/presets":
-    get:
+  "/api/ai/providers/models":
+    post:
       tags:
         - ai_providers
-      operationId: ai_providers_get_api_ai_providers_presets
-      summary: "GET /api/ai/providers/presets"
+      operationId: ai_providers_post_api_ai_providers_models
+      summary: "POST /api/ai/providers/models"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
       responses:
         "200":
           description: Success
@@ -1027,6 +1027,269 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/audit":
+    get:
+      tags:
+        - integration_api
+      operationId: integration_api_get_api_integration_audit
+      summary: "GET /api/integration/audit"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/auth/device/cancel":
+    post:
+      tags:
+        - integration_api
+      operationId: integration_api_post_api_integration_auth_device_cancel
+      summary: "POST /api/integration/auth/device/cancel"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/auth/device/poll":
+    post:
+      tags:
+        - integration_api
+      operationId: integration_api_post_api_integration_auth_device_poll
+      summary: "POST /api/integration/auth/device/poll"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/auth/device/start":
+    post:
+      tags:
+        - integration_api
+      operationId: integration_api_post_api_integration_auth_device_start
+      summary: "POST /api/integration/auth/device/start"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/auth/reset":
+    post:
+      tags:
+        - integration_api
+      operationId: integration_api_post_api_integration_auth_reset
+      summary: "POST /api/integration/auth/reset"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/auth/status":
+    get:
+      tags:
+        - integration_api
+      operationId: integration_api_get_api_integration_auth_status
+      summary: "GET /api/integration/auth/status"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/inbox":
+    get:
+      tags:
+        - integration_api
+      operationId: integration_api_get_api_integration_inbox
+      summary: "GET /api/integration/inbox"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/inbox/refresh":
+    post:
+      tags:
+        - integration_api
+      operationId: integration_api_post_api_integration_inbox_refresh
+      summary: "POST /api/integration/inbox/refresh"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/inbox/{prompt_id}/ack":
+    post:
+      tags:
+        - integration_api
+      operationId: integration_api_post_api_integration_inbox_prompt_id_ack
+      summary: "POST /api/integration/inbox/{prompt_id}/ack"
+      parameters:
+        - name: prompt_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/inbox/{prompt_id}/dismiss":
+    post:
+      tags:
+        - integration_api
+      operationId: integration_api_post_api_integration_inbox_prompt_id_dismiss
+      summary: "POST /api/integration/inbox/{prompt_id}/dismiss"
+      parameters:
+        - name: prompt_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/integration/status":
+    get:
+      tags:
+        - integration_api
+      operationId: integration_api_get_api_integration_status
+      summary: "GET /api/integration/status"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/metrics":
     get:
       tags:
@@ -1539,6 +1802,88 @@ paths:
         - update
       operationId: update_get_api_update_stream
       summary: "GET /api/update/stream"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/integration/v1/ai/provider-surfaces":
+    get:
+      tags:
+        - integration
+      operationId: integration_get_integration_v1_ai_provider_surfaces
+      summary: "GET /integration/v1/ai/provider-surfaces"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/integration/v1/ai/providers/models":
+    post:
+      tags:
+        - integration
+      operationId: integration_post_integration_v1_ai_providers_models
+      summary: "POST /integration/v1/ai/providers/models"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/integration/v1/audit":
+    get:
+      tags:
+        - integration
+      operationId: integration_get_integration_v1_audit
+      summary: "GET /integration/v1/audit"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/integration/v1/status":
+    get:
+      tags:
+        - integration
+      operationId: integration_get_integration_v1_status
+      summary: "GET /integration/v1/status"
       responses:
         "200":
           description: Success

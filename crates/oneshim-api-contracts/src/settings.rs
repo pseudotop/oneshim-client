@@ -182,6 +182,39 @@ pub struct AiProviderSettings {
     pub fallback_to_local: bool,
     pub ocr_api: Option<ExternalApiSettings>,
     pub llm_api: Option<ExternalApiSettings>,
+    #[serde(default)]
+    pub active_profile_id: Option<String>,
+    #[serde(default)]
+    pub saved_profiles: Vec<SavedAiProviderProfile>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AiProviderProfileConfig {
+    pub access_mode: String,
+    pub ocr_provider: String,
+    pub llm_provider: String,
+    pub external_data_policy: String,
+    #[serde(default)]
+    pub allow_unredacted_external_ocr: bool,
+    #[serde(default)]
+    pub ocr_validation: OcrValidationSettings,
+    #[serde(default)]
+    pub scene_action_override: SceneActionOverrideSettings,
+    #[serde(default)]
+    pub scene_intelligence: SceneIntelligenceSettings,
+    pub fallback_to_local: bool,
+    pub ocr_api: Option<ExternalApiSettings>,
+    pub llm_api: Option<ExternalApiSettings>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedAiProviderProfile {
+    pub profile_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub ai_provider: AiProviderProfileConfig,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -250,19 +283,64 @@ impl Default for AiProviderSettings {
             fallback_to_local: true,
             ocr_api: None,
             llm_api: None,
+            active_profile_id: None,
+            saved_profiles: Vec::new(),
         }
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+impl Default for AiProviderProfileConfig {
+    fn default() -> Self {
+        Self {
+            access_mode: "ProviderApiKey".to_string(),
+            ocr_provider: "Local".to_string(),
+            llm_provider: "Local".to_string(),
+            external_data_policy: "PiiFilterStrict".to_string(),
+            allow_unredacted_external_ocr: false,
+            ocr_validation: OcrValidationSettings::default(),
+            scene_action_override: SceneActionOverrideSettings::default(),
+            scene_intelligence: SceneIntelligenceSettings::default(),
+            fallback_to_local: true,
+            ocr_api: None,
+            llm_api: None,
+        }
+    }
+}
+
+impl Default for SavedAiProviderProfile {
+    fn default() -> Self {
+        Self {
+            profile_id: "ai-profile".to_string(),
+            name: "AI Profile".to_string(),
+            ai_provider: AiProviderProfileConfig::default(),
+            updated_at: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExternalApiSettings {
     pub endpoint: String,
     pub api_key_masked: String,
     pub model: Option<String>,
     #[serde(default = "default_provider_type")]
     pub provider_type: String,
+    #[serde(default)]
+    pub surface_id: Option<String>,
     #[serde(default = "default_external_timeout")]
     pub timeout_secs: u64,
+    #[serde(default = "default_credential_auth_mode")]
+    pub auth_mode: String,
+    #[serde(default = "default_credential_backend_kind")]
+    pub backend_kind: String,
+    #[serde(default)]
+    pub has_secret: bool,
+    #[serde(default = "default_true")]
+    pub can_edit_secret: bool,
+    #[serde(default)]
+    pub secret_display_hint: Option<String>,
+    #[serde(default)]
+    pub projection_enabled: bool,
 }
 
 fn default_external_timeout() -> u64 {
@@ -271,6 +349,37 @@ fn default_external_timeout() -> u64 {
 
 fn default_provider_type() -> String {
     "Generic".to_string()
+}
+
+fn default_credential_auth_mode() -> String {
+    "api_key".to_string()
+}
+
+fn default_credential_backend_kind() -> String {
+    "unavailable".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for ExternalApiSettings {
+    fn default() -> Self {
+        Self {
+            endpoint: String::new(),
+            api_key_masked: String::new(),
+            model: None,
+            provider_type: default_provider_type(),
+            surface_id: None,
+            timeout_secs: default_external_timeout(),
+            auth_mode: default_credential_auth_mode(),
+            backend_kind: default_credential_backend_kind(),
+            has_secret: false,
+            can_edit_secret: default_true(),
+            secret_display_hint: None,
+            projection_enabled: false,
+        }
+    }
 }
 
 impl Default for AppSettings {

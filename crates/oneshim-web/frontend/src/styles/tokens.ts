@@ -52,6 +52,8 @@ export const colors = {
     secondary: 'text-content-secondary',
     tertiary: 'text-content-tertiary',
     inverse: 'text-content-inverse',
+    pageTitle: 'text-content-inverse',
+    pageSubtitle: 'text-content-inverse/70',
   },
   semantic: {
     success: 'bg-semantic-success/20 text-semantic-success',

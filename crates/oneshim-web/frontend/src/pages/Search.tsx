@@ -106,7 +106,7 @@ export default function Search() {
   return (
     <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
-      <h1 className={cn(typography.h1, colors.text.primary)}>{t('search.title')}</h1>
+      <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('search.title')}</h1>
 
       {/* UI note */}
       <form id="section-recent" onSubmit={handleSearch} className="flex gap-2">

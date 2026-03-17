@@ -47,6 +47,17 @@ describe('ActivityBar', () => {
     expect(onToggleSidebar).toHaveBeenCalled()
   })
 
+  it('clicking the active nav item does not collapse the sidebar', async () => {
+    const user = userEvent.setup()
+    const onToggleSidebar = vi.fn()
+    renderWithProviders(<ActivityBar onToggleSidebar={onToggleSidebar} sidebarCollapsed={false} />, {
+      routerProps: { initialEntries: ['/focus'] },
+    })
+
+    await user.click(screen.getByTestId('nav-focus'))
+    expect(onToggleSidebar).not.toHaveBeenCalled()
+  })
+
   it('each button has an aria-label', () => {
     renderWithProviders(<ActivityBar {...defaultProps} />)
     const buttons = screen.getAllByRole('button')

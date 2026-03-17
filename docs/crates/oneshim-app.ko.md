@@ -58,7 +58,6 @@ oneshim-app/src/
   - `LocalModel`
   - `ProviderApiKey`
   - `ProviderSubscriptionCli`
-  - `PlatformConnected`
 - 폴백 동작:
   - `fallback_to_local=true`면 원격 초기화 실패 시 로컬 제공자로 자동 폴백
 - OCR 프라이버시 게이트:
@@ -268,7 +267,7 @@ impl Autostart {
 ## 실행 흐름
 
 1. `main.rs` / `gui_runner.rs`에서 설정 로드 후 DI 구성(저장소, 모니터, 네트워크, 비전, 자동화, 웹).
-2. 접근 모드(`LocalModel`, `ProviderApiKey`, `ProviderSubscriptionCli`, `PlatformConnected`)를 평가하고 AI 어댑터 해석.
+2. 접근 모드(`LocalModel`, `ProviderApiKey`, `ProviderSubscriptionCli`, `ProviderOAuth`)를 평가하고 AI 어댑터 해석.
 3. 구독 모드에서는 CLI 브리지 아티팩트를 선택적으로 동기화.
 4. 스케줄러 9개 루프와 선택 서브시스템(알림/집중도/실시간 이벤트) 기동.
 5. 웹 서버가 API + 임베디드 프론트엔드를 제공하고 실시간 이벤트를 소비.

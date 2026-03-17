@@ -4,20 +4,17 @@ use oneshim_api_contracts::timeline::{TimelineQuery, TimelineResponse};
 
 use crate::error::ApiError;
 use crate::services::timeline_service;
-use crate::AppState;
+use crate::services::web_contexts::StorageWebContext;
 
 /// GET /api/timeline?from=&to=&max_events=&max_frames=
 pub async fn get_timeline(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Query(params): Query<TimelineQuery>,
 ) -> Result<Json<TimelineResponse>, ApiError> {
-    let from = params.from_datetime();
-    let to = params.to_datetime();
-    let max_events = params.max_events();
-    let max_frames = params.max_frames();
-
     Ok(Json(
-        timeline_service::build_timeline_response(&state, from, to, max_events, max_frames).await?,
+        timeline_service::TimelineQueryService::new(context)
+            .get_timeline(&params)
+            .await?,
     ))
 }
 

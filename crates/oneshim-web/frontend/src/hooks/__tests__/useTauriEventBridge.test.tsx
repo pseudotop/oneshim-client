@@ -11,7 +11,7 @@ type RenderBridgeHarnessOptions = {
   listenImpl?: (eventName: string, callback: EventCallback) => Promise<() => void>
 }
 
-async function renderBridgeHarness({ expectedListenCalls = 4, listenImpl }: RenderBridgeHarnessOptions = {}) {
+async function renderBridgeHarness({ expectedListenCalls = 6, listenImpl }: RenderBridgeHarnessOptions = {}) {
   const listeners = new Map<string, EventCallback>()
   const unlistenCallbacks: Array<ReturnType<typeof vi.fn>> = []
   const defaultListenImpl = async (eventName: string, callback: EventCallback) => {
@@ -83,7 +83,7 @@ describe('useTauriEventBridge', () => {
 
     unmount()
 
-    expect(unlistenCallbacks).toHaveLength(4)
+    expect(unlistenCallbacks).toHaveLength(6)
     unlistenCallbacks.forEach((unlisten) => {
       expect(unlisten).toHaveBeenCalledTimes(1)
     })
@@ -141,5 +141,29 @@ describe('useTauriEventBridge', () => {
     unlistenCallbacks.forEach((unlisten) => {
       expect(unlisten).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('shows a toast for inbound integration prompts', async () => {
+    const addToast = vi.fn()
+    vi.doMock('../useToast', () => ({
+      addToast,
+    }))
+
+    const { listeners } = await renderBridgeHarness()
+
+    act(() => {
+      listeners.get('integration-proactive-prompt')?.({
+        payload: {
+          title: 'Review teammate note',
+          body: 'A follow-up prompt is waiting in the inbox',
+        },
+      })
+    })
+
+    expect(addToast).toHaveBeenCalledWith(
+      'info',
+      'Review teammate note: A follow-up prompt is waiting in the inbox',
+      10000,
+    )
   })
 })

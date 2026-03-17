@@ -62,18 +62,23 @@ export default function GeneralTab({
             <p className={form.helper}>{t('settings.portRestart')}</p>
           </div>
           <div className="flex items-center">
-            <label className="flex cursor-pointer items-center">
-              <input
-                type="checkbox"
-                checked={formData.allow_external}
-                onChange={(e) => onRootChange('allow_external', e.target.checked)}
-                className={form.checkboxInline}
-              />
-              <div>
-                <span className="text-content-strong">{t('settings.allowExternal')}</span>
-                <p className="text-content-secondary text-xs">{t('settings.allowExternalDesc')}</p>
-              </div>
-            </label>
+            <div>
+              <label className="flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.allow_external}
+                  onChange={(e) => onRootChange('allow_external', e.target.checked)}
+                  className={form.checkboxInline}
+                />
+                <div>
+                  <span className="text-content-strong">{t('settings.allowExternal')}</span>
+                  <p className="text-content-secondary text-xs">{t('settings.allowExternalDesc')}</p>
+                </div>
+              </label>
+              <p className={`${form.helper} mt-2`}>
+                {t('settings.allowExternalIntegrationOnly')}
+              </p>
+            </div>
           </div>
         </div>
       </Card>

@@ -155,6 +155,9 @@
     "highUsageNotification": "고사용량 알림 (%)",
     "saved": "설정이 저장되었습니다.",
     "saveFailed": "설정 저장 실패",
+    "unsavedChanges": "저장되지 않은 변경사항",
+    "unsavedChangesHint": "이 페이지를 벗어나기 전에 현재 설정을 저장하세요.",
+    "revertChanges": "되돌리기",
     "dataExport": "데이터 내보내기",
     "exportFormat": "형식",
     "exportMetrics": "메트릭 내보내기",
@@ -200,6 +203,7 @@
     "portRestart": "변경 시 앱 재시작 필요",
     "allowExternal": "외부 접근 허용",
     "allowExternalDesc": "127.0.0.1 외 IP 접속 허용",
+    "allowExternalIntegrationOnly": "외부 접근은 통합 API만 노출합니다. 이 토글을 켜기 전에 config.json의 web.integration_auth_token을 먼저 설정해야 합니다.",
     "notifTitle": "알림 설정",
     "notifEnabled": "알림 활성화",
     "notifEnabledDesc": "모든 데스크톱 알림 활성화/비활성화",
@@ -506,6 +510,15 @@
     "sourcePlatform": "플랫폼 연결",
     "sourceUnknown": "알 수 없음",
     "presets": "워크플로우 프리셋",
+    "aiProfile": "AI 프로필",
+    "useActiveProfile": "현재 활성 프로필 사용",
+    "profileUsesActive": "현재 활성 프로필 사용",
+    "profileMissing": "없는 프로필: {{profileId}}",
+    "noSavedAiProfiles": "저장된 AI 프로필이 아직 없습니다.",
+    "manageAiProfiles": "설정에서 AI 프로필 관리",
+    "builtinProfileBindingReadonly": "내장 프리셋은 현재 활성 AI 프로필을 따릅니다.",
+    "profileBindingSaved": "{{name}}의 AI 프로필 바인딩을 저장했습니다.",
+    "profileBindingSaveError": "AI 프로필 바인딩을 업데이트하지 못했습니다.",
     "builtin": "내장",
     "steps": "단계",
     "run": "실행",
@@ -558,12 +571,63 @@
     "sandboxEnabled": "샌드박스 활성화",
     "sandboxEnabledDescription": "명령 실행을 격리된 환경에서 수행합니다",
     "sandboxProfile": "샌드박스 프로필",
+    "sandboxProfilePermissive": "허용적",
+    "sandboxProfileStandard": "표준",
+    "sandboxProfileStrict": "엄격",
     "allowNetwork": "네트워크 허용",
     "allowNetworkDescription": "샌드박스 내에서 네트워크 접근 허용",
     "aiTitle": "AI 제공자",
+    "accessModeLabel": "접근 경로",
+    "accessModeApiKeyLabel": "직접 엔드포인트",
+    "accessModeApiKeyDescription": "provider-hosted 또는 self-hosted HTTP 엔드포인트를 직접 사용합니다. API 키는 선택한 surface가 요구할 때만 필요합니다.",
+    "accessModeCliLabel": "설치된 프로바이더 CLI",
+    "accessModeCliDescription": "구독 기반 제품에 권장되는 경로입니다. ONESHIM은 설치된 provider-owned CLI 흐름을 안내하고 연동합니다.",
+    "accessModeOAuthLabel": "직접 OAuth (실험적)",
+    "accessModeOAuthDescription": "지원되는 provider surface를 위한 실험적 managed OAuth 경로입니다. 가능하면 설치된 provider CLI를 우선 사용하세요.",
+    "pathSummaryTitle": "운영 경로",
+    "pathSummarySurface": "선택된 surface: {{surface}}",
+    "pathExecutionLabel": "실행 경로",
+    "pathPlacementLabel": "호스팅 경로",
+    "pathRequirementsLabel": "필수 조건",
+    "pathRequirementsNone": "추가 필수 조건 없음",
+    "pathNextStepLabel": "준비 상태",
+    "requirementOsSecretStore": "OS 비밀 저장소",
+    "requirementLocalServer": "{{service}} 로컬 서버",
+    "requirementCli": "{{tool}} CLI",
+    "requirementLocalService": "{{service}} 로컬 서비스",
+    "requirementEndpoint": "{{target}} 엔드포인트",
+    "preferredCliTitle": "권장 product-backed 경로",
+    "preferredCliDescription": "인증과 구독 권한을 설치된 provider CLI에 계속 맡기려면 {{surface}}를 사용하세요.",
+    "switchToPreferredCli": "권장 CLI 경로 사용",
+    "executionKindDirectHttp": "직접 provider HTTP API",
+    "executionKindManagedHttp": "관리형 OAuth",
+    "executionKindSubprocessCli": "설치된 provider CLI",
+    "placementProviderHosted": "provider-hosted",
+    "placementSelfHosted": "self-hosted",
+    "placementInstalledCli": "설치된 CLI",
+    "placementCustomHosted": "custom-hosted",
+    "placementDescriptionProviderHosted": "요청이 프로바이더가 운영하는 호스팅 서비스로 전송됩니다.",
+    "placementDescriptionSelfHosted": "예: 로컬 Ollama 서버처럼 사용자가 직접 운영하는 엔드포인트입니다.",
+    "placementDescriptionInstalledCli": "이 머신에 설치된 provider-owned CLI를 통해 실행됩니다.",
+    "placementDescriptionCustomHosted": "사용자가 운영하거나 프록시하는 OpenAI-compatible 엔드포인트로 요청을 보냅니다.",
     "ocrProvider": "OCR 제공자",
     "llmProvider": "LLM 제공자",
+    "providerLocal": "로컬",
+    "providerRemote": "원격",
+    "cliModeProviderSummary": "Provider CLI 모드에서는 OCR/LLM provider를 로컬 실행으로 유지합니다. 지원되는 LLM workflow는 선택한 surface를 통해 설치된 provider-owned CLI가 담당합니다.",
+    "oauthLlmProviderPinned": "관리형 OAuth 모드에서는 현재 LLM provider가 Remote로 고정됩니다.",
+    "providerSelectionLockedBadge": "고정됨",
+    "providerSelectionLockedCli": "설치된 provider CLI 모드에서는 LLM provider가 Remote로 고정됩니다.",
+    "providerSelectionLockedOAuth": "관리형 OAuth에서는 LLM provider가 Remote로 고정됩니다.",
+    "activeRoutingTitle": "현재 활성 경로",
+    "activeRoutingDescription": "런타임이 지금 실제로 사용하는 OCR/LLM 경로입니다.",
+    "activePathLocal": "로컬 실행",
+    "activePathRemote": "원격 실행",
+    "activePathRemoteSurface": "{{surface}} 경유 원격 실행",
     "dataPolicy": "외부 데이터 정책",
+    "dataPolicyStrict": "PII 엄격 필터",
+    "dataPolicyStandard": "PII 표준 필터",
+    "dataPolicyAllowFiltered": "필터링 후 허용",
     "allowUnredactedExternalOcr": "원본 OCR 업로드 허용",
     "allowUnredactedExternalOcrDescription": "외부 OCR 전송 전 PII 블러를 건너뜁니다 (정확도 향상, 프라이버시 저하).",
     "sceneActionOverrideTitle": "Scene 액션 민감 입력 오버라이드",
@@ -600,13 +664,54 @@
     "endpointPlaceholderLlm": "https://api.example.com/llm",
     "apiKey": "API 키",
     "apiKeyPlaceholder": "API 키 입력...",
+    "apiKeyStoredPlaceholder": "{{backend}}에 저장됨",
+    "apiKeyStoredHint": "이 비밀값은 현재 {{backend}}에 저장되어 있습니다. 여기서 새 키를 입력하면 교체됩니다.",
+    "noAuthSurfaceDescription": "이 surface는 API 키가 필요하지 않습니다. 자격 증명 입력란은 비워 두고 로컬 또는 self-hosted 엔드포인트에 직접 연결하세요.",
+    "secretProjectionEnabled": "CLI 프로젝션 허용",
+    "secretProjectionEnabledDescription": "이 저장된 비밀값에 대해 ONESHIM이 관리하는 CLI 및 브리지 호환 흐름을 허용합니다.",
+    "backendOsSecretStore": "OS 비밀 저장소",
+    "backendFileSecretStore": "파일 비밀 저장소",
+    "backendEnv": "환경 변수",
+    "backendBridgeManaged": "브리지 관리 백엔드",
+    "backendUnavailable": "사용할 수 없는 백엔드",
     "model": "모델",
+    "modelSelectionUnsupportedSurface": "이 surface는 모델을 명시적으로 선택하지 않습니다. ONESHIM은 surface의 기본 OCR 또는 provider 기본 경로를 사용합니다.",
+    "ocrModelUnsupported": "선택한 모델은 이 surface에서 이미지 기반 OCR을 지원하는 것으로 확인되지 않았습니다. 호환되는 멀티모달 모델을 선택하세요.",
+    "ocrModelCompatibilityUnknown": "ONESHIM은 이 surface에서 {{model}}의 OCR 호환성을 확인하지 못했습니다. 알려진 멀티모달 모델을 사용하거나 저장 전에 모델 카탈로그로 확인하세요.",
+    "ocrModelCompatibilityUnknownRejected": "이 surface에서는 OCR 호환성이 확인된 모델만 사용할 수 있습니다. {{model}}은 아직 catalog에 없으므로 저장 전에 알려진 멀티모달 모델로 바꾸세요.",
+    "llmModelUnsupported": "선택한 모델은 이 LLM surface와 호환되는 것으로 확인되지 않았습니다. 선택한 실행 경로에 맞는 모델을 고르세요.",
+    "llmModelCompatibilityUnknown": "ONESHIM은 이 surface에서 {{model}}의 LLM 호환성을 확인하지 못했습니다. 저장 전에 모델이나 카탈로그를 다시 확인하세요.",
+    "llmModelCompatibilityUnknownRejected": "이 surface에서는 호환성이 확인된 LLM 모델만 사용할 수 있습니다. {{model}}은 아직 catalog에 없으므로 저장 전에 알려진 지원 모델로 바꾸세요.",
+    "selfHostedCustomEndpointStatus": "이 self-hosted surface는 사용자 지정 엔드포인트를 사용 중입니다. 해당 엔드포인트에는 준비 상태 점검을 수행하지 않았으므로 로컬 서버를 직접 확인하세요.",
     "timeoutSecs": "타임아웃 (초)",
     "providerType": "프로바이더 유형",
+    "providerSurfaceLabel": "프로바이더 surface",
+    "savedProfilesTitle": "저장된 provider profile",
+    "savedProfilesDescription": "현재 AI provider 전체 설정을 profile로 저장하고 OCR, LLM, 정책 설정을 다시 손으로 맞추지 않고 빠르게 전환합니다.",
+    "savedProfilesActiveBadge": "활성 profile",
+    "savedProfilesSelectLabel": "저장된 profile",
+    "savedProfilesCustomOption": "커스텀 / 미저장 설정",
+    "savedProfilesNameLabel": "Profile 이름",
+    "savedProfilesNamePlaceholder": "예: Anthropic production",
+    "savedProfilesSaveAction": "현재 profile 저장",
+    "savedProfilesUpdateAction": "선택한 profile 업데이트",
+    "savedProfilesDeleteAction": "Profile 삭제",
+    "savedProfilesSelectedHint": "{{name}} profile을 편집 중입니다. 현재 AI provider 변경사항을 이 profile에 반영하려면 설정을 저장하세요.",
+    "savedProfilesCustomHint": "현재 AI provider 설정은 커스텀 상태입니다. 나중에 재사용하려면 이름 있는 profile로 저장하세요.",
+    "profileNameRequired": "저장하려면 profile 이름을 입력하세요.",
+    "profileSavedSuccess": "AI provider profile {{name}}을(를) 저장했습니다.",
+    "profileDeletedSuccess": "AI provider profile {{name}}을(를) 삭제했습니다.",
+    "noCompatibleProviderSurface": "이 모드에서 사용할 수 있는 provider surface가 없습니다.",
+    "ocrStrategyMultimodal": "이 OCR surface는 멀티모달 모델을 통해 실행됩니다. 사용자 지정 모델 ID를 저장하기 전에는 이미지 입력 가능 모델을 우선 선택하고 호환성을 확인하세요.",
+    "ocrStrategyVisionApi": "이 OCR surface는 전용 비전 API를 사용합니다. 엔드포인트에 따라 모델 선택이 제한되거나 지원되지 않을 수 있습니다.",
+    "managedOAuthSurfaceDescription": "이 surface는 provider-managed OAuth를 사용합니다. 이 구간에서는 API 키나 편집 가능한 엔드포인트를 직접 입력하지 않습니다.",
+    "subprocessSurfaceDescription": "이 surface는 설치된 provider-owned CLI를 통해 실행됩니다. 인증과 구독 권한은 provider CLI가 계속 관리합니다.",
+    "subprocessExecutableHint": "감지 가능한 실행 파일 후보: {{executables}}",
     "loadModels": "모델 불러오기",
     "modelDiscoveryNoModels": "해당 프로바이더 설정에서 반환된 모델이 없습니다.",
     "modelDiscoveryMissingConfig": "원격 엔드포인트, 프로바이더, API 키를 먼저 설정하세요.",
-    "modelDiscoveryMissingKey": "모델 조회를 위해 전체 API 키를 입력하세요."
+    "modelDiscoveryMissingKey": "모델 조회를 위해 전체 API 키를 입력하세요.",
+    "modelDiscoveryUnsupportedSurface": "선택한 provider surface에서는 모델 조회를 지원하지 않습니다."
   },
   "settingsOAuth": {
     "title": "연결",
@@ -633,7 +738,93 @@
     "statusExpired": "토큰 만료됨",
     "noRefreshToken": "리프레시 토큰 없음 — 만료 시 수동 재인증 필요",
     "reauthRequired": "재인증 필요",
-    "reauthDescription": "OAuth 세션이 만료되었습니다. 다시 연결해 주세요."
+    "reauthDescription": "OAuth 세션이 만료되었습니다. 다시 연결해 주세요.",
+    "switchToCli": "{{surface}}로 대신 사용"
+  },
+  "featureCapability": {
+    "preferredPath": "권장 경로",
+    "setupTitle": "설정 필요",
+    "setupEnvVars": "환경 변수",
+    "openSetupDocs": "설정 문서 열기",
+    "availability": {
+      "available": "사용 가능",
+      "unavailable": "사용 불가",
+      "partially_available": "부분적으로 사용 가능"
+    },
+    "maturity": {
+      "stable": "안정",
+      "beta": "베타",
+      "experimental": "실험적",
+      "deprecated": "지원 종료 예정"
+    },
+    "surface": {
+      "provider_surface": {
+        "openai": {
+          "managed_oauth": {
+            "available": "이 실험적 managed OAuth 경로는 현재 이 기기에서 사용할 수 있습니다. 다만 권장 기본 설정 경로는 아닙니다.",
+            "unavailable": "현재 이 기기에서는 직접 OAuth를 사용할 수 없습니다. 데스크톱 키체인 지원이 필요합니다."
+          },
+          "subprocess_cli": {
+            "available": "Codex CLI가 설치되어 있고 인증도 완료되었습니다. 이 기기에서 지원되는 workflow는 ONESHIM이 provider-owned CLI 경로로 실행할 수 있습니다.",
+            "auth_required": "Codex CLI는 설치되어 있지만 아직 인증되지 않았습니다. 먼저 provider-owned CLI 로그인 흐름을 완료한 뒤 이 패널로 돌아오세요.",
+            "partially_available": "Codex CLI가 감지되었습니다. CLI가 인증되어 있고 요청한 workflow가 지원되면 ONESHIM은 설치된 provider-owned CLI 경로를 우선 사용할 수 있습니다.",
+            "unavailable": "Codex CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다. 권장 product-backed 경로를 위해 provider CLI를 설치하고 로그인하세요."
+          }
+        },
+        "anthropic": {
+          "subprocess_cli": {
+            "available": "Claude Code CLI가 설치되어 있고 인증도 완료되었습니다. 이 기기에서 지원되는 workflow는 ONESHIM이 provider-owned CLI 경로로 실행할 수 있습니다.",
+            "auth_required": "Claude Code CLI는 설치되어 있지만 아직 인증되지 않았습니다. 먼저 provider-owned CLI 로그인 흐름을 완료한 뒤 이 패널로 돌아오세요.",
+            "partially_available": "Claude Code CLI가 감지되었습니다. CLI가 인증되어 있고 요청한 workflow가 지원되면 ONESHIM은 설치된 provider-owned CLI 경로를 우선 사용할 수 있습니다.",
+            "unavailable": "Claude Code CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다."
+          }
+        },
+        "google": {
+          "managed_oauth": {
+            "available": "이 기기에서 Google OAuth를 사용할 수 있습니다. Desktop OAuth client ID를 구성하면 API key 없이 Vision OCR을 연결할 수 있습니다.",
+            "unavailable": "이 기기에서는 Google OAuth를 사용할 수 없습니다. 데스크톱 키체인 지원과 Google OAuth client ID 구성이 필요합니다.",
+            "setup": "ONESHIM용 Google Desktop OAuth client ID를 준비하거나 설정한 뒤, 앱을 다시 시작하고 Vision OCR 로그인 흐름을 시작하세요."
+          },
+          "subprocess_cli": {
+            "available": "Gemini CLI가 설치되어 있고 인증도 완료되었습니다. 이 기기에서 지원되는 workflow는 ONESHIM이 provider-owned CLI 경로로 실행할 수 있습니다.",
+            "auth_required": "Gemini CLI는 설치되어 있지만 아직 인증되지 않았습니다. 먼저 provider-owned CLI 로그인 흐름을 완료한 뒤 이 패널로 돌아오세요.",
+            "partially_available": "Gemini CLI가 감지되었습니다. CLI가 인증되어 있고 요청한 workflow가 지원되면 ONESHIM은 설치된 provider-owned CLI 경로를 우선 사용할 수 있습니다.",
+            "unavailable": "Gemini CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다."
+          }
+        },
+        "ollama": {
+          "local_http": {
+            "available": "구성된 로컬 HTTP 포트에서 Ollama에 접근할 수 있습니다. ONESHIM은 이 self-hosted 엔드포인트를 직접 호출할 수 있습니다.",
+            "partially_available": "Ollama에 대한 로컬 준비 상태 점검을 완료하지 못했습니다. 로컬 서버와 엔드포인트 구성을 확인하세요.",
+            "unavailable": "구성된 로컬 HTTP 포트에서 Ollama에 접근할 수 없습니다. 이 self-hosted surface를 사용하기 전에 로컬 서버를 시작하세요."
+          }
+        }
+      }
+    },
+    "providerSurface": {
+      "openaiManagedOAuth": {
+        "available": "이 실험적 managed OAuth 경로는 현재 이 기기에서 사용할 수 있습니다. 다만 권장 기본 설정 경로는 아닙니다.",
+        "unavailable": "현재 이 기기에서는 직접 OAuth를 사용할 수 없습니다. 데스크톱 키체인 지원이 필요합니다."
+      },
+      "openaiSubprocessCli": {
+        "available": "Codex CLI가 설치되어 있고 인증도 완료되었습니다. 이 기기에서 지원되는 workflow는 ONESHIM이 provider-owned CLI 경로로 실행할 수 있습니다.",
+        "authRequired": "Codex CLI는 설치되어 있지만 아직 인증되지 않았습니다. 먼저 provider-owned CLI 로그인 흐름을 완료한 뒤 이 패널로 돌아오세요.",
+        "partiallyAvailable": "Codex CLI가 감지되었습니다. CLI가 인증되어 있고 요청한 workflow가 지원되면 ONESHIM은 설치된 provider-owned CLI 경로를 우선 사용할 수 있습니다.",
+        "unavailable": "Codex CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다. 권장 product-backed 경로를 위해 provider CLI를 설치하고 로그인하세요."
+      },
+      "anthropicSubprocessCli": {
+        "available": "Claude Code CLI가 설치되어 있고 인증도 완료되었습니다. 이 기기에서 지원되는 workflow는 ONESHIM이 provider-owned CLI 경로로 실행할 수 있습니다.",
+        "authRequired": "Claude Code CLI는 설치되어 있지만 아직 인증되지 않았습니다. 먼저 provider-owned CLI 로그인 흐름을 완료한 뒤 이 패널로 돌아오세요.",
+        "partiallyAvailable": "Claude Code CLI가 감지되었습니다. CLI가 인증되어 있고 요청한 workflow가 지원되면 ONESHIM은 설치된 provider-owned CLI 경로를 우선 사용할 수 있습니다.",
+        "unavailable": "Claude Code CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다."
+      },
+      "googleSubprocessCli": {
+        "available": "Gemini CLI가 설치되어 있고 인증도 완료되었습니다. 이 기기에서 지원되는 workflow는 ONESHIM이 provider-owned CLI 경로로 실행할 수 있습니다.",
+        "authRequired": "Gemini CLI는 설치되어 있지만 아직 인증되지 않았습니다. 먼저 provider-owned CLI 로그인 흐름을 완료한 뒤 이 패널로 돌아오세요.",
+        "partiallyAvailable": "Gemini CLI가 감지되었습니다. CLI가 인증되어 있고 요청한 workflow가 지원되면 ONESHIM은 설치된 provider-owned CLI 경로를 우선 사용할 수 있습니다.",
+        "unavailable": "Gemini CLI가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다."
+      }
+    }
   },
   "focus": {
     "title": "집중도",
