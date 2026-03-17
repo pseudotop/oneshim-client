@@ -352,14 +352,14 @@ let (token_manager, api_client, sse_client, batch_uploader) = {
             token_manager.clone(),
         )?);
 
-        if platform_connected_mode {
+        if remote_sync_enabled {
             // ... login flow (lines 342-366) ...
         }
     }
 
     #[cfg(not(feature = "grpc"))]
     {
-        if platform_connected_mode {
+        if remote_sync_enabled {
             let email = std::env::var("ONESHIM_EMAIL")
                 .unwrap_or_else(|_| "user@example.com".to_string());
             let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
@@ -443,7 +443,7 @@ let receiver = SuggestionReceiver::new(
 // ...
 
 #[cfg(feature = "server")]
-if platform_connected_mode {
+if remote_sync_enabled {
     let sid = session_id.clone();
     tokio::spawn(async move {
         if let Err(e) = receiver.run(&sid).await {

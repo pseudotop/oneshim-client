@@ -193,7 +193,7 @@ export default function Timeline() {
       {/* UI note */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center space-x-4">
-          <h1 className={cn(typography.h1, colors.text.primary)}>{t('timeline.title')}</h1>
+          <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('timeline.title')}</h1>
           <span className="text-content-secondary">
             {pagination ? `${pagination.total}${t('timeline.captures')}` : `${frames.length}${t('timeline.captures')}`}
             {filteredFrames.length !== frames.length && ` (${filteredFrames.length}${t('timeline.showing')})`}

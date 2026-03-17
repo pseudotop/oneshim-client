@@ -45,6 +45,8 @@ pub struct AppConfig {
     pub automation: AutomationConfig,
     #[serde(default)]
     pub ai_provider: AiProviderConfig,
+    #[serde(default)]
+    pub integration: IntegrationConfig,
     /// 아웃바운드 TLS 설정 — 기본값: 활성화
     #[serde(default)]
     pub tls: TlsConfig,
@@ -93,6 +95,7 @@ impl AppConfig {
             file_access: FileAccessConfig::default(),
             automation: AutomationConfig::default(),
             ai_provider: AiProviderConfig::default(),
+            integration: IntegrationConfig::default(),
             tls: TlsConfig::default(),
         }
     }
@@ -147,6 +150,7 @@ mod tests {
         let config = AppConfig::default_config();
         assert!(config.tls.enabled, "AppConfig 기본값: TLS 활성화");
         assert!(!config.tls.allow_self_signed);
+        assert!(!config.integration.enabled);
     }
 
     #[test]
@@ -243,6 +247,8 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
@@ -250,6 +256,35 @@ mod tests {
         let result = config.validate_selected_remote_endpoints();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("api_key"));
+    }
+
+    #[test]
+    fn ai_provider_validation_accepts_remote_api_key_secret_binding() {
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Local,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: "https://api.example.com/ocr".to_string(),
+                api_key: "".to_string(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::Generic,
+                surface_id: None,
+                credential: Some(CredentialBinding {
+                    auth_mode: CredentialAuthMode::ApiKey,
+                    backend_kind: CredentialBackendKind::OsSecretStore,
+                    secret_ref: Some(SecretRef {
+                        namespace: "provider/openai/default".to_string(),
+                        key: "api_key".to_string(),
+                    }),
+                    projection_enabled: false,
+                }),
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -263,6 +298,8 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
+                credential: None,
             }),
             llm_api: Some(ExternalApiEndpoint {
                 endpoint: "https://api.example.com/llm".to_string(),
@@ -270,6 +307,8 @@ mod tests {
                 model: Some("model-a".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
@@ -288,6 +327,8 @@ mod tests {
                 model: Some("gpt-3.5-turbo".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
+                surface_id: None,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
@@ -298,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn ai_provider_validation_rejects_remote_in_cli_subscription_mode() {
+    fn ai_provider_validation_accepts_remote_ocr_in_cli_subscription_mode() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderSubscriptionCli,
             ocr_provider: OcrProviderType::Remote,
@@ -309,17 +350,18 @@ mod tests {
                 model: None,
                 timeout_secs: 30,
                 provider_type: AiProviderType::Generic,
+                surface_id: None,
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
 
         let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("CLI"));
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn ai_provider_validation_rejects_local_llm_in_oauth_mode() {
+    fn ai_provider_validation_accepts_local_llm_in_oauth_mode_when_no_managed_llm_surface() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderOAuth,
             llm_provider: LlmProviderType::Local,
@@ -327,44 +369,65 @@ mod tests {
         };
 
         let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("llm_provider=Remote"));
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn ai_provider_validation_rejects_non_openai_llm_in_oauth_mode() {
+    fn ai_provider_validation_accepts_direct_llm_surface_in_oauth_mode() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderOAuth,
             llm_provider: LlmProviderType::Remote,
             llm_api: Some(ExternalApiEndpoint {
                 endpoint: "https://api.anthropic.com/v1/messages".to_string(),
-                api_key: "".to_string(),
-                model: Some("claude-sonnet-4-5".to_string()),
+                api_key: "api-key".to_string(),
+                model: Some("claude-opus-4-1-20250805".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::Anthropic,
+                surface_id: Some("provider_surface.anthropic.direct_api".to_string()),
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };
 
         let result = config.validate_selected_remote_endpoints();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("OpenAi"));
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn ai_provider_validation_accepts_openai_remote_llm_in_oauth_mode() {
+    fn ai_provider_validation_accepts_openai_managed_llm_surface_in_oauth_mode() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderOAuth,
             llm_provider: LlmProviderType::Remote,
             llm_api: Some(ExternalApiEndpoint {
                 endpoint: "https://api.openai.com/v1".to_string(),
                 api_key: "".to_string(),
-                model: Some("gpt-4.1-mini".to_string()),
+                model: Some("gpt-5.4".to_string()),
                 timeout_secs: 30,
                 provider_type: AiProviderType::OpenAi,
+                surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+                credential: None,
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let result = config.validate_selected_remote_endpoints();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn ai_provider_validation_accepts_google_managed_ocr_surface_in_oauth_mode() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Local,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: "https://vision.googleapis.com/v1/images:annotate".to_string(),
+                api_key: "".to_string(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::Google,
+                surface_id: Some("provider_surface.google.managed_oauth".to_string()),
+                credential: None,
             }),
             ..AiProviderConfig::default()
         };

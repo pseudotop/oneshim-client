@@ -115,7 +115,7 @@ export default function Reports() {
     <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <h1 className={cn(typography.h1, colors.text.primary)}>{t('reports.title')}</h1>
+        <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('reports.title')}</h1>
 
         {/* UI note */}
         <div className="flex flex-wrap items-center gap-2">

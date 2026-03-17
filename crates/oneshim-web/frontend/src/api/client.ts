@@ -8,6 +8,7 @@ import type {
   OAuthConnectionStatus,
   OAuthFlowHandle,
   OAuthFlowStatus,
+  SecretBackendCapabilities,
   BackupArchive,
   BackupParams,
   CreateTagRequest,
@@ -21,20 +22,31 @@ import type {
   ExecuteSceneActionResponse,
   ExportDataType,
   ExportFormat,
+  FeatureCapabilitySnapshot,
   FocusMetricsResponse,
   Frame,
   HeatmapResponse,
   HourlyMetrics,
   IdlePeriod,
+  IntegrationAuthStatus,
+  IntegrationAuditLogResponse,
+  IntegrationDeviceAuthorizationCommandResult,
+  IntegrationDeviceAuthorizationFlowRequest,
+  IntegrationInboxActionResponse,
+  IntegrationInboxDismissRequest,
+  IntegrationInboxRefreshResponse,
+  IntegrationInboxResponse,
+  IntegrationStatus,
   Interruption,
   LocalSuggestion,
   PaginatedResponse,
   PoliciesInfo,
+  ProviderEndpointProbeResult,
   PresetRunResult,
   ProcessSnapshot,
   ProviderModelsRequest,
   ProviderModelsResponse,
-  ProviderPresetCatalog,
+  ProviderSurfaceCatalog,
   ReportParams,
   ReportResponse,
   RestoreResult,
@@ -211,6 +223,96 @@ export async function fetchSettings(): Promise<AppSettings> {
   return res.json()
 }
 
+export async function fetchIntegrationStatus(): Promise<IntegrationStatus> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/status`)
+  if (!res.ok) throw new Error('Integration status query failed')
+  return res.json()
+}
+
+export async function fetchIntegrationAudit(): Promise<IntegrationAuditLogResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/audit`)
+  if (!res.ok) throw new Error('Integration audit query failed')
+  return res.json()
+}
+
+export async function fetchIntegrationAuthStatus(): Promise<IntegrationAuthStatus> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/auth/status`)
+  if (!res.ok) throw new Error('Integration auth status query failed')
+  return res.json()
+}
+
+export async function startIntegrationDeviceAuthorization(): Promise<IntegrationDeviceAuthorizationCommandResult> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/auth/device/start`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Integration device authorization start failed')
+  return res.json()
+}
+
+export async function pollIntegrationDeviceAuthorization(
+  request: IntegrationDeviceAuthorizationFlowRequest,
+): Promise<IntegrationDeviceAuthorizationCommandResult> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/auth/device/poll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) throw new Error('Integration device authorization poll failed')
+  return res.json()
+}
+
+export async function cancelIntegrationDeviceAuthorization(
+  request: IntegrationDeviceAuthorizationFlowRequest,
+): Promise<IntegrationDeviceAuthorizationCommandResult> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/auth/device/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) throw new Error('Integration device authorization cancel failed')
+  return res.json()
+}
+
+export async function fetchIntegrationInbox(): Promise<IntegrationInboxResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/inbox`)
+  if (!res.ok) throw new Error('Integration inbox query failed')
+  return res.json()
+}
+
+export async function refreshIntegrationInbox(): Promise<IntegrationInboxRefreshResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/inbox/refresh`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Integration inbox refresh failed')
+  return res.json()
+}
+
+export async function acknowledgeIntegrationPrompt(
+  promptId: string,
+): Promise<IntegrationInboxActionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/ack`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Integration prompt acknowledge failed')
+  return res.json()
+}
+
+export async function dismissIntegrationPrompt(
+  promptId: string,
+  request: IntegrationInboxDismissRequest = {},
+): Promise<IntegrationInboxActionResponse> {
+  const res = await fetchWithRetry(
+    `${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/dismiss`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+  )
+  if (!res.ok) throw new Error('Integration prompt dismiss failed')
+  return res.json()
+}
+
 export async function updateSettings(settings: AppSettings): Promise<AppSettings> {
   const res = await fetchWithRetry(`${BASE_URL}/settings`, {
     method: 'POST',
@@ -224,11 +326,11 @@ export async function updateSettings(settings: AppSettings): Promise<AppSettings
   return res.json()
 }
 
-export async function fetchProviderPresets(): Promise<ProviderPresetCatalog> {
-  const res = await fetchWithRetry(`${BASE_URL}/ai/providers/presets`)
+export async function fetchProviderSurfaces(): Promise<ProviderSurfaceCatalog> {
+  const res = await fetchWithRetry(`${BASE_URL}/ai/provider-surfaces`)
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Provider preset query failed' }))
-    throw new Error(err.error || 'Provider preset query failed')
+    const err = await res.json().catch(() => ({ error: 'Provider surface query failed' }))
+    throw new Error(err.error || 'Provider surface query failed')
   }
   return res.json()
 }
@@ -605,6 +707,19 @@ export async function createPreset(preset: WorkflowPreset): Promise<WorkflowPres
   return res.json()
 }
 
+export async function updatePreset(id: string, preset: WorkflowPreset): Promise<WorkflowPreset> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/presets/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(preset),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to update preset' }))
+    throw new Error(err.error || 'Failed to update preset')
+  }
+  return res.json()
+}
+
 export async function deletePreset(id: string): Promise<void> {
   const res = await fetchWithRetry(`${BASE_URL}/automation/presets/${id}`, {
     method: 'DELETE',
@@ -711,4 +826,24 @@ export async function oauthRevoke(providerId: string): Promise<void> {
 
 export async function oauthConnectionStatus(providerId: string): Promise<OAuthConnectionStatus> {
   return tauriInvoke<OAuthConnectionStatus>('oauth_connection_status', { providerId })
+}
+
+export async function fetchSecretBackendCapabilities(): Promise<SecretBackendCapabilities> {
+  return tauriInvoke<SecretBackendCapabilities>('get_secret_backend_capabilities')
+}
+
+export async function fetchFeatureCapabilities(): Promise<FeatureCapabilitySnapshot> {
+  return tauriInvoke<FeatureCapabilitySnapshot>('get_feature_capabilities')
+}
+
+export async function probeProviderSurfaceEndpoint(args: {
+  surface_id: string
+  endpoint_kind: 'ocr_api' | 'llm_api'
+  endpoint: string
+}): Promise<ProviderEndpointProbeResult> {
+  return tauriInvoke<ProviderEndpointProbeResult>('probe_provider_surface_endpoint', {
+    surfaceId: args.surface_id,
+    endpointKind: args.endpoint_kind,
+    endpoint: args.endpoint,
+  })
 }

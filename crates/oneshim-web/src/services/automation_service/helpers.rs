@@ -15,21 +15,22 @@ use oneshim_core::models::intent::AutomationIntent;
 use oneshim_core::models::ui_scene::UiScene;
 use std::path::{Path as FsPath, PathBuf};
 
-use crate::{error::ApiError, AppState};
+use crate::error::ApiError;
+use crate::services::web_contexts::AutomationWebContext;
 
-pub(super) const AUTOMATION_AUDIT_SCHEMA_VERSION: &str = "automation.audit.v1";
-pub(super) const AUTOMATION_SCENE_ACTION_SCHEMA_VERSION: &str = "automation.scene_action.v1";
-pub(super) const AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION: &str =
-    "automation.scene_calibration.v1";
+pub(crate) const AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION: &str =
+    crate::services::automation_service::AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION;
 
-pub(super) fn require_config_manager(state: &AppState) -> Result<&ConfigManager, ApiError> {
-    state
+pub(crate) fn require_config_manager(
+    context: &AutomationWebContext,
+) -> Result<&ConfigManager, ApiError> {
+    context
         .config_manager
         .as_ref()
         .ok_or_else(|| ApiError::Internal("Config manager is not set".into()))
 }
 
-pub(super) fn default_automation_status(pending: usize) -> AutomationStatusDto {
+pub(crate) fn default_automation_status(pending: usize) -> AutomationStatusDto {
     AutomationStatusDto {
         enabled: false,
         sandbox_enabled: false,
@@ -45,38 +46,32 @@ pub(super) fn default_automation_status(pending: usize) -> AutomationStatusDto {
     }
 }
 
-pub(super) fn infer_runtime_source(
+pub(crate) fn infer_runtime_source(
     access_mode: AiAccessMode,
     provider_is_remote: bool,
 ) -> &'static str {
     match access_mode {
         AiAccessMode::LocalModel => "local",
         AiAccessMode::ProviderSubscriptionCli => "cli-subscription",
-        AiAccessMode::ProviderApiKey => {
-            if provider_is_remote {
-                "remote"
-            } else {
-                "local"
-            }
-        }
-        AiAccessMode::PlatformConnected => {
-            if provider_is_remote {
-                "platform"
-            } else {
-                "local"
-            }
-        }
+        AiAccessMode::ProviderApiKey => infer_direct_runtime_source(provider_is_remote),
         AiAccessMode::ProviderOAuth => "oauth",
     }
 }
 
-pub(super) fn resolve_ai_runtime_status(
-    state: &AppState,
+fn infer_direct_runtime_source(provider_is_remote: bool) -> &'static str {
+    if !provider_is_remote {
+        return "local";
+    }
+    "remote"
+}
+
+pub(crate) fn resolve_ai_runtime_status(
+    context: &AutomationWebContext,
     access_mode: AiAccessMode,
     ocr_provider: OcrProviderType,
     llm_provider: LlmProviderType,
 ) -> crate::AiRuntimeStatus {
-    state
+    context
         .ai_runtime_status
         .clone()
         .unwrap_or_else(|| crate::AiRuntimeStatus {
@@ -95,7 +90,7 @@ pub(super) fn resolve_ai_runtime_status(
         })
 }
 
-pub(super) fn default_policies() -> PoliciesDto {
+pub(crate) fn default_policies() -> PoliciesDto {
     PoliciesDto {
         automation_enabled: false,
         sandbox_profile: "Standard".to_string(),
@@ -112,18 +107,18 @@ pub(super) fn default_policies() -> PoliciesDto {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct SceneActionPolicyContext {
-    pub(super) policy: ExternalDataPolicy,
-    pub(super) pii_filter_level: PiiFilterLevel,
-    pub(super) override_enabled: bool,
-    pub(super) override_active: bool,
-    pub(super) override_reason: Option<String>,
-    pub(super) override_approved_by: Option<String>,
-    pub(super) override_expires_at: Option<DateTime<Utc>>,
-    pub(super) override_issue: Option<String>,
+pub(crate) struct SceneActionPolicyContext {
+    pub(crate) policy: ExternalDataPolicy,
+    pub(crate) pii_filter_level: PiiFilterLevel,
+    pub(crate) override_enabled: bool,
+    pub(crate) override_active: bool,
+    pub(crate) override_reason: Option<String>,
+    pub(crate) override_approved_by: Option<String>,
+    pub(crate) override_expires_at: Option<DateTime<Utc>>,
+    pub(crate) override_issue: Option<String>,
 }
 
-pub(super) fn parse_audit_status(status_filter: &str) -> Result<AuditStatus, ApiError> {
+pub(crate) fn parse_audit_status(status_filter: &str) -> Result<AuditStatus, ApiError> {
     match status_filter {
         "Started" => Ok(AuditStatus::Started),
         "Completed" => Ok(AuditStatus::Completed),
@@ -131,13 +126,13 @@ pub(super) fn parse_audit_status(status_filter: &str) -> Result<AuditStatus, Api
         "Denied" => Ok(AuditStatus::Denied),
         "Timeout" => Ok(AuditStatus::Timeout),
         _ => Err(ApiError::BadRequest(format!(
-            "유효하지 않은 state 필터: {}",
+            "Invalid state filter: {}",
             status_filter
         ))),
     }
 }
 
-pub(super) fn build_scene_action_intents(
+pub(crate) fn build_scene_action_intents(
     req: &ExecuteSceneActionRequest,
 ) -> Result<Vec<AutomationIntent>, ApiError> {
     if req.session_id.trim().is_empty() {
@@ -148,7 +143,7 @@ pub(super) fn build_scene_action_intents(
     }
     if req.bbox_abs.width == 0 || req.bbox_abs.height == 0 {
         return Err(ApiError::BadRequest(
-            "bbox_abs.width/height는 0보다 커야 합니다".to_string(),
+            "bbox_abs.width/height must be greater than 0.".to_string(),
         ));
     }
 
@@ -182,21 +177,23 @@ pub(super) fn build_scene_action_intents(
     }
 }
 
-pub(super) fn read_scene_intelligence_config(state: &AppState) -> SceneIntelligenceConfig {
-    state
+pub(crate) fn read_scene_intelligence_config(
+    context: &AutomationWebContext,
+) -> SceneIntelligenceConfig {
+    context
         .config_manager
         .as_ref()
         .map(|config_manager| config_manager.get().ai_provider.scene_intelligence)
         .unwrap_or_default()
 }
 
-pub(super) fn apply_scene_intelligence_filter(
+pub(crate) fn apply_scene_intelligence_filter(
     mut scene: UiScene,
     cfg: &SceneIntelligenceConfig,
 ) -> Result<UiScene, ApiError> {
     if !cfg.enabled {
         return Err(ApiError::BadRequest(
-            "Scene intelligence가 비active화되어 있습니다.".to_string(),
+            "Scene intelligence is disabled.".to_string(),
         ));
     }
 
@@ -213,7 +210,7 @@ pub(super) fn apply_scene_intelligence_filter(
     Ok(scene)
 }
 
-pub(super) fn build_scene_calibration(
+pub(crate) fn build_scene_calibration(
     scene: &UiScene,
     cfg: &SceneIntelligenceConfig,
 ) -> SceneCalibrationDto {
@@ -268,7 +265,7 @@ pub(super) fn build_scene_calibration(
     }
 }
 
-pub(super) fn evaluate_scene_action_override(
+pub(crate) fn evaluate_scene_action_override(
     cfg: &SceneActionOverrideConfig,
     now: DateTime<Utc>,
 ) -> (bool, Option<String>) {
@@ -280,7 +277,7 @@ pub(super) fn evaluate_scene_action_override(
     if reason.is_empty() {
         return (
             false,
-            Some("사유(reason)가 비어 있어 오버라이드가 무효입니다.".to_string()),
+            Some("Override is invalid because reason is empty.".to_string()),
         );
     }
 
@@ -292,26 +289,26 @@ pub(super) fn evaluate_scene_action_override(
     if approved_by.is_empty() {
         return (
             false,
-            Some("승인자(approved_by)가 비어 있어 오버라이드가 무효입니다.".to_string()),
+            Some("Override is invalid because approved_by is empty.".to_string()),
         );
     }
 
     let Some(expires_at) = cfg.expires_at else {
         return (
             false,
-            Some("만료 시각(expires_at)이 없어 오버라이드가 무효입니다.".to_string()),
+            Some("Override is invalid because expires_at is missing.".to_string()),
         );
     };
 
     if expires_at <= now {
-        return (false, Some("오버라이드 TTL이 만료되었습니다.".to_string()));
+        return (false, Some("Override TTL has expired.".to_string()));
     }
 
     (true, None)
 }
 
-pub(super) fn read_scene_action_policy(state: &AppState) -> SceneActionPolicyContext {
-    if let Some(config_manager) = state.config_manager.as_ref() {
+pub(crate) fn read_scene_action_policy(context: &AutomationWebContext) -> SceneActionPolicyContext {
+    if let Some(config_manager) = context.config_manager.as_ref() {
         let config = config_manager.get();
         let override_cfg = &config.ai_provider.scene_action_override;
         let (override_active, override_issue) =
@@ -341,41 +338,41 @@ pub(super) fn read_scene_action_policy(state: &AppState) -> SceneActionPolicyCon
     }
 }
 
-pub(super) fn enforce_scene_action_privacy(
-    state: &AppState,
+pub(crate) fn enforce_scene_action_privacy(
+    context: &AutomationWebContext,
     req: &ExecuteSceneActionRequest,
 ) -> Result<SceneActionPolicyContext, ApiError> {
-    let context = read_scene_action_policy(state);
+    let policy_context = read_scene_action_policy(context);
     let allow_sensitive = req.allow_sensitive_input.unwrap_or(false);
-    let override_active = context.override_active;
-    let override_hint = context
+    let override_active = policy_context.override_active;
+    let override_hint = policy_context
         .override_issue
         .as_ref()
         .map(|issue| format!(" current override state: {issue}"))
         .unwrap_or_default();
 
-    match (context.policy, req.action_type) {
+    match (policy_context.policy, req.action_type) {
         (ExternalDataPolicy::PiiFilterStrict, SceneActionType::TypeText) => {
             if !allow_sensitive && !override_active {
                 return Err(ApiError::BadRequest(format!(
-                    "PiiFilterStrict policy에서는 type_text 액션이 차단됩니다. allow_sensitive_input=true를 전달하거나 유효한 오버라이드를 설정하세요.{override_hint}"
+                    "PiiFilterStrict blocks type_text actions. Pass allow_sensitive_input=true or configure a valid override.{override_hint}"
                 )));
             }
         }
         (ExternalDataPolicy::PiiFilterStandard, SceneActionType::TypeText) => {
             if !allow_sensitive && !override_active {
                 return Err(ApiError::BadRequest(format!(
-                    "PiiFilterStandard policy에서는 type_text 액션에 allow_sensitive_input=true 또는 유효한 오버라이드가 필요합니다.{override_hint}"
+                    "PiiFilterStandard requires allow_sensitive_input=true or a valid override for type_text actions.{override_hint}"
                 )));
             }
         }
         _ => {}
     }
 
-    Ok(context)
+    Ok(policy_context)
 }
 
-pub(super) fn infer_image_format(path: &FsPath) -> String {
+pub(crate) fn infer_image_format(path: &FsPath) -> String {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.to_ascii_lowercase())
@@ -383,7 +380,7 @@ pub(super) fn infer_image_format(path: &FsPath) -> String {
         .unwrap_or_else(|| "webp".to_string())
 }
 
-pub(super) fn candidate_frame_paths(base: &FsPath, raw_relative: &FsPath) -> Vec<PathBuf> {
+pub(crate) fn candidate_frame_paths(base: &FsPath, raw_relative: &FsPath) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     let base_name = base
         .file_name()
@@ -408,8 +405,8 @@ pub(super) fn candidate_frame_paths(base: &FsPath, raw_relative: &FsPath) -> Vec
     candidates
 }
 
-pub(super) fn resolve_frame_image_path(
-    state: &AppState,
+pub(crate) fn resolve_frame_image_path(
+    context: &AutomationWebContext,
     stored_path: &str,
 ) -> Result<PathBuf, ApiError> {
     let path = PathBuf::from(stored_path);
@@ -417,9 +414,9 @@ pub(super) fn resolve_frame_image_path(
         return Ok(path);
     }
 
-    let Some(base) = state.frames_dir.as_ref() else {
+    let Some(base) = context.frames_dir.as_ref() else {
         return Err(ApiError::Internal(
-            "frame path 루트가 설정되지 않아 frame_id query를 처리할 수 없습니다".to_string(),
+            "Frame path root is not configured; frame_id queries cannot be resolved.".to_string(),
         ));
     };
 

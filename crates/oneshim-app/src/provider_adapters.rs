@@ -198,19 +198,6 @@ pub fn resolve_ai_provider_adapters(
                 llm_fallback_reason,
             })
         }
-        AiAccessMode::PlatformConnected => {
-            let (ocr, ocr_source, ocr_fallback_reason) =
-                resolve_ocr_provider(config, pii_filter_level)?;
-            let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
-            Ok(AiProviderAdapters {
-                ocr,
-                llm,
-                ocr_source: to_platform_source(ocr_source),
-                llm_source: to_platform_source(llm_source),
-                ocr_fallback_reason,
-                llm_fallback_reason,
-            })
-        }
     }
 }
 
@@ -509,9 +496,9 @@ mod tests {
     }
 
     #[test]
-    fn platform_mode_marks_remote_as_platform_source() {
+    fn provider_api_key_mode_marks_remote_as_direct_source() {
         let config = AiProviderConfig {
-            access_mode: AiAccessMode::PlatformConnected,
+            access_mode: AiAccessMode::ProviderApiKey,
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Remote,
             ocr_api: Some(remote_endpoint()),
@@ -522,8 +509,8 @@ mod tests {
 
         let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard)
             .expect("Failed to resolve platform mode");
-        assert_eq!(adapters.ocr_source, ProviderSource::Platform);
-        assert_eq!(adapters.llm_source, ProviderSource::Platform);
+        assert_eq!(adapters.ocr_source, ProviderSource::Remote);
+        assert_eq!(adapters.llm_source, ProviderSource::Remote);
         assert!(adapters.ocr_fallback_reason.is_none());
         assert!(adapters.llm_fallback_reason.is_none());
         assert!(adapters.ocr.is_external());

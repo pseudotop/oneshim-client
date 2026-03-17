@@ -25,12 +25,50 @@ pub fn api_routes() -> Router<AppState> {
         .route("/settings", get(handlers::settings::get_settings))
         .route("/settings", post(handlers::settings::update_settings))
         .route(
-            "/ai/providers/presets",
-            get(handlers::ai_provider_presets::list_provider_presets),
+            "/ai/provider-surfaces",
+            get(handlers::ai_provider_surfaces::list_provider_surfaces),
         )
         .route(
             "/ai/providers/models",
             post(handlers::ai_models::discover_provider_models),
+        )
+        .route(
+            "/integration/status",
+            get(handlers::integration::get_status),
+        )
+        .route("/integration/audit", get(handlers::integration::get_audit))
+        .route(
+            "/integration/auth/status",
+            get(handlers::integration::get_auth_status),
+        )
+        .route(
+            "/integration/auth/device/start",
+            post(handlers::integration::start_device_authorization),
+        )
+        .route(
+            "/integration/auth/device/poll",
+            post(handlers::integration::poll_device_authorization),
+        )
+        .route(
+            "/integration/auth/device/cancel",
+            post(handlers::integration::cancel_device_authorization),
+        )
+        .route(
+            "/integration/auth/reset",
+            post(handlers::integration::reset_auth_state),
+        )
+        .route("/integration/inbox", get(handlers::integration::list_inbox))
+        .route(
+            "/integration/inbox/refresh",
+            post(handlers::integration::refresh_inbox),
+        )
+        .route(
+            "/integration/inbox/{prompt_id}/ack",
+            post(handlers::integration::acknowledge_inbox_prompt),
+        )
+        .route(
+            "/integration/inbox/{prompt_id}/dismiss",
+            post(handlers::integration::dismiss_inbox_prompt),
         )
         .route("/storage/stats", get(handlers::settings::get_storage_stats))
         .route("/data/range", delete(handlers::data::delete_data_range))
@@ -169,6 +207,20 @@ pub fn api_routes() -> Router<AppState> {
         .route("/update/stream", get(handlers::update::get_update_stream))
 }
 
+pub fn integration_routes() -> Router<AppState> {
+    Router::new()
+        .route("/status", get(handlers::integration::get_status))
+        .route("/audit", get(handlers::integration::get_audit))
+        .route(
+            "/ai/provider-surfaces",
+            get(handlers::ai_provider_surfaces::list_provider_surfaces),
+        )
+        .route(
+            "/ai/providers/models",
+            post(handlers::ai_models::discover_provider_models_for_integration),
+        )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,11 +238,50 @@ mod tests {
             frames_dir: None,
             event_tx,
             config_manager: None,
+            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::Unavailable,
+            secret_store: None,
+            secret_stores: None,
             audit_logger: None,
             automation_controller: None,
             ai_runtime_status: None,
+            integration_runtime_status: None,
+            integration_auth: None,
+            integration_session: None,
+            integration_outbox: None,
+            integration_inbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
+            integration_runtime_telemetry: None,
             update_control: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
+    }
+
+    #[test]
+    fn integration_routes_compile() {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let (event_tx, _) = broadcast::channel(16);
+        let state = AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager: None,
+            default_secret_backend_kind: oneshim_core::config::CredentialBackendKind::Unavailable,
+            secret_store: None,
+            secret_stores: None,
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            integration_runtime_status: None,
+            integration_auth: None,
+            integration_session: None,
+            integration_outbox: None,
+            integration_inbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
+            integration_runtime_telemetry: None,
+            update_control: None,
+        };
+        let _app: Router<()> = integration_routes().with_state(state);
     }
 }

@@ -1,19 +1,24 @@
 use axum::{extract::State, Json};
 use oneshim_api_contracts::data::{DeleteRangeRequest, DeleteResult};
 
-use crate::{error::ApiError, services::data_service, AppState};
+use crate::{
+    error::ApiError,
+    services::{data_web_service::DataCommandService, web_contexts::StorageWebContext},
+};
 
 pub async fn delete_data_range(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
     Json(request): Json<DeleteRangeRequest>,
 ) -> Result<Json<DeleteResult>, ApiError> {
-    Ok(Json(data_service::delete_data_range(&state, &request)?))
+    Ok(Json(
+        DataCommandService::new(context).delete_data_range(&request)?,
+    ))
 }
 
 pub async fn delete_all_data(
-    State(state): State<AppState>,
+    State(context): State<StorageWebContext>,
 ) -> Result<Json<DeleteResult>, ApiError> {
-    Ok(Json(data_service::delete_all_data(&state)?))
+    Ok(Json(DataCommandService::new(context).delete_all_data()?))
 }
 
 #[cfg(test)]

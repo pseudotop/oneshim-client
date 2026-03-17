@@ -1,239 +1,109 @@
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::{Event, Sse};
 use axum::Json;
 use futures::stream::Stream;
 use oneshim_api_contracts::automation_gui::{
     GuiConfirmRequest, GuiConfirmResponse, GuiCreateSessionRequest, GuiCreateSessionResponse,
-    GuiExecuteResponse, GuiExecutionOutcome, GuiExecutionRequest, GuiHighlightRequest,
-    GuiSessionPath, GuiSessionResponse,
+    GuiExecuteResponse, GuiExecutionRequest, GuiHighlightRequest, GuiSessionPath,
+    GuiSessionResponse,
 };
 use std::convert::Infallible;
-use std::time::Duration;
-use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::StreamExt;
-
-use oneshim_core::error::GuiInteractionError;
-use oneshim_core::models::automation::GuiExecutionResult;
-use oneshim_core::models::gui::{
-    GuiConfirmRequest as AutomationGuiConfirmRequest,
-    GuiCreateSessionRequest as AutomationGuiCreateSessionRequest,
-    GuiExecutionRequest as AutomationGuiExecutionRequest,
-    GuiHighlightRequest as AutomationGuiHighlightRequest,
-};
-use oneshim_core::ports::automation::AutomationPort;
 
 use crate::error::ApiError;
-use crate::AppState;
-
-const GUI_SESSION_HEADER: &str = "x-gui-session-token";
-const GUI_SCHEMA_VERSION: &str = "automation.gui.v2";
+#[cfg(test)]
+use crate::services::automation_gui_service::{
+    map_gui_error, read_capability_token, GUI_SCHEMA_VERSION, GUI_SESSION_HEADER,
+};
+use crate::services::automation_gui_service::{
+    AutomationGuiCommandService, AutomationGuiQueryService, AutomationGuiStreamService,
+};
+use crate::services::web_contexts::AutomationGuiWebContext;
+#[cfg(test)]
+use oneshim_core::error::GuiInteractionError;
 
 pub async fn create_gui_session(
-    State(state): State<AppState>,
+    State(context): State<AutomationGuiWebContext>,
     Json(req): Json<GuiCreateSessionRequest>,
 ) -> Result<Json<GuiCreateSessionResponse>, ApiError> {
-    let controller = require_controller(&state)?;
-    let req = AutomationGuiCreateSessionRequest {
-        app_name: req.app_name,
-        screen_id: req.screen_id,
-        min_confidence: req.min_confidence,
-        max_candidates: req.max_candidates,
-        session_ttl_secs: req.session_ttl_secs,
-    };
-    let created = controller
-        .gui_create_session(req)
-        .await
-        .map_err(map_gui_error)?;
-
-    Ok(Json(GuiCreateSessionResponse {
-        schema_version: GUI_SCHEMA_VERSION.to_string(),
-        session: created.session,
-        capability_token: created.capability_token,
-    }))
+    Ok(Json(
+        AutomationGuiCommandService::new(context)
+            .create_gui_session(req)
+            .await?,
+    ))
 }
 
 pub async fn get_gui_session(
-    State(state): State<AppState>,
+    State(context): State<AutomationGuiWebContext>,
     Path(path): Path<GuiSessionPath>,
     headers: HeaderMap,
 ) -> Result<Json<GuiSessionResponse>, ApiError> {
-    let controller = require_controller(&state)?;
-    let capability_token = read_capability_token(&headers)?;
-
-    let session = controller
-        .gui_get_session(&path.id, &capability_token)
-        .await
-        .map_err(map_gui_error)?;
-
-    Ok(Json(GuiSessionResponse {
-        schema_version: GUI_SCHEMA_VERSION.to_string(),
-        session,
-    }))
+    Ok(Json(
+        AutomationGuiQueryService::new(context)
+            .get_gui_session(&path.id, &headers)
+            .await?,
+    ))
 }
 
 pub async fn highlight_gui_session(
-    State(state): State<AppState>,
+    State(context): State<AutomationGuiWebContext>,
     Path(path): Path<GuiSessionPath>,
     headers: HeaderMap,
     Json(req): Json<GuiHighlightRequest>,
 ) -> Result<Json<GuiSessionResponse>, ApiError> {
-    let controller = require_controller(&state)?;
-    let capability_token = read_capability_token(&headers)?;
-    let req = AutomationGuiHighlightRequest {
-        candidate_ids: req.candidate_ids,
-    };
-
-    let session = controller
-        .gui_highlight_session(&path.id, &capability_token, req)
-        .await
-        .map_err(map_gui_error)?;
-
-    Ok(Json(GuiSessionResponse {
-        schema_version: GUI_SCHEMA_VERSION.to_string(),
-        session,
-    }))
+    Ok(Json(
+        AutomationGuiCommandService::new(context)
+            .highlight_gui_session(&path.id, &headers, req)
+            .await?,
+    ))
 }
 
 pub async fn confirm_gui_session(
-    State(state): State<AppState>,
+    State(context): State<AutomationGuiWebContext>,
     Path(path): Path<GuiSessionPath>,
     headers: HeaderMap,
     Json(req): Json<GuiConfirmRequest>,
 ) -> Result<Json<GuiConfirmResponse>, ApiError> {
-    let controller = require_controller(&state)?;
-    let capability_token = read_capability_token(&headers)?;
-    let req = AutomationGuiConfirmRequest {
-        candidate_id: req.candidate_id,
-        action: req.action,
-        ticket_ttl_secs: req.ticket_ttl_secs,
-    };
-
-    let ticket = controller
-        .gui_confirm_candidate(&path.id, &capability_token, req)
-        .await
-        .map_err(map_gui_error)?;
-
-    Ok(Json(GuiConfirmResponse {
-        schema_version: GUI_SCHEMA_VERSION.to_string(),
-        ticket,
-    }))
+    Ok(Json(
+        AutomationGuiCommandService::new(context)
+            .confirm_gui_session(&path.id, &headers, req)
+            .await?,
+    ))
 }
 
 pub async fn execute_gui_session(
-    State(state): State<AppState>,
+    State(context): State<AutomationGuiWebContext>,
     Path(path): Path<GuiSessionPath>,
     headers: HeaderMap,
     Json(req): Json<GuiExecutionRequest>,
 ) -> Result<Json<GuiExecuteResponse>, ApiError> {
-    let controller = require_controller(&state)?;
-    let capability_token = read_capability_token(&headers)?;
-    let req = AutomationGuiExecutionRequest { ticket: req.ticket };
-
-    let result: GuiExecutionResult = controller
-        .gui_execute(&path.id, &capability_token, req)
-        .await
-        .map_err(map_gui_error)?;
-
-    Ok(Json(GuiExecuteResponse {
-        schema_version: GUI_SCHEMA_VERSION.to_string(),
-        command_id: result.command_id,
-        ticket: result.ticket,
-        result: result.result,
-        outcome: GuiExecutionOutcome {
-            session: result.outcome.session,
-            succeeded: result.outcome.succeeded,
-            detail: result.outcome.detail,
-            steps_completed: result.outcome.steps_completed,
-            total_steps: result.outcome.total_steps,
-        },
-    }))
-}
-
-pub async fn delete_gui_session(
-    State(state): State<AppState>,
-    Path(path): Path<GuiSessionPath>,
-    headers: HeaderMap,
-) -> Result<Json<GuiSessionResponse>, ApiError> {
-    let controller = require_controller(&state)?;
-    let capability_token = read_capability_token(&headers)?;
-
-    let session = controller
-        .gui_cancel_session(&path.id, &capability_token)
-        .await
-        .map_err(map_gui_error)?;
-
-    Ok(Json(GuiSessionResponse {
-        schema_version: GUI_SCHEMA_VERSION.to_string(),
-        session,
-    }))
-}
-
-pub async fn gui_session_event_stream(
-    State(state): State<AppState>,
-    Path(path): Path<GuiSessionPath>,
-    headers: HeaderMap,
-) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    let controller = require_controller(&state)?;
-    let capability_token = read_capability_token(&headers)?;
-    let rx = controller
-        .gui_subscribe_events(&path.id, &capability_token)
-        .await
-        .map_err(map_gui_error)?;
-
-    let stream = BroadcastStream::new(rx);
-    let session_id = path.id;
-    let sse_stream = stream.filter_map(move |result| match result {
-        Ok(event) if event.session_id == session_id => {
-            let data = serde_json::to_string(&event).ok()?;
-            Some(Ok(Event::default()
-                .event(event.event_type.clone())
-                .data(data)))
-        }
-        _ => None,
-    });
-
-    Ok(Sse::new(sse_stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
+    Ok(Json(
+        AutomationGuiCommandService::new(context)
+            .execute_gui_session(&path.id, &headers, req)
+            .await?,
     ))
 }
 
-fn require_controller(state: &AppState) -> Result<&dyn AutomationPort, ApiError> {
-    state.automation_controller.as_deref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Automation controller is disabled".to_string())
-    })
+pub async fn delete_gui_session(
+    State(context): State<AutomationGuiWebContext>,
+    Path(path): Path<GuiSessionPath>,
+    headers: HeaderMap,
+) -> Result<Json<GuiSessionResponse>, ApiError> {
+    Ok(Json(
+        AutomationGuiCommandService::new(context)
+            .delete_gui_session(&path.id, &headers)
+            .await?,
+    ))
 }
 
-fn read_capability_token(headers: &HeaderMap) -> Result<String, ApiError> {
-    headers
-        .get(GUI_SESSION_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .ok_or_else(|| {
-            ApiError::Unauthorized(format!(
-                "Missing required header '{}': session capability token",
-                GUI_SESSION_HEADER
-            ))
-        })
-}
-
-fn map_gui_error(err: GuiInteractionError) -> ApiError {
-    match err {
-        GuiInteractionError::Unauthorized => {
-            ApiError::Unauthorized("Invalid GUI session token".to_string())
-        }
-        GuiInteractionError::NotFound(msg) => ApiError::NotFound(msg),
-        GuiInteractionError::BadRequest(msg) => ApiError::BadRequest(msg),
-        GuiInteractionError::Forbidden(msg) => ApiError::Forbidden(msg),
-        GuiInteractionError::FocusDrift(msg) => ApiError::Conflict(msg),
-        GuiInteractionError::TicketInvalid(msg) => ApiError::Unprocessable(msg),
-        GuiInteractionError::Unavailable(msg) => ApiError::ServiceUnavailable(msg),
-        GuiInteractionError::Internal(msg) => ApiError::Internal(msg),
-    }
+pub async fn gui_session_event_stream(
+    State(context): State<AutomationGuiWebContext>,
+    Path(path): Path<GuiSessionPath>,
+    headers: HeaderMap,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    AutomationGuiStreamService::new(context)
+        .gui_session_event_stream(&path.id, &headers)
+        .await
 }
 
 #[cfg(test)]
@@ -416,9 +286,21 @@ mod tests {
                 frames_dir: None,
                 event_tx,
                 config_manager: None,
+                default_secret_backend_kind:
+                    oneshim_core::config::CredentialBackendKind::Unavailable,
+                secret_store: None,
+                secret_stores: None,
                 audit_logger: None,
                 automation_controller: Some(make_controller()),
                 ai_runtime_status: None,
+                integration_runtime_status: None,
+                integration_auth: None,
+                integration_session: None,
+                integration_outbox: None,
+                integration_inbox: None,
+                integration_inbox_store: None,
+                integration_audit: None,
+                integration_runtime_telemetry: None,
                 update_control: None,
             }
         }
@@ -431,9 +313,21 @@ mod tests {
                 frames_dir: None,
                 event_tx,
                 config_manager: None,
+                default_secret_backend_kind:
+                    oneshim_core::config::CredentialBackendKind::Unavailable,
+                secret_store: None,
+                secret_stores: None,
                 audit_logger: None,
                 automation_controller: None,
                 ai_runtime_status: None,
+                integration_runtime_status: None,
+                integration_auth: None,
+                integration_session: None,
+                integration_outbox: None,
+                integration_inbox: None,
+                integration_inbox_store: None,
+                integration_audit: None,
+                integration_runtime_telemetry: None,
                 update_control: None,
             }
         }
@@ -442,6 +336,10 @@ mod tests {
             let mut h = HeaderMap::new();
             h.insert(GUI_SESSION_HEADER, token.parse().unwrap());
             h
+        }
+
+        fn context(state: &AppState) -> AutomationGuiWebContext {
+            AutomationGuiWebContext::from_state(state)
         }
 
         fn default_create_req() -> GuiCreateSessionRequest {
@@ -458,7 +356,7 @@ mod tests {
 
         /// Creates a session; returns (session_id, capability_token).
         async fn fixture_create(state: &AppState) -> (String, String) {
-            let resp = create_gui_session(State(state.clone()), Json(default_create_req()))
+            let resp = create_gui_session(State(context(state)), Json(default_create_req()))
                 .await
                 .expect("fixture_create: create_gui_session should succeed");
             (resp.0.session.session_id, resp.0.capability_token)
@@ -467,7 +365,7 @@ mod tests {
         /// Highlights a session; returns the first candidate's element_id.
         async fn fixture_highlight(state: &AppState, sid: &str, token: &str) -> String {
             let resp = highlight_gui_session(
-                State(state.clone()),
+                State(context(state)),
                 Path(GuiSessionPath {
                     id: sid.to_string(),
                 }),
@@ -493,7 +391,7 @@ mod tests {
         #[tokio::test]
         async fn m4_no_controller_returns_service_unavailable() {
             let state = make_state_no_controller();
-            let err = create_gui_session(State(state), Json(default_create_req()))
+            let err = create_gui_session(State(context(&state)), Json(default_create_req()))
                 .await
                 .unwrap_err();
             assert!(matches!(err, ApiError::ServiceUnavailable(_)));
@@ -503,7 +401,7 @@ mod tests {
         async fn m4_missing_token_blocks_get_session() {
             let state = make_state();
             let err = get_gui_session(
-                State(state),
+                State(context(&state)),
                 Path(GuiSessionPath {
                     id: "any-id".to_string(),
                 }),
@@ -517,7 +415,7 @@ mod tests {
         #[tokio::test]
         async fn m4_create_session_returns_session_and_token() {
             let state = make_state();
-            let resp = create_gui_session(State(state), Json(default_create_req()))
+            let resp = create_gui_session(State(context(&state)), Json(default_create_req()))
                 .await
                 .unwrap();
             assert!(!resp.0.session.session_id.is_empty());
@@ -532,7 +430,7 @@ mod tests {
             let (sid, token) = fixture_create(&state).await;
 
             let get_resp = get_gui_session(
-                State(state),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid.clone() }),
                 token_headers(&token),
             )
@@ -548,7 +446,7 @@ mod tests {
             let (sid, token) = fixture_create(&state).await;
 
             let highlight_resp = highlight_gui_session(
-                State(state),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid }),
                 token_headers(&token),
                 Json(GuiHighlightRequest {
@@ -568,7 +466,7 @@ mod tests {
             let candidate_id = fixture_highlight(&state, &sid, &token).await;
 
             let confirm_resp = confirm_gui_session(
-                State(state),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid }),
                 token_headers(&token),
                 Json(GuiConfirmRequest {
@@ -593,7 +491,7 @@ mod tests {
             let candidate_id = fixture_highlight(&state, &sid, &token).await;
 
             let confirm_resp = confirm_gui_session(
-                State(state.clone()),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid.clone() }),
                 token_headers(&token),
                 Json(GuiConfirmRequest {
@@ -610,7 +508,7 @@ mod tests {
             let ticket = confirm_resp.0.ticket;
 
             let exec_resp = execute_gui_session(
-                State(state),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid }),
                 token_headers(&token),
                 Json(GuiExecutionRequest { ticket }),
@@ -628,7 +526,7 @@ mod tests {
             let (sid, token) = fixture_create(&state).await;
 
             let delete_resp = delete_gui_session(
-                State(state),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid }),
                 token_headers(&token),
             )
@@ -644,7 +542,7 @@ mod tests {
 
             // Wrong token is rejected regardless of which endpoint is called
             let err = get_gui_session(
-                State(state),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid }),
                 token_headers("wrong-token"),
             )
@@ -663,7 +561,7 @@ mod tests {
 
             // Cancel session B (return value not inspected; cancellation confirmed by B becoming inaccessible)
             let _b_cancelled = delete_gui_session(
-                State(state.clone()),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid_b.clone() }),
                 token_headers(&token_b),
             )
@@ -672,7 +570,7 @@ mod tests {
 
             // Session A is still accessible and Proposed
             let get_a = get_gui_session(
-                State(state.clone()),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid_a.clone() }),
                 token_headers(&token_a),
             )
@@ -683,7 +581,7 @@ mod tests {
 
             // Token B cannot access session A (token is session-scoped)
             let err = get_gui_session(
-                State(state),
+                State(context(&state)),
                 Path(GuiSessionPath { id: sid_a }),
                 token_headers(&token_b),
             )

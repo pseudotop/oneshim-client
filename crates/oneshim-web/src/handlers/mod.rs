@@ -1,5 +1,5 @@
 pub mod ai_models;
-pub mod ai_provider_presets;
+pub mod ai_provider_surfaces;
 pub mod automation;
 pub mod automation_gui;
 pub mod backup;
@@ -9,6 +9,7 @@ pub mod export;
 pub mod focus;
 pub mod frames;
 pub mod idle;
+pub mod integration;
 pub mod metrics;
 pub mod onboarding;
 pub mod processes;

@@ -159,7 +159,7 @@ export default function Focus() {
     <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <div className="flex items-center justify-between">
-        <h1 className={cn(typography.h1, colors.text.primary, 'flex items-center gap-2')}>
+        <h1 className={cn(typography.h1, colors.text.pageTitle, 'flex items-center gap-2')}>
           <FocusIcon className={iconSize.lg} />
           {t('focus.pageTitle')}
         </h1>

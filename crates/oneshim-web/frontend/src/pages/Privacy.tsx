@@ -278,8 +278,8 @@ export default function Privacy() {
     <div className="min-h-full space-y-6 p-6">
       {/* UI note */}
       <div>
-        <h1 className={cn(typography.h1, colors.text.primary)}>{t('privacy.title')}</h1>
-        <p className="mt-1 text-content-secondary">{t('privacy.subtitle')}</p>
+        <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('privacy.title')}</h1>
+        <p className={cn('mt-1', colors.text.pageSubtitle)}>{t('privacy.subtitle')}</p>
       </div>
 
       {/* UI note */}

@@ -1,4 +1,7 @@
 use async_trait::async_trait;
+use oneshim_api_contracts::provider_specs::{
+    self, ProviderAuthScheme, ProviderRequestShape, ProviderTransportKind,
+};
 use serde_json::Value;
 use tracing::{debug, warn};
 
@@ -17,6 +20,7 @@ pub struct RemoteLlmProvider {
     credential: CredentialSource,
     model: String,
     provider_type: AiProviderType,
+    surface_id: Option<String>,
     #[allow(dead_code)]
     timeout_secs: u64,
 }
@@ -28,31 +32,127 @@ impl std::fmt::Debug for RemoteLlmProvider {
             .field("credential", &self.credential)
             .field("model", &self.model)
             .field("provider_type", &self.provider_type)
+            .field("surface_id", &self.surface_id)
             .finish()
     }
 }
 
 impl RemoteLlmProvider {
+    fn fallback_llm_model(provider_type: AiProviderType) -> &'static str {
+        match provider_type {
+            AiProviderType::Anthropic => "claude-sonnet-4-20250514",
+            AiProviderType::OpenAi => "gpt-5.4",
+            AiProviderType::Google => "gemini-2.5-flash",
+            AiProviderType::Ollama => "qwen3:8b",
+            AiProviderType::Generic => "gpt-5-mini",
+        }
+    }
+
+    fn resolved_runtime_endpoint(
+        config: &ExternalApiEndpoint,
+        model: &str,
+    ) -> Result<String, CoreError> {
+        let shape = provider_specs::resolved_request_shape(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+
+        Ok(match shape {
+            ProviderRequestShape::GoogleGenerateContent => {
+                Self::rewrite_google_generate_content_endpoint(&config.endpoint, model)
+            }
+            _ => config.endpoint.clone(),
+        })
+    }
+
+    fn rewrite_google_generate_content_endpoint(endpoint: &str, model: &str) -> String {
+        let model = model.trim();
+        if model.is_empty() {
+            return endpoint.to_string();
+        }
+
+        let Some(models_idx) = endpoint.find("/models/") else {
+            return endpoint.to_string();
+        };
+        let prefix_end = models_idx + "/models/".len();
+        let rest = &endpoint[prefix_end..];
+        let Some(action_idx) = rest.find(':') else {
+            return endpoint.to_string();
+        };
+
+        let prefix = &endpoint[..prefix_end];
+        let suffix = &rest[action_idx..];
+        format!("{prefix}{model}{suffix}")
+    }
+
     pub fn new(config: &ExternalApiEndpoint) -> Result<Self, CoreError> {
-        if config.api_key.is_empty() {
+        let auth_scheme = provider_specs::resolved_auth_scheme(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
+        if !matches!(auth_scheme, ProviderAuthScheme::None) && config.api_key.is_empty() {
             return Err(CoreError::Config(
                 "AI LLM API key is not configured. Set it in Settings.".into(),
             ));
         }
-        let credential = CredentialSource::ApiKey(config.api_key.clone());
+        let credential = if matches!(auth_scheme, ProviderAuthScheme::None) {
+            CredentialSource::NoAuth
+        } else {
+            CredentialSource::ApiKey(config.api_key.clone())
+        };
 
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
             .build()
             .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
 
+        let supports_model = provider_specs::resolved_surface_supports_model_selection(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
         let model = config
             .model
             .clone()
-            .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
+            .or_else(|| {
+                provider_specs::resolved_default_model(
+                    config.provider_type,
+                    config.surface_id.as_deref(),
+                    provider_specs::SurfaceCapabilityKind::Llm,
+                )
+                .ok()
+                .flatten()
+            })
+            .or_else(|| {
+                if supports_model {
+                    None
+                } else {
+                    Some(Self::fallback_llm_model(config.provider_type).to_string())
+                }
+            })
+            .ok_or_else(|| {
+                CoreError::Config(
+                    "The selected LLM provider surface requires an explicit model selection."
+                        .to_string(),
+                )
+            })?;
+        if !supports_model {
+            return Err(CoreError::Config(
+                "The selected LLM provider surface does not support configurable model selection."
+                    .to_string(),
+            ));
+        }
 
-        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
-        {
+        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            &model,
+        )? {
             ModelLifecycleDecision::Allowed => {}
             ModelLifecycleDecision::Warn {
                 message,
@@ -69,6 +169,28 @@ impl RemoteLlmProvider {
                 return Err(CoreError::PolicyDenied(message));
             }
         }
+        if let Some(message) = provider_specs::known_model_capability_warning(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            &model,
+        )
+        .map_err(CoreError::Internal)?
+        {
+            warn!(
+                provider = ?config.provider_type,
+                surface_id = ?config.surface_id,
+                model = %model,
+                "{message}"
+            );
+        }
+        provider_specs::validate_known_model_capability(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            &model,
+        )
+        .map_err(CoreError::Config)?;
 
         debug!(
             endpoint = %config.endpoint,
@@ -77,12 +199,15 @@ impl RemoteLlmProvider {
             "RemoteLlmProvider initialize"
         );
 
+        let endpoint = Self::resolved_runtime_endpoint(config, &model)?;
+
         Ok(Self {
             http_client,
-            endpoint: config.endpoint.clone(),
+            endpoint,
             credential,
             model,
             provider_type: config.provider_type,
+            surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
         })
     }
@@ -101,13 +226,49 @@ impl RemoteLlmProvider {
             .build()
             .map_err(|e| CoreError::Network(format!("HTTP client create failure: {}", e)))?;
 
+        let supports_model = provider_specs::resolved_surface_supports_model_selection(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+        )
+        .map_err(CoreError::Internal)?;
         let model = config
             .model
             .clone()
-            .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
+            .or_else(|| {
+                provider_specs::resolved_default_model(
+                    config.provider_type,
+                    config.surface_id.as_deref(),
+                    provider_specs::SurfaceCapabilityKind::Llm,
+                )
+                .ok()
+                .flatten()
+            })
+            .or_else(|| {
+                if supports_model {
+                    None
+                } else {
+                    Some(Self::fallback_llm_model(config.provider_type).to_string())
+                }
+            })
+            .ok_or_else(|| {
+                CoreError::Config(
+                    "The selected LLM provider surface requires an explicit model selection."
+                        .to_string(),
+                )
+            })?;
+        if !supports_model {
+            return Err(CoreError::Config(
+                "The selected LLM provider surface does not support configurable model selection."
+                    .to_string(),
+            ));
+        }
 
-        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now(config.provider_type, &model)?
-        {
+        match ai_model_lifecycle_policy::evaluate_model_lifecycle_now_for_surface(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            &model,
+        )? {
             ModelLifecycleDecision::Allowed => {}
             ModelLifecycleDecision::Warn {
                 message,
@@ -124,13 +285,23 @@ impl RemoteLlmProvider {
                 return Err(CoreError::PolicyDenied(message));
             }
         }
+        provider_specs::validate_known_model_capability(
+            config.provider_type,
+            config.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            &model,
+        )
+        .map_err(CoreError::Config)?;
 
         // Use OAuth-provided base URL when available (ChatGPT OAuth uses
         // a different endpoint than the standard OpenAI API).
         let endpoint = credential
             .api_base_url()
             .map(String::from)
-            .unwrap_or_else(|| config.endpoint.clone());
+            .unwrap_or_else(|| {
+                Self::resolved_runtime_endpoint(config, &model)
+                    .unwrap_or_else(|_| config.endpoint.clone())
+            });
 
         Ok(Self {
             http_client,
@@ -138,6 +309,7 @@ impl RemoteLlmProvider {
             credential,
             model,
             provider_type: config.provider_type,
+            surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
         })
     }
@@ -180,7 +352,8 @@ Return JSON only."#
 
     /// Build request body for OpenAI Responses API (`/v1/responses`).
     ///
-    /// Used when credential is ManagedOAuth (Codex CLI OAuth path).
+    /// Used whenever the provider spec resolves to the Responses API.
+    /// Managed OAuth also uses this path, but API-key OpenAI now does too.
     /// Ref: <https://platform.openai.com/docs/api-reference/responses>
     fn build_responses_api_body(
         &self,
@@ -195,37 +368,103 @@ Return JSON only."#
         })
     }
 
-    /// Whether this provider should use the OpenAI Responses API format.
-    fn use_responses_api(&self) -> bool {
-        self.credential.is_managed() && matches!(self.provider_type, AiProviderType::OpenAi)
+    fn llm_request_shape(&self) -> Result<ProviderRequestShape, CoreError> {
+        provider_specs::resolved_request_shape(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)
+    }
+
+    fn uses_responses_api(&self) -> bool {
+        matches!(
+            self.llm_request_shape(),
+            Ok(ProviderRequestShape::OpenAiResponses)
+        )
+    }
+
+    fn llm_auth_scheme(&self) -> Result<ProviderAuthScheme, CoreError> {
+        provider_specs::resolved_auth_scheme(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            ProviderTransportKind::Llm,
+        )
+        .map_err(CoreError::Internal)
+    }
+
+    fn ensure_llm_parameters_supported(&self, parameters: &[&str]) -> Result<(), CoreError> {
+        provider_specs::validate_supported_parameters(
+            self.provider_type,
+            self.surface_id.as_deref(),
+            provider_specs::SurfaceCapabilityKind::Llm,
+            parameters,
+        )
+        .map_err(CoreError::Internal)
     }
 
     /// Build the provider-specific request body given a system and user prompt.
-    fn build_chat_body(&self, system_prompt: &str, user_prompt: &str) -> serde_json::Value {
-        if self.use_responses_api() {
-            return self.build_responses_api_body(system_prompt, user_prompt);
-        }
-        match self.provider_type {
-            AiProviderType::Anthropic => serde_json::json!({
-                "model": self.model,
-                "max_tokens": 512,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": user_prompt}]
-            }),
-            AiProviderType::Google => serde_json::json!({
-                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-                "system_instruction": {"parts": [{"text": system_prompt}]},
-                "generationConfig": {"maxOutputTokens": 512}
-            }),
-            AiProviderType::OpenAi | AiProviderType::Generic => serde_json::json!({
-                "model": self.model,
-                "max_tokens": 512,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
-            }),
-        }
+    fn build_chat_body(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<serde_json::Value, CoreError> {
+        let body = match self.llm_request_shape()? {
+            ProviderRequestShape::AnthropicMessages
+            | ProviderRequestShape::AnthropicVisionMessages => {
+                self.ensure_llm_parameters_supported(&[
+                    "model",
+                    "max_tokens",
+                    "system",
+                    "messages",
+                ])?;
+                serde_json::json!({
+                    "model": self.model,
+                    "max_tokens": 512,
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": user_prompt}]
+                })
+            }
+            ProviderRequestShape::GoogleGenerateContent => {
+                self.ensure_llm_parameters_supported(&[
+                    "contents",
+                    "system_instruction",
+                    "generationConfig.maxOutputTokens",
+                ])?;
+                serde_json::json!({
+                    "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                    "system_instruction": {"parts": [{"text": system_prompt}]},
+                    "generationConfig": {"maxOutputTokens": 512}
+                })
+            }
+            ProviderRequestShape::OpenAiResponses => {
+                self.ensure_llm_parameters_supported(&[
+                    "model",
+                    "instructions",
+                    "input",
+                    "max_output_tokens",
+                ])?;
+                self.build_responses_api_body(system_prompt, user_prompt)
+            }
+            ProviderRequestShape::OpenAiChatCompletions
+            | ProviderRequestShape::OpenAiVisionChatCompletions => {
+                self.ensure_llm_parameters_supported(&["model", "max_tokens", "messages"])?;
+                serde_json::json!({
+                    "model": self.model,
+                    "max_tokens": 512,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ]
+                })
+            }
+            ProviderRequestShape::GoogleVisionAnnotate => {
+                return Err(CoreError::Internal(
+                    "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
+                ));
+            }
+        };
+        Ok(body)
     }
 
     /// Send a request body to the LLM API, authenticate, and parse the response.
@@ -239,17 +478,20 @@ Return JSON only."#
             .header("Content-Type", "application/json")
             .json(request_body);
 
-        let bearer_token = self.credential.resolve_bearer_token().await?;
-        match self.provider_type {
-            AiProviderType::Anthropic => {
+        match self.llm_auth_scheme()? {
+            ProviderAuthScheme::None => {}
+            ProviderAuthScheme::XApiKey => {
+                let bearer_token = self.credential.resolve_bearer_token().await?;
                 builder = builder
                     .header("x-api-key", &bearer_token)
                     .header("anthropic-version", "2023-06-01");
             }
-            AiProviderType::Google => {
+            ProviderAuthScheme::XGoogApiKey => {
+                let bearer_token = self.credential.resolve_bearer_token().await?;
                 builder = builder.header("x-goog-api-key", &bearer_token);
             }
-            AiProviderType::OpenAi | AiProviderType::Generic => {
+            ProviderAuthScheme::Bearer => {
+                let bearer_token = self.credential.resolve_bearer_token().await?;
                 builder = builder.header("Authorization", format!("Bearer {}", bearer_token));
                 if self.credential.is_managed() {
                     builder = builder.header("version", env!("CARGO_PKG_VERSION"));
@@ -277,10 +519,18 @@ Return JSON only."#
             )));
         }
 
-        let action = match self.provider_type {
-            AiProviderType::Anthropic => Self::parse_claude_response(&body)?,
-            AiProviderType::Google => Self::parse_google_response(&body)?,
-            AiProviderType::OpenAi | AiProviderType::Generic => Self::parse_openai_response(&body)?,
+        let action = match self.llm_request_shape()? {
+            ProviderRequestShape::AnthropicMessages
+            | ProviderRequestShape::AnthropicVisionMessages => Self::parse_claude_response(&body)?,
+            ProviderRequestShape::GoogleGenerateContent => Self::parse_google_response(&body)?,
+            ProviderRequestShape::OpenAiChatCompletions
+            | ProviderRequestShape::OpenAiVisionChatCompletions
+            | ProviderRequestShape::OpenAiResponses => Self::parse_openai_response(&body)?,
+            ProviderRequestShape::GoogleVisionAnnotate => {
+                return Err(CoreError::Internal(
+                    "LLM transport shape resolved to OCR-only Google Vision Annotate".to_string(),
+                ));
+            }
         };
 
         debug!(
@@ -474,7 +724,7 @@ impl LlmProvider for RemoteLlmProvider {
             "Calling external LLM API"
         );
 
-        let request_body = self.build_chat_body(Self::system_prompt(), &user_prompt);
+        let request_body = self.build_chat_body(Self::system_prompt(), &user_prompt)?;
         self.send_and_parse(&request_body).await
     }
 
@@ -493,11 +743,11 @@ impl LlmProvider for RemoteLlmProvider {
             hint = %intent_hint,
             skills = skill_ctx.available_skills.len(),
             has_active_skill = skill_ctx.active_skill_body.is_some(),
-            responses_api = self.use_responses_api(),
+            responses_api = self.uses_responses_api(),
             "Calling external LLM API (with skills)"
         );
 
-        let request_body = self.build_chat_body(&system_prompt, &user_prompt);
+        let request_body = self.build_chat_body(&system_prompt, &user_prompt)?;
         self.send_and_parse(&request_body).await
     }
 
@@ -530,12 +780,92 @@ mod tests {
             model: Some("gpt-3.5-turbo".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
         };
 
         let result = RemoteLlmProvider::new(&config);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("retired as of"));
+    }
+
+    #[test]
+    fn openai_llm_uses_spec_default_model() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: "test-api-key".to_string(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
+        };
+
+        let provider = RemoteLlmProvider::new(&config).expect("provider should initialize");
+        assert_eq!(provider.model, "gpt-5.4");
+        assert_eq!(
+            provider.llm_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::OpenAiResponses
+        );
+    }
+
+    #[test]
+    fn new_remote_llm_rejects_known_non_llm_model() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
+            api_key: "test-api-key".to_string(),
+            model: Some("text-embedding-3-small".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: Some("provider_surface.openai.direct_api".to_string()),
+            credential: None,
+        };
+
+        let result = RemoteLlmProvider::new(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("not marked as LLM-capable"));
+    }
+
+    #[test]
+    fn ollama_llm_initializes_without_api_key() {
+        let config = ExternalApiEndpoint {
+            endpoint: "http://localhost:11434/v1/responses".to_string(),
+            api_key: String::new(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::Ollama,
+            surface_id: Some("provider_surface.ollama.local_http".to_string()),
+            credential: None,
+        };
+
+        let provider = RemoteLlmProvider::new(&config).expect("ollama llm should initialize");
+        assert_eq!(provider.model, "qwen3:8b");
+        assert_eq!(
+            provider.llm_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::OpenAiResponses
+        );
+    }
+
+    #[test]
+    fn google_llm_rewrites_endpoint_for_selected_model() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+                .to_string(),
+            api_key: "goog-api-key".to_string(),
+            model: Some("gemini-2.5-pro".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::Google,
+            surface_id: Some("provider_surface.google.direct_api".to_string()),
+            credential: None,
+        };
+
+        let provider = RemoteLlmProvider::new(&config).expect("google llm should initialize");
+        assert_eq!(
+            provider.endpoint,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+        );
     }
 
     #[test]
@@ -698,14 +1028,16 @@ mod tests {
         let config = ExternalApiEndpoint {
             endpoint: "https://chatgpt.com/backend-api/codex".to_string(),
             api_key: "test-key".to_string(),
-            model: Some("gpt-4o".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
         };
         let provider = RemoteLlmProvider::new(&config).unwrap();
         let body = provider.build_responses_api_body("system prompt", "user input");
 
-        assert_eq!(body["model"], "gpt-4o");
+        assert_eq!(body["model"], "gpt-5.4");
         assert_eq!(body["instructions"], "system prompt");
         assert_eq!(body["input"], "user input");
         assert_eq!(body["max_output_tokens"], 512);
@@ -714,16 +1046,55 @@ mod tests {
     }
 
     #[test]
-    fn use_responses_api_only_for_managed_openai() {
+    fn openai_llm_uses_responses_api_from_spec() {
         let config = ExternalApiEndpoint {
-            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            endpoint: "https://api.openai.com/v1/responses".to_string(),
             api_key: "test-key".to_string(),
-            model: Some("gpt-4o".to_string()),
+            model: Some("gpt-5.4".to_string()),
             timeout_secs: 30,
             provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: None,
         };
-        // API key credential → should NOT use Responses API.
         let provider = RemoteLlmProvider::new(&config).unwrap();
-        assert!(!provider.use_responses_api());
+        assert!(provider.uses_responses_api());
+    }
+
+    #[test]
+    fn managed_openai_surface_uses_surface_shape() {
+        let config = ExternalApiEndpoint {
+            endpoint: "https://chatgpt.com/backend-api/codex".to_string(),
+            api_key: "test-key".to_string(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+            credential: None,
+        };
+        let provider = RemoteLlmProvider::new(&config).unwrap();
+        assert_eq!(provider.model, "gpt-5.4");
+        assert_eq!(
+            provider.llm_request_shape().expect("shape should resolve"),
+            ProviderRequestShape::OpenAiResponses
+        );
+    }
+
+    #[test]
+    fn local_openai_compatible_llm_requires_explicit_model_selection() {
+        let config = ExternalApiEndpoint {
+            endpoint: "http://127.0.0.1:1234/v1/chat/completions".to_string(),
+            api_key: String::new(),
+            model: None,
+            timeout_secs: 30,
+            provider_type: AiProviderType::Generic,
+            surface_id: Some("provider_surface.generic.local_openai_compatible".to_string()),
+            credential: None,
+        };
+        let result = RemoteLlmProvider::new(&config);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("requires an explicit model selection"));
     }
 }

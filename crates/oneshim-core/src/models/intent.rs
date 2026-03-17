@@ -148,6 +148,8 @@ pub struct WorkflowPreset {
     pub builtin: bool,
     #[serde(default)]
     pub platform: Option<String>,
+    #[serde(default)]
+    pub ai_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,6 +211,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         }],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -226,6 +229,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         }],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -253,6 +257,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -270,6 +275,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         }],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -287,6 +293,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         }],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -304,6 +311,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         }],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     if cfg!(target_os = "macos") {
@@ -327,6 +335,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
             }],
             builtin: true,
             platform: Some("macos".to_string()),
+            ai_profile_id: None,
         });
     } else {
         presets.push(WorkflowPreset {
@@ -344,6 +353,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
             }],
             builtin: true,
             platform: Some("windows".to_string()),
+            ai_profile_id: None,
         });
     }
 
@@ -380,6 +390,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -407,6 +418,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -434,6 +446,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -470,6 +483,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -505,6 +519,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -540,6 +555,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -576,6 +592,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets.push(WorkflowPreset {
@@ -611,6 +628,7 @@ pub fn builtin_presets() -> Vec<WorkflowPreset> {
         ],
         builtin: true,
         platform: None,
+        ai_profile_id: None,
     });
 
     presets
@@ -866,6 +884,7 @@ mod tests {
             }],
             builtin: true,
             platform: None,
+            ai_profile_id: None,
         };
         let json = serde_json::to_string(&preset).unwrap();
         let deser: WorkflowPreset = serde_json::from_str(&json).unwrap();

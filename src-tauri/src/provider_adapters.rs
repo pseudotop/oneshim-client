@@ -6,22 +6,27 @@ use oneshim_automation::audit::AuditLogger;
 use oneshim_automation::local_llm::LocalLlmProvider;
 use oneshim_core::config::PrivacyConfig;
 use oneshim_core::config::{
-    AiAccessMode, AiProviderConfig, LlmProviderType, OcrProviderType, PiiFilterLevel,
+    AiAccessMode, AiProviderConfig, AiProviderType, LlmProviderType, OcrProviderType,
+    PiiFilterLevel,
 };
 #[cfg(feature = "server")]
-use oneshim_core::config::{
-    AiProviderType, ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig,
-};
+use oneshim_core::config::{ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig};
 #[cfg(not(feature = "server"))]
 use oneshim_core::config::{ExternalDataPolicy, OcrValidationConfig};
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::error::CoreError;
+#[cfg(feature = "server")]
+use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::llm_provider::LlmProvider;
 use oneshim_core::ports::monitor::ProcessMonitor;
 #[cfg(feature = "server")]
 use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::ocr_provider::OcrProvider;
 use oneshim_core::ports::ocr_provider::OcrResult;
+use oneshim_core::ports::secret_store::SecretStoreSet;
+use oneshim_core::provider_surface::{
+    provider_surface_spec, provider_vendor_id_or_default, ProviderSurfaceTransport,
+};
 #[cfg(feature = "server")]
 use oneshim_network::ai_llm_client::RemoteLlmProvider;
 #[cfg(feature = "server")]
@@ -33,7 +38,21 @@ use oneshim_vision::privacy_gateway::{PrivacyGateway, SanitizedImage};
 use std::path::PathBuf;
 use tokio::sync::RwLock;
 #[cfg(feature = "server")]
-use tracing::{debug, warn};
+use tracing::debug;
+use tracing::warn;
+
+use oneshim_api_contracts::provider_specs::SurfaceCapabilityKind;
+
+#[cfg(feature = "server")]
+use crate::oauth_provider_registry::{
+    managed_oauth_provider_id_for_endpoint, managed_oauth_transport_url_for_endpoint,
+};
+use crate::subprocess_provider::{
+    cli_id_for_surface_id, preferred_cli_surface_for_config, probe_for_surface_id,
+    probe_known_cli_surfaces, runtime_supported_for_surface, select_cli_surface_for_capability,
+    select_cli_surface_for_config, ProbedSubprocessCli, SubprocessCliAuthStatus,
+    SubprocessLlmProvider, SubprocessOcrProvider,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -42,7 +61,6 @@ pub enum ProviderSource {
     Remote,
     LocalFallback,
     CliSubscription,
-    Platform,
     OAuth,
 }
 
@@ -53,7 +71,6 @@ impl ProviderSource {
             Self::Remote => "remote",
             Self::LocalFallback => "local-fallback",
             Self::CliSubscription => "cli-subscription",
-            Self::Platform => "platform",
             Self::OAuth => "oauth",
         }
     }
@@ -74,7 +91,7 @@ type LlmProviderResolution =
     Result<(Arc<dyn LlmProvider>, ProviderSource, Option<String>), CoreError>;
 
 #[cfg(feature = "server")]
-const DEFAULT_OPENAI_OAUTH_MODEL: &str = "gpt-4.1-mini";
+const DEFAULT_OPENAI_OAUTH_MODEL: &str = "gpt-5.4";
 
 #[cfg_attr(not(feature = "server"), allow(dead_code))]
 #[derive(Clone)]
@@ -271,7 +288,7 @@ impl OcrProvider for GuardedOcrProvider {
         debug!(
             redacted_regions = sanitized.redacted_regions,
             allow_unredacted_external_ocr = self.allow_unredacted_external_ocr,
-            "외부 OCR sent 전 이미지 세정 completed"
+            "External OCR image sanitization completed"
         );
 
         let results = self
@@ -294,9 +311,10 @@ pub fn resolve_ai_provider_adapters(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    secret_stores: Option<SecretStoreSet>,
     #[cfg(feature = "server")] oauth_port: Option<Arc<dyn OAuthPort>>,
 ) -> Result<AiProviderAdapters, CoreError> {
-    match config.access_mode {
+    match config.access_mode.normalized_for_ai_surfaces() {
         AiAccessMode::LocalModel => Ok(AiProviderAdapters {
             ocr: Arc::new(LocalOcrProvider::new()),
             llm: Arc::new(LocalLlmProvider::new()),
@@ -305,18 +323,17 @@ pub fn resolve_ai_provider_adapters(
             ocr_fallback_reason: None,
             llm_fallback_reason: None,
         }),
-        AiAccessMode::ProviderSubscriptionCli => Ok(AiProviderAdapters {
-            ocr: Arc::new(LocalOcrProvider::new()),
-            llm: Arc::new(LocalLlmProvider::new()),
-            ocr_source: ProviderSource::CliSubscription,
-            llm_source: ProviderSource::CliSubscription,
-            ocr_fallback_reason: None,
-            llm_fallback_reason: None,
-        }),
-        AiAccessMode::ProviderApiKey => {
-            let (ocr, ocr_source, ocr_fallback_reason) =
-                resolve_ocr_provider(config, pii_filter_level, external_ocr_privacy_guard.clone())?;
-            let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
+        AiAccessMode::ProviderSubscriptionCli => {
+            let probed = probe_known_cli_surfaces();
+            let (ocr, ocr_source, ocr_fallback_reason) = resolve_cli_subscription_ocr_provider(
+                config,
+                pii_filter_level,
+                external_ocr_privacy_guard.clone(),
+                secret_stores.clone(),
+                &probed,
+            )?;
+            let (llm, llm_source, llm_fallback_reason) =
+                resolve_cli_subscription_llm_provider_with_detected(config, &probed)?;
             Ok(AiProviderAdapters {
                 ocr,
                 llm,
@@ -326,43 +343,56 @@ pub fn resolve_ai_provider_adapters(
                 llm_fallback_reason,
             })
         }
-        AiAccessMode::PlatformConnected => {
-            let (ocr, ocr_source, ocr_fallback_reason) =
-                resolve_ocr_provider(config, pii_filter_level, external_ocr_privacy_guard.clone())?;
-            let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config)?;
-            Ok(AiProviderAdapters {
-                ocr,
-                llm,
-                ocr_source: to_platform_source(ocr_source),
-                llm_source: to_platform_source(llm_source),
-                ocr_fallback_reason,
-                llm_fallback_reason,
-            })
-        }
+        AiAccessMode::ProviderApiKey => resolve_direct_surface_adapters(
+            config,
+            pii_filter_level,
+            external_ocr_privacy_guard,
+            secret_stores,
+        ),
         AiAccessMode::ProviderOAuth => {
-            // OAuth mode intentionally does NOT respect fallback_to_local for LLM.
-            // An authentication failure means the user has not connected via OAuth yet
-            // and should be prompted to do so — silently falling back to a local model
-            // would hide the misconfiguration.
             #[cfg(feature = "server")]
             {
-                if config.llm_provider != LlmProviderType::Remote {
-                    return Err(CoreError::Config(
-                        "ProviderOAuth mode requires llm_provider=Remote.".to_string(),
-                    ));
-                }
-                let oauth = oauth_port.ok_or_else(|| {
-                    CoreError::Config(
-                        "ProviderOAuth mode requires an initialized OAuth runtime.".to_string(),
-                    )
-                })?;
-                let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
-                    config,
-                    pii_filter_level,
-                    external_ocr_privacy_guard.clone(),
-                )?;
-                let (llm, llm_source, llm_fallback_reason) =
-                    resolve_llm_provider_oauth(config, oauth)?;
+                let ocr_uses_managed = matches!(
+                    configured_ocr_surface_transport(config),
+                    Some((_, ProviderSurfaceTransport::ManagedOAuth))
+                );
+                let llm_uses_managed = llm_uses_managed_oauth(config);
+                let oauth = if ocr_uses_managed || llm_uses_managed {
+                    Some(oauth_port.ok_or_else(|| {
+                        CoreError::Config(
+                            "ProviderOAuth mode requires an initialized OAuth runtime for managed provider surfaces.".to_string(),
+                        )
+                    })?)
+                } else {
+                    None
+                };
+                let (ocr, ocr_source, ocr_fallback_reason) = if ocr_uses_managed {
+                    resolve_ocr_provider_oauth(
+                        config,
+                        pii_filter_level,
+                        external_ocr_privacy_guard.clone(),
+                        oauth
+                            .clone()
+                            .expect("oauth runtime should exist for managed OCR"),
+                    )?
+                } else {
+                    resolve_ocr_provider(
+                        config,
+                        pii_filter_level,
+                        external_ocr_privacy_guard.clone(),
+                        secret_stores.clone(),
+                    )?
+                };
+                let (llm, llm_source, llm_fallback_reason) = if llm_uses_managed {
+                    resolve_llm_provider_oauth(
+                        config,
+                        oauth
+                            .clone()
+                            .expect("oauth runtime should exist for managed LLM"),
+                    )?
+                } else {
+                    resolve_llm_provider(config, secret_stores.clone())?
+                };
                 Ok(AiProviderAdapters {
                     ocr,
                     llm,
@@ -382,11 +412,240 @@ pub fn resolve_ai_provider_adapters(
     }
 }
 
-fn to_platform_source(source: ProviderSource) -> ProviderSource {
-    match source {
-        ProviderSource::Remote => ProviderSource::Platform,
-        other => other,
+fn resolve_direct_surface_adapters(
+    config: &AiProviderConfig,
+    pii_filter_level: PiiFilterLevel,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    secret_stores: Option<SecretStoreSet>,
+) -> Result<AiProviderAdapters, CoreError> {
+    let (ocr, ocr_source, ocr_fallback_reason) = resolve_ocr_provider(
+        config,
+        pii_filter_level,
+        external_ocr_privacy_guard,
+        secret_stores.clone(),
+    )?;
+    let (llm, llm_source, llm_fallback_reason) = resolve_llm_provider(config, secret_stores)?;
+
+    Ok(AiProviderAdapters {
+        ocr,
+        llm,
+        ocr_source,
+        llm_source,
+        ocr_fallback_reason,
+        llm_fallback_reason,
+    })
+}
+
+fn configured_ocr_surface_transport(
+    config: &AiProviderConfig,
+) -> Option<(String, ProviderSurfaceTransport)> {
+    config
+        .ocr_api
+        .as_ref()
+        .and_then(|endpoint| endpoint.surface_id.as_deref())
+        .and_then(|surface_id| {
+            provider_surface_spec(surface_id).map(|spec| (spec.id.to_string(), spec.transport))
+        })
+}
+
+#[cfg(feature = "server")]
+fn configured_llm_surface_transport(
+    config: &AiProviderConfig,
+) -> Option<(String, ProviderSurfaceTransport)> {
+    config
+        .llm_api
+        .as_ref()
+        .and_then(|endpoint| endpoint.surface_id.as_deref())
+        .and_then(|surface_id| {
+            provider_surface_spec(surface_id).map(|spec| (spec.id.to_string(), spec.transport))
+        })
+}
+
+#[cfg(feature = "server")]
+fn llm_uses_managed_oauth(config: &AiProviderConfig) -> bool {
+    if config.llm_provider != LlmProviderType::Remote {
+        return false;
     }
+
+    match configured_llm_surface_transport(config) {
+        Some((_, ProviderSurfaceTransport::ManagedOAuth)) => true,
+        Some(_) => false,
+        None => true,
+    }
+}
+
+fn unsupported_ocr_surface_runtime(
+    config: &AiProviderConfig,
+    surface_id: &str,
+    transport: ProviderSurfaceTransport,
+) -> OcrProviderResolution {
+    let runtime_label = match transport {
+        ProviderSurfaceTransport::DirectApi => "direct_http",
+        ProviderSurfaceTransport::ManagedOAuth => "managed_oauth",
+        ProviderSurfaceTransport::SubprocessCli => "subprocess_cli",
+    };
+    let reason = format!(
+        "Selected OCR provider surface '{surface_id}' uses {runtime_label}, but an OCR runtime adapter for that transport is not implemented yet."
+    );
+
+    if config.fallback_to_local {
+        warn!(
+            fallback_reason = %reason,
+            "OCR runtime unavailable for selected provider surface, falling back to local OCR"
+        );
+        return Ok((
+            Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+            ProviderSource::LocalFallback,
+            Some(reason),
+        ));
+    }
+
+    Err(CoreError::Config(reason))
+}
+
+fn resolve_cli_subscription_ocr_provider(
+    config: &AiProviderConfig,
+    pii_filter_level: PiiFilterLevel,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    secret_stores: Option<SecretStoreSet>,
+    detected: &[ProbedSubprocessCli],
+) -> OcrProviderResolution {
+    if let Some((surface_id, transport)) = configured_ocr_surface_transport(config) {
+        if transport == ProviderSurfaceTransport::SubprocessCli {
+            if let Some(surface) =
+                select_cli_surface_for_capability(config, detected, SurfaceCapabilityKind::Ocr)
+            {
+                return Ok((
+                    Arc::new(SubprocessOcrProvider::new(surface, config)) as Arc<dyn OcrProvider>,
+                    ProviderSource::CliSubscription,
+                    None,
+                ));
+            }
+
+            if let Some(surface) = probe_for_surface_id(detected, &surface_id) {
+                let cli_label = cli_id_for_surface_id(&surface.detected.surface_id)
+                    .unwrap_or_else(|_| surface.detected.surface_id.clone());
+                let reason = match surface.auth_status {
+                    SubprocessCliAuthStatus::Authenticated => format!(
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but the OCR subprocess runtime could not be selected."
+                    ),
+                    SubprocessCliAuthStatus::Unauthenticated => format!(
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but the CLI is not authenticated. Sign in through the provider-owned CLI first."
+                    ),
+                    SubprocessCliAuthStatus::Unknown => format!(
+                        "Selected OCR provider surface '{surface_id}' uses installed {cli_label}, but authentication status could not be verified."
+                    ),
+                };
+                if config.fallback_to_local {
+                    warn!(
+                        fallback_reason = %reason,
+                        "CLI OCR runtime unavailable, falling back to local OCR"
+                    );
+                    return Ok((
+                        Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+                        ProviderSource::LocalFallback,
+                        Some(reason),
+                    ));
+                }
+                return Err(CoreError::Config(reason));
+            }
+
+            return unsupported_ocr_surface_runtime(config, &surface_id, transport);
+        }
+    }
+
+    match config.ocr_provider {
+        OcrProviderType::Local => Ok((
+            Arc::new(LocalOcrProvider::new()) as Arc<dyn OcrProvider>,
+            ProviderSource::Local,
+            None,
+        )),
+        OcrProviderType::Remote => resolve_ocr_provider(
+            config,
+            pii_filter_level,
+            external_ocr_privacy_guard,
+            secret_stores,
+        ),
+    }
+}
+
+fn resolve_cli_subscription_llm_provider_with_detected(
+    config: &AiProviderConfig,
+    detected: &[ProbedSubprocessCli],
+) -> LlmProviderResolution {
+    if let Some(surface) = select_cli_surface_for_config(config, detected) {
+        return Ok((
+            Arc::new(SubprocessLlmProvider::new(surface, config)) as Arc<dyn LlmProvider>,
+            ProviderSource::CliSubscription,
+            None,
+        ));
+    }
+
+    let reason = cli_subscription_unavailable_reason(config, detected);
+    if config.fallback_to_local {
+        warn!(
+            fallback_reason = %reason,
+            "CLI subscription runtime unavailable, falling back to local rule-based LLM"
+        );
+        return Ok((
+            Arc::new(LocalLlmProvider::new()) as Arc<dyn LlmProvider>,
+            ProviderSource::LocalFallback,
+            Some(reason),
+        ));
+    }
+
+    Err(CoreError::Config(reason))
+}
+
+fn cli_subscription_unavailable_reason(
+    config: &AiProviderConfig,
+    detected: &[ProbedSubprocessCli],
+) -> String {
+    if let Some(provider_type) = config
+        .llm_api
+        .as_ref()
+        .map(|endpoint| endpoint.provider_type)
+        .filter(|provider_type| *provider_type != AiProviderType::Generic)
+    {
+        if let Some(surface_id) = preferred_cli_surface_for_config(config) {
+            if let Some(surface) = probe_for_surface_id(detected, &surface_id) {
+                return match surface.auth_status {
+                    SubprocessCliAuthStatus::Authenticated => format!(
+                        "Installed {} CLI was detected but the runtime adapter could not be selected.",
+                        cli_id_for_surface_id(&surface.detected.surface_id)
+                            .unwrap_or_else(|_| surface.detected.surface_id.clone())
+                    ),
+                    SubprocessCliAuthStatus::Unauthenticated => format!(
+                        "Installed {} CLI is not authenticated. Sign in through the provider-owned CLI first.",
+                        cli_id_for_surface_id(&surface.detected.surface_id)
+                            .unwrap_or_else(|_| surface.detected.surface_id.clone())
+                    ),
+                    SubprocessCliAuthStatus::Unknown => format!(
+                        "Installed {} CLI was detected, but authentication status could not be verified.",
+                        cli_id_for_surface_id(&surface.detected.surface_id)
+                            .unwrap_or_else(|_| surface.detected.surface_id.clone())
+                    ),
+                };
+            }
+        }
+
+        let provider_label = provider_vendor_id_or_default(provider_type);
+
+        return format!(
+            "No supported installed CLI runtime was detected for provider '{provider_label}'."
+        );
+    }
+
+    if detected
+        .iter()
+        .any(|surface| !runtime_supported_for_surface(&surface.detected.surface_id))
+    {
+        return "Detected provider CLI executables do not yet have a supported runtime adapter."
+            .to_string();
+    }
+
+    "No supported provider CLI runtime was detected on PATH (checked: codex, claude, claude-code, gemini)."
+        .to_string()
 }
 
 #[allow(unused_variables)]
@@ -394,6 +653,7 @@ fn resolve_ocr_provider(
     config: &AiProviderConfig,
     pii_filter_level: PiiFilterLevel,
     external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    secret_stores: Option<SecretStoreSet>,
 ) -> OcrProviderResolution {
     match config.ocr_provider {
         OcrProviderType::Local => Ok((
@@ -402,6 +662,11 @@ fn resolve_ocr_provider(
             None,
         )),
         OcrProviderType::Remote => {
+            if let Some((surface_id, transport)) = configured_ocr_surface_transport(config) {
+                if transport != ProviderSurfaceTransport::DirectApi {
+                    return unsupported_ocr_surface_runtime(config, &surface_id, transport);
+                }
+            }
             #[cfg(feature = "server")]
             {
                 resolve_remote_with_optional_fallback(
@@ -409,6 +674,15 @@ fn resolve_ocr_provider(
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
+                        let secret_store = secret_stores
+                            .as_ref()
+                            .and_then(|stores| stores.for_binding(endpoint.credential.as_ref()));
+                        let profile_id = config.active_secret_profile_id_or("ocr");
+                        let credential = CredentialSource::from_api_key_endpoint_for_profile(
+                            endpoint,
+                            Some(profile_id),
+                            secret_store,
+                        )?;
                         let privacy_guard =
                             external_ocr_privacy_guard.clone().ok_or_else(|| {
                                 CoreError::Config(
@@ -416,8 +690,9 @@ fn resolve_ocr_provider(
                                         .to_string(),
                                 )
                             })?;
-                        let remote =
-                            Arc::new(RemoteOcrProvider::new(endpoint)?) as Arc<dyn OcrProvider>;
+                        let remote = Arc::new(RemoteOcrProvider::new_with_credential(
+                            endpoint, credential,
+                        )?) as Arc<dyn OcrProvider>;
                         Ok(Arc::new(GuardedOcrProvider::new(
                             remote,
                             privacy_guard,
@@ -438,7 +713,11 @@ fn resolve_ocr_provider(
     }
 }
 
-fn resolve_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
+#[allow(unused_variables)]
+fn resolve_llm_provider(
+    config: &AiProviderConfig,
+    secret_stores: Option<SecretStoreSet>,
+) -> LlmProviderResolution {
     match config.llm_provider {
         LlmProviderType::Local => Ok((
             Arc::new(LocalLlmProvider::new()),
@@ -453,7 +732,18 @@ fn resolve_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
                     config.fallback_to_local,
                     || {
                         let endpoint = require_endpoint_config(config.llm_api.as_ref(), "llm_api")?;
-                        Ok(Arc::new(RemoteLlmProvider::new(endpoint)?) as Arc<dyn LlmProvider>)
+                        let secret_store = secret_stores
+                            .as_ref()
+                            .and_then(|stores| stores.for_binding(endpoint.credential.as_ref()));
+                        let profile_id = config.active_secret_profile_id_or("llm");
+                        let credential = CredentialSource::from_api_key_endpoint_for_profile(
+                            endpoint,
+                            Some(profile_id),
+                            secret_store,
+                        )?;
+                        Ok(Arc::new(RemoteLlmProvider::new_with_credential(
+                            endpoint, credential,
+                        )?) as Arc<dyn LlmProvider>)
                     },
                     || Arc::new(LocalLlmProvider::new()) as Arc<dyn LlmProvider>,
                 )
@@ -470,29 +760,27 @@ fn resolve_llm_provider(config: &AiProviderConfig) -> LlmProviderResolution {
 
 /// Resolve LLM provider using OAuth-managed credentials.
 ///
-/// Uses `OAuthProviderConfig::openai_codex()` defaults for endpoint/model
-/// when `config.llm_api` is not set. The credential's `api_base_url`
-/// overrides the endpoint at request time (ChatGPT OAuth uses a different
-/// API endpoint than the standard OpenAI API).
+/// Uses surface metadata to resolve the provider ID and authenticated request
+/// URL. OpenAI keeps a default managed surface fallback when `llm_api` is omitted.
 #[cfg(feature = "server")]
 fn resolve_llm_provider_oauth(
     config: &AiProviderConfig,
     oauth_port: Arc<dyn OAuthPort>,
 ) -> LlmProviderResolution {
-    use oneshim_core::ports::credential_source::CredentialSource;
-
-    // Currently the only supported OAuth provider. When adding more providers,
-    // this should be derived from config (e.g., config.oauth_provider_id).
-    let provider_id = "openai".to_string();
-    let api_base_url = OAuthProviderConfig::openai_codex().api_base_url;
-
+    let endpoint = oauth_llm_endpoint(config);
+    let provider_id = managed_oauth_provider_id_for_endpoint(
+        &endpoint,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::Llm,
+    )?;
+    let api_base_url = managed_oauth_transport_url_for_endpoint(
+        &endpoint,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::Llm,
+    )?;
     let credential = CredentialSource::ManagedOAuth {
         provider_id,
         oauth_port,
         api_base_url,
     };
-
-    let endpoint = oauth_llm_endpoint(config);
 
     let provider = RemoteLlmProvider::new_with_credential(&endpoint, credential)?;
     debug!(
@@ -507,6 +795,45 @@ fn resolve_llm_provider_oauth(
 }
 
 #[cfg(feature = "server")]
+fn resolve_ocr_provider_oauth(
+    config: &AiProviderConfig,
+    _pii_filter_level: PiiFilterLevel,
+    external_ocr_privacy_guard: Option<ExternalOcrPrivacyGuard>,
+    oauth_port: Arc<dyn OAuthPort>,
+) -> OcrProviderResolution {
+    let endpoint = require_endpoint_config(config.ocr_api.as_ref(), "ocr_api")?;
+    let provider_id = managed_oauth_provider_id_for_endpoint(
+        endpoint,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::Ocr,
+    )?;
+    let api_base_url = managed_oauth_transport_url_for_endpoint(
+        endpoint,
+        oneshim_api_contracts::provider_specs::ProviderTransportKind::Ocr,
+    )?;
+    let credential = CredentialSource::ManagedOAuth {
+        provider_id,
+        oauth_port,
+        api_base_url,
+    };
+    let privacy_guard = external_ocr_privacy_guard.ok_or_else(|| {
+        CoreError::Config("Remote OCR provider requires a runtime privacy guard".to_string())
+    })?;
+    let remote = Arc::new(RemoteOcrProvider::new_with_credential(
+        endpoint, credential,
+    )?) as Arc<dyn OcrProvider>;
+    Ok((
+        Arc::new(GuardedOcrProvider::new(
+            remote,
+            privacy_guard,
+            config.allow_unredacted_external_ocr,
+            config.ocr_validation.clone(),
+        )) as Arc<dyn OcrProvider>,
+        ProviderSource::OAuth,
+        None,
+    ))
+}
+
+#[cfg(feature = "server")]
 fn oauth_llm_endpoint(config: &AiProviderConfig) -> ExternalApiEndpoint {
     let mut endpoint = config.llm_api.clone().unwrap_or(ExternalApiEndpoint {
         endpoint: OAuthProviderConfig::OPENAI_API_BASE_URL.to_string(),
@@ -514,6 +841,8 @@ fn oauth_llm_endpoint(config: &AiProviderConfig) -> ExternalApiEndpoint {
         model: Some(DEFAULT_OPENAI_OAUTH_MODEL.to_string()),
         timeout_secs: 30,
         provider_type: AiProviderType::OpenAi,
+        surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+        credential: None,
     });
 
     if endpoint.endpoint.trim().is_empty() {
@@ -542,23 +871,23 @@ fn require_endpoint_config<'a>(
 ) -> Result<&'a ExternalApiEndpoint, CoreError> {
     let endpoint = endpoint.ok_or_else(|| {
         CoreError::Config(format!(
-            "원격 AI 제공자를 사용하려면 `{field_name}` 설정이 필요합니다."
+            "Remote AI provider usage requires `{field_name}` to be configured."
         ))
     })?;
 
     if endpoint.endpoint.trim().is_empty() {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint` 값이 비어 있습니다."
+            "`{field_name}.endpoint` must not be empty."
         )));
     }
     if !(endpoint.endpoint.starts_with("http://") || endpoint.endpoint.starts_with("https://")) {
         return Err(CoreError::Config(format!(
-            "`{field_name}.endpoint`는 http:// https:// URL."
+            "`{field_name}.endpoint` must be an http:// or https:// URL."
         )));
     }
     if endpoint.timeout_secs == 0 {
         return Err(CoreError::Config(format!(
-            "`{field_name}.timeout_secs`는 1 이상이어야 합니다."
+            "`{field_name}.timeout_secs` must be greater than 0."
         )));
     }
 
@@ -580,7 +909,7 @@ fn resolve_remote_with_optional_fallback<T: ?Sized>(
                 provider = provider_kind,
                 error = %err,
                 fallback_reason = %fallback_reason,
-                "원격 제공자 initialize failure, 로컬 제공자로 폴백"
+                "Remote provider initialization failed, falling back to the local provider"
             );
             Ok((
                 local_builder(),
@@ -613,8 +942,8 @@ mod tests {
     use async_trait::async_trait;
     use oneshim_automation::audit::AuditLogger;
     use oneshim_core::config::{
-        AiAccessMode, AiProviderType, ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig,
-        PrivacyConfig,
+        AiAccessMode, AiProviderType, CredentialAuthMode, CredentialBackendKind, CredentialBinding,
+        ExternalApiEndpoint, ExternalDataPolicy, OcrValidationConfig, PrivacyConfig, SecretRef,
     };
     use oneshim_core::consent::{ConsentManager, ConsentPermissions};
     use oneshim_core::models::context::{ProcessInfo, WindowInfo};
@@ -624,6 +953,8 @@ mod tests {
         OAuthConnectionStatus, OAuthFlowHandle, OAuthFlowStatus, OAuthPort, RefreshResult,
     };
     use oneshim_core::ports::ocr_provider::OcrResult;
+    use oneshim_core::ports::secret_store::{provider_api_key_secret_ref, secret_env_var_name};
+    use oneshim_storage::env_secret_store::EnvSecretStore;
     use tempfile::TempDir;
     use tokio::sync::RwLock;
 
@@ -634,6 +965,44 @@ mod tests {
             model: Some("test-model".to_string()),
             timeout_secs: 5,
             provider_type: AiProviderType::Generic,
+            surface_id: None,
+            credential: None,
+        }
+    }
+
+    fn secret_bound_remote_endpoint(profile_id: &str) -> ExternalApiEndpoint {
+        let (namespace, key) = provider_api_key_secret_ref("generic", profile_id).unwrap();
+        ExternalApiEndpoint {
+            api_key: String::new(),
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::Env,
+                secret_ref: Some(SecretRef {
+                    namespace,
+                    key: key.to_string(),
+                }),
+                projection_enabled: false,
+            }),
+            ..remote_endpoint()
+        }
+    }
+
+    fn remote_secret_stores() -> SecretStoreSet {
+        let mut snapshot = std::collections::HashMap::new();
+        for profile_id in ["ocr", "llm"] {
+            let (namespace, key) = provider_api_key_secret_ref("generic", profile_id).unwrap();
+            snapshot.insert(
+                secret_env_var_name(&namespace, key),
+                "test-api-key".to_string(),
+            );
+        }
+        let secret_store = Arc::new(EnvSecretStore::from_snapshot(snapshot));
+        SecretStoreSet {
+            os_secret_store: None,
+            file_secret_store: None,
+            env_secret_store: Some(secret_store),
+            default_backend_kind: CredentialBackendKind::Env,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
         }
     }
 
@@ -703,8 +1072,9 @@ mod tests {
     #[test]
     fn resolves_local_providers_by_default() {
         let config = AiProviderConfig::default();
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None)
-            .expect("Failed to resolve default configuration");
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
+                .expect("Failed to resolve default configuration");
 
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
@@ -721,8 +1091,8 @@ mod tests {
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Remote,
-            ocr_api: Some(remote_endpoint()),
-            llm_api: Some(remote_endpoint()),
+            ocr_api: Some(secret_bound_remote_endpoint("ocr")),
+            llm_api: Some(secret_bound_remote_endpoint("llm")),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
@@ -741,6 +1111,7 @@ mod tests {
             &config,
             PiiFilterLevel::Standard,
             Some(privacy_guard),
+            Some(remote_secret_stores()),
             None,
         )
         .expect("Failed to resolve remote configuration");
@@ -764,8 +1135,9 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None)
-            .expect("Fallback configuration resolution should not fail");
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
+                .expect("Fallback configuration resolution should not fail");
 
         assert_eq!(adapters.ocr_source, ProviderSource::LocalFallback);
         assert_eq!(adapters.llm_source, ProviderSource::LocalFallback);
@@ -792,7 +1164,7 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None) {
+        match resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None) {
             Ok(_) => panic!("Expected an error"),
             Err(CoreError::Config(msg)) => assert!(msg.contains("ocr_api")),
             Err(other) => panic!("Unexpected error type: {other}"),
@@ -811,8 +1183,9 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None)
-            .expect("Failed to resolve local mode");
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
+                .expect("Failed to resolve local mode");
         assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert_eq!(adapters.llm_source, ProviderSource::Local);
         assert!(adapters.ocr_fallback_reason.is_none());
@@ -828,24 +1201,242 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let adapters = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None)
+        let (llm, llm_source, llm_fallback_reason) =
+            resolve_cli_subscription_llm_provider_with_detected(
+                &config,
+                &[ProbedSubprocessCli {
+                    detected: crate::subprocess_provider::DetectedSubprocessCli {
+                        surface_id: "provider_surface.openai.subprocess_cli".to_string(),
+                        executable_path: "/tmp/codex".into(),
+                    },
+                    auth_status: SubprocessCliAuthStatus::Authenticated,
+                    auth_detail: Some("cli_authenticated".to_string()),
+                }],
+            )
             .expect("Failed to resolve CLI mode");
-        assert_eq!(adapters.ocr_source, ProviderSource::CliSubscription);
-        assert_eq!(adapters.llm_source, ProviderSource::CliSubscription);
-        assert!(adapters.ocr_fallback_reason.is_none());
-        assert!(adapters.llm_fallback_reason.is_none());
+
+        assert_eq!(llm_source, ProviderSource::CliSubscription);
+        assert!(llm_fallback_reason.is_none());
+        assert_eq!(llm.provider_name(), "subprocess-codex");
+        assert!(llm.is_external());
+
+        let adapters =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None)
+                .expect("Failed to resolve CLI mode");
+        assert_eq!(adapters.ocr_source, ProviderSource::Local);
         assert!(!adapters.ocr.is_external());
-        assert!(!adapters.llm.is_external());
+        assert!(matches!(
+            adapters.llm_source,
+            ProviderSource::CliSubscription | ProviderSource::LocalFallback
+        ));
     }
 
     #[test]
-    fn platform_mode_marks_remote_as_platform_source() {
+    fn cli_subscription_mode_keeps_direct_remote_ocr_when_configured() {
         let config = AiProviderConfig {
-            access_mode: AiAccessMode::PlatformConnected,
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(secret_bound_remote_endpoint("ocr")),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "capture.png".to_string(),
+                app_name: "Preview".to_string(),
+                pid: 11,
+                bounds: None,
+            }),
+            None,
+        );
+
+        let (ocr, ocr_source, ocr_fallback_reason) = resolve_cli_subscription_ocr_provider(
+            &config,
+            PiiFilterLevel::Standard,
+            Some(privacy_guard),
+            Some(remote_secret_stores()),
+            &[],
+        )
+        .expect("CLI mode should allow direct remote OCR");
+
+        assert_eq!(ocr_source, ProviderSource::Remote);
+        assert!(ocr_fallback_reason.is_none());
+        assert!(ocr.is_external());
+    }
+
+    #[test]
+    fn cli_subscription_mode_uses_subprocess_ocr_when_supported() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: String::new(),
+                api_key: String::new(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                surface_id: Some("provider_surface.openai.subprocess_cli".to_string()),
+                credential: None,
+            }),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let (ocr, ocr_source, ocr_fallback_reason) = resolve_cli_subscription_ocr_provider(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            &[ProbedSubprocessCli {
+                detected: crate::subprocess_provider::DetectedSubprocessCli {
+                    surface_id: "provider_surface.openai.subprocess_cli".to_string(),
+                    executable_path: "/tmp/codex".into(),
+                },
+                auth_status: SubprocessCliAuthStatus::Authenticated,
+                auth_detail: Some("cli_authenticated".to_string()),
+            }],
+        )
+        .expect("expected OCR subprocess runtime to resolve");
+
+        assert_eq!(ocr_source, ProviderSource::CliSubscription);
+        assert!(ocr_fallback_reason.is_none());
+        assert!(ocr.is_external());
+        assert_eq!(ocr.provider_name(), "subprocess-codex");
+    }
+
+    #[test]
+    fn cli_subscription_mode_falls_back_to_local_when_no_supported_cli_runtime_exists() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            fallback_to_local: true,
+            ..AiProviderConfig::default()
+        };
+
+        let (llm, llm_source, llm_fallback_reason) =
+            resolve_cli_subscription_llm_provider_with_detected(&config, &[])
+                .expect("CLI mode should fall back to local LLM");
+
+        assert_eq!(llm_source, ProviderSource::LocalFallback);
+        assert!(llm_fallback_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("No supported provider CLI runtime")));
+        assert_eq!(llm.provider_name(), "local-rule-based");
+        assert!(!llm.is_external());
+    }
+
+    #[test]
+    fn cli_subscription_mode_prefers_matching_provider_surface() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            llm_api: Some(ExternalApiEndpoint {
+                provider_type: AiProviderType::Anthropic,
+                ..remote_endpoint()
+            }),
+            ..AiProviderConfig::default()
+        };
+
+        let (llm, llm_source, llm_fallback_reason) =
+            resolve_cli_subscription_llm_provider_with_detected(
+                &config,
+                &[
+                    ProbedSubprocessCli {
+                        detected: crate::subprocess_provider::DetectedSubprocessCli {
+                            surface_id: "provider_surface.openai.subprocess_cli".to_string(),
+                            executable_path: "/tmp/codex".into(),
+                        },
+                        auth_status: SubprocessCliAuthStatus::Authenticated,
+                        auth_detail: Some("cli_authenticated".to_string()),
+                    },
+                    ProbedSubprocessCli {
+                        detected: crate::subprocess_provider::DetectedSubprocessCli {
+                            surface_id: "provider_surface.anthropic.subprocess_cli".to_string(),
+                            executable_path: "/tmp/claude".into(),
+                        },
+                        auth_status: SubprocessCliAuthStatus::Authenticated,
+                        auth_detail: Some("cli_authenticated".to_string()),
+                    },
+                ],
+            )
+            .expect("CLI mode should resolve the Anthropic surface");
+
+        assert_eq!(llm_source, ProviderSource::CliSubscription);
+        assert!(llm_fallback_reason.is_none());
+        assert_eq!(llm.provider_name(), "subprocess-claude-code");
+    }
+
+    #[test]
+    fn cli_subscription_mode_reports_auth_required_when_matching_cli_is_logged_out() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            llm_api: Some(ExternalApiEndpoint {
+                provider_type: AiProviderType::OpenAi,
+                ..remote_endpoint()
+            }),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        match resolve_cli_subscription_llm_provider_with_detected(
+            &config,
+            &[ProbedSubprocessCli {
+                detected: crate::subprocess_provider::DetectedSubprocessCli {
+                    surface_id: "provider_surface.openai.subprocess_cli".to_string(),
+                    executable_path: "/tmp/codex".into(),
+                },
+                auth_status: SubprocessCliAuthStatus::Unauthenticated,
+                auth_detail: Some("cli_auth_required".to_string()),
+            }],
+        ) {
+            Err(CoreError::Config(message)) => {
+                assert!(message.contains("not authenticated"));
+                assert!(message.contains("codex"));
+            }
+            Ok(_) => panic!("Expected an authentication error"),
+            Err(other) => panic!("Unexpected error: {other}"),
+        }
+    }
+
+    #[test]
+    fn cli_subscription_mode_accepts_unknown_auth_for_probe_less_surface() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderSubscriptionCli,
+            llm_api: Some(ExternalApiEndpoint {
+                provider_type: AiProviderType::Google,
+                ..remote_endpoint()
+            }),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let (llm, llm_source, llm_fallback_reason) =
+            resolve_cli_subscription_llm_provider_with_detected(
+                &config,
+                &[ProbedSubprocessCli {
+                    detected: crate::subprocess_provider::DetectedSubprocessCli {
+                        surface_id: "provider_surface.google.subprocess_cli".to_string(),
+                        executable_path: "/tmp/gemini".into(),
+                    },
+                    auth_status: SubprocessCliAuthStatus::Unknown,
+                    auth_detail: Some("auth_status_probe_not_implemented".to_string()),
+                }],
+            )
+            .expect("CLI mode should allow probe-less Gemini runtime");
+
+        assert_eq!(llm_source, ProviderSource::CliSubscription);
+        assert!(llm_fallback_reason.is_none());
+        assert_eq!(llm.provider_name(), "subprocess-gemini-cli");
+    }
+
+    #[test]
+    fn provider_api_key_config_reuses_direct_remote_sources() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderApiKey,
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Remote,
-            ocr_api: Some(remote_endpoint()),
-            llm_api: Some(remote_endpoint()),
+            ocr_api: Some(secret_bound_remote_endpoint("ocr")),
+            llm_api: Some(secret_bound_remote_endpoint("llm")),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
@@ -864,11 +1455,12 @@ mod tests {
             &config,
             PiiFilterLevel::Standard,
             Some(privacy_guard),
+            Some(remote_secret_stores()),
             None,
         )
-        .expect("Failed to resolve platform mode");
-        assert_eq!(adapters.ocr_source, ProviderSource::Platform);
-        assert_eq!(adapters.llm_source, ProviderSource::Platform);
+        .expect("Failed to resolve provider API key config");
+        assert_eq!(adapters.ocr_source, ProviderSource::Remote);
+        assert_eq!(adapters.llm_source, ProviderSource::Remote);
         assert!(adapters.ocr_fallback_reason.is_none());
         assert!(adapters.llm_fallback_reason.is_none());
         assert!(adapters.ocr.is_external());
@@ -961,12 +1553,18 @@ mod tests {
         let config = AiProviderConfig {
             ocr_provider: OcrProviderType::Remote,
             llm_provider: LlmProviderType::Local,
-            ocr_api: Some(remote_endpoint()),
+            ocr_api: Some(secret_bound_remote_endpoint("ocr")),
             fallback_to_local: false,
             ..AiProviderConfig::default()
         };
 
-        let result = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None);
+        let result = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            Some(remote_secret_stores()),
+            None,
+        );
         assert!(
             result.is_err(),
             "Expected remote OCR resolution to require a privacy guard"
@@ -983,7 +1581,8 @@ mod tests {
             ..AiProviderConfig::default()
         };
 
-        let result = resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None);
+        let result =
+            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, None, None);
         assert!(
             result.is_err(),
             "ProviderOAuth mode should require an OAuth port"
@@ -993,7 +1592,7 @@ mod tests {
     }
 
     #[test]
-    fn oauth_mode_rejects_local_llm_configuration() {
+    fn oauth_mode_allows_local_llm_when_no_managed_llm_surface_is_selected() {
         let config = AiProviderConfig {
             access_mode: AiAccessMode::ProviderOAuth,
             llm_provider: LlmProviderType::Local,
@@ -1001,11 +1600,17 @@ mod tests {
         };
 
         let oauth = Arc::new(FakeOAuthPort { connected: true }) as Arc<dyn OAuthPort>;
-        let result =
-            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, Some(oauth));
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert!(err.to_string().contains("llm_provider=Remote"));
+        let result = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            Some(oauth),
+        )
+        .expect(
+            "ProviderOAuth mode should allow local LLM when no managed LLM surface is selected",
+        );
+        assert_eq!(result.llm_source, ProviderSource::Local);
     }
 
     #[test]
@@ -1017,12 +1622,160 @@ mod tests {
         };
 
         let oauth = Arc::new(FakeOAuthPort { connected: true }) as Arc<dyn OAuthPort>;
-        let adapters =
-            resolve_ai_provider_adapters(&config, PiiFilterLevel::Standard, None, Some(oauth))
-                .expect("OAuth mode should resolve when a port is provided");
+        let adapters = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            None,
+            None,
+            Some(oauth),
+        )
+        .expect("OAuth mode should resolve when a port is provided");
 
         assert_eq!(adapters.llm_source, ProviderSource::OAuth);
         assert_eq!(adapters.llm.provider_name(), DEFAULT_OPENAI_OAUTH_MODEL);
+    }
+
+    #[test]
+    fn remote_ocr_falls_back_when_selected_managed_ocr_surface_lacks_runtime() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: String::new(),
+                api_key: String::new(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::OpenAi,
+                surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+                credential: None,
+            }),
+            fallback_to_local: true,
+            ..AiProviderConfig::default()
+        };
+
+        let (ocr, source, reason) =
+            resolve_ocr_provider(&config, PiiFilterLevel::Standard, None, None)
+                .expect("managed OCR surface should fall back to local when enabled");
+
+        assert_eq!(source, ProviderSource::LocalFallback);
+        assert!(reason
+            .as_deref()
+            .is_some_and(|message| message.contains("managed_oauth")));
+        assert!(!ocr.is_external());
+    }
+
+    #[test]
+    fn oauth_mode_resolves_google_managed_ocr_surface() {
+        let config = AiProviderConfig {
+            access_mode: AiAccessMode::ProviderOAuth,
+            llm_provider: LlmProviderType::Local,
+            ocr_provider: OcrProviderType::Remote,
+            ocr_api: Some(ExternalApiEndpoint {
+                endpoint: "https://vision.googleapis.com/v1/images:annotate".to_string(),
+                api_key: String::new(),
+                model: None,
+                timeout_secs: 30,
+                provider_type: AiProviderType::Google,
+                surface_id: Some("provider_surface.google.managed_oauth".to_string()),
+                credential: None,
+            }),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let oauth = Arc::new(FakeOAuthPort { connected: true }) as Arc<dyn OAuthPort>;
+        let (privacy_guard, _tempdir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                app_name: "Terminal".to_string(),
+                title: "OCR".to_string(),
+                pid: 4242,
+                bounds: None,
+            }),
+            None,
+        );
+        let adapters = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            Some(privacy_guard),
+            None,
+            Some(oauth),
+        )
+        .expect("Google OCR managed OAuth should resolve when an OAuth port is available");
+
+        assert_eq!(adapters.ocr_source, ProviderSource::OAuth);
+        assert!(adapters.ocr.is_external());
+    }
+
+    #[test]
+    fn resolves_remote_providers_from_secret_binding_with_plaintext_empty() {
+        let namespace = "provider/openai/default";
+        let key = "api_key";
+        let mut snapshot = std::collections::HashMap::new();
+        snapshot.insert(
+            secret_env_var_name(namespace, key),
+            "sk-secret-store".to_string(),
+        );
+        let secret_store = Arc::new(EnvSecretStore::from_snapshot(snapshot));
+        let secret_stores = SecretStoreSet {
+            os_secret_store: None,
+            file_secret_store: None,
+            env_secret_store: Some(secret_store),
+            default_backend_kind: CredentialBackendKind::Env,
+            fallback_backend_kind: CredentialBackendKind::Unavailable,
+        };
+
+        let secret_bound_endpoint = ExternalApiEndpoint {
+            endpoint: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: Some("gpt-5.4".to_string()),
+            timeout_secs: 30,
+            provider_type: AiProviderType::OpenAi,
+            surface_id: None,
+            credential: Some(CredentialBinding {
+                auth_mode: CredentialAuthMode::ApiKey,
+                backend_kind: CredentialBackendKind::Env,
+                secret_ref: Some(SecretRef {
+                    namespace: namespace.to_string(),
+                    key: key.to_string(),
+                }),
+                projection_enabled: false,
+            }),
+        };
+        let config = AiProviderConfig {
+            ocr_provider: OcrProviderType::Remote,
+            llm_provider: LlmProviderType::Remote,
+            ocr_api: Some(secret_bound_endpoint.clone()),
+            llm_api: Some(secret_bound_endpoint),
+            fallback_to_local: false,
+            ..AiProviderConfig::default()
+        };
+
+        let (privacy_guard, _temp_dir) = make_external_ocr_guard(
+            true,
+            Some(WindowInfo {
+                title: "mail".to_string(),
+                app_name: "Code".to_string(),
+                pid: 9,
+                bounds: None,
+            }),
+            None,
+        );
+        let adapters = resolve_ai_provider_adapters(
+            &config,
+            PiiFilterLevel::Standard,
+            Some(privacy_guard),
+            Some(secret_stores),
+            None,
+        )
+        .expect("Secret-bound API key configuration should resolve");
+
+        assert_eq!(adapters.ocr_source, ProviderSource::Remote);
+        assert_eq!(adapters.llm_source, ProviderSource::Remote);
+        assert!(adapters.ocr_fallback_reason.is_none());
+        assert!(adapters.llm_fallback_reason.is_none());
+        assert!(adapters.ocr.is_external());
+        assert!(adapters.llm.is_external());
     }
 
     #[tokio::test]

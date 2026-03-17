@@ -22,6 +22,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           colors.text.primary,
           interaction.interactive,
           interaction.focusRing,
+          interaction.disabled,
+          'disabled:border-muted disabled:bg-surface-muted disabled:text-content-tertiary disabled:shadow-none',
           selectVariants.variant[variant],
           selectVariants.size[selectSize],
           className,

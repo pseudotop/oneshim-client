@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { interaction, layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import TreeView, { type TreeNode } from './TreeView'
@@ -79,12 +79,11 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
   '/settings': {
     titleKey: 'nav.settings',
     nodes: [
-      { id: 'general', labelKey: 'sidebar.general' },
-      { id: 'notification', labelKey: 'sidebar.notifications' },
-      { id: 'privacy', labelKey: 'sidebar.privacy' },
-      { id: 'schedule', labelKey: 'sidebar.schedule' },
-      { id: 'ai', labelKey: 'sidebar.aiProvider' },
-      { id: 'about', labelKey: 'sidebar.about' },
+      { id: 'general', labelKey: 'settings.tabs.general' },
+      { id: 'privacy', labelKey: 'settings.tabs.privacy' },
+      { id: 'monitoring', labelKey: 'settings.tabs.monitoring' },
+      { id: 'ai-automation', labelKey: 'settings.tabs.aiAutomation' },
+      { id: 'data', labelKey: 'settings.tabs.dataStorage' },
     ],
   },
   '/privacy': {
@@ -126,6 +125,7 @@ interface SidePanelProps {
 
 export default function SidePanel({ collapsed, width, onResizeStart, onResizeByKeyboard }: SidePanelProps) {
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { t } = useTranslation()
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>()
 
@@ -135,9 +135,17 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
     Object.entries(pageSidebarConfig).find(([key]) => key !== '/' && path.startsWith(key))?.[1] ??
     pageSidebarConfig['/']
 
+  const effectiveSelectedNodeId = path === '/settings' ? (searchParams.get('tab') ?? 'general') : selectedNodeId
   const translatedNodes = useMemo(() => translateNodes(config.nodes, t), [config.nodes, t])
 
   const handleNodeSelect = useCallback((id: string) => {
+    if (path === '/settings') {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set('tab', id)
+      setSearchParams(nextParams, { replace: true })
+      return
+    }
+
     setSelectedNodeId(id)
     const el = document.getElementById(`section-${id}`)
     if (!el) return
@@ -156,7 +164,7 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
     // Brief highlight animation on the target section
     el.classList.add('section-highlight')
     setTimeout(() => el.classList.remove('section-highlight'), 1500)
-  }, [])
+  }, [path, searchParams, setSearchParams])
 
   const handleResizeKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -182,7 +190,7 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
         </div>
 
         <div className="flex-1 overflow-y-auto px-1 py-1">
-          <TreeView key={path} nodes={translatedNodes} selectedId={selectedNodeId} onSelect={handleNodeSelect} />
+          <TreeView key={path} nodes={translatedNodes} selectedId={effectiveSelectedNodeId} onSelect={handleNodeSelect} />
         </div>
       </div>
 

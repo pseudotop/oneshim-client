@@ -1,5 +1,4 @@
 mod execution;
-mod helpers;
 mod scene;
 
 pub use execution::{
@@ -11,7 +10,6 @@ pub use scene::{get_automation_scene, get_automation_scene_calibration};
 
 #[cfg(test)]
 mod tests {
-    use super::helpers::*;
     use chrono::Utc;
     use oneshim_api_contracts::automation::{
         AuditEntryDto, AuditQuery, AutomationStatsDto, AutomationStatusDto,
@@ -23,6 +21,10 @@ mod tests {
     use oneshim_core::models::ui_scene::{UiScene, UI_SCENE_SCHEMA_VERSION};
 
     use crate::error::ApiError;
+    use crate::services::automation_service::helpers::*;
+    use crate::services::automation_service::{
+        AUTOMATION_AUDIT_SCHEMA_VERSION, AUTOMATION_SCENE_CALIBRATION_SCHEMA_VERSION,
+    };
 
     use oneshim_api_contracts::automation::ExecuteSceneActionRequest;
 
@@ -111,7 +113,7 @@ mod tests {
         let dto = PresetRunResult {
             preset_id: "save-file".to_string(),
             success: true,
-            message: "execution됨".to_string(),
+            message: "executed".to_string(),
             steps_executed: Some(2),
             total_steps: Some(3),
             total_elapsed_ms: Some(150),
@@ -167,11 +169,7 @@ mod tests {
             "remote"
         );
         assert_eq!(
-            infer_runtime_source(AiAccessMode::PlatformConnected, true),
-            "platform"
-        );
-        assert_eq!(
-            infer_runtime_source(AiAccessMode::PlatformConnected, false),
+            infer_runtime_source(AiAccessMode::ProviderApiKey, false),
             "local"
         );
     }
@@ -180,12 +178,12 @@ mod tests {
     fn execute_intent_hint_request_deserializes_optional_command_id() {
         let payload = r#"{
             "session_id": "sess-1",
-            "intent_hint": "save 버튼 클릭"
+            "intent_hint": "click the save button"
         }"#;
         let request: ExecuteIntentHintRequest = serde_json::from_str(payload).unwrap();
         assert!(request.command_id.is_none());
         assert_eq!(request.session_id, "sess-1");
-        assert_eq!(request.intent_hint, "save 버튼 클릭");
+        assert_eq!(request.intent_hint, "click the save button");
     }
 
     #[test]
@@ -300,7 +298,7 @@ mod tests {
         let (active, issue) = evaluate_scene_action_override(&cfg, Utc::now());
         assert!(!active);
         let issue_text = issue.unwrap_or_default();
-        assert!(issue_text.contains("만료") || issue_text.contains("expired"));
+        assert!(issue_text.contains("expired"));
     }
 
     #[test]

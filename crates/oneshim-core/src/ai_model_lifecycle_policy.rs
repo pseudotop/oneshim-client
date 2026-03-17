@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::AiProviderType;
 use crate::error::CoreError;
+use crate::provider_surface::{
+    canonical_provider_surface_id, provider_type_from_vendor_id, provider_vendor_id_or_default,
+};
 
 const POLICY_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -25,6 +28,8 @@ pub struct ModelLifecyclePolicyCatalog {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelLifecycleRule {
     pub provider_type: String,
+    #[serde(default)]
+    pub surface_id: Option<String>,
     pub model: String,
     #[serde(default)]
     pub warn_at: Option<String>,
@@ -82,8 +87,25 @@ pub fn evaluate_model_lifecycle_now(
     evaluate_model_lifecycle_at(provider_type, model, Utc::now())
 }
 
+pub fn evaluate_model_lifecycle_now_for_surface(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    model: &str,
+) -> Result<ModelLifecycleDecision, CoreError> {
+    evaluate_model_lifecycle_at_for_surface(provider_type, surface_id, model, Utc::now())
+}
+
 pub fn evaluate_model_lifecycle_at(
     provider_type: AiProviderType,
+    model: &str,
+    now: DateTime<Utc>,
+) -> Result<ModelLifecycleDecision, CoreError> {
+    evaluate_model_lifecycle_at_for_surface(provider_type, None, model, now)
+}
+
+pub fn evaluate_model_lifecycle_at_for_surface(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
     model: &str,
     now: DateTime<Utc>,
 ) -> Result<ModelLifecycleDecision, CoreError> {
@@ -94,7 +116,7 @@ pub fn evaluate_model_lifecycle_at(
 
     let catalog = policy_catalog()?;
     let Some(rule) = catalog.rules.iter().find(|candidate| {
-        provider_rule_matches(provider_type, &candidate.provider_type)
+        provider_rule_matches(provider_type, surface_id, candidate)
             && candidate.model.trim().eq_ignore_ascii_case(trimmed_model)
     }) else {
         return Ok(ModelLifecycleDecision::Allowed);
@@ -110,7 +132,13 @@ pub fn evaluate_model_lifecycle_at(
         ModelLifecycleAction::WarnOnly => {
             if warn_due {
                 Ok(ModelLifecycleDecision::Warn {
-                    message: build_warning_message(provider_type, trimmed_model, rule, warn_at),
+                    message: build_warning_message(
+                        provider_type,
+                        surface_id,
+                        trimmed_model,
+                        rule,
+                        warn_at,
+                    ),
                     replacement: rule.replacement.clone(),
                 })
             } else {
@@ -120,12 +148,24 @@ pub fn evaluate_model_lifecycle_at(
         ModelLifecycleAction::WarnThenBlock => {
             if block_due {
                 Ok(ModelLifecycleDecision::Block {
-                    message: build_block_message(provider_type, trimmed_model, rule, block_at),
+                    message: build_block_message(
+                        provider_type,
+                        surface_id,
+                        trimmed_model,
+                        rule,
+                        block_at,
+                    ),
                     replacement: rule.replacement.clone(),
                 })
             } else if warn_due {
                 Ok(ModelLifecycleDecision::Warn {
-                    message: build_warning_message(provider_type, trimmed_model, rule, warn_at),
+                    message: build_warning_message(
+                        provider_type,
+                        surface_id,
+                        trimmed_model,
+                        rule,
+                        warn_at,
+                    ),
                     replacement: rule.replacement.clone(),
                 })
             } else {
@@ -136,7 +176,13 @@ pub fn evaluate_model_lifecycle_at(
             let should_block = block_at.map(|at| now >= at).unwrap_or(true);
             if should_block {
                 Ok(ModelLifecycleDecision::Block {
-                    message: build_block_message(provider_type, trimmed_model, rule, block_at),
+                    message: build_block_message(
+                        provider_type,
+                        surface_id,
+                        trimmed_model,
+                        rule,
+                        block_at,
+                    ),
                     replacement: rule.replacement.clone(),
                 })
             } else {
@@ -167,6 +213,16 @@ pub(crate) fn evaluate_rule_at(
     rule: &ModelLifecycleRule,
     now: DateTime<Utc>,
 ) -> Result<ModelLifecycleDecision, CoreError> {
+    evaluate_rule_at_for_surface(provider_type, None, rule, now)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn evaluate_rule_at_for_surface(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    rule: &ModelLifecycleRule,
+    now: DateTime<Utc>,
+) -> Result<ModelLifecycleDecision, CoreError> {
     let trimmed_model = rule.model.trim();
 
     let warn_at = parse_utc_opt(rule.warn_at.as_deref())?;
@@ -179,7 +235,13 @@ pub(crate) fn evaluate_rule_at(
         ModelLifecycleAction::WarnOnly => {
             if warn_due {
                 Ok(ModelLifecycleDecision::Warn {
-                    message: build_warning_message(provider_type, trimmed_model, rule, warn_at),
+                    message: build_warning_message(
+                        provider_type,
+                        surface_id,
+                        trimmed_model,
+                        rule,
+                        warn_at,
+                    ),
                     replacement: rule.replacement.clone(),
                 })
             } else {
@@ -189,12 +251,24 @@ pub(crate) fn evaluate_rule_at(
         ModelLifecycleAction::WarnThenBlock => {
             if block_due {
                 Ok(ModelLifecycleDecision::Block {
-                    message: build_block_message(provider_type, trimmed_model, rule, block_at),
+                    message: build_block_message(
+                        provider_type,
+                        surface_id,
+                        trimmed_model,
+                        rule,
+                        block_at,
+                    ),
                     replacement: rule.replacement.clone(),
                 })
             } else if warn_due {
                 Ok(ModelLifecycleDecision::Warn {
-                    message: build_warning_message(provider_type, trimmed_model, rule, warn_at),
+                    message: build_warning_message(
+                        provider_type,
+                        surface_id,
+                        trimmed_model,
+                        rule,
+                        warn_at,
+                    ),
                     replacement: rule.replacement.clone(),
                 })
             } else {
@@ -205,7 +279,13 @@ pub(crate) fn evaluate_rule_at(
             let should_block = block_at.map(|at| now >= at).unwrap_or(true);
             if should_block {
                 Ok(ModelLifecycleDecision::Block {
-                    message: build_block_message(provider_type, trimmed_model, rule, block_at),
+                    message: build_block_message(
+                        provider_type,
+                        surface_id,
+                        trimmed_model,
+                        rule,
+                        block_at,
+                    ),
                     replacement: rule.replacement.clone(),
                 })
             } else {
@@ -219,6 +299,12 @@ fn validate_policy_catalog(catalog: &ModelLifecyclePolicyCatalog) -> Result<(), 
     for rule in &catalog.rules {
         if parse_provider_type_label(&rule.provider_type).is_none() {
             return Err(format!("unknown provider_type `{}`", rule.provider_type));
+        }
+
+        if let Some(surface_id) = rule.surface_id.as_deref() {
+            if canonical_provider_surface_id(surface_id).is_none() {
+                return Err(format!("unknown surface_id `{surface_id}`"));
+            }
         }
 
         if rule.model.trim().is_empty() {
@@ -276,31 +362,35 @@ fn parse_utc_opt(raw: Option<&str>) -> Result<Option<DateTime<Utc>>, CoreError> 
     Ok(Some(parsed.with_timezone(&Utc)))
 }
 
-fn provider_rule_matches(provider_type: AiProviderType, raw_rule_provider: &str) -> bool {
-    parse_provider_type_label(raw_rule_provider) == Some(provider_type)
+fn provider_rule_matches(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    rule: &ModelLifecycleRule,
+) -> bool {
+    if let Some(rule_surface_id) = rule.surface_id.as_deref() {
+        let Some(expected_surface_id) = canonical_provider_surface_id(rule_surface_id) else {
+            return false;
+        };
+        let Some(actual_surface_id) = surface_id.and_then(canonical_provider_surface_id) else {
+            return false;
+        };
+        return expected_surface_id == actual_surface_id;
+    }
+
+    parse_provider_type_label(&rule.provider_type) == Some(provider_type)
 }
 
 fn parse_provider_type_label(raw: &str) -> Option<AiProviderType> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "anthropic" => Some(AiProviderType::Anthropic),
-        "openai" | "open_ai" | "open-ai" | "openai-compatible" => Some(AiProviderType::OpenAi),
-        "google" | "gemini" => Some(AiProviderType::Google),
-        "generic" => Some(AiProviderType::Generic),
-        _ => None,
-    }
+    provider_type_from_vendor_id(raw)
 }
 
 fn provider_label(provider_type: AiProviderType) -> &'static str {
-    match provider_type {
-        AiProviderType::Anthropic => "anthropic",
-        AiProviderType::OpenAi => "openai",
-        AiProviderType::Google => "google",
-        AiProviderType::Generic => "generic",
-    }
+    provider_vendor_id_or_default(provider_type)
 }
 
 fn build_warning_message(
     provider_type: AiProviderType,
+    surface_id: Option<&str>,
     model: &str,
     rule: &ModelLifecycleRule,
     warn_at: Option<DateTime<Utc>>,
@@ -316,15 +406,15 @@ fn build_warning_message(
 
     if let Some(warn_at) = warn_at {
         format!(
-            "Model `{model}` for provider `{}` is in deprecation window since {}.{}",
-            provider_label(provider_type),
+            "Model `{model}` for {} is in deprecation window since {}.{}",
+            lifecycle_subject_label(provider_type, surface_id, rule),
             warn_at.to_rfc3339(),
             replacement_msg,
         )
     } else {
         format!(
-            "Model `{model}` for provider `{}` is deprecated.{}",
-            provider_label(provider_type),
+            "Model `{model}` for {} is deprecated.{}",
+            lifecycle_subject_label(provider_type, surface_id, rule),
             replacement_msg,
         )
     }
@@ -332,6 +422,7 @@ fn build_warning_message(
 
 fn build_block_message(
     provider_type: AiProviderType,
+    surface_id: Option<&str>,
     model: &str,
     rule: &ModelLifecycleRule,
     block_at: Option<DateTime<Utc>>,
@@ -347,18 +438,34 @@ fn build_block_message(
 
     if let Some(block_at) = block_at {
         format!(
-            "Model `{model}` for provider `{}` is retired as of {}.{}",
-            provider_label(provider_type),
+            "Model `{model}` for {} is retired as of {}.{}",
+            lifecycle_subject_label(provider_type, surface_id, rule),
             block_at.to_rfc3339(),
             replacement_msg,
         )
     } else {
         format!(
-            "Model `{model}` for provider `{}` is blocked by lifecycle policy.{}",
-            provider_label(provider_type),
+            "Model `{model}` for {} is blocked by lifecycle policy.{}",
+            lifecycle_subject_label(provider_type, surface_id, rule),
             replacement_msg,
         )
     }
+}
+
+fn lifecycle_subject_label(
+    provider_type: AiProviderType,
+    surface_id: Option<&str>,
+    rule: &ModelLifecycleRule,
+) -> String {
+    if let Some(rule_surface_id) = rule.surface_id.as_deref() {
+        if let Some(canonical) = canonical_provider_surface_id(rule_surface_id) {
+            return format!("provider surface `{canonical}`");
+        }
+    }
+    if let Some(surface_id) = surface_id.and_then(canonical_provider_surface_id) {
+        return format!("provider surface `{surface_id}`");
+    }
+    format!("provider `{}`", provider_label(provider_type))
 }
 
 #[cfg(test)]
@@ -384,6 +491,7 @@ mod tests {
     ) -> ModelLifecycleRule {
         ModelLifecycleRule {
             provider_type: provider.to_string(),
+            surface_id: None,
             model: model.to_string(),
             warn_at: warn_at.map(str::to_string),
             block_at: block_at.map(str::to_string),
@@ -395,6 +503,7 @@ mod tests {
     fn warn_only_rule(provider: &str, model: &str, warn_at: Option<&str>) -> ModelLifecycleRule {
         ModelLifecycleRule {
             provider_type: provider.to_string(),
+            surface_id: None,
             model: model.to_string(),
             warn_at: warn_at.map(str::to_string),
             block_at: None,
@@ -406,6 +515,7 @@ mod tests {
     fn block_rule(provider: &str, model: &str, block_at: Option<&str>) -> ModelLifecycleRule {
         ModelLifecycleRule {
             provider_type: provider.to_string(),
+            surface_id: None,
             model: model.to_string(),
             warn_at: None,
             block_at: block_at.map(str::to_string),
@@ -517,11 +627,41 @@ mod tests {
         assert_eq!(decision, ModelLifecycleDecision::Allowed);
     }
 
+    #[test]
+    fn surface_scoped_rule_requires_matching_surface_id() {
+        let rule = ModelLifecycleRule {
+            provider_type: "OpenAi".to_string(),
+            surface_id: Some("provider_surface.openai.managed_oauth".to_string()),
+            model: "gpt-5.4".to_string(),
+            warn_at: Some("2025-01-01T00:00:00Z".to_string()),
+            block_at: None,
+            replacement: Some("gpt-5.5".to_string()),
+            action: ModelLifecycleAction::WarnOnly,
+        };
+
+        let warn = evaluate_rule_at_for_surface(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.managed_oauth"),
+            &rule,
+            ts("2026-01-01T00:00:00Z"),
+        )
+        .unwrap();
+        assert!(matches!(warn, ModelLifecycleDecision::Warn { .. }));
+
+        let mismatched = provider_rule_matches(
+            AiProviderType::OpenAi,
+            Some("provider_surface.openai.direct_api"),
+            &rule,
+        );
+        assert!(!mismatched);
+    }
+
     /// A model not present in the catalog at all must be Allowed.
     #[test]
     fn unknown_model_is_allowed() {
-        let decision = evaluate_model_lifecycle_now(AiProviderType::OpenAi, "gpt-4.1-mini")
-            .expect("evaluation should succeed");
+        let decision =
+            evaluate_model_lifecycle_now(AiProviderType::OpenAi, "unit-test-openai-model")
+                .expect("evaluation should succeed");
         assert_eq!(decision, ModelLifecycleDecision::Allowed);
     }
 
@@ -603,7 +743,7 @@ mod tests {
 
     #[test]
     fn enforce_returns_ok_for_allowed_model() {
-        enforce_model_lifecycle_now(AiProviderType::OpenAi, "gpt-4.1-mini")
+        enforce_model_lifecycle_now(AiProviderType::OpenAi, "unit-test-openai-model")
             .expect("unknown (allowed) model must not fail enforce");
     }
 

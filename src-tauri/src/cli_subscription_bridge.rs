@@ -6,6 +6,7 @@ use oneshim_core::error::CoreError;
 use std::path::{Path, PathBuf};
 
 const ONESHIM_BRIDGE_NAME: &str = "oneshim-context";
+const ONESHIM_MANAGED_BRIDGE_MARKER: &str = "ONESHIM-MANAGED-CLI-BRIDGE: oneshim-context";
 const ONESHIM_CLI_BRIDGE_AUTOINSTALL_ENV: &str = "ONESHIM_CLI_BRIDGE_AUTOINSTALL";
 const ONESHIM_CLI_BRIDGE_INCLUDE_USER_SCOPE_ENV: &str = "ONESHIM_CLI_BRIDGE_INCLUDE_USER_SCOPE";
 
@@ -78,6 +79,13 @@ impl BridgeSyncReport {
     pub fn is_successful(&self) -> bool {
         self.errors.is_empty()
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct BridgeRevokeReport {
+    pub removed_files: Vec<PathBuf>,
+    pub skipped_files: Vec<PathBuf>,
+    pub errors: Vec<String>,
 }
 
 /// Default path where ONESHIM exports context snapshots for CLI bridge consumers.
@@ -184,7 +192,8 @@ fn render_markdown_command_template(client: CliClient, context_export_path: &Pat
     };
 
     format!(
-        r#"---
+        r#"<!-- {marker} -->
+---
 description: Use ONESHIM context export for actionable coding support.
 ---
 
@@ -198,6 +207,7 @@ Execution contract:
 3. Prefer concrete outputs: failing tests, regression risks, implementation steps, and verification commands.
 4. Keep recommendations provider-neutral across OpenAI, Anthropic, and Google workflows.
 "#,
+        marker = ONESHIM_MANAGED_BRIDGE_MARKER,
         client_hint = client_hint,
         context_path = context_export_path.display()
     )
@@ -205,7 +215,8 @@ Execution contract:
 
 fn render_gemini_command_template(context_export_path: &Path) -> String {
     format!(
-        r#"description = "Use ONESHIM context export for actionable coding support"
+        r#"# {marker}
+description = "Use ONESHIM context export for actionable coding support"
 prompt = """
 Read ONESHIM context export at `{context_path}`.
 
@@ -216,6 +227,7 @@ Execution contract:
 4. Keep recommendations provider-neutral across OpenAI, Anthropic, and Google workflows.
 """
 "#,
+        marker = ONESHIM_MANAGED_BRIDGE_MARKER,
         context_path = context_export_path.display()
     )
 }
@@ -277,6 +289,24 @@ pub fn sync_bridge_files(
     report
 }
 
+pub fn revoke_bridge_files(project_root: &Path, include_user_scope: bool) -> BridgeRevokeReport {
+    let mut report = BridgeRevokeReport::default();
+
+    for plan in default_bridge_plans(project_root, include_user_scope) {
+        match revoke_bridge_file(&plan) {
+            Ok(BridgeFileRevokeOutcome::Removed) => report.removed_files.push(plan.file_path),
+            Ok(BridgeFileRevokeOutcome::Skipped) => report.skipped_files.push(plan.file_path),
+            Err(err) => {
+                report
+                    .errors
+                    .push(format!("{} ({})", plan.summary(), err.to_string().trim()));
+            }
+        }
+    }
+
+    report
+}
+
 fn env_flag_enabled(name: &str) -> bool {
     std::env::var(name)
         .ok()
@@ -292,6 +322,49 @@ pub fn should_autoinstall_bridge_files() -> bool {
 /// Whether user-scope bridge files (`~/.codex`, `~/.claude`, `~/.gemini`) are included.
 pub fn should_include_user_scope() -> bool {
     env_flag_enabled(ONESHIM_CLI_BRIDGE_INCLUDE_USER_SCOPE_ENV)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BridgeFileRevokeOutcome {
+    Removed,
+    Skipped,
+}
+
+fn revoke_bridge_file(plan: &CliBridgePlan) -> Result<BridgeFileRevokeOutcome, CoreError> {
+    if !plan.file_path.exists() {
+        return Ok(BridgeFileRevokeOutcome::Skipped);
+    }
+
+    let contents = std::fs::read_to_string(&plan.file_path).map_err(|e| {
+        CoreError::Internal(format!(
+            "bridge file read failure ({}): {}",
+            plan.file_path.display(),
+            e
+        ))
+    })?;
+
+    if !is_managed_bridge_content(&contents) {
+        return Ok(BridgeFileRevokeOutcome::Skipped);
+    }
+
+    std::fs::remove_file(&plan.file_path).map_err(|e| {
+        CoreError::Internal(format!(
+            "bridge file remove failure ({}): {}",
+            plan.file_path.display(),
+            e
+        ))
+    })?;
+
+    Ok(BridgeFileRevokeOutcome::Removed)
+}
+
+fn is_managed_bridge_content(contents: &str) -> bool {
+    if contents.contains(ONESHIM_MANAGED_BRIDGE_MARKER) {
+        return true;
+    }
+
+    contents.contains("Use ONESHIM context export for actionable coding support")
+        && contents.contains("Read ONESHIM context export at")
 }
 
 #[cfg(test)]
@@ -365,6 +438,7 @@ mod tests {
         let context_path = PathBuf::from("/tmp/context/export.json");
         let rendered = render_bridge_template(&plan, &context_path);
 
+        assert!(rendered.contains(ONESHIM_MANAGED_BRIDGE_MARKER));
         assert!(rendered.contains("description:"));
         assert!(rendered.contains("/tmp/context/export.json"));
         assert!(rendered.contains("Codex command mode"));
@@ -381,6 +455,7 @@ mod tests {
         let context_path = PathBuf::from("/tmp/context/export.json");
         let rendered = render_bridge_template(&plan, &context_path);
 
+        assert!(rendered.contains(ONESHIM_MANAGED_BRIDGE_MARKER));
         assert!(rendered.contains("description ="));
         assert!(rendered.contains("prompt ="));
         assert!(rendered.contains("/tmp/context/export.json"));
@@ -411,5 +486,36 @@ mod tests {
 
         assert!(report.errors.is_empty());
         assert_eq!(report.written_files.len(), 3);
+    }
+
+    #[test]
+    fn revoke_bridge_files_removes_managed_project_files() {
+        let temp = TempDir::new().expect("temp dir");
+        let context_path = temp.path().join("ctx.json");
+        let sync_report = sync_bridge_files(temp.path(), &context_path, false);
+        assert_eq!(sync_report.written_files.len(), 3);
+
+        let revoke_report = revoke_bridge_files(temp.path(), false);
+        assert!(revoke_report.errors.is_empty());
+        assert_eq!(revoke_report.removed_files.len(), 3);
+    }
+
+    #[test]
+    fn revoke_bridge_files_skips_non_managed_content() {
+        let temp = TempDir::new().expect("temp dir");
+        let plan = CliBridgePlan {
+            client: CliClient::Codex,
+            scope: BridgeScope::Project,
+            artifact: BridgeArtifactKind::MarkdownCommand,
+            file_path: temp.path().join(".codex/commands/oneshim-context.md"),
+        };
+        std::fs::create_dir_all(plan.file_path.parent().unwrap()).unwrap();
+        std::fs::write(&plan.file_path, "user managed command").unwrap();
+
+        let report = revoke_bridge_files(temp.path(), false);
+        assert!(report.errors.is_empty());
+        assert_eq!(report.removed_files.len(), 0);
+        assert_eq!(report.skipped_files.len(), 3);
+        assert!(plan.file_path.exists());
     }
 }

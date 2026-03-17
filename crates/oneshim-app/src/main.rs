@@ -303,12 +303,11 @@ async fn main_async(args: Args) -> Result<()> {
         info!("server: {}", config.server.base_url);
     }
 
-    let platform_connected_mode =
-        !args.offline && config.ai_provider.access_mode == AiAccessMode::PlatformConnected;
+    let remote_sync_enabled = false;
     info!(
         access_mode = ?config.ai_provider.access_mode,
-        platform_sync_enabled = platform_connected_mode,
-        "evaluated platform-connected mode"
+        platform_sync_enabled = remote_sync_enabled,
+        "evaluated remote sync mode"
     );
 
     integrity_guard::run_preflight(&config, args.offline)?;
@@ -363,7 +362,7 @@ async fn main_async(args: Args) -> Result<()> {
             token_manager.clone(),
         )?);
 
-        if platform_connected_mode {
+        if remote_sync_enabled {
             let email =
                 std::env::var("ONESHIM_EMAIL").unwrap_or_else(|_| "user@example.com".to_string());
             let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
@@ -392,7 +391,7 @@ async fn main_async(args: Args) -> Result<()> {
 
     #[cfg(all(feature = "server", not(feature = "grpc")))]
     {
-        if platform_connected_mode {
+        if remote_sync_enabled {
             let email =
                 std::env::var("ONESHIM_EMAIL").unwrap_or_else(|_| "user@example.com".to_string());
             let password = std::env::var("ONESHIM_PASSWORD").unwrap_or_default();
@@ -410,7 +409,7 @@ async fn main_async(args: Args) -> Result<()> {
 
     #[cfg(not(feature = "server"))]
     {
-        if !platform_connected_mode {
+        if !remote_sync_enabled {
             info!("login: standalone/ mode");
         }
     }
@@ -703,7 +702,7 @@ async fn main_async(args: Args) -> Result<()> {
     }
 
     #[cfg(feature = "server")]
-    if platform_connected_mode {
+    if remote_sync_enabled {
         let sid = session_id.clone();
         tokio::spawn(async move {
             if let Err(e) = receiver.run(&sid).await {
@@ -728,7 +727,7 @@ async fn main_async(args: Args) -> Result<()> {
     if args.offline {
         info!("ONESHIM offline mode execution in progress (Ctrl+C ended)");
         info!("monitoring: {}ms", args.poll_interval);
-    } else if platform_connected_mode {
+    } else if remote_sync_enabled {
         info!("ONESHIM client execution in progress (, Ctrl+C ended)");
     } else {
         info!("ONESHIM client execution in progress (standalone mode, Ctrl+C ended)");

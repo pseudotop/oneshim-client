@@ -1,8 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { OAuthConnectionStatus, OAuthFlowStatus } from '../../api/client'
-import { oauthCancelFlow, oauthConnectionStatus, oauthFlowStatus, oauthRevoke, oauthStartFlow } from '../../api/client'
-import { Button, Card } from '../../components/ui'
+import type {
+  FeatureCapabilitySnapshot,
+  OAuthConnectionStatus,
+  OAuthFlowStatus,
+  ProviderSurfaceSpec,
+  SecretBackendCapabilities,
+} from '../../api/client'
+import {
+  oauthCancelFlow,
+  oauthConnectionStatus,
+  oauthFlowStatus,
+  oauthRevoke,
+  oauthStartFlow,
+} from '../../api/client'
+import { Badge, Button, Card } from '../../components/ui'
+import {
+  findFeatureCapability,
+  maturityBadgeColor,
+  providerSurfaceMaturity,
+  providerSurfaceStatusCopyKey,
+} from '../../features/featureCapabilities'
 import { isOAuthPanelAvailable } from './oauth-panel-support'
 
 type ExpiryLevel = 'ok' | 'warning' | 'critical' | 'none';
@@ -27,6 +45,7 @@ type PanelState =
   | { phase: 'unavailable' }
   | { phase: 'loading' }
   | { phase: 'disconnected' }
+  | { phase: 'reauth_required'; status: OAuthConnectionStatus }
   | { phase: 'connecting'; authUrl: string; flowId: string }
   | { phase: 'connected'; status: OAuthConnectionStatus }
   | { phase: 'error'; detail?: string; message: string }
@@ -37,9 +56,22 @@ const POLL_TIMEOUT_MS = 120000
 interface OAuthConnectionPanelProps {
   providerId: string
   providerName: string
+  oauthSurface?: ProviderSurfaceSpec
+  preferredCliSurface?: ProviderSurfaceSpec
+  featureSnapshot?: FeatureCapabilitySnapshot | null
+  secretBackendCapabilities?: SecretBackendCapabilities | null
+  onUsePreferredCli?: () => void
 }
 
-export default function OAuthConnectionPanel({ providerId, providerName }: OAuthConnectionPanelProps) {
+export default function OAuthConnectionPanel({
+  providerId,
+  providerName,
+  oauthSurface,
+  preferredCliSurface,
+  featureSnapshot,
+  secretBackendCapabilities,
+  onUsePreferredCli,
+}: OAuthConnectionPanelProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<PanelState>({ phase: 'loading' })
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -81,16 +113,52 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
       return
     }
     try {
+      if (!oauthSurface) {
+        setState({ phase: 'error', message: t('settingsOAuth.unavailable') })
+        return
+      }
+
+      if (!secretBackendCapabilities) {
+        setState({ phase: 'loading' })
+        return
+      }
+
+      const oauthFeature = findFeatureCapability(featureSnapshot, oauthSurface.surface_id)
+      const statusCopyKey = providerSurfaceStatusCopyKey(oauthSurface, featureSnapshot)
+      if (
+        !secretBackendCapabilities.oauth_available ||
+        !secretBackendCapabilities.os_secret_store_available ||
+        oauthFeature?.availability === 'unavailable'
+      ) {
+        setState({
+          phase: 'error',
+          message: statusCopyKey != null ? t(statusCopyKey) : t('settingsOAuth.unavailable'),
+        })
+        return
+      }
       const status = await oauthConnectionStatus(providerId)
       if (status.connected) {
         setState({ phase: 'connected', status })
+      } else if (status.has_refresh_token) {
+        setState({ phase: 'reauth_required', status })
       } else {
         setState({ phase: 'disconnected' })
       }
     } catch (err) {
       setState(toErrorState(err))
     }
-  }, [providerId, toErrorState])
+  }, [featureSnapshot, oauthSurface, providerId, secretBackendCapabilities, t, toErrorState])
+
+  const oauthFeature = oauthSurface ? findFeatureCapability(featureSnapshot, oauthSurface.surface_id) : null
+  const preferredCliFeature = preferredCliSurface
+    ? findFeatureCapability(featureSnapshot, preferredCliSurface.surface_id)
+    : null
+  const maturityLabel = t(
+    `featureCapability.maturity.${providerSurfaceMaturity(oauthSurface, featureSnapshot)}`,
+  )
+  const preferredCliMessage =
+    preferredCliFeature?.status_copy_key != null ? t(preferredCliFeature.status_copy_key) : null
+  const setupMessage = oauthFeature?.setup_copy_key ? t(oauthFeature.setup_copy_key) : null
 
   useEffect(() => {
     refreshStatus()
@@ -173,10 +241,58 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
         <h4 className="font-medium text-content-strong text-sm">
           {providerName} {t('settingsOAuth.title')}
         </h4>
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 text-xs dark:bg-amber-900/30 dark:text-amber-300">
-          {t('settingsOAuth.experimental')}
-        </span>
+        <Badge color={oauthFeature ? maturityBadgeColor(oauthFeature.maturity) : 'warning'} size="sm">
+          {maturityLabel}
+        </Badge>
       </div>
+
+      {preferredCliFeature?.preferred && preferredCliMessage && (
+        <div className="space-y-1 rounded-lg border border-muted bg-surface-muted p-3">
+          <div className="flex items-center gap-2">
+            <Badge color="info" size="sm">
+              {t('featureCapability.preferredPath')}
+            </Badge>
+            <span className="text-content-secondary text-xs">
+              {t(`featureCapability.availability.${preferredCliFeature.availability}`)}
+            </span>
+          </div>
+          <p className="text-content-secondary text-xs">{preferredCliMessage}</p>
+          {onUsePreferredCli && preferredCliSurface && (
+            <Button type="button" variant="secondary" size="sm" onClick={onUsePreferredCli}>
+              {t('settingsOAuth.switchToCli', { surface: preferredCliSurface.display_name })}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {setupMessage && (
+        <div className="space-y-2 rounded-lg border border-muted bg-surface-muted p-3">
+          <p className="text-content-muted text-xs">{t('featureCapability.setupTitle')}</p>
+          <p className="text-content-secondary text-xs">{setupMessage}</p>
+          {oauthFeature?.configuration_env_vars && oauthFeature.configuration_env_vars.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-content-muted text-xs">{t('featureCapability.setupEnvVars')}</p>
+              <div className="flex flex-wrap gap-2">
+                {oauthFeature.configuration_env_vars.map((envVar) => (
+                  <Badge key={envVar} color="default" size="sm">
+                    <code>{envVar}</code>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {oauthFeature?.setup_docs_url && (
+            <a
+              href={oauthFeature.setup_docs_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-accent text-xs underline"
+            >
+              {t('featureCapability.openSetupDocs')}
+            </a>
+          )}
+        </div>
+      )}
 
       {state.phase === 'loading' && <p className="text-content-secondary text-sm">{t('settingsOAuth.loading')}</p>}
 
@@ -190,6 +306,25 @@ export default function OAuthConnectionPanel({ providerId, providerName }: OAuth
           <Button type="button" variant="primary" size="sm" onClick={handleConnect}>
             {t('settingsOAuth.connect')}
           </Button>
+        </div>
+      )}
+
+      {state.phase === 'reauth_required' && (
+        <div className="space-y-2">
+          <p className="text-content-secondary text-sm">{t('settingsOAuth.reauthDescription')}</p>
+          {state.status.expires_at && (
+            <p className="text-content-secondary text-xs">
+              {t('settingsOAuth.expiresAt')}: {new Date(state.status.expires_at).toLocaleString()}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="primary" size="sm" onClick={handleConnect}>
+              {t('settingsOAuth.reauthRequired')}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={handleDisconnect}>
+              {t('settingsOAuth.disconnect')}
+            </Button>
+          </div>
         </div>
       )}
 

@@ -525,6 +525,7 @@ mod tests {
             steps: vec![],
             builtin: true,
             platform: None,
+            ai_profile_id: None,
         };
         let result = controller.run_workflow(&preset).await;
         assert!(result.is_err());
@@ -549,6 +550,7 @@ mod tests {
             }],
             builtin: true,
             platform: None,
+            ai_profile_id: None,
         };
         let result = controller.run_workflow(&preset).await;
         assert!(result.is_err());
@@ -587,6 +589,7 @@ mod tests {
             }],
             builtin: true,
             platform: None,
+            ai_profile_id: None,
         };
 
         let result = controller.run_workflow(&preset).await.unwrap();
@@ -867,6 +870,7 @@ mod tests {
             steps: vec![], // 0 steps
             builtin: true,
             platform: None,
+            ai_profile_id: None,
         };
 
         let result = controller.run_workflow(&preset).await.unwrap();
@@ -927,6 +931,7 @@ mod tests {
             ],
             builtin: true,
             platform: None,
+            ai_profile_id: None,
         };
 
         let result = controller.run_workflow(&preset).await.unwrap();
@@ -975,6 +980,7 @@ mod tests {
             }],
             builtin: false,
             platform: None,
+            ai_profile_id: None,
         };
 
         let result = controller.run_workflow(&preset).await.unwrap();

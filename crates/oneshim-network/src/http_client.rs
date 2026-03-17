@@ -10,6 +10,7 @@ use std::time::Duration;
 use tracing::{debug, warn};
 
 use crate::auth::TokenManager;
+use crate::resilience::{extract_retry_after, jittered_backoff_delay};
 
 const DEFAULT_MAX_RETRIES: u32 = 3;
 
@@ -137,6 +138,7 @@ impl HttpApiClient {
         }
 
         let status_code = status.as_u16();
+        let retry_after = extract_retry_after(&resp);
         let text = resp.text().await.unwrap_or_else(|e| {
             tracing::warn!("response read failure: {e}");
             String::new()
@@ -148,12 +150,9 @@ impl HttpApiClient {
                 resource_type: "API".to_string(),
                 id: text,
             }),
-            429 => {
-                let retry_after = 60;
-                Err(CoreError::RateLimit {
-                    retry_after_secs: retry_after,
-                })
-            }
+            429 => Err(CoreError::RateLimit {
+                retry_after_secs: retry_after,
+            }),
             503 => Err(CoreError::ServiceUnavailable(text)),
             _ => Err(CoreError::Internal(format!("API error ({status}): {text}"))),
         }
@@ -165,8 +164,6 @@ impl HttpApiClient {
         Fut: std::future::Future<Output = Result<T, CoreError>>,
     {
         let mut last_error = CoreError::Internal("request failure".to_string());
-        let mut delay = Duration::from_secs(1);
-
         for attempt in 0..=self.max_retries {
             match operation().await {
                 Ok(result) => return Ok(result),
@@ -175,19 +172,25 @@ impl HttpApiClient {
                         return Err(e);
                     }
 
+                    let delay = match &e {
+                        CoreError::RateLimit { retry_after_secs } => {
+                            Duration::from_secs(*retry_after_secs)
+                        }
+                        _ => jittered_backoff_delay(
+                            attempt,
+                            Duration::from_secs(1),
+                            Duration::from_secs(30),
+                        ),
+                    };
+
                     warn!(
                         "request failed (attempt {}/{}): {e}, retrying in {delay:?}",
                         attempt + 1,
                         self.max_retries + 1
                     );
 
-                    if let CoreError::RateLimit { retry_after_secs } = &e {
-                        delay = Duration::from_secs(*retry_after_secs);
-                    }
-
                     last_error = e;
                     tokio::time::sleep(delay).await;
-                    delay = (delay * 2).min(Duration::from_secs(30));
                 }
             }
         }

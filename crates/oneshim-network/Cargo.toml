@@ -15,6 +15,7 @@ grpc = ["tonic", "tonic-prost", "prost", "prost-types", "tonic-health", "tonic/t
 
 [dependencies]
 oneshim-core = { workspace = true }
+oneshim-api-contracts = { workspace = true }
 reqwest = { workspace = true }
 eventsource-stream = { workspace = true }
 tokio-tungstenite = { workspace = true }
@@ -38,6 +39,7 @@ rand = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 axum = { workspace = true }
+ed25519-dalek = { workspace = true }
 
 # gRPC (Phase 34 - 선택적 의존성)
 tonic = { workspace = true, optional = true }
@@ -52,6 +54,8 @@ tokio-test = { workspace = true }
 tracing-subscriber = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 criterion = { workspace = true }
+oneshim-storage = { workspace = true }
+tempfile = { workspace = true }
 
 [[bench]]
 name = "compression_bench"

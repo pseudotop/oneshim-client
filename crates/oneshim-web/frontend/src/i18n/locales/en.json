@@ -155,6 +155,9 @@
     "highUsageNotification": "High Usage Notification (%)",
     "saved": "Settings saved.",
     "saveFailed": "Failed to save settings",
+    "unsavedChanges": "Unsaved changes",
+    "unsavedChangesHint": "Save the current settings before leaving this page.",
+    "revertChanges": "Revert",
     "dataExport": "Data Export",
     "exportFormat": "Format",
     "exportMetrics": "Export Metrics",
@@ -200,6 +203,7 @@
     "portRestart": "Requires app restart to take effect",
     "allowExternal": "Allow External Access",
     "allowExternalDesc": "Allow connections from IPs other than 127.0.0.1",
+    "allowExternalIntegrationOnly": "External access only exposes the integration API. Configure web.integration_auth_token in config.json before enabling this toggle.",
     "notifTitle": "Notification Settings",
     "notifEnabled": "Enable Notifications",
     "notifEnabledDesc": "Enable/disable all desktop notifications",
@@ -506,6 +510,15 @@
     "sourcePlatform": "Platform",
     "sourceUnknown": "Unknown",
     "presets": "Workflow Presets",
+    "aiProfile": "AI Profile",
+    "useActiveProfile": "Use active profile",
+    "profileUsesActive": "Uses active profile",
+    "profileMissing": "Missing profile: {{profileId}}",
+    "noSavedAiProfiles": "No saved AI profiles yet.",
+    "manageAiProfiles": "Manage AI profiles in Settings",
+    "builtinProfileBindingReadonly": "Built-in presets follow the currently active AI profile.",
+    "profileBindingSaved": "Updated AI profile binding for {{name}}.",
+    "profileBindingSaveError": "Could not update the AI profile binding.",
     "builtin": "Built-in",
     "steps": "steps",
     "run": "Run",
@@ -558,12 +571,63 @@
     "sandboxEnabled": "Enable Sandbox",
     "sandboxEnabledDescription": "Execute commands in an isolated environment",
     "sandboxProfile": "Sandbox Profile",
+    "sandboxProfilePermissive": "Permissive",
+    "sandboxProfileStandard": "Standard",
+    "sandboxProfileStrict": "Strict",
     "allowNetwork": "Allow Network",
     "allowNetworkDescription": "Allow network access within sandbox",
     "aiTitle": "AI Provider",
+    "accessModeLabel": "Access Path",
+    "accessModeApiKeyLabel": "Direct endpoints",
+    "accessModeApiKeyDescription": "Use direct HTTP endpoints for provider-hosted or self-hosted services. API keys are only required when the selected surface expects them.",
+    "accessModeCliLabel": "Installed provider CLI",
+    "accessModeCliDescription": "Preferred for subscription-backed products. ONESHIM will guide users through installed provider-owned CLI flows.",
+    "accessModeOAuthLabel": "Direct OAuth (experimental)",
+    "accessModeOAuthDescription": "Experimental managed OAuth path for supported provider surfaces. Prefer installed provider CLIs when available.",
+    "pathSummaryTitle": "Operational path",
+    "pathSummarySurface": "Selected surface: {{surface}}",
+    "pathExecutionLabel": "Execution path",
+    "pathPlacementLabel": "Hosting path",
+    "pathRequirementsLabel": "Requirements",
+    "pathRequirementsNone": "No extra prerequisites",
+    "pathNextStepLabel": "Readiness",
+    "requirementOsSecretStore": "OS secret store",
+    "requirementLocalServer": "{{service}} local server",
+    "requirementCli": "{{tool}} CLI",
+    "requirementLocalService": "{{service}} local service",
+    "requirementEndpoint": "{{target}} endpoint",
+    "preferredCliTitle": "Recommended product-backed path",
+    "preferredCliDescription": "Use {{surface}} when you want provider-managed auth and subscription entitlements to stay with the installed CLI.",
+    "switchToPreferredCli": "Use preferred CLI path",
+    "executionKindDirectHttp": "Direct provider HTTP API",
+    "executionKindManagedHttp": "Managed OAuth",
+    "executionKindSubprocessCli": "Installed provider CLI",
+    "placementProviderHosted": "Provider-hosted",
+    "placementSelfHosted": "Self-hosted",
+    "placementInstalledCli": "Installed CLI",
+    "placementCustomHosted": "Custom-hosted",
+    "placementDescriptionProviderHosted": "Requests go to the provider's hosted service.",
+    "placementDescriptionSelfHosted": "You operate this endpoint yourself, such as a local Ollama server.",
+    "placementDescriptionInstalledCli": "Execution runs through a provider-owned CLI installed on this machine.",
+    "placementDescriptionCustomHosted": "Requests go to a custom OpenAI-compatible endpoint you manage or proxy.",
     "ocrProvider": "OCR Provider",
     "llmProvider": "LLM Provider",
+    "providerLocal": "Local",
+    "providerRemote": "Remote",
+    "cliModeProviderSummary": "Provider CLI mode keeps OCR and LLM providers on local execution. Supported LLM workflows will use installed provider-owned CLIs through the selected surface.",
+    "oauthLlmProviderPinned": "Managed OAuth currently requires the LLM provider to stay on Remote.",
+    "providerSelectionLockedBadge": "Locked",
+    "providerSelectionLockedCli": "Installed provider CLI mode keeps the LLM provider fixed to Remote.",
+    "providerSelectionLockedOAuth": "Managed OAuth keeps the LLM provider fixed to Remote.",
+    "activeRoutingTitle": "Current active routing",
+    "activeRoutingDescription": "These are the effective OCR and LLM paths the runtime will use right now.",
+    "activePathLocal": "Local execution",
+    "activePathRemote": "Remote execution",
+    "activePathRemoteSurface": "Remote via {{surface}}",
     "dataPolicy": "External Data Policy",
+    "dataPolicyStrict": "PII Filter Strict",
+    "dataPolicyStandard": "PII Filter Standard",
+    "dataPolicyAllowFiltered": "Allow Filtered",
     "allowUnredactedExternalOcr": "Allow Unredacted OCR Upload",
     "allowUnredactedExternalOcrDescription": "Skip pre-upload PII blur for external OCR (higher quality, lower privacy).",
     "sceneActionOverrideTitle": "Scene Action Sensitive Input Override",
@@ -600,13 +664,54 @@
     "endpointPlaceholderLlm": "https://api.example.com/llm",
     "apiKey": "API Key",
     "apiKeyPlaceholder": "Enter API key...",
+    "apiKeyStoredPlaceholder": "Stored in {{backend}}",
+    "apiKeyStoredHint": "This secret is currently stored in {{backend}}. Enter a new key here to replace it.",
+    "noAuthSurfaceDescription": "This surface does not require an API key. Leave the credential field empty and connect to the local or self-hosted endpoint directly.",
+    "secretProjectionEnabled": "Allow CLI projection",
+    "secretProjectionEnabledDescription": "Permit ONESHIM-managed CLI and bridge compatibility flows for this stored secret.",
+    "backendOsSecretStore": "OS secret store",
+    "backendFileSecretStore": "file secret store",
+    "backendEnv": "environment",
+    "backendBridgeManaged": "bridge-managed backend",
+    "backendUnavailable": "unavailable backend",
     "model": "Model",
+    "modelSelectionUnsupportedSurface": "This surface does not support selecting a model explicitly. ONESHIM will use the surface's built-in OCR or provider default path.",
+    "ocrModelUnsupported": "The selected model is not known to support image-based OCR on this surface. Choose a compatible multimodal model.",
+    "ocrModelCompatibilityUnknown": "ONESHIM could not confirm OCR compatibility for {{model}} on this surface. Use a known multimodal model or verify with model discovery before saving.",
+    "ocrModelCompatibilityUnknownRejected": "ONESHIM requires a known OCR-compatible model for this surface. {{model}} is not catalogued yet, so choose a known multimodal model before saving.",
+    "llmModelUnsupported": "The selected model is not known to support this LLM surface. Choose a compatible model for the selected execution path.",
+    "llmModelCompatibilityUnknown": "ONESHIM could not confirm LLM compatibility for {{model}} on this surface. Verify the model or load the catalog before saving.",
+    "llmModelCompatibilityUnknownRejected": "ONESHIM requires a known compatible LLM model for this surface. {{model}} is not catalogued yet, so choose a known supported model before saving.",
+    "selfHostedCustomEndpointStatus": "This self-hosted surface is using a custom endpoint. Readiness was not probed for that endpoint, so verify the local server manually.",
     "timeoutSecs": "Timeout (sec)",
     "providerType": "Provider Type",
+    "providerSurfaceLabel": "Provider Surface",
+    "savedProfilesTitle": "Saved provider profiles",
+    "savedProfilesDescription": "Save the full active AI provider setup and switch between profiles without rebuilding OCR, LLM, and policy settings by hand.",
+    "savedProfilesActiveBadge": "Active profile",
+    "savedProfilesSelectLabel": "Saved profile",
+    "savedProfilesCustomOption": "Custom / unsaved configuration",
+    "savedProfilesNameLabel": "Profile name",
+    "savedProfilesNamePlaceholder": "Example: Anthropic production",
+    "savedProfilesSaveAction": "Save current profile",
+    "savedProfilesUpdateAction": "Update selected profile",
+    "savedProfilesDeleteAction": "Delete profile",
+    "savedProfilesSelectedHint": "You are editing {{name}}. Save settings to persist the current AI provider changes back into this profile.",
+    "savedProfilesCustomHint": "The current AI provider setup is custom. Save it as a named profile to reuse it later.",
+    "profileNameRequired": "Enter a profile name before saving.",
+    "profileSavedSuccess": "Saved AI provider profile {{name}}.",
+    "profileDeletedSuccess": "Deleted AI provider profile {{name}}.",
+    "noCompatibleProviderSurface": "No compatible provider surface is available for this mode.",
+    "ocrStrategyMultimodal": "This OCR surface runs through a multimodal model. Prefer image-capable models and verify compatibility before saving custom model IDs.",
+    "ocrStrategyVisionApi": "This OCR surface runs through a dedicated vision API. Model selection may be limited or unavailable depending on the endpoint.",
+    "managedOAuthSurfaceDescription": "This surface uses provider-managed OAuth. ONESHIM does not ask for an API key or editable endpoint here.",
+    "subprocessSurfaceDescription": "This surface runs through an installed provider-owned CLI. Authentication and subscription entitlements stay with the provider CLI.",
+    "subprocessExecutableHint": "Detected executable candidates: {{executables}}",
     "loadModels": "Load Models",
     "modelDiscoveryNoModels": "No models were returned for this provider configuration.",
     "modelDiscoveryMissingConfig": "Configure remote endpoint, provider, and API key first.",
-    "modelDiscoveryMissingKey": "Enter full API key to discover models."
+    "modelDiscoveryMissingKey": "Enter full API key to discover models.",
+    "modelDiscoveryUnsupportedSurface": "Model discovery is not available for the selected provider surface."
   },
   "settingsOAuth": {
     "title": "Connection",
@@ -633,7 +738,93 @@
     "statusExpired": "Token expired",
     "noRefreshToken": "No refresh token — manual re-authentication will be required when token expires",
     "reauthRequired": "Re-authentication required",
-    "reauthDescription": "Your OAuth session has expired. Please reconnect."
+    "reauthDescription": "Your OAuth session has expired. Please reconnect.",
+    "switchToCli": "Use {{surface}} instead"
+  },
+  "featureCapability": {
+    "preferredPath": "Preferred path",
+    "setupTitle": "Setup required",
+    "setupEnvVars": "Environment variables",
+    "openSetupDocs": "Open setup docs",
+    "availability": {
+      "available": "Available",
+      "unavailable": "Unavailable",
+      "partially_available": "Partially available"
+    },
+    "maturity": {
+      "stable": "Stable",
+      "beta": "Beta",
+      "experimental": "Experimental",
+      "deprecated": "Deprecated"
+    },
+    "surface": {
+      "provider_surface": {
+        "openai": {
+          "managed_oauth": {
+            "available": "This experimental managed OAuth path is available on this device. It is not the preferred setup path.",
+            "unavailable": "Direct OAuth is unavailable on this device. Desktop keychain support is required."
+          },
+          "subprocess_cli": {
+            "available": "Codex CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+            "auth_required": "Codex CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+            "partially_available": "Codex CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "unavailable": "Codex CLI is not installed or not available on PATH. Install and sign in through the provider CLI for the preferred product-backed path."
+          }
+        },
+        "anthropic": {
+          "subprocess_cli": {
+            "available": "Claude Code CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+            "auth_required": "Claude Code CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+            "partially_available": "Claude Code CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "unavailable": "Claude Code CLI is not installed or not available on PATH."
+          }
+        },
+        "google": {
+          "managed_oauth": {
+            "available": "Google OAuth is available on this device. Configure a Desktop OAuth client ID to connect Vision OCR without storing an API key.",
+            "unavailable": "Google OAuth is unavailable on this device. Desktop keychain support and a configured Google OAuth client ID are required.",
+            "setup": "Create or supply a Google Desktop OAuth client ID for ONESHIM, then restart the app before starting the Vision OCR sign-in flow."
+          },
+          "subprocess_cli": {
+            "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+            "auth_required": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+            "partially_available": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+            "unavailable": "Gemini CLI is not installed or not available on PATH."
+          }
+        },
+        "ollama": {
+          "local_http": {
+            "available": "Ollama appears reachable on the configured local HTTP port. ONESHIM can call the self-hosted endpoint directly.",
+            "partially_available": "ONESHIM could not complete the local readiness probe for Ollama. Verify the local server and endpoint configuration.",
+            "unavailable": "Ollama was not reachable on the configured local HTTP port. Start the local server before using this self-hosted surface."
+          }
+        }
+      }
+    },
+    "providerSurface": {
+      "openaiManagedOAuth": {
+        "available": "This experimental managed OAuth path is available on this device. It is not the preferred setup path.",
+        "unavailable": "Direct OAuth is unavailable on this device. Desktop keychain support is required."
+      },
+      "openaiSubprocessCli": {
+        "available": "Codex CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+        "authRequired": "Codex CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+        "partiallyAvailable": "Codex CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+        "unavailable": "Codex CLI is not installed or not available on PATH. Install and sign in through the provider CLI for the preferred product-backed path."
+      },
+      "anthropicSubprocessCli": {
+        "available": "Claude Code CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+        "authRequired": "Claude Code CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+        "partiallyAvailable": "Claude Code CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+        "unavailable": "Claude Code CLI is not installed or not available on PATH."
+      },
+      "googleSubprocessCli": {
+        "available": "Gemini CLI is installed and authenticated. ONESHIM can use the provider-owned CLI path for supported workflows on this device.",
+        "authRequired": "Gemini CLI is installed but not authenticated yet. Run the provider-owned CLI sign-in flow first, then return to this panel.",
+        "partiallyAvailable": "Gemini CLI was detected. ONESHIM can prefer the installed provider-owned CLI path when the CLI is authenticated and the requested workflow is supported.",
+        "unavailable": "Gemini CLI is not installed or not available on PATH."
+      }
+    }
   },
   "focus": {
     "title": "Focus",

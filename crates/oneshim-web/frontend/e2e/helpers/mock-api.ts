@@ -439,6 +439,12 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
     },
   ])
   await mockStaticJson(page, '**/api/focus/suggestions**', [])
+  await mockStaticJson(page, '**/api/ai/provider-surfaces**', {
+    version: 1,
+    updated_at: '2026-03-01T00:00:00Z',
+    vendors: [],
+    surfaces: [],
+  })
   await mockStaticJson(page, '**/api/automation/status**', fallbackAutomationStatus)
   await mockStaticJson(page, '**/api/automation/audit**', fallbackAuditLogs)
   await mockStaticJson(page, '**/api/automation/stats**', {
@@ -518,11 +524,6 @@ export async function mockDefaultApiFallbacks(page: Page): Promise<void> {
         error: null,
       },
     }
-  })
-  await mockStaticJson(page, '**/api/ai/providers/presets**', {
-    version: 2,
-    updated_at: '2026-02-25T09:20:00Z',
-    providers: [],
   })
   await mockDynamicJson(page, '**/api/automation/execute-scene-action', (request) => {
     const payload = request.postDataJSON() as

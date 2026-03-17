@@ -63,7 +63,7 @@ let sqlite_storage = Arc::new(SqliteStorage::open(...)?);
 
 // Server integration (compiled only with feature = "server")
 #[cfg(feature = "server")]
-if platform_connected_mode {
+if remote_sync_enabled {
     let token_manager = Arc::new(TokenManager::new(...));
     let api_client = Arc::new(HttpApiClient::new(...)?);
 }

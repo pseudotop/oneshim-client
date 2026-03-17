@@ -112,7 +112,7 @@ export default function Dashboard() {
       {/* UI note */}
       <div id="section-overview" className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center space-x-4">
-          <h1 className={cn(typography.h1, colors.text.primary)}>{t('dashboard.title')}</h1>
+          <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('dashboard.title')}</h1>
           <ConnectionIndicator status={status} t={t} />
         </div>
         <DateRangePicker onRangeChange={handleRangeChange} />

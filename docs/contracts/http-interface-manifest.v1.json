@@ -1,7 +1,7 @@
 {
   "schema_version": "http.interface.manifest.v1",
   "document_version": 1,
-  "updated_at": "2026-02-26",
+  "updated_at": "2026-03-16",
   "source": {
     "routes_file": "crates/oneshim-web/src/routes.rs",
     "contracts_crate": "crates/oneshim-api-contracts"
@@ -71,8 +71,33 @@
     {
       "module": "ai_providers",
       "operations": [
-        { "method": "GET", "path": "/api/ai/providers/presets" },
+        { "method": "GET", "path": "/api/ai/provider-surfaces" },
         { "method": "POST", "path": "/api/ai/providers/models" }
+      ]
+    },
+    {
+      "module": "integration_api",
+      "operations": [
+        { "method": "GET", "path": "/api/integration/status" },
+        { "method": "GET", "path": "/api/integration/audit" },
+        { "method": "GET", "path": "/api/integration/auth/status" },
+        { "method": "POST", "path": "/api/integration/auth/device/start" },
+        { "method": "POST", "path": "/api/integration/auth/device/poll" },
+        { "method": "POST", "path": "/api/integration/auth/device/cancel" },
+        { "method": "POST", "path": "/api/integration/auth/reset" },
+        { "method": "GET", "path": "/api/integration/inbox" },
+        { "method": "POST", "path": "/api/integration/inbox/refresh" },
+        { "method": "POST", "path": "/api/integration/inbox/{prompt_id}/ack" },
+        { "method": "POST", "path": "/api/integration/inbox/{prompt_id}/dismiss" }
+      ]
+    },
+    {
+      "module": "integration",
+      "operations": [
+        { "method": "GET", "path": "/integration/v1/status" },
+        { "method": "GET", "path": "/integration/v1/audit" },
+        { "method": "GET", "path": "/integration/v1/ai/provider-surfaces" },
+        { "method": "POST", "path": "/integration/v1/ai/providers/models" }
       ]
     },
     {

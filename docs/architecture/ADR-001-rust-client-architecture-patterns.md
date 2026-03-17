@@ -87,9 +87,9 @@ impl SuggestionReceiver {
 }
 ```
 
-**Wiring location**: Manual wiring in `oneshim-app/src/main.rs` (or `app.rs`). No DI framework used.
+**Wiring location**: Manual wiring in the `oneshim-app` composition root (`src-tauri/src/main.rs`, `src-tauri/src/setup.rs`, and dedicated app-layer builders/coordinators). No DI framework used.
 
-**Rationale**: The Rust ecosystem doesn't need a DI framework like Spring/Guice. Constructor injection is validated at compile time and makes mock injection easy during testing.
+**Rationale**: The Rust ecosystem doesn't need a DI framework like Spring/Guice. Constructor injection is validated at compile time and makes mock injection easy during testing. ADR-009 further constrains how the composition root is kept thin over time.
 
 ### 4. Module Visibility Rules
 
@@ -142,12 +142,13 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-suggestion
               ←  oneshim-automation
               ←  oneshim-web          ←  oneshim-api-contracts
-              ←  src-tauri            ←  (all crates)
+              ←  oneshim-ui
+              ←  src-tauri            ←  (all runtime adapters)
 ```
 
 **Forbidden**: Direct dependencies between adapter crates (e.g., oneshim-monitor → oneshim-storage). All cross-crate communication must go through `oneshim-core` traits.
 
-**Exceptions**: `oneshim-web → oneshim-storage` and `oneshim-web → oneshim-automation` are documented violations scheduled for migration per §7.
+**Exceptions**: Existing legacy adapter-to-adapter edges that are already present in the workspace remain explicit exceptions and must not expand without architecture review. The current delivery/composition baseline is constrained further by ADR-009.
 
 ### 7. Port Location Rules
 
@@ -157,8 +158,9 @@ Port traits defined inside adapter crates are only allowed when:
 - The trait is used exclusively within that single adapter crate
 - The trait represents an internal abstraction, not a cross-crate contract
 
-**Current violations** (to be migrated):
-- `WebStorage` trait in `oneshim-web/src/storage_port.rs` → should move to `oneshim-core/src/ports/web_storage.rs`
+**Current status**:
+- `WebStorage` is canonical in `oneshim-core/src/ports/web_storage.rs`.
+- `oneshim-web/src/storage_port.rs` remains only as a crate-local re-export shim and is not a canonical port definition.
 
 **Concrete type leaks**: Adapter crate state structs (e.g., `AppState`) MUST reference port traits via `Arc<dyn PortTrait>`, never concrete adapter types from other crates.
 
@@ -238,3 +240,4 @@ test_storage_service_contract!(SqliteStorage::open_in_memory(30));
 - All code follows these patterns from Phase 1
 - Traits/models implemented in `oneshim-core` serve as contracts
 - This ADR must be referenced when adding new crates
+- ADR-009 defines the accepted client baseline for delivery-layer, composition-root, integration-plane, and AI/provider structure on top of these core rules

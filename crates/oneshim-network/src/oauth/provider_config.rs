@@ -22,6 +22,9 @@ pub struct OAuthProviderConfig {
     ///
     /// Ref: `openai/codex` `codex-rs/core/src/model_provider_info.rs`
     pub api_base_url: String,
+    /// Provider-specific query parameters that must be included when opening
+    /// the authorization URL.
+    pub authorization_extra_params: Vec<(String, String)>,
 }
 
 impl OAuthProviderConfig {
@@ -52,6 +55,30 @@ impl OAuthProviderConfig {
             // ChatGPT OAuth tokens use the ChatGPT backend, not the standard API.
             // Ref: model_provider_info.rs → AuthMode::Chatgpt → chatgpt.com/backend-api/codex
             api_base_url: "https://chatgpt.com/backend-api/codex".into(),
+            authorization_extra_params: Vec::new(),
+        }
+    }
+
+    /// Google Cloud Vision native-app OAuth preset.
+    ///
+    /// This requires an app-owned Desktop OAuth client ID created in Google Cloud.
+    /// The Vision API itself accepts bearer tokens, but Google does not provide a
+    /// shared public client ID for third-party desktop apps.
+    pub fn google_cloud_vision(client_id: impl Into<String>) -> Self {
+        Self {
+            provider_id: "google".into(),
+            issuer: "https://accounts.google.com".into(),
+            client_id: client_id.into(),
+            authorization_endpoint: "https://accounts.google.com/o/oauth2/v2/auth".into(),
+            token_endpoint: "https://oauth2.googleapis.com/token".into(),
+            scopes: vec!["https://www.googleapis.com/auth/cloud-platform".into()],
+            callback_port: 1456,
+            callback_path: "/auth/callback".into(),
+            api_base_url: "https://vision.googleapis.com/v1/images:annotate".into(),
+            authorization_extra_params: vec![
+                ("access_type".into(), "offline".into()),
+                ("include_granted_scopes".into(), "true".into()),
+            ],
         }
     }
 
@@ -70,21 +97,23 @@ impl OAuthProviderConfig {
     pub fn authorization_url(&self, state: &str, pkce_challenge: &str) -> String {
         let scope = self.scopes.join(" ");
         let redirect = self.redirect_uri();
-        format!(
-            "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256",
-            self.authorization_endpoint,
-            urlencoding(&self.client_id),
-            urlencoding(&redirect),
-            urlencoding(&scope),
-            urlencoding(state),
-            urlencoding(pkce_challenge),
-        )
+        let mut url = url::Url::parse(&self.authorization_endpoint)
+            .expect("OAuth authorization endpoint must be a valid URL");
+        {
+            let mut query = url.query_pairs_mut();
+            query.append_pair("response_type", "code");
+            query.append_pair("client_id", &self.client_id);
+            query.append_pair("redirect_uri", &redirect);
+            query.append_pair("scope", &scope);
+            query.append_pair("state", state);
+            query.append_pair("code_challenge", pkce_challenge);
+            query.append_pair("code_challenge_method", "S256");
+            for (key, value) in &self.authorization_extra_params {
+                query.append_pair(key, value);
+            }
+        }
+        url.into()
     }
-}
-
-/// Percent-encode a string for URL query parameters.
-fn urlencoding(s: &str) -> String {
-    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
 #[cfg(test)]
@@ -134,6 +163,31 @@ mod tests {
     fn openai_preset_has_chatgpt_api_base_url() {
         let config = OAuthProviderConfig::openai_codex();
         assert_eq!(config.api_base_url, "https://chatgpt.com/backend-api/codex");
+    }
+
+    #[test]
+    fn google_preset_has_expected_endpoints() {
+        let config = OAuthProviderConfig::google_cloud_vision("desktop-client-id");
+        assert_eq!(
+            config.authorization_endpoint,
+            "https://accounts.google.com/o/oauth2/v2/auth"
+        );
+        assert_eq!(config.token_endpoint, "https://oauth2.googleapis.com/token");
+        assert_eq!(config.callback_port, 1456);
+        assert_eq!(
+            config.api_base_url,
+            "https://vision.googleapis.com/v1/images:annotate"
+        );
+    }
+
+    #[test]
+    fn google_authorization_url_includes_offline_access_hint() {
+        let config = OAuthProviderConfig::google_cloud_vision("desktop-client-id");
+        let url = config.authorization_url("state", "challenge");
+
+        assert!(url.contains("access_type=offline"));
+        assert!(url.contains("include_granted_scopes=true"));
+        assert!(url.contains("client_id=desktop-client-id"));
     }
 
     #[test]

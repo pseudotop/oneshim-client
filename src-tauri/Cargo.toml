@@ -30,6 +30,7 @@ oneshim-network = { workspace = true, optional = true }
 oneshim-storage = { workspace = true }
 oneshim-suggestion = { workspace = true }
 oneshim-web = { workspace = true }
+oneshim-api-contracts = { workspace = true }
 
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -47,6 +48,7 @@ ed25519-dalek = { workspace = true }
 directories = { workspace = true }
 parking_lot = { workspace = true }
 sysinfo = { workspace = true }
+tempfile = { workspace = true }
 
 # 자동 업데이트
 self_update = { workspace = true }
@@ -104,6 +106,5 @@ base64 = { workspace = true }
 uuid = { workspace = true }
 mockito = { workspace = true }
 tokio-test = { workspace = true }
-tempfile = { workspace = true }
 axum = { workspace = true }
 futures = { workspace = true }

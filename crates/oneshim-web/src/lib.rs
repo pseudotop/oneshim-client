@@ -32,11 +32,21 @@ pub mod storage_port;
 pub mod update_control;
 
 use crate::storage_port::WebStorage;
+use axum::extract::{ConnectInfo, Request, State};
+use axum::middleware::{self, Next};
+use axum::response::IntoResponse;
+use axum::response::Response;
 use axum::Router;
-use oneshim_core::config::WebConfig;
+use oneshim_api_contracts::integration::IntegrationOutboundRuntimeStatus;
+use oneshim_core::config::{CredentialBackendKind, WebConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
+use oneshim_core::ports::integration::{
+    IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
+    IntegrationOutboxPort, IntegrationRuntimeTelemetryPort, IntegrationSessionPort,
+};
+use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -55,6 +65,7 @@ pub use oneshim_core::config::WebConfig as CoreWebConfig;
 const EVENT_CHANNEL_CAPACITY: usize = 256;
 
 const MAX_PORT_ATTEMPTS: u16 = 10;
+const INTEGRATION_TOKEN_HEADER: &str = "x-oneshim-integration-token";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -62,9 +73,42 @@ pub struct AppState {
     pub frames_dir: Option<std::path::PathBuf>,
     pub event_tx: broadcast::Sender<RealtimeEvent>,
     pub config_manager: Option<ConfigManager>,
+    pub default_secret_backend_kind: CredentialBackendKind,
+    pub secret_store: Option<Arc<dyn SecretStore>>,
+    pub secret_stores: Option<SecretStoreSet>,
     pub audit_logger: Option<Arc<dyn AuditLogPort>>,
     pub automation_controller: Option<Arc<dyn AutomationPort>>,
     pub ai_runtime_status: Option<AiRuntimeStatus>,
+    pub integration_runtime_status: Option<IntegrationOutboundRuntimeStatus>,
+    pub integration_auth: Option<Arc<dyn IntegrationAuthPort>>,
+    pub integration_session: Option<Arc<dyn IntegrationSessionPort>>,
+    pub integration_outbox: Option<Arc<dyn IntegrationOutboxPort>>,
+    pub integration_inbox: Option<Arc<dyn IntegrationInboxPort>>,
+    pub integration_inbox_store: Option<Arc<dyn IntegrationInboxStorePort>>,
+    pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
+    pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
+    pub update_control: Option<update_control::UpdateControl>,
+}
+
+#[derive(Clone, Default)]
+pub struct WebServerRuntimeBindings {
+    pub event_tx: Option<broadcast::Sender<RealtimeEvent>>,
+    pub frames_dir: Option<std::path::PathBuf>,
+    pub config_manager: Option<ConfigManager>,
+    pub default_secret_backend_kind: Option<CredentialBackendKind>,
+    pub secret_store: Option<Arc<dyn SecretStore>>,
+    pub secret_stores: Option<SecretStoreSet>,
+    pub audit_logger: Option<Arc<dyn AuditLogPort>>,
+    pub automation_controller: Option<Arc<dyn AutomationPort>>,
+    pub ai_runtime_status: Option<AiRuntimeStatus>,
+    pub integration_runtime_status: Option<IntegrationOutboundRuntimeStatus>,
+    pub integration_auth: Option<Arc<dyn IntegrationAuthPort>>,
+    pub integration_session: Option<Arc<dyn IntegrationSessionPort>>,
+    pub integration_outbox: Option<Arc<dyn IntegrationOutboxPort>>,
+    pub integration_inbox: Option<Arc<dyn IntegrationInboxPort>>,
+    pub integration_inbox_store: Option<Arc<dyn IntegrationInboxStorePort>>,
+    pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
+    pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
     pub update_control: Option<update_control::UpdateControl>,
 }
 
@@ -85,9 +129,20 @@ impl WebServer {
                 frames_dir: None,
                 event_tx,
                 config_manager: None,
+                default_secret_backend_kind: CredentialBackendKind::Unavailable,
+                secret_store: None,
+                secret_stores: None,
                 audit_logger: None,
                 automation_controller: None,
                 ai_runtime_status: None,
+                integration_runtime_status: None,
+                integration_auth: None,
+                integration_session: None,
+                integration_outbox: None,
+                integration_inbox: None,
+                integration_inbox_store: None,
+                integration_audit: None,
+                integration_runtime_telemetry: None,
                 update_control: None,
             },
             bound_port_state: None,
@@ -105,6 +160,24 @@ impl WebServer {
         self
     }
 
+    pub fn with_default_secret_backend_kind(
+        mut self,
+        default_secret_backend_kind: CredentialBackendKind,
+    ) -> Self {
+        self.state.default_secret_backend_kind = default_secret_backend_kind;
+        self
+    }
+
+    pub fn with_secret_store(mut self, secret_store: Arc<dyn SecretStore>) -> Self {
+        self.state.secret_store = Some(secret_store);
+        self
+    }
+
+    pub fn with_secret_stores(mut self, secret_stores: SecretStoreSet) -> Self {
+        self.state.secret_stores = Some(secret_stores);
+        self
+    }
+
     pub fn with_audit_logger(mut self, logger: Arc<dyn AuditLogPort>) -> Self {
         self.state.audit_logger = Some(logger);
         self
@@ -117,6 +190,47 @@ impl WebServer {
 
     pub fn with_ai_runtime_status(mut self, status: AiRuntimeStatus) -> Self {
         self.state.ai_runtime_status = Some(status);
+        self
+    }
+
+    pub fn with_integration_runtime_status(
+        mut self,
+        status: IntegrationOutboundRuntimeStatus,
+    ) -> Self {
+        self.state.integration_runtime_status = Some(status);
+        self
+    }
+
+    pub fn with_integration_auth(mut self, auth: Arc<dyn IntegrationAuthPort>) -> Self {
+        self.state.integration_auth = Some(auth);
+        self
+    }
+
+    pub fn with_integration_session(mut self, session: Arc<dyn IntegrationSessionPort>) -> Self {
+        self.state.integration_session = Some(session);
+        self
+    }
+
+    pub fn with_integration_outbox(mut self, outbox: Arc<dyn IntegrationOutboxPort>) -> Self {
+        self.state.integration_outbox = Some(outbox);
+        self
+    }
+
+    pub fn with_integration_inbox(mut self, inbox: Arc<dyn IntegrationInboxPort>) -> Self {
+        self.state.integration_inbox = Some(inbox);
+        self
+    }
+
+    pub fn with_integration_inbox_store(
+        mut self,
+        inbox_store: Arc<dyn IntegrationInboxStorePort>,
+    ) -> Self {
+        self.state.integration_inbox_store = Some(inbox_store);
+        self
+    }
+
+    pub fn with_integration_audit(mut self, audit: Arc<dyn IntegrationAuditPort>) -> Self {
+        self.state.integration_audit = Some(audit);
         self
     }
 
@@ -144,6 +258,64 @@ impl WebServer {
         self
     }
 
+    pub fn with_runtime_bindings(mut self, bindings: WebServerRuntimeBindings) -> Self {
+        if let Some(event_tx) = bindings.event_tx {
+            self.state.event_tx = event_tx;
+        }
+        if let Some(frames_dir) = bindings.frames_dir {
+            self.state.frames_dir = Some(frames_dir);
+        }
+        if let Some(config_manager) = bindings.config_manager {
+            self.state.config_manager = Some(config_manager);
+        }
+        if let Some(default_secret_backend_kind) = bindings.default_secret_backend_kind {
+            self.state.default_secret_backend_kind = default_secret_backend_kind;
+        }
+        if let Some(secret_store) = bindings.secret_store {
+            self.state.secret_store = Some(secret_store);
+        }
+        if let Some(secret_stores) = bindings.secret_stores {
+            self.state.secret_stores = Some(secret_stores);
+        }
+        if let Some(audit_logger) = bindings.audit_logger {
+            self.state.audit_logger = Some(audit_logger);
+        }
+        if let Some(automation_controller) = bindings.automation_controller {
+            self.state.automation_controller = Some(automation_controller);
+        }
+        if let Some(ai_runtime_status) = bindings.ai_runtime_status {
+            self.state.ai_runtime_status = Some(ai_runtime_status);
+        }
+        if let Some(integration_runtime_status) = bindings.integration_runtime_status {
+            self.state.integration_runtime_status = Some(integration_runtime_status);
+        }
+        if let Some(integration_auth) = bindings.integration_auth {
+            self.state.integration_auth = Some(integration_auth);
+        }
+        if let Some(integration_session) = bindings.integration_session {
+            self.state.integration_session = Some(integration_session);
+        }
+        if let Some(integration_outbox) = bindings.integration_outbox {
+            self.state.integration_outbox = Some(integration_outbox);
+        }
+        if let Some(integration_inbox) = bindings.integration_inbox {
+            self.state.integration_inbox = Some(integration_inbox);
+        }
+        if let Some(integration_inbox_store) = bindings.integration_inbox_store {
+            self.state.integration_inbox_store = Some(integration_inbox_store);
+        }
+        if let Some(integration_audit) = bindings.integration_audit {
+            self.state.integration_audit = Some(integration_audit);
+        }
+        if let Some(integration_runtime_telemetry) = bindings.integration_runtime_telemetry {
+            self.state.integration_runtime_telemetry = Some(integration_runtime_telemetry);
+        }
+        if let Some(update_control) = bindings.update_control {
+            self.state.update_control = Some(update_control);
+        }
+        self
+    }
+
     /// TCP 바인딩 없이 Router만 반환 — Tauri 커스텀 프로토콜 등에서 사용
     pub fn build_router(state: AppState) -> Router {
         use axum::http::HeaderValue;
@@ -167,9 +339,16 @@ impl WebServer {
             .allow_methods(Any)
             .allow_headers(Any);
 
+        let internal_api =
+            routes::api_routes().route_layer(middleware::from_fn(require_loopback_client));
+        let integration_api = routes::integration_routes().route_layer(
+            middleware::from_fn_with_state(state.clone(), require_integration_auth),
+        );
+
         Router::new()
-            .nest("/api", routes::api_routes())
-            .fallback(embedded::serve_static)
+            .nest("/api", internal_api)
+            .nest("/integration/v1", integration_api)
+            .fallback(loopback_only_static)
             .layer(cors)
             .layer(TraceLayer::new_for_http())
             .with_state(state)
@@ -183,9 +362,19 @@ impl WebServer {
             mut bound_port_notifier,
         } = self;
 
-        let host = if config.allow_external {
+        let integration_auth_configured = config
+            .integration_auth_token
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty());
+        let host = if config.allow_external && integration_auth_configured {
             "0.0.0.0"
         } else {
+            if config.allow_external && !integration_auth_configured {
+                warn!(
+                    "External access requested but web.integration_auth_token is not configured; falling back to loopback-only binding"
+                );
+            }
             "127.0.0.1"
         };
 
@@ -222,19 +411,22 @@ impl WebServer {
                     }
                     info!("server started: http://{}", addr);
 
-                    axum::serve(listener, app)
-                        .with_graceful_shutdown(async move {
-                            loop {
-                                if *shutdown_rx.borrow() {
-                                    info!("server ended received");
-                                    break;
-                                }
-                                if shutdown_rx.changed().await.is_err() {
-                                    break;
-                                }
+                    axum::serve(
+                        listener,
+                        app.into_make_service_with_connect_info::<SocketAddr>(),
+                    )
+                    .with_graceful_shutdown(async move {
+                        loop {
+                            if *shutdown_rx.borrow() {
+                                info!("server ended received");
+                                break;
                             }
-                        })
-                        .await?;
+                            if shutdown_rx.changed().await.is_err() {
+                                break;
+                            }
+                        }
+                    })
+                    .await?;
 
                     info!("server ended");
                     return Ok(());
@@ -272,10 +464,103 @@ impl WebServer {
     }
 }
 
+async fn require_loopback_client(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if addr.ip().is_loopback() {
+        return next.run(request).await;
+    }
+
+    crate::error::ApiError::Forbidden(
+        "The internal /api surface is available only from loopback clients.".to_string(),
+    )
+    .into_response()
+}
+
+async fn require_integration_auth(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(config_manager) = state.config_manager.as_ref() else {
+        return crate::error::ApiError::ServiceUnavailable(
+            "Integration API is unavailable because config management is not initialized."
+                .to_string(),
+        )
+        .into_response();
+    };
+
+    let expected_token = config_manager
+        .get()
+        .web
+        .integration_auth_token
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if expected_token.is_empty() {
+        return crate::error::ApiError::ServiceUnavailable(
+            "Integration API is not configured. Set web.integration_auth_token in config.json before using external access."
+                .to_string(),
+        )
+        .into_response();
+    }
+
+    let header_token = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            request
+                .headers()
+                .get(INTEGRATION_TOKEN_HEADER)
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        });
+
+    if header_token.as_deref() != Some(expected_token.as_str()) {
+        return crate::error::ApiError::Unauthorized(
+            "Integration API requires a valid bearer token.".to_string(),
+        )
+        .into_response();
+    }
+
+    next.run(request).await
+}
+
+async fn loopback_only_static(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    uri: axum::http::Uri,
+) -> Response {
+    if addr.ip().is_loopback() {
+        return embedded::serve_static(uri).await;
+    }
+
+    crate::error::ApiError::Forbidden(
+        "The embedded dashboard is available only from loopback clients.".to_string(),
+    )
+    .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use axum::extract::connect_info::MockConnectInfo;
+    use axum::http::{Request, StatusCode};
+    use oneshim_core::config::AppConfig;
+    use oneshim_core::config_manager::ConfigManager;
     use oneshim_storage::sqlite::SqliteStorage;
+    use tempfile::tempdir;
+    use tower::ServiceExt;
 
     #[test]
     fn default_config() {
@@ -303,6 +588,57 @@ mod tests {
             WebServer::new(storage, WebConfig::default()).with_bound_port_state(bound_port_state);
 
         assert_eq!(server.url(), "http://localhost:11091");
+    }
+
+    #[test]
+    fn web_server_runtime_bindings_apply_scalar_runtime_state() {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let (event_tx, _) = broadcast::channel(16);
+        let ai_runtime_status = AiRuntimeStatus {
+            ocr_source: "remote".to_string(),
+            llm_source: "subprocess_cli".to_string(),
+            ocr_fallback_reason: None,
+            llm_fallback_reason: None,
+        };
+        let integration_runtime_status = IntegrationOutboundRuntimeStatus {
+            enabled: true,
+            runtime_telemetry: None,
+            ..IntegrationOutboundRuntimeStatus::default()
+        };
+        let frames_dir = std::path::PathBuf::from("/tmp/oneshim-web-runtime-bindings");
+
+        let server = WebServer::new(storage, WebConfig::default()).with_runtime_bindings(
+            WebServerRuntimeBindings {
+                event_tx: Some(event_tx.clone()),
+                frames_dir: Some(frames_dir.clone()),
+                default_secret_backend_kind: Some(CredentialBackendKind::Env),
+                ai_runtime_status: Some(ai_runtime_status.clone()),
+                integration_runtime_status: Some(integration_runtime_status.clone()),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(server.state.event_tx.receiver_count(), 0);
+        assert_eq!(server.state.frames_dir.as_ref(), Some(&frames_dir));
+        assert_eq!(
+            server.state.default_secret_backend_kind,
+            CredentialBackendKind::Env
+        );
+        let applied_ai_runtime_status = server.state.ai_runtime_status.as_ref().unwrap();
+        assert_eq!(
+            applied_ai_runtime_status.ocr_source,
+            ai_runtime_status.ocr_source
+        );
+        assert_eq!(
+            applied_ai_runtime_status.llm_source,
+            ai_runtime_status.llm_source
+        );
+        let applied_integration_runtime_status =
+            server.state.integration_runtime_status.as_ref().unwrap();
+        assert_eq!(
+            applied_integration_runtime_status.enabled,
+            integration_runtime_status.enabled
+        );
     }
 
     #[tokio::test]
@@ -354,5 +690,92 @@ mod tests {
             let port = base_port.saturating_add(attempt);
             assert!(port >= base_port || port == u16::MAX);
         }
+    }
+
+    fn test_state_with_config_manager(config_manager: Option<ConfigManager>) -> AppState {
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let (event_tx, _) = broadcast::channel(16);
+        AppState {
+            storage,
+            frames_dir: None,
+            event_tx,
+            config_manager,
+            default_secret_backend_kind: CredentialBackendKind::Unavailable,
+            secret_store: None,
+            secret_stores: None,
+            audit_logger: None,
+            automation_controller: None,
+            ai_runtime_status: None,
+            integration_runtime_status: None,
+            integration_auth: None,
+            integration_session: None,
+            integration_outbox: None,
+            integration_inbox: None,
+            integration_inbox_store: None,
+            integration_audit: None,
+            integration_runtime_telemetry: None,
+            update_control: None,
+        }
+    }
+
+    fn config_manager_with_integration_token(token: &str) -> ConfigManager {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        let manager = ConfigManager::with_path(config_path).unwrap();
+        let mut config = AppConfig::default_config();
+        config.web.integration_auth_token = Some(token.to_string());
+        manager.update(config).unwrap();
+        manager
+    }
+
+    #[tokio::test]
+    async fn internal_api_rejects_non_loopback_clients() {
+        let app = WebServer::build_router(test_state_with_config_manager(None)).layer(
+            MockConnectInfo(SocketAddr::from(([192, 168, 0, 10], 43000))),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ai/provider-surfaces")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn integration_api_requires_matching_token() {
+        let app = WebServer::build_router(test_state_with_config_manager(Some(
+            config_manager_with_integration_token("integration-secret"),
+        )))
+        .layer(MockConnectInfo(SocketAddr::from(([10, 0, 0, 24], 44000))));
+
+        let unauthorized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/integration/v1/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let authorized = app
+            .oneshot(
+                Request::builder()
+                    .uri("/integration/v1/status")
+                    .header("authorization", "Bearer integration-secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authorized.status(), StatusCode::OK);
     }
 }

@@ -49,8 +49,13 @@ pub enum AiAccessMode {
     ProviderApiKey,
     LocalModel,
     ProviderSubscriptionCli,
-    PlatformConnected,
     ProviderOAuth,
+}
+
+impl AiAccessMode {
+    pub fn normalized_for_ai_surfaces(self) -> Self {
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -59,6 +64,7 @@ pub enum AiProviderType {
     Anthropic,
     OpenAi,
     Google,
+    Ollama,
     #[default]
     Generic,
 }
