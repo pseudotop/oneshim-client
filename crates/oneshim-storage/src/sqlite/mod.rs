@@ -2,6 +2,7 @@ mod calibration_store_impl;
 pub(crate) mod edge_intelligence;
 mod events;
 mod focus_storage_impl;
+mod fts_search_impl;
 mod frames;
 mod integration_query_impl;
 mod maintenance;
