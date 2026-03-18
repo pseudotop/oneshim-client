@@ -88,6 +88,9 @@ pub struct AppState {
     pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
     pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
     pub update_control: Option<update_control::UpdateControl>,
+    pub vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
+    pub embedding_provider:
+        Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
 }
 
 #[derive(Clone, Default)]
@@ -144,6 +147,8 @@ impl WebServer {
                 integration_audit: None,
                 integration_runtime_telemetry: None,
                 update_control: None,
+                vector_store: None,
+                embedding_provider: None,
             },
             bound_port_state: None,
             bound_port_notifier: None,
@@ -715,6 +720,8 @@ mod tests {
             integration_audit: None,
             integration_runtime_telemetry: None,
             update_control: None,
+            vector_store: None,
+            embedding_provider: None,
         }
     }
 
