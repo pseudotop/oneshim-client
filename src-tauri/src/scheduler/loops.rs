@@ -1217,7 +1217,7 @@ impl Scheduler {
 
 /// Convert a SegmentSummaryRecord (storage row) to SegmentSummary (domain model)
 /// for use with DailyDigestGenerator.
-fn record_to_segment_summary(r: &SegmentSummaryRecord) -> Option<SegmentSummary> {
+pub fn record_to_segment_summary(r: &SegmentSummaryRecord) -> Option<SegmentSummary> {
     let start_time = r.start_time.parse().ok()?;
     let end_time = r.end_time.parse().ok()?;
 

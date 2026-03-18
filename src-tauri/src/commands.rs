@@ -522,7 +522,7 @@ pub async fn get_weekly_digest(
 // ── Dashboard & daily digest IPC commands ─────────────────────
 
 /// Get dashboard data for a given day (timetable + statistics).
-/// Returns the daily digest from cache or generates from segments.
+/// Returns the daily digest from cache, or generates on-demand from segments.
 #[command]
 pub async fn get_dashboard_day(
     state: tauri::State<'_, AppState>,
@@ -531,7 +531,7 @@ pub async fn get_dashboard_day(
     let date_str = date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
 
     // Validate date format
-    chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+    let naive_date = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
         .map_err(|e| format!("Invalid date format: {e}"))?;
 
     // Check cache first
@@ -543,8 +543,46 @@ pub async fn get_dashboard_day(
         return serde_json::to_value(&cached).map_err(|e| e.to_string());
     }
 
-    // Not cached — return null (generation happens via web API or scheduler)
-    Ok(serde_json::json!(null))
+    // Not cached — generate from segments on-demand
+    let segment_records = state
+        .storage
+        .get_segments_for_date(&date_str)
+        .map_err(|e| e.to_string())?;
+
+    if segment_records.is_empty() {
+        return Ok(serde_json::json!(null));
+    }
+
+    // Convert SegmentSummaryRecords to SegmentSummary for DailyDigestGenerator
+    let segments: Vec<oneshim_core::models::tiered_memory::SegmentSummary> = segment_records
+        .iter()
+        .filter_map(|r| crate::scheduler::record_to_segment_summary(r))
+        .collect();
+
+    // Load previous day for comparison
+    let prev_date = naive_date
+        .pred_opt()
+        .unwrap_or(naive_date)
+        .format("%Y-%m-%d")
+        .to_string();
+    let prev_digest = state
+        .storage
+        .get_daily_digest(&prev_date)
+        .ok()
+        .flatten();
+
+    let digest = oneshim_analysis::DailyDigestGenerator::generate(
+        &segments,
+        naive_date,
+        prev_digest.as_ref(),
+    );
+
+    // Cache the result
+    if let Err(e) = state.storage.save_daily_digest(&digest) {
+        tracing::warn!("Failed to cache daily digest: {e}");
+    }
+
+    serde_json::to_value(&digest).map_err(|e| e.to_string())
 }
 
 /// Get the daily digest for a given date. If not cached, returns null.
