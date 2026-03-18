@@ -1237,7 +1237,7 @@ fn record_to_segment_summary(r: &SegmentSummaryRecord) -> Option<SegmentSummary>
         event_count: 0,
         app_breakdown,
         category_breakdown: std::collections::HashMap::new(),
-        context_switch_count: 0,
+        context_switch_count: r.context_switch_count,
         dominant_category: r.dominant_category.clone(),
         avg_importance: 0.5,
         patterns_detected: vec![],

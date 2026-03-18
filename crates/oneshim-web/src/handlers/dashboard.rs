@@ -182,19 +182,8 @@ fn compute_statistics(
         .map(|r| r.duration_secs as f32 / 3600.0)
         .sum();
 
-    // Context switches: count transitions between different regime labels
-    let context_switches = if records.len() > 1 {
-        records
-            .windows(2)
-            .filter(|w| {
-                let a = w[0].regime_id.as_deref().unwrap_or(&w[0].dominant_category);
-                let b = w[1].regime_id.as_deref().unwrap_or(&w[1].dominant_category);
-                a != b
-            })
-            .count() as u32
-    } else {
-        0
-    };
+    // Context switches: sum per-segment counts (consistent with DailyDigestGenerator)
+    let context_switches: u32 = records.iter().map(|r| r.context_switch_count).sum();
 
     // Longest focus block
     let (longest_focus_mins, longest_focus_content) = records

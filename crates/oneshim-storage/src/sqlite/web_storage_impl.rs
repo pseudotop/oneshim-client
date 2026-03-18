@@ -621,7 +621,8 @@ impl WebStorage for SqliteStorage {
         let mut stmt = conn
             .prepare(
                 "SELECT id, start_time, end_time, duration_secs, dominant_category,
-                        regime_id, app_breakdown, content_activities_json, llm_summary
+                        regime_id, app_breakdown, content_activities_json,
+                        context_switch_count, llm_summary
                  FROM activity_segments
                  WHERE start_time >= ?1 AND start_time <= ?2
                  ORDER BY start_time ASC",
@@ -643,7 +644,8 @@ impl WebStorage for SqliteStorage {
                     content_activities_json: row
                         .get::<_, Option<String>>(7)?
                         .unwrap_or_else(|| "[]".to_string()),
-                    llm_summary: row.get(8)?,
+                    context_switch_count: row.get::<_, Option<i64>>(8)?.unwrap_or(0) as u32,
+                    llm_summary: row.get(9)?,
                 })
             })
             .map_err(|e| CoreError::Internal(format!("Failed to query segments: {e}")))?

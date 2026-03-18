@@ -155,7 +155,11 @@ pub async fn semantic_search(
         .into_iter()
         .map(|r| {
             let detail = segment_details.get(&r.segment_id);
-            // Boost score slightly for results that also appear in FTS
+            // NOTE: This is a simplified hybrid approach (score boost for FTS matches).
+            // A full Reciprocal Rank Fusion implementation exists in oneshim-analysis::HybridSearchService
+            // but is not usable here because oneshim-web cannot depend on oneshim-analysis (hexagonal boundary).
+            // The score boost heuristic works acceptably for the web API. The full RRF is used by
+            // the scheduler's ContextAnalyzer pipeline for RAG retrieval.
             let score_boost = if fts_boost_ids.contains(&r.segment_id) {
                 0.1
             } else {

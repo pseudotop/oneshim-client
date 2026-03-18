@@ -185,6 +185,7 @@ pub struct SegmentSummaryRecord {
     pub regime_id: Option<String>,
     pub app_breakdown: String,
     pub content_activities_json: String,
+    pub context_switch_count: u32,
     pub llm_summary: Option<String>,
 }
 
