@@ -174,6 +174,20 @@ pub struct SuggestionRecord {
     pub expires_at: Option<String>,
 }
 
+/// Summary of an activity segment for daily digest generation.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SegmentSummaryRecord {
+    pub segment_id: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_secs: u64,
+    pub dominant_category: String,
+    pub regime_id: Option<String>,
+    pub app_breakdown: String,
+    pub content_activities_json: String,
+    pub llm_summary: Option<String>,
+}
+
 /// Minimal segment detail for enriching vector search results.
 #[derive(Debug, Clone)]
 pub struct SegmentDetailRecord {

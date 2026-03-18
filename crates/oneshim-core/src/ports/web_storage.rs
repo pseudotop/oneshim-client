@@ -2,11 +2,12 @@ use chrono::{DateTime, Utc};
 
 use crate::error::CoreError;
 use crate::models::activity::SessionStats;
+use crate::models::daily_digest::DailyDigest;
 use crate::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
     FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
     MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord,
-    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
+    SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
 };
 use crate::models::work_session::FocusMetrics;
 use crate::ports::storage::{MetricsStorage, StorageService};
@@ -188,5 +189,31 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
         _segment_ids: &[String],
     ) -> Result<std::collections::HashMap<String, SegmentDetailRecord>, CoreError> {
         Ok(std::collections::HashMap::new())
+    }
+
+    /// Save a daily digest. Upserts by date.
+    fn save_daily_digest(&self, _digest: &DailyDigest) -> Result<(), CoreError> {
+        Err(CoreError::Internal(
+            "save_daily_digest not implemented".into(),
+        ))
+    }
+
+    /// Get the daily digest for a specific date (YYYY-MM-DD).
+    fn get_daily_digest(&self, _date: &str) -> Result<Option<DailyDigest>, CoreError> {
+        Ok(None)
+    }
+
+    /// List recent daily digests, newest first.
+    fn list_daily_digests(&self, _limit: usize) -> Result<Vec<DailyDigest>, CoreError> {
+        Ok(vec![])
+    }
+
+    /// Get activity segment summaries for a given date (YYYY-MM-DD).
+    /// Used as input for daily digest generation.
+    fn get_segments_for_date(
+        &self,
+        _date: &str,
+    ) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
+        Ok(vec![])
     }
 }
