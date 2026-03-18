@@ -287,7 +287,7 @@ mod tests {
     fn make_entry(idx: u32) -> CalibrationEntry {
         CalibrationEntry {
             timestamp: Utc::now() + Duration::seconds(idx as i64),
-            event_type: format!("APP_SWITCH_NEW"),
+            event_type: "APP_SWITCH_NEW".to_string(),
             app_name: format!("App{idx}"),
             app_category: AppCategory::Development,
             event_importance: 0.5 + (idx as f32) * 0.05,

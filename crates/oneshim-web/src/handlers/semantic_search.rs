@@ -1,39 +1,10 @@
 use axum::extract::{Query, State};
 use axum::Json;
-use serde::{Deserialize, Serialize};
+use oneshim_api_contracts::search::{SemanticSearchQuery, SemanticSearchResult};
 use tracing::{debug, warn};
 
 use crate::error::ApiError;
 use crate::AppState;
-
-/// Query parameters for semantic search.
-#[derive(Debug, Deserialize)]
-pub struct SemanticSearchQuery {
-    /// Natural language query text.
-    pub q: String,
-    /// Maximum number of results (default: 10).
-    pub limit: Option<usize>,
-}
-
-/// A single semantic search result, enriched with segment metadata.
-#[derive(Debug, Serialize)]
-pub struct SemanticSearchResult {
-    pub segment_id: String,
-    pub content_type: String,
-    pub content_label: Option<String>,
-    pub original_text: String,
-    pub score: f32,
-    pub similarity: f32,
-    pub time_decay: f32,
-    pub timestamp: String,
-    // Enriched fields from activity_segments table
-    pub segment_start: Option<String>,
-    pub segment_end: Option<String>,
-    pub duration_secs: Option<u64>,
-    pub llm_summary: Option<String>,
-    pub dominant_category: Option<String>,
-    pub regime_label: Option<String>,
-}
 
 /// Basic PII sanitizer for query text before embedding.
 /// Masks tokens that look like email addresses (contain '@').

@@ -1,19 +1,12 @@
 use axum::extract::{Query, State};
 use axum::Json;
-use serde::Deserialize;
+use oneshim_api_contracts::digests::DigestListQuery;
 use tracing::debug;
 
 use oneshim_core::models::weekly_digest::WeeklyDigest;
 
 use crate::error::ApiError;
 use crate::services::web_contexts::StorageWebContext;
-
-/// Query parameters for listing digests.
-#[derive(Debug, Deserialize)]
-pub struct DigestListQuery {
-    /// Maximum number of digests to return (default: 4).
-    pub limit: Option<usize>,
-}
 
 /// GET /api/digests?limit=4 — list recent weekly digests.
 pub async fn list_digests(

@@ -46,11 +46,12 @@ impl AutomationCommandService {
                     .iter()
                     .any(|p| p.id == preset.id)
                 {
-                    return;
+                    return Ok(());
                 }
                 let mut new_preset = preset.clone();
                 new_preset.builtin = false;
                 config.automation.custom_presets.push(new_preset);
+                Ok(())
             })
             .map_err(|e| ApiError::Internal(format!("Failed to save preset: {e}")))?;
 
@@ -81,6 +82,7 @@ impl AutomationCommandService {
                     existing.ai_profile_id = preset.ai_profile_id.clone();
                     found = true;
                 }
+                Ok(())
             })
             .map_err(|e| ApiError::Internal(format!("Failed to update preset: {e}")))?;
 
@@ -99,6 +101,7 @@ impl AutomationCommandService {
                 let before_len = config.automation.custom_presets.len();
                 config.automation.custom_presets.retain(|p| p.id != id);
                 found = config.automation.custom_presets.len() < before_len;
+                Ok(())
             })
             .map_err(|e| ApiError::Internal(format!("Failed to delete preset: {e}")))?;
 
@@ -550,6 +553,7 @@ mod tests {
         config_manager
             .update_with(|config| {
                 config.ai_provider.saved_profiles = vec![saved_ai_profile("anthropic-prod")];
+                Ok(())
             })
             .expect("save config");
 
@@ -577,6 +581,7 @@ mod tests {
                 config.automation.enabled = true;
                 config.automation.custom_presets = vec![test_preset(Some("anthropic-prod"))];
                 config.ai_provider.saved_profiles = Vec::new();
+                Ok(())
             })
             .expect("save config");
 

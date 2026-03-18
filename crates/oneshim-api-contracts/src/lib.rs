@@ -4,6 +4,7 @@ pub mod automation_gui;
 pub mod backup;
 pub mod common;
 pub mod data;
+pub mod digests;
 pub mod error;
 pub mod events;
 pub mod export;

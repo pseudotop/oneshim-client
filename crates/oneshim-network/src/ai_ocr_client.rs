@@ -141,7 +141,7 @@ fn apply_auth_headers(
         ProviderAuthScheme::None => builder,
         ProviderAuthScheme::XApiKey => builder
             .header("x-api-key", api_key)
-            .header("anthropic-version", "2023-06-01"),
+            .header("anthropic-version", crate::ANTHROPIC_API_VERSION),
         ProviderAuthScheme::XGoogApiKey => builder.header("x-goog-api-key", api_key),
         ProviderAuthScheme::Bearer => builder.header("Authorization", format!("Bearer {api_key}")),
     }

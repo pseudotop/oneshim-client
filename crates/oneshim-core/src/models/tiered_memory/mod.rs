@@ -280,9 +280,11 @@ mod tests {
     #[test]
     fn euclidean_distance_known_value() {
         let a = RegimeFeatures::default();
-        let mut b = RegimeFeatures::default();
-        b.category_coding = 3.0;
-        b.category_communication = 4.0;
+        let b = RegimeFeatures {
+            category_coding: 3.0,
+            category_communication: 4.0,
+            ..RegimeFeatures::default()
+        };
         // distance = sqrt(9 + 16) = 5.0
         assert!((euclidean_distance(&a, &b) - 5.0).abs() < 1e-5);
     }

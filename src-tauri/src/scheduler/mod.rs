@@ -1,3 +1,4 @@
+mod analysis_pipeline;
 mod config;
 mod loops;
 
@@ -6,9 +7,12 @@ pub use config::{SchedulerConfig, SchedulerStorage};
 
 use chrono::{Datelike, Timelike};
 use oneshim_core::config::{AppConfig, Weekday};
+use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::models::activity::SessionStats;
+use oneshim_core::models::tiered_memory::ResolvedParams;
 use oneshim_core::ports::api_client::ApiClient;
 use oneshim_core::ports::batch_sink::BatchSink;
+use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
 use oneshim_core::ports::storage::StorageService;
 use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
@@ -16,17 +20,43 @@ use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
 use oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_web::RealtimeEvent;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
 use crate::focus_analyzer::FocusAnalyzer;
 use crate::notification_manager::NotificationManager;
 
+/// Wraps all components needed for the adaptive tiered-memory pipeline.
+/// Kept as owned (non-Arc) so the monitor loop can mutate the components
+/// without interior-mutability overhead.
+pub(crate) struct AdaptiveTriggerState {
+    pub trigger: oneshim_analysis::AdaptiveTrigger,
+    pub segment_buffer: oneshim_analysis::SegmentBuffer,
+    pub calibration_buffer: oneshim_analysis::CalibrationBuffer,
+    pub title_bar_parser: oneshim_analysis::TitleBarParser,
+    pub work_type_classifier: oneshim_analysis::WorkTypeClassifier,
+    pub content_tracker: oneshim_analysis::ContentTracker,
+    pub segment_summarizer: oneshim_analysis::SegmentSummarizer,
+    pub params: ResolvedParams,
+    pub calibration_writer: Arc<dyn CalibrationWriter>,
+    // --- Phase 1b Batch 2: regime-aware pipeline ---
+    pub regime_classifier: oneshim_analysis::RegimeClassifier,
+    pub regime_manager: oneshim_analysis::RegimeManager,
+    pub regime_detector: oneshim_analysis::RegimeDetector,
+    pub param_resolver: oneshim_analysis::ParamResolver,
+    pub calibration_reader: Arc<dyn CalibrationReader>,
+    /// ID of the current active regime (for transition detection).
+    pub current_regime_id: Option<String>,
+    /// Last time regime detection (k-means) was run.
+    pub last_detection_time: Option<chrono::DateTime<chrono::Utc>>,
+    // --- Layer 2: LLM summary + embedding pipeline ---
+    pub(crate) llm_summarizer: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>>,
+    pub(crate) embedding_pipeline: Option<Arc<oneshim_analysis::EmbeddingPipeline>>,
+}
+
 pub struct Scheduler {
     pub(super) config: SchedulerConfig,
-    #[allow(dead_code)]
-    pub(super) app_config: Arc<tokio::sync::RwLock<AppConfig>>,
     pub(super) system_monitor: Arc<dyn SystemMonitor>,
     pub(super) activity_monitor: Arc<dyn ActivityMonitor>,
     pub(super) process_monitor: Arc<dyn ProcessMonitor>,
@@ -42,13 +72,20 @@ pub struct Scheduler {
     pub(super) focus_analyzer: Option<Arc<FocusAnalyzer>>,
     #[cfg(feature = "server")]
     pub(super) oauth_coordinator: Option<Arc<TokenRefreshCoordinator>>,
+    pub(super) context_analyzer: Option<Arc<oneshim_analysis::ContextAnalyzer>>,
+    pub(super) config_manager: Option<ConfigManager>,
+    pub(super) vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
+    pub(super) embedding_provider:
+        Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
+    /// Wrapped in Mutex so `run_scheduler_loops(&self)` can take ownership
+    /// and move it into the monitor loop's async block.
+    pub(super) adaptive_trigger: Mutex<Option<AdaptiveTriggerState>>,
 }
 
 impl Scheduler {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: SchedulerConfig,
-        app_config: Arc<tokio::sync::RwLock<AppConfig>>,
         system_monitor: Arc<dyn SystemMonitor>,
         activity_monitor: Arc<dyn ActivityMonitor>,
         process_monitor: Arc<dyn ProcessMonitor>,
@@ -62,7 +99,6 @@ impl Scheduler {
     ) -> Self {
         Self {
             config,
-            app_config,
             system_monitor,
             activity_monitor,
             process_monitor,
@@ -78,7 +114,17 @@ impl Scheduler {
             focus_analyzer: None,
             #[cfg(feature = "server")]
             oauth_coordinator: None,
+            context_analyzer: None,
+            config_manager: None,
+            vector_store: None,
+            embedding_provider: None,
+            adaptive_trigger: Mutex::new(None),
         }
+    }
+
+    pub fn with_config_manager(mut self, config_manager: ConfigManager) -> Self {
+        self.config_manager = Some(config_manager);
+        self
     }
 
     pub fn with_event_tx(mut self, event_tx: broadcast::Sender<RealtimeEvent>) -> Self {
@@ -102,9 +148,33 @@ impl Scheduler {
         self
     }
 
-    #[allow(dead_code)]
-    pub fn app_config(&self) -> Arc<tokio::sync::RwLock<AppConfig>> {
-        self.app_config.clone()
+    pub fn with_context_analyzer(
+        mut self,
+        analyzer: Arc<oneshim_analysis::ContextAnalyzer>,
+    ) -> Self {
+        self.context_analyzer = Some(analyzer);
+        self
+    }
+
+    pub fn with_vector_store(
+        mut self,
+        store: Arc<dyn oneshim_core::ports::vector_store::VectorStore>,
+    ) -> Self {
+        self.vector_store = Some(store);
+        self
+    }
+
+    pub fn with_embedding_provider(
+        mut self,
+        provider: Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>,
+    ) -> Self {
+        self.embedding_provider = Some(provider);
+        self
+    }
+
+    pub fn with_adaptive_trigger(self, state: AdaptiveTriggerState) -> Self {
+        *self.adaptive_trigger.lock().expect("adaptive trigger lock") = Some(state);
+        self
     }
 
     pub(super) async fn initialize_session(&self, session_id: &str) {

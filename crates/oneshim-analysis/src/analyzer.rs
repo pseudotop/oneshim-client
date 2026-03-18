@@ -546,8 +546,10 @@ mod tests {
         let provider = Arc::new(MockAnalysisProvider::new(suggestions));
         let miner = PatternMiner::new();
         let assembler = ContextAssembler::new(Box::new(|t: &str| t.to_string()));
-        let mut config = AnalysisConfig::default();
-        config.throttle_secs = 0; // Disable throttle for this test
+        let config = AnalysisConfig {
+            throttle_secs: 0, // Disable throttle for this test
+            ..AnalysisConfig::default()
+        };
 
         let analyzer = ContextAnalyzer::new(storage, provider, miner, assembler, config);
 

@@ -77,6 +77,8 @@ mod tests {
             integration_audit: None,
             integration_runtime_telemetry: None,
             update_control: Some(control),
+            vector_store: None,
+            embedding_provider: None,
         }
     }
 

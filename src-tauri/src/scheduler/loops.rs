@@ -1,4 +1,4 @@
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{Datelike, Duration as ChronoDuration, Timelike, Utc};
 use oneshim_core::models::activity::{IdleState, ProcessSnapshot, ProcessSnapshotEntry};
 use oneshim_core::models::event::{ContextEvent, Event, ProcessSnapshotEvent};
 use oneshim_core::models::frame::ImagePayload;
@@ -11,10 +11,115 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
-use super::config::{base64_decode, PlatformEgressPolicy};
+use oneshim_core::ports::storage::StorageService;
+use oneshim_core::ports::vision::{CaptureRequest, FrameProcessor};
+use oneshim_storage::frame_storage::FrameFileStorage;
+
+use super::config::{base64_decode, PlatformEgressPolicy, SchedulerStorage};
 use super::Scheduler;
 
+/// Run event-driven LLM analysis when the user switches to a new app.
+/// Persists any resulting suggestions to storage.
+async fn handle_event_analysis(
+    analyzer: &Option<Arc<oneshim_analysis::ContextAnalyzer>>,
+    storage: &Arc<dyn StorageService>,
+    app_name: &str,
+    window_title: &str,
+    ocr_hint: Option<&str>,
+) {
+    if let Some(ref analyzer) = analyzer {
+        match analyzer
+            .on_significant_event(app_name, window_title, ocr_hint)
+            .await
+        {
+            Ok(suggestions) => {
+                for s in &suggestions {
+                    info!(
+                        id = %s.suggestion_id,
+                        priority = ?s.priority,
+                        "event-driven suggestion: {}",
+                        s.content
+                    );
+                    if let Err(e) = storage.save_suggestion(s).await {
+                        warn!("suggestion save failure: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("event analysis skipped: {e}");
+            }
+        }
+    }
+}
+
+/// Capture a frame, process it (full/delta/thumbnail), save image data and
+/// metadata.  Returns the OCR text extracted from the frame (if any).
+async fn handle_frame_capture(
+    capture_req: &CaptureRequest,
+    processor: &Arc<dyn FrameProcessor>,
+    frame_storage: &Option<Arc<FrameFileStorage>>,
+    sqlite: &Arc<dyn SchedulerStorage>,
+    session_id: &str,
+    window_bounds: Option<&oneshim_core::models::context::WindowBounds>,
+) -> Option<String> {
+    match processor.capture_and_process(capture_req).await {
+        Ok(frame) => {
+            debug!("frame completed: {:?}", frame.metadata.trigger_type);
+
+            let (file_path, ocr_text) = if let Some(ref payload) = frame.image_payload {
+                let (data_str, ocr) = match payload {
+                    ImagePayload::Full { data, ocr_text, .. } => (data.as_str(), ocr_text.clone()),
+                    ImagePayload::Delta { data, .. } => (data.as_str(), None),
+                    ImagePayload::Thumbnail { data, .. } => (data.as_str(), None),
+                };
+
+                let saved_path = if let Some(ref fs) = frame_storage {
+                    match base64_decode(data_str) {
+                        Ok(webp_bytes) => {
+                            match fs.save_frame(frame.metadata.timestamp, &webp_bytes).await {
+                                Ok(path) => Some(path.to_string_lossy().to_string()),
+                                Err(e) => {
+                                    warn!("frame file save failure: {e}");
+                                    None
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Base64 decoding failure: {e}");
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                (saved_path, ocr)
+            } else {
+                (None, None)
+            };
+
+            if let Err(e) = sqlite.save_frame_metadata_with_bounds(
+                &frame.metadata,
+                file_path.as_deref(),
+                ocr_text.as_deref(),
+                window_bounds,
+            ) {
+                warn!("frame data save failure: {e}");
+            }
+
+            let _ = sqlite.increment_session_counters(session_id, 0, 1, 0).await;
+
+            ocr_text
+        }
+        Err(e) => {
+            warn!("frame failure: {e}");
+            None
+        }
+    }
+}
+
 impl Scheduler {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn spawn_monitor_loop(
         &self,
         poll: Duration,
@@ -22,6 +127,7 @@ impl Scheduler {
         session_id: String,
         egress_policy: Arc<PlatformEgressPolicy>,
         input_collector: Arc<InputActivityCollector>,
+        adaptive_trigger_state: Option<super::AdaptiveTriggerState>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let act_mon = self.activity_monitor.clone();
@@ -35,6 +141,7 @@ impl Scheduler {
         let session1 = session_id;
         let notif1 = self.notification_manager.clone();
         let focus1 = self.focus_analyzer.clone();
+        let context_analyzer1 = self.context_analyzer.clone();
         let input_collector1 = input_collector;
 
         tokio::spawn(async move {
@@ -42,6 +149,7 @@ impl Scheduler {
             let mut prev_idle_secs: u64 = 0;
             let mut interval = tokio::time::interval(poll);
             let mut idle_tracker = IdleTracker::new(Some(idle_threshold));
+            let mut adaptive_trigger_state = adaptive_trigger_state;
 
             let window_tracker = WindowLayoutTracker::new();
             let input_collector = input_collector1;
@@ -155,58 +263,14 @@ impl Scheduler {
                                             }
                                         }
 
-                                        match processor.capture_and_process(&capture_req).await {
-                                            Ok(frame) => {
-                                                debug!("frame completed: {:?}", frame.metadata.trigger_type);
-
-                                                let (file_path, ocr_text) = if let Some(ref payload) = frame.image_payload {
-                                                    let (data_str, ocr) = match payload {
-                                                        ImagePayload::Full { data, ocr_text, .. } => (data.as_str(), ocr_text.clone()),
-                                                        ImagePayload::Delta { data, .. } => (data.as_str(), None),
-                                                        ImagePayload::Thumbnail { data, .. } => (data.as_str(), None),
-                                                    };
-
-                                                    let saved_path = if let Some(ref fs) = frame_storage1 {
-                                                        match base64_decode(data_str) {
-                                                            Ok(webp_bytes) => {
-                                                                match fs.save_frame(frame.metadata.timestamp, &webp_bytes).await {
-                                                                    Ok(path) => Some(path.to_string_lossy().to_string()),
-                                                                    Err(e) => {
-                                                                        warn!("frame file save failure: {e}");
-                                                                        None
-                                                                    }
-                                                                }
-                                                            }
-                                                            Err(e) => {
-                                                                warn!("Base64 decoding failure: {e}");
-                                                                None
-                                                            }
-                                                        }
-                                                    } else {
-                                                        None
-                                                    };
-
-                                                    (saved_path, ocr)
-                                                } else {
-                                                    (None, None)
-                                                };
-                                                focus_ocr_hint = ocr_text.clone();
-
-                                                if let Err(e) = sqlite1.save_frame_metadata_with_bounds(
-                                                    &frame.metadata,
-                                                    file_path.as_deref(),
-                                                    ocr_text.as_deref(),
-                                                    window_bounds.as_ref(),
-                                                ) {
-                                                    warn!("frame data save failure: {e}");
-                                                }
-
-                                                let _ = sqlite1.increment_session_counters(&session1, 0, 1, 0).await;
-                                            }
-                                            Err(e) => {
-                                                warn!("frame failure: {e}");
-                                            }
-                                        }
+                                        focus_ocr_hint = handle_frame_capture(
+                                            &capture_req,
+                                            &processor,
+                                            &frame_storage1,
+                                            &sqlite1,
+                                            &session1,
+                                            window_bounds.as_ref(),
+                                        ).await;
                                     } else if force_post {
                                         // Post-event forced capture (dashcam "after" frames)
                                         if let Some(ref fs) = frame_storage1 {
@@ -242,6 +306,28 @@ impl Scheduler {
                                             )
                                             .await;
                                     }
+
+                                    // Event-driven LLM analysis on significant app switches
+                                    handle_event_analysis(
+                                        &context_analyzer1,
+                                        &storage1,
+                                        &app_name,
+                                        &focus_window_title,
+                                        focus_ocr_hint.as_deref(),
+                                    ).await;
+                                }
+
+                                // ── Adaptive tiered-memory pipeline ──
+                                if let Some(ref mut ts) = adaptive_trigger_state {
+                                    super::analysis_pipeline::run_analysis_tick(
+                                        ts,
+                                        &app_name,
+                                        &focus_window_title,
+                                        &prev_app,
+                                        app_changed,
+                                        &input_collector,
+                                        &storage1,
+                                    ).await;
                                 }
 
                                 prev_app = Some(app_name);
@@ -383,6 +469,9 @@ impl Scheduler {
                                     Ok(count) => {
                                         if count > 0 {
                                             debug!("batch: {count}items sent");
+                                            if let Err(e) = storage4.mark_unsent_as_sent_before(Utc::now()).await {
+                                                warn!("mark sent failure: {e}");
+                                            }
                                         }
                                     }
                                     Err(e) => {
@@ -462,9 +551,13 @@ impl Scheduler {
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let sqlite6 = self.sqlite_storage.clone();
+        let vector_store = self.vector_store.clone();
+        let embedding_provider = self.embedding_provider.clone();
+        let config_manager = self.config_manager.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(aggregation_interval);
+            let mut last_reindex_check: Option<chrono::DateTime<Utc>> = None;
 
             loop {
                 tokio::select! {
@@ -476,19 +569,155 @@ impl Scheduler {
                             warn!("hour failure: {e}");
                         }
 
-                        let metrics_cutoff = now - ChronoDuration::hours(24);
+                        let metrics_cutoff = now - ChronoDuration::hours(super::config::RAW_METRICS_RETENTION_HOURS);
                         if let Err(e) = sqlite6.cleanup_old_metrics(metrics_cutoff).await {
                             warn!("delete failure: {e}");
                         }
 
-                        let process_cutoff = now - ChronoDuration::days(7);
+                        let process_cutoff = now - ChronoDuration::days(super::config::PROCESS_SNAPSHOT_RETENTION_DAYS);
                         if let Err(e) = sqlite6.cleanup_old_process_snapshots(process_cutoff).await {
                             warn!("delete failure: {e}");
                         }
 
-                        let idle_cutoff = now - ChronoDuration::days(30);
+                        let idle_cutoff = now - ChronoDuration::days(super::config::IDLE_PERIOD_RETENTION_DAYS);
                         if let Err(e) = sqlite6.cleanup_old_idle_periods(idle_cutoff).await {
                             warn!("idle period delete failure: {e}");
+                        }
+
+                        // --- Embedding re-indexing on model version change (daily) ---
+                        if let (Some(ref vs), Some(ref ep)) = (&vector_store, &embedding_provider) {
+                            let should_check = last_reindex_check
+                                .map(|last| (now - last).num_hours() >= 24)
+                                .unwrap_or(true);
+
+                            if should_check {
+                                last_reindex_check = Some(now);
+
+                                let config_model = config_manager
+                                    .as_ref()
+                                    .map(|cm| cm.get().analysis.embedding.local_model.clone())
+                                    .unwrap_or_default();
+
+                                match vs.get_current_model_id().await {
+                                    Ok(Some(stored_model)) if !config_model.is_empty() && stored_model != config_model => {
+                                        info!(
+                                            old_model = %stored_model,
+                                            new_model = %config_model,
+                                            "Embedding model changed — marking old vectors stale"
+                                        );
+                                        if let Err(e) = vs.mark_stale(&stored_model).await {
+                                            warn!("mark stale failure: {e}");
+                                        }
+                                    }
+                                    _ => {}
+                                }
+
+                                // Process stale vectors in batches of 100
+                                loop {
+                                    match vs.get_stale_vectors(100).await {
+                                        Ok(batch) if !batch.is_empty() => {
+                                            let texts: Vec<String> = batch.iter().map(|(_, t)| t.clone()).collect();
+                                            match ep.embed_batch(&texts).await {
+                                                Ok(vectors) => {
+                                                    let model_id = ep.model_id();
+                                                    let mut updated = 0u64;
+                                                    for ((id, _), vec) in batch.into_iter().zip(vectors) {
+                                                        if let Err(e) = vs.update_vector(id, vec, model_id).await {
+                                                            warn!("re-embed update failure: {e}");
+                                                        } else {
+                                                            updated += 1;
+                                                        }
+                                                    }
+                                                    debug!("re-embedded {updated} stale vectors");
+                                                }
+                                                Err(e) => {
+                                                    warn!("re-embed batch failure: {e}");
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        Ok(_) => break, // no more stale vectors
+                                        Err(e) => {
+                                            warn!("get stale vectors failure: {e}");
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                // Enforce vector retention
+                                let retention_days = config_manager
+                                    .as_ref()
+                                    .map(|cm| cm.get().analysis.embedding.retention_days)
+                                    .unwrap_or(90);
+                                if let Err(e) = vs.enforce_retention(retention_days).await {
+                                    warn!("vector retention failure: {e}");
+                                }
+                            }
+                        }
+
+                        // --- Activity segment retention (default: 90 days, same as embedding) ---
+                        {
+                            let segment_retention_days = config_manager
+                                .as_ref()
+                                .map(|cm| cm.get().analysis.embedding.retention_days)
+                                .unwrap_or(90);
+                            if let Err(e) = sqlite6.enforce_segment_retention(segment_retention_days) {
+                                warn!("segment retention failure: {e}");
+                            }
+
+                            // Weekly digests retention (keep 52 weeks = 1 year)
+                            if let Err(e) = sqlite6.enforce_digest_retention(52) {
+                                warn!("digest retention failure: {e}");
+                            }
+                        }
+
+                        // --- Weekly digest auto-generation ---
+                        {
+                            let digest_day = config_manager
+                                .as_ref()
+                                .map(|cm| cm.get().analysis.embedding.digest_day)
+                                .unwrap_or(oneshim_core::config::Weekday::Sun);
+
+                            let local_now = chrono::Local::now();
+                            let is_digest_day =
+                                local_now.weekday().num_days_from_sunday() == digest_day.num_days_from_sunday();
+                            let is_midnight_hour = local_now.hour() == 0;
+
+                            if is_digest_day && is_midnight_hour {
+                                // Calculate week boundaries (Monday-based ISO week aligned to digest_day)
+                                let week_end = now;
+                                let week_start = now - ChronoDuration::days(7);
+
+                                // Check if digest already exists for this week
+                                let existing = sqlite6
+                                    .list_weekly_digests(1)
+                                    .ok()
+                                    .and_then(|d| d.into_iter().next());
+
+                                let already_generated = existing
+                                    .as_ref()
+                                    .map(|d| (now - d.week_end).num_hours() < 24)
+                                    .unwrap_or(false);
+
+                                if !already_generated {
+                                    // Load actual segments for this week from storage
+                                    let week_segments = sqlite6
+                                        .list_segments_between(week_start, week_end)
+                                        .unwrap_or_default();
+                                    let digest = oneshim_analysis::WeeklyDigestGenerator::generate(
+                                        &week_segments,
+                                        week_start,
+                                        week_end,
+                                        existing.as_ref(),
+                                    );
+
+                                    if let Err(e) = sqlite6.save_weekly_digest(&digest) {
+                                        warn!("weekly digest save failure: {e}");
+                                    } else {
+                                        info!("Weekly digest generated for week ending {}", week_end);
+                                    }
+                                }
+                            }
                         }
 
                         debug!("completed");
@@ -644,6 +873,114 @@ impl Scheduler {
         })
     }
 
+    /// Periodic LLM analysis loop — runs `analyze_if_changed()` on each tick
+    /// and forces a full `analyze()` every `full_interval_secs`.
+    /// Generated suggestions are persisted to SQLite for the web dashboard.
+    pub(super) fn spawn_analysis_loop(
+        &self,
+        config: oneshim_core::config::AnalysisConfig,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
+        let analyzer = self.context_analyzer.clone();
+        let storage_ref = self.storage.clone();
+        let sqlite_ref = self.sqlite_storage.clone();
+        let config_manager = self.config_manager.clone();
+
+        tokio::spawn(async move {
+            let analyzer = match analyzer {
+                Some(a) => a,
+                None => {
+                    let _ = shutdown_rx.changed().await;
+                    return;
+                }
+            };
+
+            // Use initial config for interval timing (changes require restart).
+            // Other settings (enabled, min_confidence, max_suggestions, throttle_secs)
+            // are read dynamically from ConfigManager on each tick so that
+            // changes via the Tauri `update_analysis_config` command propagate
+            // immediately without an agent restart.
+            let mut interval = tokio::time::interval(Duration::from_secs(config.interval_secs));
+            let full_interval = Duration::from_secs(config.full_interval_secs);
+            let mut last_full = std::time::Instant::now();
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        // Read current config from ConfigManager (the single source
+                        // of truth also written to by update_analysis_config).
+                        let current_config = config_manager
+                            .as_ref()
+                            .map(|cm| cm.get().analysis)
+                            .unwrap_or_else(|| config.clone());
+
+                        if !current_config.enabled {
+                            debug!("analysis loop: disabled via runtime config, skipping tick");
+                            continue;
+                        }
+
+                        // Server coexistence: skip local LLM analysis when
+                        // the server has recently sent suggestions via SSE.
+                        match sqlite_ref.has_recent_server_suggestions(
+                            current_config.server_coexistence_lookback_secs,
+                        ) {
+                            Ok(true) => {
+                                debug!(
+                                    "server suggestions active (last {}s) — skipping local analysis",
+                                    current_config.server_coexistence_lookback_secs,
+                                );
+                                continue;
+                            }
+                            Ok(false) => { /* proceed with local analysis */ }
+                            Err(e) => {
+                                warn!("server coexistence check failed: {e}");
+                                // Proceed anyway — fail-open
+                            }
+                        }
+
+                        let force_full = last_full.elapsed() >= full_interval;
+
+                        let result = if force_full {
+                            last_full = std::time::Instant::now();
+                            analyzer.analyze().await
+                        } else {
+                            analyzer.analyze_if_changed().await
+                        };
+
+                        match result {
+                            Ok(suggestions) => {
+                                if !suggestions.is_empty() {
+                                    info!(
+                                        count = suggestions.len(),
+                                        "LLM analysis produced suggestions"
+                                    );
+                                }
+                                for suggestion in &suggestions {
+                                    info!(
+                                        id = %suggestion.suggestion_id,
+                                        priority = ?suggestion.priority,
+                                        "suggestion: {}",
+                                        suggestion.content
+                                    );
+                                    if let Err(e) = storage_ref.save_suggestion(suggestion).await {
+                                        warn!("suggestion save failure: {e}");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("analysis failure: {e}");
+                            }
+                        }
+                    }
+                    _ = shutdown_rx.changed() => {
+                        info!("analysis loop ended");
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
     /// Periodically check and refresh OAuth tokens.
     #[cfg(feature = "server")]
     pub(super) fn spawn_oauth_refresh_loop(
@@ -741,12 +1078,21 @@ impl Scheduler {
 
         let shared_input_collector = Arc::new(InputActivityCollector::new());
 
+        // Take adaptive trigger state out of Mutex — it is consumed by the
+        // monitor loop and cannot be shared.
+        let adaptive_trigger_state = self
+            .adaptive_trigger
+            .lock()
+            .expect("adaptive trigger lock")
+            .take();
+
         let monitor_task = self.spawn_monitor_loop(
             poll,
             idle_threshold,
             session_id.clone(),
             egress_policy.clone(),
             shared_input_collector.clone(),
+            adaptive_trigger_state,
             shutdown_rx.clone(),
         );
 
@@ -781,6 +1127,10 @@ impl Scheduler {
         #[cfg(feature = "server")]
         let oauth_task = self.spawn_oauth_refresh_loop(shutdown_rx.clone(), app_handle);
 
+        // 11. LLM analysis loop (periodic + change-detection)
+        let analysis_config = self.config.analysis_config.clone();
+        let analysis_task = self.spawn_analysis_loop(analysis_config, shutdown_rx.clone());
+
         let _ = shutdown_rx.changed().await;
         info!("ended received");
 
@@ -802,5 +1152,6 @@ impl Scheduler {
         if let Some(task) = oauth_task {
             task.abort();
         }
+        analysis_task.abort();
     }
 }

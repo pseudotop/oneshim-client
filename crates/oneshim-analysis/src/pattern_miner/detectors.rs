@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn communication_burst_detected() {
         let base = Utc::now() - Duration::minutes(30);
-        let events = vec![
+        let events = [
             ctx_at("VSCode", base),
             ctx_at("Slack", base + Duration::minutes(5)),
             ctx_at("Teams", base + Duration::minutes(7)),
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn burst_detected_when_all_events_are_comm_apps() {
         let base = Utc::now() - Duration::minutes(30);
-        let events = vec![
+        let events = [
             ctx_at("Slack", base),
             ctx_at("Slack", base + Duration::minutes(2)),
             ctx_at("Teams", base + Duration::minutes(4)),
