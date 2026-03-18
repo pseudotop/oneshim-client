@@ -4,7 +4,7 @@
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card, CardTitle } from './ui'
 import { cn } from '../utils/cn'
-import { colors, typography } from '../styles/tokens'
+import { chartPalette, colors, typography } from '../styles/tokens'
 import { useTheme } from '../contexts/ThemeContext'
 
 interface DailyStatistics {
@@ -23,7 +23,7 @@ interface DailyStatistics {
 }
 
 interface StatisticsPanelProps {
-  statistics: DailyStatistics | null
+  statistics: DailyStatistics
 }
 
 // For deep work and focus, UP is good. For context switches and communication, DOWN is good.
@@ -59,21 +59,10 @@ function ContextSwitchDelta({ delta }: { delta: number }) {
   )
 }
 
-// Deterministic palette for regime bars
-const REGIME_COLORS = ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899']
+// Deterministic palette for regime bars — reuse shared chartPalette from tokens
 
 export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
   const { theme } = useTheme()
-
-  if (!statistics) {
-    return (
-      <Card padding="md">
-        <p className={cn(typography.body, colors.text.secondary, 'text-center py-8')}>
-          No statistics available
-        </p>
-      </Card>
-    )
-  }
 
   const tooltipStyle = {
     backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff',
@@ -85,7 +74,7 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
   const regimeData = Object.entries(statistics.regime_distribution).map(([label, percentage], idx) => ({
     label,
     percentage,
-    fill: REGIME_COLORS[idx % REGIME_COLORS.length],
+    fill: chartPalette[idx % chartPalette.length],
   }))
 
   return (
@@ -146,7 +135,7 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
                 />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  formatter={(value: number) => [`${value.toFixed(1)}%`, 'Share']}
+                  formatter={(value: number) => [`${Math.round(value)}%`, 'Share']}
                 />
                 <Bar dataKey="percentage" radius={[0, 4, 4, 0]}>
                   {regimeData.map((entry) => (

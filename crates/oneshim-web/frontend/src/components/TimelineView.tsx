@@ -90,6 +90,7 @@ export default function TimelineView({ timeline, onSegmentClick }: TimelineViewP
                     backgroundColor: `${entry.regime_color}15`,
                   }}
                   onClick={() => handleClick(entry.segment_id)}
+                  aria-label={`${entry.regime_label} ${entry.duration_mins} minutes - click to expand`}
                   aria-expanded={isExpanded}
                 >
                   <div className="flex items-center justify-between gap-2">

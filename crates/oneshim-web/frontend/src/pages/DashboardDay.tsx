@@ -60,7 +60,7 @@ interface DailyDigestResponse {
       communication_delta: number
       context_switch_delta: number
     }
-  } | null
+  }
 }
 
 export default function DashboardDay() {
@@ -68,7 +68,11 @@ export default function DashboardDay() {
 
   const { data, isLoading, error } = useQuery<DailyDigestResponse>({
     queryKey: ['dashboard-day', date],
-    queryFn: () => fetch(`/api/dashboard/day?date=${date}`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/dashboard/day?date=${date}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+      return r.json();
+    },
   })
 
   const isToday = date === todayStr()
