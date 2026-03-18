@@ -498,6 +498,28 @@
           "path": "/api/digests/current"
         }
       ]
+    },
+    {
+      "module": "daily_digest",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/api/digests/daily"
+        },
+        {
+          "method": "GET",
+          "path": "/api/digests/daily/today"
+        }
+      ]
+    },
+    {
+      "module": "dashboard",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/api/dashboard/day"
+        }
+      ]
     }
   ]
 }

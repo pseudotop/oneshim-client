@@ -635,6 +635,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/dashboard/day":
+    get:
+      tags:
+        - dashboard
+      operationId: dashboard_get_api_dashboard_day
+      summary: "GET /api/dashboard/day"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/data/all":
     delete:
       tags:
@@ -710,6 +729,44 @@ paths:
         - digests
       operationId: digests_get_api_digests_current
       summary: "GET /api/digests/current"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/digests/daily":
+    get:
+      tags:
+        - daily_digest
+      operationId: daily_digest_get_api_digests_daily
+      summary: "GET /api/digests/daily"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/digests/daily/today":
+    get:
+      tags:
+        - daily_digest
+      operationId: daily_digest_get_api_digests_daily_today
+      summary: "GET /api/digests/daily/today"
       responses:
         "200":
           description: Success
