@@ -30,6 +30,7 @@ impl AppCategory {
             || name.contains("messages")
             || name.contains("kakaotalk")
             || name.contains("telegram")
+            || name.contains("thunderbird")
             || name.contains("whatsapp")
         {
             return Self::Communication;
@@ -45,6 +46,11 @@ impl AppCategory {
             || name.contains("terminal")
             || name.contains("iterm")
             || name.contains("warp")
+            || name.contains("alacritty")
+            || name.contains("cursor")
+            || name.contains("vim")
+            || name.contains("neovim")
+            || name.contains("emacs")
             || name.contains("git")
             || name.contains("sourcetree")
             || name.contains("postman")
@@ -74,6 +80,7 @@ impl AppCategory {
             || name.contains("edge")
             || name.contains("arc")
             || name.contains("brave")
+            || name.contains("opera")
         {
             return Self::Browser;
         }
@@ -115,6 +122,21 @@ impl AppCategory {
 
     pub fn is_deep_work(&self) -> bool {
         matches!(self, Self::Development | Self::Documentation | Self::Design)
+    }
+
+    /// Convenience: classify an app name as a coding/development app.
+    pub fn is_coding(app_name: &str) -> bool {
+        matches!(Self::from_app_name(app_name), AppCategory::Development)
+    }
+
+    /// Convenience: classify an app name as a communication app.
+    pub fn is_communication_app(app_name: &str) -> bool {
+        matches!(Self::from_app_name(app_name), AppCategory::Communication)
+    }
+
+    /// Convenience: classify an app name as a browser.
+    pub fn is_browser(app_name: &str) -> bool {
+        matches!(Self::from_app_name(app_name), AppCategory::Browser)
     }
 
     pub fn label_ko(&self) -> &'static str {
@@ -290,6 +312,10 @@ pub struct CategoryUsage {
     pub session_count: u32,
 }
 
+#[deprecated(
+    since = "0.4.0",
+    note = "Use oneshim_core::models::suggestion::Suggestion with SuggestionSource::RuleBased instead"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LocalSuggestion {
@@ -315,6 +341,7 @@ pub enum LocalSuggestion {
     },
 }
 
+#[allow(deprecated)]
 impl LocalSuggestion {
     pub fn priority(&self) -> u8 {
         match self {
@@ -407,6 +434,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn local_suggestion_priority() {
         let restore = LocalSuggestion::RestoreContext {
             interrupted_app: "Code".to_string(),

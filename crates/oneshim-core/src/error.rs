@@ -86,6 +86,9 @@ pub enum CoreError {
 
     #[error("secret store error: {0}")]
     SecretStoreError(String),
+
+    #[error("Analysis error: {0}")]
+    Analysis(String),
 }
 
 /// GUI 상호작용 전용 에러 (AutomationPort GUI 메서드에서 사용)

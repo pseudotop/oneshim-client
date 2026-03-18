@@ -25,6 +25,8 @@ mod tests {
             is_actionable: true,
             created_at: chrono::Utc::now(),
             expires_at: None,
+            source: Default::default(),
+            reasoning: None,
         };
 
         let json = serde_json::to_string(&suggestion).unwrap();

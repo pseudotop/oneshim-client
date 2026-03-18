@@ -144,6 +144,11 @@ fn main() {
             commands::oauth_cancel_flow,
             commands::oauth_revoke,
             commands::oauth_connection_status,
+            commands::get_analysis_config,
+            commands::update_analysis_config,
+            commands::get_analysis_status,
+            commands::semantic_search,
+            commands::get_weekly_digest,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

@@ -1,6 +1,33 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SuggestionSource {
+    #[default]
+    RuleBased,
+    LlmLocal,
+    LlmServer,
+}
+
+impl SuggestionSource {
+    /// SQL string representation for LlmServer source.
+    pub const LLM_SERVER_STR: &'static str = "LLM_SERVER";
+    /// SQL string representation for RuleBased source.
+    pub const RULE_BASED_STR: &'static str = "RULE_BASED";
+    /// SQL string representation for LlmLocal source.
+    pub const LLM_LOCAL_STR: &'static str = "LLM_LOCAL";
+
+    /// Convert to the SQL string representation.
+    pub fn as_sql_str(&self) -> &'static str {
+        match self {
+            SuggestionSource::LlmServer => Self::LLM_SERVER_STR,
+            SuggestionSource::RuleBased => Self::RULE_BASED_STR,
+            SuggestionSource::LlmLocal => Self::LLM_LOCAL_STR,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Suggestion {
     pub suggestion_id: String,
@@ -12,6 +39,10 @@ pub struct Suggestion {
     pub is_actionable: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub source: SuggestionSource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

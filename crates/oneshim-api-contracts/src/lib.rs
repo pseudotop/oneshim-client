@@ -21,6 +21,7 @@ pub mod sessions;
 pub mod settings;
 pub mod stats;
 pub mod stream;
+pub mod suggestions;
 pub mod support;
 pub mod tags;
 pub mod timeline;

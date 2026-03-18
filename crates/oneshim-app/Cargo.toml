@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 oneshim-core = { workspace = true }
+oneshim-analysis = { workspace = true }
 oneshim-automation = { workspace = true }
 oneshim-monitor = { workspace = true }
 oneshim-vision = { workspace = true }
