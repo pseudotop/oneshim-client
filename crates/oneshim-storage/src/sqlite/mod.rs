@@ -649,6 +649,119 @@ mod tests {
     }
 
     #[test]
+    fn daily_digest_save_and_get_roundtrip() {
+        use oneshim_core::models::daily_digest::{DailyDigest, DailyInsight, DailyStatistics, DigestHighlight, HighlightType};
+        use oneshim_core::ports::web_storage::WebStorage;
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let today = Utc::now().date_naive();
+
+        let digest = DailyDigest {
+            date: today,
+            insight: Some(DailyInsight {
+                narrative: "Great focus day!".to_string(),
+                highlights: vec![DigestHighlight {
+                    highlight_type: HighlightType::Achievement,
+                    text: "2h deep work".to_string(),
+                    segment_id: Some("seg-001".to_string()),
+                }],
+            }),
+            timeline: vec![],
+            statistics: DailyStatistics {
+                deep_work_hours: 4.2,
+                ..DailyStatistics::default()
+            },
+            generated_at: Utc::now(),
+        };
+
+        storage.save_daily_digest(&digest).unwrap();
+
+        let loaded = storage.get_daily_digest(&today.to_string()).unwrap();
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.date, today);
+        assert!(loaded.insight.is_some());
+        let insight = loaded.insight.unwrap();
+        assert_eq!(insight.narrative, "Great focus day!");
+        assert_eq!(insight.highlights.len(), 1);
+        assert!((loaded.statistics.deep_work_hours - 4.2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn daily_digest_list_ordering() {
+        use chrono::Days;
+        use oneshim_core::models::daily_digest::{DailyDigest, DailyStatistics};
+        use oneshim_core::ports::web_storage::WebStorage;
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let today = Utc::now().date_naive();
+
+        for offset in 0..3 {
+            let date = today - Days::new(offset);
+            let digest = DailyDigest {
+                date,
+                insight: None,
+                timeline: vec![],
+                statistics: DailyStatistics::default(),
+                generated_at: Utc::now(),
+            };
+            storage.save_daily_digest(&digest).unwrap();
+        }
+
+        let digests = storage.list_daily_digests(10).unwrap();
+        assert_eq!(digests.len(), 3);
+        // Newest first
+        assert_eq!(digests[0].date, today);
+        assert_eq!(digests[1].date, today - Days::new(1));
+    }
+
+    #[test]
+    fn daily_digest_get_nonexistent_returns_none() {
+        use oneshim_core::ports::web_storage::WebStorage;
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let result = storage.get_daily_digest("2020-01-01").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn segments_for_date_query() {
+        use oneshim_core::ports::web_storage::WebStorage;
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // Insert a test segment
+        {
+            let conn = storage.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO activity_segments (id, start_time, end_time, duration_secs, trigger_reason, dominant_category, event_count, avg_importance)
+                 VALUES ('seg-001', '2026-03-19T09:00:00Z', '2026-03-19T10:00:00Z', 3600, 'SCORE_HIGH', 'Development', 50, 0.8)",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO activity_segments (id, start_time, end_time, duration_secs, trigger_reason, dominant_category, event_count, avg_importance)
+                 VALUES ('seg-002', '2026-03-20T09:00:00Z', '2026-03-20T10:00:00Z', 3600, 'SCORE_HIGH', 'Communication', 30, 0.5)",
+                [],
+            ).unwrap();
+        }
+
+        let segments = storage.get_segments_for_date("2026-03-19").unwrap();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].segment_id, "seg-001");
+        assert_eq!(segments[0].dominant_category, "Development");
+        assert_eq!(segments[0].duration_secs, 3600);
+
+        // Different date returns different segment
+        let segments2 = storage.get_segments_for_date("2026-03-20").unwrap();
+        assert_eq!(segments2.len(), 1);
+        assert_eq!(segments2[0].segment_id, "seg-002");
+
+        // Non-existent date returns empty
+        let empty = storage.get_segments_for_date("2020-01-01").unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
     fn app_category_parsing() {
         assert_eq!(
             SqliteStorage::parse_app_category("Communication"),

@@ -1,16 +1,50 @@
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::activity::SessionStats;
+use oneshim_core::models::daily_digest::DailyDigest;
 use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
     FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
     MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord,
-    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
+    SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::WebStorage;
 
 use super::SqliteStorage;
+
+impl SqliteStorage {
+    /// Parse a daily digest row from its constituent JSON columns.
+    fn parse_daily_digest_row(
+        date_str: &str,
+        insight_json: Option<&str>,
+        timeline_json: &str,
+        statistics_json: &str,
+        generated_at_str: &str,
+    ) -> Result<DailyDigest, CoreError> {
+        let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+            .map_err(|e| CoreError::Internal(format!("Invalid date in daily_digests: {e}")))?;
+        let insight = insight_json
+            .map(|s| serde_json::from_str(s))
+            .transpose()
+            .map_err(|e| CoreError::Internal(format!("Failed to deserialize insight: {e}")))?;
+        let timeline = serde_json::from_str(timeline_json)
+            .map_err(|e| CoreError::Internal(format!("Failed to deserialize timeline: {e}")))?;
+        let statistics = serde_json::from_str(statistics_json)
+            .map_err(|e| CoreError::Internal(format!("Failed to deserialize statistics: {e}")))?;
+        let generated_at = chrono::DateTime::parse_from_rfc3339(generated_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        Ok(DailyDigest {
+            date,
+            insight,
+            timeline,
+            statistics,
+            generated_at,
+        })
+    }
+}
 
 impl WebStorage for SqliteStorage {
     fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
@@ -437,5 +471,168 @@ impl WebStorage for SqliteStorage {
             }
         }
         Ok(map)
+    }
+
+    fn save_daily_digest(&self, digest: &DailyDigest) -> Result<(), CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        let date_str = digest.date.to_string(); // YYYY-MM-DD
+        let insight_json = digest
+            .insight
+            .as_ref()
+            .map(|i| serde_json::to_string(i))
+            .transpose()
+            .map_err(|e| CoreError::Internal(format!("Failed to serialize insight: {e}")))?;
+        let timeline_json = serde_json::to_string(&digest.timeline)
+            .map_err(|e| CoreError::Internal(format!("Failed to serialize timeline: {e}")))?;
+        let statistics_json = serde_json::to_string(&digest.statistics)
+            .map_err(|e| CoreError::Internal(format!("Failed to serialize statistics: {e}")))?;
+        let generated_at = digest.generated_at.to_rfc3339();
+
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_digests (date, insight_json, timeline_json, statistics_json, generated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![date_str, insight_json, timeline_json, statistics_json, generated_at],
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to save daily digest: {e}")))?;
+
+        Ok(())
+    }
+
+    fn get_daily_digest(&self, date: &str) -> Result<Option<DailyDigest>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        let result = conn.query_row(
+            "SELECT date, insight_json, timeline_json, statistics_json, generated_at
+             FROM daily_digests WHERE date = ?1",
+            rusqlite::params![date],
+            |row| {
+                let date_str: String = row.get(0)?;
+                let insight_json: Option<String> = row.get(1)?;
+                let timeline_json: String = row.get(2)?;
+                let statistics_json: String = row.get(3)?;
+                let generated_at_str: String = row.get(4)?;
+                Ok((date_str, insight_json, timeline_json, statistics_json, generated_at_str))
+            },
+        );
+
+        match result {
+            Ok((date_str, insight_json, timeline_json, statistics_json, generated_at_str)) => {
+                let digest = Self::parse_daily_digest_row(
+                    &date_str,
+                    insight_json.as_deref(),
+                    &timeline_json,
+                    &statistics_json,
+                    &generated_at_str,
+                )?;
+                Ok(Some(digest))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(CoreError::Internal(format!(
+                "Failed to get daily digest: {e}"
+            ))),
+        }
+    }
+
+    fn list_daily_digests(&self, limit: usize) -> Result<Vec<DailyDigest>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT date, insight_json, timeline_json, statistics_json, generated_at
+                 FROM daily_digests ORDER BY date DESC LIMIT ?1",
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare daily_digests query: {e}")))?;
+
+        let digests: Vec<DailyDigest> = stmt
+            .query_map(rusqlite::params![limit as i64], |row| {
+                let date_str: String = row.get(0)?;
+                let insight_json: Option<String> = row.get(1)?;
+                let timeline_json: String = row.get(2)?;
+                let statistics_json: String = row.get(3)?;
+                let generated_at_str: String = row.get(4)?;
+                Ok((date_str, insight_json, timeline_json, statistics_json, generated_at_str))
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query daily_digests: {e}")))?
+            .filter_map(|r| r.ok())
+            .filter_map(|(date_str, insight_json, timeline_json, statistics_json, generated_at_str)| {
+                Self::parse_daily_digest_row(
+                    &date_str,
+                    insight_json.as_deref(),
+                    &timeline_json,
+                    &statistics_json,
+                    &generated_at_str,
+                )
+                .ok()
+            })
+            .collect();
+
+        Ok(digests)
+    }
+
+    fn get_segments_for_date(
+        &self,
+        date: &str,
+    ) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        // Check if the activity_segments table exists
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='activity_segments'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            return Ok(vec![]);
+        }
+
+        // date is YYYY-MM-DD; select segments whose start_time falls on that day
+        let from = format!("{date}T00:00:00");
+        let to = format!("{date}T23:59:59");
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, start_time, end_time, duration_secs, dominant_category,
+                        regime_id, app_breakdown, content_activities_json, llm_summary
+                 FROM activity_segments
+                 WHERE start_time >= ?1 AND start_time <= ?2
+                 ORDER BY start_time ASC",
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare segments query: {e}")))?;
+
+        let records: Vec<SegmentSummaryRecord> = stmt
+            .query_map(rusqlite::params![from, to], |row| {
+                Ok(SegmentSummaryRecord {
+                    segment_id: row.get(0)?,
+                    start_time: row.get(1)?,
+                    end_time: row.get(2)?,
+                    duration_secs: row.get::<_, i64>(3)? as u64,
+                    dominant_category: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                    regime_id: row.get(5)?,
+                    app_breakdown: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "{}".to_string()),
+                    content_activities_json: row.get::<_, Option<String>>(7)?.unwrap_or_else(|| "[]".to_string()),
+                    llm_summary: row.get(8)?,
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query segments: {e}")))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
     }
 }
