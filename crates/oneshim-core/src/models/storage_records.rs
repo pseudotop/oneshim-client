@@ -153,3 +153,35 @@ pub struct FrameTagLinkRecord {
     pub tag_id: i64,
     pub created_at: String,
 }
+
+/// Row from the unified V8 `suggestions` table (both rule-based and LLM sources).
+#[derive(Debug, Clone)]
+pub struct SuggestionRecord {
+    pub id: i64,
+    pub suggestion_id: String,
+    pub suggestion_type: String,
+    pub source: String,
+    pub content: String,
+    pub priority: String,
+    pub confidence_score: f64,
+    pub relevance_score: f64,
+    pub is_actionable: bool,
+    pub reasoning: Option<String>,
+    pub shown_at: Option<String>,
+    pub dismissed_at: Option<String>,
+    pub acted_at: Option<String>,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+}
+
+/// Minimal segment detail for enriching vector search results.
+#[derive(Debug, Clone)]
+pub struct SegmentDetailRecord {
+    pub segment_id: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_secs: u64,
+    pub llm_summary: Option<String>,
+    pub dominant_category: String,
+    pub regime_label: Option<String>,
+}

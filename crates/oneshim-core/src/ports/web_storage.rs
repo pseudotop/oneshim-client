@@ -5,7 +5,8 @@ use crate::models::activity::SessionStats;
 use crate::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
     FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
-    MetricExportRecord, SearchEventRow, SearchFrameRow, StorageStatsSummaryRecord, TagRecord,
+    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord,
+    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
 };
 use crate::models::work_session::FocusMetrics;
 use crate::ports::storage::{MetricsStorage, StorageService};
@@ -104,6 +105,34 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
     fn mark_suggestion_dismissed(&self, suggestion_id: i64) -> Result<(), CoreError>;
     fn mark_suggestion_acted(&self, suggestion_id: i64) -> Result<(), CoreError>;
 
+    /// List unified suggestions from the V8 `suggestions` table, newest first.
+    /// Only returns non-dismissed suggestions.
+    fn list_suggestions(&self, limit: usize) -> Result<Vec<SuggestionRecord>, CoreError>;
+
+    /// Dismiss a unified suggestion by its string `suggestion_id`.
+    fn dismiss_unified_suggestion(&self, suggestion_id: &str) -> Result<bool, CoreError>;
+
+    /// Check whether server-sourced (LLM_SERVER) suggestions exist within the
+    /// given lookback window (in seconds). Used for server coexistence gating.
+    fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, CoreError>;
+
+    /// List recent weekly digests, newest first.
+    fn list_weekly_digests(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<crate::models::weekly_digest::WeeklyDigest>, CoreError>;
+
+    /// Get the digest for the current week (if exists).
+    fn get_current_week_digest(
+        &self,
+    ) -> Result<Option<crate::models::weekly_digest::WeeklyDigest>, CoreError>;
+
+    /// Save a weekly digest. Upserts by week_start.
+    fn save_weekly_digest(
+        &self,
+        digest: &crate::models::weekly_digest::WeeklyDigest,
+    ) -> Result<(), CoreError>;
+
     fn list_backup_tags(&self) -> Result<Vec<TagRecord>, CoreError>;
     fn list_backup_frame_tags(&self) -> Result<Vec<FrameTagLinkRecord>, CoreError>;
     fn list_event_exports(&self, from: &str, to: &str)
@@ -150,4 +179,14 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
         height: i32,
         ocr_text: Option<&str>,
     ) -> Result<(), CoreError>;
+
+    /// Retrieve segment details for the given segment IDs.
+    /// Used to enrich vector search results with segment metadata.
+    /// Default implementation returns an empty map (for stores without segment support).
+    fn get_segment_details(
+        &self,
+        _segment_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, SegmentDetailRecord>, CoreError> {
+        Ok(std::collections::HashMap::new())
+    }
 }
