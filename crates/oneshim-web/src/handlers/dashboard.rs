@@ -265,7 +265,6 @@ fn parse_top_content(json_str: &str) -> String {
         .unwrap_or_default()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

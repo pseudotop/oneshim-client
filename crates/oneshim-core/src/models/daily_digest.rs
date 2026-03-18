@@ -104,14 +104,14 @@ pub fn regime_color(label: &str) -> &'static str {
 
 /// Check if a segment represents deep work.
 pub fn is_deep_work(regime_id: Option<&str>, dominant_category: &str) -> bool {
-    regime_id.map_or(false, |r| r.contains("Deep Focus") || r.contains("Development"))
-        || dominant_category == "Development"
+    regime_id.map_or(false, |r| {
+        r.contains("Deep Focus") || r.contains("Development")
+    }) || dominant_category == "Development"
 }
 
 /// Check if a segment represents communication.
 pub fn is_communication(regime_id: Option<&str>, dominant_category: &str) -> bool {
-    regime_id.map_or(false, |r| r.contains("Communication"))
-        || dominant_category == "Communication"
+    regime_id.map_or(false, |r| r.contains("Communication")) || dominant_category == "Communication"
 }
 
 /// Check if a segment represents a meeting.

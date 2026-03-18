@@ -565,11 +565,7 @@ pub async fn get_dashboard_day(
         .unwrap_or(naive_date)
         .format("%Y-%m-%d")
         .to_string();
-    let prev_digest = state
-        .storage
-        .get_daily_digest(&prev_date)
-        .ok()
-        .flatten();
+    let prev_digest = state.storage.get_daily_digest(&prev_date).ok().flatten();
 
     let digest = oneshim_analysis::DailyDigestGenerator::generate(
         &segments,

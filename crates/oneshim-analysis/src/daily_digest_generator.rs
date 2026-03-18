@@ -104,7 +104,9 @@ impl DailyDigestGenerator {
 
         let communication_hours: f32 = segments
             .iter()
-            .filter(|s| daily_digest::is_communication(s.regime_id.as_deref(), &s.dominant_category))
+            .filter(|s| {
+                daily_digest::is_communication(s.regime_id.as_deref(), &s.dominant_category)
+            })
             .map(|s| s.duration_secs as f32 / 3600.0)
             .sum();
 
