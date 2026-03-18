@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: u32 = 10;
+const CURRENT_VERSION: u32 = 11;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -52,6 +52,10 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 10 {
         migrate_v10(conn)?;
+    }
+
+    if current < 11 {
+        migrate_v11(conn)?;
     }
 
     Ok(())
@@ -558,6 +562,52 @@ fn migrate_v10(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v11(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V11 execution: FTS5 search index + daily digests table");
+
+    // FTS5 virtual table — may fail if the fts5 extension is not compiled in.
+    // We log a warning and continue; the TextSearchProvider can return empty results.
+    let fts5_result = conn.execute_batch(
+        "
+        -- FTS5 full-text search index
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+            segment_id UNINDEXED,
+            content_type,
+            searchable_text,
+            tokenize='porter unicode61'
+        );
+
+        -- Backfill existing segments
+        INSERT OR IGNORE INTO search_fts (segment_id, content_type, searchable_text)
+        SELECT id, 'segment', COALESCE(llm_summary, '') || ' ' || COALESCE(dominant_category, '')
+        FROM activity_segments;
+        ",
+    );
+    if let Err(e) = fts5_result {
+        tracing::warn!("FTS5 table creation skipped (extension not available): {e}");
+    }
+
+    conn.execute_batch(
+        "
+        -- Daily digests
+        CREATE TABLE IF NOT EXISTS daily_digests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL UNIQUE,
+            insight_json TEXT,
+            timeline_json TEXT NOT NULL,
+            statistics_json TEXT NOT NULL,
+            generated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (11);
+        ",
+    )?;
+
+    info!("migration V11 completed");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -725,7 +775,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 11);
 
         // V9 tables
         let count: i64 = conn
@@ -782,6 +832,26 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+
+        // V11 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='daily_digests'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // FTS5 virtual table
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_fts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -794,6 +864,6 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 11);
     }
 }
