@@ -216,6 +216,18 @@ pub fn api_routes() -> Router<AppState> {
         )
         .route("/digests", get(handlers::digests::list_digests))
         .route("/digests/current", get(handlers::digests::current_digest))
+        .route(
+            "/digests/daily",
+            get(handlers::daily_digest::get_daily_digest),
+        )
+        .route(
+            "/digests/daily/today",
+            get(handlers::daily_digest::get_daily_digest_today),
+        )
+        .route(
+            "/dashboard/day",
+            get(handlers::dashboard::get_dashboard_day),
+        )
 }
 
 pub fn integration_routes() -> Router<AppState> {
@@ -266,6 +278,7 @@ mod tests {
             update_control: None,
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
     }
@@ -296,6 +309,7 @@ mod tests {
             update_control: None,
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
         };
         let _app: Router<()> = integration_routes().with_state(state);
     }

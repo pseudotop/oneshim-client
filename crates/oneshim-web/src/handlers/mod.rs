@@ -2,6 +2,8 @@ pub mod ai_models;
 pub mod ai_provider_surfaces;
 pub mod automation;
 pub mod automation_gui;
+pub mod daily_digest;
+pub mod dashboard;
 pub mod digests;
 
 pub mod backup;
