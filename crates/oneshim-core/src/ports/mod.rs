@@ -23,6 +23,7 @@ pub mod secret_projection;
 pub mod secret_store;
 pub mod skill_loader;
 pub mod storage;
+pub mod text_search;
 pub mod vector_store;
 pub mod vision;
 pub mod web_storage;
