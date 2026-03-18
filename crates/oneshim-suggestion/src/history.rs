@@ -107,6 +107,8 @@ mod tests {
             is_actionable: true,
             created_at: Utc::now(),
             expires_at: None,
+            source: Default::default(),
+            reasoning: None,
         }
     }
 

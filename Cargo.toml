@@ -11,6 +11,8 @@ members = [
     # "crates/oneshim-ui",      # iced UI → Tauri v2 마이그레이션으로 제거
     "crates/oneshim-web",
     "crates/oneshim-automation",
+    "crates/oneshim-analysis",
+    "crates/oneshim-embedding",
     # "crates/oneshim-app",     # src-tauri로 대체
     "src-tauri",
 ]
@@ -150,6 +152,8 @@ oneshim-storage = { path = "crates/oneshim-storage" }
 oneshim-suggestion = { path = "crates/oneshim-suggestion" }
 oneshim-web = { path = "crates/oneshim-web" }
 oneshim-automation = { path = "crates/oneshim-automation" }
+oneshim-analysis = { path = "crates/oneshim-analysis" }
+oneshim-embedding = { path = "crates/oneshim-embedding" }
 
 # 테스트 의존성 (각 crate의 [dev-dependencies]에서 workspace = true로 참조)
 mockito = "1"

@@ -605,6 +605,8 @@ mod tests {
             ))
                 as Arc<dyn IntegrationRuntimeTelemetryPort>),
             update_control: None,
+            vector_store: None,
+            embedding_provider: None,
         }
     }
 

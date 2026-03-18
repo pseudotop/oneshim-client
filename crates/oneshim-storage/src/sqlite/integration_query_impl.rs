@@ -3,6 +3,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::storage_records::LocalSuggestionRecord;
 use oneshim_core::ports::integration::LocalSuggestionQueryPort;
 
+use super::edge_intelligence::map_local_suggestion_row;
 use super::SqliteStorage;
 
 #[async_trait]
@@ -35,26 +36,13 @@ impl LocalSuggestionQueryPort for SqliteStorage {
                 .prepare(sql)
                 .map_err(|err| CoreError::Internal(format!("Failed to prepare query: {err}")))?;
 
-            let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<LocalSuggestionRecord> {
-                let payload_str: String = row.get(2)?;
-                let payload: serde_json::Value =
-                    serde_json::from_str(&payload_str).unwrap_or(serde_json::json!({}));
-
-                Ok(LocalSuggestionRecord {
-                    id: row.get(0)?,
-                    suggestion_type: row.get(1)?,
-                    payload,
-                    created_at: row.get(3)?,
-                    shown_at: row.get(4)?,
-                    dismissed_at: row.get(5)?,
-                    acted_at: row.get(6)?,
-                })
-            };
-
             let rows = if let Some(after_id) = after_id {
-                stmt.query_map(rusqlite::params![after_id, limit as i64], map_row)
+                stmt.query_map(
+                    rusqlite::params![after_id, limit as i64],
+                    map_local_suggestion_row,
+                )
             } else {
-                stmt.query_map(rusqlite::params![limit as i64], map_row)
+                stmt.query_map(rusqlite::params![limit as i64], map_local_suggestion_row)
             }
             .map_err(|err| CoreError::Internal(format!("Failed to execute query: {err}")))?;
 
@@ -73,11 +61,13 @@ impl LocalSuggestionQueryPort for SqliteStorage {
 
 #[cfg(test)]
 mod tests {
+    #[allow(deprecated)]
     use oneshim_core::models::work_session::LocalSuggestion;
 
     use super::*;
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn list_local_suggestions_after_returns_ascending_rows() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 

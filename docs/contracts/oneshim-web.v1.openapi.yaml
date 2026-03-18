@@ -6,7 +6,7 @@ info:
     Auto-generated from docs/contracts/http-interface-manifest.v1.json.
     This snapshot is transport-level and contract-focused.
   x-oneshim-document-version: 1
-  x-oneshim-updated-at: "2026-03-16"
+  x-oneshim-updated-at: "2026-03-18"
   x-oneshim-routes-file: "crates/oneshim-web/src/routes.rs"
   x-oneshim-contracts-crate: "crates/oneshim-api-contracts"
 servers:
@@ -672,6 +672,44 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/digests":
+    get:
+      tags:
+        - digests
+      operationId: digests_get_api_digests
+      summary: "GET /api/digests"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/digests/current":
+    get:
+      tags:
+        - digests
+      operationId: digests_get_api_digests_current
+      summary: "GET /api/digests/current"
       responses:
         "200":
           description: Success
@@ -1404,6 +1442,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/semantic-search":
+    get:
+      tags:
+        - semantic_search
+      operationId: semantic_search_get_api_semantic_search
+      summary: "GET /api/semantic-search"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/sessions":
     get:
       tags:
@@ -1573,6 +1630,56 @@ paths:
         - stream
       operationId: stream_get_api_stream
       summary: "GET /api/stream"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/suggestions":
+    get:
+      tags:
+        - suggestions
+      operationId: suggestions_get_api_suggestions
+      summary: "GET /api/suggestions"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/suggestions/{id}/dismiss":
+    post:
+      tags:
+        - suggestions
+      operationId: suggestions_post_api_suggestions_id_dismiss
+      summary: "POST /api/suggestions/{id}/dismiss"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
       responses:
         "200":
           description: Success

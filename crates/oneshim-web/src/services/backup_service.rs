@@ -209,6 +209,7 @@ fn restore_settings_to_context(
             config.notification.idle_notification_mins = settings.idle_notification_mins as u32;
             config.notification.long_session_mins = settings.long_session_notification_mins as u32;
             config.notification.high_usage_threshold = settings.high_usage_threshold_percent as u32;
+            Ok(())
         })
         .map_err(|error| ApiError::Internal(format!("Failed to save settings: {error}")))?;
 

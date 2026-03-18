@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: u32 = 7;
+const CURRENT_VERSION: u32 = 10;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -40,6 +40,18 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 7 {
         migrate_v7(conn)?;
+    }
+
+    if current < 8 {
+        migrate_v8(conn)?;
+    }
+
+    if current < 9 {
+        migrate_v9(conn)?;
+    }
+
+    if current < 10 {
+        migrate_v10(conn)?;
     }
 
     Ok(())
@@ -370,6 +382,182 @@ fn migrate_v7(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v8(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V8 execution: unified suggestions table");
+
+    conn.execute_batch(
+        "
+        -- unified suggestions table (server + local + LLM)
+        CREATE TABLE IF NOT EXISTS suggestions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            suggestion_id TEXT NOT NULL UNIQUE,
+            suggestion_type TEXT NOT NULL,
+            -- Default must match SuggestionSource::RULE_BASED_STR
+            source TEXT NOT NULL DEFAULT 'RULE_BASED',
+            content TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'MEDIUM',
+            confidence_score REAL NOT NULL DEFAULT 0.0,
+            relevance_score REAL NOT NULL DEFAULT 0.0,
+            is_actionable INTEGER NOT NULL DEFAULT 1,
+            reasoning TEXT,
+            shown_at TEXT,
+            dismissed_at TEXT,
+            acted_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            expires_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_suggestions_source ON suggestions(source);
+        CREATE INDEX IF NOT EXISTS idx_suggestions_created ON suggestions(created_at);
+        CREATE INDEX IF NOT EXISTS idx_suggestions_type ON suggestions(suggestion_type);
+
+        -- 버전 record
+        INSERT INTO schema_version (version) VALUES (8);
+        ",
+    )?;
+
+    info!("migration V8 completed");
+    Ok(())
+}
+
+fn migrate_v9(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V9 execution: tiered memory tables (calibration, regimes, segments)");
+
+    conn.execute_batch(
+        "
+        -- Calibration log: one row per trigger event for offline tuning
+        CREATE TABLE IF NOT EXISTS calibration_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            app_name TEXT NOT NULL,
+            app_category TEXT NOT NULL,
+            event_importance REAL NOT NULL,
+            density_signal REAL NOT NULL,
+            importance_signal REAL NOT NULL,
+            context_signal REAL NOT NULL,
+            buffer_signal REAL NOT NULL,
+            trigger_score REAL NOT NULL,
+            trigger_action TEXT,
+            active_regime_id TEXT,
+            params_version_id TEXT NOT NULL,
+            is_noise INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_calibration_timestamp ON calibration_log(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_calibration_regime ON calibration_log(active_regime_id);
+        CREATE INDEX IF NOT EXISTS idx_calibration_noise ON calibration_log(is_noise);
+        CREATE INDEX IF NOT EXISTS idx_calibration_ts_noise ON calibration_log(timestamp, is_noise);
+
+        -- Trigger parameter snapshots: immutable record per version
+        CREATE TABLE IF NOT EXISTS trigger_params_snapshots (
+            id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            preset TEXT NOT NULL,
+            params_json TEXT NOT NULL
+        );
+
+        -- Regimes: detected behavioral regimes (clusters of similar activity)
+        CREATE TABLE IF NOT EXISTS regimes (
+            id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            detected_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            occurrence_count INTEGER NOT NULL DEFAULT 1,
+            avg_density REAL NOT NULL DEFAULT 0.0,
+            avg_importance REAL NOT NULL DEFAULT 0.0,
+            dominant_category TEXT NOT NULL,
+            params_snapshot_id TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (params_snapshot_id) REFERENCES trigger_params_snapshots(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_regimes_active ON regimes(is_active);
+        CREATE INDEX IF NOT EXISTS idx_regimes_last_seen ON regimes(last_seen_at);
+
+        -- Activity segments: closed segments produced by AdaptiveTrigger
+        CREATE TABLE IF NOT EXISTS activity_segments (
+            id TEXT PRIMARY KEY,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            duration_secs INTEGER NOT NULL,
+            regime_id TEXT,
+            trigger_reason TEXT NOT NULL,
+            event_count INTEGER NOT NULL DEFAULT 0,
+            app_breakdown TEXT NOT NULL DEFAULT '{}',
+            category_breakdown TEXT NOT NULL DEFAULT '{}',
+            context_switch_count INTEGER NOT NULL DEFAULT 0,
+            dominant_category TEXT NOT NULL,
+            avg_importance REAL NOT NULL DEFAULT 0.0,
+            patterns_json TEXT NOT NULL DEFAULT '[]',
+            content_activities_json TEXT NOT NULL DEFAULT '[]',
+            container_json TEXT,
+            llm_summary TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (regime_id) REFERENCES regimes(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_segments_start ON activity_segments(start_time);
+        CREATE INDEX IF NOT EXISTS idx_segments_regime ON activity_segments(regime_id);
+        CREATE INDEX IF NOT EXISTS idx_segments_reason ON activity_segments(trigger_reason);
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (9);
+        ",
+    )?;
+
+    info!("migration V9 completed");
+    Ok(())
+}
+
+fn migrate_v10(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V10 execution: embedding vectors and weekly digests tables");
+
+    conn.execute_batch(
+        "
+        -- Embedding vectors table (raw vectors stored as BLOB, indexed by sqlite-vec at runtime)
+        CREATE TABLE IF NOT EXISTS embedding_vectors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            segment_id TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            content_label TEXT,
+            original_text TEXT NOT NULL,
+            vector BLOB NOT NULL,
+            model_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            is_stale INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_embedding_segment ON embedding_vectors(segment_id);
+        CREATE INDEX IF NOT EXISTS idx_embedding_timestamp ON embedding_vectors(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_embedding_model ON embedding_vectors(model_id);
+        CREATE INDEX IF NOT EXISTS idx_embedding_stale ON embedding_vectors(is_stale);
+
+        -- Weekly digest table (aggregated stats per week)
+        CREATE TABLE IF NOT EXISTS weekly_digests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start TEXT NOT NULL,
+            week_end TEXT NOT NULL,
+            stats_json TEXT NOT NULL,
+            comparison_json TEXT,
+            llm_narrative TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_digest_week ON weekly_digests(week_start);
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (10);
+        ",
+    )?;
+
+    info!("migration V10 completed");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -537,7 +725,63 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 10);
+
+        // V9 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='calibration_log'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='trigger_params_snapshots'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='regimes'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='activity_segments'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V10 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='embedding_vectors'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='weekly_digests'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -550,6 +794,6 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 10);
     }
 }

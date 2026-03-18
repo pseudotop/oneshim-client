@@ -1,4 +1,6 @@
 use anyhow::Result;
+use oneshim_core::consent::ConsentManager;
+use std::sync::Arc;
 use tauri::AppHandle;
 use tracing::info;
 
@@ -75,14 +77,25 @@ impl AppRuntimeLaunchBuilder {
                 sqlite_storage.clone(),
                 &data_dir_path,
                 &config,
+                config_manager.clone(),
                 self.app_handle.clone(),
             )
+            .with_vector_store(Arc::new(
+                oneshim_storage::sqlite::vector_store_impl::SqliteVectorStore::new(
+                    sqlite_storage.connection_arc(),
+                ),
+            ))
             .with_offline_mode(false)
             .with_event_tx(
                 core_resources
                     .background_runtime
                     .agent_event_tx(config.web.enabled),
-            );
+            )
+            .with_calibration_writer(sqlite_storage.clone())
+            .with_calibration_reader(sqlite_storage.clone())
+            .with_consent_manager(Arc::new(ConsentManager::new(
+                data_dir_path.join("consent.json"),
+            )));
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()

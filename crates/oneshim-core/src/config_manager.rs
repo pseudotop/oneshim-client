@@ -66,14 +66,20 @@ impl ConfigManager {
         Ok(())
     }
 
+    /// Atomically read-modify-write the config while holding the write lock
+    /// throughout, preventing TOCTOU races between concurrent callers.
     pub fn update_with<F>(&self, updater: F) -> Result<AppConfig, CoreError>
     where
-        F: FnOnce(&mut AppConfig),
+        F: FnOnce(&mut AppConfig) -> Result<(), String>,
     {
-        let mut config = self.get();
-        updater(&mut config);
-        self.update(config.clone())?;
-        Ok(config)
+        let mut config = self.config.write().unwrap();
+        updater(&mut config).map_err(CoreError::Config)?;
+        let snapshot = config.clone();
+        // Persist while still holding the lock so no reader sees
+        // the new state before it is durable.
+        Self::save_to_file(&self.config_path, &snapshot)?;
+        debug!("settings save complete: {}", self.config_path.display());
+        Ok(snapshot)
     }
 
     pub fn config_path(&self) -> &PathBuf {
@@ -236,6 +242,7 @@ mod tests {
             .update_with(|c| {
                 c.web.port = 8080;
                 c.storage.retention_days = 60;
+                Ok(())
             })
             .unwrap();
 
@@ -353,6 +360,7 @@ mod tests {
                 c.server.base_url = "https://prod.example.com".to_string();
                 c.monitor.idle_threshold_secs = 600;
                 c.vision.ocr_enabled = true;
+                Ok(())
             })
             .unwrap();
 

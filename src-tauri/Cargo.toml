@@ -31,6 +31,8 @@ oneshim-storage = { workspace = true }
 oneshim-suggestion = { workspace = true }
 oneshim-web = { workspace = true }
 oneshim-api-contracts = { workspace = true }
+oneshim-analysis = { workspace = true }
+oneshim-embedding = { workspace = true, optional = true }
 
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -60,10 +62,12 @@ base64 = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
-default = ["custom-protocol"]
+default = ["custom-protocol", "analysis"]
 custom-protocol = ["tauri/custom-protocol"]
-server = ["dep:oneshim-network"]
+analysis = ["dep:oneshim-network"]
+server = ["analysis"]
 grpc = ["server", "oneshim-network/grpc"]
+embedding = ["dep:oneshim-embedding"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 
 [target.'cfg(target_os = "macos")'.dependencies]

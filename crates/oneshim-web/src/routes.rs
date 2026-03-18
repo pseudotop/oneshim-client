@@ -98,6 +98,11 @@ pub fn api_routes() -> Router<AppState> {
             "/frames/{frame_id}/tags/{tag_id}",
             delete(handlers::tags::remove_tag_from_frame),
         )
+        .route("/suggestions", get(handlers::suggestions::list_suggestions))
+        .route(
+            "/suggestions/{id}/dismiss",
+            post(handlers::suggestions::dismiss_suggestion),
+        )
         .route("/focus/metrics", get(handlers::focus::get_focus_metrics))
         .route("/focus/sessions", get(handlers::focus::get_work_sessions))
         .route(
@@ -205,6 +210,12 @@ pub fn api_routes() -> Router<AppState> {
         .route("/update/status", get(handlers::update::get_update_status))
         .route("/update/action", post(handlers::update::post_update_action))
         .route("/update/stream", get(handlers::update::get_update_stream))
+        .route(
+            "/semantic-search",
+            get(handlers::semantic_search::semantic_search),
+        )
+        .route("/digests", get(handlers::digests::list_digests))
+        .route("/digests/current", get(handlers::digests::current_digest))
 }
 
 pub fn integration_routes() -> Router<AppState> {
@@ -253,6 +264,8 @@ mod tests {
             integration_audit: None,
             integration_runtime_telemetry: None,
             update_control: None,
+            vector_store: None,
+            embedding_provider: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
     }
@@ -281,6 +294,8 @@ mod tests {
             integration_audit: None,
             integration_runtime_telemetry: None,
             update_control: None,
+            vector_store: None,
+            embedding_provider: None,
         };
         let _app: Router<()> = integration_routes().with_state(state);
     }

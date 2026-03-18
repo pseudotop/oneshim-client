@@ -39,13 +39,7 @@ impl std::fmt::Debug for RemoteLlmProvider {
 
 impl RemoteLlmProvider {
     fn fallback_llm_model(provider_type: AiProviderType) -> &'static str {
-        match provider_type {
-            AiProviderType::Anthropic => "claude-sonnet-4-20250514",
-            AiProviderType::OpenAi => "gpt-5.4",
-            AiProviderType::Google => "gemini-2.5-flash",
-            AiProviderType::Ollama => "qwen3:8b",
-            AiProviderType::Generic => "gpt-5-mini",
-        }
+        crate::default_model_for_provider(&provider_type)
     }
 
     fn resolved_runtime_endpoint(
@@ -484,7 +478,7 @@ Return JSON only."#
                 let bearer_token = self.credential.resolve_bearer_token().await?;
                 builder = builder
                     .header("x-api-key", &bearer_token)
-                    .header("anthropic-version", "2023-06-01");
+                    .header("anthropic-version", crate::ANTHROPIC_API_VERSION);
             }
             ProviderAuthScheme::XGoogApiKey => {
                 let bearer_token = self.credential.resolve_bearer_token().await?;

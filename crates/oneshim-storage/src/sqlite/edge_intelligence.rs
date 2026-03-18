@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
+use oneshim_core::models::suggestion::SuggestionSource;
+#[allow(deprecated)]
 use oneshim_core::models::work_session::{
     AppCategory, FocusMetrics, Interruption, LocalSuggestion, SessionState, WorkSession,
 };
@@ -8,6 +10,37 @@ use tracing::debug;
 use super::{
     FocusInterruptionRecord, FocusWorkSessionRecord, LocalSuggestionRecord, SqliteStorage,
 };
+
+/// Serialize an enum to its SQL string representation using serde.
+/// Produces consistent casing (e.g. "FocusReminder") instead of Debug
+/// format which may differ between enum variants.
+pub(crate) fn enum_to_sql_str<T: serde::Serialize>(val: &T) -> String {
+    serde_json::to_string(val)
+        .unwrap_or_default()
+        .trim_matches('"')
+        .to_string()
+}
+
+/// Map a `local_suggestions` row to a `LocalSuggestionRecord`.
+/// Shared by `list_recent_local_suggestions`, `list_local_suggestions_after_id`,
+/// and `integration_query_impl`.
+pub(crate) fn map_local_suggestion_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<LocalSuggestionRecord> {
+    let payload_str: String = row.get(2)?;
+    let payload: serde_json::Value =
+        serde_json::from_str(&payload_str).unwrap_or(serde_json::json!({}));
+
+    Ok(LocalSuggestionRecord {
+        id: row.get(0)?,
+        suggestion_type: row.get(1)?,
+        payload,
+        created_at: row.get(3)?,
+        shown_at: row.get(4)?,
+        dismissed_at: row.get(5)?,
+        acted_at: row.get(6)?,
+    })
+}
 
 impl SqliteStorage {
     // --------------------------------------------------------
@@ -24,6 +57,7 @@ impl SqliteStorage {
             .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let now = Utc::now();
+        // TODO: migrate to enum_to_sql_str when AppCategory/SessionState use serde derives consistently
         let category_str = format!("{:?}", category);
 
         conn.execute(
@@ -251,9 +285,9 @@ impl SqliteStorage {
             rusqlite::params![
                 interruption.interrupted_at.to_rfc3339(),
                 interruption.from_app,
-                format!("{:?}", interruption.from_category),
+                format!("{:?}", interruption.from_category), // TODO: migrate to enum_to_sql_str
                 interruption.to_app,
-                format!("{:?}", interruption.to_category),
+                format!("{:?}", interruption.to_category), // TODO: migrate to enum_to_sql_str
                 interruption.snapshot_frame_id,
             ],
         )
@@ -680,21 +714,10 @@ impl SqliteStorage {
             .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
         let rows = stmt
-            .query_map(rusqlite::params![cutoff, limit as i64], |row| {
-                let payload_str: String = row.get(2)?;
-                let payload: serde_json::Value =
-                    serde_json::from_str(&payload_str).unwrap_or(serde_json::json!({}));
-
-                Ok(LocalSuggestionRecord {
-                    id: row.get(0)?,
-                    suggestion_type: row.get(1)?,
-                    payload,
-                    created_at: row.get(3)?,
-                    shown_at: row.get(4)?,
-                    dismissed_at: row.get(5)?,
-                    acted_at: row.get(6)?,
-                })
-            })
+            .query_map(
+                rusqlite::params![cutoff, limit as i64],
+                map_local_suggestion_row,
+            )
             .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
 
         let mut records = Vec::new();
@@ -731,26 +754,13 @@ impl SqliteStorage {
             .prepare(sql)
             .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
 
-        let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<LocalSuggestionRecord> {
-            let payload_str: String = row.get(2)?;
-            let payload: serde_json::Value =
-                serde_json::from_str(&payload_str).unwrap_or(serde_json::json!({}));
-
-            Ok(LocalSuggestionRecord {
-                id: row.get(0)?,
-                suggestion_type: row.get(1)?,
-                payload,
-                created_at: row.get(3)?,
-                shown_at: row.get(4)?,
-                dismissed_at: row.get(5)?,
-                acted_at: row.get(6)?,
-            })
-        };
-
         let rows = if let Some(after_id) = after_id {
-            stmt.query_map(rusqlite::params![after_id, limit as i64], map_row)
+            stmt.query_map(
+                rusqlite::params![after_id, limit as i64],
+                map_local_suggestion_row,
+            )
         } else {
-            stmt.query_map(rusqlite::params![limit as i64], map_row)
+            stmt.query_map(rusqlite::params![limit as i64], map_local_suggestion_row)
         }
         .map_err(|e| CoreError::Internal(format!("Failed to execute query: {e}")))?;
 
@@ -762,8 +772,67 @@ impl SqliteStorage {
     }
 
     // --------------------------------------------------------
+    // Unified suggestion persistence (sync version for FocusStorage trait)
     // --------------------------------------------------------
 
+    /// Synchronously save a unified `Suggestion` to the V8 `suggestions` table.
+    /// Returns the `suggestion_id` (UUID string).
+    pub fn save_rule_suggestion_sync(
+        &self,
+        suggestion: &oneshim_core::models::suggestion::Suggestion,
+    ) -> Result<String, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        conn.execute(
+            "INSERT OR REPLACE INTO suggestions \
+             (suggestion_id, suggestion_type, source, content, priority, \
+              confidence_score, relevance_score, is_actionable, reasoning, \
+              created_at, expires_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            rusqlite::params![
+                suggestion.suggestion_id,
+                enum_to_sql_str(&suggestion.suggestion_type),
+                enum_to_sql_str(&suggestion.source),
+                suggestion.content,
+                enum_to_sql_str(&suggestion.priority),
+                suggestion.confidence_score,
+                suggestion.relevance_score,
+                suggestion.is_actionable as i32,
+                suggestion.reasoning,
+                suggestion.created_at.to_rfc3339(),
+                suggestion.expires_at.map(|t| t.to_rfc3339()),
+            ],
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to save suggestion: {e}")))?;
+
+        debug!(id = %suggestion.suggestion_id, "rule-based suggestion persisted to SQLite");
+        Ok(suggestion.suggestion_id.clone())
+    }
+
+    /// Mark a unified suggestion as shown by its string suggestion_id.
+    pub fn mark_unified_suggestion_shown(&self, suggestion_id: &str) -> Result<(), CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        conn.execute(
+            "UPDATE suggestions SET shown_at = datetime('now') WHERE suggestion_id = ?1",
+            rusqlite::params![suggestion_id],
+        )
+        .map_err(|e| CoreError::Internal(format!("suggestion shown record failure: {e}")))?;
+
+        Ok(())
+    }
+
+    // --------------------------------------------------------
+    // Legacy local_suggestions persistence (deprecated — kept for migration)
+    // --------------------------------------------------------
+
+    #[allow(deprecated)]
     pub fn save_local_suggestion(&self, suggestion: &LocalSuggestion) -> Result<i64, CoreError> {
         let conn = self
             .conn
@@ -829,6 +898,305 @@ impl SqliteStorage {
     }
 
     // --------------------------------------------------------
+    // Unified V8 suggestions queries
+    // --------------------------------------------------------
+
+    /// List non-dismissed suggestions from the unified `suggestions` table,
+    /// newest first, up to `limit` rows.
+    pub fn list_suggestions(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<oneshim_core::models::storage_records::SuggestionRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, suggestion_id, suggestion_type, source, content, priority, \
+                 confidence_score, relevance_score, is_actionable, reasoning, \
+                 shown_at, dismissed_at, acted_at, created_at, expires_at \
+                 FROM suggestions \
+                 WHERE dismissed_at IS NULL \
+                 ORDER BY created_at DESC \
+                 LIMIT ?1",
+            )
+            .map_err(|e| CoreError::Internal(format!("prepare failure: {e}")))?;
+
+        let rows = stmt
+            .query_map(rusqlite::params![limit as i64], |row| {
+                Ok(oneshim_core::models::storage_records::SuggestionRecord {
+                    id: row.get(0)?,
+                    suggestion_id: row.get(1)?,
+                    suggestion_type: row.get(2)?,
+                    source: row.get(3)?,
+                    content: row.get(4)?,
+                    priority: row.get(5)?,
+                    confidence_score: row.get(6)?,
+                    relevance_score: row.get(7)?,
+                    is_actionable: row.get::<_, i32>(8)? != 0,
+                    reasoning: row.get(9)?,
+                    shown_at: row.get(10)?,
+                    dismissed_at: row.get(11)?,
+                    acted_at: row.get(12)?,
+                    created_at: row.get(13)?,
+                    expires_at: row.get(14)?,
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("query failure: {e}")))?;
+
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row.map_err(|e| CoreError::Internal(format!("Failed to read row: {e}")))?);
+        }
+        Ok(records)
+    }
+
+    /// Dismiss a unified suggestion by its string `suggestion_id`.
+    /// Returns `true` if a row was updated, `false` otherwise.
+    pub fn dismiss_unified_suggestion(&self, suggestion_id: &str) -> Result<bool, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        let changed = conn
+            .execute(
+                "UPDATE suggestions SET dismissed_at = datetime('now') WHERE suggestion_id = ?1 AND dismissed_at IS NULL",
+                rusqlite::params![suggestion_id],
+            )
+            .map_err(|e| CoreError::Internal(format!("dismiss failure: {e}")))?;
+
+        Ok(changed > 0)
+    }
+
+    /// List closed segments whose time range falls within [from, to].
+    /// Returns deserialized `SegmentSummary` structs from the `activity_segments` table.
+    pub fn list_segments_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<oneshim_core::models::tiered_memory::SegmentSummary>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        // Check table existence (may not have run V9 migration yet)
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='activity_segments'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            return Ok(Vec::new());
+        }
+
+        let from_str = from.to_rfc3339();
+        let to_str = to.to_rfc3339();
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, start_time, end_time, duration_secs, regime_id, trigger_reason, \
+                 event_count, app_breakdown, category_breakdown, context_switch_count, \
+                 dominant_category, avg_importance, patterns_json, content_activities_json, \
+                 container_json, llm_summary \
+                 FROM activity_segments \
+                 WHERE start_time >= ?1 AND end_time <= ?2 \
+                 ORDER BY start_time",
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare segments query: {e}")))?;
+
+        let segments: Vec<oneshim_core::models::tiered_memory::SegmentSummary> = stmt
+            .query_map(rusqlite::params![from_str, to_str], |row| {
+                let id: String = row.get(0)?;
+                let start_str: String = row.get(1)?;
+                let end_str: String = row.get(2)?;
+                let dur: i64 = row.get(3)?;
+                let regime: Option<String> = row.get(4)?;
+                let reason_str: String = row.get(5)?;
+                let events: i64 = row.get(6)?;
+                let app_json: String = row.get(7)?;
+                let cat_json: String = row.get(8)?;
+                let switches: i64 = row.get(9)?;
+                let dominant: String = row.get(10)?;
+                let importance: f64 = row.get(11)?;
+                let patterns_json: String = row.get(12)?;
+                let content_json: String = row.get(13)?;
+                let container_json: Option<String> = row.get(14)?;
+                let llm_summary: Option<String> = row.get(15)?;
+                Ok((
+                    id,
+                    start_str,
+                    end_str,
+                    dur,
+                    regime,
+                    reason_str,
+                    events,
+                    app_json,
+                    cat_json,
+                    switches,
+                    dominant,
+                    importance,
+                    patterns_json,
+                    content_json,
+                    container_json,
+                    llm_summary,
+                ))
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query segments: {e}")))?
+            .filter_map(|r| r.ok())
+            .filter_map(
+                |(
+                    id,
+                    start_str,
+                    end_str,
+                    dur,
+                    regime,
+                    reason_str,
+                    events,
+                    app_json,
+                    cat_json,
+                    switches,
+                    dominant,
+                    importance,
+                    patterns_json,
+                    content_json,
+                    container_json,
+                    llm_summary,
+                )| {
+                    let start_time = chrono::DateTime::parse_from_rfc3339(&start_str)
+                        .ok()?
+                        .with_timezone(&chrono::Utc);
+                    let end_time = chrono::DateTime::parse_from_rfc3339(&end_str)
+                        .ok()?
+                        .with_timezone(&chrono::Utc);
+                    let trigger_reason: oneshim_core::models::tiered_memory::TriggerReason =
+                        serde_json::from_str(&format!("\"{reason_str}\"")).unwrap_or(
+                            oneshim_core::models::tiered_memory::TriggerReason::ScoreHigh,
+                        );
+                    let app_breakdown = serde_json::from_str(&app_json).unwrap_or_default();
+                    let category_breakdown = serde_json::from_str(&cat_json).unwrap_or_default();
+                    let patterns_detected =
+                        serde_json::from_str(&patterns_json).unwrap_or_default();
+                    let content_activities =
+                        serde_json::from_str(&content_json).unwrap_or_default();
+                    let container = container_json.and_then(|j| serde_json::from_str(&j).ok());
+
+                    Some(oneshim_core::models::tiered_memory::SegmentSummary {
+                        segment_id: id,
+                        start_time,
+                        end_time,
+                        duration_secs: dur as u64,
+                        regime_id: regime,
+                        trigger_reason,
+                        event_count: events as u32,
+                        app_breakdown,
+                        category_breakdown,
+                        context_switch_count: switches as u32,
+                        dominant_category: dominant,
+                        avg_importance: importance as f32,
+                        patterns_detected,
+                        content_activities,
+                        container,
+                        llm_summary,
+                    })
+                },
+            )
+            .collect();
+
+        Ok(segments)
+    }
+
+    /// Check whether LLM_SERVER suggestions exist within the given lookback
+    /// window. Used by the analysis loop to suppress local analysis when the
+    /// server is actively sending suggestions.
+    pub fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
+
+        let sql = "SELECT COUNT(*) FROM suggestions \
+             WHERE source = ?1 \
+             AND created_at > datetime('now', ?2)";
+        let count: i64 = conn
+            .query_row(
+                sql,
+                rusqlite::params![
+                    SuggestionSource::LLM_SERVER_STR,
+                    format!("-{lookback_secs} seconds")
+                ],
+                |row| row.get(0),
+            )
+            .map_err(|e| CoreError::Internal(format!("query failure: {e}")))?;
+
+        Ok(count > 0)
+    }
+
+    /// Delete activity segments older than `max_days`. Returns the number of deleted rows.
+    pub fn enforce_segment_retention(&self, max_days: u32) -> Result<usize, CoreError> {
+        let cutoff = (Utc::now() - chrono::Duration::days(max_days as i64)).to_rfc3339();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='activity_segments'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !table_exists {
+            return Ok(0);
+        }
+        let deleted = conn
+            .execute(
+                "DELETE FROM activity_segments WHERE start_time < ?1 AND start_time IS NOT NULL",
+                rusqlite::params![cutoff],
+            )
+            .map_err(|e| CoreError::Internal(format!("segment retention failure: {e}")))?;
+        tracing::debug!(
+            "Enforced segment retention: deleted {deleted} rows older than {max_days} days"
+        );
+        Ok(deleted)
+    }
+
+    /// Delete weekly digests older than `max_weeks`. Returns the number of deleted rows.
+    pub fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError> {
+        let cutoff = (Utc::now() - chrono::Duration::days(max_weeks as i64 * 7)).to_rfc3339();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='weekly_digests'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !table_exists {
+            return Ok(0);
+        }
+        let deleted = conn
+            .execute(
+                "DELETE FROM weekly_digests WHERE week_start < ?1",
+                rusqlite::params![cutoff],
+            )
+            .map_err(|e| CoreError::Internal(format!("digest retention failure: {e}")))?;
+        tracing::debug!(
+            "Enforced digest retention: deleted {deleted} rows older than {max_weeks} weeks"
+        );
+        Ok(deleted)
+    }
+
+    // --------------------------------------------------------
     // --------------------------------------------------------
 
     pub(super) fn date_to_period_range(date: &str) -> (DateTime<Utc>, DateTime<Utc>) {
@@ -873,6 +1241,7 @@ impl SqliteStorage {
         }
     }
 
+    #[allow(deprecated)]
     fn serialize_suggestion(suggestion: &LocalSuggestion) -> (String, String) {
         match suggestion {
             LocalSuggestion::NeedFocusTime {

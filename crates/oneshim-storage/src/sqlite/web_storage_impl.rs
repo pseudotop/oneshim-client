@@ -4,7 +4,8 @@ use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
     FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
-    MetricExportRecord, SearchEventRow, SearchFrameRow, StorageStatsSummaryRecord, TagRecord,
+    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord,
+    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::WebStorage;
@@ -207,6 +208,88 @@ impl WebStorage for SqliteStorage {
         SqliteStorage::mark_suggestion_acted(self, suggestion_id)
     }
 
+    fn list_suggestions(&self, limit: usize) -> Result<Vec<SuggestionRecord>, CoreError> {
+        SqliteStorage::list_suggestions(self, limit)
+    }
+
+    fn dismiss_unified_suggestion(&self, suggestion_id: &str) -> Result<bool, CoreError> {
+        SqliteStorage::dismiss_unified_suggestion(self, suggestion_id)
+    }
+
+    fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, CoreError> {
+        SqliteStorage::has_recent_server_suggestions(self, lookback_secs)
+    }
+
+    fn list_weekly_digests(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<oneshim_core::models::weekly_digest::WeeklyDigest>, CoreError> {
+        let guard = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let mut stmt = guard
+            .prepare(
+                "SELECT stats_json, comparison_json, llm_narrative FROM weekly_digests ORDER BY week_start DESC LIMIT ?1",
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare weekly_digests query: {e}")))?;
+        let digests: Vec<oneshim_core::models::weekly_digest::WeeklyDigest> = stmt
+            .query_map(rusqlite::params![limit as i64], |row| {
+                let stats_json: String = row.get(0)?;
+                let comparison_json: Option<String> = row.get(1)?;
+                let llm_narrative: Option<String> = row.get(2)?;
+                Ok((stats_json, comparison_json, llm_narrative))
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query weekly_digests: {e}")))?
+            .filter_map(|r| r.ok())
+            .filter_map(|(stats_json, comparison_json, llm_narrative)| {
+                let mut digest: oneshim_core::models::weekly_digest::WeeklyDigest =
+                    serde_json::from_str(&stats_json).ok()?;
+                if let Some(ref cj) = comparison_json {
+                    digest.comparison = serde_json::from_str(cj).ok();
+                }
+                digest.llm_narrative = llm_narrative;
+                Some(digest)
+            })
+            .collect();
+        Ok(digests)
+    }
+
+    fn get_current_week_digest(
+        &self,
+    ) -> Result<Option<oneshim_core::models::weekly_digest::WeeklyDigest>, CoreError> {
+        let digests = self.list_weekly_digests(1)?;
+        // The most recent digest is the current week if it overlaps with now
+        Ok(digests.into_iter().next())
+    }
+
+    fn save_weekly_digest(
+        &self,
+        digest: &oneshim_core::models::weekly_digest::WeeklyDigest,
+    ) -> Result<(), CoreError> {
+        let guard = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let stats_json = serde_json::to_string(digest)
+            .map_err(|e| CoreError::Internal(format!("Failed to serialize digest: {e}")))?;
+        let comparison_json = digest
+            .comparison
+            .as_ref()
+            .map(|c| serde_json::to_string(c).unwrap_or_default());
+        let week_start = digest.week_start.to_rfc3339();
+        let week_end = digest.week_end.to_rfc3339();
+
+        guard
+            .execute(
+                "INSERT OR REPLACE INTO weekly_digests (week_start, week_end, stats_json, comparison_json, llm_narrative)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![week_start, week_end, stats_json, comparison_json, digest.llm_narrative],
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to save weekly digest: {e}")))?;
+        Ok(())
+    }
+
     fn list_backup_tags(&self) -> Result<Vec<TagRecord>, CoreError> {
         SqliteStorage::list_backup_tags(self)
     }
@@ -304,5 +387,55 @@ impl WebStorage for SqliteStorage {
             height,
             ocr_text,
         )
+    }
+
+    fn get_segment_details(
+        &self,
+        segment_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, SegmentDetailRecord>, CoreError> {
+        if segment_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        // Check if the activity_segments table exists
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='activity_segments'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let mut map = std::collections::HashMap::new();
+        for id in segment_ids {
+            let result = conn.query_row(
+                "SELECT id, start_time, end_time, duration_secs, llm_summary, dominant_category, regime_id
+                 FROM activity_segments WHERE id = ?1",
+                rusqlite::params![id],
+                |row| {
+                    Ok(SegmentDetailRecord {
+                        segment_id: row.get(0)?,
+                        start_time: row.get(1)?,
+                        end_time: row.get(2)?,
+                        duration_secs: row.get::<_, i64>(3)? as u64,
+                        llm_summary: row.get(4)?,
+                        dominant_category: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                        regime_label: row.get(6)?,
+                    })
+                },
+            );
+            if let Ok(record) = result {
+                map.insert(id.clone(), record);
+            }
+        }
+        Ok(map)
     }
 }

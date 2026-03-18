@@ -15,6 +15,8 @@ fn make_suggestion(id: &str, priority: Priority, content: &str) -> Suggestion {
         is_actionable: true,
         created_at: Utc::now(),
         expires_at: None,
+        source: Default::default(),
+        reasoning: None,
     }
 }
 

@@ -20,6 +20,21 @@ pub enum Weekday {
     Sun,
 }
 
+impl Weekday {
+    /// Number of days from Sunday (compatible with `chrono::Weekday::num_days_from_sunday()`).
+    pub fn num_days_from_sunday(self) -> u32 {
+        match self {
+            Weekday::Sun => 0,
+            Weekday::Mon => 1,
+            Weekday::Tue => 2,
+            Weekday::Wed => 3,
+            Weekday::Thu => 4,
+            Weekday::Fri => 5,
+            Weekday::Sat => 6,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SandboxProfile {
     Permissive,

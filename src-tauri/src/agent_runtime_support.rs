@@ -1,5 +1,7 @@
 use anyhow::Result;
 use oneshim_core::config::AppConfig;
+#[cfg(feature = "analysis")]
+use oneshim_network::analysis_client::AnalysisClient;
 #[cfg(feature = "server")]
 use oneshim_network::auth::TokenManager;
 #[cfg(feature = "server")]
@@ -29,6 +31,7 @@ pub(crate) struct AgentSupportContext {
     pub(crate) api_client_opt: Option<Arc<dyn oneshim_core::ports::api_client::ApiClient>>,
     pub(crate) notification_manager: Arc<NotificationManager>,
     pub(crate) focus_analyzer: Arc<FocusAnalyzer>,
+    pub(crate) context_analyzer: Option<Arc<oneshim_analysis::ContextAnalyzer>>,
 }
 
 type BatchSinkPort = Arc<dyn oneshim_core::ports::batch_sink::BatchSink>;
@@ -39,6 +42,7 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
     data_dir: &'a Path,
     config: &'a AppConfig,
     focus_storage: Arc<dyn FocusStorage>,
+    storage: Option<Arc<dyn oneshim_core::ports::storage::StorageService>>,
 }
 
 impl<'a> AgentSupportContextBuilder<'a> {
@@ -51,7 +55,58 @@ impl<'a> AgentSupportContextBuilder<'a> {
             data_dir,
             config,
             focus_storage,
+            storage: None,
         }
+    }
+
+    pub(crate) fn with_storage(
+        mut self,
+        storage: Arc<dyn oneshim_core::ports::storage::StorageService>,
+    ) -> Self {
+        self.storage = Some(storage);
+        self
+    }
+
+    #[cfg(feature = "analysis")]
+    fn build_context_analyzer(&self) -> Option<Arc<oneshim_analysis::ContextAnalyzer>> {
+        if !self.config.analysis.enabled {
+            return None;
+        }
+
+        let storage = match self.storage.as_ref() {
+            Some(s) => s.clone(),
+            None => {
+                tracing::warn!("analysis enabled but no storage available");
+                return None;
+            }
+        };
+
+        let analysis_provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider> =
+            if let Some(ref llm_api) = self.config.ai_provider.llm_api {
+                Arc::new(AnalysisClient::new(llm_api))
+            } else {
+                tracing::warn!("analysis enabled but no LLM provider configured");
+                return None;
+            };
+
+        let pattern_miner = oneshim_analysis::PatternMiner::new();
+        let pii_level = self.config.privacy.pii_filter_level;
+        let context_assembler = oneshim_analysis::ContextAssembler::new(Box::new(move |text| {
+            oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
+        }));
+
+        Some(Arc::new(oneshim_analysis::ContextAnalyzer::new(
+            storage,
+            analysis_provider,
+            pattern_miner,
+            context_assembler,
+            self.config.analysis.clone(),
+        )))
+    }
+
+    #[cfg(not(feature = "analysis"))]
+    fn build_context_analyzer(&self) -> Option<Arc<oneshim_analysis::ContextAnalyzer>> {
+        None
     }
 
     pub(crate) async fn build(self) -> Result<AgentSupportContext> {
@@ -96,6 +151,8 @@ impl<'a> AgentSupportContextBuilder<'a> {
             notifier,
         ));
 
+        let context_analyzer = self.build_context_analyzer();
+
         let scheduler_config = SchedulerConfig {
             poll_interval: Duration::from_millis(self.config.monitor.poll_interval_ms),
             metrics_interval: Duration::from_secs(5),
@@ -109,7 +166,8 @@ impl<'a> AgentSupportContextBuilder<'a> {
             external_data_policy: self.config.ai_provider.external_data_policy,
             privacy_config: self.config.privacy.clone(),
             idle_threshold_secs: 300,
-            upload_enabled: false,
+            upload_enabled: self.config.monitor.upload_enabled,
+            analysis_config: self.config.analysis.clone(),
         };
 
         Ok(AgentSupportContext {
@@ -124,6 +182,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             api_client_opt,
             notification_manager,
             focus_analyzer,
+            context_analyzer,
         })
     }
 }

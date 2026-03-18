@@ -1,10 +1,13 @@
+mod calibration_store_impl;
 pub(crate) mod edge_intelligence;
 mod events;
+mod focus_storage_impl;
 mod frames;
 mod integration_query_impl;
 mod maintenance;
 mod metrics;
 mod tags;
+pub mod vector_store_impl;
 mod web_storage_impl;
 
 use oneshim_core::error::CoreError;
@@ -62,6 +65,12 @@ impl SqliteStorage {
         })
     }
 
+    /// Expose the underlying connection Arc for shared-connection adapters
+    /// (e.g., `SqliteVectorStore`).
+    pub fn connection_arc(&self) -> Arc<Mutex<Connection>> {
+        self.conn.clone()
+    }
+
     /// 동기 SQLite 읽기/단순 쓰기 연산을 spawn_blocking으로 격리한다.
     /// 클로저는 커넥션의 공유 참조를 받는다.
     pub(super) async fn with_conn<F, T>(&self, f: F) -> Result<T, CoreError>
@@ -114,13 +123,14 @@ mod tests {
     use oneshim_core::models::activity::{ProcessSnapshot, ProcessSnapshotEntry, SessionStats};
     use oneshim_core::models::event::{ContextEvent, Event, UserEvent, UserEventType};
     use oneshim_core::models::system::{NetworkInfo, SystemMetrics};
+    #[allow(deprecated)]
     use oneshim_core::models::work_session::{
         AppCategory, FocusMetrics, Interruption, LocalSuggestion,
     };
     use oneshim_core::ports::storage::{MetricsStorage, StorageService};
     use uuid::Uuid;
 
-    fn make_user_event() -> Event {
+    pub(crate) fn make_user_event() -> Event {
         Event::User(UserEvent {
             event_id: Uuid::new_v4(),
             event_type: UserEventType::WindowChange,
@@ -615,6 +625,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn local_suggestion_persistence() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 

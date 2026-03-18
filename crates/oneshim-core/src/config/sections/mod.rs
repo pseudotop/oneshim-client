@@ -11,6 +11,7 @@
 
 mod ai;
 mod ai_validation;
+mod analysis;
 mod integration;
 mod monitoring;
 mod network;
@@ -19,6 +20,7 @@ mod storage;
 
 pub use ai::*;
 pub use ai_validation::*;
+pub use analysis::*;
 pub use integration::*;
 pub use monitoring::*;
 pub use network::*;

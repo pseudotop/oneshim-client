@@ -1,7 +1,9 @@
 pub mod activity;
+pub mod analysis;
 pub mod audit;
 pub mod automation;
 pub mod context;
+pub mod embedding;
 pub mod event;
 pub mod frame;
 pub mod gui;
@@ -13,5 +15,7 @@ pub mod storage_records;
 pub mod suggestion;
 pub mod system;
 pub mod telemetry;
+pub mod tiered_memory;
 pub mod ui_scene;
+pub mod weekly_digest;
 pub mod work_session;

@@ -31,6 +31,10 @@ pub struct ConsentPermissions {
     pub clipboard_monitoring: bool,
     #[serde(default)]
     pub file_access_monitoring: bool,
+
+    // --- Tier 4: Tiered Memory ---
+    #[serde(default)]
+    pub activity_pattern_learning: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

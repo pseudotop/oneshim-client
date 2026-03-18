@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use crate::error::CoreError;
 use crate::models::activity::{IdlePeriod, ProcessSnapshot, SessionStats};
 use crate::models::event::Event;
+use crate::models::suggestion::Suggestion;
 use crate::models::system::SystemMetrics;
 
 #[async_trait]
@@ -21,7 +22,19 @@ pub trait StorageService: Send + Sync {
 
     async fn mark_as_sent(&self, event_ids: &[String]) -> Result<(), CoreError>;
 
+    async fn mark_unsent_as_sent_before(&self, before: DateTime<Utc>) -> Result<usize, CoreError>;
+
     async fn enforce_retention(&self) -> Result<usize, CoreError>;
+
+    /// Persist an LLM/rule-based suggestion to the unified `suggestions` table.
+    async fn save_suggestion(&self, suggestion: &Suggestion) -> Result<(), CoreError>;
+
+    /// Update the llm_summary column of an existing activity_segments row.
+    async fn update_segment_llm_summary(
+        &self,
+        segment_id: &str,
+        llm_summary: &str,
+    ) -> Result<(), CoreError>;
 }
 
 #[async_trait]

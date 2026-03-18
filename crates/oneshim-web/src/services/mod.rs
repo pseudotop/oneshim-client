@@ -52,6 +52,8 @@ pub(crate) mod stats_query_support;
 pub mod stats_service;
 pub(crate) mod stream_assembler;
 pub mod stream_service;
+pub(crate) mod suggestions_assembler;
+pub mod suggestions_service;
 pub(crate) mod support_assembler;
 pub mod support_service;
 pub(crate) mod tags_assembler;
