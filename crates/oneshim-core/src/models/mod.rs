@@ -1,9 +1,9 @@
 pub mod activity;
 pub mod analysis;
-pub mod daily_digest;
 pub mod audit;
 pub mod automation;
 pub mod context;
+pub mod daily_digest;
 pub mod embedding;
 pub mod event;
 pub mod frame;

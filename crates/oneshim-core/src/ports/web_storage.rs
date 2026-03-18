@@ -6,8 +6,8 @@ use crate::models::daily_digest::DailyDigest;
 use crate::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
     FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
-    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord,
-    SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
+    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord, SegmentSummaryRecord,
+    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
 };
 use crate::models::work_session::FocusMetrics;
 use crate::ports::storage::{MetricsStorage, StorageService};
@@ -210,10 +210,7 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
 
     /// Get activity segment summaries for a given date (YYYY-MM-DD).
     /// Used as input for daily digest generation.
-    fn get_segments_for_date(
-        &self,
-        _date: &str,
-    ) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
+    fn get_segments_for_date(&self, _date: &str) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
         Ok(vec![])
     }
 }

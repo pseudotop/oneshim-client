@@ -2,8 +2,8 @@ mod calibration_store_impl;
 pub(crate) mod edge_intelligence;
 mod events;
 mod focus_storage_impl;
-mod fts_search_impl;
 mod frames;
+mod fts_search_impl;
 mod integration_query_impl;
 mod maintenance;
 mod metrics;
@@ -650,7 +650,9 @@ mod tests {
 
     #[test]
     fn daily_digest_save_and_get_roundtrip() {
-        use oneshim_core::models::daily_digest::{DailyDigest, DailyInsight, DailyStatistics, DigestHighlight, HighlightType};
+        use oneshim_core::models::daily_digest::{
+            DailyDigest, DailyInsight, DailyStatistics, DigestHighlight, HighlightType,
+        };
         use oneshim_core::ports::web_storage::WebStorage;
 
         let storage = SqliteStorage::open_in_memory(30).unwrap();

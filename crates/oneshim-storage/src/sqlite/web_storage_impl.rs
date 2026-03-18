@@ -5,8 +5,8 @@ use oneshim_core::models::daily_digest::DailyDigest;
 use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
     FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
-    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord,
-    SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
+    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord, SegmentSummaryRecord,
+    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::WebStorage;
@@ -518,7 +518,13 @@ impl WebStorage for SqliteStorage {
                 let timeline_json: String = row.get(2)?;
                 let statistics_json: String = row.get(3)?;
                 let generated_at_str: String = row.get(4)?;
-                Ok((date_str, insight_json, timeline_json, statistics_json, generated_at_str))
+                Ok((
+                    date_str,
+                    insight_json,
+                    timeline_json,
+                    statistics_json,
+                    generated_at_str,
+                ))
             },
         );
 
@@ -551,7 +557,9 @@ impl WebStorage for SqliteStorage {
                 "SELECT date, insight_json, timeline_json, statistics_json, generated_at
                  FROM daily_digests ORDER BY date DESC LIMIT ?1",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare daily_digests query: {e}")))?;
+            .map_err(|e| {
+                CoreError::Internal(format!("Failed to prepare daily_digests query: {e}"))
+            })?;
 
         let digests: Vec<DailyDigest> = stmt
             .query_map(rusqlite::params![limit as i64], |row| {
@@ -560,29 +568,34 @@ impl WebStorage for SqliteStorage {
                 let timeline_json: String = row.get(2)?;
                 let statistics_json: String = row.get(3)?;
                 let generated_at_str: String = row.get(4)?;
-                Ok((date_str, insight_json, timeline_json, statistics_json, generated_at_str))
+                Ok((
+                    date_str,
+                    insight_json,
+                    timeline_json,
+                    statistics_json,
+                    generated_at_str,
+                ))
             })
             .map_err(|e| CoreError::Internal(format!("Failed to query daily_digests: {e}")))?
             .filter_map(|r| r.ok())
-            .filter_map(|(date_str, insight_json, timeline_json, statistics_json, generated_at_str)| {
-                Self::parse_daily_digest_row(
-                    &date_str,
-                    insight_json.as_deref(),
-                    &timeline_json,
-                    &statistics_json,
-                    &generated_at_str,
-                )
-                .ok()
-            })
+            .filter_map(
+                |(date_str, insight_json, timeline_json, statistics_json, generated_at_str)| {
+                    Self::parse_daily_digest_row(
+                        &date_str,
+                        insight_json.as_deref(),
+                        &timeline_json,
+                        &statistics_json,
+                        &generated_at_str,
+                    )
+                    .ok()
+                },
+            )
             .collect();
 
         Ok(digests)
     }
 
-    fn get_segments_for_date(
-        &self,
-        date: &str,
-    ) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
+    fn get_segments_for_date(&self, date: &str) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
         let conn = self
             .conn
             .lock()
@@ -624,8 +637,12 @@ impl WebStorage for SqliteStorage {
                     duration_secs: row.get::<_, i64>(3)? as u64,
                     dominant_category: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
                     regime_id: row.get(5)?,
-                    app_breakdown: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "{}".to_string()),
-                    content_activities_json: row.get::<_, Option<String>>(7)?.unwrap_or_else(|| "[]".to_string()),
+                    app_breakdown: row
+                        .get::<_, Option<String>>(6)?
+                        .unwrap_or_else(|| "{}".to_string()),
+                    content_activities_json: row
+                        .get::<_, Option<String>>(7)?
+                        .unwrap_or_else(|| "[]".to_string()),
                     llm_summary: row.get(8)?,
                 })
             })
