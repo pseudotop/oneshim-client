@@ -123,7 +123,10 @@ mod tests {
     async fn search_empty_query_returns_empty() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        storage.sync_segment("seg-001", "some content").await.unwrap();
+        storage
+            .sync_segment("seg-001", "some content")
+            .await
+            .unwrap();
 
         let results = storage.search_fts("", 10).await.unwrap();
         assert!(results.is_empty());
