@@ -81,6 +81,46 @@ pub struct DayComparison {
     pub context_switch_delta: i32,
 }
 
+// ── Shared classification helpers ─────────────────────────────
+// Canonical implementations used by both oneshim-analysis (DailyDigestGenerator)
+// and oneshim-web (dashboard handler) to eliminate logic duplication.
+
+/// Regime color for timetable display.
+pub fn regime_color(label: &str) -> &'static str {
+    if label.contains("Deep Focus") || label.contains("Development") {
+        "#3B82F6"
+    } else if label.contains("Communication") {
+        "#F59E0B"
+    } else if label.contains("Research") {
+        "#10B981"
+    } else if label.contains("Meeting") {
+        "#8B5CF6"
+    } else if label.contains("Idle") {
+        "#E5E7EB"
+    } else {
+        "#6B7280"
+    }
+}
+
+/// Check if a segment represents deep work.
+pub fn is_deep_work(regime_id: Option<&str>, dominant_category: &str) -> bool {
+    regime_id.map_or(false, |r| r.contains("Deep Focus") || r.contains("Development"))
+        || dominant_category == "Development"
+}
+
+/// Check if a segment represents communication.
+pub fn is_communication(regime_id: Option<&str>, dominant_category: &str) -> bool {
+    regime_id.map_or(false, |r| r.contains("Communication"))
+        || dominant_category == "Communication"
+}
+
+/// Check if a segment represents a meeting.
+pub fn is_meeting(dominant_category: &str) -> bool {
+    dominant_category == "Meeting"
+        || dominant_category.contains("Zoom")
+        || dominant_category.contains("Meet")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +155,33 @@ mod tests {
         assert_eq!(json, "\"ACHIEVEMENT\"");
         let back: HighlightType = serde_json::from_str(&json).unwrap();
         assert_eq!(back, HighlightType::Achievement);
+    }
+
+    #[test]
+    fn regime_color_mapping() {
+        assert_eq!(regime_color("Deep Focus"), "#3B82F6");
+        assert_eq!(regime_color("Development"), "#3B82F6");
+        assert_eq!(regime_color("Communication"), "#F59E0B");
+        assert_eq!(regime_color("Research"), "#10B981");
+        assert_eq!(regime_color("Meeting"), "#8B5CF6");
+        assert_eq!(regime_color("Idle"), "#E5E7EB");
+        assert_eq!(regime_color("Unknown"), "#6B7280");
+    }
+
+    #[test]
+    fn classification_helpers() {
+        assert!(is_deep_work(Some("Deep Focus"), "Development"));
+        assert!(is_deep_work(None, "Development"));
+        assert!(!is_deep_work(Some("Communication"), "Communication"));
+
+        assert!(is_communication(Some("Communication"), "Other"));
+        assert!(is_communication(None, "Communication"));
+        assert!(!is_communication(Some("Deep Focus"), "Development"));
+
+        assert!(is_meeting("Meeting"));
+        assert!(is_meeting("Zoom Call"));
+        assert!(is_meeting("Google Meet"));
+        assert!(!is_meeting("Development"));
     }
 
     #[test]

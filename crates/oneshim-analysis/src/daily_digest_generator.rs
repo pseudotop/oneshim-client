@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::{NaiveDate, Utc};
 
 use oneshim_core::models::daily_digest::{
-    ContentBrief, DailyDigest, DailyStatistics, DayComparison, TimelineEntry,
+    self, ContentBrief, DailyDigest, DailyStatistics, DayComparison, TimelineEntry,
 };
 use oneshim_core::models::tiered_memory::SegmentSummary;
 
@@ -42,7 +42,7 @@ impl DailyDigestGenerator {
                     .as_deref()
                     .unwrap_or(&seg.dominant_category)
                     .to_string();
-                let regime_color = regime_color(&regime_label).to_string();
+                let regime_color = daily_digest::regime_color(&regime_label).to_string();
                 let dominant_app = Self::find_dominant_app(&seg.app_breakdown);
                 let content_summary = Self::build_content_summary(&seg.content_activities);
 
@@ -98,19 +98,19 @@ impl DailyDigestGenerator {
     ) -> DailyStatistics {
         let deep_work_hours: f32 = segments
             .iter()
-            .filter(|s| is_deep_work(s))
+            .filter(|s| daily_digest::is_deep_work(s.regime_id.as_deref(), &s.dominant_category))
             .map(|s| s.duration_secs as f32 / 3600.0)
             .sum();
 
         let communication_hours: f32 = segments
             .iter()
-            .filter(|s| is_communication(s))
+            .filter(|s| daily_digest::is_communication(s.regime_id.as_deref(), &s.dominant_category))
             .map(|s| s.duration_secs as f32 / 3600.0)
             .sum();
 
         let meeting_hours: f32 = segments
             .iter()
-            .filter(|s| is_meeting(s))
+            .filter(|s| daily_digest::is_meeting(&s.dominant_category))
             .map(|s| s.duration_secs as f32 / 3600.0)
             .sum();
 
@@ -119,7 +119,7 @@ impl DailyDigestGenerator {
         // Longest focus block (deep work segments only)
         let (longest_focus_mins, longest_focus_content) = segments
             .iter()
-            .filter(|s| is_deep_work(s))
+            .filter(|s| daily_digest::is_deep_work(s.regime_id.as_deref(), &s.dominant_category))
             .map(|s| {
                 let mins = (s.duration_secs / 60) as u32;
                 let content = s
@@ -182,42 +182,8 @@ impl DailyDigestGenerator {
     }
 }
 
-/// Map a regime label to a display color hex.
-fn regime_color(label: &str) -> &'static str {
-    if label.contains("Deep Focus") || label.contains("Development") {
-        "#3B82F6"
-    } else if label.contains("Communication") {
-        "#F59E0B"
-    } else if label.contains("Research") {
-        "#10B981"
-    } else if label.contains("Meeting") {
-        "#8B5CF6"
-    } else if label.contains("Idle") {
-        "#E5E7EB"
-    } else {
-        "#6B7280"
-    }
-}
-
-/// Check if a segment represents deep work.
-fn is_deep_work(seg: &SegmentSummary) -> bool {
-    let label = seg.regime_id.as_deref().unwrap_or(&seg.dominant_category);
-    label.contains("Deep Focus")
-        || label.contains("Development")
-        || seg.dominant_category == "Development"
-}
-
-/// Check if a segment represents communication.
-fn is_communication(seg: &SegmentSummary) -> bool {
-    let label = seg.regime_id.as_deref().unwrap_or(&seg.dominant_category);
-    label.contains("Communication") || seg.dominant_category == "Communication"
-}
-
-/// Check if a segment represents a meeting.
-fn is_meeting(seg: &SegmentSummary) -> bool {
-    let label = seg.regime_id.as_deref().unwrap_or(&seg.dominant_category);
-    label.contains("Meeting") || seg.dominant_category == "Meeting"
-}
+// Classification helpers (regime_color, is_deep_work, is_communication, is_meeting)
+// are now shared from oneshim_core::models::daily_digest.
 
 #[cfg(test)]
 mod tests {
@@ -467,13 +433,14 @@ mod tests {
 
     #[test]
     fn regime_color_mapping() {
-        assert_eq!(regime_color("Deep Focus"), "#3B82F6");
-        assert_eq!(regime_color("Development"), "#3B82F6");
-        assert_eq!(regime_color("Communication"), "#F59E0B");
-        assert_eq!(regime_color("Research"), "#10B981");
-        assert_eq!(regime_color("Meeting"), "#8B5CF6");
-        assert_eq!(regime_color("Idle"), "#E5E7EB");
-        assert_eq!(regime_color("Unknown"), "#6B7280");
+        // Delegated to oneshim_core::models::daily_digest::regime_color
+        assert_eq!(daily_digest::regime_color("Deep Focus"), "#3B82F6");
+        assert_eq!(daily_digest::regime_color("Development"), "#3B82F6");
+        assert_eq!(daily_digest::regime_color("Communication"), "#F59E0B");
+        assert_eq!(daily_digest::regime_color("Research"), "#10B981");
+        assert_eq!(daily_digest::regime_color("Meeting"), "#8B5CF6");
+        assert_eq!(daily_digest::regime_color("Idle"), "#E5E7EB");
+        assert_eq!(daily_digest::regime_color("Unknown"), "#6B7280");
     }
 
     #[test]
