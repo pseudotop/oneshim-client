@@ -596,7 +596,7 @@ fn migrate_v11(conn: &Connection) -> Result<(), rusqlite::Error> {
             insight_json TEXT,
             timeline_json TEXT NOT NULL,
             statistics_json TEXT NOT NULL,
-            generated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            generated_at TEXT NOT NULL
         );
 
         -- version record

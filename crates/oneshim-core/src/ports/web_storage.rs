@@ -193,9 +193,7 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
 
     /// Save a daily digest. Upserts by date.
     fn save_daily_digest(&self, _digest: &DailyDigest) -> Result<(), CoreError> {
-        Err(CoreError::Internal(
-            "save_daily_digest not implemented".into(),
-        ))
+        Ok(()) // No-op default — storage adapters override
     }
 
     /// Get the daily digest for a specific date (YYYY-MM-DD).

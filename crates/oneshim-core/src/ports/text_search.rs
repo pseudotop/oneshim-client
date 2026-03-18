@@ -25,5 +25,5 @@ pub trait TextSearchProvider: Send + Sync {
     ) -> Result<Vec<TextSearchResult>, CoreError>;
 
     /// Index (or update) the searchable text for a given segment.
-    fn sync_segment(&self, segment_id: &str, searchable_text: &str) -> Result<(), CoreError>;
+    async fn sync_segment(&self, segment_id: &str, searchable_text: &str) -> Result<(), CoreError>;
 }

@@ -59,40 +59,40 @@ impl TextSearchProvider for SqliteStorage {
         .await
     }
 
-    fn sync_segment(&self, segment_id: &str, searchable_text: &str) -> Result<(), CoreError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+    async fn sync_segment(&self, segment_id: &str, searchable_text: &str) -> Result<(), CoreError> {
+        let segment_id = segment_id.to_string();
+        let searchable_text = searchable_text.to_string();
+        self.with_conn(move |conn| {
+            // Check if the FTS5 table exists
+            let table_exists: bool = conn
+                .query_row(
+                    "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='search_fts'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
 
-        // Check if the FTS5 table exists
-        let table_exists: bool = conn
-            .query_row(
-                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='search_fts'",
-                [],
-                |row| row.get(0),
+            if !table_exists {
+                warn!("search_fts table not available; skipping sync_segment");
+                return Ok(());
+            }
+
+            // Delete existing entry then insert (FTS5 does not support INSERT OR REPLACE)
+            conn.execute(
+                "DELETE FROM search_fts WHERE segment_id = ?1",
+                rusqlite::params![segment_id],
             )
-            .unwrap_or(false);
+            .map_err(|e| CoreError::Internal(format!("FTS5 delete failed: {e}")))?;
 
-        if !table_exists {
-            warn!("search_fts table not available; skipping sync_segment");
-            return Ok(());
-        }
+            conn.execute(
+                "INSERT INTO search_fts (segment_id, content_type, searchable_text) VALUES (?1, ?2, ?3)",
+                rusqlite::params![segment_id, "segment", searchable_text],
+            )
+            .map_err(|e| CoreError::Internal(format!("FTS5 insert failed: {e}")))?;
 
-        // Delete existing entry then insert (FTS5 does not support INSERT OR REPLACE)
-        conn.execute(
-            "DELETE FROM search_fts WHERE segment_id = ?1",
-            rusqlite::params![segment_id],
-        )
-        .map_err(|e| CoreError::Internal(format!("FTS5 delete failed: {e}")))?;
-
-        conn.execute(
-            "INSERT INTO search_fts (segment_id, content_type, searchable_text) VALUES (?1, ?2, ?3)",
-            rusqlite::params![segment_id, "segment", searchable_text],
-        )
-        .map_err(|e| CoreError::Internal(format!("FTS5 insert failed: {e}")))?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 }
 
@@ -106,9 +106,11 @@ mod tests {
 
         storage
             .sync_segment("seg-001", "deep work on authentication module")
+            .await
             .unwrap();
         storage
             .sync_segment("seg-002", "slack communication with team")
+            .await
             .unwrap();
 
         let results = storage.search_fts("authentication", 10).await.unwrap();
@@ -121,7 +123,7 @@ mod tests {
     async fn search_empty_query_returns_empty() {
         let storage = SqliteStorage::open_in_memory(30).unwrap();
 
-        storage.sync_segment("seg-001", "some content").unwrap();
+        storage.sync_segment("seg-001", "some content").await.unwrap();
 
         let results = storage.search_fts("", 10).await.unwrap();
         assert!(results.is_empty());
@@ -136,12 +138,15 @@ mod tests {
 
         storage
             .sync_segment("seg-001", "rust programming language systems")
+            .await
             .unwrap();
         storage
             .sync_segment("seg-002", "rust compiler optimization rust")
+            .await
             .unwrap();
         storage
             .sync_segment("seg-003", "python web development")
+            .await
             .unwrap();
 
         let results = storage.search_fts("rust", 10).await.unwrap();
@@ -156,9 +161,11 @@ mod tests {
 
         storage
             .sync_segment("seg-001", "original content about rust")
+            .await
             .unwrap();
         storage
             .sync_segment("seg-001", "updated content about python")
+            .await
             .unwrap();
 
         let rust_results = storage.search_fts("rust", 10).await.unwrap();
@@ -176,6 +183,7 @@ mod tests {
         for i in 0..5 {
             storage
                 .sync_segment(&format!("seg-{i:03}"), "common keyword content")
+                .await
                 .unwrap();
         }
 
