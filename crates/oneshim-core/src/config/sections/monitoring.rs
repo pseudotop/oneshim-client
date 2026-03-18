@@ -21,6 +21,9 @@ pub struct MonitorConfig {
     pub process_monitoring: bool,
     #[serde(default = "default_true")]
     pub input_activity: bool,
+    /// Enable server upload of collected events. Default: false (safe).
+    #[serde(default)]
+    pub upload_enabled: bool,
 }
 
 // ── VisionConfig ───────────────────────────────────────────────────

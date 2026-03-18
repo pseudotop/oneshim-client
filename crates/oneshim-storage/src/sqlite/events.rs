@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::event::Event;
+use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::storage::StorageService;
 use tracing::{debug, info, warn};
 
+use super::edge_intelligence::enum_to_sql_str;
 use super::SqliteStorage;
 
 impl SqliteStorage {
@@ -271,6 +273,25 @@ impl StorageService for SqliteStorage {
         .await
     }
 
+    async fn mark_unsent_as_sent_before(&self, before: DateTime<Utc>) -> Result<usize, CoreError> {
+        let cutoff = before.to_rfc3339();
+
+        self.with_conn(move |conn| {
+            let updated: usize = conn
+                .execute(
+                    "UPDATE events SET is_sent = 1 WHERE is_sent = 0 AND timestamp < ?1",
+                    rusqlite::params![cutoff],
+                )
+                .map_err(|e| CoreError::Internal(format!("Failed to mark unsent as sent: {e}")))?;
+
+            if updated > 0 {
+                debug!("{updated} unsent events marked as sent");
+            }
+            Ok(updated)
+        })
+        .await
+    }
+
     async fn enforce_retention(&self) -> Result<usize, CoreError> {
         let cutoff = (Utc::now() - Duration::days(self.retention_days as i64)).to_rfc3339();
         let retention_days = self.retention_days;
@@ -295,24 +316,63 @@ impl StorageService for SqliteStorage {
         })
         .await
     }
+
+    async fn update_segment_llm_summary(
+        &self,
+        segment_id: &str,
+        llm_summary: &str,
+    ) -> Result<(), CoreError> {
+        let id = segment_id.to_string();
+        let summary = llm_summary.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE activity_segments SET llm_summary = ?1 WHERE id = ?2",
+                rusqlite::params![summary, id],
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to update segment summary: {e}")))?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn save_suggestion(&self, suggestion: &Suggestion) -> Result<(), CoreError> {
+        let suggestion = suggestion.clone();
+
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR REPLACE INTO suggestions \
+                 (suggestion_id, suggestion_type, source, content, priority, \
+                  confidence_score, relevance_score, is_actionable, reasoning, \
+                  created_at, expires_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                rusqlite::params![
+                    suggestion.suggestion_id,
+                    enum_to_sql_str(&suggestion.suggestion_type),
+                    enum_to_sql_str(&suggestion.source),
+                    suggestion.content,
+                    enum_to_sql_str(&suggestion.priority),
+                    suggestion.confidence_score,
+                    suggestion.relevance_score,
+                    suggestion.is_actionable as i32,
+                    suggestion.reasoning,
+                    suggestion.created_at.to_rfc3339(),
+                    suggestion.expires_at.map(|t| t.to_rfc3339()),
+                ],
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to save suggestion: {e}")))?;
+            debug!(id = %suggestion.suggestion_id, "suggestion persisted to SQLite");
+            Ok(())
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::{Duration, Utc};
-    use oneshim_core::models::event::{UserEvent, UserEventType};
-    use uuid::Uuid;
 
-    fn make_user_event() -> Event {
-        Event::User(UserEvent {
-            event_id: Uuid::new_v4(),
-            event_type: UserEventType::WindowChange,
-            timestamp: Utc::now(),
-            app_name: "TestApp".to_string(),
-            window_title: "test_window".to_string(),
-        })
-    }
+    use super::super::tests::make_user_event;
 
     #[test]
     fn count_events_in_range_empty() {

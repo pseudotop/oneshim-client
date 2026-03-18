@@ -1,9 +1,11 @@
 use base64::Engine;
-use oneshim_core::config::{ExternalDataPolicy, PrivacyConfig};
+use chrono::{DateTime, Utc};
+use oneshim_core::config::{AnalysisConfig, ExternalDataPolicy, PrivacyConfig};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::context::WindowBounds;
 use oneshim_core::models::event::Event;
 use oneshim_core::models::frame::FrameMetadata;
+use oneshim_core::models::tiered_memory::SegmentSummary;
 use oneshim_core::ports::storage::MetricsStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_vision::privacy::{sanitize_title_with_level, should_exclude};
@@ -17,6 +19,36 @@ pub trait SchedulerStorage: MetricsStorage + Send + Sync {
         ocr_text: Option<&str>,
         bounds: Option<&WindowBounds>,
     ) -> Result<i64, CoreError>;
+
+    /// Check whether server-sourced suggestions exist within the given lookback
+    /// window (in seconds). Used by the analysis loop to suppress local LLM
+    /// analysis when the server is actively providing suggestions.
+    fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, CoreError>;
+
+    /// List recent weekly digests, newest first.
+    fn list_weekly_digests(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<oneshim_core::models::weekly_digest::WeeklyDigest>, CoreError>;
+
+    /// Save a weekly digest. Upserts by week_start.
+    fn save_weekly_digest(
+        &self,
+        digest: &oneshim_core::models::weekly_digest::WeeklyDigest,
+    ) -> Result<(), CoreError>;
+
+    /// List closed segments whose time range falls within [from, to].
+    fn list_segments_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<SegmentSummary>, CoreError>;
+
+    /// Delete activity segments older than `max_days`. Returns the count of deleted rows.
+    fn enforce_segment_retention(&self, max_days: u32) -> Result<usize, CoreError>;
+
+    /// Delete weekly digests older than `max_weeks`. Returns the count of deleted rows.
+    fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError>;
 }
 
 impl SchedulerStorage for SqliteStorage {
@@ -29,6 +61,42 @@ impl SchedulerStorage for SqliteStorage {
     ) -> Result<i64, CoreError> {
         SqliteStorage::save_frame_metadata_with_bounds(self, metadata, file_path, ocr_text, bounds)
     }
+
+    fn has_recent_server_suggestions(&self, lookback_secs: u64) -> Result<bool, CoreError> {
+        SqliteStorage::has_recent_server_suggestions(self, lookback_secs)
+    }
+
+    fn list_weekly_digests(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<oneshim_core::models::weekly_digest::WeeklyDigest>, CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::list_weekly_digests(self, limit)
+    }
+
+    fn save_weekly_digest(
+        &self,
+        digest: &oneshim_core::models::weekly_digest::WeeklyDigest,
+    ) -> Result<(), CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::save_weekly_digest(self, digest)
+    }
+
+    fn list_segments_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<SegmentSummary>, CoreError> {
+        SqliteStorage::list_segments_between(self, from, to)
+    }
+
+    fn enforce_segment_retention(&self, max_days: u32) -> Result<usize, CoreError> {
+        SqliteStorage::enforce_segment_retention(self, max_days)
+    }
+
+    fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError> {
+        SqliteStorage::enforce_digest_retention(self, max_weeks)
+    }
 }
 
 pub(super) fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
@@ -38,6 +106,13 @@ pub(super) fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 }
 
 pub(super) const REDACTED_WINDOW_TITLE: &str = "[REDACTED_WINDOW_TITLE]";
+
+/// Retention: raw system metrics are kept for 24 hours.
+pub(super) const RAW_METRICS_RETENTION_HOURS: i64 = 24;
+/// Retention: process snapshots are kept for 7 days.
+pub(super) const PROCESS_SNAPSHOT_RETENTION_DAYS: i64 = 7;
+/// Retention: idle period records are kept for 30 days.
+pub(super) const IDLE_PERIOD_RETENTION_DAYS: i64 = 30;
 
 /// OAuth token refresh check interval (seconds).
 #[cfg(feature = "server")]
@@ -137,6 +212,7 @@ pub struct SchedulerConfig {
     pub privacy_config: PrivacyConfig,
     pub idle_threshold_secs: u64,
     pub upload_enabled: bool,
+    pub analysis_config: AnalysisConfig,
 }
 
 impl Default for SchedulerConfig {
@@ -155,6 +231,7 @@ impl Default for SchedulerConfig {
             privacy_config: PrivacyConfig::default(),
             idle_threshold_secs: 300, // 5 min
             upload_enabled: false,
+            analysis_config: AnalysisConfig::default(),
         }
     }
 }

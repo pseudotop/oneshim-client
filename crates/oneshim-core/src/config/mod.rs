@@ -50,6 +50,8 @@ pub struct AppConfig {
     /// 아웃바운드 TLS 설정 — 기본값: 활성화
     #[serde(default)]
     pub tls: TlsConfig,
+    #[serde(default)]
+    pub analysis: AnalysisConfig,
 }
 
 // AppConfig impl
@@ -70,6 +72,7 @@ impl AppConfig {
                 process_interval_secs: default_process_interval_secs(),
                 process_monitoring: true,
                 input_activity: true,
+                upload_enabled: false,
             },
             storage: StorageConfig {
                 db_path: None,
@@ -97,6 +100,7 @@ impl AppConfig {
             ai_provider: AiProviderConfig::default(),
             integration: IntegrationConfig::default(),
             tls: TlsConfig::default(),
+            analysis: AnalysisConfig::default(),
         }
     }
 
