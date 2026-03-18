@@ -52,6 +52,8 @@ pub struct SemanticSearchQuery {
     pub q: String,
     /// Maximum number of results (default: 10).
     pub limit: Option<usize>,
+    /// Search mode: "hybrid" (default), "semantic", or "keyword".
+    pub mode: Option<String>,
 }
 
 /// A single semantic search result, enriched with segment metadata.

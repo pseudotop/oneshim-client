@@ -91,6 +91,7 @@ pub struct AppState {
     pub vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
     pub embedding_provider:
         Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
+    pub text_search: Option<Arc<dyn oneshim_core::ports::text_search::TextSearchProvider>>,
 }
 
 #[derive(Clone, Default)]
@@ -149,6 +150,7 @@ impl WebServer {
                 update_control: None,
                 vector_store: None,
                 embedding_provider: None,
+                text_search: None,
             },
             bound_port_state: None,
             bound_port_notifier: None,
@@ -722,6 +724,7 @@ mod tests {
             update_control: None,
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
         }
     }
 

@@ -79,6 +79,7 @@ mod tests {
             update_control: Some(control),
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
         }
     }
 

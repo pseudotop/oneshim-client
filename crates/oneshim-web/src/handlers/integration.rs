@@ -607,6 +607,7 @@ mod tests {
             update_control: None,
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
         }
     }
 
