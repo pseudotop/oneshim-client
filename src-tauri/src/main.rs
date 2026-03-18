@@ -149,6 +149,8 @@ fn main() {
             commands::get_analysis_status,
             commands::semantic_search,
             commands::get_weekly_digest,
+            commands::get_dashboard_day,
+            commands::get_daily_digest,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

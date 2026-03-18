@@ -519,6 +519,57 @@ pub async fn get_weekly_digest(
     }
 }
 
+// ── Dashboard & daily digest IPC commands ─────────────────────
+
+/// Get dashboard data for a given day (timetable + statistics).
+/// Returns the daily digest from cache or generates from segments.
+#[command]
+pub async fn get_dashboard_day(
+    state: tauri::State<'_, AppState>,
+    date: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let date_str = date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+
+    // Validate date format
+    chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| format!("Invalid date format: {e}"))?;
+
+    // Check cache first
+    if let Some(cached) = state
+        .storage
+        .get_daily_digest(&date_str)
+        .map_err(|e| e.to_string())?
+    {
+        return serde_json::to_value(&cached).map_err(|e| e.to_string());
+    }
+
+    // Not cached — return null (generation happens via web API or scheduler)
+    Ok(serde_json::json!(null))
+}
+
+/// Get the daily digest for a given date. If not cached, returns null.
+#[command]
+pub async fn get_daily_digest(
+    state: tauri::State<'_, AppState>,
+    date: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let date_str = date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+
+    // Validate date format
+    chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| format!("Invalid date format: {e}"))?;
+
+    if let Some(digest) = state
+        .storage
+        .get_daily_digest(&date_str)
+        .map_err(|e| e.to_string())?
+    {
+        serde_json::to_value(&digest).map_err(|e| e.to_string())
+    } else {
+        Ok(serde_json::json!(null))
+    }
+}
+
 // ── Analysis config IPC commands ───────────────────────────────
 
 /// 분석 설정 조회
