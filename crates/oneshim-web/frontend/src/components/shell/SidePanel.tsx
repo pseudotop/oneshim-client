@@ -22,6 +22,14 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
       { id: 'updates', labelKey: 'sidebar.updateStatus' },
     ],
   },
+  '/dashboard/day': {
+    titleKey: 'nav.dashboardDay',
+    nodes: [
+      { id: 'insight', labelKey: 'sidebar.insight' },
+      { id: 'timeline', labelKey: 'sidebar.timeline' },
+      { id: 'statistics', labelKey: 'sidebar.statistics' },
+    ],
+  },
   '/timeline': {
     titleKey: 'nav.timeline',
     nodes: [

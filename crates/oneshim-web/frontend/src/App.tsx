@@ -22,6 +22,7 @@ const Search = lazy(() => import('./pages/Search'))
 const SessionReplay = lazy(() => import('./pages/SessionReplay'))
 const Automation = lazy(() => import('./pages/Automation'))
 const Updates = lazy(() => import('./pages/Updates'))
+const DashboardDay = lazy(() => import('./pages/DashboardDay'))
 
 function App() {
   const { t } = useTranslation()
@@ -80,6 +81,7 @@ function App() {
             >
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/dashboard/day" element={<DashboardDay />} />
                 <Route path="/timeline" element={<Timeline />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/focus" element={<Focus />} />
