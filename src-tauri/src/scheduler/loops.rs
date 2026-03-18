@@ -11,6 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
+use oneshim_core::models::storage_records::SegmentSummaryRecord;
+use oneshim_core::models::tiered_memory::{ContentActivity, SegmentSummary, TriggerReason};
 use oneshim_core::ports::storage::StorageService;
 use oneshim_core::ports::vision::{CaptureRequest, FrameProcessor};
 use oneshim_storage::frame_storage::FrameFileStorage;
@@ -720,6 +722,63 @@ impl Scheduler {
                             }
                         }
 
+                        // --- Daily digest auto-generation (midnight) ---
+                        {
+                            let local_now = chrono::Local::now();
+                            if local_now.hour() == 0 {
+                                // Generate digest for yesterday
+                                let yesterday = local_now.date_naive()
+                                    .pred_opt()
+                                    .unwrap_or(local_now.date_naive());
+                                let date_str = yesterday.format("%Y-%m-%d").to_string();
+
+                                // Check if daily digest already exists
+                                let existing = sqlite6
+                                    .get_daily_digest(&date_str)
+                                    .ok()
+                                    .flatten();
+
+                                if existing.is_none() {
+                                    // Load segments for yesterday
+                                    let segment_records = sqlite6
+                                        .get_segments_for_date(&date_str)
+                                        .unwrap_or_default();
+
+                                    if !segment_records.is_empty() {
+                                        // Convert SegmentSummaryRecords to SegmentSummary for DailyDigestGenerator
+                                        let segments: Vec<oneshim_core::models::tiered_memory::SegmentSummary> =
+                                            segment_records
+                                                .iter()
+                                                .filter_map(|r| record_to_segment_summary(r))
+                                                .collect();
+
+                                        // Load previous day for comparison
+                                        let prev_date = yesterday
+                                            .pred_opt()
+                                            .unwrap_or(yesterday)
+                                            .format("%Y-%m-%d")
+                                            .to_string();
+                                        let prev_digest = sqlite6
+                                            .get_daily_digest(&prev_date)
+                                            .ok()
+                                            .flatten();
+
+                                        let digest = oneshim_analysis::DailyDigestGenerator::generate(
+                                            &segments,
+                                            yesterday,
+                                            prev_digest.as_ref(),
+                                        );
+
+                                        if let Err(e) = sqlite6.save_daily_digest(&digest) {
+                                            warn!("daily digest save failure: {e}");
+                                        } else {
+                                            info!("Daily digest generated for {}", date_str);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         debug!("completed");
                     }
                     _ = shutdown_rx.changed() => {
@@ -1154,4 +1213,36 @@ impl Scheduler {
         }
         analysis_task.abort();
     }
+}
+
+/// Convert a SegmentSummaryRecord (storage row) to SegmentSummary (domain model)
+/// for use with DailyDigestGenerator.
+fn record_to_segment_summary(r: &SegmentSummaryRecord) -> Option<SegmentSummary> {
+    let start_time = r.start_time.parse().ok()?;
+    let end_time = r.end_time.parse().ok()?;
+
+    let app_breakdown: std::collections::HashMap<String, u64> =
+        serde_json::from_str(&r.app_breakdown).unwrap_or_default();
+
+    let content_activities: Vec<ContentActivity> =
+        serde_json::from_str(&r.content_activities_json).unwrap_or_default();
+
+    Some(SegmentSummary {
+        segment_id: r.segment_id.clone(),
+        start_time,
+        end_time,
+        duration_secs: r.duration_secs,
+        regime_id: r.regime_id.clone(),
+        trigger_reason: TriggerReason::RegimeChange,
+        event_count: 0,
+        app_breakdown,
+        category_breakdown: std::collections::HashMap::new(),
+        context_switch_count: 0,
+        dominant_category: r.dominant_category.clone(),
+        avg_importance: 0.5,
+        patterns_detected: vec![],
+        content_activities,
+        container: None,
+        llm_summary: r.llm_summary.clone(),
+    })
 }

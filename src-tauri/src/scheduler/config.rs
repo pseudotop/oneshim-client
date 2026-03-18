@@ -49,6 +49,24 @@ pub trait SchedulerStorage: MetricsStorage + Send + Sync {
 
     /// Delete weekly digests older than `max_weeks`. Returns the count of deleted rows.
     fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError>;
+
+    /// Get a cached daily digest by date (YYYY-MM-DD).
+    fn get_daily_digest(
+        &self,
+        date: &str,
+    ) -> Result<Option<oneshim_core::models::daily_digest::DailyDigest>, CoreError>;
+
+    /// Save a daily digest. Upserts by date.
+    fn save_daily_digest(
+        &self,
+        digest: &oneshim_core::models::daily_digest::DailyDigest,
+    ) -> Result<(), CoreError>;
+
+    /// Get activity segment summary records for a given date (YYYY-MM-DD).
+    fn get_segments_for_date(
+        &self,
+        date: &str,
+    ) -> Result<Vec<oneshim_core::models::storage_records::SegmentSummaryRecord>, CoreError>;
 }
 
 impl SchedulerStorage for SqliteStorage {
@@ -96,6 +114,30 @@ impl SchedulerStorage for SqliteStorage {
 
     fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError> {
         SqliteStorage::enforce_digest_retention(self, max_weeks)
+    }
+
+    fn get_daily_digest(
+        &self,
+        date: &str,
+    ) -> Result<Option<oneshim_core::models::daily_digest::DailyDigest>, CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::get_daily_digest(self, date)
+    }
+
+    fn save_daily_digest(
+        &self,
+        digest: &oneshim_core::models::daily_digest::DailyDigest,
+    ) -> Result<(), CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::save_daily_digest(self, digest)
+    }
+
+    fn get_segments_for_date(
+        &self,
+        date: &str,
+    ) -> Result<Vec<oneshim_core::models::storage_records::SegmentSummaryRecord>, CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::get_segments_for_date(self, date)
     }
 }
 
