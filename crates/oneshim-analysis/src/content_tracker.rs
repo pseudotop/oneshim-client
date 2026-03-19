@@ -126,6 +126,7 @@ impl ContentTracker {
             confidence: current.confidence,
             work_type: current.work_type,
             engagement: current.engagement,
+            gui_summary: None,
         })
     }
 }

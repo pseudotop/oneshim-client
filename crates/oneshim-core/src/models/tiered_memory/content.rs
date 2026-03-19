@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::super::gui_activity::GuiActivitySummary;
+
 // ---------------------------------------------------------------------------
 // Content & engagement types
 // ---------------------------------------------------------------------------
@@ -52,6 +54,9 @@ pub struct ContentActivity {
     pub confidence: f32,
     pub work_type: WorkType,
     pub engagement: EngagementMetrics,
+    /// GUI activity summary from Phase 2 GUI Intelligence pipeline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gui_summary: Option<GuiActivitySummary>,
 }
 
 // ---------------------------------------------------------------------------

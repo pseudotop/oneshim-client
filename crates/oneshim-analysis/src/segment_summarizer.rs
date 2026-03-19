@@ -355,6 +355,7 @@ mod tests {
             confidence: 0.95,
             work_type: WorkType::ActiveCoding,
             engagement: EngagementMetrics::default(),
+            gui_summary: None,
         }];
 
         let summary = summarizer.summarize(

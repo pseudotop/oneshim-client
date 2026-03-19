@@ -245,6 +245,7 @@ mod tests {
             confidence: 0.9,
             work_type: WorkType::ActiveCoding,
             engagement: EngagementMetrics::default(),
+            gui_summary: None,
         }
     }
 
