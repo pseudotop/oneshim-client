@@ -279,6 +279,7 @@ impl OcrExtractor {
             );
         }
         let count = words.len().min(box_count);
+        let mean_conf = (lt.mean_text_conf() as f32 / 100.0).clamp(0.0, 1.0);
 
         let mut regions = Vec::new();
         for i in 0..count {
@@ -293,7 +294,7 @@ impl OcrExtractor {
                         width: geom.w.max(0) as u32,
                         height: geom.h.max(0) as u32,
                     },
-                    confidence: 0.5,
+                    confidence: mean_conf,
                 });
             }
         }
@@ -346,6 +347,7 @@ impl OcrExtractor {
                 );
             }
             let count = words.len().min(box_count);
+            let mean_conf = (lt.mean_text_conf() as f32 / 100.0).clamp(0.0, 1.0);
 
             let mut regions = Vec::new();
             for i in 0..count {
@@ -360,7 +362,7 @@ impl OcrExtractor {
                             width: geom.w.max(0) as u32,
                             height: geom.h.max(0) as u32,
                         },
-                        confidence: 0.5,
+                        confidence: mean_conf,
                     });
                 }
             }
