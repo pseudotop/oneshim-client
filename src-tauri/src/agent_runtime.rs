@@ -411,15 +411,16 @@ impl AgentRuntimeBundle {
 
                         match transport_result {
                             Ok(transport) => {
-                                let consent_for_sync = Arc::new(parking_lot::Mutex::new(
-                                    ConsentManager::new(self.data_dir.join("consent.json")),
-                                ));
+                                // Reuse the application-wide ConsentManager instead
+                                // of constructing a separate instance from the file
+                                // path. This ensures the SyncEngine sees the same
+                                // in-memory consent state as the rest of the runtime.
                                 let sync_engine = Arc::new(
                                     SyncEngine::new(
                                         extractor,
                                         merger,
                                         transport,
-                                        consent_for_sync,
+                                        self.consent_manager.clone(),
                                         device_id,
                                         device_name,
                                     )

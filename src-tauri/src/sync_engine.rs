@@ -4,6 +4,7 @@
 //! It coordinates ChangeExtractor, ChangeMerger, and SyncTransport
 //! through the port traits defined in oneshim-core.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -20,22 +21,37 @@ pub struct SyncEngine {
     extractor: Arc<dyn ChangeExtractor>,
     merger: Arc<dyn ChangeMerger>,
     transport: Arc<dyn SyncTransport>,
-    consent_manager: Arc<parking_lot::Mutex<ConsentManager>>,
+    /// Shared ConsentManager from the runtime. Read-only access via `Arc`.
+    /// Callers must pass the same instance used elsewhere in the runtime
+    /// rather than letting SyncEngine construct its own instance.
+    consent_manager: Option<Arc<ConsentManager>>,
     device_id: String,
     device_name: String,
     /// High-watermark HLC from the last successful push. Only rows with
     /// HLC > this value will be extracted on the next push cycle, avoiding
     /// re-extraction of all local data every cycle.
     last_push_watermark: parking_lot::Mutex<Hlc>,
+    /// Tracks whether a GDPR deletion event was already pushed in this
+    /// engine's lifetime. Since `ConsentManager` is shared via `Arc`
+    /// (immutable), this flag provides the equivalent of
+    /// `ConsentManager::clear_pending_deletion()` without requiring `&mut`.
+    deletion_pushed: AtomicBool,
 }
 
 #[allow(dead_code)]
 impl SyncEngine {
+    /// Create a new SyncEngine.
+    ///
+    /// `consent_manager` should be the application-wide `ConsentManager`
+    /// (the same `Arc<ConsentManager>` used by the scheduler and other
+    /// components). When `None`, consent checks are skipped (sync always
+    /// runs). Do **not** construct a separate `ConsentManager` from the
+    /// file path — that creates divergent in-memory state.
     pub async fn new(
         extractor: Arc<dyn ChangeExtractor>,
         merger: Arc<dyn ChangeMerger>,
         transport: Arc<dyn SyncTransport>,
-        consent_manager: Arc<parking_lot::Mutex<ConsentManager>>,
+        consent_manager: Option<Arc<ConsentManager>>,
         device_id: String,
         device_name: String,
     ) -> Self {
@@ -66,6 +82,7 @@ impl SyncEngine {
             device_id,
             device_name,
             last_push_watermark: parking_lot::Mutex::new(initial_watermark),
+            deletion_pushed: AtomicBool::new(false),
         }
     }
 
@@ -73,19 +90,20 @@ impl SyncEngine {
     /// pull + merge, extract + push.
     pub async fn run_cycle(&self) -> Result<Option<SyncResult>, CoreError> {
         // Gate 1: consent check
-        {
-            let cm = self.consent_manager.lock();
+        if let Some(ref cm) = self.consent_manager {
             if !cm.is_permitted(|p| p.cross_device_sync) {
                 debug!("sync skipped: cross_device_sync consent not granted");
                 return Ok(None);
             }
         }
 
-        // Gate 2: check for pending GDPR deletion
-        let has_pending_deletion = {
-            let cm = self.consent_manager.lock();
-            cm.has_pending_deletion()
-        };
+        // Gate 2: check for pending GDPR deletion (skip if already pushed)
+        let has_pending_deletion = !self.deletion_pushed.load(Ordering::Acquire)
+            && self
+                .consent_manager
+                .as_ref()
+                .map(|cm| cm.has_pending_deletion())
+                .unwrap_or(false);
         if has_pending_deletion {
             return self.push_deletion_event().await;
         }
@@ -154,11 +172,10 @@ impl SyncEngine {
 
         self.transport.push(&deletion_cs).await?;
 
-        // Clear the pending deletion flag only after successful push
-        {
-            let mut cm = self.consent_manager.lock();
-            cm.clear_pending_deletion();
-        }
+        // Mark deletion as pushed. Since the ConsentManager is shared via
+        // Arc (immutable), we track this locally with an AtomicBool instead
+        // of calling ConsentManager::clear_pending_deletion(&mut self).
+        self.deletion_pushed.store(true, Ordering::Release);
 
         info!("GDPR deletion event pushed successfully");
         Ok(None)
@@ -240,7 +257,7 @@ mod tests {
         }
     }
 
-    fn make_consent_manager(sync_granted: bool) -> Arc<parking_lot::Mutex<ConsentManager>> {
+    fn make_consent_manager(sync_granted: bool) -> Option<Arc<ConsentManager>> {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("consent.json");
         let mut cm = ConsentManager::new(path);
@@ -256,7 +273,35 @@ mod tests {
         }
         // Leak the tempdir to keep the path alive
         std::mem::forget(dir);
-        Arc::new(parking_lot::Mutex::new(cm))
+        Some(Arc::new(cm))
+    }
+
+    /// Build a ConsentManager with pending_deletion=true and cross_device_sync
+    /// consent granted. This simulates a revoke-then-re-grant scenario.
+    fn make_consent_manager_with_pending_deletion() -> Arc<ConsentManager> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("consent.json");
+        let mut cm = ConsentManager::new(path);
+        // Grant, revoke (sets pending_deletion=true), then re-grant with sync.
+        cm.grant_consent(
+            ConsentPermissions {
+                cross_device_sync: true,
+                ..Default::default()
+            },
+            30,
+        )
+        .unwrap();
+        cm.revoke_consent().unwrap();
+        cm.grant_consent(
+            ConsentPermissions {
+                cross_device_sync: true,
+                ..Default::default()
+            },
+            30,
+        )
+        .unwrap();
+        std::mem::forget(dir);
+        Arc::new(cm)
     }
 
     #[tokio::test]
@@ -349,22 +394,7 @@ mod tests {
 
     #[tokio::test]
     async fn deletion_event_pushed_when_pending() {
-        let consent_mgr = make_consent_manager(true);
-        // Revoke consent to trigger pending deletion
-        {
-            let mut cm = consent_mgr.lock();
-            cm.revoke_consent().unwrap();
-            // Re-grant consent WITH cross_device_sync so the consent gate passes,
-            // but the pending_deletion flag remains true.
-            cm.grant_consent(
-                ConsentPermissions {
-                    cross_device_sync: true,
-                    ..Default::default()
-                },
-                30,
-            )
-            .unwrap();
-        }
+        let consent_mgr = make_consent_manager_with_pending_deletion();
 
         let transport = Arc::new(MockTransport {
             pull_result: std::sync::Mutex::new(vec![]),
@@ -377,7 +407,7 @@ mod tests {
                 apply_count: AtomicUsize::new(0),
             }),
             transport.clone(),
-            consent_mgr.clone(),
+            Some(consent_mgr),
             "dev-a".to_string(),
             "Test".to_string(),
         )
@@ -387,8 +417,14 @@ mod tests {
         assert!(result.is_none());
         assert_eq!(transport.push_count.load(Ordering::SeqCst), 1);
 
-        // pending_deletion should be cleared
-        assert!(!consent_mgr.lock().has_pending_deletion());
+        // Second cycle should NOT re-push the deletion event (local flag cleared)
+        let result2 = engine.run_cycle().await.unwrap();
+        assert!(result2.is_none());
+        assert_eq!(
+            transport.push_count.load(Ordering::SeqCst),
+            1,
+            "deletion should only be pushed once"
+        );
     }
 
     #[tokio::test]
