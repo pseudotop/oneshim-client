@@ -26,6 +26,7 @@ pub enum ChangeSetKind {
 /// placeholders; Phase 3a-2 will replace them with typed row structs
 /// when the ChangeExtractor impl is built.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ChangeSet {
     pub kind: ChangeSetKind,
     pub origin_device_id: String,

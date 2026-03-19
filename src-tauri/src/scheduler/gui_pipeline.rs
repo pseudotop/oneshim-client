@@ -98,40 +98,45 @@ pub(crate) fn run_gui_tick(
     }
 
     // 2. Handle keyboard shortcuts (if detected in input snapshot)
+    //    Iterate over ALL shortcuts that occurred this tick, not just the first.
     if input_snap.keyboard.shortcut_count > 0 {
-        // Build a synthetic keyboard shortcut event
-        let shortcut_event = GuiInteractionEvent {
-            timestamp: now,
-            element: GuiElement {
-                text: String::new(),
-                bbox: oneshim_core::models::frame::BoundingBox {
-                    x: 0,
-                    y: 0,
-                    width: 0,
-                    height: 0,
+        for shortcut_keys in recent_shortcuts {
+            let shortcut_event = GuiInteractionEvent {
+                timestamp: now,
+                element: GuiElement {
+                    text: String::new(),
+                    bbox: oneshim_core::models::frame::BoundingBox {
+                        x: 0,
+                        y: 0,
+                        width: 0,
+                        height: 0,
+                    },
+                    element_type: GuiElementType::Unknown,
+                    confidence: 0.0,
                 },
-                element_type: GuiElementType::Unknown,
-                confidence: 0.0,
-            },
-            interaction_type: GuiInteractionType::Type,
-            app_name: app_name.to_string(),
-            window_title: Some(window_title.to_string()),
-            screen_position: None,
-            interaction: Some(InteractionType::KeyboardShortcut {
-                keys: recent_shortcuts
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| "unknown".to_string()),
-            }),
-        };
+                interaction_type: GuiInteractionType::Type,
+                app_name: app_name.to_string(),
+                window_title: Some(window_title.to_string()),
+                screen_position: None,
+                interaction: Some(InteractionType::KeyboardShortcut {
+                    keys: shortcut_keys.clone(),
+                }),
+            };
 
-        if let Some(summary) = state.aggregator.push(shortcut_event, content_label) {
-            result = Some(summary);
+            if let Some(summary) = state.aggregator.push(shortcut_event, content_label) {
+                result = Some(summary);
+            }
         }
     }
 
-    // 3. Handle text entry
-    if input_snap.keyboard.total_keystrokes > 0 && input_snap.keyboard.shortcut_count == 0 {
+    // 3. Handle text entry — detect remaining keystrokes after subtracting
+    //    shortcut keystrokes so text entry is not suppressed when shortcuts
+    //    are also present in the same tick.
+    let text_keystrokes = input_snap
+        .keyboard
+        .total_keystrokes
+        .saturating_sub(input_snap.keyboard.shortcut_count);
+    if text_keystrokes > 0 {
         let text_event = GuiInteractionEvent {
             timestamp: now,
             element: GuiElement {
@@ -150,7 +155,7 @@ pub(crate) fn run_gui_tick(
             window_title: Some(window_title.to_string()),
             screen_position: None,
             interaction: Some(InteractionType::TextEntry {
-                char_count: input_snap.keyboard.total_keystrokes,
+                char_count: text_keystrokes,
                 duration_ms: 0,
             }),
         };

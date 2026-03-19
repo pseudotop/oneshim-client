@@ -553,17 +553,16 @@ impl VectorStore for SqliteVectorStore {
             let params_ref: Vec<&dyn rusqlite::types::ToSql> =
                 param_values.iter().map(|p| p.as_ref()).collect();
 
-            // Fetch all qualifying rows while holding the SQLite mutex,
-            // then release the lock before computing cosine similarities.
+            // Fetch all qualifying rows and compute cosine similarities while
+            // holding the SQLite mutex (the entire closure runs inside `with_conn`).
+            // This is consistent with the non-quantized `search`/`search_filtered`
+            // methods. The stmt is collected into a Vec first so the query cursor
+            // is released before the brute-force scan.
             let rows: Vec<QuantizedVectorRow> = stmt
                 .query_map(params_ref.as_slice(), map_quantized_row)
                 .map_err(|e| CoreError::Internal(format!("Failed to query quantized vectors: {e}")))?
                 .filter_map(|r| r.ok())
                 .collect();
-
-            // Cosine similarity computation happens outside the query scope
-            // (stmt is dropped when this closure returns), keeping the mutex
-            // hold time proportional to the SQL query, not the search.
             Ok(brute_force_search_quantized(rows, &qv, limit, time_decay_hours))
         })
         .await

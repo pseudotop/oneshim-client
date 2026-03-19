@@ -163,6 +163,9 @@ impl Scheduler {
             let mut last_gui_summary: Option<
                 oneshim_core::models::gui_activity::GuiActivitySummary,
             > = None;
+            // TODO: OCR regions will be piped from the frame capture path once the
+            // vision pipeline is wired into the monitor loop. Until then the detector
+            // falls back to position-only click correlation (no text matching).
             let last_ocr_regions: Vec<oneshim_core::models::frame::OcrRegion> = Vec::new();
 
             loop {
@@ -1215,20 +1218,11 @@ impl Scheduler {
                 .map(|cm| cm.get().analysis.gui_intelligence.clone())
                 .unwrap_or_default();
 
-            // Gate on activity_pattern_learning consent (GDPR Tier 4),
-            // matching the pattern at agent_runtime.rs:214-220.
-            let gui_consent_ok = self
-                .config_manager
-                .as_ref()
-                .map(|_cm| {
-                    // ConfigManager does not expose consent directly; the consent
-                    // check already passed if AdaptiveTriggerState was constructed
-                    // (agent_runtime.rs gates on activity_pattern_learning).
-                    // Double-check by looking at the gui_intelligence.enabled flag.
-                })
-                .is_some();
-
-            if gui_config.enabled && gui_consent_ok {
+            // Consent is implicitly satisfied: AdaptiveTriggerState is only
+            // constructed when the activity_pattern_learning consent has been
+            // granted (agent_runtime.rs gates on that permission). The only
+            // remaining gate is the gui_intelligence.enabled config flag.
+            if gui_config.enabled {
                 use oneshim_analysis::gui_aggregator::GuiActivityAggregator;
                 use oneshim_vision::gui_detector::GuiElementDetector;
 
