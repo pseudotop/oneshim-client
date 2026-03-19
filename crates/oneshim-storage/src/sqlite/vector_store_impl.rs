@@ -346,6 +346,21 @@ impl VectorStore for SqliteVectorStore {
                 tracing::warn!("regime_id filter not yet implemented, ignoring");
             }
 
+            // Negative feedback: exclude dismissed segment IDs
+            if !filters.excluded_segment_ids.is_empty() {
+                let base_idx = param_values.len();
+                let placeholders: Vec<String> = filters
+                    .excluded_segment_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", base_idx + i + 1))
+                    .collect();
+                conditions.push(format!("segment_id NOT IN ({})", placeholders.join(", ")));
+                for seg_id in &filters.excluded_segment_ids {
+                    param_values.push(Box::new(seg_id.clone()));
+                }
+            }
+
             let where_clause = conditions.join(" AND ");
             let sql = format!(
                 "SELECT segment_id, content_type, content_label, original_text, vector, timestamp
@@ -546,6 +561,24 @@ impl VectorStore for SqliteVectorStore {
             // regime_id filter: not yet implemented for quantized search
             if filters.regime_id.is_some() {
                 tracing::warn!("regime_id filter not yet implemented in search_quantized, ignoring");
+            }
+
+            // Negative feedback: exclude dismissed segment IDs
+            if !filters.excluded_segment_ids.is_empty() {
+                let base_idx = param_values.len();
+                let placeholders: Vec<String> = filters
+                    .excluded_segment_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", base_idx + i + 1))
+                    .collect();
+                conditions.push(format!(
+                    "segment_id NOT IN ({})",
+                    placeholders.join(", ")
+                ));
+                for seg_id in &filters.excluded_segment_ids {
+                    param_values.push(Box::new(seg_id.clone()));
+                }
             }
 
             let where_clause = conditions.join(" AND ");
@@ -1370,5 +1403,167 @@ mod tests {
             .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].segment_id, "int8-only");
+    }
+
+    // ── Negative feedback filtering tests ────────────────────────
+
+    #[tokio::test]
+    async fn search_filtered_excludes_dismissed_segments() {
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+        let now = Utc::now();
+
+        for seg_id in &["keep-1", "dismiss-1", "keep-2", "dismiss-2"] {
+            store
+                .store(
+                    vec![1.0, 0.0, 0.0],
+                    EmbeddingMetadata {
+                        segment_id: seg_id.to_string(),
+                        content_type: EmbeddingContentType::ContentActivity,
+                        content_label: Some(seg_id.to_string()),
+                        timestamp: now,
+                        original_text: seg_id.to_string(),
+                        model_id: "test-model".to_string(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        let filters = SearchFilters {
+            excluded_segment_ids: vec!["dismiss-1".to_string(), "dismiss-2".to_string()],
+            ..Default::default()
+        };
+        let results = store
+            .search_filtered(&[1.0, 0.0, 0.0], 10, 0.0, &filters)
+            .await
+            .unwrap();
+
+        let ids: Vec<&str> = results.iter().map(|r| r.segment_id.as_str()).collect();
+        assert_eq!(results.len(), 2);
+        assert!(ids.contains(&"keep-1"));
+        assert!(ids.contains(&"keep-2"));
+        assert!(!ids.contains(&"dismiss-1"));
+        assert!(!ids.contains(&"dismiss-2"));
+    }
+
+    #[tokio::test]
+    async fn search_filtered_empty_exclusion_returns_all() {
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+        let now = Utc::now();
+
+        for seg_id in &["seg-a", "seg-b"] {
+            store
+                .store(
+                    vec![1.0, 0.0],
+                    EmbeddingMetadata {
+                        segment_id: seg_id.to_string(),
+                        content_type: EmbeddingContentType::ContentActivity,
+                        content_label: Some(seg_id.to_string()),
+                        timestamp: now,
+                        original_text: seg_id.to_string(),
+                        model_id: "test-model".to_string(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        let filters = SearchFilters {
+            excluded_segment_ids: vec![],
+            ..Default::default()
+        };
+        let results = store
+            .search_filtered(&[1.0, 0.0], 10, 0.0, &filters)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn search_quantized_excludes_dismissed_segments() {
+        use oneshim_core::quantization::ScalarQuantizer;
+
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+        let now = Utc::now();
+
+        let v = vec![1.0, 0.0, 0.0];
+        let qv = ScalarQuantizer::quantize(&v).unwrap();
+
+        for seg_id in &["q-keep", "q-dismiss"] {
+            store
+                .store_quantized(
+                    v.clone(),
+                    &qv,
+                    EmbeddingMetadata {
+                        segment_id: seg_id.to_string(),
+                        content_type: EmbeddingContentType::ContentActivity,
+                        content_label: Some(seg_id.to_string()),
+                        timestamp: now,
+                        original_text: seg_id.to_string(),
+                        model_id: "test-model".to_string(),
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+        }
+
+        let query_qv = ScalarQuantizer::quantize(&[1.0, 0.0, 0.0]).unwrap();
+        let filters = SearchFilters {
+            excluded_segment_ids: vec!["q-dismiss".to_string()],
+            ..Default::default()
+        };
+        let results = store
+            .search_quantized(&query_qv, 10, 0.0, &filters)
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].segment_id, "q-keep");
+    }
+
+    #[tokio::test]
+    async fn search_quantized_empty_exclusion_returns_all() {
+        use oneshim_core::quantization::ScalarQuantizer;
+
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+        let now = Utc::now();
+
+        let v = vec![1.0, 0.0, 0.0];
+        let qv = ScalarQuantizer::quantize(&v).unwrap();
+
+        for seg_id in &["qa", "qb"] {
+            store
+                .store_quantized(
+                    v.clone(),
+                    &qv,
+                    EmbeddingMetadata {
+                        segment_id: seg_id.to_string(),
+                        content_type: EmbeddingContentType::ContentActivity,
+                        content_label: Some(seg_id.to_string()),
+                        timestamp: now,
+                        original_text: seg_id.to_string(),
+                        model_id: "test-model".to_string(),
+                    },
+                    false,
+                )
+                .await
+                .unwrap();
+        }
+
+        let query_qv = ScalarQuantizer::quantize(&[1.0, 0.0, 0.0]).unwrap();
+        let filters = SearchFilters {
+            excluded_segment_ids: vec![],
+            ..Default::default()
+        };
+        let results = store
+            .search_quantized(&query_qv, 10, 0.0, &filters)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 2);
     }
 }
