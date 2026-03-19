@@ -138,6 +138,7 @@ impl AppRuntimeLaunchBuilder {
             update_action_tx,
             automation_controller,
             shutdown_tx,
+            recluster_requested: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

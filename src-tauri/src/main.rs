@@ -151,6 +151,10 @@ fn main() {
             commands::get_weekly_digest,
             commands::get_dashboard_day,
             commands::get_daily_digest,
+            commands::create_override,
+            commands::delete_override,
+            commands::list_overrides,
+            commands::trigger_recluster,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

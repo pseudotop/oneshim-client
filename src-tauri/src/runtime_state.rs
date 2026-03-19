@@ -27,6 +27,8 @@ pub struct AppState {
     pub update_action_tx: tokio::sync::mpsc::UnboundedSender<UpdateAction>,
     pub automation_controller: Option<Arc<AutomationController>>,
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
+    /// Shared flag for on-demand re-clustering requests from Tauri/REST.
+    pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -223,6 +225,7 @@ mod tests {
             update_action_tx,
             automation_controller: None,
             shutdown_tx,
+            recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
         .build();
 

@@ -556,7 +556,7 @@ pub async fn get_dashboard_day(
     // Convert SegmentSummaryRecords to SegmentSummary for DailyDigestGenerator
     let segments: Vec<oneshim_core::models::tiered_memory::SegmentSummary> = segment_records
         .iter()
-        .filter_map(|r| crate::scheduler::record_to_segment_summary(r))
+        .filter_map(crate::scheduler::record_to_segment_summary)
         .collect();
 
     // Load previous day for comparison
@@ -602,6 +602,94 @@ pub async fn get_daily_digest(
     } else {
         Ok(serde_json::json!(null))
     }
+}
+
+// ── Recalibration IPC commands ─────────────────────────────────
+
+/// Create a regime override for a segment.
+#[command]
+pub async fn create_override(
+    state: tauri::State<'_, AppState>,
+    segment_id: String,
+    original_regime_id: Option<String>,
+    action: oneshim_core::models::recalibration::UserOverrideAction,
+) -> Result<serde_json::Value, String> {
+    let entry = oneshim_core::models::recalibration::RegimeOverride {
+        override_id: uuid::Uuid::new_v4().to_string(),
+        segment_id,
+        original_regime_id,
+        user_action: action,
+        created_at: chrono::Utc::now(),
+    };
+
+    let override_id = entry.override_id.clone();
+
+    use oneshim_core::ports::override_store::OverrideStore;
+    state.storage.save_override(&entry).await.map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "override_id": override_id,
+    }))
+}
+
+/// Delete a regime override by ID.
+#[command]
+pub async fn delete_override(
+    state: tauri::State<'_, AppState>,
+    override_id: String,
+) -> Result<serde_json::Value, String> {
+    use oneshim_core::ports::override_store::OverrideStore;
+    state.storage
+        .delete_override(&override_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "deleted_id": override_id,
+    }))
+}
+
+/// List regime overrides within an optional time range.
+#[command]
+pub async fn list_overrides(
+    state: tauri::State<'_, AppState>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<Vec<oneshim_core::models::recalibration::RegimeOverride>, String> {
+    let from_dt: chrono::DateTime<chrono::Utc> = from
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
+
+    let to_dt: chrono::DateTime<chrono::Utc> = to
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(chrono::Utc::now);
+
+    use oneshim_core::ports::override_store::OverrideStore;
+    state.storage
+        .list_overrides(from_dt, to_dt)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Request on-demand re-clustering. The scheduler picks up the flag.
+#[command]
+pub async fn trigger_recluster(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    state
+        .recluster_requested
+        .store(true, Ordering::Relaxed);
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "message": "Re-clustering requested. It will run on the next scheduler cycle.",
+    }))
 }
 
 // ── Analysis config IPC commands ───────────────────────────────

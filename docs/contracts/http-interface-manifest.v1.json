@@ -1,7 +1,7 @@
 {
   "schema_version": "http.interface.manifest.v1",
-  "document_version": 1,
-  "updated_at": "2026-03-18",
+  "document_version": 2,
+  "updated_at": "2026-03-19",
   "source": {
     "routes_file": "crates/oneshim-web/src/routes.rs",
     "contracts_crate": "crates/oneshim-api-contracts"
@@ -518,6 +518,27 @@
         {
           "method": "GET",
           "path": "/api/dashboard/day"
+        }
+      ]
+    },
+    {
+      "module": "recalibration",
+      "operations": [
+        {
+          "method": "POST",
+          "path": "/api/recalibration/override"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/recalibration/override/{id}"
+        },
+        {
+          "method": "GET",
+          "path": "/api/recalibration/overrides"
+        },
+        {
+          "method": "POST",
+          "path": "/api/recalibration/recluster"
         }
       ]
     }
