@@ -1,3 +1,9 @@
+//! DEPRECATED: Use `accessibility::MacOsNativeAccessibility` (Phase 2 native AX FFI)
+//! instead. This osascript-based stub is retained for the `ElementFinder` trait
+//! (automation click-target lookup) but should not be used for focused-element
+//! extraction. Will be removed when the `ChainedElementFinder` is updated to
+//! use the new native implementation.
+//!
 //! macOS Accessibility API adapter — `ElementFinder` implementation.
 //!
 //! Uses `osascript` to query AXUIElement attributes for the element at a given
@@ -33,14 +39,20 @@ mod inner {
     /// [`UiElement`].  When the app lacks Accessibility permission the finder
     /// returns an empty result set (rather than an error) so that the
     /// [`ChainedElementFinder`] can fall through to the OCR backend.
+    #[deprecated(
+        since = "0.4.0",
+        note = "Use accessibility::MacOsNativeAccessibility (Phase 2 native AX FFI) instead"
+    )]
     pub struct MacOsAccessibilityFinder;
 
+    #[allow(deprecated)]
     impl Default for MacOsAccessibilityFinder {
         fn default() -> Self {
             Self
         }
     }
 
+    #[allow(deprecated)]
     impl MacOsAccessibilityFinder {
         pub fn new() -> Self {
             Self
@@ -179,6 +191,7 @@ end tell"#
         }
     }
 
+    #[allow(deprecated)]
     #[async_trait]
     impl ElementFinder for MacOsAccessibilityFinder {
         async fn find_element(
@@ -324,4 +337,5 @@ end tell"#
 }
 
 #[cfg(target_os = "macos")]
+#[allow(deprecated)]
 pub use inner::MacOsAccessibilityFinder;

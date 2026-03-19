@@ -1,3 +1,7 @@
+//! DEPRECATED: Use `accessibility::WindowsUiaAccessibility` (Phase 2 UIAutomation)
+//! instead. This empty stub is retained for the `ElementFinder` trait. Will be
+//! removed when the `ChainedElementFinder` is updated.
+//!
 //! Windows UI Automation adapter — `ElementFinder` stub implementation.
 //!
 //! A full implementation would use `IUIAutomation::ElementFromPoint` via the
@@ -22,6 +26,10 @@ mod inner {
     ///
     /// Returns empty results until Phase 3 adds real UIAutomation FFI.
     /// The [`ChainedElementFinder`] will fall through to the OCR backend.
+    #[deprecated(
+        since = "0.4.0",
+        note = "Use accessibility::WindowsUiaAccessibility (Phase 2 UIAutomation) instead"
+    )]
     pub struct WindowsAccessibilityFinder;
 
     impl WindowsAccessibilityFinder {
