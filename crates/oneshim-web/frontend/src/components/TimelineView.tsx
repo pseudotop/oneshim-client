@@ -1,11 +1,16 @@
 /**
  * TimelineView — vertical timetable with colored regime blocks.
  * Pure CSS layout (no Recharts), proportional block heights based on duration.
+ * Supports inline recalibration via context menu on each segment.
  */
-import { useState } from 'react'
-import { Card } from './ui'
-import { cn } from '../utils/cn'
+import { Settings2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { CreateOverrideRequest, RegimeOverride } from '../api/contracts'
 import { colors, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
+import SegmentContextMenu from './SegmentContextMenu'
+import { Badge, Card, Spinner } from './ui'
 
 interface TimelineEntry {
   segment_id: string
@@ -14,14 +19,24 @@ interface TimelineEntry {
   duration_mins: number
   regime_label: string
   regime_color: string
+  regime_id?: string
   dominant_app: string
   content_summary: Array<{ content: string; work_type: string; mins: number }>
   annotation?: { highlight_type: string; text: string }
 }
 
+interface RegimeOption {
+  id: string
+  label: string
+}
+
 interface TimelineViewProps {
   timeline: TimelineEntry[]
   onSegmentClick?: (segmentId: string) => void
+  overrides?: RegimeOverride[]
+  regimeOptions?: RegimeOption[]
+  onCreateOverride?: (req: CreateOverrideRequest) => void
+  isMutating?: boolean
 }
 
 const annotationIcons: Record<string, string> = {
@@ -39,8 +54,28 @@ function formatTime(iso: string): string {
   }
 }
 
-export default function TimelineView({ timeline, onSegmentClick }: TimelineViewProps) {
+export default function TimelineView({
+  timeline,
+  onSegmentClick,
+  overrides,
+  regimeOptions,
+  onCreateOverride,
+  isMutating,
+}: TimelineViewProps) {
+  const { t } = useTranslation()
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [menuSegmentId, setMenuSegmentId] = useState<string | null>(null)
+
+  // Build override lookup map
+  const overrideMap = useMemo(() => {
+    const map = new Map<string, RegimeOverride>()
+    if (overrides) {
+      for (const o of overrides) {
+        map.set(o.segment_id, o)
+      }
+    }
+    return map
+  }, [overrides])
 
   if (timeline.length === 0) {
     return (
@@ -57,6 +92,48 @@ export default function TimelineView({ timeline, onSegmentClick }: TimelineViewP
     onSegmentClick?.(segmentId)
   }
 
+  const handleGearClick = (e: React.MouseEvent, segmentId: string) => {
+    e.stopPropagation()
+    setMenuSegmentId((prev) => (prev === segmentId ? null : segmentId))
+  }
+
+  const handleMarkAsNoise = (segmentId: string) => {
+    const entry = timeline.find((e) => e.segment_id === segmentId)
+    onCreateOverride?.({
+      segment_id: segmentId,
+      original_regime_id: entry?.regime_id,
+      action: {
+        type: 'MarkAsPersonalTime',
+        from: entry?.start_time ?? '',
+        to: entry?.end_time ?? '',
+      },
+    })
+  }
+
+  const handleReassignRegime = (segmentId: string, targetRegimeId: string) => {
+    const entry = timeline.find((e) => e.segment_id === segmentId)
+    onCreateOverride?.({
+      segment_id: segmentId,
+      original_regime_id: entry?.regime_id,
+      action: { type: 'ReassignRegime', target_regime_id: targetRegimeId },
+    })
+  }
+
+  function getOverrideLabel(override: RegimeOverride): string {
+    switch (override.user_action.type) {
+      case 'MarkAsPersonalTime':
+        return t('recalibration.personalTime')
+      case 'MarkAsNoise':
+        return t('recalibration.personalTime')
+      case 'ReassignRegime': {
+        const regime = regimeOptions?.find((r) => r.id === override.user_action.target_regime_id)
+        return regime?.label ?? override.user_action.target_regime_id
+      }
+      default:
+        return t('recalibration.overridden')
+    }
+  }
+
   // Scale: 1 min = 2px, minimum 32px per block
   const minBlockHeight = 32
 
@@ -66,6 +143,9 @@ export default function TimelineView({ timeline, onSegmentClick }: TimelineViewP
         {timeline.map((entry) => {
           const blockHeight = Math.max(entry.duration_mins * 2, minBlockHeight)
           const isExpanded = expandedId === entry.segment_id
+          const override = overrideMap.get(entry.segment_id)
+          const isOverridden = !!override
+          const isMenuOpen = menuSegmentId === entry.segment_id
 
           return (
             <div key={entry.segment_id} className="flex gap-3">
@@ -77,12 +157,13 @@ export default function TimelineView({ timeline, onSegmentClick }: TimelineViewP
               </div>
 
               {/* Colored block column */}
-              <div className="relative flex-1">
+              <div className="group relative flex-1">
                 <button
                   type="button"
                   className={cn(
                     'w-full rounded-lg border-l-4 px-3 py-2 text-left transition-colors hover:opacity-90',
                     isExpanded ? 'ring-2 ring-brand-signal/50' : '',
+                    isOverridden ? 'opacity-80' : '',
                   )}
                   style={{
                     minHeight: `${blockHeight}px`,
@@ -94,12 +175,25 @@ export default function TimelineView({ timeline, onSegmentClick }: TimelineViewP
                   aria-expanded={isExpanded}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className={cn('text-xs font-semibold', colors.text.primary)}>
+                    <span
+                      className={cn(
+                        'text-xs font-semibold',
+                        colors.text.primary,
+                        isOverridden ? 'line-through' : '',
+                      )}
+                    >
                       {entry.regime_label}
                     </span>
-                    <span className={cn('text-xs', colors.text.tertiary)}>
-                      {entry.duration_mins}m
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isOverridden && (
+                        <Badge color="warning" size="sm">
+                          {getOverrideLabel(override)}
+                        </Badge>
+                      )}
+                      <span className={cn('text-xs', colors.text.tertiary)}>
+                        {entry.duration_mins}m
+                      </span>
+                    </div>
                   </div>
                   <span className={cn('text-xs', colors.text.secondary)}>
                     {entry.dominant_app}
@@ -133,6 +227,40 @@ export default function TimelineView({ timeline, onSegmentClick }: TimelineViewP
                     </div>
                   )}
                 </button>
+
+                {/* Gear icon for recalibration — visible on hover */}
+                {onCreateOverride && regimeOptions && (
+                  <button
+                    type="button"
+                    className={cn(
+                      'absolute right-2 top-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100',
+                      'hover:bg-surface-muted',
+                      isMenuOpen ? 'opacity-100' : '',
+                    )}
+                    onClick={(e) => handleGearClick(e, entry.segment_id)}
+                    aria-label={t('recalibration.changeRegimeTo')}
+                    aria-haspopup="menu"
+                    aria-expanded={isMenuOpen}
+                  >
+                    {isMutating ? (
+                      <Spinner size="sm" />
+                    ) : (
+                      <Settings2 className="h-3.5 w-3.5 text-content-muted" />
+                    )}
+                  </button>
+                )}
+
+                {/* Context menu */}
+                {isMenuOpen && regimeOptions && (
+                  <SegmentContextMenu
+                    segmentId={entry.segment_id}
+                    currentRegimeId={entry.regime_id ?? ''}
+                    regimeOptions={regimeOptions}
+                    onMarkAsNoise={handleMarkAsNoise}
+                    onReassignRegime={handleReassignRegime}
+                    onClose={() => setMenuSegmentId(null)}
+                  />
+                )}
               </div>
             </div>
           )
