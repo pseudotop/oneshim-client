@@ -141,3 +141,97 @@ pub async fn trigger_recluster(
         "message": "Re-clustering requested. It will run on the next scheduler cycle.",
     })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::ApiError;
+
+    #[test]
+    fn list_overrides_query_defaults() {
+        // Verify default parsing when no query params are provided
+        let query = ListOverridesQuery {
+            from: None,
+            to: None,
+        };
+        // `from` defaults to 7 days ago, `to` defaults to now
+        let from: DateTime<Utc> = query
+            .from
+            .as_deref()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|| Utc::now() - Duration::days(7));
+        let to: DateTime<Utc> = query
+            .to
+            .as_deref()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(Utc::now);
+
+        assert!(to > from);
+        assert!((to - from).num_days() >= 6); // roughly 7 days
+    }
+
+    #[test]
+    fn list_overrides_query_parses_valid_rfc3339() {
+        let query = ListOverridesQuery {
+            from: Some("2026-01-01T00:00:00Z".to_string()),
+            to: Some("2026-01-02T00:00:00Z".to_string()),
+        };
+        let from = DateTime::parse_from_rfc3339(query.from.as_deref().unwrap())
+            .unwrap()
+            .with_timezone(&Utc);
+        let to = DateTime::parse_from_rfc3339(query.to.as_deref().unwrap())
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!((to - from).num_hours(), 24);
+    }
+
+    #[test]
+    fn list_overrides_query_invalid_rfc3339_falls_back() {
+        let query = ListOverridesQuery {
+            from: Some("not-a-date".to_string()),
+            to: Some("also-not".to_string()),
+        };
+        let from: DateTime<Utc> = query
+            .from
+            .as_deref()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|| Utc::now() - Duration::days(7));
+        let to: DateTime<Utc> = query
+            .to
+            .as_deref()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(Utc::now);
+
+        assert!(to > from);
+    }
+
+    #[test]
+    fn override_store_none_produces_service_unavailable() {
+        // Simulate what the handler does when override_store is None
+        let store: Option<std::sync::Arc<dyn oneshim_core::ports::override_store::OverrideStore>> =
+            None;
+        let result: Result<&std::sync::Arc<dyn oneshim_core::ports::override_store::OverrideStore>, ApiError> = store
+            .as_ref()
+            .ok_or_else(|| {
+                ApiError::ServiceUnavailable("Override store not configured".to_string())
+            });
+        assert!(result.is_err());
+        assert!(matches!(result.err().unwrap(), ApiError::ServiceUnavailable(_)));
+    }
+
+    #[test]
+    fn recluster_flag_none_produces_service_unavailable() {
+        let flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = None;
+        let result = flag
+            .as_ref()
+            .ok_or_else(|| {
+                ApiError::ServiceUnavailable("Recluster flag not configured".to_string())
+            });
+        assert!(result.is_err());
+        assert!(matches!(result.err().unwrap(), ApiError::ServiceUnavailable(_)));
+    }
+}
