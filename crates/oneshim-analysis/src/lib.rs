@@ -26,6 +26,7 @@ pub mod regime_manager;
 pub mod segment_buffer;
 mod segment_summarizer;
 pub mod suggestion_filter;
+pub mod terminal_detector;
 mod title_bar_parser;
 pub mod vector_retriever;
 pub mod weekly_digest_generator;
