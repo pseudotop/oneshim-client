@@ -117,18 +117,19 @@ pub(super) async fn run_analysis_tick(
     };
 
     // 4d. Enrich terminal commands with accessibility text
-    let _terminal_command = focused_element
+    let app_subcategory = ts.app_registry.classify(app_name).1;
+
+    let terminal_command = focused_element
         .and_then(|fe| fe.extracted_text.as_deref())
         .and_then(|text| {
-            let subcategory = infer_subcategory(app_name);
-            if subcategory == AppSubcategory::Terminal {
+            if app_subcategory == AppSubcategory::Terminal {
                 oneshim_analysis::terminal_detector::detect_terminal_command(text)
             } else {
                 None
             }
         });
 
-    if let Some(ref cmd_info) = _terminal_command {
+    if let Some(ref cmd_info) = terminal_command {
         debug!(
             command = %cmd_info.command,
             "Terminal command detected from accessibility text"
@@ -136,18 +137,17 @@ pub(super) async fn run_analysis_tick(
     }
 
     // 4e. Extract document heading from accessibility text for document editors
-    let _doc_heading = focused_element
+    let doc_heading = focused_element
         .and_then(|fe| fe.extracted_text.as_deref())
         .and_then(|text| {
-            let subcategory = infer_subcategory(app_name);
-            if subcategory == AppSubcategory::DocumentEditor {
+            if app_subcategory == AppSubcategory::DocumentEditor {
                 oneshim_analysis::document_heading::extract_document_heading(text)
             } else {
                 None
             }
         });
 
-    if let Some(ref heading) = _doc_heading {
+    if let Some(ref heading) = doc_heading {
         debug!(
             heading = %heading.heading,
             level = heading.level,
@@ -702,13 +702,15 @@ fn build_regimes_from_clustering(
 
 /// Infer `AppSubcategory` from a bare app name using well-known patterns.
 ///
-/// This is a lightweight fallback when `AppRegistry` is not available in the
-/// pipeline context. It covers the most common terminal and document editor
-/// app names so that terminal command detection and document heading extraction
-/// can fire in the analysis pipeline.
-// TODO: Replace with `AppRegistry::classify()` once AppRegistry is threaded
-// into the analysis pipeline (passed via AdaptiveTriggerState). This will
-// remove the hard-coded pattern list and use the centralized registry instead.
+/// **Deprecated**: Use `AppRegistry::classify()` instead. The registry is now
+/// wired into `AdaptiveTriggerState` via the `app_registry` field, making this
+/// hardcoded fallback unnecessary. Retained only for backward compatibility
+/// with tests and any callers that may not yet have registry access.
+#[deprecated(
+    since = "0.38.0",
+    note = "Use AppRegistry::classify() via AdaptiveTriggerState.app_registry instead"
+)]
+#[allow(dead_code)]
 fn infer_subcategory(app_name: &str) -> AppSubcategory {
     let lower = app_name.to_lowercase();
 
@@ -888,6 +890,7 @@ mod tests {
             embedding_pipeline: None,
             gui_pipeline_state: None,
             gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
+            app_registry: Arc::new(oneshim_core::app_registry::AppRegistry::new()),
         }
     }
 

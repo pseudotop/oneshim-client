@@ -10,6 +10,7 @@ pub use config::{SchedulerConfig, SchedulerStorage};
 pub use loops::record_to_segment_summary;
 
 use chrono::{Datelike, Timelike};
+use oneshim_core::app_registry::AppRegistry;
 use oneshim_core::config::{AppConfig, Weekday};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::consent::ConsentManager;
@@ -82,6 +83,11 @@ pub(crate) struct AdaptiveTriggerState {
     // --- GUI Activity Intelligence ---
     pub(crate) gui_pipeline_state: Option<gui_pipeline::GuiPipelineState>,
     pub(crate) gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
+
+    // --- Application classification ---
+    /// Centralized app registry for subcategory classification.
+    /// Replaces the hardcoded `infer_subcategory()` fallback.
+    pub(crate) app_registry: Arc<AppRegistry>,
 }
 
 pub struct Scheduler {

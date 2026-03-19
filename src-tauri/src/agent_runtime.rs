@@ -297,6 +297,7 @@ impl AgentRuntimeBundle {
                     embedding_pipeline: embedding_pipeline_arc,
                     gui_pipeline_state: None,
                     gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
+                    app_registry: Arc::new(oneshim_core::app_registry::AppRegistry::new()),
                 };
                 scheduler = scheduler.with_adaptive_trigger(state);
                 info!("Adaptive tiered-memory pipeline enabled");
@@ -413,14 +414,17 @@ impl AgentRuntimeBundle {
                                 let consent_for_sync = Arc::new(parking_lot::Mutex::new(
                                     ConsentManager::new(self.data_dir.join("consent.json")),
                                 ));
-                                let sync_engine = Arc::new(SyncEngine::new(
-                                    extractor,
-                                    merger,
-                                    transport,
-                                    consent_for_sync,
-                                    device_id,
-                                    device_name,
-                                ));
+                                let sync_engine = Arc::new(
+                                    SyncEngine::new(
+                                        extractor,
+                                        merger,
+                                        transport,
+                                        consent_for_sync,
+                                        device_id,
+                                        device_name,
+                                    )
+                                    .await,
+                                );
                                 scheduler = scheduler.with_sync_engine(sync_engine);
                                 info!(
                                     transport = ?self.config.sync.transport,
