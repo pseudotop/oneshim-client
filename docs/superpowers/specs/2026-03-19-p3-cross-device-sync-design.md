@@ -353,7 +353,7 @@ hexagonal architecture rule: adapters live in adapter crates, orchestrators have
 no I/O of their own.
 
 **MVP scope**: `FileSyncTransport` only (Phase 3a-2). `RemoteSyncTransport`
-deferred to Phase 3a-2.
+deferred to Phase 3b. `LanSyncTransport` deferred to Phase 3b+.
 
 #### 4.4.1 File-Based Sync Atomicity
 
@@ -434,6 +434,10 @@ ALTER TABLE embedding_vectors ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT 
 ALTER TABLE suggestions ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE suggestions ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE suggestions ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE trigger_params_snapshots ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE trigger_params_snapshots ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE trigger_params_snapshots ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
 
 -- Tombstone columns for LWW-managed tables (regimes, suggestions, embedding_vectors).
 -- Append-only tables (activity_segments, regime_overrides, trigger_params_snapshots)
