@@ -156,10 +156,25 @@ pub(super) async fn run_analysis_tick(
     }
 
     // 5. Update content tracker
+    // Enrich content_label with terminal command or document heading when
+    // detected, so the information propagates through to the segment
+    // summarizer and eventually the LLM context (via ContentSummaryEntry).
     if let Some(ref content) = parsed_content {
+        let enriched_label = if let Some(ref cmd_info) = terminal_command {
+            // Append the detected terminal command to the content label
+            // so the LLM knows what command the user is running.
+            format!("{} [$ {}]", content.content_label, cmd_info.command_line)
+        } else if let Some(ref heading) = doc_heading {
+            // Append the document heading to help the LLM understand
+            // which section the user is working on.
+            format!("{} — {}", content.content_label, heading.heading)
+        } else {
+            content.content_label.clone()
+        };
+
         ts.content_tracker
             .update(oneshim_analysis::content_tracker::ContentUpdateInput {
-                content_label: content.content_label.clone(),
+                content_label: enriched_label,
                 content_type: content.content_type,
                 work_type,
                 engagement: engagement.clone(),
