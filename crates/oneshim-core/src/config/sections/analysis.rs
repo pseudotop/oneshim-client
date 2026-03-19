@@ -253,6 +253,12 @@ pub struct EmbeddingConfig {
     /// Day of week to generate the weekly digest.
     #[serde(default = "default_digest_day")]
     pub digest_day: Weekday,
+
+    /// Enable INT8 scalar quantization for 4x storage reduction.
+    /// When true, new vectors are stored in both f32 and INT8 formats,
+    /// and search uses INT8 cosine similarity.
+    #[serde(default)]
+    pub quantization_enabled: bool,
 }
 
 impl Default for EmbeddingConfig {
@@ -268,6 +274,7 @@ impl Default for EmbeddingConfig {
             llm_summary_enabled: false,
             min_segment_for_summary_secs: default_min_segment_for_summary(),
             digest_day: default_digest_day(),
+            quantization_enabled: false,
         }
     }
 }

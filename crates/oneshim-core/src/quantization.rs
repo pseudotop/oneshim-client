@@ -87,13 +87,16 @@ impl ScalarQuantizer {
             return 0.0;
         }
 
-        let mut dot: i64 = 0;
-        let mut norm_a: i64 = 0;
-        let mut norm_b: i64 = 0;
+        // i32 accumulator: max possible value for 384 dims of i8 is
+        // 384 * 127 * 127 = 6,193,152, well within i32 max (2,147,483,647).
+        // Using i32 enables LLVM auto-vectorization with SIMD (SDOT on ARM, SSSE3 on x86).
+        let mut dot: i32 = 0;
+        let mut norm_a: i32 = 0;
+        let mut norm_b: i32 = 0;
 
         for (va, vb) in a.data.iter().zip(b.data.iter()) {
-            let a_val = *va as i64;
-            let b_val = *vb as i64;
+            let a_val = *va as i32;
+            let b_val = *vb as i32;
             dot += a_val * b_val;
             norm_a += a_val * a_val;
             norm_b += b_val * b_val;

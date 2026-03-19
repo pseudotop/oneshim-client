@@ -1,0 +1,133 @@
+// Cross-device sync configuration (Phase 3 — P3).
+use serde::{Deserialize, Serialize};
+
+/// Sync transport selection.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncTransportKind {
+    /// Push/pull via REST/gRPC to a remote sync endpoint.
+    Remote,
+    /// Read/write encrypted JSON to a shared folder (Dropbox, iCloud, NAS).
+    #[default]
+    File,
+    /// mDNS discovery + direct TCP between devices on the same LAN (Phase 3b).
+    Lan,
+}
+
+/// Cross-device sync configuration.
+///
+/// Controls whether activity data is synchronized between devices
+/// owned by the same user. Default: disabled. Both `enabled` AND
+/// `ConsentPermissions::cross_device_sync` must be true for any
+/// data to leave the device.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncConfig {
+    /// Master switch. When false, all sync operations are disabled.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Selected transport mechanism.
+    #[serde(default)]
+    pub transport: SyncTransportKind,
+
+    /// Interval between periodic sync cycles (seconds). Default: 300 (5 min).
+    #[serde(default = "default_sync_interval_secs")]
+    pub interval_secs: u64,
+
+    /// Include raw `content_activities_json` in synced segments.
+    /// Default: false (only dominant_category, duration, app_breakdown,
+    /// llm_summary are synced).
+    #[serde(default)]
+    pub include_content_activities: bool,
+
+    /// Include `original_text` in synced embedding vectors.
+    /// Default: false (only vector blobs sync).
+    #[serde(default)]
+    pub include_embedding_text: bool,
+
+    /// Human-readable name for this device (e.g., "Work MacBook").
+    /// Shown to the user on peer devices. Defaults to OS hostname.
+    #[serde(default = "default_device_name")]
+    pub device_name: String,
+}
+
+fn default_sync_interval_secs() -> u64 {
+    300
+}
+
+fn default_device_name() -> String {
+    gethostname::gethostname().to_string_lossy().into_owned()
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            transport: SyncTransportKind::default(),
+            interval_secs: default_sync_interval_secs(),
+            include_content_activities: false,
+            include_embedding_text: false,
+            device_name: default_device_name(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sync_config_default_is_disabled() {
+        let config = SyncConfig::default();
+        assert!(!config.enabled);
+        assert_eq!(config.transport, SyncTransportKind::File);
+        assert_eq!(config.interval_secs, 300);
+        assert!(!config.include_content_activities);
+        assert!(!config.include_embedding_text);
+        assert!(!config.device_name.is_empty());
+    }
+
+    #[test]
+    fn sync_config_serde_roundtrip() {
+        let config = SyncConfig {
+            enabled: true,
+            transport: SyncTransportKind::Remote,
+            interval_secs: 600,
+            include_content_activities: true,
+            include_embedding_text: false,
+            device_name: "Test Machine".to_string(),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: SyncConfig = serde_json::from_str(&json).unwrap();
+        assert!(parsed.enabled);
+        assert_eq!(parsed.transport, SyncTransportKind::Remote);
+        assert_eq!(parsed.interval_secs, 600);
+        assert!(parsed.include_content_activities);
+        assert_eq!(parsed.device_name, "Test Machine");
+    }
+
+    #[test]
+    fn sync_config_empty_json_uses_defaults() {
+        let parsed: SyncConfig = serde_json::from_str("{}").unwrap();
+        assert!(!parsed.enabled);
+        assert_eq!(parsed.transport, SyncTransportKind::File);
+        assert_eq!(parsed.interval_secs, 300);
+    }
+
+    #[test]
+    fn sync_transport_kind_serde_snake_case() {
+        let json = serde_json::to_string(&SyncTransportKind::Remote).unwrap();
+        assert_eq!(json, "\"remote\"");
+        let json = serde_json::to_string(&SyncTransportKind::Lan).unwrap();
+        assert_eq!(json, "\"lan\"");
+    }
+
+    #[test]
+    fn app_config_with_sync_section_deserializes() {
+        // Existing configs without a "sync" key must still parse
+        // (the #[serde(default)] on AppConfig::sync handles this).
+        let minimal = r#"{ "server": { "base_url": "http://localhost:8000", "request_timeout_ms": 5000, "sse_max_retry_secs": 30 }, "monitor": { "poll_interval_ms": 1000, "sync_interval_ms": 10000, "heartbeat_interval_ms": 60000, "idle_threshold_secs": 300, "process_interval_secs": 10, "process_monitoring": true, "input_activity": true, "upload_enabled": false }, "storage": { "retention_days": 30, "max_storage_mb": 500 }, "vision": { "capture_enabled": false, "capture_throttle_ms": 5000, "thumbnail_width": 480, "thumbnail_height": 270, "ocr_enabled": false, "privacy_mode": false } }"#;
+        let config: crate::config::AppConfig = serde_json::from_str(minimal).unwrap();
+        assert!(!config.sync.enabled);
+    }
+}
