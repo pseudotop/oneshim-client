@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///
 /// Ordering: `wall_ms` → `counter` → `device_id` (lexicographic).
 /// Derives `Ord` with fields in this order for correct comparison.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Hlc {
     /// Wall-clock milliseconds since UNIX epoch.
     pub wall_ms: u64,
