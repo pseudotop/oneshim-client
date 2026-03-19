@@ -1158,12 +1158,11 @@ impl Scheduler {
             let gui_consent_ok = self
                 .config_manager
                 .as_ref()
-                .and_then(|cm| {
+                .map(|_cm| {
                     // ConfigManager does not expose consent directly; the consent
                     // check already passed if AdaptiveTriggerState was constructed
                     // (agent_runtime.rs gates on activity_pattern_learning).
                     // Double-check by looking at the gui_intelligence.enabled flag.
-                    Some(())
                 })
                 .is_some();
 

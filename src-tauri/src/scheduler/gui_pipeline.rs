@@ -41,6 +41,7 @@ pub(crate) struct GuiPipelineState {
 ///
 /// The caller (monitor loop) feeds the returned summary into
 /// `ContentTracker::update()`.
+#[allow(dead_code)]
 pub(crate) fn run_gui_tick(
     state: &mut GuiPipelineState,
     ocr_regions: &[OcrRegion],
