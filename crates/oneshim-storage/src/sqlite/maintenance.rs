@@ -360,6 +360,7 @@ impl SqliteStorage {
             .lock()
             .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
+        // V1-V7 tables
         let events_deleted = conn
             .execute("DELETE FROM events", [])
             .map_err(|e| CoreError::Internal(format!("event delete failure: {e}")))?
@@ -373,7 +374,6 @@ impl SqliteStorage {
             .map_err(|e| CoreError::Internal(format!("Failed to delete metrics: {e}")))?
             as u64;
         let _ = conn.execute("DELETE FROM system_metrics_hourly", []);
-
         let process_snapshots_deleted = conn
             .execute("DELETE FROM process_snapshots", [])
             .map_err(|e| CoreError::Internal(format!("Failed to delete process snapshots: {e}")))?
@@ -382,16 +382,36 @@ impl SqliteStorage {
             .execute("DELETE FROM idle_periods", [])
             .map_err(|e| CoreError::Internal(format!("idle record delete failure: {e}")))?
             as u64;
-
         let _ = conn.execute("DELETE FROM session_stats", []);
+        let _ = conn.execute("DELETE FROM work_sessions", []);
+        let _ = conn.execute("DELETE FROM interruptions", []);
+        let _ = conn.execute("DELETE FROM focus_metrics", []);
+        let _ = conn.execute("DELETE FROM suggestions", []);
+        let _ = conn.execute("DELETE FROM local_suggestions", []);
+        let _ = conn.execute("DELETE FROM tags", []);
+        let _ = conn.execute("DELETE FROM frame_tags", []);
 
-        // V10+ tables: embeddings
+        // V8-V11 tables
+        let _ = conn.execute("DELETE FROM activity_segments", []);
+        let _ = conn.execute("DELETE FROM calibration_log", []);
+        let _ = conn.execute("DELETE FROM daily_digests", []);
+        let _ = conn.execute("DELETE FROM weekly_digests", []);
         let _ = conn.execute("DELETE FROM embedding_vectors", []);
-        // V13: GUI interactions
+        let _ = conn.execute("DELETE FROM regime_overrides", []);
+        let _ = conn.execute("DELETE FROM regimes", []);
+        let _ = conn.execute("DELETE FROM trigger_params_snapshots", []);
+
+        // V12-V14 tables
+        let _ = conn.execute("DELETE FROM vector_binary_codes", []);
+        let _ = conn.execute("DELETE FROM vector_index_meta", []);
+        let _ = conn.execute("DELETE FROM ivf_centroids", []);
+        let _ = conn.execute("DELETE FROM ivf_assignments", []);
         let _ = conn.execute("DELETE FROM gui_interactions", []);
-        // V14: sync infrastructure
         let _ = conn.execute("DELETE FROM device_identity", []);
         let _ = conn.execute("DELETE FROM sync_peers", []);
+
+        // V15-V16 tables (index + sync)
+        let _ = conn.execute("DELETE FROM lan_peer_pins", []);
 
         Ok(DeletedRangeCounts {
             events_deleted,
