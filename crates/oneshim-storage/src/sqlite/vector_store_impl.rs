@@ -568,6 +568,67 @@ impl VectorStore for SqliteVectorStore {
         })
         .await
     }
+
+    async fn backfill_quantized(&self, batch_size: usize) -> Result<u64, CoreError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, vector FROM embedding_vectors WHERE vector_int8 IS NULL LIMIT ?1",
+                )
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to prepare backfill query: {e}"))
+                })?;
+
+            let rows: Vec<(i64, Vec<u8>)> = stmt
+                .query_map(params![batch_size as i64], |row| {
+                    Ok((row.get(0)?, row.get::<_, Vec<u8>>(1)?))
+                })
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to query backfill rows: {e}"))
+                })?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            if rows.is_empty() {
+                return Ok(0);
+            }
+
+            // Wrap batch updates in a transaction for performance.
+            conn.execute_batch("BEGIN")
+                .map_err(|e| CoreError::Internal(format!("Backfill BEGIN failed: {e}")))?;
+
+            let mut update_stmt = conn
+                .prepare(
+                    "UPDATE embedding_vectors SET vector_int8 = ?1, quant_scale = ?2, quant_offset = ?3 WHERE id = ?4",
+                )
+                .map_err(|e| CoreError::Internal(format!("Failed to prepare backfill update: {e}")))?;
+
+            let mut count: u64 = 0;
+            for (id, blob) in &rows {
+                let f32_vec = bytes_to_f32_vec(blob);
+                let quantized =
+                    oneshim_core::quantization::ScalarQuantizer::quantize(&f32_vec).map_err(
+                        |e| CoreError::Internal(format!("Backfill quantize failed for id={id}: {e}")),
+                    )?;
+                let int8_blob = i8_vec_to_bytes(&quantized.data);
+
+                update_stmt
+                    .execute(params![int8_blob, quantized.scale, quantized.offset, id])
+                    .map_err(|e| {
+                        CoreError::Internal(format!("Backfill update failed for id={id}: {e}"))
+                    })?;
+
+                count += 1;
+            }
+
+            conn.execute_batch("COMMIT")
+                .map_err(|e| CoreError::Internal(format!("Backfill COMMIT failed: {e}")))?;
+
+            debug!("Backfilled {count} vectors to INT8 quantized format");
+            Ok(count)
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -1112,5 +1173,50 @@ mod tests {
 
         // The non-quantized row should be excluded
         assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn backfill_quantized_converts_existing() {
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn.clone());
+
+        // Store 3 vectors via plain store() — no INT8 columns
+        for i in 0..3 {
+            store
+                .store(
+                    vec![1.0, 0.0, i as f32 * 0.1],
+                    EmbeddingMetadata {
+                        segment_id: format!("seg-{i}"),
+                        content_type: EmbeddingContentType::ContentActivity,
+                        content_label: Some(format!("label-{i}")),
+                        timestamp: Utc::now(),
+                        original_text: format!("text-{i}"),
+                        model_id: "test-model".to_string(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        // Backfill batch of 2
+        let filled = store.backfill_quantized(2).await.unwrap();
+        assert_eq!(filled, 2);
+
+        // One remaining
+        let filled = store.backfill_quantized(10).await.unwrap();
+        assert_eq!(filled, 1);
+
+        // None left
+        let filled = store.backfill_quantized(10).await.unwrap();
+        assert_eq!(filled, 0);
+
+        // All should now be searchable via search_quantized
+        use oneshim_core::quantization::ScalarQuantizer;
+        let query_qv = ScalarQuantizer::quantize(&[1.0, 0.0, 0.0]).unwrap();
+        let results = store
+            .search_quantized(&query_qv, 10, 0.0, &SearchFilters::default())
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 3);
     }
 }

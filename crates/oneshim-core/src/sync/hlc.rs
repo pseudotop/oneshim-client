@@ -11,6 +11,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///
 /// Ordering: `wall_ms` → `counter` → `device_id` (lexicographic).
 /// Derives `Ord` with fields in this order for correct comparison.
+///
+/// # Privacy Notice
+///
+/// HLC values contain precise activity timestamps (`wall_ms`) and device
+/// identifiers (`device_id`). When synced to remote storage, this metadata
+/// reveals activity patterns (when the user was active, on which device)
+/// and should be covered by the cross-device sync consent gate
+/// (`ConsentPermissions::cross_device_sync`) and GDPR Article 17 erasure
+/// scope. Ensure that any remote persistence of HLC data is included in
+/// the user's data export and deletion workflows.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Hlc {
     /// Wall-clock milliseconds since UNIX epoch.
