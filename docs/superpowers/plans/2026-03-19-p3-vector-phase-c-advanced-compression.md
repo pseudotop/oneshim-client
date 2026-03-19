@@ -4,7 +4,9 @@
 
 **Goal:** Enable sub-linear vector search over 100K+ vectors via 2-bit binary quantization (Hamming distance coarse filter), IVF (inverted file index) cluster partitioning, and an adaptive search coordinator that auto-selects the optimal strategy based on collection size. Target: <= 5 ms p95 search at 200K vectors with >= 95% recall@10.
 
-**Architecture:** `BinaryQuantizer` (new, `oneshim-core`) maps INT8 vectors to 96-byte 2-bit codes for Hamming filtering. `IvfIndex` (new, `oneshim-core`) partitions vectors into sqrt(N) clusters via k-means++ / Lloyd's. `VectorIndex` port trait (new, `oneshim-core/ports`) defines index build + search operations. `SqliteVectorIndex` (new, `oneshim-storage`) implements the port with 4 new tables (V15 migration). `AdaptiveSearchCoordinator` (new, `oneshim-analysis`) auto-selects brute-force / IVF / IVF+binary based on vector count. `VectorRetriever` delegates to the coordinator when available.
+**Architecture:** `BinaryQuantizer` (new, `oneshim-core`) maps INT8 vectors to 96-byte 2-bit codes for Hamming filtering. `IvfIndex` (new, `oneshim-core`) partitions vectors into sqrt(N) clusters via k-means++ / Lloyd's. `VectorIndex` port trait (new, `oneshim-core/ports`) defines index build + search operations. `SqliteVectorIndex` (new, `oneshim-storage`) implements the port with 4 new tables (V16 migration). `AdaptiveSearchCoordinator` (new, `oneshim-analysis`) auto-selects brute-force / IVF / IVF+binary based on vector count. `VectorRetriever` delegates to the coordinator when available.
+
+> **Migration version:** Sync 3b uses V15; this plan uses V16.
 
 **Tech Stack:** Rust, rusqlite, tokio::spawn_blocking, serde
 
@@ -45,7 +47,7 @@
 | `crates/oneshim-core/src/ports/mod.rs` | Export `vector_index` module |
 | `crates/oneshim-core/src/ports/vector_store.rs` | Add `count_active_vectors()` default method |
 | `crates/oneshim-core/src/config/sections/analysis.rs` | Add `index_strategy`, `ivf_nprobe`, `binary_oversample_factor` to `EmbeddingConfig` |
-| `crates/oneshim-storage/src/migration.rs` | V15 migration: 4 new tables |
+| `crates/oneshim-storage/src/migration.rs` | V16 migration: 4 new tables |
 | `crates/oneshim-storage/src/sqlite/mod.rs` | Export `vector_index_impl` module |
 | `crates/oneshim-storage/src/sqlite/vector_store_impl.rs` | Implement `count_active_vectors()` override |
 | `crates/oneshim-analysis/src/lib.rs` | Export `adaptive_search` module |
@@ -89,6 +91,8 @@ pub struct BinaryQuantizer;
 ```
 
 - [ ] Implement `BinaryQuantizer::compute_thresholds(vectors: &[Vec<f32>], dimensions: usize) -> Result<QuantileThresholds, CoreError>`:
+
+> **Spec reconciliation note:** The design spec uses `quantize_to_binary` and passes `QuantizedVector` input. This plan uses `encode` (for clarity: it produces a `BinaryCode`, not a `QuantizedVector`) and `compute_thresholds` takes `&[Vec<f32>]` (f32 input, since thresholds are computed in continuous space before discretization). The spec will be updated to match these names.
   - Validate: non-empty vectors, all vectors have correct `dimensions`
   - For each dimension (0..dimensions): collect all values into a temp Vec, sort, pick indices at 25%, 50%, 75% percentiles
   - For constant dimensions (all same value): set q25=q50=q75=that_value (all bits will be 01)
@@ -315,23 +319,23 @@ pub struct IndexMeta {
 
 ---
 
-### Task 10: V15 migration — 4 new tables
+### Task 10: V16 migration — 4 new tables
 
 **File:** `crates/oneshim-storage/src/migration.rs`
 
-- [ ] Update `CURRENT_VERSION` from 14 to 15:
+- [ ] Update `CURRENT_VERSION` from 15 to 16 (V15 is reserved for Sync 3b `lan_peer_pins`):
 
 ```rust
-const CURRENT_VERSION: u32 = 15;
+const CURRENT_VERSION: u32 = 16;
 ```
 
-- [ ] Add `if current < 15 { migrate_v15(conn)?; }` in `run_migrations`
+- [ ] Add `if current < 16 { migrate_v16(conn)?; }` in `run_migrations`
 
-- [ ] Implement `migrate_v15`:
+- [ ] Implement `migrate_v16`:
 
 ```rust
-fn migrate_v15(conn: &Connection) -> Result<(), rusqlite::Error> {
-    debug!("migration V15 execution: IVF index + 2-bit binary codes for vector search");
+fn migrate_v16(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V16 execution: IVF index + 2-bit binary codes for vector search");
 
     conn.execute_batch(
         "
@@ -370,22 +374,22 @@ fn migrate_v15(conn: &Connection) -> Result<(), rusqlite::Error> {
         );
 
         -- version record
-        INSERT INTO schema_version (version) VALUES (15);
+        INSERT INTO schema_version (version) VALUES (16);
         ",
     )?;
 
-    info!("migration V15 completed");
+    info!("migration V16 completed");
     Ok(())
 }
 ```
 
 - [ ] Update the `migration_all_versions` test to assert:
-  - `version == 15`
+  - `version == 16`
   - Tables `vector_binary_codes`, `ivf_centroids`, `ivf_assignments`, `vector_index_meta` exist
   - Index `idx_ivf_assign_cluster` exists
 
 - [ ] Run: `cargo test -p oneshim-storage -- migration`
-- [ ] Commit: `feat(storage): V15 migration — IVF index and binary code tables`
+- [ ] Commit: `feat(storage): V16 migration — IVF index and binary code tables`
 
 ---
 
@@ -628,6 +632,7 @@ fn default_oversample_factor() -> usize {
 
 ```rust
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::embedding::{SearchFilters, SearchResult};
 use oneshim_core::ports::vector_store::VectorStore;
@@ -656,14 +661,23 @@ pub struct AdaptiveSearchCoordinator {
     vector_store: Arc<dyn VectorStore>,
     vector_index: Arc<dyn VectorIndex>,
     config: SearchConfig,
+    /// Cached active vector count, refreshed periodically by the scheduler.
+    /// `determine_strategy()` reads this atomically (sync, no await).
+    cached_vector_count: AtomicU64,
 }
 ```
 
 - [ ] Implement `AdaptiveSearchCoordinator::new(vector_store, vector_index, config) -> Self`
+  - Initialize `cached_vector_count` to `AtomicU64::new(0)`
 
-- [ ] Implement `determine_strategy(&self) -> SearchStrategy`:
+- [ ] Implement `refresh_count(&self) -> Result<(), CoreError>` (async):
+  - Calls `self.vector_store.count_active_vectors().await?`
+  - Stores the result into `self.cached_vector_count` via `Ordering::Relaxed`
+  - This method is called from the scheduler aggregate loop (not from the search hot path)
+
+- [ ] Implement `determine_strategy(&self) -> SearchStrategy` (**sync, not async**):
   - If `config.forced_strategy` is Some: map to corresponding SearchStrategy
-  - Else: call `vector_store.count_active_vectors()`, return:
+  - Else: read `self.cached_vector_count.load(Ordering::Relaxed)`, return:
     - < brute_force_threshold => BruteForceInt8
     - < ivf_threshold => IvfInt8
     - >= ivf_threshold => IvfBinaryRerank
@@ -775,16 +789,19 @@ pub struct VectorRetriever {
 - [ ] Add `#[cfg(test)] mod tests` with mock VectorStore and mock VectorIndex:
 
 ```
-- strategy_auto_brute_force: count < 10K -> BruteForceInt8
-- strategy_auto_ivf: 10K <= count < 100K -> IvfInt8
-- strategy_auto_ivf_binary: count >= 100K -> IvfBinaryRerank
+- strategy_auto_brute_force: cached_vector_count < 10K -> BruteForceInt8
+- strategy_auto_ivf: 10K <= cached_vector_count < 100K -> IvfInt8
+- strategy_auto_ivf_binary: cached_vector_count >= 100K -> IvfBinaryRerank
 - strategy_forced_brute_force: forced_strategy="brute_force" overrides auto
 - strategy_forced_ivf: forced_strategy="ivf" overrides auto
 - strategy_forced_ivf_binary: forced_strategy="ivf_binary" overrides auto
+- refresh_count_updates_atomic: call refresh_count, verify cached_vector_count reflects store
 - search_delegates_to_brute_force: small count, verify vector_store.search_quantized called
 - search_delegates_to_ivf: medium count, verify vector_index.search_ivf called
 - search_delegates_to_ivf_binary: large count, verify vector_index.search_ivf_binary called
 ```
+
+> **Note:** Tests for `determine_strategy` set `cached_vector_count` directly via `AtomicU64::store()` rather than calling the async `refresh_count()`, since `determine_strategy()` is sync.
 
 - [ ] Run: `cargo test -p oneshim-analysis -- adaptive_search`
 - [ ] Commit: `test(analysis): unit tests for AdaptiveSearchCoordinator strategy selection`
@@ -837,6 +854,8 @@ async fn index_maintenance_step(
 ```
 
 - [ ] Wire the maintenance step into the scheduler at a 5-minute interval (or piggyback on the existing aggregate loop at a reduced frequency)
+
+- [ ] Call `coordinator.refresh_count().await` from the scheduler aggregate loop (same loop that calls `index_maintenance_step`). This keeps `cached_vector_count` fresh so `determine_strategy()` can stay sync on the search hot path.
 
 - [ ] Ensure the maintenance runs on `tokio::task::spawn_blocking` or uses the existing `with_conn` pattern so it does not block the main scheduler
 

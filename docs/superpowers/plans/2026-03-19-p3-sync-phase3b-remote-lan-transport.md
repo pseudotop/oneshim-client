@@ -12,6 +12,8 @@
 
 **Predecessor:** `docs/superpowers/plans/2026-03-19-p3-cross-device-sync-phase-3a2.md`
 
+> **Migration version:** Sync 3b takes V15. Vector Phase C uses V16.
+
 **Already done (DO NOT re-implement):**
 
 | Component | File | Status |
@@ -65,14 +67,17 @@ Complete 3b-1 first. Verify with `cargo test --workspace`. Then proceed to 3b-2.
 
 | File | Change | Sub-phase |
 |------|--------|-----------|
-| `Cargo.toml` (workspace root) | Add `mdns-sd`, `rcgen`, `tokio-rustls`, `rustls-pemfile` workspace deps | 3b-2 |
-| `crates/oneshim-network/Cargo.toml` | Add `aes-gcm`, `argon2`, `hmac` deps; add optional `lan-sync` feature deps | 3b-1 + 3b-2 |
+| `Cargo.toml` (workspace root) | Add `aes-gcm`, `argon2`, `hex`, `hmac`, `mdns-sd`, `rcgen`, `tokio-rustls`, `rustls-pemfile` to `[workspace.dependencies]` | 3b-1 + 3b-2 |
+| `crates/oneshim-network/Cargo.toml` | Add `aes-gcm`, `argon2`, `hex`, `hmac` as `{ workspace = true }` deps; add optional `lan-sync` feature deps | 3b-1 + 3b-2 |
+| `crates/oneshim-storage/Cargo.toml` | Add `aes-gcm`, `argon2`, `hex` as `{ workspace = true }` deps (used by `file_transport.rs`) | 3b-1 |
 | `crates/oneshim-network/src/lib.rs` | Add `pub mod sync;` | 3b-1 |
 | `crates/oneshim-core/src/config/sections/sync.rs` | Add `remote_endpoint`, `remote_auth`, `lan_port`, `lan_advertise` fields + `RemoteSyncAuth` enum | 3b-1 + 3b-2 |
 | `crates/oneshim-storage/src/file_transport.rs` | Replace inline `encrypt`/`decrypt`/`derive_key` with calls to shared `sync_crypto` (or keep as-is if coupling is undesirable -- see Task 3 decision) | 3b-1 |
 | `crates/oneshim-storage/src/migration.rs` | Add V15 migration for `lan_peer_pins` table | 3b-2 |
 | `src-tauri/src/agent_runtime.rs` | Extend sync DI wiring to select `Remote`/`Lan` transport based on config | 3b-1 + 3b-2 |
-| `src-tauri/Cargo.toml` | Add `oneshim-network` with `lan-sync` feature (if not already) | 3b-2 |
+| `src-tauri/Cargo.toml` | Add `oneshim-network` with `lan-sync` feature (if not already); add `keyring` dep for OS keychain access | 3b-2 |
+
+> **Workspace dependency convention:** `aes-gcm`, `argon2`, `hex`, and `hmac` must first be declared in `[workspace.dependencies]` in root `Cargo.toml`, then referenced as `{ workspace = true }` by both `oneshim-storage` and `oneshim-network`. This avoids version drift between the two crates that share the same encryption primitives.
 
 ---
 
@@ -968,7 +973,7 @@ Replace the existing `if self.config.sync.enabled { ... }` block (approximately 
 
 - [ ] **Step 3: Verify**
 
-Run: `cargo check -p oneshim-tauri` (or the Tauri crate name)
+Run: `cargo check -p oneshim-app`
 
 ---
 
@@ -1433,7 +1438,7 @@ lan-sync = ["oneshim-network/lan-sync"]
 
 - [ ] **Step 3: Verify**
 
-Run: `cargo check -p oneshim-tauri --features lan-sync`
+Run: `cargo check -p oneshim-app --features lan-sync`
 
 ---
 
