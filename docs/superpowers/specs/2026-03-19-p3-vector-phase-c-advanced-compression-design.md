@@ -50,7 +50,7 @@ This is a desktop client, not a vector database server. Hard constraints:
 
 | Option | Bits/dim | Compression vs f32 | Distance metric | Recall@10 | Verdict |
 |--------|----------|-------------------|-----------------|-----------|---------|
-| **2-bit quantization** | **2** | **16x** | **Hamming** | **~92%** | **Selected for filtering stage** |
+| **2-bit quantization** | **2** | **16x** | **Hamming** | **~92% (est.)** | **Selected for filtering stage** |
 | 1-bit binary | 1 | 32x | Hamming | ~85-90% | Rejected -- quality loss too steep at 384 dims; needs >= 1024 dims |
 | 4-bit quantization | 4 | 8x | INT4 dot product | ~97% | Rejected -- marginal gain over INT8 for 2x more storage; not worth the complexity |
 
@@ -70,16 +70,26 @@ Percentile thresholds are computed per-dimension across the entire collection
 during index build (not per-vector like INT8). This is a global codebook
 with 4 levels -- trivial to compute, no iterative training.
 
-**Distance**: Hamming distance on the 96-byte codes. This counts the number of
-2-bit positions where two vectors differ. Hamming distance on packed bytes uses
-`popcount` (POPCNT instruction on x86, CNT on ARM), which processes 8 bytes
-per cycle. For 96 bytes, this is ~12 cycles -- effectively free compared to
-INT8 dot product over 384 dims.
+**Distance**: Bit-level Hamming distance on the packed 2-bit representation.
+The XOR + popcount implementation counts the number of set bits in the XOR of
+two binary codes. Because each dimension occupies 2 bits, a single-dimension
+difference can contribute 1 or 2 set bits depending on how the levels differ.
+This is the standard approach used by Qdrant for binary quantization filtering.
+Hamming distance on packed bytes uses `popcount` (POPCNT instruction on x86,
+CNT on ARM), which processes 8 bytes per cycle. For 96 bytes, this is ~12
+cycles -- effectively free compared to INT8 dot product over 384 dims.
 
 **Usage**: 2-bit codes are used ONLY for the initial candidate filtering stage.
 The top-K' candidates (K' = K * oversample_factor, default oversample = 10)
 are then re-ranked using INT8 cosine similarity for precision. This two-stage
 approach recovers most of the recall lost by the coarse 2-bit encoding.
+
+> **Note**: The ~92% recall figure is an estimate extrapolated from Qdrant's
+> published benchmarks on higher-dimensional vectors. This must be validated
+> with our 384-dim embeddings during Phase C.1 benchmarking. **Fallback**: if
+> recall testing shows < 90% filter recall at oversample=10, the
+> `AdaptiveSearchCoordinator` will automatically skip the binary filter stage
+> and use IVF-only search for the > 100K tier.
 
 ### 2.2 IVF Index -- chosen for sub-linear search
 
@@ -120,9 +130,10 @@ for distance computation keeps the dependency count at zero.
 | > 100,000 | IVF with 2-bit filter + INT8 re-rank | Two-stage search: Hamming filter reduces candidates by 10x before INT8 re-rank. |
 
 The `AdaptiveSearchStrategy` selects the strategy at query time based on
-`SELECT COUNT(*) FROM embedding_vectors WHERE is_stale = 0`. This count is
-cached and refreshed every 60 seconds (piggybacks on the existing scheduler
-aggregate loop).
+`VectorStore::count_active_vectors()` (which maps to
+`SELECT COUNT(*) FROM embedding_vectors WHERE is_stale = 0` in the SQLite
+implementation). This count is cached and refreshed every 60 seconds
+(piggybacks on the existing scheduler aggregate loop).
 
 **No user-facing configuration**. The thresholds (10K, 100K) are compile-time
 constants in `oneshim-core/src/quantization.rs`. Power users can override via
@@ -134,7 +145,12 @@ the config file, but the default is `"auto"`.
 All index structures are stored in SQLite, not in-memory. This enables
 persistence across app restarts without requiring a rebuild on every launch.
 
-#### New Tables (V15 migration)
+#### New Tables (V15 migration -- tentative)
+
+> **Note**: V15 is a tentative migration number. The actual version should be
+> assigned at implementation time based on `CURRENT_VERSION` in
+> `crates/oneshim-storage/src/migration.rs`, since other features may land
+> before Phase C and claim this slot.
 
 ```sql
 -- 2-bit binary codes for Hamming distance filtering
@@ -218,10 +234,11 @@ I/O, no async. Depends only on the existing `QuantizedVector` type.
 
 ```rust
 pub fn hamming_distance(a: &BinaryCode, b: &BinaryCode) -> u32 {
-    // XOR + popcount: counts 2-bit positions that differ
-    // For 2-bit encoding, we XOR byte-by-byte and count set bits.
+    // Bit-level Hamming distance on packed 2-bit representation.
+    // XOR + popcount: counts set bits in the XOR of two binary codes.
     // Each byte contains 4 two-bit codes. A difference in any 2-bit
-    // position produces 1 or 2 set bits after XOR.
+    // position produces 1 or 2 set bits after XOR depending on the
+    // level difference. This is the standard approach used by Qdrant.
     a.data.iter()
         .zip(b.data.iter())
         .map(|(&x, &y)| (x ^ y).count_ones())
@@ -273,6 +290,16 @@ oneshim-analysis/src/
     └── SearchConfig { brute_force_threshold, ivf_threshold, oversample_factor }
 ```
 
+**Intermediate type for the Hamming filter stage**:
+
+```rust
+/// Candidate surviving the Hamming distance filter, before INT8 re-ranking.
+pub struct HammingCandidate {
+    pub vector_id: i64,
+    pub hamming_dist: u32,
+}
+```
+
 **Search flow for IVF + 2-bit re-rank** (> 100K vectors):
 
 ```
@@ -291,7 +318,7 @@ IvfIndex.nearest_centroids(nprobe) -> [cluster_id_1, cluster_id_2, ...]
 For each cluster: load BinaryCodes from vector_binary_codes table
     |
     v
-Hamming distance filter: keep top K * oversample_factor candidates
+Hamming distance filter: keep top K * oversample_factor as Vec<HammingCandidate>
     |
     v
 Load INT8 vectors for candidates from embedding_vectors table
@@ -326,8 +353,28 @@ Apply time decay + return SearchResult[]
 
 ### 3.4 VectorStore Port Extension
 
-The existing `VectorStore` trait remains unchanged. Phase C adds a separate
-port for index operations to maintain clean separation of concerns:
+The existing `VectorStore` trait gains one new default method. Phase C also
+adds a separate port for index operations to maintain clean separation of
+concerns.
+
+**New default method on `VectorStore`**:
+
+```rust
+/// Count the number of active (non-stale) vectors in the store.
+/// Used by AdaptiveSearchCoordinator to select search strategy.
+/// Default implementation returns Ok(0) so existing implementations
+/// continue to compile without changes.
+async fn count_active_vectors(&self) -> Result<u64, CoreError> {
+    Ok(0)
+}
+```
+
+The `AdaptiveSearchCoordinator` calls `count_active_vectors()` every 60
+seconds to determine which search strategy tier to use (brute-force, IVF,
+or IVF+binary). `SqliteVectorStore` overrides this with
+`SELECT COUNT(*) FROM embedding_vectors WHERE is_stale = 0`.
+
+**New port for index operations**:
 
 ```rust
 // NEW: oneshim-core/src/ports/vector_index.rs
@@ -403,11 +450,12 @@ pub struct IndexMeta {
 Default implementations return `CoreError::Internal("not implemented")` so
 mock VectorStore implementations in tests continue to compile.
 
-### 3.5 SQLite Schema (V15 migration)
+### 3.5 SQLite Schema (V15 migration -- tentative)
 
 ```sql
--- V15 migration: IVF index + 2-bit binary codes
--- (current schema is V14; see crates/oneshim-storage/src/migration.rs)
+-- V15 migration (tentative; assign actual version at implementation time
+-- based on CURRENT_VERSION in crates/oneshim-storage/src/migration.rs):
+-- IVF index + 2-bit binary codes
 
 -- 2-bit binary codes for Hamming distance filtering
 CREATE TABLE IF NOT EXISTS vector_binary_codes (
@@ -443,7 +491,7 @@ CREATE TABLE IF NOT EXISTS vector_index_meta (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-INSERT INTO schema_version (version) VALUES (15);
+INSERT INTO schema_version (version) VALUES (15);  -- tentative; see note above
 ```
 
 ### 3.6 Config Extension
@@ -478,7 +526,7 @@ oneshim-core
     quantization.rs          (existing: ScalarQuantizer, QuantizedVector)
     binary_quantizer.rs      (NEW: BinaryQuantizer, BinaryCode, QuantileThresholds)
     ivf_index.rs             (NEW: IvfIndex, IvfCentroid, IvfBuildConfig)
-    ports/vector_store.rs    (existing, unchanged)
+    ports/vector_store.rs    (existing, +count_active_vectors default method)
     ports/vector_index.rs    (NEW: VectorIndex trait)
     ↑
     ├── oneshim-storage
@@ -545,10 +593,11 @@ impl BinaryQuantizer {
         thresholds: &QuantileThresholds,
     ) -> Result<BinaryCode, CoreError>;
 
-    /// Hamming distance between two binary codes.
+    /// Bit-level Hamming distance between two binary codes.
     ///
-    /// Counts the number of bit positions that differ. Uses XOR + popcount
-    /// which auto-vectorizes to POPCNT (x86) or CNT (ARM) instructions.
+    /// Counts set bits in the XOR of the two packed 2-bit codes. This is
+    /// the standard approach used by Qdrant. Uses XOR + popcount which
+    /// auto-vectorizes to POPCNT (x86) or CNT (ARM) instructions.
     /// For 96-byte codes: ~12 clock cycles.
     pub fn hamming_distance(a: &BinaryCode, b: &BinaryCode) -> u32;
 }
@@ -586,10 +635,11 @@ pub struct IvfIndex {
 impl IvfIndex {
     /// Build IVF index using k-means clustering on INT8 vectors.
     ///
-    /// Algorithm:
+    /// Algorithm (spherical k-means):
     /// 1. K-means++ initialization to select n_clusters initial centroids.
     /// 2. Lloyd's iteration: assign each vector to nearest centroid,
-    ///    recompute centroids as the component-wise mean.
+    ///    recompute centroids as the component-wise mean, then
+    ///    L2-normalize each centroid to unit length.
     /// 3. Repeat for n_iterations rounds.
     ///
     /// All distance computations use ScalarQuantizer::cosine_similarity_int8.
@@ -614,16 +664,24 @@ impl IvfIndex {
 }
 ```
 
-**Centroid recomputation in INT8**: Centroids must be computed as the mean of
-assigned vectors. Since vectors are stored as INT8, we dequantize each vector
-back to f32 for the mean computation, then re-quantize the resulting centroid.
-This avoids precision loss from averaging in the quantized domain.
+**Centroid recomputation in INT8 (spherical k-means)**: Centroids must be
+computed as the mean of assigned vectors. Since vectors are stored as INT8, we
+dequantize each vector back to f32 for the mean computation. After computing
+the component-wise mean, normalize the centroid to unit length (L2-normalize).
+This is required because cosine distance on non-unit vectors produces
+inconsistent clustering -- without normalization, centroids drift toward the
+origin over iterations, and cluster assignments become dominated by vector
+magnitude rather than direction. After normalization, re-quantize the
+resulting centroid back to INT8. This avoids precision loss from averaging in
+the quantized domain.
 
 **Memory usage during build**: The build method loads all vector IDs and INT8
 data into memory. At 200K vectors * (8 bytes ID + 384 bytes INT8 + 8 bytes
-scale/offset) = ~78 MB. This is within budget but close to the limit. For
-collections > 200K, we sample 200K vectors for clustering and assign the rest
-post-build.
+scale/offset) = ~78 MB. The `HashMap<i64, usize>` for cluster assignments adds
+~6-8 MB at 200K entries (~48 bytes per entry including HashMap bucket
+overhead). Total peak: ~86 MB. This is within budget but close to the limit.
+For collections > 200K, we sample 200K vectors for clustering and assign the
+rest post-build.
 
 ### 4.3 SqliteVectorIndex
 
@@ -645,10 +703,19 @@ impl VectorIndex for SqliteVectorIndex {
     {
         // 1. SELECT id, vector_int8, quant_scale, quant_offset
         //    FROM embedding_vectors WHERE is_stale = 0 AND vector_int8 IS NOT NULL
-        // 2. Build IvfIndex in memory
-        // 3. DELETE FROM ivf_centroids; DELETE FROM ivf_assignments;
-        // 4. INSERT centroids and assignments in a transaction
-        // 5. UPDATE vector_index_meta SET value = ... WHERE key = 'ivf_built_at'
+        // 2. Build IvfIndex fully in memory (no lock held during computation)
+        // 3. Acquire Mutex lock:
+        //    BEGIN TRANSACTION;
+        //      DELETE FROM ivf_assignments;
+        //      DELETE FROM ivf_centroids;
+        //      INSERT INTO ivf_centroids (all centroids in one batch);
+        //      UPDATE vector_index_meta;
+        //    COMMIT;
+        //    Release lock.
+        // 4. Batch INSERT assignments in chunks of 1000, each chunk in its
+        //    own transaction (acquire lock, BEGIN, INSERT 1000, COMMIT,
+        //    release lock). This prevents holding the Mutex for more than
+        //    ~100ms at a time, allowing scheduler loops to interleave.
     }
 
     async fn search_ivf(&self, ...) -> Result<Vec<SearchResult>, CoreError> {
@@ -755,7 +822,7 @@ batches so normal queries are not blocked for more than ~100 ms at a time.
 | Task | Crate | Estimate |
 |------|-------|----------|
 | `VectorIndex` port trait in core | oneshim-core | 1h |
-| V15 migration (4 new tables) | oneshim-storage | 1h |
+| Migration (tentatively V15; 4 new tables) | oneshim-storage | 1h |
 | `SqliteVectorIndex` implementation: build_ivf, search_ivf | oneshim-storage | 2h |
 | `SqliteVectorIndex`: search_ivf_binary (two-stage) | oneshim-storage | 1.5h |
 | Integration tests: build + search roundtrip via SQLite | oneshim-storage | 1.5h |
@@ -785,15 +852,18 @@ batches so normal queries are not blocked for more than ~100 ms at a time.
 
 Phase C is fully backward compatible:
 
-1. **New port, not modified port**: `VectorIndex` is a separate trait. The
-   existing `VectorStore` trait and `SqliteVectorStore` are unchanged.
+1. **New port, minimal changes to existing**: `VectorIndex` is a separate
+   trait. The existing `VectorStore` trait gains only one default method
+   (`count_active_vectors() -> Ok(0)`), so all existing implementations
+   continue to compile without modification.
 2. **Auto strategy defaults to brute-force at low counts**: For users with
    < 10K vectors (the vast majority during initial rollout), Phase C code is
    entirely dormant.
 3. **Config defaults**: All new config fields have safe defaults
    (`index_strategy: "auto"`, `ivf_nprobe: 0`, `binary_oversample_factor: 10`).
-4. **Migration is additive**: V15 creates new tables; no existing columns or
-   tables are modified.
+4. **Migration is additive**: The new migration (tentatively V15; actual
+   version assigned at implementation time) creates new tables; no existing
+   columns or tables are modified.
 5. **VectorRetriever remains the entry point**: The adaptive coordinator is
    wired behind the existing `VectorRetriever` interface; callers (dashboard,
    Tauri commands, context analyzer) see no API change.
@@ -803,9 +873,9 @@ Phase C is fully backward compatible:
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
 | K-means clustering produces unbalanced partitions (one huge cluster, many empty) | Search degrades to near-brute-force for queries hitting the big cluster | Medium | Cap max partition size at 2x average; reassign overflow vectors. Monitor partition size distribution in index metadata. |
-| 2-bit quantization recall is worse than expected at 384 dims | < 90% recall even with oversample=10 | Low | Parent spec already noted 1-bit needs >= 1024 dims; 2-bit at 384 should be adequate. Fallback: increase oversample_factor or skip binary stage entirely. |
+| 2-bit quantization recall is worse than expected at 384 dims | < 90% recall even with oversample=10 | Low | Parent spec already noted 1-bit needs >= 1024 dims; 2-bit at 384 should be adequate. **Automatic fallback**: if Phase C.1 benchmarking shows < 90% filter recall at oversample=10, `AdaptiveSearchCoordinator` skips the binary filter stage and uses IVF-only for the > 100K tier. Manual override: increase `binary_oversample_factor` in config. |
 | Index build blocks SQLite mutex too long, causing UI jank | Scheduler loops stall waiting for lock | Medium | Break build into batches (1000 rows per transaction). Release and re-acquire lock between batches. |
-| Memory spike during k-means build at 200K+ vectors | OOM on low-RAM machines (8 GB) | Low | Sample 200K vectors for clustering if total exceeds 250K. Peak memory for 200K is ~78 MB, well below even 8 GB. |
+| Memory spike during k-means build at 200K+ vectors | OOM on low-RAM machines (8 GB) | Low | Sample 200K vectors for clustering if total exceeds 200K. Peak memory for 200K is ~78 MB for vector data plus ~6-8 MB for the `HashMap<i64, usize>` assignments (~48 bytes per entry with HashMap overhead). Total ~86 MB, well below even 8 GB. |
 | Centroid cache becomes stale after rebuild | Search uses old centroids | Low | Cache is invalidated atomically when build completes (RwLock write). |
 | SQLite WAL file grows large during bulk index inserts | Disk space spike | Low | Run `PRAGMA wal_checkpoint(TRUNCATE)` after build completes. |
 
