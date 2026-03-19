@@ -25,6 +25,9 @@ pub(crate) struct AgentRuntimeBundle {
     focus_storage: Arc<dyn FocusStorage>,
     calibration_writer: Option<Arc<dyn CalibrationWriter>>,
     calibration_reader: Option<Arc<dyn CalibrationReader>>,
+    override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    /// Shared flag for on-demand re-clustering requests from Tauri/REST.
+    recluster_requested: Arc<std::sync::atomic::AtomicBool>,
     /// Pre-built VectorStore for the embedding pipeline (None if embedding disabled).
     vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
     data_dir: PathBuf,
@@ -253,11 +256,32 @@ impl AgentRuntimeBundle {
                         tm_config.auto_tuning.drift_threshold,
                     ),
                     auto_tune_tick_count: 0,
-                    clustering_strategy: None, // Set externally when clustering adapter is wired
-                    override_store: None,      // Set externally when storage is wired
-                    recluster_requested: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
-                        false,
-                    )),
+                    clustering_strategy: {
+                        match tm_config.clustering_algorithm {
+                            oneshim_core::config::ClusteringAlgorithm::Hdbscan => {
+                                #[cfg(feature = "hdbscan")]
+                                {
+                                    Some(Box::new(
+                                        oneshim_analysis::hdbscan_detector::HdbscanDetector::new(
+                                            5, None,
+                                        ),
+                                    ))
+                                }
+                                #[cfg(not(feature = "hdbscan"))]
+                                {
+                                    warn!("HDBSCAN requested but not compiled; falling back to k-means");
+                                    Some(Box::new(
+                                        oneshim_analysis::kmeans_adapter::KmeansDetector::new(),
+                                    ))
+                                }
+                            }
+                            oneshim_core::config::ClusteringAlgorithm::Kmeans => Some(Box::new(
+                                oneshim_analysis::kmeans_adapter::KmeansDetector::new(),
+                            )),
+                        }
+                    },
+                    override_store: self.override_store.clone(),
+                    recluster_requested: self.recluster_requested.clone(),
                     llm_summarizer: llm_summarizer_arc,
                     embedding_pipeline: embedding_pipeline_arc,
                 };
@@ -281,6 +305,8 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     focus_storage: Arc<dyn FocusStorage>,
     calibration_writer: Option<Arc<dyn CalibrationWriter>>,
     calibration_reader: Option<Arc<dyn CalibrationReader>>,
+    override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    recluster_requested: Arc<std::sync::atomic::AtomicBool>,
     vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
     data_dir: &'a Path,
     config: &'a AppConfig,
@@ -302,6 +328,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
         data_dir: &'a Path,
         config: &'a AppConfig,
         config_manager: ConfigManager,
+        recluster_requested: Arc<std::sync::atomic::AtomicBool>,
         app_handle: AppHandle,
     ) -> Self {
         Self {
@@ -310,6 +337,8 @@ impl<'a> AgentRuntimeBuilder<'a> {
             focus_storage,
             calibration_writer: None,
             calibration_reader: None,
+            override_store: None,
+            recluster_requested,
             vector_store: None,
             data_dir,
             config,
@@ -330,6 +359,14 @@ impl<'a> AgentRuntimeBuilder<'a> {
 
     pub(crate) fn with_calibration_reader(mut self, reader: Arc<dyn CalibrationReader>) -> Self {
         self.calibration_reader = Some(reader);
+        self
+    }
+
+    pub(crate) fn with_override_store(
+        mut self,
+        store: Arc<dyn oneshim_core::ports::override_store::OverrideStore>,
+    ) -> Self {
+        self.override_store = Some(store);
         self
     }
 
@@ -375,6 +412,8 @@ impl<'a> AgentRuntimeBuilder<'a> {
             focus_storage: self.focus_storage,
             calibration_writer: self.calibration_writer,
             calibration_reader: self.calibration_reader,
+            override_store: self.override_store,
+            recluster_requested: self.recluster_requested,
             vector_store: self.vector_store,
             data_dir: self.data_dir.to_path_buf(),
             config: self.config.clone(),

@@ -116,6 +116,8 @@ pub struct WebServerRuntimeBindings {
     pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
     pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
     pub update_control: Option<update_control::UpdateControl>,
+    pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 pub struct WebServer {
@@ -323,6 +325,12 @@ impl WebServer {
         }
         if let Some(update_control) = bindings.update_control {
             self.state.update_control = Some(update_control);
+        }
+        if let Some(override_store) = bindings.override_store {
+            self.state.override_store = Some(override_store);
+        }
+        if let Some(recluster_requested) = bindings.recluster_requested {
+            self.state.recluster_requested = Some(recluster_requested);
         }
         self
     }

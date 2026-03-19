@@ -197,6 +197,8 @@ pub(crate) struct WebServerRuntimeBuilder<'a> {
     data_dir: &'a Path,
     launch_context: WebServerLaunchContext<'a>,
     support_context: WebServerSupportContext,
+    override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<'a> WebServerRuntimeBuilder<'a> {
@@ -213,12 +215,30 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             data_dir,
             launch_context,
             support_context,
+            override_store: None,
+            recluster_requested: None,
         }
     }
 
     #[cfg(feature = "server")]
     pub(crate) fn with_server_support(mut self, server: WebServerServerSupport) -> Self {
         self.support_context = self.support_context.with_server_support(server);
+        self
+    }
+
+    pub(crate) fn with_override_store(
+        mut self,
+        store: Arc<dyn oneshim_core::ports::override_store::OverrideStore>,
+    ) -> Self {
+        self.override_store = Some(store);
+        self
+    }
+
+    pub(crate) fn with_recluster_requested(
+        mut self,
+        flag: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.recluster_requested = Some(flag);
         self
     }
 
@@ -263,6 +283,8 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             Arc::new(AuditLogAdapter::new(web_audit_logger)),
             ai_runtime_status,
         );
+        runtime_bindings.override_store = self.override_store;
+        runtime_bindings.recluster_requested = self.recluster_requested;
 
         let web_storage = self.storage.clone();
         let web_config = self.config.web.clone();

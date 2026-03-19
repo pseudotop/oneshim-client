@@ -66,6 +66,11 @@ impl AppRuntimeLaunchBuilder {
         let event_tx = core_resources.background_runtime.event_tx();
         let shutdown_tx = core_resources.background_runtime.shutdown_tx();
 
+        // Shared flag for on-demand re-clustering: scheduler, web server, and Tauri IPC
+        // all reference the same AtomicBool so any endpoint can trigger re-clustering.
+        let recluster_requested =
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
         #[cfg(feature = "server")]
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
@@ -78,6 +83,7 @@ impl AppRuntimeLaunchBuilder {
                 &data_dir_path,
                 &config,
                 config_manager.clone(),
+                recluster_requested.clone(),
                 self.app_handle.clone(),
             )
             .with_vector_store(Arc::new(
@@ -93,6 +99,7 @@ impl AppRuntimeLaunchBuilder {
             )
             .with_calibration_writer(sqlite_storage.clone())
             .with_calibration_reader(sqlite_storage.clone())
+            .with_override_store(sqlite_storage.clone())
             .with_consent_manager(Arc::new(ConsentManager::new(
                 data_dir_path.join("consent.json"),
             )));
@@ -117,7 +124,9 @@ impl AppRuntimeLaunchBuilder {
                 &data_dir_path,
                 launch_context,
                 support_context,
-            );
+            )
+            .with_override_store(sqlite_storage.clone())
+            .with_recluster_requested(recluster_requested.clone());
             #[cfg(feature = "server")]
             let builder = server_context.configure_web_server_builder(builder);
             let web_server_runtime = builder.build_and_spawn();
@@ -138,7 +147,7 @@ impl AppRuntimeLaunchBuilder {
             update_action_tx,
             automation_controller,
             shutdown_tx,
-            recluster_requested: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            recluster_requested: recluster_requested.clone(),
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);
