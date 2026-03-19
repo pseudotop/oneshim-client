@@ -3,11 +3,12 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import InsightCard from '../components/InsightCard'
 import StatisticsPanel from '../components/StatisticsPanel'
 import TimelineView from '../components/TimelineView'
 import { Button, Card, Skeleton } from '../components/ui'
+import { useCreateOverride, useOverrides } from '../hooks/useRecalibration'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -43,6 +44,7 @@ interface DailyDigestResponse {
     duration_mins: number
     regime_label: string
     regime_color: string
+    regime_id?: string
     dominant_app: string
     content_summary: Array<{ content: string; work_type: string; mins: number }>
     annotation?: { highlight_type: string; text: string }
@@ -63,6 +65,15 @@ interface DailyDigestResponse {
   }
 }
 
+// Default regime options — in practice these would come from server config
+const DEFAULT_REGIME_OPTIONS = [
+  { id: 'deep-work', label: 'Deep Work' },
+  { id: 'communication', label: 'Communication' },
+  { id: 'meeting', label: 'Meeting' },
+  { id: 'break', label: 'Break' },
+  { id: 'admin', label: 'Admin' },
+]
+
 export default function DashboardDay() {
   const [date, setDate] = useState(todayStr)
 
@@ -74,6 +85,27 @@ export default function DashboardDay() {
       return r.json();
     },
   })
+
+  // Fetch overrides for the current date
+  const dateFrom = `${date}T00:00:00Z`
+  const dateTo = `${date}T23:59:59Z`
+  const { data: overrides } = useOverrides(dateFrom, dateTo)
+  const createOverrideMutation = useCreateOverride()
+
+  // Derive regime options from timeline data or use defaults
+  const regimeOptions = useMemo(() => {
+    if (!data?.timeline || data.timeline.length === 0) return DEFAULT_REGIME_OPTIONS
+    const seen = new Map<string, string>()
+    for (const seg of data.timeline) {
+      if (seg.regime_id && !seen.has(seg.regime_id)) {
+        seen.set(seg.regime_id, seg.regime_label)
+      }
+    }
+    if (seen.size > 0) {
+      return Array.from(seen.entries()).map(([id, label]) => ({ id, label }))
+    }
+    return DEFAULT_REGIME_OPTIONS
+  }, [data?.timeline])
 
   const isToday = date === todayStr()
 
@@ -150,7 +182,13 @@ export default function DashboardDay() {
       {data && !isLoading && (
         <>
           <InsightCard insight={data.insight} />
-          <TimelineView timeline={data.timeline} />
+          <TimelineView
+            timeline={data.timeline}
+            overrides={overrides}
+            regimeOptions={regimeOptions}
+            onCreateOverride={(req) => createOverrideMutation.mutate(req)}
+            isMutating={createOverrideMutation.isPending}
+          />
           <StatisticsPanel statistics={data.statistics} />
         </>
       )}
