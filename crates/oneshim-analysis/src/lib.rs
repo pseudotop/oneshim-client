@@ -45,7 +45,7 @@ pub use regime_classifier::RegimeClassifier;
 pub use regime_detector::RegimeDetector;
 pub use regime_manager::RegimeManager;
 pub use segment_buffer::SegmentBuffer;
-pub use segment_summarizer::SegmentSummarizer;
+pub use segment_summarizer::{to_content_summary_entries, SegmentSummarizer};
 pub use suggestion_filter::filter_by_regime;
 pub use title_bar_parser::{ParsedContent, TitleBarParser};
 pub use work_type_classifier::WorkTypeClassifier;

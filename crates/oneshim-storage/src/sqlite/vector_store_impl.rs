@@ -5,6 +5,7 @@ use oneshim_core::models::embedding::{
     EmbeddingContentType, EmbeddingMetadata, SearchFilters, SearchResult,
 };
 use oneshim_core::ports::vector_store::VectorStore;
+use oneshim_core::quantization::QuantizedVector;
 use rusqlite::{params, Connection};
 use std::sync::{Arc, Mutex};
 use tracing::debug;
@@ -52,6 +53,16 @@ fn bytes_to_f32_vec(b: &[u8]) -> Vec<f32> {
     b.chunks_exact(4)
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
+}
+
+/// Convert a slice of i8 values to a byte vector (for SQLite BLOB storage).
+fn i8_vec_to_bytes(v: &[i8]) -> Vec<u8> {
+    v.iter().map(|&b| b as u8).collect()
+}
+
+/// Convert a byte slice back to a Vec<i8>.
+fn bytes_to_i8_vec(b: &[u8]) -> Vec<i8> {
+    b.iter().map(|&b| b as i8).collect()
 }
 
 /// Compute cosine similarity between two vectors.
@@ -355,6 +366,47 @@ impl VectorStore for SqliteVectorStore {
                 params![blob, model_id, id],
             )
             .map_err(|e| CoreError::Internal(format!("Failed to update vector: {e}")))?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn store_quantized(
+        &self,
+        vector_f32: Vec<f32>,
+        vector_int8: &QuantizedVector,
+        metadata: EmbeddingMetadata,
+    ) -> Result<(), CoreError> {
+        let f32_blob = f32_vec_to_bytes(&vector_f32);
+        let int8_blob = i8_vec_to_bytes(&vector_int8.data);
+        let scale = vector_int8.scale;
+        let offset = vector_int8.offset;
+        let content_type_str = content_type_to_str(&metadata.content_type).to_string();
+        let timestamp_str = metadata.timestamp.to_rfc3339();
+
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO embedding_vectors (segment_id, content_type, content_label, original_text, vector, model_id, timestamp, vector_int8, quant_scale, quant_offset)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    metadata.segment_id,
+                    content_type_str,
+                    metadata.content_label,
+                    metadata.original_text,
+                    f32_blob,
+                    metadata.model_id,
+                    timestamp_str,
+                    int8_blob,
+                    scale,
+                    offset,
+                ],
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to store quantized vector: {e}")))?;
+
+            debug!(
+                "Stored quantized vector for segment {} (type={})",
+                metadata.segment_id, content_type_str
+            );
             Ok(())
         })
         .await
@@ -715,5 +767,42 @@ mod tests {
             .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].segment_id, "recent");
+    }
+
+    #[tokio::test]
+    async fn store_quantized_roundtrip() {
+        use oneshim_core::quantization::ScalarQuantizer;
+
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn.clone());
+
+        let vector = vec![0.1, 0.5, 0.9, -0.3, 0.7];
+        let quantized = ScalarQuantizer::quantize(&vector).unwrap();
+
+        let meta = EmbeddingMetadata {
+            segment_id: "seg-q001".to_string(),
+            content_type: EmbeddingContentType::ContentActivity,
+            content_label: Some("VSCode: test.rs".to_string()),
+            timestamp: Utc::now(),
+            original_text: "VSCode: test.rs".to_string(),
+            model_id: "test-model".to_string(),
+        };
+
+        store
+            .store_quantized(vector.clone(), &quantized, meta)
+            .await
+            .unwrap();
+
+        // Verify both f32 and INT8 columns are populated
+        let guard = conn.lock().unwrap();
+        let (has_f32, has_int8): (bool, bool) = guard
+            .query_row(
+                "SELECT vector IS NOT NULL, vector_int8 IS NOT NULL FROM embedding_vectors WHERE segment_id = 'seg-q001'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(has_f32);
+        assert!(has_int8);
     }
 }

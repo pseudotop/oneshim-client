@@ -585,4 +585,36 @@ mod tests {
         assert_eq!(seg["content_summary"][0]["content"], "main.rs");
         assert_eq!(seg["content_summary"][0]["mins"], 10);
     }
+
+    #[test]
+    fn build_with_segment_enriches_gui_summary_line() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let stats = SegmentStats {
+            duration_mins: 15,
+            regime_label: None,
+            event_count: 30,
+            context_switches: 2,
+            dominant_category: "Development".to_string(),
+            content_summary: vec![ContentSummaryEntry {
+                content: "auth.rs".to_string(),
+                content_type: "File".to_string(),
+                work_type: "ActiveCoding".to_string(),
+                mins: 15,
+                gui_summary_line: Some("3 saves, 2 test runs".to_string()),
+            }],
+        };
+        let ctx = assembler.build_with_segment(
+            &make_current(),
+            &[],
+            &[],
+            &make_metrics(),
+            Some(&stats),
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&ctx.user_context_json).unwrap();
+        let content = parsed["current_segment"]["content_summary"][0]["content"]
+            .as_str()
+            .unwrap();
+        assert_eq!(content, "auth.rs (3 saves, 2 test runs)");
+    }
 }

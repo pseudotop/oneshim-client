@@ -178,6 +178,26 @@ impl Default for SegmentSummarizer {
     }
 }
 
+/// Convert a slice of ContentActivity records into ContentSummaryEntry values
+/// for the ContextAssembler.
+pub fn to_content_summary_entries(
+    activities: &[ContentActivity],
+) -> Vec<crate::assembler::ContentSummaryEntry> {
+    activities
+        .iter()
+        .map(|ca| crate::assembler::ContentSummaryEntry {
+            content: ca.content_label.clone(),
+            content_type: format!("{:?}", ca.content_type),
+            work_type: format!("{:?}", ca.work_type),
+            mins: (ca.duration_secs / 60).max(1) as u32,
+            gui_summary_line: ca
+                .gui_summary
+                .as_ref()
+                .map(|gs| gs.summary_line.clone()),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
