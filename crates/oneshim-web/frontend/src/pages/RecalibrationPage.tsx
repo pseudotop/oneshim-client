@@ -10,12 +10,7 @@ import { fetchDailyDigest } from '../api/client'
 import type { CreateOverrideRequest, RegimeOverride } from '../api/contracts'
 import DateRangePicker from '../components/DateRangePicker'
 import { Badge, Button, Card, EmptyState, Select, Skeleton, Spinner } from '../components/ui'
-import {
-  useCreateOverride,
-  useDeleteOverride,
-  useOverrides,
-  useRecluster,
-} from '../hooks/useRecalibration'
+import { useCreateOverride, useDeleteOverride, useOverrides, useRecluster } from '../hooks/useRecalibration'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
@@ -156,12 +151,7 @@ export default function RecalibrationPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('recalibration.title')}</h1>
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => recluster.mutate()}
-          disabled={recluster.isPending}
-        >
+        <Button variant="primary" size="sm" onClick={() => recluster.mutate()} disabled={recluster.isPending}>
           {recluster.isPending ? (
             <>
               <Spinner size="sm" />
@@ -215,50 +205,41 @@ export default function RecalibrationPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className={cn('border-b border-DEFAULT', colors.text.tertiary)}>
-                  <th className="pb-2 pr-4 font-medium">Time</th>
-                  <th className="pb-2 pr-4 font-medium">Duration</th>
-                  <th className="pb-2 pr-4 font-medium">Regime</th>
-                  <th className="pb-2 pr-4 font-medium">App</th>
+                <tr className={cn('border-DEFAULT border-b', colors.text.tertiary)}>
+                  <th className="pr-4 pb-2 font-medium">Time</th>
+                  <th className="pr-4 pb-2 font-medium">Duration</th>
+                  <th className="pr-4 pb-2 font-medium">Regime</th>
+                  <th className="pr-4 pb-2 font-medium">App</th>
                   <th className="pb-2 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {segments.map((seg) => {
-                  const isOverridden = overrideMap.has(seg.segment_id)
+                  const override = overrideMap.get(seg.segment_id)
+                  const isOverridden = !!override
                   return (
-                    <tr key={seg.segment_id} className="border-b border-DEFAULT last:border-b-0">
+                    <tr key={seg.segment_id} className="border-DEFAULT border-b last:border-b-0">
                       <td className={cn('py-2 pr-4 text-xs', colors.text.secondary)}>
                         {formatTime(seg.start_time)} - {formatTime(seg.end_time)}
                       </td>
-                      <td className={cn('py-2 pr-4 text-xs', colors.text.secondary)}>
-                        {seg.duration_mins}m
-                      </td>
+                      <td className={cn('py-2 pr-4 text-xs', colors.text.secondary)}>{seg.duration_mins}m</td>
                       <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
                           <span
                             className="inline-block h-2.5 w-2.5 rounded-full"
                             style={{ backgroundColor: seg.regime_color }}
                           />
-                          <span
-                            className={cn(
-                              'text-xs',
-                              colors.text.primary,
-                              isOverridden ? 'line-through' : '',
-                            )}
-                          >
+                          <span className={cn('text-xs', colors.text.primary, isOverridden ? 'line-through' : '')}>
                             {seg.regime_label}
                           </span>
-                          {isOverridden && (
+                          {override && (
                             <Badge color="warning" size="sm">
-                              {getActionLabel(overrideMap.get(seg.segment_id)!, t)}
+                              {getActionLabel(override, t)}
                             </Badge>
                           )}
                         </div>
                       </td>
-                      <td className={cn('py-2 pr-4 text-xs', colors.text.secondary)}>
-                        {seg.dominant_app}
-                      </td>
+                      <td className={cn('py-2 pr-4 text-xs', colors.text.secondary)}>{seg.dominant_app}</td>
                       <td className="py-2">
                         <div className="flex items-center gap-2">
                           {!isOverridden && (
@@ -303,9 +284,7 @@ export default function RecalibrationPage() {
 
       {/* Override history */}
       <Card padding="md">
-        <h2 className={cn(typography.h3, colors.text.primary, 'mb-4')}>
-          {t('recalibration.overrideHistory')}
-        </h2>
+        <h2 className={cn(typography.h3, colors.text.primary, 'mb-4')}>{t('recalibration.overrideHistory')}</h2>
 
         {overridesLoading && (
           <div className="space-y-2">
@@ -315,27 +294,25 @@ export default function RecalibrationPage() {
         )}
 
         {!overridesLoading && (!overrides || overrides.length === 0) && (
-          <p className={cn('py-4 text-center text-sm', colors.text.secondary)}>
-            {t('recalibration.noOverrides')}
-          </p>
+          <p className={cn('py-4 text-center text-sm', colors.text.secondary)}>{t('recalibration.noOverrides')}</p>
         )}
 
         {!overridesLoading && overrides && overrides.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className={cn('border-b border-DEFAULT', colors.text.tertiary)}>
-                  <th className="pb-2 pr-4 font-medium">Segment</th>
-                  <th className="pb-2 pr-4 font-medium">Original</th>
-                  <th className="pb-2 pr-4 font-medium">Action</th>
-                  <th className="pb-2 pr-4 font-medium">Created</th>
+                <tr className={cn('border-DEFAULT border-b', colors.text.tertiary)}>
+                  <th className="pr-4 pb-2 font-medium">Segment</th>
+                  <th className="pr-4 pb-2 font-medium">Original</th>
+                  <th className="pr-4 pb-2 font-medium">Action</th>
+                  <th className="pr-4 pb-2 font-medium">Created</th>
                   <th className="pb-2 font-medium" />
                 </tr>
               </thead>
               <tbody>
                 {overrides.map((override) => (
-                  <tr key={override.override_id} className="border-b border-DEFAULT last:border-b-0">
-                    <td className={cn('py-2 pr-4 text-xs font-mono', colors.text.secondary)}>
+                  <tr key={override.override_id} className="border-DEFAULT border-b last:border-b-0">
+                    <td className={cn('py-2 pr-4 font-mono text-xs', colors.text.secondary)}>
                       {override.segment_id.slice(0, 8)}...
                     </td>
                     <td className={cn('py-2 pr-4 text-xs', colors.text.secondary)}>

@@ -80,7 +80,7 @@ export default function TimelineView({
   if (timeline.length === 0) {
     return (
       <Card padding="md">
-        <p className={cn(typography.body, colors.text.secondary, 'text-center py-8')}>
+        <p className={cn(typography.body, colors.text.secondary, 'py-8 text-center')}>
           No activity recorded for this day
         </p>
       </Card>
@@ -152,9 +152,7 @@ export default function TimelineView({
             <div key={entry.segment_id} className="flex gap-3">
               {/* Time label column */}
               <div className="flex w-14 flex-shrink-0 flex-col items-end pt-2">
-                <span className={cn('text-xs font-medium', colors.text.secondary)}>
-                  {formatTime(entry.start_time)}
-                </span>
+                <span className={cn('font-medium text-xs', colors.text.secondary)}>{formatTime(entry.start_time)}</span>
               </div>
 
               {/* Colored block column */}
@@ -177,11 +175,7 @@ export default function TimelineView({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span
-                      className={cn(
-                        'text-xs font-semibold',
-                        colors.text.primary,
-                        isOverridden ? 'line-through' : '',
-                      )}
+                      className={cn('font-semibold text-xs', colors.text.primary, isOverridden ? 'line-through' : '')}
                     >
                       {entry.regime_label}
                     </span>
@@ -191,26 +185,23 @@ export default function TimelineView({
                           {getOverrideLabel(override)}
                         </Badge>
                       )}
-                      <span className={cn('text-xs', colors.text.tertiary)}>
-                        {entry.duration_mins}m
-                      </span>
+                      <span className={cn('text-xs', colors.text.tertiary)}>{entry.duration_mins}m</span>
                     </div>
                   </div>
-                  <span className={cn('text-xs', colors.text.secondary)}>
-                    {entry.dominant_app}
-                  </span>
+                  <span className={cn('text-xs', colors.text.secondary)}>{entry.dominant_app}</span>
 
                   {/* Content summary (top items) */}
                   {entry.content_summary.length > 0 && (
                     <div className="mt-1 space-y-0.5">
-                      {entry.content_summary.slice(0, isExpanded ? undefined : 2).map((item, idx) => (
-                        <div key={`${entry.segment_id}-content-${idx}`} className="flex items-center gap-1.5">
+                      {entry.content_summary.slice(0, isExpanded ? undefined : 2).map((item) => (
+                        <div
+                          key={`${entry.segment_id}-${item.work_type}-${item.mins}`}
+                          className="flex items-center gap-1.5"
+                        >
                           <span className={cn('text-xs', colors.text.tertiary)}>
                             {item.work_type} ({item.mins}m)
                           </span>
-                          <span className={cn('truncate text-xs', colors.text.secondary)}>
-                            {item.content}
-                          </span>
+                          <span className={cn('truncate text-xs', colors.text.secondary)}>{item.content}</span>
                         </div>
                       ))}
                     </div>
@@ -219,12 +210,8 @@ export default function TimelineView({
                   {/* Annotation bubble */}
                   {entry.annotation && (
                     <div className="mt-2 inline-flex items-center gap-1 rounded-md bg-surface-muted px-2 py-1">
-                      <span aria-hidden="true">
-                        {annotationIcons[entry.annotation.highlight_type] ?? '\u{1F4A1}'}
-                      </span>
-                      <span className={cn('text-xs', colors.text.secondary)}>
-                        {entry.annotation.text}
-                      </span>
+                      <span aria-hidden="true">{annotationIcons[entry.annotation.highlight_type] ?? '\u{1F4A1}'}</span>
+                      <span className={cn('text-xs', colors.text.secondary)}>{entry.annotation.text}</span>
                     </div>
                   )}
                 </button>
@@ -234,7 +221,7 @@ export default function TimelineView({
                   <button
                     type="button"
                     className={cn(
-                      'absolute right-2 top-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100',
+                      'absolute top-2 right-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100',
                       'hover:bg-surface-muted',
                       isMenuOpen ? 'opacity-100' : '',
                     )}
@@ -243,11 +230,7 @@ export default function TimelineView({
                     aria-haspopup="menu"
                     aria-expanded={isMenuOpen}
                   >
-                    {isMutating ? (
-                      <Spinner size="sm" />
-                    ) : (
-                      <Settings2 className="h-3.5 w-3.5 text-content-muted" />
-                    )}
+                    {isMutating ? <Spinner size="sm" /> : <Settings2 className="h-3.5 w-3.5 text-content-muted" />}
                   </button>
                 )}
 

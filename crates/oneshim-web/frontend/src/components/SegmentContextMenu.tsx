@@ -4,8 +4,8 @@
  */
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '../utils/cn'
 import { colors } from '../styles/tokens'
+import { cn } from '../utils/cn'
 
 interface RegimeOption {
   id: string
@@ -86,7 +86,7 @@ export default function SegmentContextMenu({
       ref={menuRef}
       role="menu"
       aria-label={t('recalibration.changeRegimeTo')}
-      className="absolute right-0 top-full z-50 mt-1 min-w-48 rounded-lg border border-DEFAULT bg-surface-elevated shadow-lg"
+      className="absolute top-full right-0 z-50 mt-1 min-w-48 rounded-lg border border-DEFAULT bg-surface-elevated shadow-lg"
       onKeyDown={handleMenuKeyDown}
     >
       <div className="py-1">
@@ -108,14 +108,12 @@ export default function SegmentContextMenu({
         </button>
 
         {/* Separator */}
-        {filteredRegimes.length > 0 && <hr className="my-1 border-t border-DEFAULT" />}
+        {filteredRegimes.length > 0 && <hr className="my-1 border-DEFAULT border-t" />}
 
         {/* Change regime sub-items */}
         {filteredRegimes.length > 0 && (
           <div className="px-3 py-1">
-            <span className={cn('text-xs font-medium', colors.text.tertiary)}>
-              {t('recalibration.changeRegimeTo')}
-            </span>
+            <span className={cn('font-medium text-xs', colors.text.tertiary)}>{t('recalibration.changeRegimeTo')}</span>
           </div>
         )}
         {filteredRegimes.map((regime) => (

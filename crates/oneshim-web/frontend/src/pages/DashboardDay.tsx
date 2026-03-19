@@ -2,7 +2,7 @@
  * DashboardDay — daily timetable view with insight, timeline, and statistics.
  */
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import InsightCard from '../components/InsightCard'
 import StatisticsPanel from '../components/StatisticsPanel'
@@ -80,9 +80,9 @@ export default function DashboardDay() {
   const { data, isLoading, error } = useQuery<DailyDigestResponse>({
     queryKey: ['dashboard-day', date],
     queryFn: async () => {
-      const r = await fetch(`/api/dashboard/day?date=${date}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-      return r.json();
+      const r = await fetch(`/api/dashboard/day?date=${date}`)
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`)
+      return r.json()
     },
   })
 
@@ -131,7 +131,7 @@ export default function DashboardDay() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value || todayStr())}
-              className="bg-transparent text-sm text-content outline-none"
+              className="bg-transparent text-content text-sm outline-none"
               max={todayStr()}
             />
           </div>
