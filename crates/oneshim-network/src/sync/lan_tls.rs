@@ -6,6 +6,7 @@
 
 use std::path::Path;
 
+use chrono::Datelike;
 use sha2::Digest;
 use tracing::{debug, info};
 
@@ -23,8 +24,10 @@ pub fn generate_self_signed_cert(device_id: &str) -> Result<(Vec<u8>, Vec<u8>), 
         rcgen::DnType::CommonName,
         format!("ONESHIM Sync {device_id}"),
     );
-    // Valid for 10 years
-    params.not_after = rcgen::date_time_ymd(2036, 1, 1);
+    // Valid for 10 years from now
+    let now = chrono::Utc::now();
+    let expiry_year = now.year() + 10;
+    params.not_after = rcgen::date_time_ymd(expiry_year, now.month() as u8, now.day() as u8);
 
     let key_pair = rcgen::KeyPair::generate()
         .map_err(|e| CoreError::Internal(format!("key generation: {e}")))?;
@@ -112,6 +115,15 @@ pub fn load_or_generate_cert(
         .map_err(|e| CoreError::Internal(format!("write cert: {e}")))?;
     std::fs::write(&key_path, &key_pem)
         .map_err(|e| CoreError::Internal(format!("write key: {e}")))?;
+
+    // Restrict private key file permissions to owner-only on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(&key_path, perms)
+            .map_err(|e| CoreError::Internal(format!("set key permissions: {e}")))?;
+    }
 
     info!("generated new TLS cert (fingerprint: {fingerprint})");
     Ok((cert_pem, key_pem, fingerprint))

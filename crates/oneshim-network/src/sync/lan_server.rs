@@ -51,6 +51,10 @@ const PROTOCOL_VERSION: &str = "1";
 /// Maximum request body size: 16 MiB.
 const MAX_BODY_SIZE: usize = 16 * 1024 * 1024;
 
+/// Maximum number of outbound changesets held in memory.
+/// When full, the oldest entries are evicted to make room.
+const MAX_OUTBOUND_QUEUE: usize = 1000;
+
 /// Device info returned by `GET /sync/info`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceInfoResponse {
@@ -194,6 +198,12 @@ impl LanPeerServer {
     }
 
     /// Stop the server gracefully.
+    ///
+    /// Sends a shutdown signal and spawns a background task to abort
+    /// the server if it does not complete within a grace period. This
+    /// avoids the race between the oneshot signal and an immediate
+    /// `abort()` while remaining safe to call from both sync and async
+    /// contexts.
     pub fn stop(&mut self) {
         if !self.running {
             return;
@@ -204,9 +214,20 @@ impl LanPeerServer {
             let _ = tx.send(());
         }
 
-        // Abort the server task if shutdown takes too long
+        // Give the server task a grace period before aborting.
+        // Spawn a fire-and-forget task so we don't block the caller.
         if let Some(handle) = self.server_handle.take() {
-            handle.abort();
+            if let Ok(_rt) = tokio::runtime::Handle::try_current() {
+                tokio::spawn(async move {
+                    match tokio::time::timeout(std::time::Duration::from_secs(2), handle).await {
+                        Ok(_) => debug!("LAN peer server task completed gracefully"),
+                        Err(_) => warn!("LAN peer server task did not complete in time"),
+                    }
+                });
+            } else {
+                // No tokio runtime available (e.g., during Drop) -- abort immediately
+                handle.abort();
+            }
         }
 
         self.running = false;
@@ -231,8 +252,19 @@ impl LanPeerServer {
     /// Enqueue a changeset for peers to pull.
     ///
     /// Called by the SyncEngine when local changes are extracted.
+    /// If the queue exceeds `MAX_OUTBOUND_QUEUE`, the oldest entries
+    /// are evicted to make room.
     pub fn enqueue_outbound(&self, changeset: ChangeSet) {
-        self.outbound_changesets.write().push(changeset);
+        let mut queue = self.outbound_changesets.write();
+        queue.push(changeset);
+        if queue.len() > MAX_OUTBOUND_QUEUE {
+            let excess = queue.len() - MAX_OUTBOUND_QUEUE;
+            queue.drain(..excess);
+            debug!(
+                evicted = excess,
+                "outbound queue exceeded capacity, evicted oldest entries"
+            );
+        }
     }
 
     /// Drain received changesets (from peers pushing to us).
@@ -259,6 +291,7 @@ fn build_router(state: ServerState) -> Router {
         .route("/sync/info", get(handle_info))
         .route("/sync/pull", get(handle_pull))
         .route("/sync/push", post(handle_push))
+        .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state)
 }
 

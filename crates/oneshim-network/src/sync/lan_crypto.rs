@@ -46,7 +46,10 @@ pub fn compute_challenge_response(
     Ok(mac.finalize().into_bytes().to_vec())
 }
 
-/// Verify a challenge response.
+/// Verify a challenge response using constant-time comparison.
+///
+/// Uses `hmac::Mac::verify_slice` internally, which is constant-time
+/// to prevent timing side-channel attacks.
 pub fn verify_challenge_response(
     nonce: &[u8],
     response: &[u8],
@@ -54,8 +57,16 @@ pub fn verify_challenge_response(
     local_device_id: &str,
     peer_device_id: &str,
 ) -> Result<bool, CoreError> {
-    let expected = compute_challenge_response(nonce, passphrase, local_device_id, peer_device_id)?;
-    Ok(expected == response)
+    let salt = derive_peer_salt(local_device_id, peer_device_id);
+    let key = sync_crypto::derive_key(passphrase, &salt)?;
+
+    type HmacSha256 = Hmac<Sha256>;
+    let mut mac = HmacSha256::new_from_slice(&key)
+        .map_err(|e| CoreError::Internal(format!("HMAC init: {e}")))?;
+    mac.update(nonce);
+
+    // verify_slice performs constant-time comparison internally
+    Ok(mac.verify_slice(response).is_ok())
 }
 
 #[cfg(test)]

@@ -259,10 +259,26 @@ impl LanSyncTransport {
                     return Ok(None);
                 }
 
-                // Merge all pulled changesets into one composite changeset.
-                // In a full implementation, each changeset would be applied
-                // individually by the SyncEngine.
-                let merged = changesets.into_iter().next().unwrap();
+                // Merge all pulled changesets into a single composite changeset
+                // by concatenating their Vec fields and keeping the latest watermark.
+                let mut iter = changesets.into_iter();
+                let mut merged = iter.next().unwrap();
+                for cs in iter {
+                    merged.segments.extend(cs.segments);
+                    merged.regimes.extend(cs.regimes);
+                    merged.overrides.extend(cs.overrides);
+                    merged.embeddings.extend(cs.embeddings);
+                    merged.suggestions.extend(cs.suggestions);
+                    merged.param_snapshots.extend(cs.param_snapshots);
+                    merged.preferences.extend(cs.preferences);
+                    // Keep the latest watermark
+                    if cs.watermark.wall_ms > merged.watermark.wall_ms
+                        || (cs.watermark.wall_ms == merged.watermark.wall_ms
+                            && cs.watermark.counter > merged.watermark.counter)
+                    {
+                        merged.watermark = cs.watermark;
+                    }
+                }
                 debug!(
                     peer_id,
                     origin = %merged.origin_device_id,

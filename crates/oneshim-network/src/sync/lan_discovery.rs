@@ -233,6 +233,17 @@ impl LanDiscovery {
                     .unwrap_or_default();
                 let port = info.get_port();
 
+                // Only add peers with a matching protocol version
+                if version != PROTOCOL_VERSION {
+                    debug!(
+                        device_id = %device_id,
+                        peer_version = %version,
+                        local_version = PROTOCOL_VERSION,
+                        "ignoring LAN peer with incompatible protocol version"
+                    );
+                    return;
+                }
+
                 let peer = LanPeerInfo {
                     device_id: device_id.clone(),
                     device_name: device_name.clone(),
