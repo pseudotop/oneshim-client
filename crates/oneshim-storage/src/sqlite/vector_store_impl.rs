@@ -61,7 +61,6 @@ fn i8_vec_to_bytes(v: &[i8]) -> Vec<u8> {
 }
 
 /// Convert a byte slice back to a Vec<i8>.
-#[allow(dead_code)] // Used by search_quantized and backfill_quantized below.
 fn bytes_to_i8_vec(b: &[u8]) -> Vec<i8> {
     b.iter().map(|&b| b as i8).collect()
 }
@@ -85,6 +84,18 @@ struct VectorRow {
     content_label: Option<String>,
     original_text: String,
     vector: Vec<f32>,
+    timestamp: DateTime<Utc>,
+}
+
+/// Row fetched for INT8 brute-force search.
+struct QuantizedVectorRow {
+    segment_id: String,
+    content_type: String,
+    content_label: Option<String>,
+    original_text: String,
+    vector_int8: Vec<i8>,
+    quant_scale: f32,
+    quant_offset: f32,
     timestamp: DateTime<Utc>,
 }
 
@@ -113,6 +124,27 @@ fn map_vector_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VectorRow> {
     })
 }
 
+/// Map a SQLite row (segment_id, content_type, content_label, original_text,
+/// vector_int8, quant_scale, quant_offset, timestamp at positions 0..7)
+/// to a QuantizedVectorRow.
+fn map_quantized_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<QuantizedVectorRow> {
+    let ts_str: String = row.get(7)?;
+    let timestamp = DateTime::parse_from_rfc3339(&ts_str)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now());
+    let blob: Vec<u8> = row.get(4)?;
+    Ok(QuantizedVectorRow {
+        segment_id: row.get(0)?,
+        content_type: row.get(1)?,
+        content_label: row.get(2)?,
+        original_text: row.get(3)?,
+        vector_int8: bytes_to_i8_vec(&blob),
+        quant_scale: row.get(5)?,
+        quant_offset: row.get(6)?,
+        timestamp,
+    })
+}
+
 fn content_type_to_str(ct: &EmbeddingContentType) -> &'static str {
     match ct {
         EmbeddingContentType::SegmentSummary => "SEGMENT_SUMMARY",
@@ -132,6 +164,55 @@ fn brute_force_search(
         .into_iter()
         .map(|row| {
             let similarity = cosine_similarity(query_vector, &row.vector);
+            let age_hours = (now - row.timestamp).num_seconds().max(0) as f32 / 3600.0;
+            let time_decay = if time_decay_hours > 0.0 {
+                (-age_hours / time_decay_hours).exp()
+            } else {
+                1.0
+            };
+            let score = similarity * time_decay;
+            SearchResult {
+                segment_id: row.segment_id,
+                content_type: parse_content_type(&row.content_type),
+                content_label: row.content_label,
+                score,
+                similarity,
+                time_decay,
+                timestamp: row.timestamp,
+                original_text: row.original_text,
+            }
+        })
+        .collect();
+
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    scored.truncate(limit);
+    scored
+}
+
+/// Execute brute-force search on INT8 quantized rows.
+fn brute_force_search_quantized(
+    rows: Vec<QuantizedVectorRow>,
+    query_vector: &QuantizedVector,
+    limit: usize,
+    time_decay_hours: f32,
+) -> Vec<SearchResult> {
+    let now = Utc::now();
+    let mut scored: Vec<SearchResult> = rows
+        .into_iter()
+        .map(|row| {
+            let row_qv = QuantizedVector {
+                data: row.vector_int8,
+                scale: row.quant_scale,
+                offset: row.quant_offset,
+            };
+            let similarity = oneshim_core::quantization::ScalarQuantizer::cosine_similarity_int8(
+                query_vector,
+                &row_qv,
+            );
             let age_hours = (now - row.timestamp).num_seconds().max(0) as f32 / 3600.0;
             let time_decay = if time_decay_hours > 0.0 {
                 (-age_hours / time_decay_hours).exp()
@@ -409,6 +490,81 @@ impl VectorStore for SqliteVectorStore {
                 metadata.segment_id, content_type_str
             );
             Ok(())
+        })
+        .await
+    }
+
+    async fn search_quantized(
+        &self,
+        query_vector: &QuantizedVector,
+        limit: usize,
+        time_decay_hours: f32,
+        filters: &SearchFilters,
+    ) -> Result<Vec<SearchResult>, CoreError> {
+        let qv = query_vector.clone();
+        let filters = filters.clone();
+
+        self.with_conn(move |conn| {
+            let mut conditions = vec![
+                "is_stale = 0".to_string(),
+                "vector_int8 IS NOT NULL".to_string(),
+            ];
+            let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+            if let Some(ref after) = filters.after {
+                conditions.push(format!("timestamp >= ?{}", param_values.len() + 1));
+                param_values.push(Box::new(after.to_rfc3339()));
+            }
+            if let Some(ref before) = filters.before {
+                conditions.push(format!("timestamp <= ?{}", param_values.len() + 1));
+                param_values.push(Box::new(before.to_rfc3339()));
+            }
+            if let Some(ref content_types) = filters.content_types {
+                if !content_types.is_empty() {
+                    let placeholders: Vec<String> = content_types
+                        .iter()
+                        .map(|_| {
+                            let idx = param_values.len() + 1;
+                            format!("?{idx}")
+                        })
+                        .collect();
+                    conditions.push(format!("content_type IN ({})", placeholders.join(", ")));
+                    for ct in content_types {
+                        param_values.push(Box::new(content_type_to_str(ct).to_string()));
+                    }
+                }
+            }
+            // regime_id filter: not yet implemented for quantized search
+            if filters.regime_id.is_some() {
+                tracing::warn!("regime_id filter not yet implemented in search_quantized, ignoring");
+            }
+
+            let where_clause = conditions.join(" AND ");
+            let sql = format!(
+                "SELECT segment_id, content_type, content_label, original_text, vector_int8, quant_scale, quant_offset, timestamp
+                 FROM embedding_vectors
+                 WHERE {where_clause}"
+            );
+
+            let mut stmt = conn.prepare(&sql).map_err(|e| {
+                CoreError::Internal(format!("Failed to prepare quantized search: {e}"))
+            })?;
+
+            let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+                param_values.iter().map(|p| p.as_ref()).collect();
+
+            // Fetch all qualifying rows while holding the SQLite mutex,
+            // then release the lock before computing cosine similarities.
+            let rows: Vec<QuantizedVectorRow> = stmt
+                .query_map(params_ref.as_slice(), map_quantized_row)
+                .map_err(|e| CoreError::Internal(format!("Failed to query quantized vectors: {e}")))?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            // Cosine similarity computation happens outside the query scope
+            // (stmt is dropped when this closure returns), keeping the mutex
+            // hold time proportional to the SQL query, not the search.
+            Ok(brute_force_search_quantized(rows, &qv, limit, time_decay_hours))
         })
         .await
     }
@@ -805,5 +961,156 @@ mod tests {
             .unwrap();
         assert!(has_f32);
         assert!(has_int8);
+    }
+
+    #[tokio::test]
+    async fn search_quantized_finds_similar() {
+        use oneshim_core::quantization::ScalarQuantizer;
+
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+
+        let now = Utc::now();
+
+        // Store two quantized vectors: one similar, one different
+        let v_close = vec![1.0, 0.1, 0.0, 0.0, 0.0];
+        let v_far = vec![0.0, 0.0, 0.0, 0.1, 1.0];
+        let q_close = ScalarQuantizer::quantize(&v_close).unwrap();
+        let q_far = ScalarQuantizer::quantize(&v_far).unwrap();
+
+        store
+            .store_quantized(
+                v_close,
+                &q_close,
+                EmbeddingMetadata {
+                    segment_id: "close".to_string(),
+                    content_type: EmbeddingContentType::ContentActivity,
+                    content_label: Some("close".to_string()),
+                    timestamp: now,
+                    original_text: "close".to_string(),
+                    model_id: "test-model".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        store
+            .store_quantized(
+                v_far,
+                &q_far,
+                EmbeddingMetadata {
+                    segment_id: "far".to_string(),
+                    content_type: EmbeddingContentType::ContentActivity,
+                    content_label: Some("far".to_string()),
+                    timestamp: now,
+                    original_text: "far".to_string(),
+                    model_id: "test-model".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        // Search with a query similar to "close"
+        let query = vec![1.0, 0.0, 0.0, 0.0, 0.0];
+        let q_query = ScalarQuantizer::quantize(&query).unwrap();
+
+        let results = store
+            .search_quantized(&q_query, 10, 24.0, &SearchFilters::default())
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].segment_id, "close");
+        assert!(results[0].score > results[1].score);
+    }
+
+    #[tokio::test]
+    async fn search_quantized_respects_filters() {
+        use oneshim_core::quantization::ScalarQuantizer;
+
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+
+        let now = Utc::now();
+        let v = vec![1.0, 0.0, 0.0];
+        let qv = ScalarQuantizer::quantize(&v).unwrap();
+
+        store
+            .store_quantized(
+                v.clone(),
+                &qv,
+                EmbeddingMetadata {
+                    segment_id: "summary-seg".to_string(),
+                    content_type: EmbeddingContentType::SegmentSummary,
+                    content_label: None,
+                    timestamp: now,
+                    original_text: "summary".to_string(),
+                    model_id: "test-model".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        store
+            .store_quantized(
+                v.clone(),
+                &qv,
+                EmbeddingMetadata {
+                    segment_id: "activity-seg".to_string(),
+                    content_type: EmbeddingContentType::ContentActivity,
+                    content_label: Some("activity".to_string()),
+                    timestamp: now,
+                    original_text: "activity".to_string(),
+                    model_id: "test-model".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let query_qv = ScalarQuantizer::quantize(&[1.0, 0.0, 0.0]).unwrap();
+        let filters = SearchFilters {
+            content_types: Some(vec![EmbeddingContentType::SegmentSummary]),
+            ..Default::default()
+        };
+        let results = store
+            .search_quantized(&query_qv, 10, 0.0, &filters)
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].segment_id, "summary-seg");
+    }
+
+    #[tokio::test]
+    async fn search_quantized_skips_non_quantized_rows() {
+        use oneshim_core::quantization::ScalarQuantizer;
+
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+
+        // Store one vector via plain store() — no INT8 columns
+        store
+            .store(
+                vec![1.0, 0.0, 0.0],
+                EmbeddingMetadata {
+                    segment_id: "no-int8".to_string(),
+                    content_type: EmbeddingContentType::ContentActivity,
+                    content_label: Some("old".to_string()),
+                    timestamp: Utc::now(),
+                    original_text: "old".to_string(),
+                    model_id: "test-model".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let query_qv = ScalarQuantizer::quantize(&[1.0, 0.0, 0.0]).unwrap();
+        let results = store
+            .search_quantized(&query_qv, 10, 0.0, &SearchFilters::default())
+            .await
+            .unwrap();
+
+        // The non-quantized row should be excluded
+        assert!(results.is_empty());
     }
 }
