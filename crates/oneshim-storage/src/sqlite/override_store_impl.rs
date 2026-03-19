@@ -162,6 +162,13 @@ impl OverrideStore for SqliteStorage {
                 params![id],
             )
             .map_err(|e| CoreError::Internal(format!("Failed to delete override: {e}")))?;
+
+            if conn.changes() == 0 {
+                return Err(CoreError::NotFound {
+                    resource_type: "RegimeOverride".to_string(),
+                    id,
+                });
+            }
             Ok(())
         })
         .await
@@ -290,6 +297,19 @@ mod tests {
             .unwrap();
 
         assert!(overrides.is_empty());
+    }
+
+    #[tokio::test]
+    async fn delete_nonexistent_override_returns_not_found() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        let result = storage.delete_override("nonexistent-id").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, CoreError::NotFound { .. }),
+            "expected NotFound, got: {err:?}"
+        );
     }
 
     #[tokio::test]
