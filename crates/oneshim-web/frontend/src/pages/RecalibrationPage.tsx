@@ -72,8 +72,9 @@ function getActionLabel(override: RegimeOverride, t: (key: string) => string): s
     case 'MarkAsNoise':
       return t('recalibration.personalTime')
     case 'ReassignRegime': {
-      const regime = REGIME_OPTIONS.find((r) => r.id === override.user_action.target_regime_id)
-      return regime?.label ?? override.user_action.target_regime_id
+      const action = override.user_action as { type: 'ReassignRegime'; target_regime_id: string }
+      const regime = REGIME_OPTIONS.find((r) => r.id === action.target_regime_id)
+      return regime?.label ?? action.target_regime_id
     }
     default:
       return t('recalibration.overridden')
