@@ -60,6 +60,37 @@ fn extract_ocr_text(frame: &DynamicImage, processor: &EdgeFrameProcessor) -> Opt
     }
 }
 
+/// Extract OCR regions with bounding boxes from the frame.
+/// Returns empty Vec when OCR feature is disabled.
+#[cfg(not(feature = "ocr"))]
+fn extract_ocr_regions(
+    _frame: &DynamicImage,
+    _processor: &EdgeFrameProcessor,
+) -> Vec<oneshim_core::models::frame::OcrRegion> {
+    Vec::new()
+}
+
+/// Extract OCR regions with bounding boxes from the frame.
+#[cfg(feature = "ocr")]
+fn extract_ocr_regions(
+    frame: &DynamicImage,
+    processor: &EdgeFrameProcessor,
+) -> Vec<oneshim_core::models::frame::OcrRegion> {
+    let Some(extractor) = processor.ocr_extractor.as_ref() else {
+        return Vec::new();
+    };
+    match extractor.extract_regions(frame) {
+        Ok(regions) => {
+            debug!("OCR extracted {} regions", regions.len());
+            regions
+        }
+        Err(e) => {
+            tracing::warn!("OCR region extraction failure: {e}");
+            Vec::new()
+        }
+    }
+}
+
 #[async_trait]
 impl FrameProcessor for EdgeFrameProcessor {
     async fn capture_and_process(
@@ -81,10 +112,13 @@ impl FrameProcessor for EdgeFrameProcessor {
             importance,
         };
 
+        let mut ocr_regions = Vec::new();
+
         let image_payload = if importance >= 0.8 {
             debug!("frame (in progress {:.1})", importance);
             let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::High)?;
             let ocr_text = extract_ocr_text(&current_frame, self);
+            ocr_regions = extract_ocr_regions(&current_frame, self);
             Some(ImagePayload::Full {
                 data: encoded,
                 format: "webp".to_string(),
@@ -142,6 +176,7 @@ impl FrameProcessor for EdgeFrameProcessor {
         Ok(ProcessedFrame {
             metadata,
             image_payload,
+            ocr_regions,
         })
     }
 

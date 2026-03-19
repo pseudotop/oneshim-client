@@ -88,6 +88,10 @@ pub struct ProcessedFrame {
     pub metadata: FrameMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_payload: Option<ImagePayload>,
+    /// OCR regions with bounding boxes extracted during frame processing.
+    /// Empty when OCR is disabled or the frame importance is too low for OCR.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ocr_regions: Vec<OcrRegion>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
