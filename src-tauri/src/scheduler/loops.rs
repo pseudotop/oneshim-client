@@ -1,7 +1,7 @@
 use chrono::{Datelike, Duration as ChronoDuration, Timelike, Utc};
 use oneshim_core::models::activity::{IdleState, ProcessSnapshot, ProcessSnapshotEntry};
 use oneshim_core::models::event::{ContextEvent, Event, ProcessSnapshotEvent};
-use oneshim_core::models::frame::ImagePayload;
+use oneshim_core::models::frame::{ImagePayload, OcrRegion};
 use oneshim_monitor::idle::IdleTracker;
 use oneshim_monitor::input_activity::InputActivityCollector;
 use oneshim_monitor::window_layout::WindowLayoutTracker;
@@ -55,7 +55,8 @@ async fn handle_event_analysis(
 }
 
 /// Capture a frame, process it (full/delta/thumbnail), save image data and
-/// metadata.  Returns the OCR text extracted from the frame (if any).
+/// metadata.  Returns the OCR text extracted from the frame (if any) and
+/// any OCR regions with bounding boxes for GUI element correlation.
 async fn handle_frame_capture(
     capture_req: &CaptureRequest,
     processor: &Arc<dyn FrameProcessor>,
@@ -63,10 +64,13 @@ async fn handle_frame_capture(
     sqlite: &Arc<dyn SchedulerStorage>,
     session_id: &str,
     window_bounds: Option<&oneshim_core::models::context::WindowBounds>,
-) -> Option<String> {
+) -> (Option<String>, Vec<OcrRegion>) {
     match processor.capture_and_process(capture_req).await {
         Ok(frame) => {
             debug!("frame completed: {:?}", frame.metadata.trigger_type);
+
+            // Grab OCR regions from the processed frame before consuming payload
+            let ocr_regions = frame.ocr_regions.clone();
 
             let (file_path, ocr_text) = if let Some(ref payload) = frame.image_payload {
                 let (data_str, ocr) = match payload {
@@ -111,11 +115,11 @@ async fn handle_frame_capture(
 
             let _ = sqlite.increment_session_counters(session_id, 0, 1, 0).await;
 
-            ocr_text
+            (ocr_text, ocr_regions)
         }
         Err(e) => {
             warn!("frame failure: {e}");
-            None
+            (None, Vec::new())
         }
     }
 }
@@ -163,10 +167,11 @@ impl Scheduler {
             let mut last_gui_summary: Option<
                 oneshim_core::models::gui_activity::GuiActivitySummary,
             > = None;
-            // TODO: OCR regions will be piped from the frame capture path once the
-            // vision pipeline is wired into the monitor loop. Until then the detector
-            // falls back to position-only click correlation (no text matching).
-            let last_ocr_regions: Vec<oneshim_core::models::frame::OcrRegion> = Vec::new();
+            // OCR regions from the most recent frame capture. Updated each time
+            // a high-importance frame is processed (importance >= 0.8). The GUI
+            // pipeline uses these for click-to-element correlation via
+            // `GuiElementDetector::correlate_click()`.
+            let mut last_ocr_regions: Vec<OcrRegion> = Vec::new();
 
             loop {
                 tokio::select! {
@@ -217,6 +222,14 @@ impl Scheduler {
                                 input_collector.set_current_app(&app_name);
 
                                 if let Some(layout_event) = window_tracker.update(&app_name, &window_title, window_bounds) {
+                                    // Update GUI detector resolution from the latest layout event
+                                    let (res_w, res_h) = layout_event.screen_resolution;
+                                    if let Some(ref mut ts) = adaptive_trigger_state {
+                                        if let Some(ref mut gui_state) = ts.gui_pipeline_state {
+                                            gui_state.detector.update_resolution(res_w, res_h);
+                                        }
+                                    }
+
                                     let win_event = Event::Window(layout_event);
                                     if let Err(e) = storage1.save_event(&win_event).await {
                                         warn!("window event save failure: {e}");
@@ -274,7 +287,7 @@ impl Scheduler {
                                             }
                                         }
 
-                                        focus_ocr_hint = handle_frame_capture(
+                                        let (ocr_hint, regions) = handle_frame_capture(
                                             &capture_req,
                                             &processor,
                                             &frame_storage1,
@@ -282,6 +295,10 @@ impl Scheduler {
                                             &session1,
                                             window_bounds.as_ref(),
                                         ).await;
+                                        focus_ocr_hint = ocr_hint;
+                                        if !regions.is_empty() {
+                                            last_ocr_regions = regions;
+                                        }
                                     } else if force_post {
                                         // Post-event forced capture (dashcam "after" frames)
                                         if let Some(ref fs) = frame_storage1 {
@@ -1229,7 +1246,7 @@ impl Scheduler {
                 use super::gui_pipeline::GuiPipelineState;
 
                 let detector = GuiElementDetector::new(
-                    (0, 0), // screen resolution — updated per tick from WindowLayoutEvent
+                    (1920, 1080), // sensible default; updated per tick from WindowLayoutEvent
                     oneshim_core::config::PiiFilterLevel::Standard,
                 );
                 let aggregator = GuiActivityAggregator::new(&gui_config);
