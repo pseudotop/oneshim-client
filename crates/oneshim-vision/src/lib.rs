@@ -4,7 +4,9 @@ pub mod capture;
 pub mod delta;
 pub mod element_finder;
 pub mod encoder;
-pub mod input_correlator;
+pub mod gui_detector;
+/// Backward-compatible re-export for Phase 1 callers.
+pub use gui_detector as input_correlator;
 pub mod local_ocr_provider;
 #[cfg(feature = "ocr")]
 pub mod ocr;
