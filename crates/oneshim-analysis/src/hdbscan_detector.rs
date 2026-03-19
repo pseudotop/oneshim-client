@@ -12,8 +12,8 @@ use oneshim_core::models::recalibration::ClusterConstraint;
 use oneshim_core::models::tiered_memory::{euclidean_distance, RegimeFeatures};
 
 use crate::clustering_strategy::{
-    filter_features, parse_constraints, reconstruct_labels, ClusterAssignment, ClusteringResult,
-    ClusteringStrategy,
+    apply_link_constraints, filter_features, parse_constraints, reconstruct_labels,
+    ClusterAssignment, ClusteringResult, ClusteringStrategy,
 };
 
 /// HDBSCAN clustering detector for regime detection.
@@ -218,12 +218,15 @@ impl ClusteringStrategy for HdbscanDetector {
             self.detect(&filtered_features)?
         };
 
-        let full_labels = reconstruct_labels(
+        let mut full_labels = reconstruct_labels(
             features.len(),
             &sub_result.labels,
             &original_indices,
             &parsed.force_clusters,
         );
+
+        // Apply MustLink / CannotLink post-processing
+        apply_link_constraints(features, &mut full_labels, &parsed);
 
         let result = Self::build_result(features, full_labels.clone());
         self.store_state(&result.centroids, &full_labels);
@@ -420,5 +423,49 @@ mod tests {
     fn algorithm_name_returns_hdbscan() {
         let detector = HdbscanDetector::new(5, None);
         assert_eq!(detector.algorithm_name(), "hdbscan");
+    }
+
+    #[test]
+    fn must_link_constraint_merges_clusters() {
+        let detector = HdbscanDetector::new(5, None);
+
+        let mut features = Vec::new();
+        for i in 0..30 {
+            features.push(coding_point(0.3 + (i as f32) * 0.005, 0.8));
+        }
+        for i in 0..30 {
+            features.push(comm_point(0.7 + (i as f32) * 0.005, 0.4));
+        }
+
+        // MustLink forces coding and comm points into same cluster
+        let constraints = vec![ClusterConstraint::MustLink(0, 30)];
+        let result = detector
+            .detect_with_constraints(&features, &constraints)
+            .unwrap();
+
+        // Points 0 and 30 must be in the same cluster after merge
+        assert_eq!(result.labels[0], result.labels[30]);
+    }
+
+    #[test]
+    fn cannot_link_constraint_splits_cluster() {
+        let detector = HdbscanDetector::new(5, None);
+
+        let mut features = Vec::new();
+        for i in 0..15 {
+            features.push(coding_point(0.2 + (i as f32) * 0.005, 0.9));
+        }
+        for i in 0..15 {
+            features.push(comm_point(0.7 + (i as f32) * 0.005, 0.3));
+        }
+
+        // CannotLink on two points in the same cluster
+        let constraints = vec![ClusterConstraint::CannotLink(0, 1)];
+        let result = detector
+            .detect_with_constraints(&features, &constraints)
+            .unwrap();
+
+        // Points 0 and 1 must be in different clusters
+        assert_ne!(result.labels[0], result.labels[1]);
     }
 }

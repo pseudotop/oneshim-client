@@ -3,6 +3,7 @@
 //! Wraps the existing hand-rolled `RegimeDetector` to provide a unified
 //! clustering interface alongside `HdbscanDetector`.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use oneshim_core::error::CoreError;
@@ -10,8 +11,8 @@ use oneshim_core::models::recalibration::ClusterConstraint;
 use oneshim_core::models::tiered_memory::{euclidean_distance, RegimeFeatures};
 
 use crate::clustering_strategy::{
-    filter_features, parse_constraints, reconstruct_labels, ClusterAssignment, ClusteringResult,
-    ClusteringStrategy,
+    apply_link_constraints, filter_features, parse_constraints, reconstruct_labels,
+    ClusterAssignment, ClusteringResult, ClusteringStrategy,
 };
 use crate::regime_detector::RegimeDetector;
 
@@ -110,6 +111,45 @@ impl KmeansDetector {
     }
 }
 
+/// Recompute centroids from labels after link-constraint modifications.
+fn recompute_centroids_from_labels(
+    features: &[RegimeFeatures],
+    labels: &[i32],
+) -> Vec<RegimeFeatures> {
+    let mut sums: HashMap<i32, [f64; RegimeFeatures::DIMENSIONS]> = HashMap::new();
+    let mut counts: HashMap<i32, usize> = HashMap::new();
+
+    for (feat, &label) in features.iter().zip(labels.iter()) {
+        if label < 0 {
+            continue;
+        }
+        let arr = feat.to_array();
+        let entry = sums
+            .entry(label)
+            .or_insert([0.0; RegimeFeatures::DIMENSIONS]);
+        for (d, &val) in arr.iter().enumerate() {
+            entry[d] += val as f64;
+        }
+        *counts.entry(label).or_insert(0) += 1;
+    }
+
+    let max_label = sums.keys().copied().max().unwrap_or(-1);
+    let mut centroids = Vec::new();
+    for label in 0..=max_label {
+        if let (Some(sum), Some(&cnt)) = (sums.get(&label), counts.get(&label)) {
+            let mut arr = [0.0f32; RegimeFeatures::DIMENSIONS];
+            for (d, &s) in sum.iter().enumerate() {
+                arr[d] = (s / cnt as f64) as f32;
+            }
+            centroids.push(RegimeFeatures::from_array(arr));
+        } else {
+            centroids.push(RegimeFeatures::default());
+        }
+    }
+
+    centroids
+}
+
 impl Default for KmeansDetector {
     fn default() -> Self {
         Self::new()
@@ -171,24 +211,34 @@ impl ClusteringStrategy for KmeansDetector {
         // Run k-means on filtered data
         let sub_result = self.detect(&filtered_features)?;
 
-        let full_labels = reconstruct_labels(
+        let mut full_labels = reconstruct_labels(
             features.len(),
             &sub_result.labels,
             &original_indices,
             &parsed.force_clusters,
         );
 
-        let noise_count = full_labels.iter().filter(|&&l| l < 0).count();
+        // Apply MustLink / CannotLink post-processing
+        apply_link_constraints(features, &mut full_labels, &parsed);
 
-        // Store centroids from the sub-result (they're valid for the filtered data)
+        let noise_count = full_labels.iter().filter(|&&l| l < 0).count();
+        let cluster_count = {
+            let ids: HashSet<i32> = full_labels.iter().copied().filter(|&l| l >= 0).collect();
+            ids.len()
+        };
+
+        // Recompute centroids after link-constraint modifications
+        let centroids = recompute_centroids_from_labels(features, &full_labels);
+
+        // Store centroids for classify()
         if let Ok(mut stored) = self.centroids.lock() {
-            *stored = sub_result.centroids.clone();
+            *stored = centroids.clone();
         }
 
         Ok(ClusteringResult {
             labels: full_labels,
-            centroids: sub_result.centroids,
-            cluster_count: sub_result.cluster_count,
+            centroids,
+            cluster_count,
             noise_count,
             probabilities: None,
         })
@@ -319,5 +369,81 @@ mod tests {
         let detector = KmeansDetector::default();
         assert_eq!(detector.max_k, 7);
         assert_eq!(detector.min_cluster_samples, 50);
+    }
+
+    #[test]
+    fn must_link_constraint_merges_clusters() {
+        let detector = KmeansDetector::new().with_min_samples(5).with_max_k(5);
+
+        let mut features = Vec::new();
+        for i in 0..30 {
+            features.push(coding_point(0.3 + (i as f32) * 0.005, 0.8));
+        }
+        for i in 0..30 {
+            features.push(comm_point(0.7 + (i as f32) * 0.005, 0.4));
+        }
+
+        // Without constraint, should have 2 clusters
+        let result_plain = detector.detect(&features).unwrap();
+        assert_eq!(result_plain.cluster_count, 2);
+
+        // MustLink forces coding and comm points into same cluster
+        let constraints = vec![ClusterConstraint::MustLink(0, 30)];
+        let result = detector
+            .detect_with_constraints(&features, &constraints)
+            .unwrap();
+
+        // Points 0 and 30 must be in the same cluster after merge
+        assert_eq!(result.labels[0], result.labels[30]);
+    }
+
+    #[test]
+    fn cannot_link_constraint_splits_cluster() {
+        let detector = KmeansDetector::new().with_min_samples(5).with_max_k(5);
+
+        // All coding points — would normally form a single cluster
+        let mut features = Vec::new();
+        for i in 0..15 {
+            features.push(coding_point(0.2 + (i as f32) * 0.005, 0.9));
+        }
+        for i in 0..15 {
+            features.push(comm_point(0.7 + (i as f32) * 0.005, 0.3));
+        }
+
+        // CannotLink on two points that would be in same cluster
+        let constraints = vec![ClusterConstraint::CannotLink(0, 1)];
+        let result = detector
+            .detect_with_constraints(&features, &constraints)
+            .unwrap();
+
+        // Points 0 and 1 must be in different clusters
+        assert_ne!(result.labels[0], result.labels[1]);
+    }
+
+    #[test]
+    fn mixed_constraints_applied() {
+        let detector = KmeansDetector::new().with_min_samples(5).with_max_k(5);
+
+        let mut features = Vec::new();
+        for i in 0..30 {
+            features.push(coding_point(0.3 + (i as f32) * 0.005, 0.8));
+        }
+        for i in 0..30 {
+            features.push(comm_point(0.7 + (i as f32) * 0.005, 0.4));
+        }
+
+        let constraints = vec![
+            ClusterConstraint::NoiseLabel(0),
+            ClusterConstraint::ForceCluster(1, 42),
+            ClusterConstraint::MustLink(2, 31), // merge coding and comm
+        ];
+
+        let result = detector
+            .detect_with_constraints(&features, &constraints)
+            .unwrap();
+
+        assert_eq!(result.labels[0], -1); // noise
+        assert_eq!(result.labels[1], 42); // forced
+        assert_eq!(result.labels[2], result.labels[31]); // must-linked
     }
 }
