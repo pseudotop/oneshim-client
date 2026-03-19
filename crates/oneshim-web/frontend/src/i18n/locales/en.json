@@ -29,6 +29,7 @@
     "privacy": "Privacy",
     "search": "Search",
     "automation": "Automation",
+    "recalibration": "Recalibration",
     "mainNavLabel": "Main Navigation"
   },
   "dashboard": {
@@ -910,6 +911,24 @@
     "agentCheck": "Check that the ONESHIM agent is running",
     "unknownFetchError": "Unknown error fetching metrics"
   },
+  "recalibration": {
+    "title": "Recalibration",
+    "markAsPersonalTime": "Mark as personal time",
+    "changeRegimeTo": "Change regime to...",
+    "triggerRecluster": "Trigger re-clustering",
+    "reclustering": "Re-clustering...",
+    "reclusterSuccess": "Re-clustering completed",
+    "reclusterError": "Re-clustering failed",
+    "overrideCreated": "Override created",
+    "overrideDeleted": "Override removed",
+    "markRangePersonal": "Mark range as personal time",
+    "overrideHistory": "Override History",
+    "undo": "Undo",
+    "noOverrides": "No overrides in this range",
+    "noSegments": "No segments found for this date range",
+    "overridden": "Overridden",
+    "personalTime": "Personal time"
+  },
   "sidebar": {
     "overview": "Overview",
     "systemMetrics": "System Metrics",
@@ -946,6 +965,8 @@
     "consent": "Consent",
     "dataExport": "Data Export",
     "recentSearches": "Recent Searches",
-    "browseTags": "Browse Tags"
+    "browseTags": "Browse Tags",
+    "segments": "Segments",
+    "overrideHistory": "Override History"
   }
 }

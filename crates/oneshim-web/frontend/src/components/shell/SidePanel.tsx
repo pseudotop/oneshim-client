@@ -30,6 +30,13 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
       { id: 'statistics', labelKey: 'sidebar.statistics' },
     ],
   },
+  '/recalibration': {
+    titleKey: 'nav.recalibration',
+    nodes: [
+      { id: 'segments', labelKey: 'sidebar.segments' },
+      { id: 'overrides', labelKey: 'sidebar.overrideHistory' },
+    ],
+  },
   '/timeline': {
     titleKey: 'nav.timeline',
     nodes: [
