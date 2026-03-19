@@ -3,15 +3,16 @@
 //! Wraps the existing hand-rolled `RegimeDetector` to provide a unified
 //! clustering interface alongside `HdbscanDetector`.
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 
 use oneshim_core::error::CoreError;
 use oneshim_core::models::recalibration::ClusterConstraint;
 use oneshim_core::models::tiered_memory::{euclidean_distance, RegimeFeatures};
-use tracing::warn;
 
-use crate::clustering_strategy::{ClusterAssignment, ClusteringResult, ClusteringStrategy};
+use crate::clustering_strategy::{
+    filter_features, parse_constraints, reconstruct_labels, ClusterAssignment, ClusteringResult,
+    ClusteringStrategy,
+};
 use crate::regime_detector::RegimeDetector;
 
 /// K-means clustering adapter for `ClusteringStrategy`.
@@ -163,56 +164,20 @@ impl ClusteringStrategy for KmeansDetector {
             });
         }
 
-        // Collect noise indices and force-cluster assignments
-        let mut noise_indices = std::collections::HashSet::new();
-        let mut force_clusters: HashMap<usize, i32> = HashMap::new();
-
-        for constraint in constraints {
-            match constraint {
-                ClusterConstraint::NoiseLabel(idx) => {
-                    noise_indices.insert(*idx);
-                }
-                ClusterConstraint::ForceCluster(idx, cluster_id) => {
-                    force_clusters.insert(*idx, *cluster_id);
-                }
-                ClusterConstraint::MustLink(a, b) => {
-                    warn!("MustLink({a}, {b}) constraint ignored by k-means — not supported");
-                }
-                ClusterConstraint::CannotLink(a, b) => {
-                    warn!("CannotLink({a}, {b}) constraint ignored by k-means — not supported");
-                }
-            }
-        }
-
-        // Build filtered data (exclude noise indices)
-        let mut filtered_features = Vec::new();
-        let mut original_indices = Vec::new();
-        for (i, feat) in features.iter().enumerate() {
-            if !noise_indices.contains(&i) {
-                filtered_features.push(feat.clone());
-                original_indices.push(i);
-            }
-        }
+        let parsed = parse_constraints(constraints, self.algorithm_name());
+        let (filtered_features, original_indices) =
+            filter_features(features, &parsed.noise_indices);
 
         // Run k-means on filtered data
         let sub_result = self.detect(&filtered_features)?;
 
-        // Reconstruct full-size labels
-        let mut full_labels = vec![-1i32; features.len()];
-        for (sub_idx, &orig_idx) in original_indices.iter().enumerate() {
-            if sub_idx < sub_result.labels.len() {
-                full_labels[orig_idx] = sub_result.labels[sub_idx];
-            }
-        }
+        let full_labels = reconstruct_labels(
+            features.len(),
+            &sub_result.labels,
+            &original_indices,
+            &parsed.force_clusters,
+        );
 
-        // Apply ForceCluster overrides
-        for (&idx, &cluster_id) in &force_clusters {
-            if idx < full_labels.len() {
-                full_labels[idx] = cluster_id;
-            }
-        }
-
-        // Recompute noise count and centroids
         let noise_count = full_labels.iter().filter(|&&l| l < 0).count();
 
         // Store centroids from the sub-result (they're valid for the filtered data)

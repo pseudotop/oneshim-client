@@ -10,9 +10,11 @@ use std::sync::Mutex;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::recalibration::ClusterConstraint;
 use oneshim_core::models::tiered_memory::{euclidean_distance, RegimeFeatures};
-use tracing::warn;
 
-use crate::clustering_strategy::{ClusterAssignment, ClusteringResult, ClusteringStrategy};
+use crate::clustering_strategy::{
+    filter_features, parse_constraints, reconstruct_labels, ClusterAssignment, ClusteringResult,
+    ClusteringStrategy,
+};
 
 /// HDBSCAN clustering detector for regime detection.
 ///
@@ -199,36 +201,9 @@ impl ClusteringStrategy for HdbscanDetector {
             });
         }
 
-        // Collect noise indices and force-cluster assignments
-        let mut noise_indices = std::collections::HashSet::new();
-        let mut force_clusters: HashMap<usize, i32> = HashMap::new();
-
-        for constraint in constraints {
-            match constraint {
-                ClusterConstraint::NoiseLabel(idx) => {
-                    noise_indices.insert(*idx);
-                }
-                ClusterConstraint::ForceCluster(idx, cluster_id) => {
-                    force_clusters.insert(*idx, *cluster_id);
-                }
-                ClusterConstraint::MustLink(a, b) => {
-                    warn!("MustLink({a}, {b}) constraint ignored — not supported in Phase 1");
-                }
-                ClusterConstraint::CannotLink(a, b) => {
-                    warn!("CannotLink({a}, {b}) constraint ignored — not supported in Phase 1");
-                }
-            }
-        }
-
-        // Build filtered data (exclude noise indices)
-        let mut filtered_features = Vec::new();
-        let mut original_indices = Vec::new();
-        for (i, feat) in features.iter().enumerate() {
-            if !noise_indices.contains(&i) {
-                filtered_features.push(feat.clone());
-                original_indices.push(i);
-            }
-        }
+        let parsed = parse_constraints(constraints, self.algorithm_name());
+        let (filtered_features, original_indices) =
+            filter_features(features, &parsed.noise_indices);
 
         // Run clustering on filtered data
         let sub_result = if filtered_features.is_empty() {
@@ -243,20 +218,12 @@ impl ClusteringStrategy for HdbscanDetector {
             self.detect(&filtered_features)?
         };
 
-        // Reconstruct full-size labels: noise for excluded, mapped for included
-        let mut full_labels = vec![-1i32; features.len()];
-        for (sub_idx, &orig_idx) in original_indices.iter().enumerate() {
-            if sub_idx < sub_result.labels.len() {
-                full_labels[orig_idx] = sub_result.labels[sub_idx];
-            }
-        }
-
-        // Apply ForceCluster overrides
-        for (&idx, &cluster_id) in &force_clusters {
-            if idx < full_labels.len() {
-                full_labels[idx] = cluster_id;
-            }
-        }
+        let full_labels = reconstruct_labels(
+            features.len(),
+            &sub_result.labels,
+            &original_indices,
+            &parsed.force_clusters,
+        );
 
         let result = Self::build_result(features, full_labels.clone());
         self.store_state(&result.centroids, &full_labels);
