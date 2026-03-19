@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use oneshim_core::config::sections::analysis::GuiIntelligenceConfig;
+use oneshim_core::config::GuiIntelligenceConfig;
 use oneshim_core::models::gui_activity::GuiActivitySummary;
 use oneshim_core::models::gui_interaction::{
     GuiElementType, GuiInteractionEvent, GuiInteractionType, InteractionType,

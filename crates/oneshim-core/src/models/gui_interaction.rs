@@ -34,7 +34,7 @@ pub struct GuiElement {
 /// Compare with `UiElementKind` in the automation layer, which represents
 /// platform-native control types (e.g., from macOS AXUIElement or Windows
 /// UIAutomation). Both coexist by design.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum GuiElementType {
     Button,
