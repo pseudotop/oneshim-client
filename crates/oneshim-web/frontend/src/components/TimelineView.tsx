@@ -103,7 +103,7 @@ export default function TimelineView({
       segment_id: segmentId,
       original_regime_id: entry?.regime_id,
       action: {
-        type: 'MarkAsPersonalTime',
+        type: 'MARK_AS_PERSONAL_TIME',
         from: entry?.start_time ?? '',
         to: entry?.end_time ?? '',
       },
@@ -115,18 +115,18 @@ export default function TimelineView({
     onCreateOverride?.({
       segment_id: segmentId,
       original_regime_id: entry?.regime_id,
-      action: { type: 'ReassignRegime', target_regime_id: targetRegimeId },
+      action: { type: 'REASSIGN_REGIME', target_regime_id: targetRegimeId },
     })
   }
 
   function getOverrideLabel(override: RegimeOverride): string {
     switch (override.user_action.type) {
-      case 'MarkAsPersonalTime':
+      case 'MARK_AS_PERSONAL_TIME':
         return t('recalibration.personalTime')
-      case 'MarkAsNoise':
+      case 'MARK_AS_NOISE':
         return t('recalibration.personalTime')
-      case 'ReassignRegime': {
-        const action = override.user_action as { type: 'ReassignRegime'; target_regime_id: string }
+      case 'REASSIGN_REGIME': {
+        const action = override.user_action as { type: 'REASSIGN_REGIME'; target_regime_id: string }
         const regime = regimeOptions?.find((r) => r.id === action.target_regime_id)
         return regime?.label ?? action.target_regime_id
       }

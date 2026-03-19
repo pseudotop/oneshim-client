@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { RefreshCw, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { fetchDailyDigest } from '../api/client'
 import type { CreateOverrideRequest, RegimeOverride } from '../api/contracts'
 import DateRangePicker from '../components/DateRangePicker'
 import { Badge, Button, Card, EmptyState, Select, Skeleton, Spinner } from '../components/ui'
@@ -67,12 +68,12 @@ function formatDateTime(iso: string): string {
 
 function getActionLabel(override: RegimeOverride, t: (key: string) => string): string {
   switch (override.user_action.type) {
-    case 'MarkAsPersonalTime':
+    case 'MARK_AS_PERSONAL_TIME':
       return t('recalibration.personalTime')
-    case 'MarkAsNoise':
+    case 'MARK_AS_NOISE':
       return t('recalibration.personalTime')
-    case 'ReassignRegime': {
-      const action = override.user_action as { type: 'ReassignRegime'; target_regime_id: string }
+    case 'REASSIGN_REGIME': {
+      const action = override.user_action as { type: 'REASSIGN_REGIME'; target_regime_id: string }
       const regime = REGIME_OPTIONS.find((r) => r.id === action.target_regime_id)
       return regime?.label ?? action.target_regime_id
     }
@@ -100,9 +101,7 @@ export default function RecalibrationPage() {
     queryFn: async () => {
       // Use the date part only for the API call
       const dateStr = from ? from.split('T')[0] : new Date().toISOString().split('T')[0]
-      const r = await fetch(`/api/dashboard/day?date=${dateStr}`)
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      return r.json()
+      return fetchDailyDigest(dateStr) as Promise<DailyDigestResponse>
     },
     enabled: !!from,
   })
@@ -129,7 +128,7 @@ export default function RecalibrationPage() {
     const req: CreateOverrideRequest = {
       segment_id: seg.segment_id,
       original_regime_id: seg.regime_id,
-      action: { type: 'MarkAsPersonalTime', from: seg.start_time, to: seg.end_time },
+      action: { type: 'MARK_AS_PERSONAL_TIME', from: seg.start_time, to: seg.end_time },
     }
     createOverride.mutate(req)
   }
@@ -138,7 +137,7 @@ export default function RecalibrationPage() {
     const req: CreateOverrideRequest = {
       segment_id: seg.segment_id,
       original_regime_id: seg.regime_id,
-      action: { type: 'ReassignRegime', target_regime_id: targetRegimeId },
+      action: { type: 'REASSIGN_REGIME', target_regime_id: targetRegimeId },
     }
     createOverride.mutate(req)
   }

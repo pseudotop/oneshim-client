@@ -1162,9 +1162,9 @@ export interface UiScene {
 // ── Recalibration types ──────────────────────────────────────
 
 export type UserOverrideAction =
-  | { type: 'MarkAsNoise' }
-  | { type: 'ReassignRegime'; target_regime_id: string }
-  | { type: 'MarkAsPersonalTime'; from: string; to: string }
+  | { type: 'MARK_AS_NOISE' }
+  | { type: 'REASSIGN_REGIME'; target_regime_id: string }
+  | { type: 'MARK_AS_PERSONAL_TIME'; from: string; to: string }
 
 export interface RegimeOverride {
   override_id: string

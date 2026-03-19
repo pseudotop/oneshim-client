@@ -804,9 +804,20 @@ export async function fetchSceneCalibration(
   return res.json()
 }
 
+// ── Dashboard Day API ────────────────────────────────────────
+
+export async function fetchDailyDigest(date: string): Promise<unknown> {
+  const res = await fetchWithRetry(`${BASE_URL}/dashboard/day?date=${encodeURIComponent(date)}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Daily digest query failed' }))
+    throw new Error(err.error || 'Daily digest query failed')
+  }
+  return res.json()
+}
+
 // ── Recalibration API ────────────────────────────────────────
 
-export async function createOverride(req: CreateOverrideRequest): Promise<RegimeOverride> {
+export async function createOverride(req: CreateOverrideRequest): Promise<{ ok: boolean; override_id: string }> {
   const res = await fetchWithRetry(`${BASE_URL}/recalibration/override`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
