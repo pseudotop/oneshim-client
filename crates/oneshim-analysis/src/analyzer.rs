@@ -231,6 +231,7 @@ impl ContextAnalyzer {
             ocr_hint: ocr_text.map(String::from),
             focus_score: SIGNIFICANT_EVENT_FOCUS_SCORE,
             deep_work_mins: 0,
+            accessibility_text: None,
         };
 
         let ctx = self
@@ -299,6 +300,7 @@ impl ContextAnalyzer {
                 ocr_hint: None,
                 focus_score: DEFAULT_FOCUS_SCORE,
                 deep_work_mins: 0,
+                accessibility_text: None,
             },
             None => CurrentActivity {
                 app_name: "Unknown".to_string(),
@@ -306,6 +308,7 @@ impl ContextAnalyzer {
                 ocr_hint: None,
                 focus_score: 0.0,
                 deep_work_mins: 0,
+                accessibility_text: None,
             },
         }
     }

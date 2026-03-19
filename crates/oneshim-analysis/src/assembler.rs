@@ -48,6 +48,10 @@ pub struct CurrentActivity {
     pub ocr_hint: Option<String>,
     pub focus_score: f32,
     pub deep_work_mins: u32,
+    /// Accessibility-extracted text from the focused element.
+    /// Only present at Basic/Off PII levels. PII-filtered before
+    /// reaching this struct (filtered by AccessibilityExtractor).
+    pub accessibility_text: Option<String>,
 }
 
 impl Default for CurrentActivity {
@@ -58,6 +62,7 @@ impl Default for CurrentActivity {
             ocr_hint: None,
             focus_score: 0.0,
             deep_work_mins: 0,
+            accessibility_text: None,
         }
     }
 }
@@ -148,6 +153,8 @@ struct CurrentSnapshot {
     ocr_hint: Option<String>,
     focus_score: f32,
     deep_work_mins: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accessibility_text: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -266,6 +273,10 @@ impl ContextAssembler {
                 ocr_hint: current.ocr_hint.as_ref().map(|t| self.filter_pii(t)),
                 focus_score: current.focus_score,
                 deep_work_mins: current.deep_work_mins,
+                accessibility_text: current
+                    .accessibility_text
+                    .as_ref()
+                    .map(|t| self.filter_pii(t)),
             },
             recent_activity,
             patterns: pattern_entries,
@@ -373,6 +384,7 @@ mod tests {
             ocr_hint: Some("fn analyze()".to_string()),
             focus_score: 0.82,
             deep_work_mins: 45,
+            accessibility_text: None,
         }
     }
 
@@ -421,6 +433,7 @@ mod tests {
             ocr_hint: None,
             focus_score: 0.5,
             deep_work_mins: 10,
+            accessibility_text: None,
         };
         let ctx = assembler.build(&current, &[], &[], &make_metrics());
         assert!(ctx.user_context_json.contains("[EMAIL]"));
@@ -452,6 +465,7 @@ mod tests {
             ocr_hint: None,
             focus_score: 0.3,
             deep_work_mins: 5,
+            accessibility_text: None,
         };
         let ctx = assembler.build(&current, &[], &[], &make_metrics());
         assert!(ctx.user_context_json.contains("[REDACTED]"));
@@ -469,6 +483,7 @@ mod tests {
             ocr_hint: None,
             focus_score: 0.5,
             deep_work_mins: 10,
+            accessibility_text: None,
         };
         let ctx = assembler.build(&current, &[], &[], &make_metrics());
         assert!(ctx.user_context_json.contains("user@example.com"));
@@ -610,5 +625,48 @@ mod tests {
             .as_str()
             .unwrap();
         assert_eq!(content, "auth.rs (3 saves, 2 test runs)");
+    }
+
+    #[test]
+    fn build_with_accessibility_text_included() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let current = CurrentActivity {
+            app_name: "Terminal".to_string(),
+            window_title: "iTerm2".to_string(),
+            ocr_hint: None,
+            focus_score: 0.6,
+            deep_work_mins: 10,
+            accessibility_text: Some("$ cargo test --workspace".to_string()),
+        };
+        let ctx = assembler.build(&current, &[], &[], &make_metrics());
+        let parsed: serde_json::Value = serde_json::from_str(&ctx.user_context_json).unwrap();
+        assert_eq!(
+            parsed["current"]["accessibility_text"],
+            "$ cargo test --workspace"
+        );
+    }
+
+    #[test]
+    fn build_without_accessibility_text_omits_key() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let ctx = assembler.build(&make_current(), &[], &[], &make_metrics());
+        let parsed: serde_json::Value = serde_json::from_str(&ctx.user_context_json).unwrap();
+        assert!(parsed["current"].get("accessibility_text").is_none());
+    }
+
+    #[test]
+    fn accessibility_text_pii_filtered() {
+        let assembler = ContextAssembler::new(test_pii_filter());
+        let current = CurrentActivity {
+            app_name: "Terminal".to_string(),
+            window_title: "iTerm2".to_string(),
+            ocr_hint: None,
+            focus_score: 0.6,
+            deep_work_mins: 10,
+            accessibility_text: Some("ssh user@example.com".to_string()),
+        };
+        let ctx = assembler.build(&current, &[], &[], &make_metrics());
+        assert!(ctx.user_context_json.contains("[EMAIL]"));
+        assert!(!ctx.user_context_json.contains("user@example.com"));
     }
 }
