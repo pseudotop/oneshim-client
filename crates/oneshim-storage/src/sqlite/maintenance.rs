@@ -385,6 +385,14 @@ impl SqliteStorage {
 
         let _ = conn.execute("DELETE FROM session_stats", []);
 
+        // V10+ tables: embeddings
+        let _ = conn.execute("DELETE FROM embedding_vectors", []);
+        // V13: GUI interactions
+        let _ = conn.execute("DELETE FROM gui_interactions", []);
+        // V14: sync infrastructure
+        let _ = conn.execute("DELETE FROM device_identity", []);
+        let _ = conn.execute("DELETE FROM sync_peers", []);
+
         Ok(DeletedRangeCounts {
             events_deleted,
             frames_deleted,

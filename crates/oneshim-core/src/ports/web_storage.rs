@@ -214,6 +214,11 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
     }
 
     /// Save a GUI interaction event to the gui_interactions table (V13).
+    ///
+    /// **Privacy contract**: Callers MUST apply PII filtering to `element_text`
+    /// before calling this method. The storage adapter applies a basic email/phone
+    /// scrub as defense-in-depth, but upstream filtering via `sanitize_title_with_level()`
+    /// is the primary safeguard.
     fn save_gui_interaction(&self, _input: &NewGuiInteraction<'_>) -> Result<(), CoreError> {
         Ok(()) // No-op default — storage adapters override
     }

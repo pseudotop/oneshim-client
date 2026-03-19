@@ -299,9 +299,15 @@ fn default_digest_day() -> Weekday {
 // ---------------------------------------------------------------------------
 
 /// Configuration for the GUI Activity Intelligence subsystem (Phase 2).
+///
+/// **Privacy**: The GUI pipeline MUST be gated on `activity_pattern_learning`
+/// consent (GDPR Tier 4) in addition to this config flag. The scheduler
+/// must check both `gui_intelligence.enabled` AND consent before constructing
+/// `GuiPipelineState`. See `agent_runtime.rs` consent check pattern.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuiIntelligenceConfig {
     /// Master switch for GUI intelligence pipeline.
+    /// Requires `activity_pattern_learning` consent to actually activate.
     #[serde(default = "default_gui_enabled")]
     pub enabled: bool,
 
