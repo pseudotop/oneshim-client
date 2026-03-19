@@ -214,24 +214,29 @@ mod tests {
         // Simulate what the handler does when override_store is None
         let store: Option<std::sync::Arc<dyn oneshim_core::ports::override_store::OverrideStore>> =
             None;
-        let result: Result<&std::sync::Arc<dyn oneshim_core::ports::override_store::OverrideStore>, ApiError> = store
-            .as_ref()
-            .ok_or_else(|| {
-                ApiError::ServiceUnavailable("Override store not configured".to_string())
-            });
+        let result: Result<
+            &std::sync::Arc<dyn oneshim_core::ports::override_store::OverrideStore>,
+            ApiError,
+        > = store.as_ref().ok_or_else(|| {
+            ApiError::ServiceUnavailable("Override store not configured".to_string())
+        });
         assert!(result.is_err());
-        assert!(matches!(result.err().unwrap(), ApiError::ServiceUnavailable(_)));
+        assert!(matches!(
+            result.err().unwrap(),
+            ApiError::ServiceUnavailable(_)
+        ));
     }
 
     #[test]
     fn recluster_flag_none_produces_service_unavailable() {
         let flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = None;
-        let result = flag
-            .as_ref()
-            .ok_or_else(|| {
-                ApiError::ServiceUnavailable("Recluster flag not configured".to_string())
-            });
+        let result = flag.as_ref().ok_or_else(|| {
+            ApiError::ServiceUnavailable("Recluster flag not configured".to_string())
+        });
         assert!(result.is_err());
-        assert!(matches!(result.err().unwrap(), ApiError::ServiceUnavailable(_)));
+        assert!(matches!(
+            result.err().unwrap(),
+            ApiError::ServiceUnavailable(_)
+        ));
     }
 }

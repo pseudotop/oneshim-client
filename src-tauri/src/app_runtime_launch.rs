@@ -68,8 +68,7 @@ impl AppRuntimeLaunchBuilder {
 
         // Shared flag for on-demand re-clustering: scheduler, web server, and Tauri IPC
         // all reference the same AtomicBool so any endpoint can trigger re-clustering.
-        let recluster_requested =
-            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let recluster_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         #[cfg(feature = "server")]
         server_context

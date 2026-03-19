@@ -434,7 +434,11 @@ async fn run_constrained_clustering(
         // within [segment.start, segment.end]. That entry's index in the
         // feature vector array becomes the segment's feature index.
         let lookback = now - ChronoDuration::days(7);
-        let segment_ranges = match ts.calibration_reader.list_segment_time_ranges(lookback, now).await {
+        let segment_ranges = match ts
+            .calibration_reader
+            .list_segment_time_ranges(lookback, now)
+            .await
+        {
             Ok(ranges) => ranges,
             Err(e) => {
                 warn!("failed to load segment ranges for feature mapping: {e}");
@@ -459,9 +463,10 @@ async fn run_constrained_clustering(
             .filter_map(|(seg_id, seg_start, seg_end)| {
                 // Find the first calibration entry whose timestamp falls within
                 // this segment's time range. Its position = feature vector index.
-                entries_with_ts.iter().position(|e| {
-                    e.timestamp >= *seg_start && e.timestamp <= *seg_end
-                }).map(|idx| (seg_id.clone(), idx))
+                entries_with_ts
+                    .iter()
+                    .position(|e| e.timestamp >= *seg_start && e.timestamp <= *seg_end)
+                    .map(|idx| (seg_id.clone(), idx))
             })
             .collect();
 
