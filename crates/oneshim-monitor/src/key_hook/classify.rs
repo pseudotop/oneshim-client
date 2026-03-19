@@ -18,7 +18,7 @@ pub fn classify_keycode(keycode: u16) -> KeyCategory {
         // Tab
         48 => KeyCategory::Tab,
         // Arrow keys
-        123 | 124 | 125 | 126 => KeyCategory::Arrow,
+        123..=126 => KeyCategory::Arrow,
         // Delete (backspace) / Forward Delete
         51 | 117 => KeyCategory::Backspace,
         // Escape
@@ -29,7 +29,7 @@ pub fn classify_keycode(keycode: u16) -> KeyCategory {
         122 | 120 | 99 | 118 | 96 | 97 | 98 | 100 | 101 | 109 | 103 | 111 | 105 | 107 | 113
         | 106 | 64 | 79 | 80 | 90 => KeyCategory::Special,
         // Modifier keys (Shift, Control, Option, Command, Caps Lock, Fn)
-        56 | 60 | 59 | 62 | 58 | 61 | 55 | 54 | 57 | 63 => KeyCategory::Special,
+        54..=63 => KeyCategory::Special,
         // Everything else is Regular
         _ => KeyCategory::Regular,
     }
@@ -225,11 +225,7 @@ mod tests {
         #[test]
         fn vk_arrows() {
             for code in [0x25, 0x26, 0x27, 0x28] {
-                assert_eq!(
-                    classify_keycode(code),
-                    KeyCategory::Arrow,
-                    "vk {code:#x}"
-                );
+                assert_eq!(classify_keycode(code), KeyCategory::Arrow, "vk {code:#x}");
             }
         }
 

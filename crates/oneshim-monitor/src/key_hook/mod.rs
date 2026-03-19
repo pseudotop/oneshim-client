@@ -76,14 +76,12 @@ impl KeyHook {
         collector: Arc<InputActivityCollector>,
         running: Arc<AtomicBool>,
     ) -> Option<std::thread::JoinHandle<()>> {
-        Some(
-            std::thread::Builder::new()
-                .name("key-hook-macos".to_string())
-                .spawn(move || {
-                    macos::run_event_tap(collector, running);
-                })
-                .ok()?,
-        )
+        std::thread::Builder::new()
+            .name("key-hook-macos".to_string())
+            .spawn(move || {
+                macos::run_event_tap(collector, running);
+            })
+            .ok()
     }
 
     #[cfg(target_os = "windows")]
@@ -91,14 +89,12 @@ impl KeyHook {
         collector: Arc<InputActivityCollector>,
         running: Arc<AtomicBool>,
     ) -> Option<std::thread::JoinHandle<()>> {
-        Some(
-            std::thread::Builder::new()
-                .name("key-hook-windows".to_string())
-                .spawn(move || {
-                    windows::run_raw_input_hook(collector, running);
-                })
-                .ok()?,
-        )
+        std::thread::Builder::new()
+            .name("key-hook-windows".to_string())
+            .spawn(move || {
+                windows::run_raw_input_hook(collector, running);
+            })
+            .ok()
     }
 
     #[cfg(target_os = "linux")]
@@ -106,14 +102,12 @@ impl KeyHook {
         collector: Arc<InputActivityCollector>,
         running: Arc<AtomicBool>,
     ) -> Option<std::thread::JoinHandle<()>> {
-        Some(
-            std::thread::Builder::new()
-                .name("key-hook-linux".to_string())
-                .spawn(move || {
-                    linux::run_x11_record_hook(collector, running);
-                })
-                .ok()?,
-        )
+        std::thread::Builder::new()
+            .name("key-hook-linux".to_string())
+            .spawn(move || {
+                linux::run_x11_record_hook(collector, running);
+            })
+            .ok()
     }
 }
 
