@@ -10,3 +10,9 @@
 
 #[cfg(target_os = "macos")]
 pub(crate) mod ffi_macos;
+
+#[cfg(target_os = "macos")]
+mod macos;
+
+#[cfg(target_os = "macos")]
+pub use macos::MacOsNativeAccessibility;
