@@ -161,6 +161,7 @@ impl AgentRuntimeBundle {
                     provider.clone(),
                     pii_filter_embed,
                     vector_store.clone(),
+                    embedding_config.quantization_enabled,
                 ));
                 embedding_pipeline_arc = Some(pipeline);
 

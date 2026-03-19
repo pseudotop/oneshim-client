@@ -109,6 +109,67 @@ impl SqliteStorage {
         .await
         .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
     }
+
+    /// Ensure a device identity row exists in the `device_identity` table.
+    ///
+    /// On first call (empty table), generates a UUID v4 device_id and inserts
+    /// it with the given device_name. On subsequent calls, returns the existing
+    /// identity. The table enforces `id = 1` (singleton row).
+    ///
+    /// Returns `(device_id, device_name)`.
+    pub fn ensure_device_identity(&self, device_name: &str) -> Result<(String, String), CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        // Try to read existing identity first.
+        let existing: Option<(String, String)> = conn
+            .query_row(
+                "SELECT device_id, device_name FROM device_identity WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+
+        if let Some(identity) = existing {
+            return Ok(identity);
+        }
+
+        // First launch -- generate a new UUID v4 device_id.
+        let device_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO device_identity (id, device_id, device_name) VALUES (1, ?1, ?2)",
+            rusqlite::params![device_id, device_name],
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to insert device identity: {e}")))?;
+
+        info!(
+            device_id = %device_id,
+            device_name = %device_name,
+            "device identity generated (first launch)"
+        );
+
+        Ok((device_id, device_name.to_string()))
+    }
+
+    /// Reset the device identity by deleting the existing row and generating
+    /// a new one. This allows users to disassociate from their sync history.
+    ///
+    /// Returns the new `(device_id, device_name)`.
+    pub fn reset_device_identity(&self, device_name: &str) -> Result<(String, String), CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        conn.execute("DELETE FROM device_identity WHERE id = 1", [])
+            .map_err(|e| CoreError::Internal(format!("Failed to delete device identity: {e}")))?;
+
+        drop(conn); // Release lock before calling ensure_device_identity
+
+        self.ensure_device_identity(device_name)
+    }
 }
 
 // Record types are canonical in oneshim-core; re-exported here for backward compatibility.
@@ -778,5 +839,81 @@ mod tests {
             SqliteStorage::parse_app_category("Unknown"),
             AppCategory::Other
         );
+    }
+
+    #[test]
+    fn ensure_device_identity_generates_uuid_on_first_call() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let (device_id, device_name) = storage.ensure_device_identity("Test Machine").unwrap();
+
+        assert!(!device_id.is_empty());
+        // Validate UUID v4 format (8-4-4-4-12 hex chars)
+        assert_eq!(device_id.len(), 36);
+        assert_eq!(device_name, "Test Machine");
+    }
+
+    #[test]
+    fn ensure_device_identity_returns_same_id_on_second_call() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let (id1, _) = storage.ensure_device_identity("Machine A").unwrap();
+        let (id2, name2) = storage.ensure_device_identity("Machine B").unwrap();
+
+        // Second call must return the FIRST identity, not generate a new one.
+        assert_eq!(id1, id2);
+        assert_eq!(name2, "Machine A"); // Original name preserved
+    }
+
+    #[test]
+    fn ensure_device_identity_persists_across_reopens() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+
+        let id1 = {
+            let storage = SqliteStorage::open(&db_path, 30).unwrap();
+            let (id, _) = storage.ensure_device_identity("Laptop").unwrap();
+            id
+        };
+
+        // Reopen the database
+        let id2 = {
+            let storage = SqliteStorage::open(&db_path, 30).unwrap();
+            let (id, name) = storage.ensure_device_identity("Different Name").unwrap();
+            assert_eq!(name, "Laptop"); // Original name preserved
+            id
+        };
+
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn reset_device_identity_generates_new_uuid() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        let (id1, name1) = storage.ensure_device_identity("Original").unwrap();
+        assert_eq!(name1, "Original");
+
+        let (id2, name2) = storage.reset_device_identity("Reset Device").unwrap();
+        assert_eq!(name2, "Reset Device");
+
+        // After reset, device_id must be different
+        assert_ne!(id1, id2, "reset must generate a new device_id");
+        assert_eq!(id2.len(), 36, "new id must be valid UUID format");
+    }
+
+    #[test]
+    fn reset_device_identity_allows_re_ensure() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        let (id1, _) = storage.ensure_device_identity("First").unwrap();
+        let (id2, _) = storage.reset_device_identity("Second").unwrap();
+        assert_ne!(id1, id2);
+
+        // After reset, ensure_device_identity returns the new identity
+        let (id3, name3) = storage.ensure_device_identity("Third").unwrap();
+        assert_eq!(
+            id2, id3,
+            "ensure after reset must return the reset identity"
+        );
+        assert_eq!(name3, "Second"); // Name from reset is preserved
     }
 }
