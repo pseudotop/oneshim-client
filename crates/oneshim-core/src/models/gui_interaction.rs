@@ -86,11 +86,24 @@ pub enum GuiInteractionType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum InteractionType {
-    Click { button: ClickButton },
-    KeyboardShortcut { keys: String },
-    TextEntry { char_count: u32, duration_ms: u64 },
-    Scroll { direction: ScrollDirection, amount: f32 },
-    DragDrop { start: (u32, u32), end: (u32, u32) },
+    Click {
+        button: ClickButton,
+    },
+    KeyboardShortcut {
+        keys: String,
+    },
+    TextEntry {
+        char_count: u32,
+        duration_ms: u64,
+    },
+    Scroll {
+        direction: ScrollDirection,
+        amount: f32,
+    },
+    DragDrop {
+        start: (u32, u32),
+        end: (u32, u32),
+    },
 }
 
 /// Mouse button for click interactions.

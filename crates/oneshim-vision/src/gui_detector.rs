@@ -42,10 +42,7 @@ pub type InputOcrCorrelator = GuiElementDetector;
 
 impl GuiElementDetector {
     /// Create a new detector with screen resolution and PII filter level.
-    pub fn new(
-        screen_resolution: (u32, u32),
-        pii_filter_level: PiiFilterLevel,
-    ) -> Self {
+    pub fn new(screen_resolution: (u32, u32), pii_filter_level: PiiFilterLevel) -> Self {
         Self {
             screen_resolution,
             pii_filter_level,
@@ -165,8 +162,7 @@ impl GuiElementDetector {
         };
 
         matched.map(|r| {
-            let filtered_text =
-                sanitize_title_with_level(&r.text, self.pii_filter_level);
+            let filtered_text = sanitize_title_with_level(&r.text, self.pii_filter_level);
             GuiElement {
                 text: filtered_text,
                 bbox: r.bbox.clone(),
@@ -561,14 +557,7 @@ mod tests {
     #[test]
     fn pii_filter_applied_to_element_text() {
         let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Basic);
-        let regions = vec![make_region(
-            "user@example.com",
-            100,
-            200,
-            200,
-            30,
-            0.9,
-        )];
+        let regions = vec![make_region("user@example.com", 100, 200, 200, 30, 0.9)];
 
         let result = d.correlate_click(150, 210, &regions);
         assert!(result.is_some());
