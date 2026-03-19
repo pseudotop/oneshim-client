@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use oneshim_core::models::event::{InputActivityEvent, KeyboardActivity, MouseActivity};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tracing::error;
 
@@ -12,6 +12,10 @@ pub struct InputActivityCollector {
     scroll_count: AtomicU32,
     double_click_count: AtomicU32,
     right_click_count: AtomicU32,
+    // Last click position — atomic i32 pair (x, y). Updated on record_click_at().
+    // Defaults to i32::MIN to distinguish "never set" from (0, 0).
+    last_click_x: AtomicI32,
+    last_click_y: AtomicI32,
     move_distance: AtomicU64, // f64 save
     total_keystrokes: AtomicU32,
     typing_bursts: AtomicU32,
@@ -31,6 +35,8 @@ impl InputActivityCollector {
             scroll_count: AtomicU32::new(0),
             double_click_count: AtomicU32::new(0),
             right_click_count: AtomicU32::new(0),
+            last_click_x: AtomicI32::new(i32::MIN),
+            last_click_y: AtomicI32::new(i32::MIN),
             move_distance: AtomicU64::new(0),
             total_keystrokes: AtomicU32::new(0),
             typing_bursts: AtomicU32::new(0),
@@ -59,6 +65,16 @@ impl InputActivityCollector {
 
     pub fn record_right_click(&self) {
         self.right_click_count.fetch_add(1, Ordering::Relaxed);
+        self.record_activity();
+    }
+
+    /// Record a left click at the given screen coordinates.
+    /// Position recording is opt-in — callers that lack consent simply call
+    /// `record_click()` (which does not update position).
+    pub fn record_click_at(&self, x: i32, y: i32) {
+        self.click_count.fetch_add(1, Ordering::Relaxed);
+        self.last_click_x.store(x, Ordering::Relaxed);
+        self.last_click_y.store(y, Ordering::Relaxed);
         self.record_activity();
     }
 
@@ -165,7 +181,15 @@ impl InputActivityCollector {
                 click_count: clicks,
                 move_distance: move_dist,
                 scroll_count: scrolls,
-                last_position: None, // privacy-safe by default
+                last_position: {
+                    let lx = self.last_click_x.swap(i32::MIN, Ordering::Relaxed);
+                    let ly = self.last_click_y.swap(i32::MIN, Ordering::Relaxed);
+                    if lx != i32::MIN && ly != i32::MIN {
+                        Some((lx as f32, ly as f32))
+                    } else {
+                        None
+                    }
+                },
                 double_click_count: double_clicks,
                 right_click_count: right_clicks,
             },
@@ -277,5 +301,25 @@ mod tests {
 
         let snapshot = collector.take_snapshot();
         assert!(snapshot.keyboard.total_keystrokes > 0);
+    }
+
+    #[test]
+    fn record_click_at_sets_position() {
+        let collector = InputActivityCollector::new();
+        collector.record_click_at(150, 300);
+
+        let snapshot = collector.take_snapshot();
+        assert_eq!(snapshot.mouse.click_count, 1);
+        assert_eq!(snapshot.mouse.last_position, Some((150.0, 300.0)));
+    }
+
+    #[test]
+    fn position_resets_after_snapshot() {
+        let collector = InputActivityCollector::new();
+        collector.record_click_at(100, 200);
+        let _ = collector.take_snapshot();
+
+        let second = collector.take_snapshot();
+        assert_eq!(second.mouse.last_position, None);
     }
 }
