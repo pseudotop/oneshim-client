@@ -226,6 +226,11 @@ pub struct EmbeddingConfig {
     pub provider: EmbeddingProviderType,
 
     /// Local embedding model identifier (fastembed-rs compatible).
+    ///
+    /// Default: `"all-MiniLM-L6-v2-Q"` — quantized INT8 variant (~3x faster
+    /// CPU inference, less than 1% accuracy loss vs FP32).
+    /// Set to `"AllMiniLML6V2"` or `"all-MiniLM-L6-v2"` to use the
+    /// full-precision model instead.
     #[serde(default = "default_local_model")]
     pub local_model: String,
 
@@ -329,7 +334,7 @@ fn default_embedding_provider() -> EmbeddingProviderType {
     EmbeddingProviderType::Local
 }
 fn default_local_model() -> String {
-    "all-MiniLM-L6-v2".to_string()
+    "all-MiniLM-L6-v2-Q".to_string()
 }
 fn default_max_search_results() -> usize {
     5
