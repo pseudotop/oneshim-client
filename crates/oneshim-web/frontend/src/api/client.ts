@@ -1,3 +1,4 @@
+import { resolveApiUrl } from '../utils/api-base'
 import type {
   AppSettings,
   AppUsage,
@@ -5,10 +6,6 @@ import type {
   AutomationContracts,
   AutomationStats,
   AutomationStatus,
-  OAuthConnectionStatus,
-  OAuthFlowHandle,
-  OAuthFlowStatus,
-  SecretBackendCapabilities,
   BackupArchive,
   BackupParams,
   CreateOverrideRequest,
@@ -29,8 +26,8 @@ import type {
   HeatmapResponse,
   HourlyMetrics,
   IdlePeriod,
-  IntegrationAuthStatus,
   IntegrationAuditLogResponse,
+  IntegrationAuthStatus,
   IntegrationDeviceAuthorizationCommandResult,
   IntegrationDeviceAuthorizationFlowRequest,
   IntegrationInboxActionResponse,
@@ -41,11 +38,14 @@ import type {
   Interruption,
   ListOverridesQuery,
   LocalSuggestion,
+  OAuthConnectionStatus,
+  OAuthFlowHandle,
+  OAuthFlowStatus,
   PaginatedResponse,
   PoliciesInfo,
-  ProviderEndpointProbeResult,
   PresetRunResult,
   ProcessSnapshot,
+  ProviderEndpointProbeResult,
   ProviderModelsRequest,
   ProviderModelsResponse,
   ProviderSurfaceCatalog,
@@ -56,6 +56,7 @@ import type {
   SceneCalibrationReport,
   SearchParams,
   SearchResponse,
+  SecretBackendCapabilities,
   Session,
   StorageStats,
   SuggestionFeedbackAction,
@@ -71,7 +72,6 @@ import type {
   WorkflowPreset,
   WorkSession,
 } from './contracts'
-import { resolveApiUrl } from '../utils/api-base'
 import { handleStandaloneRequest, isStandaloneModeEnabled } from './standalone'
 
 export type * from './contracts'
@@ -290,9 +290,7 @@ export async function refreshIntegrationInbox(): Promise<IntegrationInboxRefresh
   return res.json()
 }
 
-export async function acknowledgeIntegrationPrompt(
-  promptId: string,
-): Promise<IntegrationInboxActionResponse> {
+export async function acknowledgeIntegrationPrompt(promptId: string): Promise<IntegrationInboxActionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/ack`, {
     method: 'POST',
   })
@@ -304,14 +302,11 @@ export async function dismissIntegrationPrompt(
   promptId: string,
   request: IntegrationInboxDismissRequest = {},
 ): Promise<IntegrationInboxActionResponse> {
-  const res = await fetchWithRetry(
-    `${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/dismiss`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-    },
-  )
+  const res = await fetchWithRetry(`${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/dismiss`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
   if (!res.ok) throw new Error('Integration prompt dismiss failed')
   return res.json()
 }
