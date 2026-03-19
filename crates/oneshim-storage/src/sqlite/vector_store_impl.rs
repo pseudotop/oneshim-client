@@ -458,8 +458,17 @@ impl VectorStore for SqliteVectorStore {
         vector_f32: Vec<f32>,
         vector_int8: &QuantizedVector,
         metadata: EmbeddingMetadata,
+        skip_float32: bool,
     ) -> Result<(), CoreError> {
-        let f32_blob = f32_vec_to_bytes(&vector_f32);
+        // When skip_float32 is true, store an empty BLOB instead of the f32 data.
+        // The column has a NOT NULL constraint (pre-existing schema), so we use
+        // an empty vec rather than NULL. An empty BLOB is distinguishable from
+        // a real vector (which always has len >= 4).
+        let f32_blob: Vec<u8> = if skip_float32 {
+            Vec::new()
+        } else {
+            f32_vec_to_bytes(&vector_f32)
+        };
         let int8_blob = i8_vec_to_bytes(&vector_int8.data);
         let scale = vector_int8.scale;
         let offset = vector_int8.offset;
@@ -486,8 +495,8 @@ impl VectorStore for SqliteVectorStore {
             .map_err(|e| CoreError::Internal(format!("Failed to store quantized vector: {e}")))?;
 
             debug!(
-                "Stored quantized vector for segment {} (type={})",
-                metadata.segment_id, content_type_str
+                "Stored quantized vector for segment {} (type={}, skip_f32={})",
+                metadata.segment_id, content_type_str, skip_float32
             );
             Ok(())
         })
@@ -625,6 +634,22 @@ impl VectorStore for SqliteVectorStore {
 
             debug!("Backfilled {count} vectors to INT8 quantized format");
             Ok(count)
+        })
+        .await
+    }
+
+    async fn count_unquantized(&self) -> Result<u64, CoreError> {
+        self.with_conn(move |conn| {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM embedding_vectors WHERE vector_int8 IS NULL",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to count unquantized vectors: {e}"))
+                })?;
+            Ok(count as u64)
         })
         .await
     }
@@ -1006,7 +1031,7 @@ mod tests {
         };
 
         store
-            .store_quantized(vector.clone(), &quantized, meta)
+            .store_quantized(vector.clone(), &quantized, meta, false)
             .await
             .unwrap();
 
@@ -1050,6 +1075,7 @@ mod tests {
                     original_text: "close".to_string(),
                     model_id: "test-model".to_string(),
                 },
+                false,
             )
             .await
             .unwrap();
@@ -1066,6 +1092,7 @@ mod tests {
                     original_text: "far".to_string(),
                     model_id: "test-model".to_string(),
                 },
+                false,
             )
             .await
             .unwrap();
@@ -1107,6 +1134,7 @@ mod tests {
                     original_text: "summary".to_string(),
                     model_id: "test-model".to_string(),
                 },
+                false,
             )
             .await
             .unwrap();
@@ -1123,6 +1151,7 @@ mod tests {
                     original_text: "activity".to_string(),
                     model_id: "test-model".to_string(),
                 },
+                false,
             )
             .await
             .unwrap();
@@ -1217,5 +1246,129 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(results.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn count_unquantized_empty_table() {
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+
+        let count = store.count_unquantized().await.unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn count_unquantized_tracks_non_int8_rows() {
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+
+        // Store 3 plain f32 vectors — no INT8 columns
+        for i in 0..3 {
+            store
+                .store(
+                    vec![1.0, 0.0, i as f32 * 0.1],
+                    EmbeddingMetadata {
+                        segment_id: format!("seg-{i}"),
+                        content_type: EmbeddingContentType::ContentActivity,
+                        content_label: Some(format!("label-{i}")),
+                        timestamp: Utc::now(),
+                        original_text: format!("text-{i}"),
+                        model_id: "test-model".to_string(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        assert_eq!(store.count_unquantized().await.unwrap(), 3);
+
+        // Backfill 2
+        store.backfill_quantized(2).await.unwrap();
+        assert_eq!(store.count_unquantized().await.unwrap(), 1);
+
+        // Backfill remaining
+        store.backfill_quantized(10).await.unwrap();
+        assert_eq!(store.count_unquantized().await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn store_quantized_skip_float32_nulls_vector_column() {
+        use oneshim_core::quantization::ScalarQuantizer;
+
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn.clone());
+
+        let vector = vec![0.1, 0.5, 0.9, -0.3, 0.7];
+        let quantized = ScalarQuantizer::quantize(&vector).unwrap();
+
+        let meta = EmbeddingMetadata {
+            segment_id: "seg-skip-f32".to_string(),
+            content_type: EmbeddingContentType::ContentActivity,
+            content_label: Some("test skip".to_string()),
+            timestamp: Utc::now(),
+            original_text: "test skip f32".to_string(),
+            model_id: "test-model".to_string(),
+        };
+
+        // Store with skip_float32 = true
+        store
+            .store_quantized(vector, &quantized, meta, true)
+            .await
+            .unwrap();
+
+        // Verify: f32 column is empty BLOB (len=0), INT8 column is populated
+        let guard = conn.lock().unwrap();
+        let (f32_blob_len, has_int8): (usize, bool) = guard
+            .query_row(
+                "SELECT LENGTH(vector), vector_int8 IS NOT NULL FROM embedding_vectors WHERE segment_id = 'seg-skip-f32'",
+                [],
+                |row| {
+                    let len: i64 = row.get(0)?;
+                    Ok((len as usize, row.get(1)?))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            f32_blob_len, 0,
+            "f32 vector should be empty BLOB when skip_float32=true"
+        );
+        assert!(has_int8, "INT8 vector should still be populated");
+    }
+
+    #[tokio::test]
+    async fn store_quantized_skip_float32_still_searchable_via_int8() {
+        use oneshim_core::quantization::ScalarQuantizer;
+
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+
+        let v = vec![1.0, 0.0, 0.0, 0.0, 0.0];
+        let qv = ScalarQuantizer::quantize(&v).unwrap();
+
+        store
+            .store_quantized(
+                v,
+                &qv,
+                EmbeddingMetadata {
+                    segment_id: "int8-only".to_string(),
+                    content_type: EmbeddingContentType::ContentActivity,
+                    content_label: Some("int8 only".to_string()),
+                    timestamp: Utc::now(),
+                    original_text: "int8 only".to_string(),
+                    model_id: "test-model".to_string(),
+                },
+                true,
+            )
+            .await
+            .unwrap();
+
+        // Should be findable via search_quantized
+        let query_qv = ScalarQuantizer::quantize(&[1.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
+        let results = store
+            .search_quantized(&query_qv, 10, 0.0, &SearchFilters::default())
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].segment_id, "int8-only");
     }
 }

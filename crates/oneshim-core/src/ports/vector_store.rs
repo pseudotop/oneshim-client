@@ -50,11 +50,15 @@ pub trait VectorStore: Send + Sync {
     ) -> Result<(), CoreError>;
 
     /// Store a pre-quantized INT8 vector alongside its float32 original.
+    ///
+    /// When `skip_float32` is `true`, the f32 BLOB column is set to NULL
+    /// to save storage (Phase A.5 float32 retention control).
     async fn store_quantized(
         &self,
         _vector_f32: Vec<f32>,
         _vector_int8: &QuantizedVector,
         _metadata: EmbeddingMetadata,
+        _skip_float32: bool,
     ) -> Result<(), CoreError> {
         Err(CoreError::Internal(
             "store_quantized not implemented".into(),
@@ -82,5 +86,12 @@ pub trait VectorStore: Send + Sync {
         Err(CoreError::Internal(
             "backfill_quantized not implemented".into(),
         ))
+    }
+
+    /// Count rows that have not yet been quantized to INT8.
+    /// Returns the number of rows WHERE vector_int8 IS NULL.
+    /// Used to determine when float32 column removal is safe.
+    async fn count_unquantized(&self) -> Result<u64, CoreError> {
+        Ok(0)
     }
 }

@@ -157,12 +157,16 @@ impl AgentRuntimeBundle {
                 let pii_filter_embed: oneshim_analysis::PiiFilter = Box::new(move |text: &str| {
                     oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
                 });
-                let pipeline = Arc::new(oneshim_analysis::EmbeddingPipeline::new(
-                    provider.clone(),
-                    pii_filter_embed,
-                    vector_store.clone(),
-                    embedding_config.quantization_enabled,
-                ));
+                let skip_float32 = embedding_config.quantization_enabled
+                    && !embedding_config.quantization_float32_retention;
+                let pipeline =
+                    Arc::new(oneshim_analysis::EmbeddingPipeline::with_float32_retention(
+                        provider.clone(),
+                        pii_filter_embed,
+                        vector_store.clone(),
+                        embedding_config.quantization_enabled,
+                        skip_float32,
+                    ));
                 embedding_pipeline_arc = Some(pipeline);
 
                 // Build LlmSegmentSummarizer if LLM summary is enabled

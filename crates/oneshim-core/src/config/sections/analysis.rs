@@ -259,6 +259,14 @@ pub struct EmbeddingConfig {
     /// and search uses INT8 cosine similarity.
     #[serde(default)]
     pub quantization_enabled: bool,
+
+    /// Whether to retain the original float32 vector when quantization is enabled.
+    /// Default `true` (keep f32 alongside INT8 for rollback safety).
+    /// When `false` AND `quantization_enabled` is `true`, new vectors are stored
+    /// as INT8-only — the f32 BLOB column is set to NULL, saving ~4x storage.
+    /// The column itself remains in the schema until a future migration drops it.
+    #[serde(default = "default_quantization_float32_retention")]
+    pub quantization_float32_retention: bool,
 }
 
 impl Default for EmbeddingConfig {
@@ -275,8 +283,13 @@ impl Default for EmbeddingConfig {
             min_segment_for_summary_secs: default_min_segment_for_summary(),
             digest_day: default_digest_day(),
             quantization_enabled: false,
+            quantization_float32_retention: default_quantization_float32_retention(),
         }
     }
+}
+
+fn default_quantization_float32_retention() -> bool {
+    true
 }
 
 fn default_embedding_provider() -> EmbeddingProviderType {

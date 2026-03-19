@@ -21,6 +21,9 @@ pub struct EmbeddingPipeline {
     pii_filter: PiiFilter,
     vector_store: Arc<dyn VectorStore>,
     quantization_enabled: bool,
+    /// When true, skip writing the float32 BLOB on quantized inserts.
+    /// Derived from `!config.quantization_float32_retention`.
+    skip_float32: bool,
 }
 
 impl EmbeddingPipeline {
@@ -35,6 +38,27 @@ impl EmbeddingPipeline {
             pii_filter,
             vector_store: store,
             quantization_enabled,
+            skip_float32: false,
+        }
+    }
+
+    /// Create a pipeline with explicit float32 retention control.
+    ///
+    /// `skip_float32`: when `true` AND `quantization_enabled` is `true`,
+    /// the f32 BLOB column is set to NULL on quantized inserts to save storage.
+    pub fn with_float32_retention(
+        provider: Arc<dyn EmbeddingProvider>,
+        pii_filter: PiiFilter,
+        store: Arc<dyn VectorStore>,
+        quantization_enabled: bool,
+        skip_float32: bool,
+    ) -> Self {
+        Self {
+            embedding_provider: provider,
+            pii_filter,
+            vector_store: store,
+            quantization_enabled,
+            skip_float32,
         }
     }
 
@@ -78,7 +102,7 @@ impl EmbeddingPipeline {
             if self.quantization_enabled {
                 let quantized = ScalarQuantizer::quantize(&vector)?;
                 self.vector_store
-                    .store_quantized(vector, &quantized, meta)
+                    .store_quantized(vector, &quantized, meta, self.skip_float32)
                     .await?;
             } else {
                 self.vector_store.store(vector, meta).await?;
@@ -110,7 +134,7 @@ impl EmbeddingPipeline {
         if self.quantization_enabled {
             let quantized = ScalarQuantizer::quantize(&vector)?;
             self.vector_store
-                .store_quantized(vector, &quantized, metadata)
+                .store_quantized(vector, &quantized, metadata, self.skip_float32)
                 .await
         } else {
             self.vector_store.store(vector, metadata).await
@@ -153,10 +177,11 @@ mod tests {
         }
     }
 
-    /// Mock VectorStore that records stored vectors.
+    /// Mock VectorStore that records stored vectors and skip_float32 flags.
     struct MockVectorStore {
         stored: Mutex<Vec<(Vec<f32>, EmbeddingMetadata)>>,
         stored_quantized: Mutex<Vec<(Vec<f32>, EmbeddingMetadata)>>,
+        skip_float32_flags: Mutex<Vec<bool>>,
     }
 
     impl MockVectorStore {
@@ -164,6 +189,7 @@ mod tests {
             Self {
                 stored: Mutex::new(Vec::new()),
                 stored_quantized: Mutex::new(Vec::new()),
+                skip_float32_flags: Mutex::new(Vec::new()),
             }
         }
 
@@ -173,6 +199,10 @@ mod tests {
 
         fn stored_quantized_count(&self) -> usize {
             self.stored_quantized.lock().unwrap().len()
+        }
+
+        fn skip_float32_flags(&self) -> Vec<bool> {
+            self.skip_float32_flags.lock().unwrap().clone()
         }
     }
 
@@ -236,11 +266,13 @@ mod tests {
             vector_f32: Vec<f32>,
             _vector_int8: &oneshim_core::quantization::QuantizedVector,
             metadata: EmbeddingMetadata,
+            skip_float32: bool,
         ) -> Result<(), CoreError> {
             self.stored_quantized
                 .lock()
                 .unwrap()
                 .push((vector_f32, metadata));
+            self.skip_float32_flags.lock().unwrap().push(skip_float32);
             Ok(())
         }
     }
@@ -405,5 +437,62 @@ mod tests {
 
         assert_eq!(store.stored_count(), 0);
         assert_eq!(store.stored_quantized_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn with_float32_retention_passes_skip_flag() {
+        let provider = Arc::new(MockEmbeddingProvider { dims: 5 });
+        let store = Arc::new(MockVectorStore::new());
+        let pipeline = EmbeddingPipeline::with_float32_retention(
+            provider,
+            identity_filter(),
+            store.clone(),
+            true, // quantization_enabled
+            true, // skip_float32
+        );
+
+        let segment =
+            make_segment_with_activities(vec![make_activity("main.rs"), make_activity("lib.rs")]);
+
+        let count = pipeline.process_content_activities(&segment).await.unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(store.stored_quantized_count(), 2);
+
+        // Verify skip_float32 was true for all calls
+        let flags = store.skip_float32_flags();
+        assert_eq!(flags, vec![true, true]);
+    }
+
+    #[tokio::test]
+    async fn with_float32_retention_false_does_not_skip() {
+        let provider = Arc::new(MockEmbeddingProvider { dims: 5 });
+        let store = Arc::new(MockVectorStore::new());
+        let pipeline = EmbeddingPipeline::with_float32_retention(
+            provider,
+            identity_filter(),
+            store.clone(),
+            true,  // quantization_enabled
+            false, // skip_float32 = false (retain f32)
+        );
+
+        let segment = make_segment_with_activities(vec![make_activity("main.rs")]);
+        pipeline.process_content_activities(&segment).await.unwrap();
+
+        let flags = store.skip_float32_flags();
+        assert_eq!(flags, vec![false]);
+    }
+
+    #[tokio::test]
+    async fn new_constructor_defaults_skip_float32_false() {
+        let provider = Arc::new(MockEmbeddingProvider { dims: 5 });
+        let store = Arc::new(MockVectorStore::new());
+        // Using the original `new()` constructor — skip_float32 should default to false
+        let pipeline = EmbeddingPipeline::new(provider, identity_filter(), store.clone(), true);
+
+        let segment = make_segment_with_activities(vec![make_activity("main.rs")]);
+        pipeline.process_content_activities(&segment).await.unwrap();
+
+        let flags = store.skip_float32_flags();
+        assert_eq!(flags, vec![false]);
     }
 }
