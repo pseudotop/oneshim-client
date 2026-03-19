@@ -10,6 +10,8 @@ pub mod daily_digest_generator;
 pub mod daily_insight_generator;
 pub mod embedding_pipeline;
 pub mod focus_shared;
+pub mod gui_aggregator;
+pub mod gui_work_type_refiner;
 pub mod hdbscan_detector;
 pub mod hybrid_search_service;
 pub mod kmeans_adapter;
@@ -55,6 +57,8 @@ pub use clustering_strategy::{ClusterAssignment, ClusteringResult, ClusteringStr
 pub use daily_digest_generator::DailyDigestGenerator;
 pub use daily_insight_generator::DailyInsightGenerator;
 pub use embedding_pipeline::EmbeddingPipeline;
+pub use gui_aggregator::GuiActivityAggregator;
+pub use gui_work_type_refiner::GuiWorkTypeRefiner;
 pub use hybrid_search_service::{HybridSearchService, SearchMode};
 pub use llm_segment_summarizer::{LlmSegmentSummarizer, SEGMENT_SUMMARY_PROMPT};
 pub use vector_retriever::VectorRetriever;
