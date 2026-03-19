@@ -1,5 +1,9 @@
 //! # oneshim-vision
 
+#[cfg(target_os = "macos")]
+pub mod accessibility_macos;
+#[cfg(target_os = "windows")]
+pub mod accessibility_windows;
 pub mod capture;
 pub mod delta;
 pub mod element_finder;
