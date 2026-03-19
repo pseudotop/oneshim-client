@@ -84,10 +84,7 @@ impl GuiActivityAggregator {
         if self.current_window.is_none() {
             self.current_window = Some(AggregationWindow {
                 app_name: event.app_name.clone(),
-                window_title: event
-                    .window_title
-                    .clone()
-                    .unwrap_or_default(),
+                window_title: event.window_title.clone().unwrap_or_default(),
                 content_label: content_label.to_string(),
                 start_time: now,
                 events: vec![event],
@@ -104,12 +101,7 @@ impl GuiActivityAggregator {
         let now = self
             .current_window
             .as_ref()
-            .map(|w| {
-                w.events
-                    .last()
-                    .map(|e| e.timestamp)
-                    .unwrap_or(w.start_time)
-            })
+            .map(|w| w.events.last().map(|e| e.timestamp).unwrap_or(w.start_time))
             .unwrap_or_else(Utc::now);
         self.flush_inner(now)
     }
@@ -342,10 +334,7 @@ mod tests {
         }
     }
 
-    fn make_shortcut_event(
-        keys: &str,
-        timestamp: DateTime<Utc>,
-    ) -> GuiInteractionEvent {
+    fn make_shortcut_event(keys: &str, timestamp: DateTime<Utc>) -> GuiInteractionEvent {
         GuiInteractionEvent {
             timestamp,
             element: GuiElement {
@@ -398,13 +387,25 @@ mod tests {
         let t0 = Utc::now();
 
         agg.push(
-            make_event("Save", GuiElementType::Button, GuiInteractionType::Click, t0, "VS Code"),
+            make_event(
+                "Save",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                t0,
+                "VS Code",
+            ),
             "main.rs",
         );
 
         // Push event with different content label
         let flushed = agg.push(
-            make_event("OK", GuiElementType::Button, GuiInteractionType::Click, t0 + Duration::seconds(5), "VS Code"),
+            make_event(
+                "OK",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                t0 + Duration::seconds(5),
+                "VS Code",
+            ),
             "lib.rs",
         );
 
@@ -421,13 +422,25 @@ mod tests {
         let t0 = Utc::now();
 
         agg.push(
-            make_event("OK", GuiElementType::Button, GuiInteractionType::Click, t0, "App"),
+            make_event(
+                "OK",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                t0,
+                "App",
+            ),
             "file.rs",
         );
 
         // Push event after window expires
         let flushed = agg.push(
-            make_event("Cancel", GuiElementType::Button, GuiInteractionType::Click, t0 + Duration::seconds(15), "App"),
+            make_event(
+                "Cancel",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                t0 + Duration::seconds(15),
+                "App",
+            ),
             "file.rs",
         );
 
@@ -439,7 +452,13 @@ mod tests {
     fn semantic_action_detection_save() {
         let now = Utc::now();
         let events = vec![
-            make_event("Save All", GuiElementType::Button, GuiInteractionType::Click, now, "VS Code"),
+            make_event(
+                "Save All",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                now,
+                "VS Code",
+            ),
             make_shortcut_event("Cmd+S", now + Duration::seconds(1)),
         ];
 
@@ -450,9 +469,13 @@ mod tests {
     #[test]
     fn semantic_action_detection_test_run() {
         let now = Utc::now();
-        let events = vec![
-            make_event("Run Test", GuiElementType::Button, GuiInteractionType::Click, now, "VS Code"),
-        ];
+        let events = vec![make_event(
+            "Run Test",
+            GuiElementType::Button,
+            GuiInteractionType::Click,
+            now,
+            "VS Code",
+        )];
 
         let counts = GuiActivityAggregator::detect_semantic_actions(&events);
         assert_eq!(counts.test_run_count, 1);
@@ -463,7 +486,13 @@ mod tests {
         let now = Utc::now();
         let events = vec![
             make_shortcut_event("Ctrl+F", now),
-            make_event("Search", GuiElementType::Button, GuiInteractionType::Click, now + Duration::seconds(1), "Chrome"),
+            make_event(
+                "Search",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                now + Duration::seconds(1),
+                "Chrome",
+            ),
         ];
 
         let counts = GuiActivityAggregator::detect_semantic_actions(&events);
@@ -494,12 +523,24 @@ mod tests {
         // Push 3 clicks on "Save", 1 on "OK"
         for i in 0..3 {
             agg.push(
-                make_event("Save", GuiElementType::Button, GuiInteractionType::Click, t0 + Duration::seconds(i), "App"),
+                make_event(
+                    "Save",
+                    GuiElementType::Button,
+                    GuiInteractionType::Click,
+                    t0 + Duration::seconds(i),
+                    "App",
+                ),
                 "file.rs",
             );
         }
         agg.push(
-            make_event("OK", GuiElementType::Button, GuiInteractionType::Click, t0 + Duration::seconds(3), "App"),
+            make_event(
+                "OK",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                t0 + Duration::seconds(3),
+                "App",
+            ),
             "file.rs",
         );
 
@@ -517,7 +558,13 @@ mod tests {
         let now = Utc::now();
 
         agg.push(
-            make_event("Save", GuiElementType::Button, GuiInteractionType::Click, now, "VS Code"),
+            make_event(
+                "Save",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                now,
+                "VS Code",
+            ),
             "main.rs",
         );
 
@@ -540,7 +587,13 @@ mod tests {
         let now = Utc::now();
 
         agg.push(
-            make_event("", GuiElementType::Unknown, GuiInteractionType::Click, now, "App"),
+            make_event(
+                "",
+                GuiElementType::Unknown,
+                GuiInteractionType::Click,
+                now,
+                "App",
+            ),
             "file.rs",
         );
 
@@ -557,14 +610,26 @@ mod tests {
 
         for i in 0..3 {
             agg.push(
-                make_event("OK", GuiElementType::Button, GuiInteractionType::Click, t0 + Duration::seconds(i), "App"),
+                make_event(
+                    "OK",
+                    GuiElementType::Button,
+                    GuiInteractionType::Click,
+                    t0 + Duration::seconds(i),
+                    "App",
+                ),
                 "file.rs",
             );
         }
 
         // 4th event should trigger flush
         let flushed = agg.push(
-            make_event("OK", GuiElementType::Button, GuiInteractionType::Click, t0 + Duration::seconds(3), "App"),
+            make_event(
+                "OK",
+                GuiElementType::Button,
+                GuiInteractionType::Click,
+                t0 + Duration::seconds(3),
+                "App",
+            ),
             "file.rs",
         );
 

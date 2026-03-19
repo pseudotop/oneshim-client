@@ -5,7 +5,7 @@ pub mod auto_tuner;
 pub mod calibration_buffer;
 pub mod clustering_strategy;
 pub mod constraint_builder;
-mod content_tracker;
+pub mod content_tracker;
 pub mod daily_digest_generator;
 pub mod daily_insight_generator;
 pub mod embedding_pipeline;

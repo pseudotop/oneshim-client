@@ -77,7 +77,7 @@ impl GuiElementDetector {
         let mut grouped: Vec<OcrRegion> = Vec::new();
 
         for region in sorted {
-            let should_merge = grouped.last().map_or(false, |prev: &OcrRegion| {
+            let should_merge = grouped.last().is_some_and(|prev: &OcrRegion| {
                 // Same line check
                 let y_diff = (prev.bbox.y as i64 - region.bbox.y as i64).unsigned_abs() as u32;
                 if y_diff > WORD_GROUP_Y_TOLERANCE {

@@ -73,15 +73,16 @@ pub(super) async fn run_analysis_tick(
 
     // 5. Update content tracker
     if let Some(ref content) = parsed_content {
-        ts.content_tracker.update(
-            &content.content_label,
-            content.content_type,
-            work_type,
-            engagement.clone(),
-            content.confidence,
-            now,
-            None, // GUI summary injected by gui_pipeline after this tick
-        );
+        ts.content_tracker
+            .update(oneshim_analysis::content_tracker::ContentUpdateInput {
+                content_label: content.content_label.clone(),
+                content_type: content.content_type,
+                work_type,
+                engagement: engagement.clone(),
+                confidence: content.confidence,
+                timestamp: now,
+                gui_summary: None, // GUI summary injected by gui_pipeline after this tick
+            });
     }
 
     // 5b. Regime classification → parameter cascade

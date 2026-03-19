@@ -5,10 +5,10 @@ use crate::models::activity::SessionStats;
 use crate::models::daily_digest::DailyDigest;
 use crate::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
-    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord,
-    HourlyMetricsRecord, LocalSuggestionRecord, MetricExportRecord, SearchEventRow,
-    SearchFrameRow, SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord,
-    SuggestionRecord, TagRecord,
+    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord, HourlyMetricsRecord,
+    LocalSuggestionRecord, MetricExportRecord, NewGuiInteraction, SearchEventRow, SearchFrameRow,
+    SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord,
+    TagRecord,
 };
 use crate::models::work_session::FocusMetrics;
 use crate::ports::storage::{MetricsStorage, StorageService};
@@ -214,17 +214,7 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
     }
 
     /// Save a GUI interaction event to the gui_interactions table (V13).
-    fn save_gui_interaction(
-        &self,
-        _event_id: &str,
-        _segment_id: Option<&str>,
-        _timestamp: &str,
-        _element_text: Option<&str>,
-        _element_type: Option<&str>,
-        _interaction_type: &str,
-        _bbox_json: Option<&str>,
-        _app_name: &str,
-    ) -> Result<(), CoreError> {
+    fn save_gui_interaction(&self, _input: &NewGuiInteraction<'_>) -> Result<(), CoreError> {
         Ok(()) // No-op default — storage adapters override
     }
 

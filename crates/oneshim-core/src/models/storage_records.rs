@@ -201,6 +201,19 @@ pub struct SegmentDetailRecord {
     pub regime_label: Option<String>,
 }
 
+/// Input DTO for inserting a GUI interaction event (V13).
+#[derive(Debug, Clone)]
+pub struct NewGuiInteraction<'a> {
+    pub event_id: &'a str,
+    pub segment_id: Option<&'a str>,
+    pub timestamp: &'a str,
+    pub element_text: Option<&'a str>,
+    pub element_type: Option<&'a str>,
+    pub interaction_type: &'a str,
+    pub bbox_json: Option<&'a str>,
+    pub app_name: &'a str,
+}
+
 /// A GUI interaction event record from the V13 gui_interactions table.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GuiInteractionRecord {

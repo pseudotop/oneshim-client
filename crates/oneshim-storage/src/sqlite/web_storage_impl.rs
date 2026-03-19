@@ -4,10 +4,10 @@ use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::daily_digest::DailyDigest;
 use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
-    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord,
-    HourlyMetricsRecord, LocalSuggestionRecord, MetricExportRecord, SearchEventRow,
-    SearchFrameRow, SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord,
-    SuggestionRecord, TagRecord,
+    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord, HourlyMetricsRecord,
+    LocalSuggestionRecord, MetricExportRecord, NewGuiInteraction, SearchEventRow, SearchFrameRow,
+    SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord,
+    TagRecord,
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::WebStorage;
@@ -656,17 +656,7 @@ impl WebStorage for SqliteStorage {
         Ok(records)
     }
 
-    fn save_gui_interaction(
-        &self,
-        event_id: &str,
-        segment_id: Option<&str>,
-        timestamp: &str,
-        element_text: Option<&str>,
-        element_type: Option<&str>,
-        interaction_type: &str,
-        bbox_json: Option<&str>,
-        app_name: &str,
-    ) -> Result<(), CoreError> {
+    fn save_gui_interaction(&self, input: &NewGuiInteraction<'_>) -> Result<(), CoreError> {
         let conn = self
             .conn
             .lock()
@@ -675,14 +665,14 @@ impl WebStorage for SqliteStorage {
             "INSERT INTO gui_interactions (event_id, segment_id, timestamp, element_text, element_type, interaction_type, bbox_json, app_name)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
-                event_id,
-                segment_id,
-                timestamp,
-                element_text,
-                element_type,
-                interaction_type,
-                bbox_json,
-                app_name,
+                input.event_id,
+                input.segment_id,
+                input.timestamp,
+                input.element_text,
+                input.element_type,
+                input.interaction_type,
+                input.bbox_json,
+                input.app_name,
             ],
         )
         .map_err(|e| CoreError::Internal(format!("Failed to save GUI interaction: {e}")))?;
@@ -705,7 +695,9 @@ impl WebStorage for SqliteStorage {
                  WHERE segment_id = ?1
                  ORDER BY timestamp ASC",
             )
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare GUI interaction query: {e}")))?;
+            .map_err(|e| {
+                CoreError::Internal(format!("Failed to prepare GUI interaction query: {e}"))
+            })?;
 
         let records: Vec<GuiInteractionRecord> = stmt
             .query_map(rusqlite::params![segment_id], |row| {

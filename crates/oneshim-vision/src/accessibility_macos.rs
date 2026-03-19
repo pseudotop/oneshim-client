@@ -35,6 +35,12 @@ mod inner {
     /// [`ChainedElementFinder`] can fall through to the OCR backend.
     pub struct MacOsAccessibilityFinder;
 
+    impl Default for MacOsAccessibilityFinder {
+        fn default() -> Self {
+            Self
+        }
+    }
+
     impl MacOsAccessibilityFinder {
         pub fn new() -> Self {
             Self
