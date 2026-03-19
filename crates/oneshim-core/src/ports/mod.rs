@@ -1,3 +1,4 @@
+pub mod accessibility;
 pub mod analysis_provider;
 pub mod api_client;
 pub mod audit_log;
