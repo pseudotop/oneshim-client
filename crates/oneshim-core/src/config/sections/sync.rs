@@ -19,6 +19,17 @@ pub enum SyncTransportKind {
     Lan,
 }
 
+/// Authentication mode for remote sync transport.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteSyncAuth {
+    /// Bearer token authentication (e.g., JWT from ONESHIM server login).
+    #[default]
+    BearerToken,
+    /// Static API key (self-hosted scenarios).
+    ApiKey,
+}
+
 /// Cross-device sync configuration.
 ///
 /// Controls whether activity data is synchronized between devices
@@ -67,10 +78,33 @@ pub struct SyncConfig {
     /// Never contains the raw passphrase.
     #[serde(default)]
     pub passphrase_hash: Option<String>,
+
+    /// Remote sync endpoint URL. Required when transport == Remote.
+    /// Example: "https://sync.example.com/api/v1"
+    #[serde(default)]
+    pub remote_endpoint: Option<String>,
+
+    /// Authentication mode for the remote endpoint.
+    #[serde(default)]
+    pub remote_auth: RemoteSyncAuth,
+
+    /// Port for the LAN sync HTTPS server. 0 = ephemeral (auto-assigned).
+    /// Default: 0.
+    #[serde(default)]
+    pub lan_port: u16,
+
+    /// Whether to advertise this device via mDNS for LAN discovery.
+    /// Default: true (when transport == Lan).
+    #[serde(default = "default_true")]
+    pub lan_advertise: bool,
 }
 
 fn default_sync_interval_secs() -> u64 {
     300
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_device_name() -> String {
@@ -95,6 +129,10 @@ impl Default for SyncConfig {
             device_name: default_device_name(),
             sync_folder: None,
             passphrase_hash: None,
+            remote_endpoint: None,
+            remote_auth: RemoteSyncAuth::default(),
+            lan_port: 0,
+            lan_advertise: true,
         }
     }
 }
@@ -195,6 +233,41 @@ mod tests {
             ..SyncConfig::default()
         };
         assert_eq!(config3.validated_interval_secs(), 600);
+    }
+
+    #[test]
+    fn remote_auth_serde_snake_case() {
+        let json = serde_json::to_string(&RemoteSyncAuth::BearerToken).unwrap();
+        assert_eq!(json, "\"bearer_token\"");
+        let json = serde_json::to_string(&RemoteSyncAuth::ApiKey).unwrap();
+        assert_eq!(json, "\"api_key\"");
+    }
+
+    #[test]
+    fn sync_config_remote_fields_default() {
+        let config = SyncConfig::default();
+        assert!(config.remote_endpoint.is_none());
+        assert_eq!(config.remote_auth, RemoteSyncAuth::BearerToken);
+        assert_eq!(config.lan_port, 0);
+        assert!(config.lan_advertise);
+    }
+
+    #[test]
+    fn sync_config_remote_serde_roundtrip() {
+        let config = SyncConfig {
+            enabled: true,
+            transport: SyncTransportKind::Remote,
+            remote_endpoint: Some("https://sync.example.com/api/v1".to_string()),
+            remote_auth: RemoteSyncAuth::ApiKey,
+            ..SyncConfig::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: SyncConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.remote_endpoint.as_deref(),
+            Some("https://sync.example.com/api/v1")
+        );
+        assert_eq!(parsed.remote_auth, RemoteSyncAuth::ApiKey);
     }
 
     #[test]

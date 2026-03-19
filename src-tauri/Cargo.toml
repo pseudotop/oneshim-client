@@ -60,6 +60,7 @@ zip = { workspace = true }
 flate2 = { workspace = true }
 base64 = { workspace = true }
 thiserror = { workspace = true }
+keyring = { workspace = true }
 
 [features]
 default = ["custom-protocol", "analysis"]
@@ -68,6 +69,7 @@ analysis = ["dep:oneshim-network"]
 server = ["analysis"]
 grpc = ["server", "oneshim-network/grpc"]
 embedding = ["dep:oneshim-embedding"]
+lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 
 [target.'cfg(target_os = "macos")'.dependencies]

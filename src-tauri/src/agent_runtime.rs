@@ -14,6 +14,9 @@ use tokio::runtime::Handle;
 use tokio::sync::{broadcast, watch};
 use tracing::{error, info, warn};
 
+use oneshim_core::config::SyncTransportKind;
+use oneshim_core::error::CoreError;
+
 use crate::agent_runtime_support::AgentSupportContextBuilder;
 use crate::focus_analyzer::FocusStorage;
 use crate::scheduler::{AdaptiveTriggerState, Scheduler, SchedulerStorage};
@@ -302,66 +305,137 @@ impl AgentRuntimeBundle {
             }
         }
 
-        // --- Cross-device sync engine (P3 Phase 3a-2) ---
+        // --- Cross-device sync engine (P3 Phase 3b) ---
         if self.config.sync.enabled {
-            if let Some(ref sync_folder) = self.config.sync.sync_folder {
-                let passphrase = std::env::var("ONESHIM_SYNC_PASSPHRASE").unwrap_or_default();
-                if passphrase.is_empty() {
-                    warn!("sync enabled but ONESHIM_SYNC_PASSPHRASE not set; sync disabled");
-                } else {
-                    match self
-                        .sqlite_storage_concrete
-                        .ensure_device_identity(&self.config.sync.device_name)
-                    {
-                        Ok((device_id, device_name)) => {
-                            let extractor = Arc::new(
-                                oneshim_storage::sync_extractor::SqliteSyncExtractor::new(
-                                    self.sqlite_storage_concrete.connection_arc(),
-                                    device_id.clone(),
-                                    device_name.clone(),
-                                    self.config.sync.clone(),
-                                ),
-                            );
-                            let merger =
-                                Arc::new(oneshim_storage::sync_merger::SqliteSyncMerger::new(
-                                    self.sqlite_storage_concrete.connection_arc(),
-                                    device_id.clone(),
-                                ));
-                            match oneshim_storage::file_transport::FileSyncTransport::new(
-                                std::path::PathBuf::from(sync_folder),
+            let passphrase = std::env::var("ONESHIM_SYNC_PASSPHRASE").unwrap_or_default();
+            if passphrase.is_empty() {
+                warn!("sync enabled but ONESHIM_SYNC_PASSPHRASE not set; sync disabled");
+            } else {
+                match self
+                    .sqlite_storage_concrete
+                    .ensure_device_identity(&self.config.sync.device_name)
+                {
+                    Ok((device_id, device_name)) => {
+                        let extractor =
+                            Arc::new(oneshim_storage::sync_extractor::SqliteSyncExtractor::new(
+                                self.sqlite_storage_concrete.connection_arc(),
                                 device_id.clone(),
-                                passphrase,
-                            ) {
-                                Ok(transport) => {
-                                    // Build a parking_lot::Mutex-wrapped ConsentManager for the SyncEngine.
-                                    // The SyncEngine needs &mut access to clear_pending_deletion.
-                                    let consent_for_sync = Arc::new(parking_lot::Mutex::new(
-                                        ConsentManager::new(self.data_dir.join("consent.json")),
-                                    ));
+                                device_name.clone(),
+                                self.config.sync.clone(),
+                            ));
+                        let merger = Arc::new(oneshim_storage::sync_merger::SqliteSyncMerger::new(
+                            self.sqlite_storage_concrete.connection_arc(),
+                            device_id.clone(),
+                        ));
 
-                                    let sync_engine = Arc::new(SyncEngine::new(
-                                        extractor,
-                                        merger,
-                                        Arc::new(transport),
-                                        consent_for_sync,
-                                        device_id,
-                                        device_name,
-                                    ));
-                                    scheduler = scheduler.with_sync_engine(sync_engine);
-                                    info!("Cross-device sync engine initialized");
+                        let transport_result: Result<Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>, CoreError> =
+                            match self.config.sync.transport {
+                                SyncTransportKind::File => {
+                                    match &self.config.sync.sync_folder {
+                                        Some(folder) => {
+                                            oneshim_storage::file_transport::FileSyncTransport::new(
+                                                std::path::PathBuf::from(folder),
+                                                device_id.clone(),
+                                                passphrase.clone(),
+                                            ).map(|t| Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>)
+                                        }
+                                        None => {
+                                            warn!("sync transport=file but sync_folder not configured");
+                                            Err(CoreError::Internal("sync_folder required for file transport".into()))
+                                        }
+                                    }
                                 }
-                                Err(e) => {
-                                    warn!("Failed to create FileSyncTransport: {e}");
+                                SyncTransportKind::Remote => {
+                                    match &self.config.sync.remote_endpoint {
+                                        Some(endpoint) => {
+                                            // Retrieve auth credential from OS keychain
+                                            let credential = keyring::Entry::new("oneshim", "sync_remote_token")
+                                                .and_then(|entry| entry.get_password())
+                                                .unwrap_or_default();
+                                            if credential.is_empty() {
+                                                warn!("sync transport=remote but no credential in keychain (key: oneshim/sync_remote_token)");
+                                            }
+                                            oneshim_network::sync::RemoteSyncTransport::new(
+                                                endpoint.clone(),
+                                                device_id.clone(),
+                                                passphrase.clone(),
+                                                self.config.sync.remote_auth.clone(),
+                                                credential,
+                                            ).map(|t| Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>)
+                                        }
+                                        None => {
+                                            warn!("sync transport=remote but remote_endpoint not configured");
+                                            Err(CoreError::Internal("remote_endpoint required for remote transport".into()))
+                                        }
+                                    }
                                 }
+                                SyncTransportKind::Lan => {
+                                    #[cfg(feature = "lan-sync")]
+                                    {
+                                        let config_dir = self.data_dir.clone();
+                                        match oneshim_network::sync::lan_tls::load_or_generate_cert(
+                                            &config_dir,
+                                            &device_id,
+                                        ) {
+                                            Ok((cert_pem, key_pem, fingerprint)) => {
+                                                // Use block_on to await the async start in sync context
+                                                match tokio::runtime::Handle::current().block_on(
+                                                    oneshim_network::sync::LanSyncTransport::start(
+                                                        device_id.clone(),
+                                                        device_name.clone(),
+                                                        passphrase.clone(),
+                                                        cert_pem,
+                                                        key_pem,
+                                                        fingerprint,
+                                                        self.config.sync.lan_port,
+                                                        self.config.sync.lan_advertise,
+                                                    ),
+                                                ) {
+                                                    Ok(t) => Ok(Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>),
+                                                    Err(e) => Err(e),
+                                                }
+                                            }
+                                            Err(e) => Err(e),
+                                        }
+                                    }
+                                    #[cfg(not(feature = "lan-sync"))]
+                                    {
+                                        warn!("LAN sync requires 'lan-sync' feature; sync disabled");
+                                        Err(CoreError::Internal(
+                                            "lan-sync feature not enabled".into(),
+                                        ))
+                                    }
+                                }
+                            };
+
+                        match transport_result {
+                            Ok(transport) => {
+                                let consent_for_sync = Arc::new(parking_lot::Mutex::new(
+                                    ConsentManager::new(self.data_dir.join("consent.json")),
+                                ));
+                                let sync_engine = Arc::new(SyncEngine::new(
+                                    extractor,
+                                    merger,
+                                    transport,
+                                    consent_for_sync,
+                                    device_id,
+                                    device_name,
+                                ));
+                                scheduler = scheduler.with_sync_engine(sync_engine);
+                                info!(
+                                    transport = ?self.config.sync.transport,
+                                    "Cross-device sync engine initialized"
+                                );
+                            }
+                            Err(e) => {
+                                warn!("Failed to create sync transport: {e}");
                             }
                         }
-                        Err(e) => {
-                            warn!("Failed to get device identity for sync: {e}");
-                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to get device identity for sync: {e}");
                     }
                 }
-            } else {
-                warn!("sync enabled but sync_folder not configured; sync disabled");
             }
         }
 

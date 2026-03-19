@@ -759,12 +759,18 @@ fn migrate_v14(conn: &Connection) -> Result<(), rusqlite::Error> {
 }
 
 fn migrate_v15(conn: &Connection) -> Result<(), rusqlite::Error> {
-    debug!("migration V15 execution: reserved for Sync 3b (lan_peer_pins)");
+    debug!("migration V15 execution: LAN sync peer TOFU pins table");
 
     conn.execute_batch(
         "
-        -- Placeholder for Sync 3b lan_peer_pins table
-        -- (implemented in a separate branch)
+        -- LAN peer TOFU (Trust On First Use) certificate pins
+        CREATE TABLE IF NOT EXISTS lan_peer_pins (
+            device_id TEXT PRIMARY KEY,
+            cert_fingerprint TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            trust_revoked INTEGER NOT NULL DEFAULT 0
+        );
 
         -- version record
         INSERT INTO schema_version (version) VALUES (15);
@@ -1126,6 +1132,16 @@ mod tests {
             )
             .unwrap();
         assert_eq!(has_hlc, 1);
+
+        // V15 — lan_peer_pins table
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='lan_peer_pins'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
 
         // V16 tables
         let count: i64 = conn

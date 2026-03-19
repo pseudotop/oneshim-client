@@ -5,6 +5,7 @@ mod focus_storage_impl;
 mod frames;
 mod fts_search_impl;
 mod integration_query_impl;
+mod lan_pin_store;
 mod maintenance;
 mod metrics;
 mod override_store_impl;

@@ -102,6 +102,14 @@ ed25519-dalek = "2.1"
 zeroize = { version = "1", features = ["derive"] }
 gethostname = "0.4"
 
+# Sync encryption (Phase 3b — shared by oneshim-storage + oneshim-network)
+aes-gcm = "0.10"
+argon2 = "0.5"
+hex = "0.4"
+
+# LAN Sync (Phase 3b-2)
+rcgen = "0.14"
+
 # OS 키체인 (시크릿 저장)
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 

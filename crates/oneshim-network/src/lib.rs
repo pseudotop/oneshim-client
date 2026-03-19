@@ -41,6 +41,8 @@ pub mod resilience;
 pub mod sse_client;
 pub mod ws_client;
 
+pub mod sync;
+
 #[cfg(feature = "grpc")]
 pub mod grpc;
 #[cfg(feature = "grpc")]
