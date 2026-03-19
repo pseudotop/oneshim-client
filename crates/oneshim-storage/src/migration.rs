@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: u32 = 12;
+const CURRENT_VERSION: u32 = 13;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -60,6 +60,10 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 12 {
         migrate_v12(conn)?;
+    }
+
+    if current < 13 {
+        migrate_v13(conn)?;
     }
 
     Ok(())
@@ -639,6 +643,37 @@ fn migrate_v12(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v13(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V13 execution: gui_interactions table for GUI Activity Intelligence");
+
+    conn.execute_batch(
+        "
+        -- GUI interaction events for Phase 2 GUI Activity Intelligence
+        CREATE TABLE IF NOT EXISTS gui_interactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL,
+            segment_id TEXT,
+            timestamp TEXT NOT NULL,
+            element_text TEXT,
+            element_type TEXT,
+            interaction_type TEXT NOT NULL,
+            bbox_json TEXT,
+            app_name TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_gui_segment ON gui_interactions(segment_id);
+        CREATE INDEX IF NOT EXISTS idx_gui_timestamp ON gui_interactions(timestamp);
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (13);
+        ",
+    )?;
+
+    info!("migration V13 completed");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -806,7 +841,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
 
         // V9 tables
         let count: i64 = conn
@@ -893,6 +928,16 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+
+        // V13 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='gui_interactions'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -905,6 +950,6 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
     }
 }

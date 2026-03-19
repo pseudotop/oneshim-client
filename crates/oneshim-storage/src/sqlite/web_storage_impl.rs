@@ -4,9 +4,10 @@ use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::daily_digest::DailyDigest;
 use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
-    FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
-    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord, SegmentSummaryRecord,
-    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
+    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord,
+    HourlyMetricsRecord, LocalSuggestionRecord, MetricExportRecord, SearchEventRow,
+    SearchFrameRow, SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord,
+    SuggestionRecord, TagRecord,
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::WebStorage;
@@ -649,6 +650,79 @@ impl WebStorage for SqliteStorage {
                 })
             })
             .map_err(|e| CoreError::Internal(format!("Failed to query segments: {e}")))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
+
+    fn save_gui_interaction(
+        &self,
+        event_id: &str,
+        segment_id: Option<&str>,
+        timestamp: &str,
+        element_text: Option<&str>,
+        element_type: Option<&str>,
+        interaction_type: &str,
+        bbox_json: Option<&str>,
+        app_name: &str,
+    ) -> Result<(), CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        conn.execute(
+            "INSERT INTO gui_interactions (event_id, segment_id, timestamp, element_text, element_type, interaction_type, bbox_json, app_name)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                event_id,
+                segment_id,
+                timestamp,
+                element_text,
+                element_type,
+                interaction_type,
+                bbox_json,
+                app_name,
+            ],
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to save GUI interaction: {e}")))?;
+        Ok(())
+    }
+
+    fn list_gui_interactions_for_segment(
+        &self,
+        segment_id: &str,
+    ) -> Result<Vec<GuiInteractionRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, event_id, segment_id, timestamp, element_text, element_type,
+                        interaction_type, bbox_json, app_name, created_at
+                 FROM gui_interactions
+                 WHERE segment_id = ?1
+                 ORDER BY timestamp ASC",
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare GUI interaction query: {e}")))?;
+
+        let records: Vec<GuiInteractionRecord> = stmt
+            .query_map(rusqlite::params![segment_id], |row| {
+                Ok(GuiInteractionRecord {
+                    id: row.get(0)?,
+                    event_id: row.get(1)?,
+                    segment_id: row.get(2)?,
+                    timestamp: row.get(3)?,
+                    element_text: row.get(4)?,
+                    element_type: row.get(5)?,
+                    interaction_type: row.get(6)?,
+                    bbox_json: row.get(7)?,
+                    app_name: row.get(8)?,
+                    created_at: row.get(9)?,
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query GUI interactions: {e}")))?
             .filter_map(|r| r.ok())
             .collect();
 

@@ -200,3 +200,18 @@ pub struct SegmentDetailRecord {
     pub dominant_category: String,
     pub regime_label: Option<String>,
 }
+
+/// A GUI interaction event record from the V13 gui_interactions table.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GuiInteractionRecord {
+    pub id: i64,
+    pub event_id: String,
+    pub segment_id: Option<String>,
+    pub timestamp: String,
+    pub element_text: Option<String>,
+    pub element_type: Option<String>,
+    pub interaction_type: String,
+    pub bbox_json: Option<String>,
+    pub app_name: String,
+    pub created_at: String,
+}
