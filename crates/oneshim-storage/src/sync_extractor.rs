@@ -51,9 +51,8 @@ impl SqliteSyncExtractor {
         ];
         let mut total = 0u64;
         for table in &tables {
-            let sql = format!(
-                "UPDATE {table} SET origin_device_id = ?1 WHERE origin_device_id = ''"
-            );
+            let sql =
+                format!("UPDATE {table} SET origin_device_id = ?1 WHERE origin_device_id = ''");
             let updated = conn
                 .execute(&sql, rusqlite::params![device_id])
                 .map_err(|e| {
@@ -81,9 +80,9 @@ impl SqliteSyncExtractor {
                 OR (hlc_wall_ms = ?1 AND hlc_counter = ?2 AND origin_device_id > ?3) \
              ORDER BY hlc_wall_ms, hlc_counter"
         );
-        let mut stmt = conn.prepare(&sql).map_err(|e| {
-            CoreError::Internal(format!("prepare query for {table}: {e}"))
-        })?;
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| CoreError::Internal(format!("prepare query for {table}: {e}")))?;
 
         let rows = stmt
             .query_map(
@@ -154,9 +153,9 @@ impl ChangeExtractor for SqliteSyncExtractor {
         let include_embed_text = self.sync_config.include_embedding_text;
 
         tokio::task::spawn_blocking(move || {
-            let guard = conn.lock().map_err(|e| {
-                CoreError::Internal(format!("SQLite lock poisoned: {e}"))
-            })?;
+            let guard = conn
+                .lock()
+                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
 
             // Backfill on first extraction
             Self::backfill_origin_device_id(&guard, &device_id)?;
@@ -225,12 +224,8 @@ impl ChangeExtractor for SqliteSyncExtractor {
                  'hlc_wall_ms',hlc_wall_ms,'hlc_counter',hlc_counter,\
                  'origin_device_id',origin_device_id)"
             };
-            let embeddings = Self::query_table_changes(
-                &guard,
-                "embedding_vectors",
-                embed_cols,
-                &since,
-            )?;
+            let embeddings =
+                Self::query_table_changes(&guard, "embedding_vectors", embed_cols, &since)?;
 
             // suggestions (LWW, monotonic status merge)
             let suggestions = Self::query_table_changes(
@@ -285,9 +280,9 @@ impl ChangeExtractor for SqliteSyncExtractor {
         let device_id = self.device_id.clone();
 
         tokio::task::spawn_blocking(move || {
-            let guard = conn.lock().map_err(|e| {
-                CoreError::Internal(format!("SQLite lock poisoned: {e}"))
-            })?;
+            let guard = conn
+                .lock()
+                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
             Self::compute_max_hlc(&guard, &device_id)
         })
         .await

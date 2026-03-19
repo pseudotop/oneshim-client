@@ -98,9 +98,9 @@ impl FileSyncTransport {
             .map_err(|e| CoreError::Internal(format!("AES init: {e}")))?;
         let nonce = Nonce::from_slice(nonce_bytes);
 
-        cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|e| CoreError::Internal(format!("AES decrypt failed (wrong passphrase?): {e}")))
+        cipher.decrypt(nonce, ciphertext).map_err(|e| {
+            CoreError::Internal(format!("AES decrypt failed (wrong passphrase?): {e}"))
+        })
     }
 
     /// Build the filename for a changeset.
@@ -169,15 +169,13 @@ impl SyncTransport for FileSyncTransport {
         let since = since.clone();
 
         tokio::task::spawn_blocking(move || {
-            let entries = std::fs::read_dir(&folder).map_err(|e| {
-                CoreError::Internal(format!("read sync folder: {e}"))
-            })?;
+            let entries = std::fs::read_dir(&folder)
+                .map_err(|e| CoreError::Internal(format!("read sync folder: {e}")))?;
 
             let mut best: Option<(Hlc, PathBuf)> = None;
 
             for entry in entries {
-                let entry =
-                    entry.map_err(|e| CoreError::Internal(format!("dir entry: {e}")))?;
+                let entry = entry.map_err(|e| CoreError::Internal(format!("dir entry: {e}")))?;
                 let name = entry.file_name().to_string_lossy().to_string();
 
                 // Skip .tmp files and own files
@@ -216,13 +214,11 @@ impl SyncTransport for FileSyncTransport {
             match best {
                 None => Ok(None),
                 Some((_, path)) => {
-                    let data = std::fs::read(&path).map_err(|e| {
-                        CoreError::Internal(format!("read changeset file: {e}"))
-                    })?;
+                    let data = std::fs::read(&path)
+                        .map_err(|e| CoreError::Internal(format!("read changeset file: {e}")))?;
                     let plaintext = Self::decrypt(&passphrase, &data)?;
-                    let cs: ChangeSet = serde_json::from_slice(&plaintext).map_err(|e| {
-                        CoreError::Internal(format!("deserialize changeset: {e}"))
-                    })?;
+                    let cs: ChangeSet = serde_json::from_slice(&plaintext)
+                        .map_err(|e| CoreError::Internal(format!("deserialize changeset: {e}")))?;
                     debug!(
                         file = %path.display(),
                         rows = cs.row_count(),
@@ -241,16 +237,14 @@ impl SyncTransport for FileSyncTransport {
         let local_device_id = self.local_device_id.clone();
 
         tokio::task::spawn_blocking(move || {
-            let entries = std::fs::read_dir(&folder).map_err(|e| {
-                CoreError::Internal(format!("read sync folder: {e}"))
-            })?;
+            let entries = std::fs::read_dir(&folder)
+                .map_err(|e| CoreError::Internal(format!("read sync folder: {e}")))?;
 
             let mut peers: std::collections::HashMap<String, (u64, u32)> =
                 std::collections::HashMap::new();
 
             for entry in entries {
-                let entry =
-                    entry.map_err(|e| CoreError::Internal(format!("dir entry: {e}")))?;
+                let entry = entry.map_err(|e| CoreError::Internal(format!("dir entry: {e}")))?;
                 let name = entry.file_name().to_string_lossy().to_string();
 
                 if let Some((device_id, wall_ms, counter)) = Self::parse_filename(&name) {
@@ -258,9 +252,7 @@ impl SyncTransport for FileSyncTransport {
                         continue;
                     }
                     let existing = peers.entry(device_id).or_insert((0, 0));
-                    if wall_ms > existing.0
-                        || (wall_ms == existing.0 && counter > existing.1)
-                    {
+                    if wall_ms > existing.0 || (wall_ms == existing.0 && counter > existing.1) {
                         *existing = (wall_ms, counter);
                     }
                 }

@@ -57,6 +57,7 @@ mod setup;
 mod skill_loader;
 mod storage_runtime;
 mod subprocess_provider;
+mod sync_engine;
 mod tray;
 mod update_coordinator;
 mod update_runtime;

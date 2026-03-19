@@ -63,9 +63,7 @@ impl SqliteSyncMerger {
             let sql = format!("DELETE FROM {table} WHERE origin_device_id = ?1");
             let deleted = conn
                 .execute(&sql, rusqlite::params![origin_device_id])
-                .map_err(|e| {
-                    CoreError::Internal(format!("GDPR deletion on {table}: {e}"))
-                })?;
+                .map_err(|e| CoreError::Internal(format!("GDPR deletion on {table}: {e}")))?;
             total_deleted += deleted;
         }
         info!(
@@ -84,14 +82,13 @@ impl ChangeMerger for SqliteSyncMerger {
         let local_device_id = self.local_device_id.clone();
 
         tokio::task::spawn_blocking(move || {
-            let mut guard = conn.lock().map_err(|e| {
-                CoreError::Internal(format!("SQLite lock poisoned: {e}"))
-            })?;
+            let mut guard = conn
+                .lock()
+                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
 
             // Handle GDPR deletion event
             if changes.kind == ChangeSetKind::DeletionEvent {
-                let deleted =
-                    Self::handle_deletion_event(&guard, &changes.origin_device_id)?;
+                let deleted = Self::handle_deletion_event(&guard, &changes.origin_device_id)?;
                 return Ok(SyncResult {
                     tombstoned: deleted,
                     new_watermark: changes.watermark,
@@ -111,9 +108,9 @@ impl ChangeMerger for SqliteSyncMerger {
             let mut result = SyncResult::default();
 
             // All merge operations run inside a single transaction
-            let tx = guard.transaction().map_err(|e| {
-                CoreError::Internal(format!("begin transaction: {e}"))
-            })?;
+            let tx = guard
+                .transaction()
+                .map_err(|e| CoreError::Internal(format!("begin transaction: {e}")))?;
 
             // --- Append-only tables ---
             for row in &changes.segments {
@@ -158,9 +155,8 @@ impl ChangeMerger for SqliteSyncMerger {
             )
             .map_err(|e| CoreError::Internal(format!("update sync_peers: {e}")))?;
 
-            tx.commit().map_err(|e| {
-                CoreError::Internal(format!("commit transaction: {e}"))
-            })?;
+            tx.commit()
+                .map_err(|e| CoreError::Internal(format!("commit transaction: {e}")))?;
 
             result.new_watermark = changes.watermark;
 
@@ -461,6 +457,7 @@ fn merge_embedding(
     Ok(())
 }
 
+#[allow(clippy::type_complexity)]
 fn merge_suggestion(
     conn: &Connection,
     row: &serde_json::Value,
@@ -470,7 +467,14 @@ fn merge_suggestion(
     let remote_hlc = extract_hlc(row)?;
     let remote_status = SqliteSyncMerger::suggestion_status_ordinal(row);
 
-    let local: Option<(u64, u32, String, Option<String>, Option<String>, Option<String>)> = conn
+    let local: Option<(
+        u64,
+        u32,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = conn
         .query_row(
             "SELECT hlc_wall_ms, hlc_counter, origin_device_id, \
              shown_at, dismissed_at, acted_at \
