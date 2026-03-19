@@ -10,6 +10,7 @@ pub mod frame;
 pub mod gui;
 pub mod integration;
 pub mod intent;
+pub mod recalibration;
 pub mod session;
 pub mod skill;
 pub mod storage_records;

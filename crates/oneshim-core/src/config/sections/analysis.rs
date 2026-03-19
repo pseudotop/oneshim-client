@@ -41,6 +41,61 @@ impl Default for AnalysisConfig {
     }
 }
 
+/// Clustering algorithm selection for regime detection.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ClusteringAlgorithm {
+    /// HDBSCAN: density-based clustering with automatic k and noise detection.
+    #[default]
+    Hdbscan,
+    /// K-means: centroid-based clustering (legacy fallback).
+    Kmeans,
+}
+
+/// Configuration for the auto-tuning subsystem (EMA stats + drift detection).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoTuningConfig {
+    /// Whether auto-tuning is enabled.
+    #[serde(default = "default_auto_tuning_enabled")]
+    pub enabled: bool,
+
+    /// Exponential moving average smoothing factor (0 < alpha < 1).
+    #[serde(default = "default_ema_alpha")]
+    pub ema_alpha: f32,
+
+    /// Drift detection threshold in sigma units.
+    #[serde(default = "default_drift_threshold")]
+    pub drift_threshold: f32,
+
+    /// Adjusted Rand Index threshold below which re-clustering is triggered.
+    #[serde(default = "default_reclustering_ari_threshold")]
+    pub reclustering_ari_threshold: f32,
+}
+
+impl Default for AutoTuningConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_auto_tuning_enabled(),
+            ema_alpha: default_ema_alpha(),
+            drift_threshold: default_drift_threshold(),
+            reclustering_ari_threshold: default_reclustering_ari_threshold(),
+        }
+    }
+}
+
+fn default_auto_tuning_enabled() -> bool {
+    true
+}
+fn default_ema_alpha() -> f32 {
+    0.05
+}
+fn default_drift_threshold() -> f32 {
+    2.0
+}
+fn default_reclustering_ari_threshold() -> f32 {
+    0.7
+}
+
 /// Configuration for the Adaptive Tiered Memory subsystem.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TieredMemoryConfig {
@@ -75,6 +130,14 @@ pub struct TieredMemoryConfig {
     /// Minimum segment duration in seconds before close is allowed.
     #[serde(default = "default_min_segment_secs")]
     pub min_segment_secs: u64,
+
+    /// Clustering algorithm for regime detection.
+    #[serde(default)]
+    pub clustering_algorithm: ClusteringAlgorithm,
+
+    /// Auto-tuning configuration (EMA stats + drift detection).
+    #[serde(default)]
+    pub auto_tuning: AutoTuningConfig,
 }
 
 impl Default for TieredMemoryConfig {
@@ -88,6 +151,8 @@ impl Default for TieredMemoryConfig {
             buffer_flush_interval_secs: default_buffer_flush_interval_secs(),
             max_segment_secs: default_max_segment_secs(),
             min_segment_secs: default_min_segment_secs(),
+            clustering_algorithm: ClusteringAlgorithm::default(),
+            auto_tuning: AutoTuningConfig::default(),
         }
     }
 }
