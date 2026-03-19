@@ -8,6 +8,7 @@ pub mod constraint_builder;
 pub mod content_tracker;
 pub mod daily_digest_generator;
 pub mod daily_insight_generator;
+pub mod document_heading;
 pub mod embedding_pipeline;
 pub mod focus_shared;
 pub mod gui_aggregator;
