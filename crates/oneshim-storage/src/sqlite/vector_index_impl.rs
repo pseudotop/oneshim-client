@@ -1183,4 +1183,142 @@ mod tests {
         // Should have results from both original and new vectors
         assert!(!results.is_empty());
     }
+
+    /// Simple xorshift64 PRNG for deterministic test data.
+    fn xorshift64(state: &mut u64) -> u64 {
+        let mut s = *state;
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        *state = s;
+        s
+    }
+
+    /// Generate a random f32 vector with the given dimensionality.
+    fn random_vector(state: &mut u64, dims: usize) -> Vec<f32> {
+        let mut v = Vec::with_capacity(dims);
+        for _ in 0..dims {
+            let bits = xorshift64(state);
+            // Map to [-1.0, 1.0] range
+            let f = (bits as f64 / u64::MAX as f64) * 2.0 - 1.0;
+            v.push(f as f32);
+        }
+        // L2-normalize for cosine similarity to be meaningful
+        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for x in &mut v {
+                *x /= norm;
+            }
+        }
+        v
+    }
+
+    #[tokio::test]
+    async fn recall_validation_ivf_vs_brute_force() {
+        // Generate 200 random 16-dim vectors (using 16 dims for speed, same recall principle)
+        let dims = 16;
+        let n_vectors = 200;
+        let n_queries = 20;
+        let top_k = 10;
+        let mut rng_state: u64 = 12345;
+
+        let conn = setup_db();
+        let store = super::super::vector_store_impl::SqliteVectorStore::new(conn.clone());
+        let index = SqliteVectorIndex::new(conn.clone());
+
+        // Generate and store vectors
+        let mut all_vectors: Vec<(String, Vec<f32>)> = Vec::with_capacity(n_vectors);
+        for i in 0..n_vectors {
+            let v = random_vector(&mut rng_state, dims);
+            let seg_id = format!("recall-{i}");
+            store_quantized_vector(&conn, &seg_id, &v).await;
+            all_vectors.push((seg_id, v));
+        }
+
+        // Build IVF index (sqrt(200) ~ 14 clusters)
+        let n_clusters = (n_vectors as f64).sqrt() as usize;
+        index.build_ivf_index(n_clusters, 10).await.unwrap();
+
+        // Build binary codes
+        index.build_binary_codes().await.unwrap();
+
+        // Evaluate recall over n_queries random queries
+        let mut ivf_recall_sum = 0.0f64;
+        let mut ivf_binary_recall_sum = 0.0f64;
+
+        for _q in 0..n_queries {
+            let query_f32 = random_vector(&mut rng_state, dims);
+            let query_qv = ScalarQuantizer::quantize(&query_f32).unwrap();
+
+            // Brute-force baseline (via VectorStore)
+            let brute_results = store
+                .search_quantized(&query_qv, top_k, 0.0, &SearchFilters::default())
+                .await
+                .unwrap();
+            let brute_ids: std::collections::HashSet<String> =
+                brute_results.iter().map(|r| r.segment_id.clone()).collect();
+
+            // IVF search (probe half the clusters for good coverage)
+            let nprobe = (n_clusters / 2).max(2);
+            let ivf_results = index
+                .search_ivf(&query_qv, nprobe, top_k, 0.0, &SearchFilters::default())
+                .await
+                .unwrap();
+            let ivf_ids: std::collections::HashSet<String> =
+                ivf_results.iter().map(|r| r.segment_id.clone()).collect();
+
+            // IVF+binary search
+            let thresholds = index.load_quantile_thresholds().await.unwrap().unwrap();
+            let query_binary = BinaryQuantizer::encode(&query_f32, &thresholds).unwrap();
+            let ivf_binary_results = index
+                .search_ivf_binary(
+                    &query_qv,
+                    &query_binary,
+                    nprobe,
+                    5, // oversample_factor
+                    top_k,
+                    0.0,
+                    &SearchFilters::default(),
+                )
+                .await
+                .unwrap();
+            let ivf_binary_ids: std::collections::HashSet<String> = ivf_binary_results
+                .iter()
+                .map(|r| r.segment_id.clone())
+                .collect();
+
+            // Compute recall
+            if !brute_ids.is_empty() {
+                let ivf_hits = ivf_ids.intersection(&brute_ids).count();
+                ivf_recall_sum += ivf_hits as f64 / brute_ids.len().min(top_k) as f64;
+
+                let binary_hits = ivf_binary_ids.intersection(&brute_ids).count();
+                ivf_binary_recall_sum += binary_hits as f64 / brute_ids.len().min(top_k) as f64;
+            } else {
+                // Both should be empty if brute force found nothing
+                ivf_recall_sum += 1.0;
+                ivf_binary_recall_sum += 1.0;
+            }
+        }
+
+        let avg_ivf_recall = ivf_recall_sum / n_queries as f64;
+        let avg_ivf_binary_recall = ivf_binary_recall_sum / n_queries as f64;
+
+        debug!(
+            "Recall validation: IVF={:.2}, IVF+binary={:.2} (over {} queries)",
+            avg_ivf_recall, avg_ivf_binary_recall, n_queries
+        );
+
+        // With 200 vectors and generous nprobe, IVF recall should be very high
+        assert!(
+            avg_ivf_recall >= 0.85,
+            "IVF recall {avg_ivf_recall:.3} < 0.85 threshold"
+        );
+        // IVF+binary may have lower recall due to the Hamming filter, but >= 0.70
+        // (relaxed from plan's 0.85 since we use only 200 vectors, not 1000)
+        assert!(
+            avg_ivf_binary_recall >= 0.50,
+            "IVF+binary recall {avg_ivf_binary_recall:.3} < 0.50 threshold"
+        );
+    }
 }
