@@ -54,6 +54,19 @@ pub struct SyncConfig {
     /// Shown to the user on peer devices. Defaults to OS hostname.
     #[serde(default = "default_device_name")]
     pub device_name: String,
+
+    /// Path to the shared sync folder (Dropbox, iCloud, NAS mount, etc.).
+    /// Required when `transport == SyncTransportKind::File`.
+    /// Example: "~/Dropbox/oneshim-sync" or "/Volumes/NAS/sync".
+    #[serde(default)]
+    pub sync_folder: Option<String>,
+
+    /// Argon2id hash of the user-chosen sync passphrase.
+    /// Stored only for passphrase verification on new device setup.
+    /// The actual AES-256-GCM key is derived at runtime via Argon2id KDF.
+    /// Never contains the raw passphrase.
+    #[serde(default)]
+    pub passphrase_hash: Option<String>,
 }
 
 fn default_sync_interval_secs() -> u64 {
@@ -80,6 +93,8 @@ impl Default for SyncConfig {
             include_content_activities: false,
             include_embedding_text: false,
             device_name: default_device_name(),
+            sync_folder: None,
+            passphrase_hash: None,
         }
     }
 }
@@ -100,6 +115,30 @@ mod tests {
     }
 
     #[test]
+    fn sync_config_folder_and_passphrase_default_none() {
+        let config = SyncConfig::default();
+        assert!(config.sync_folder.is_none());
+        assert!(config.passphrase_hash.is_none());
+    }
+
+    #[test]
+    fn sync_config_with_folder_serde_roundtrip() {
+        let config = SyncConfig {
+            enabled: true,
+            sync_folder: Some("/Users/test/Dropbox/oneshim-sync".to_string()),
+            passphrase_hash: Some("$argon2id$v=19$m=65536,t=3,p=4$...".to_string()),
+            ..SyncConfig::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: SyncConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.sync_folder.as_deref(),
+            Some("/Users/test/Dropbox/oneshim-sync")
+        );
+        assert!(parsed.passphrase_hash.is_some());
+    }
+
+    #[test]
     fn sync_config_serde_roundtrip() {
         let config = SyncConfig {
             enabled: true,
@@ -108,6 +147,7 @@ mod tests {
             include_content_activities: true,
             include_embedding_text: false,
             device_name: "Test Machine".to_string(),
+            ..SyncConfig::default()
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: SyncConfig = serde_json::from_str(&json).unwrap();
