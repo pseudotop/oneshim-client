@@ -27,6 +27,7 @@ use super::AdaptiveTriggerState;
 /// 6. Calibration buffer flush
 /// 7. Segment lifecycle (open / close / restart)
 /// 8. Embedding pipeline (Phase 1 immediate + Phase 2 async spawn)
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_analysis_tick(
     ts: &mut AdaptiveTriggerState,
     app_name: &str,
