@@ -146,15 +146,27 @@ mod tests {
 
     struct MockVectorStore {
         results: Vec<SearchResult>,
+        quantized_search_called: std::sync::atomic::AtomicBool,
     }
 
     impl MockVectorStore {
         fn new(results: Vec<SearchResult>) -> Self {
-            Self { results }
+            Self {
+                results,
+                quantized_search_called: std::sync::atomic::AtomicBool::new(false),
+            }
         }
 
         fn empty() -> Self {
-            Self { results: vec![] }
+            Self {
+                results: vec![],
+                quantized_search_called: std::sync::atomic::AtomicBool::new(false),
+            }
+        }
+
+        fn was_quantized_search_called(&self) -> bool {
+            self.quantized_search_called
+                .load(std::sync::atomic::Ordering::Relaxed)
         }
     }
 
@@ -212,6 +224,18 @@ mod tests {
         ) -> Result<(), CoreError> {
             Ok(())
         }
+
+        async fn search_quantized(
+            &self,
+            _query_vector: &oneshim_core::quantization::QuantizedVector,
+            _limit: usize,
+            _time_decay_hours: f32,
+            _filters: &SearchFilters,
+        ) -> Result<Vec<SearchResult>, CoreError> {
+            self.quantized_search_called
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(self.results.clone())
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────
@@ -244,6 +268,7 @@ mod tests {
             pii_filter,
             5,
             168.0,
+            false,
         )
     }
 
