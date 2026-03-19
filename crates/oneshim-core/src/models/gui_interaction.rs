@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use super::frame::BoundingBox;
 
 /// A GUI element inferred from OCR + input correlation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GuiElement {
     /// Text content of the element.
     pub text: String,

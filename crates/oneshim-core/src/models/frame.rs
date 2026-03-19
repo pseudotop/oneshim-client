@@ -21,17 +21,20 @@ impl BoundingBox {
 
     /// Return the center point of the bounding box.
     pub fn center(&self) -> (u32, u32) {
-        (self.x + self.width / 2, self.y + self.height / 2)
+        (
+            self.x.saturating_add(self.width / 2),
+            self.y.saturating_add(self.height / 2),
+        )
     }
 
-    /// Return the area in pixels.
-    pub fn area(&self) -> u32 {
-        self.width * self.height
+    /// Return the area in pixels (u64 to avoid overflow on large bounding boxes).
+    pub fn area(&self) -> u64 {
+        self.width as u64 * self.height as u64
     }
 }
 
 /// OCR text extraction with spatial position information.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OcrRegion {
     /// Extracted text content.
     pub text: String,
@@ -159,7 +162,7 @@ mod tests {
             width: 100,
             height: 50,
         };
-        assert_eq!(bbox.area(), 5000);
+        assert_eq!(bbox.area(), 5000u64);
     }
 
     #[test]
@@ -170,7 +173,29 @@ mod tests {
             width: 0,
             height: 50,
         };
-        assert_eq!(bbox.area(), 0);
+        assert_eq!(bbox.area(), 0u64);
+    }
+
+    #[test]
+    fn bounding_box_area_large_no_overflow() {
+        let bbox = BoundingBox {
+            x: 0,
+            y: 0,
+            width: u32::MAX,
+            height: u32::MAX,
+        };
+        assert_eq!(bbox.area(), u32::MAX as u64 * u32::MAX as u64);
+    }
+
+    #[test]
+    fn bounding_box_center_saturating() {
+        let bbox = BoundingBox {
+            x: u32::MAX,
+            y: u32::MAX,
+            width: 100,
+            height: 100,
+        };
+        assert_eq!(bbox.center(), (u32::MAX, u32::MAX));
     }
 
     #[test]
