@@ -99,6 +99,7 @@ hmac = "0.12"
 rand = "0.10"
 url = "2"
 ed25519-dalek = "2.1"
+zeroize = { version = "1", features = ["derive"] }
 gethostname = "0.4"
 
 # OS 키체인 (시크릿 저장)

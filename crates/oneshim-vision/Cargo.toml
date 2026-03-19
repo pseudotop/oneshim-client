@@ -32,6 +32,7 @@ thiserror = { workspace = true }
 lru = { workspace = true }
 parking_lot = { workspace = true }
 once_cell = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
