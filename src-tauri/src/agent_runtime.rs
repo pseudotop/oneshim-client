@@ -245,6 +245,19 @@ impl AgentRuntimeBundle {
                     calibration_reader,
                     current_regime_id: None,
                     last_detection_time: None,
+                    ema_tracker: oneshim_analysis::auto_tuner::EmaStatsTracker::new(
+                        tm_config.auto_tuning.ema_alpha,
+                    ),
+                    drift_detector: oneshim_analysis::auto_tuner::DriftDetector::new(
+                        tm_config.auto_tuning.ema_alpha,
+                        tm_config.auto_tuning.drift_threshold,
+                    ),
+                    auto_tune_tick_count: 0,
+                    clustering_strategy: None, // Set externally when clustering adapter is wired
+                    override_store: None,      // Set externally when storage is wired
+                    recluster_requested: std::sync::Arc::new(
+                        std::sync::atomic::AtomicBool::new(false),
+                    ),
                     llm_summarizer: llm_summarizer_arc,
                     embedding_pipeline: embedding_pipeline_arc,
                 };

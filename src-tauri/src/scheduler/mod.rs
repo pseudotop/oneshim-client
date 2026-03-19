@@ -51,6 +51,20 @@ pub(crate) struct AdaptiveTriggerState {
     pub current_regime_id: Option<String>,
     /// Last time regime detection (k-means) was run.
     pub last_detection_time: Option<chrono::DateTime<chrono::Utc>>,
+    // --- Priority 2: Auto-Tuning ---
+    /// Per-category EMA statistics tracker for auto-tuning trigger params.
+    pub ema_tracker: oneshim_analysis::auto_tuner::EmaStatsTracker,
+    /// EWMA-based drift detector for regime shift detection.
+    pub drift_detector: oneshim_analysis::auto_tuner::DriftDetector,
+    /// Tick counter for periodic auto-tune override generation.
+    pub auto_tune_tick_count: u64,
+    /// Clustering strategy (HDBSCAN or k-means) for constrained re-clustering.
+    pub clustering_strategy:
+        Option<Box<dyn oneshim_analysis::clustering_strategy::ClusteringStrategy>>,
+    /// Override store for loading user overrides during re-clustering.
+    pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    /// Flag set by REST/Tauri to request on-demand re-clustering.
+    pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
     // --- Layer 2: LLM summary + embedding pipeline ---
     pub(crate) llm_summarizer: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>>,
     pub(crate) embedding_pipeline: Option<Arc<oneshim_analysis::EmbeddingPipeline>>,
