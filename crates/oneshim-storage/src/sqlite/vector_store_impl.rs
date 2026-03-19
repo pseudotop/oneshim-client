@@ -61,6 +61,7 @@ fn i8_vec_to_bytes(v: &[i8]) -> Vec<u8> {
 }
 
 /// Convert a byte slice back to a Vec<i8>.
+#[allow(dead_code)] // Used by search_quantized and backfill_quantized below.
 fn bytes_to_i8_vec(b: &[u8]) -> Vec<i8> {
     b.iter().map(|&b| b as i8).collect()
 }
