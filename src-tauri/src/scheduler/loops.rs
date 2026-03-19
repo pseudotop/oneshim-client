@@ -173,7 +173,7 @@ impl Scheduler {
             // Focused element from accessibility API (Phase 2). Updated each
             // tick when accessibility extraction is enabled. Fed into the GUI
             // pipeline for supplementary context alongside OCR regions.
-            let mut _last_focused_element: Option<
+            let mut last_focused_element: Option<
                 oneshim_core::models::focused_element::FocusedElementInfo,
             > = None;
             // OCR regions from the most recent frame capture. Updated each time
@@ -251,11 +251,11 @@ impl Scheduler {
                                         .await
                                     {
                                         Ok(info) => {
-                                            _last_focused_element = info;
+                                            last_focused_element = info;
                                         }
                                         Err(e) => {
                                             debug!("accessibility extraction failed: {e}");
-                                            _last_focused_element = None;
+                                            last_focused_element = None;
                                         }
                                     }
                                 }
@@ -399,6 +399,7 @@ impl Scheduler {
                                         app_changed,
                                         &input_snap,
                                         last_gui_summary.as_ref(),
+                                        last_focused_element.as_ref(),
                                         &storage1,
                                     ).await;
                                 }
@@ -424,6 +425,7 @@ impl Scheduler {
                                             &app_name,
                                             &focus_window_title,
                                             &parsed_content_label,
+                                            last_focused_element.as_ref(),
                                         );
 
                                         if gui_summary.is_some() {

@@ -10,6 +10,7 @@
 
 use oneshim_analysis::gui_aggregator::GuiActivityAggregator;
 use oneshim_core::models::event::InputActivityEvent;
+use oneshim_core::models::focused_element::FocusedElementInfo;
 use oneshim_core::models::frame::OcrRegion;
 use oneshim_core::models::gui_activity::GuiActivitySummary;
 use oneshim_core::models::gui_interaction::{
@@ -42,7 +43,7 @@ pub(crate) struct GuiPipelineState {
 ///
 /// The caller (monitor loop) feeds the returned summary into
 /// `ContentTracker::update()`.
-#[allow(dead_code)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub(crate) fn run_gui_tick(
     state: &mut GuiPipelineState,
     ocr_regions: &[OcrRegion],
@@ -51,6 +52,7 @@ pub(crate) fn run_gui_tick(
     app_name: &str,
     window_title: &str,
     content_label: &str,
+    focused_element: Option<&FocusedElementInfo>,
 ) -> Option<GuiActivitySummary> {
     let now = Utc::now();
     let mut result: Option<GuiActivitySummary> = None;
@@ -70,16 +72,34 @@ pub(crate) fn run_gui_tick(
             .detector
             .correlate_click(click_x, click_y, ocr_regions);
 
-        let gui_element = element.unwrap_or_else(|| GuiElement {
-            text: String::new(),
-            bbox: oneshim_core::models::frame::BoundingBox {
-                x: click_x,
-                y: click_y,
-                width: 1,
-                height: 1,
-            },
-            element_type: GuiElementType::Unknown,
-            confidence: 0.0,
+        let gui_element = element.unwrap_or_else(|| {
+            // If accessibility provides a focused element label, use it as
+            // a better fallback than a completely empty element.
+            let (text, element_type) = focused_element
+                .and_then(|fe| {
+                    fe.label.as_ref().map(|label| {
+                        let etype = match fe.role.as_str() {
+                            "AXButton" => GuiElementType::Button,
+                            "AXTextField" | "AXTextArea" | "edit" => GuiElementType::TextInput,
+                            "AXMenuItem" | "AXMenu" => GuiElementType::MenuItem,
+                            _ => GuiElementType::Unknown,
+                        };
+                        (label.clone(), etype)
+                    })
+                })
+                .unwrap_or((String::new(), GuiElementType::Unknown));
+
+            GuiElement {
+                text,
+                bbox: oneshim_core::models::frame::BoundingBox {
+                    x: click_x,
+                    y: click_y,
+                    width: 1,
+                    height: 1,
+                },
+                element_type,
+                confidence: if focused_element.is_some() { 0.6 } else { 0.0 },
+            }
         });
 
         let interaction_event = GuiInteractionEvent {
@@ -250,6 +270,7 @@ mod tests {
             "VS Code",
             "main.rs",
             "main.rs",
+            None,
         );
 
         // No flush yet (only 1 event, window not expired)
@@ -265,6 +286,7 @@ mod tests {
             "VS Code",
             "lib.rs",
             "lib.rs", // different content_label triggers flush
+            None,
         );
 
         let summary = result.expect("content label change should flush");
@@ -288,6 +310,7 @@ mod tests {
             "VS Code",
             "main.rs",
             "main.rs",
+            None,
         );
 
         // Push second event — triggers flush due to max_events=1
@@ -299,6 +322,7 @@ mod tests {
             "VS Code",
             "main.rs",
             "main.rs",
+            None,
         );
 
         let summary = result.expect("max_events should trigger flush");
@@ -321,6 +345,7 @@ mod tests {
             "VS Code",
             "main.rs",
             "main.rs",
+            None,
         );
 
         // Second event to flush
@@ -332,6 +357,7 @@ mod tests {
             "VS Code",
             "main.rs",
             "main.rs",
+            None,
         );
 
         let summary = result.expect("should flush via max_events");
@@ -358,11 +384,21 @@ mod tests {
             "VS Code",
             "main.rs",
             "main.rs",
+            None,
         );
 
         // Flush via content change
         let input2 = make_input(1, Some((100.0, 100.0)), 0, 0);
-        let result = run_gui_tick(&mut state, &[], &input2, &[], "VS Code", "lib.rs", "lib.rs");
+        let result = run_gui_tick(
+            &mut state,
+            &[],
+            &input2,
+            &[],
+            "VS Code",
+            "lib.rs",
+            "lib.rs",
+            None,
+        );
 
         let summary = result.expect("content change should flush");
         // All 3 shortcuts were fed as events
@@ -387,6 +423,7 @@ mod tests {
             "Chrome",
             "Google",
             "search",
+            None,
         );
 
         // Flush via content change
@@ -399,6 +436,7 @@ mod tests {
             "Chrome",
             "Results",
             "results",
+            None,
         );
 
         let summary = result.expect("should flush on content change");
@@ -421,6 +459,7 @@ mod tests {
             "VS Code",
             "main.rs",
             "main.rs",
+            None,
         );
 
         assert!(result.is_none());

@@ -7,6 +7,7 @@
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use oneshim_analysis::TriggerDecision;
 use oneshim_core::models::event::InputActivityEvent;
+use oneshim_core::models::focused_element::FocusedElementInfo;
 use oneshim_core::models::gui_activity::GuiActivitySummary;
 use oneshim_core::models::tiered_memory::{TriggerInput, TriggerReason};
 use oneshim_core::models::work_session::AppCategory;
@@ -36,6 +37,7 @@ pub(super) async fn run_analysis_tick(
     app_changed: bool,
     input_snap: &InputActivityEvent,
     gui_summary: Option<&GuiActivitySummary>,
+    focused_element: Option<&FocusedElementInfo>,
     storage: &Arc<dyn StorageService>,
 ) {
     let now = Utc::now();
@@ -76,6 +78,39 @@ pub(super) async fn run_analysis_tick(
     // 4b. Refine work type using GUI signals (if available)
     let work_type = if let Some(gui) = gui_summary {
         ts.gui_work_type_refiner.refine(work_type, gui)
+    } else {
+        work_type
+    };
+
+    // 4c. Refine work type using accessibility role when focused element has
+    //     a text-input role (AXTextArea, AXTextField). This helps distinguish
+    //     e.g., terminal panel vs. editor panel when the app is an IDE.
+    let work_type = if let Some(fe) = focused_element {
+        match fe.role.as_str() {
+            "AXTextArea" | "AXTextField" | "edit" | "document" => {
+                // Element is a text input -- classification stands or can be
+                // strengthened. No override needed; the subcategory rules from
+                // classify_extended() already handle this.
+                work_type
+            }
+            "AXStaticText" | "text" => {
+                // Focused on static text (likely reading). If current type
+                // is an active type, consider downgrading.
+                match work_type {
+                    oneshim_core::models::tiered_memory::WorkType::ActiveCoding
+                    | oneshim_core::models::tiered_memory::WorkType::Writing
+                    | oneshim_core::models::tiered_memory::WorkType::DocumentWriting => {
+                        if engagement.keystrokes_per_min < 5.0 {
+                            oneshim_core::models::tiered_memory::WorkType::Reading
+                        } else {
+                            work_type
+                        }
+                    }
+                    _ => work_type,
+                }
+            }
+            _ => work_type,
+        }
     } else {
         work_type
     };
@@ -798,6 +833,7 @@ mod tests {
             true, // app_changed
             &input,
             None,
+            None,
             &storage,
         )
         .await;
@@ -824,6 +860,7 @@ mod tests {
                 &None,
                 false,
                 &input,
+                None,
                 None,
                 &storage,
             )
@@ -855,6 +892,7 @@ mod tests {
                 app_changed,
                 &input,
                 None,
+                None,
                 &storage,
             )
             .await;
@@ -880,7 +918,10 @@ mod tests {
         let mut prev: Option<String> = None;
         for (name, title) in &apps {
             let changed = prev.as_deref() != Some(*name);
-            run_analysis_tick(&mut ts, name, title, &prev, changed, &input, None, &storage).await;
+            run_analysis_tick(
+                &mut ts, name, title, &prev, changed, &input, None, None, &storage,
+            )
+            .await;
             prev = Some(name.to_string());
         }
 
@@ -910,6 +951,7 @@ mod tests {
             &None,
             true,
             &input,
+            None,
             None,
             &storage,
         )
