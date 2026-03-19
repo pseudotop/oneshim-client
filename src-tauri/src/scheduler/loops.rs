@@ -1219,6 +1219,29 @@ impl Scheduler {
 
         let shared_input_collector = Arc::new(InputActivityCollector::new());
 
+        // -- Phase 1.5: Platform key-category hook --
+        // Spawns a passive OS keyboard observer that classifies key events
+        // into KeyCategory and feeds them into InputActivityCollector.
+        // Gated by text_intelligence.input_pattern_detail config flag.
+        let _key_hook = {
+            let text_intel_config = self
+                .config_manager
+                .as_ref()
+                .map(|cm| cm.get().analysis.text_intelligence.clone())
+                .unwrap_or_default();
+
+            if text_intel_config.enabled && text_intel_config.input_pattern_detail {
+                oneshim_monitor::key_hook::KeyHook::start(shared_input_collector.clone())
+            } else {
+                debug!(
+                    "key-category hook disabled \
+                     (text_intelligence.input_pattern_detail = false \
+                     or text_intelligence.enabled = false)"
+                );
+                None
+            }
+        };
+
         // Take adaptive trigger state out of Mutex — it is consumed by the
         // monitor loop and cannot be shared.
         let mut adaptive_trigger_state = self
