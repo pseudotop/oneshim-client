@@ -974,23 +974,65 @@ to intercept accessibility API data in transit.
 is ensuring Hardened Runtime is enabled in the Tauri build configuration and the
 code signing workflow, not adding explicit entitlement entries.
 
-### 9.2 zeroize for raw text
+### 9.2 Process Hardening (Windows)
+
+Windows does not offer a third-party equivalent of macOS Hardened Runtime.
+Protected Process Light (PPL) is reserved for Microsoft-signed system processes.
+Instead, Rust binaries benefit from compiler-level mitigations that are enabled
+by default:
+
+| Mitigation | Mechanism | Rust default? |
+|------------|-----------|---------------|
+| **ASLR** (Address Space Layout Randomization) | Randomizes memory layout on each launch | Yes (`/DYNAMICBASE` linker flag) |
+| **DEP** (Data Execution Prevention) | Prevents code execution from data pages | Yes (`/NXCOMPAT` linker flag) |
+| **CFG** (Control Flow Guard) | Validates indirect call targets at runtime | Yes (MSVC toolchain, `-C control-flow-guard`) |
+| **CET** (Control-flow Enforcement Technology) | Hardware shadow stack (Intel 12th gen+) | Partial (requires opt-in via linker) |
+
+**Additional Windows-specific hardening:**
+
+1. **DLL search order restriction** — Call `SetDllDirectory("")` at startup to remove
+   CWD from the DLL search path, preventing DLL hijacking via the application directory.
+   ```rust
+   #[cfg(target_os = "windows")]
+   unsafe { windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW(
+       windows_sys::core::w!("")
+   ); }
+   ```
+
+2. **Smart App Control compliance** — Authenticode code signing is sufficient.
+   Unsigned binaries are blocked entirely on new Windows 11 installs with Smart
+   App Control enabled (no "Run anyway" option).
+
+3. **Anti-debugging** (optional, for sensitive operations like accessibility text extraction):
+   ```rust
+   #[cfg(target_os = "windows")]
+   fn is_debugger_attached() -> bool {
+       unsafe { windows_sys::Win32::System::Diagnostics::Debug::IsDebuggerPresent() != 0 }
+   }
+   ```
+   When a debugger is detected, skip accessibility text extraction and log a `warn!`.
+
+**Note**: macOS Hardened Runtime is already handled separately in the existing
+build/signing configuration. The two platform hardening strategies are independent
+and do not share code.
+
+### 9.4 zeroize for raw text
 
 All raw text from the accessibility API passes through `Zeroizing<String>` before
 PII filtering. See Section 6.5 for details.
 
-**Memory exposure window**: From the moment `AXUIElementCopyAttributeValue` returns
-the raw string to the moment `Zeroizing<String>` is dropped after PII filtering.
-Typical duration: < 1ms. This is acceptable for the threat model (local process
-memory, not network-exposed).
+**Memory exposure window**: From the moment `AXUIElementCopyAttributeValue` (macOS)
+or `ITextRangeProvider::GetText` (Windows) returns the raw string to the moment
+`Zeroizing<String>` is dropped after PII filtering. Typical duration: < 1ms.
+This is acceptable for the threat model (local process memory, not network-exposed).
 
-### 9.3 Consent double-gate
+### 9.5 Consent double-gate
 
 The `Off` PII level requires both a config setting and a consent flag. See
 Section 8.4 for details. The silent fallback to `Standard` when consent is
 missing ensures defense-in-depth.
 
-### 9.4 Audit logging
+### 9.6 Audit logging
 
 The following events are logged to the existing audit infrastructure (via
 `oneshim-automation/src/audit.rs` or the Tauri audit channel):
