@@ -4,6 +4,7 @@ mod assembler;
 pub mod calibration_buffer;
 pub mod clustering_strategy;
 pub mod hdbscan_detector;
+pub mod kmeans_adapter;
 mod content_tracker;
 pub mod daily_digest_generator;
 pub mod daily_insight_generator;
