@@ -42,6 +42,10 @@ pub struct SearchFilters {
     pub before: Option<DateTime<Utc>>,
     pub content_types: Option<Vec<EmbeddingContentType>>,
     pub regime_id: Option<String>,
+    /// Segment IDs to exclude from search results (e.g. segments whose
+    /// originating suggestion was dismissed by the user).
+    #[serde(default)]
+    pub excluded_segment_ids: Vec<String>,
 }
 
 /// Enriched search result combining vector similarity with segment metadata.
@@ -105,6 +109,27 @@ mod tests {
         assert!(filters.before.is_none());
         assert!(filters.content_types.is_none());
         assert!(filters.regime_id.is_none());
+        assert!(filters.excluded_segment_ids.is_empty());
+    }
+
+    #[test]
+    fn search_filters_excluded_segment_ids_backward_compat() {
+        // Old JSON without excluded_segment_ids should deserialize fine
+        let json = r#"{"after":null,"before":null,"content_types":null,"regime_id":null}"#;
+        let filters: SearchFilters = serde_json::from_str(json).unwrap();
+        assert!(filters.excluded_segment_ids.is_empty());
+    }
+
+    #[test]
+    fn search_filters_excluded_segment_ids_roundtrip() {
+        let filters = SearchFilters {
+            excluded_segment_ids: vec!["seg-x".to_string(), "seg-y".to_string()],
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&filters).unwrap();
+        let back: SearchFilters = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.excluded_segment_ids.len(), 2);
+        assert_eq!(back.excluded_segment_ids[0], "seg-x");
     }
 
     #[test]
