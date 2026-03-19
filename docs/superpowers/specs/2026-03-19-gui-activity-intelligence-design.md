@@ -103,17 +103,25 @@ bounding boxes (parallel work) bridges this gap.
 
 ## 4. Components
 
-### 4.1 GuiElementDetector
+### 4.1 InputOcrCorrelator (Phase 1) / GuiElementDetector (Phase 2)
+
+> **Implementation note:** The Phase 1 implementation is named
+> `InputOcrCorrelator` (in `oneshim-vision`). It will be expanded and
+> renamed to `GuiElementDetector` in Phase 2 when additional capabilities
+> (proximity fallback, screen resolution awareness) are added.
 
 Correlates a mouse event position with the nearest OCR region to identify
 which GUI element the user interacted with.
 
 ```
+Phase 1 (InputOcrCorrelator):
 Input:  click_position: (u32, u32)
         ocr_regions: &[OcrRegion]
-        screen_resolution: (u32, u32)
 
 Output: Option<GuiElement>
+
+Phase 2 (GuiElementDetector) adds:
+        screen_resolution: (u32, u32)   -- TODO Phase 2
 ```
 
 **Algorithm:**
@@ -121,8 +129,10 @@ Output: Option<GuiElement>
    (use existing `BoundingBox::contains_point()`).
 2. If multiple matches (overlapping regions), pick smallest by area
    (most specific element).
-3. If no direct hit, find nearest region within a 40px proximity threshold
-   (buttons have padding beyond text bounds).
+3. ~~If no direct hit, find nearest region within a 40px proximity threshold
+   (buttons have padding beyond text bounds).~~ **Phase 2 TODO:** Proximity
+   fallback (40px threshold) is not implemented in Phase 1. Phase 1 returns
+   `None` when no bounding box directly contains the click point.
 4. Return `None` if no region within threshold.
 
 **Complexity:** O(n) scan over OCR regions per click. Typical frame has
@@ -166,24 +176,40 @@ Output: GuiElementType
 
 The output of correlating one input event with one OCR frame.
 
+**Phase 1 (implemented) — flat interaction type:**
 ```
 Fields:
   timestamp: DateTime<Utc>
   app_name: String
-  window_title: String
   element: GuiElement
     text: String           -- OCR text of the element
     element_type: GuiElementType
     bbox: BoundingBox
     confidence: f32        -- OCR confidence
-  interaction: InteractionType
-    Click { button: ClickButton }
+  interaction: GuiInteractionType
+    Click
     DoubleClick
     RightClick
-    KeyboardShortcut { keys: String }  -- e.g., "Cmd+S"
-    TextEntry { char_count: u32 }
-  screen_position: (u32, u32)
+    Type
+    Hover
 ```
+
+**Phase 2 additions:**
+```
+  window_title: String                    -- not in Phase 1
+  screen_position: (u32, u32)             -- not in Phase 1
+  interaction: InteractionType            -- replaces flat GuiInteractionType
+    Click { button: ClickButton }
+    KeyboardShortcut { keys: String }     -- e.g., "Cmd+S"
+    TextEntry { char_count: u32, duration_ms: u64 }
+    Scroll { direction: ScrollDirection, amount: u32 }
+    DragDrop { from: (u32, u32), to: (u32, u32) }
+```
+
+> **Note:** Phase 1 uses a simpler flat `GuiInteractionType` enum
+> (`Click, DoubleClick, RightClick, Type, Hover`) without structured
+> payloads. Phase 2 expands this to `InteractionType` with per-variant
+> data, and adds `window_title` and `screen_position` fields.
 
 ### 4.4 GuiActivityAggregator
 
@@ -289,8 +315,24 @@ more context for suggestion generation.
 
 ### 5.3 WorkTypeClassifier refinement
 
-`WorkTypeClassifier` currently uses aggregate keyboard/mouse rates. GUI
-activity enables more precise classification:
+**Approach: Post-hoc refinement, not a new input channel.**
+
+`WorkTypeClassifier` remains unchanged. A new `GuiWorkTypeRefiner` wraps it
+and applies GUI-based corrections after the initial classification. This
+keeps the existing classifier stable and testable in isolation.
+
+**Refinement rules:**
+
+| Initial classification | GUI signal | Refined result |
+|------------------------|-----------|----------------|
+| `ActiveCoding` | frequent Save clicks | confirmed `ActiveCoding` |
+| `Unknown` | heavy form interaction (TextInput clicks, Type events) | `FormFilling` |
+| `Reading` | scroll-only, no clicks | confirmed `Reading` |
+| `ActiveCoding` | typing in terminal area (bottom 30%) | may refine to `DevOps` |
+| `Browsing` | text input interactions dominate | refine to `FormFilling` |
+| `Reading` | frequent clicking on UI elements | refine to `Navigation` |
+
+**Signal table (preserved from original):**
 
 | Signal | Current inference | With GUI intelligence |
 |--------|-------------------|----------------------|
@@ -325,6 +367,12 @@ The filter already handles email addresses, phone numbers, API keys, IPs,
 credit card numbers, SSNs, and file paths (see `oneshim-vision/src/privacy.rs`).
 GUI element text is treated identically to OCR text — same filter, same level.
 
+> **Implementation note:** `InputOcrCorrelator` should apply the PII filter
+> to `GuiElement.text` at creation time (when constructing the
+> `GuiInteractionEvent`), not deferred to storage or display. This ensures
+> PII-filtered text is the only representation that ever exists in memory
+> beyond the correlator.
+
 ### 6.2 Coordinate sensitivity
 
 Mouse coordinates alone are not PII. However, coordinates correlated with
@@ -355,7 +403,7 @@ alongside `ContentActivity` in the segment store — same lifecycle.
 | Component | Crate | Rationale |
 |-----------|-------|-----------|
 | `GuiInteractionEvent`, `GuiActivitySummary`, `GuiElementType` | `oneshim-core/src/models/gui_interaction.rs` | Domain models (being created in parallel) |
-| `GuiElementDetector` | `oneshim-vision/src/gui_detector.rs` | OCR region correlation is vision-layer logic |
+| `InputOcrCorrelator` (Phase 1) / `GuiElementDetector` (Phase 2) | `oneshim-vision/src/gui_detector.rs` | OCR region correlation is vision-layer logic |
 | `ElementTypeInferencer` | `oneshim-vision/src/element_inferencer.rs` | Heuristic classification from visual features |
 | `GuiActivityAggregator` | `oneshim-analysis/src/gui_aggregator.rs` | Temporal aggregation is analysis-layer logic |
 | Summary line generation | `oneshim-analysis/src/gui_aggregator.rs` | Part of aggregation |
@@ -369,24 +417,71 @@ No new ports are introduced. `GuiElementDetector` and `GuiActivityAggregator`
 are concrete structs (like `PatternMiner` and `ContentTracker`), not port
 traits. They are pure-algorithm components with no I/O.
 
-## 8. Data Model Details
+## 8. Monitor Loop Decomposition
 
-### 8.1 GuiElementType enum
+The GUI pipeline should be self-contained, following the pattern established
+by `analysis_pipeline::tick()`.
 
+**Recommendation:**
+
+- Introduce `gui_pipeline::tick()` as the single entry point for all GUI
+  intelligence processing per scheduler cycle.
+- The monitor loop calls `gui_pipeline::tick()` alongside
+  `analysis_pipeline::tick()` — both are self-contained.
+- `gui_pipeline::tick()` internally orchestrates:
+  1. `InputOcrCorrelator` — correlate pending input events with latest OCR frame
+  2. `ElementTypeInferencer` — classify matched elements
+  3. `GuiActivityAggregator` — accumulate into current time window
+  4. `GuiWorkTypeRefiner` — post-hoc refinement of WorkType (see §5.3)
+
+**Configuration:**
+
+Anticipate a `GuiIntelligenceConfig` sub-section within `AnalysisConfig`:
+
+```
+AnalysisConfig {
+    ...existing fields...
+    gui_intelligence: GuiIntelligenceConfig {
+        enabled: bool,              // default: true
+        aggregation_window_secs: u64, // default: 60
+        max_events_per_segment: u32,  // default: 1000
+    }
+}
+```
+
+This keeps GUI intelligence toggleable without affecting other analysis
+pipelines.
+
+## 9. Data Model Details
+
+### 9.1 GuiElementType enum
+
+**Phase 1 (implemented):**
 ```
 Button          -- clickable action trigger
 TextInput       -- editable text field
-MenuItem        -- menu bar or context menu entry
-Tab             -- tab bar item
 Link            -- hyperlink
+MenuItem        -- menu bar or context menu entry
+TabLabel        -- tab bar item
+StatusBar       -- status bar element
+TitleBar        -- title bar element
+Unknown         -- none of the above (fallback)
+```
+
+**Phase 2 additions:**
+```
 ToolbarIcon     -- toolbar button/icon
 TreeItem        -- file tree or outline tree node
-StatusBarItem   -- status bar element
 ScrollBar       -- scroll interaction target
 TextRegion      -- general text (code, document content)
 ```
 
-### 8.2 ClickType enum
+> **Note:** Phase 1 uses `TabLabel`/`StatusBar`/`TitleBar`/`Unknown` instead
+> of the original spec's `Tab`/`StatusBarItem`/`TextRegion`. The Phase 2
+> variants will be added when app-specific overrides and richer heuristics
+> are implemented.
+
+### 9.2 ClickType enum
 
 ```
 Single
@@ -394,8 +489,18 @@ Double
 Right
 ```
 
-### 8.3 InteractionType enum
+### 9.3 GuiInteractionType (Phase 1) / InteractionType (Phase 2)
 
+**Phase 1 (implemented) — flat enum, no payloads:**
+```
+Click
+DoubleClick
+RightClick
+Type
+Hover
+```
+
+**Phase 2 — structured enum with per-variant data:**
 ```
 Click { button: ClickType }
 KeyboardShortcut { keys: String }
@@ -404,25 +509,36 @@ Scroll { direction: ScrollDirection, amount: u32 }
 DragDrop { from: (u32, u32), to: (u32, u32) }
 ```
 
-## 9. Phased Implementation
+## 10. Phased Implementation
 
 ### Phase 1: Foundation (parallel work, in progress)
 
 - `OcrRegion` extraction with bounding boxes from OCR engine
-- `InputOcrCorrelator`: match click positions to OCR regions
-- `GuiElementDetector`: wrap correlation with element type inference
-- Basic `GuiInteractionEvent` emission
+- `InputOcrCorrelator`: match click positions to OCR regions + element type
+  inference (combined in single component for Phase 1)
+- Flat `GuiInteractionType` enum (`Click, DoubleClick, RightClick, Type, Hover`)
+- Phase 1 element types: `Button, TextInput, Link, MenuItem, TabLabel, StatusBar, TitleBar, Unknown`
+- PII filter applied to `GuiElement.text` at creation time
+- Basic `GuiInteractionEvent` emission (no `window_title` or `screen_position`)
 - Unit tests: synthetic OCR regions + click positions
 
 **Deliverable:** Stream of `GuiInteractionEvent` per frame capture cycle.
 
 ### Phase 2: Aggregation + Integration
 
+- Rename `InputOcrCorrelator` → `GuiElementDetector` with expanded API:
+  - Add `screen_resolution` parameter
+  - Add 40px proximity fallback for near-miss clicks
+  - Add element types: `ToolbarIcon, TreeItem, ScrollBar, TextRegion`
+- Upgrade `GuiInteractionType` → structured `InteractionType` with payloads
+- Add `window_title` and `screen_position` fields to `GuiInteractionEvent`
 - `GuiActivityAggregator` with time-window grouping
 - `GuiActivitySummary` production with semantic action detection
+- `GuiWorkTypeRefiner`: post-hoc WorkType refinement using GUI signals (see §5.3)
 - `ContentTracker` integration: `gui_summary` field on `ContentActivity`
 - `ContextAssembler` enrichment: summary lines in LLM context
-- `WorkTypeClassifier` refinement: element-type-aware classification
+- `gui_pipeline::tick()` as self-contained entry point (see §8)
+- `GuiIntelligenceConfig` sub-section in `AnalysisConfig`
 - SQLite storage: `gui_interactions` table (event log) + summary in segments
 
 **Deliverable:** Enriched `SegmentSummary` with GUI-level detail flowing
@@ -438,7 +554,7 @@ into LLM analysis pipeline.
 
 **Deliverable:** LLM suggestions that reference specific GUI actions.
 
-## 10. Performance Budget
+## 11. Performance Budget
 
 | Operation | Budget | Approach |
 |-----------|--------|----------|
@@ -452,7 +568,7 @@ into LLM analysis pipeline.
 The entire pipeline runs synchronously within the existing scheduler
 `monitor_loop` tick. No additional async tasks or threads needed.
 
-## 11. Testing Strategy
+## 12. Testing Strategy
 
 ### Unit tests (per component)
 
@@ -473,7 +589,7 @@ The entire pipeline runs synchronously within the existing scheduler
 - Aggregator event count must equal sum of per-type counts
 - Summary line must contain content_label
 
-## 12. Open Questions
+## 13. Open Questions
 
 | Question | Options | Leaning |
 |----------|---------|---------|
@@ -482,7 +598,7 @@ The entire pipeline runs synchronously within the existing scheduler
 | Should element type inference learn from user corrections? | Feedback loop / static rules | Static rules for Phase 1-2, feedback in Phase 3 |
 | Maximum interaction events per segment? | 1000 / 5000 / unlimited | 1000 with oldest-eviction, sufficient for 30min segments |
 
-## 13. Non-Goals
+## 14. Non-Goals
 
 - **Accessibility tree parsing** — requires OS-level accessibility APIs (macOS AX, Windows UIA). Too platform-specific for Phase 1. OcrRegion-based approach works cross-platform.
 - **Pixel-level UI element detection** — computer vision models (YOLO, etc.) add ~100MB model weight. OCR + heuristics is sufficient for text-based UIs.
