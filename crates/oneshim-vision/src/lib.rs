@@ -4,6 +4,7 @@ pub mod capture;
 pub mod delta;
 pub mod element_finder;
 pub mod encoder;
+pub mod input_correlator;
 pub mod local_ocr_provider;
 #[cfg(feature = "ocr")]
 pub mod ocr;
