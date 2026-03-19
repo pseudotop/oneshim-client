@@ -3,13 +3,16 @@
 > Created: 2026-03-19
 > Status: Draft
 > Depends on: Layer 2 LLM Summary + Vector RAG (implemented)
+> Parent ADR: [ADR-013: LLM Segment Summary + Vector RAG](../../architecture/ADR-013-llm-summary-vector-rag.md)
 
 ## 1. Goal
 
 Reduce storage footprint and improve search speed for the local vector store
 (currently 384-dim float32 = 1,536 bytes per vector) while preserving retrieval
-quality. Secondary goal: explore lightweight ways to improve embedding relevance
-for desktop-activity data without requiring GPU-based fine-tuning.
+quality. The current implementation uses brute-force cosine similarity in
+`SqliteVectorStore` (no sqlite-vec extension). Secondary goal: explore
+lightweight ways to improve embedding relevance for desktop-activity data
+without requiring GPU-based fine-tuning.
 
 Targets at 50K vectors (90-day retention):
 
@@ -34,8 +37,10 @@ Targets at 50K vectors (90-day retention):
 
 **Rationale:** Scalar INT8 provides a predictable 4x compression with negligible
 recall loss (~99%) across all embedding models. It works well at any scale and
-any dimensionality. No training phase, no codebook, no model dependency. The
-`lnmp-quant` Rust crate provides a ready implementation.
+any dimensionality. No training phase, no codebook, no model dependency.
+Scalar quantization is ~40 lines of arithmetic (min/max scaling to i8 range),
+implemented inline in `oneshim-core/src/quantization.rs` with no external
+dependency.
 
 ### 2.2 Search Acceleration: Quantized Distance on INT8
 
@@ -64,8 +69,14 @@ retrieval quality at query time:
 2. **Relevance feedback re-ranking** — after initial vector search, re-rank
    results using lightweight heuristics (content type match, recency boost,
    same-regime bonus). Already partially implemented via `time_decay`.
-3. **Negative feedback filtering** — if the user dismisses a suggestion, store
-   the segment_id and down-weight it in future searches.
+3. **Negative feedback filtering** — if the user dismisses a suggestion, use
+   the existing `suggestions.dismissed_at` timestamp (set when user dismisses
+   via the UI) to derive a blocklist. Since `suggestions` does not carry a
+   `segment_id` foreign key, the mapping is: dismissed `suggestion_id` -->
+   look up the `embedding_vectors.segment_id` that sourced the suggestion via
+   the `content_label`/`suggestion_type` link already stored in both tables.
+   No new table is needed; Phase B adds a query-time JOIN to exclude
+   segment_ids whose originating suggestion was dismissed.
 
 ### 2.4 Storage Format: Dual-store with lazy migration
 
@@ -79,9 +90,9 @@ background maintenance task (same pattern as `mark_stale` / `get_stale_vectors`)
 
 ```
 oneshim-core/src/
-└── quantization.rs    # Pure functions, no async, no dependencies
+└── quantization.rs    # Pure functions, no async, no dependencies (~40 lines)
     ├── ScalarQuantizer
-    │   ├── quantize(Vec<f32>) -> QuantizedVector
+    │   ├── quantize(Vec<f32>) -> Result<QuantizedVector, CoreError>
     │   ├── dequantize(&QuantizedVector) -> Vec<f32>
     │   └── cosine_similarity_quantized(&QuantizedVector, &QuantizedVector) -> f32
     └── QuantizedVector { data: Vec<i8>, scale: f32, offset: f32 }
@@ -91,10 +102,22 @@ oneshim-core/src/
 belongs in the domain core alongside models and error types. Both `oneshim-storage`
 (for persisting) and `oneshim-analysis` (for search) depend on core already.
 
+**Edge cases handled by `ScalarQuantizer`:**
+
+| Case | Behavior |
+|------|----------|
+| **Zero-length vector** (empty `Vec<f32>`) | Return `CoreError::Internal("cannot quantize zero-length vector")`. Division by zero in min/max scaling is avoided. |
+| **Constant vector** (all elements identical, so max == min and scale == 0) | Set `scale = 1.0`, `offset = min`, all INT8 values = 0. Dequantize reconstructs the constant. Cosine similarity with any non-zero vector returns 0.0 (correct: a constant vector has undefined direction). |
+| **NaN / Inf in input** | Reject with `CoreError::Internal("vector contains NaN or Inf")`. Checked via `f32::is_finite()` scan before quantization. |
+
 ### 3.2 VectorStore Port Extension
 
 ```rust
 // Added to existing VectorStore trait in oneshim-core/src/ports/vector_store.rs
+//
+// All three methods have default implementations returning
+// CoreError::Internal("not implemented") so that existing mock implementations
+// (3+ in test modules) continue to compile without changes.
 
 /// Store a pre-quantized INT8 vector alongside its float32 original.
 async fn store_quantized(
@@ -102,26 +125,40 @@ async fn store_quantized(
     vector_f32: Vec<f32>,
     vector_int8: &QuantizedVector,
     metadata: EmbeddingMetadata,
-) -> Result<(), CoreError>;
+) -> Result<(), CoreError> {
+    Err(CoreError::Internal("store_quantized not implemented".into()))
+}
 
 /// Search using INT8 quantized distance (faster, approximate).
+/// Accepts `SearchFilters` for parity with the existing `search_filtered` method.
 async fn search_quantized(
     &self,
     query_vector: &QuantizedVector,
     limit: usize,
     time_decay_hours: f32,
-) -> Result<Vec<SearchResult>, CoreError>;
+    filters: &SearchFilters,
+) -> Result<Vec<SearchResult>, CoreError> {
+    Err(CoreError::Internal("search_quantized not implemented".into()))
+}
 
 /// Background: quantize one batch of float32-only vectors. Returns count.
-async fn backfill_quantized(&self, batch_size: usize) -> Result<u64, CoreError>;
+/// Selection criteria: `WHERE vector_int8 IS NULL LIMIT ?1`
+async fn backfill_quantized(&self, batch_size: usize) -> Result<u64, CoreError> {
+    Err(CoreError::Internal("backfill_quantized not implemented".into()))
+}
 ```
 
 Existing `store()` / `search()` methods remain unchanged for backward compatibility.
 
+**Note on the trait doc comment:** The current VectorStore doc says "sqlite-vec
+backed implementation" — this should be corrected to "brute-force cosine
+similarity" to match the actual `SqliteVectorStore` implementation.
+
 ### 3.3 SQLite Schema Addition
 
 ```sql
--- V8 migration: add INT8 quantized column
+-- V14 migration: add INT8 quantized columns
+-- (current schema is V13; see crates/oneshim-storage/src/migration.rs)
 ALTER TABLE embedding_vectors
   ADD COLUMN vector_int8 BLOB;          -- INT8 quantized data
 ALTER TABLE embedding_vectors
@@ -167,7 +204,8 @@ oneshim-core  (quantization.rs, QuantizedVector model)
     └── oneshim-analysis  (query_expansion.rs, uses quantizer + vector store)
 ```
 
-No new crate. No new cross-crate dependencies. Clean hexagonal layering.
+No new crate. No new cross-crate dependencies. No external quantization crate.
+Clean hexagonal layering.
 
 ## 4. Phase Scope
 
@@ -175,11 +213,11 @@ No new crate. No new cross-crate dependencies. Clean hexagonal layering.
 
 | Task | Crate | Estimate |
 |------|-------|----------|
-| `ScalarQuantizer` + `QuantizedVector` in core | oneshim-core | 2h |
-| Unit tests: quantize/dequantize roundtrip, similarity accuracy | oneshim-core | 1h |
-| SQLite V8 migration: add INT8 columns | oneshim-storage | 1h |
+| `ScalarQuantizer` + `QuantizedVector` in core (inline impl, ~40 lines) | oneshim-core | 2h |
+| Unit tests: quantize/dequantize roundtrip, similarity accuracy, edge cases (zero-length, constant, NaN/Inf) | oneshim-core | 1h |
+| SQLite V14 migration: add INT8 columns | oneshim-storage | 1h |
 | `store_quantized` / `search_quantized` implementation | oneshim-storage | 3h |
-| `backfill_quantized` background task | oneshim-storage | 1h |
+| `backfill_quantized` background task (`WHERE vector_int8 IS NULL LIMIT ?1`) | oneshim-storage | 1h |
 | Wire quantized path into `embedding_pipeline.rs` | oneshim-analysis | 1h |
 | Integration tests: store → search roundtrip with INT8 | oneshim-storage | 1h |
 | Config: `analysis.embedding.quantization_enabled` flag | oneshim-core | 0.5h |
@@ -187,13 +225,26 @@ No new crate. No new cross-crate dependencies. Clean hexagonal layering.
 **Deliverable:** 4x storage reduction, ~3x search speedup. Zero recall regression
 on acceptance test (compare top-10 results between f32 and INT8 paths).
 
+### Phase A.5: Float32 Column Removal
+
+Once all vectors have been backfilled to INT8 and the quantized search path is
+validated, the original float32 `vector` column can be dropped to reclaim the
+full 4x storage savings (dual-store only achieves ~1.25x net savings).
+
+| Task | Detail |
+|------|--------|
+| Config flag | `analysis.embedding.quantization_float32_retention: bool` (default `true`) |
+| Trigger criteria | Drop f32 when: (a) `backfill_quantized` returns 0 remaining rows, AND (b) quantized search has been active for >= 7 days, AND (c) recall acceptance test passes |
+| Migration | New migration (V15+): `ALTER TABLE embedding_vectors DROP COLUMN vector;` — SQLite 3.35+ required |
+| Rollback | If `quantization_float32_retention` is re-enabled, re-embed from `original_text` via existing stale-vector pipeline |
+
 ### Phase B: Query Expansion + Relevance Feedback
 
 | Task | Crate | Estimate |
 |------|-------|----------|
 | `QueryExpander` with activity context injection | oneshim-analysis | 2h |
 | `ActivityContext` model in core | oneshim-core | 0.5h |
-| Negative feedback store (dismissed suggestion → segment_id blocklist) | oneshim-storage | 1h |
+| Negative feedback filtering: query-time JOIN against `suggestions.dismissed_at` to exclude dismissed segment_ids | oneshim-storage | 1h |
 | Re-ranking heuristics (content type, regime, recency) | oneshim-analysis | 2h |
 | Wire into `HybridSearchService` | oneshim-analysis | 1h |
 | Unit + integration tests | oneshim-analysis | 2h |
@@ -211,12 +262,12 @@ raw embedding search. Feedback loop for suggestion dismissals.
 
 | Component | Crate | Rationale |
 |-----------|-------|-----------|
-| `ScalarQuantizer`, `QuantizedVector` | `oneshim-core` | Pure domain logic, no I/O |
+| `ScalarQuantizer`, `QuantizedVector` | `oneshim-core` | Pure domain logic, no I/O, inline impl |
 | `ActivityContext` model | `oneshim-core` | Shared model |
 | INT8 storage + search | `oneshim-storage` | SQLite adapter |
 | `QueryExpander` | `oneshim-analysis` | Analysis pipeline |
 | Re-ranking heuristics | `oneshim-analysis` | Search post-processing |
-| Negative feedback store | `oneshim-storage` | Persistence adapter |
+| Negative feedback filtering | `oneshim-storage` | Query-time JOIN on `suggestions.dismissed_at` |
 | Config flags | `oneshim-core` (`EmbeddingConfig`) | Existing config section |
 
 ## 6. Risks and Mitigations
@@ -225,14 +276,13 @@ raw embedding search. Feedback loop for suggestion dismissals.
 |------|--------|------------|
 | INT8 quantization hurts recall for edge-case queries | Medium | Keep float32 path as fallback; A/B comparison in tests |
 | Query expansion adds noise for short queries | Low | Only expand when context is available; passthrough for explicit searches |
-| SQLite BLOB size increase from dual-store | Low | INT8 adds 384 bytes (25% overhead); backfill task drops f32 column eventually |
-| `lnmp-quant` crate unmaintained | Low | Quantization is < 50 lines of code; inline if needed |
+| SQLite BLOB size increase from dual-store | Low | INT8 adds 384 bytes (25% overhead); Phase A.5 drops f32 column after validation |
+| Edge-case vectors (zero-length, constant, NaN) corrupt index | Low | `ScalarQuantizer` validates input and returns `CoreError` for invalid vectors (see 3.1) |
 
 ## 7. References
 
+- [ADR-013: LLM Segment Summary + Vector RAG](../../architecture/ADR-013-llm-summary-vector-rag.md) — parent ADR
 - [Qdrant Quantization Guide](https://qdrant.tech/documentation/guides/quantization/)
 - [HuggingFace Embedding Quantization Blog](https://huggingface.co/blog/embedding-quantization)
-- [lnmp-quant crate](https://crates.io/crates/lnmp-quant) — Rust INT8/INT4/binary quantization
-- [vq crate](https://github.com/CogitatorTech/vq) — Rust BQ/SQ/PQ library
 - [ONNX Runtime Training Limitations](https://github.com/microsoft/onnxruntime/discussions/21447)
 - [Sentence Transformers Matryoshka Docs](https://sbert.net/examples/sentence_transformer/training/matryoshka/README.html)
