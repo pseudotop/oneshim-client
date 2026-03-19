@@ -4,7 +4,7 @@
 
 **Goal:** Aggregate Phase 1 `GuiInteractionEvent`s into structured `GuiActivitySummary` records, integrate them into the existing `ContentActivity` → `SegmentSummary` → `ContextAssembler` pipeline, and refine `WorkType` classification using GUI signals. This upgrades LLM context from "used VSCode for 15 min" to "edited auth.rs: 15 min coding, 3 saves, 2 test runs."
 
-**Architecture:** Pure-algorithm additions to `oneshim-core` (models + config), `oneshim-vision` (detector upgrade), and `oneshim-analysis` (aggregator + refiner). New `gui_pipeline.rs` in `src-tauri/src/scheduler/` follows the `analysis_pipeline::run_analysis_tick()` pattern. No new ports or I/O — data flows through existing scheduler state.
+**Architecture:** Pure-algorithm additions to `oneshim-core` (models + config), `oneshim-vision` (detector upgrade + accessibility API adapters), and `oneshim-analysis` (aggregator + refiner). New `gui_pipeline.rs` in `src-tauri/src/scheduler/` follows the `analysis_pipeline::run_analysis_tick()` pattern. Accessibility API integration (macOS AXUIElement, Windows UIAutomation) via the existing `ElementFinder` port and `ChainedElementFinder` pattern — accessibility primary, OCR fallback. Data flows through existing scheduler state.
 
 **Tech Stack:** Rust, serde, chrono, oneshim-core models, oneshim-vision PII filter
 
@@ -22,6 +22,8 @@
 | `crates/oneshim-analysis/src/gui_aggregator.rs` | `GuiActivityAggregator` — time-window event grouping + semantic action detection |
 | `crates/oneshim-analysis/src/gui_work_type_refiner.rs` | `GuiWorkTypeRefiner` — post-hoc WorkType correction using GUI signals |
 | `src-tauri/src/scheduler/gui_pipeline.rs` | `run_gui_tick()` — self-contained scheduler entry point |
+| `crates/oneshim-vision/src/accessibility_macos.rs` | `AccessibilityElementFinder` — macOS AXUIElement adapter (impl `ElementFinder`) |
+| `crates/oneshim-vision/src/accessibility_windows.rs` | `AccessibilityElementFinder` — Windows UIAutomation adapter (impl `ElementFinder`) |
 
 ### Modified files
 
@@ -499,6 +501,52 @@ Run: `cargo check -p oneshim-tauri` (or the src-tauri crate name)
 - [ ] Add `save_gui_interaction()` and `list_gui_interactions_for_segment()` to WebStorage
 - [ ] Implement in SqliteStorage
 - [ ] Commit: `feat(storage): V13 migration — gui_interactions table`
+
+---
+
+## Task 10.6: AccessibilityElementFinder — macOS (AXUIElement)
+
+**Files:**
+- Create: `crates/oneshim-vision/src/accessibility_macos.rs`
+- Modify: `crates/oneshim-vision/src/lib.rs`
+
+- [ ] Implement macOS accessibility adapter using `accessibility` crate or raw `core-foundation` FFI
+- [ ] Key API: `AXUIElementCopyElementAtPosition(x, y)` for click correlation
+- [ ] Returns: element role (Button, TextField, MenuItem, etc.), title, frame rect, enabled/focused state
+- [ ] `#[cfg(target_os = "macos")]` gated
+- [ ] Implement `ElementFinder` trait (existing port in oneshim-core)
+- [ ] Tests: mock or integration tests requiring accessibility permission
+- [ ] Commit: `feat(vision): add AccessibilityElementFinder for macOS (AXUIElement)`
+
+---
+
+## Task 10.7: AccessibilityElementFinder — Windows (UIAutomation)
+
+**Files:**
+- Create: `crates/oneshim-vision/src/accessibility_windows.rs`
+- Modify: `crates/oneshim-vision/src/lib.rs`
+
+- [ ] Implement Windows adapter using `uiautomation` crate or `windows` crate FFI
+- [ ] Key API: `ElementFromPoint(x, y)` for click correlation
+- [ ] Returns: ControlType, Name, BoundingRectangle, IsEnabled
+- [ ] `#[cfg(target_os = "windows")]` gated
+- [ ] Implement `ElementFinder` trait
+- [ ] Tests: mock or #[ignore] integration tests
+- [ ] Commit: `feat(vision): add AccessibilityElementFinder for Windows (UIAutomation)`
+
+---
+
+## Task 10.8: Wire Accessibility into gui_pipeline
+
+**Files:**
+- Modify: `src-tauri/src/scheduler/gui_pipeline.rs`
+
+- [ ] In `run_gui_tick()`: use `ChainedElementFinder` with priority order:
+  1. AccessibilityElementFinder (if OS-supported + permission granted)
+  2. GuiElementDetector (OCR fallback)
+- [ ] Track `unmatched_click_count` in GuiActivitySummary for coverage metrics
+- [ ] Log: accessibility hit rate vs OCR fallback rate for diagnostics
+- [ ] Commit: `feat(scheduler): wire ChainedElementFinder into gui_pipeline with accessibility priority`
 
 ---
 

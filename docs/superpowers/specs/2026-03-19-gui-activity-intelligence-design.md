@@ -257,6 +257,9 @@ Fields:
   -- Top interacted elements (by frequency)
   top_elements: Vec<(String, GuiElementType, u32)>  -- (text, type, count)
 
+  -- Element finder coverage metrics
+  unmatched_click_count: u32  -- clicks with no element match (accessibility or OCR)
+
   -- Human-readable summary line
   summary_line: String
   -- e.g., "edited auth.rs: 15 min coding, 3 saves, 2 test runs"
@@ -540,9 +543,16 @@ DragDrop { from: (u32, u32), to: (u32, u32) }
 - `gui_pipeline::tick()` as self-contained entry point (see §8)
 - `GuiIntelligenceConfig` sub-section in `AnalysisConfig`
 - SQLite storage: `gui_interactions` table (event log) + summary in segments
+- **Accessibility API adapters** (macOS AXUIElement, Windows UIAutomation):
+  - Implement `ElementFinder` trait for each platform (`#[cfg(target_os)]` gated)
+  - `ChainedElementFinder` pattern: Accessibility primary, OCR fallback
+  - `AXUIElementCopyElementAtPosition(x, y)` (macOS) / `ElementFromPoint(x, y)` (Windows)
+  - Returns: element role, title, frame rect, enabled/focused state
+  - Track `unmatched_click_count` in `GuiActivitySummary` for coverage metrics
 
 **Deliverable:** Enriched `SegmentSummary` with GUI-level detail flowing
-into LLM analysis pipeline.
+into LLM analysis pipeline. Accessibility API provides higher-fidelity
+element identification where OS permissions allow, with OCR as universal fallback.
 
 ### Phase 3: LLM Context + Advanced Patterns
 
@@ -600,7 +610,13 @@ The entire pipeline runs synchronously within the existing scheduler
 
 ## 14. Non-Goals
 
-- **Accessibility tree parsing** — requires OS-level accessibility APIs (macOS AX, Windows UIA). Too platform-specific for Phase 1. OcrRegion-based approach works cross-platform.
 - **Pixel-level UI element detection** — computer vision models (YOLO, etc.) add ~100MB model weight. OCR + heuristics is sufficient for text-based UIs.
 - **Keystroke logging** — we track aggregate counts and shortcuts, never individual key sequences (privacy).
 - **Automation** — this spec is read-only observation. The existing `oneshim-automation` crate handles GUI execution. No overlap.
+
+> **Note:** Accessibility tree parsing (macOS AX, Windows UIA) was originally
+> listed as a non-goal. It has been promoted to Phase 2 scope following the
+> OCR deep review, which found that the existing architecture already has
+> `FinderSource::Accessibility`, `ChainedElementFinder`, and the `ElementFinder`
+> port. The `ChainedElementFinder` pattern (Accessibility primary, OCR fallback)
+> provides higher-fidelity element identification where OS permissions allow.
