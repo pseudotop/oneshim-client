@@ -57,7 +57,13 @@ pub fn detect_terminal_command(text: &str) -> Option<TerminalCommandInfo> {
 
                 // Truncate full command line for privacy
                 let command_line = if after.len() > MAX_COMMAND_LINE_LEN {
-                    format!("{}...", &after[..MAX_COMMAND_LINE_LEN])
+                    // UTF-8 safe truncation: find the last char boundary before MAX
+                    let end = after
+                        .char_indices()
+                        .take_while(|(i, _)| *i < MAX_COMMAND_LINE_LEN)
+                        .last()
+                        .map_or(0, |(i, c)| i + c.len_utf8());
+                    format!("{}...", &after[..end])
                 } else {
                     after.to_string()
                 };

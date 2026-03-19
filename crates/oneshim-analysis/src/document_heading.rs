@@ -62,7 +62,13 @@ pub fn extract_document_heading(text: &str) -> Option<DocumentHeadingInfo> {
 
 fn truncate(s: &str, max: usize) -> String {
     if s.len() > max {
-        format!("{}...", &s[..max])
+        // UTF-8 safe truncation: find the last char boundary before max
+        let end = s
+            .char_indices()
+            .take_while(|(i, _)| *i < max)
+            .last()
+            .map_or(0, |(i, c)| i + c.len_utf8());
+        format!("{}...", &s[..end])
     } else {
         s.to_string()
     }
