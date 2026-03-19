@@ -74,7 +74,6 @@ pub(crate) struct AdaptiveTriggerState {
     // --- GUI Activity Intelligence pipeline state ---
     pub(crate) gui_pipeline_state: Option<gui_pipeline::GuiPipelineState>,
     // --- GUI Work Type Refiner ---
-    #[allow(dead_code)]
     pub(crate) gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
 }
 

@@ -73,6 +73,13 @@ pub(super) async fn run_analysis_tick(
         )
     };
 
+    // 4b. Refine work type using GUI signals (if available)
+    let work_type = if let Some(ref gui) = gui_summary {
+        ts.gui_work_type_refiner.refine(work_type, gui)
+    } else {
+        work_type
+    };
+
     // 5. Update content tracker
     if let Some(ref content) = parsed_content {
         ts.content_tracker
