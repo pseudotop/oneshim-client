@@ -79,6 +79,7 @@ impl AppRuntimeLaunchBuilder {
                 sqlite_storage.clone(),
                 sqlite_storage.clone(),
                 sqlite_storage.clone(),
+                sqlite_storage.clone(),
                 &data_dir_path,
                 &config,
                 config_manager.clone(),

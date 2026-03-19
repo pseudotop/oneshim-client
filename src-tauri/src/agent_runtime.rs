@@ -17,6 +17,7 @@ use tracing::{error, info, warn};
 use crate::agent_runtime_support::AgentSupportContextBuilder;
 use crate::focus_analyzer::FocusStorage;
 use crate::scheduler::{AdaptiveTriggerState, Scheduler, SchedulerStorage};
+use crate::sync_engine::SyncEngine;
 
 #[derive(Clone)]
 pub(crate) struct AgentRuntimeBundle {
@@ -34,6 +35,8 @@ pub(crate) struct AgentRuntimeBundle {
     config: AppConfig,
     config_manager: ConfigManager,
     consent_manager: Option<Arc<ConsentManager>>,
+    /// Concrete SQLite storage for sync engine wiring.
+    sqlite_storage_concrete: Arc<oneshim_storage::sqlite::SqliteStorage>,
     offline_mode: bool,
     event_tx: Option<broadcast::Sender<RealtimeEvent>>,
     #[cfg(feature = "server")]
@@ -299,6 +302,72 @@ impl AgentRuntimeBundle {
             }
         }
 
+        // --- Cross-device sync engine (P3 Phase 3a-2) ---
+        if self.config.sync.enabled {
+            if let Some(ref sync_folder) = self.config.sync.sync_folder {
+                let passphrase = std::env::var("ONESHIM_SYNC_PASSPHRASE").unwrap_or_default();
+                if passphrase.is_empty() {
+                    warn!("sync enabled but ONESHIM_SYNC_PASSPHRASE not set; sync disabled");
+                } else {
+                    match self
+                        .sqlite_storage_concrete
+                        .ensure_device_identity(&self.config.sync.device_name)
+                    {
+                        Ok((device_id, device_name)) => {
+                            let extractor = Arc::new(
+                                oneshim_storage::sync_extractor::SqliteSyncExtractor::new(
+                                    self.sqlite_storage_concrete.connection_arc(),
+                                    device_id.clone(),
+                                    device_name.clone(),
+                                    self.config.sync.clone(),
+                                ),
+                            );
+                            let merger = Arc::new(
+                                oneshim_storage::sync_merger::SqliteSyncMerger::new(
+                                    self.sqlite_storage_concrete.connection_arc(),
+                                    device_id.clone(),
+                                ),
+                            );
+                            match oneshim_storage::file_transport::FileSyncTransport::new(
+                                std::path::PathBuf::from(sync_folder),
+                                device_id.clone(),
+                                passphrase,
+                            ) {
+                                Ok(transport) => {
+                                    // Build a parking_lot::Mutex-wrapped ConsentManager for the SyncEngine.
+                                    // The SyncEngine needs &mut access to clear_pending_deletion.
+                                    let consent_for_sync = Arc::new(parking_lot::Mutex::new(
+                                        ConsentManager::new(
+                                            self.data_dir.join("consent.json"),
+                                        ),
+                                    ));
+
+                                    let sync_engine = Arc::new(SyncEngine::new(
+                                        extractor,
+                                        merger,
+                                        Arc::new(transport),
+                                        consent_for_sync,
+                                        device_id,
+                                        device_name,
+                                    ));
+                                    scheduler = scheduler.with_sync_engine(sync_engine);
+                                    info!("Cross-device sync engine initialized");
+                                }
+                                Err(e) => {
+                                    warn!("Failed to create FileSyncTransport: {e}");
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to get device identity for sync: {e}");
+                        }
+                    }
+                }
+            } else {
+                warn!("sync enabled but sync_folder not configured; sync disabled");
+            }
+        }
+
         info!("Agent started (offline={})", self.offline_mode);
         scheduler.run(shutdown_rx, Some(self.app_handle)).await;
         info!("Agent ended");
@@ -319,6 +388,8 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     config: &'a AppConfig,
     config_manager: ConfigManager,
     consent_manager: Option<Arc<ConsentManager>>,
+    /// Concrete SQLite storage for sync engine wiring.
+    sqlite_storage_concrete: Arc<oneshim_storage::sqlite::SqliteStorage>,
     offline_mode: bool,
     event_tx: Option<broadcast::Sender<RealtimeEvent>>,
     #[cfg(feature = "server")]
@@ -332,6 +403,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
         storage: Arc<dyn StorageService>,
         scheduler_storage: Arc<dyn SchedulerStorage>,
         focus_storage: Arc<dyn FocusStorage>,
+        sqlite_storage_concrete: Arc<oneshim_storage::sqlite::SqliteStorage>,
         data_dir: &'a Path,
         config: &'a AppConfig,
         config_manager: ConfigManager,
@@ -347,6 +419,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             override_store: None,
             recluster_requested,
             vector_store: None,
+            sqlite_storage_concrete,
             data_dir,
             config,
             config_manager,
@@ -426,6 +499,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             config: self.config.clone(),
             config_manager: self.config_manager,
             consent_manager: self.consent_manager,
+            sqlite_storage_concrete: self.sqlite_storage_concrete,
             offline_mode: self.offline_mode,
             event_tx: self.event_tx,
             #[cfg(feature = "server")]
