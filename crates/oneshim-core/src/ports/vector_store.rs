@@ -94,4 +94,10 @@ pub trait VectorStore: Send + Sync {
     async fn count_unquantized(&self) -> Result<u64, CoreError> {
         Ok(0)
     }
+
+    /// Count the number of active (non-stale) vectors in the store.
+    /// Used by AdaptiveSearchCoordinator to select search strategy.
+    async fn count_active_vectors(&self) -> Result<u64, CoreError> {
+        Ok(0)
+    }
 }

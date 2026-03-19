@@ -6,6 +6,7 @@ use oneshim_core::ports::embedding_provider::EmbeddingProvider;
 use oneshim_core::ports::vector_store::VectorStore;
 use oneshim_core::quantization::ScalarQuantizer;
 
+use crate::adaptive_search::AdaptiveSearchCoordinator;
 use crate::assembler::PiiFilter;
 use crate::query_expander::{ActivityContext, QueryExpander};
 
@@ -20,6 +21,7 @@ pub struct VectorRetriever {
     max_results: usize,
     time_decay_hours: f32,
     quantization_enabled: bool,
+    search_coordinator: Option<Arc<AdaptiveSearchCoordinator>>,
 }
 
 impl VectorRetriever {
@@ -38,6 +40,30 @@ impl VectorRetriever {
             max_results,
             time_decay_hours,
             quantization_enabled,
+            search_coordinator: None,
+        }
+    }
+
+    /// Create a VectorRetriever with an adaptive search coordinator.
+    /// When the coordinator is present, search delegates to it instead of
+    /// using the direct brute-force or quantized paths.
+    pub fn with_coordinator(
+        embedding_provider: Arc<dyn EmbeddingProvider>,
+        vector_store: Arc<dyn VectorStore>,
+        pii_filter: PiiFilter,
+        max_results: usize,
+        time_decay_hours: f32,
+        quantization_enabled: bool,
+        coordinator: Arc<AdaptiveSearchCoordinator>,
+    ) -> Self {
+        Self {
+            embedding_provider,
+            vector_store,
+            pii_filter,
+            max_results,
+            time_decay_hours,
+            quantization_enabled,
+            search_coordinator: Some(coordinator),
         }
     }
 
@@ -61,6 +87,18 @@ impl VectorRetriever {
         );
 
         let query_vector = self.embedding_provider.embed(&query_text).await?;
+
+        // Delegate to adaptive search coordinator if available
+        if let Some(ref coordinator) = self.search_coordinator {
+            return coordinator
+                .search(
+                    &query_vector,
+                    self.max_results,
+                    self.time_decay_hours,
+                    &SearchFilters::default(),
+                )
+                .await;
+        }
 
         if self.quantization_enabled {
             let quantized = ScalarQuantizer::quantize(&query_vector)?;
@@ -105,6 +143,19 @@ impl VectorRetriever {
     ) -> Result<Vec<SearchResult>, CoreError> {
         let expanded = QueryExpander::expand(query, activity_context);
         let query_vector = self.embedding_provider.embed(&expanded).await?;
+
+        // Delegate to adaptive search coordinator if available
+        if let Some(ref coordinator) = self.search_coordinator {
+            let filters = filters.unwrap_or_default();
+            return coordinator
+                .search(
+                    &query_vector,
+                    self.max_results,
+                    self.time_decay_hours,
+                    &filters,
+                )
+                .await;
+        }
 
         if self.quantization_enabled {
             let quantized = ScalarQuantizer::quantize(&query_vector)?;

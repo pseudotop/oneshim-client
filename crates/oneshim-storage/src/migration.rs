@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: u32 = 14;
+const CURRENT_VERSION: u32 = 16;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -68,6 +68,15 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 14 {
         migrate_v14(conn)?;
+    }
+
+    // V15 is reserved for Sync 3b (lan_peer_pins)
+    if current < 15 {
+        migrate_v15(conn)?;
+    }
+
+    if current < 16 {
+        migrate_v16(conn)?;
     }
 
     Ok(())
@@ -749,6 +758,71 @@ fn migrate_v14(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v15(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V15 execution: reserved for Sync 3b (lan_peer_pins)");
+
+    conn.execute_batch(
+        "
+        -- Placeholder for Sync 3b lan_peer_pins table
+        -- (implemented in a separate branch)
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (15);
+        ",
+    )?;
+
+    info!("migration V15 completed");
+    Ok(())
+}
+
+fn migrate_v16(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V16 execution: IVF index + 2-bit binary codes for vector search");
+
+    conn.execute_batch(
+        "
+        -- 2-bit binary codes for Hamming distance filtering
+        CREATE TABLE IF NOT EXISTS vector_binary_codes (
+            vector_id INTEGER PRIMARY KEY,
+            binary_code BLOB NOT NULL,
+            FOREIGN KEY (vector_id) REFERENCES embedding_vectors(id) ON DELETE CASCADE
+        );
+
+        -- IVF cluster centroids (INT8 format)
+        CREATE TABLE IF NOT EXISTS ivf_centroids (
+            id INTEGER PRIMARY KEY,
+            centroid_int8 BLOB NOT NULL,
+            centroid_scale REAL NOT NULL,
+            centroid_offset REAL NOT NULL,
+            vector_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- IVF cluster memberships
+        CREATE TABLE IF NOT EXISTS ivf_assignments (
+            vector_id INTEGER PRIMARY KEY,
+            cluster_id INTEGER NOT NULL,
+            FOREIGN KEY (vector_id) REFERENCES embedding_vectors(id) ON DELETE CASCADE,
+            FOREIGN KEY (cluster_id) REFERENCES ivf_centroids(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ivf_assign_cluster ON ivf_assignments(cluster_id);
+
+        -- Index build metadata (key-value store)
+        CREATE TABLE IF NOT EXISTS vector_index_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (16);
+        ",
+    )?;
+
+    info!("migration V16 completed");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -916,7 +990,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 14);
+        assert_eq!(version, 16);
 
         // V9 tables
         let count: i64 = conn
@@ -1052,6 +1126,61 @@ mod tests {
             )
             .unwrap();
         assert_eq!(has_hlc, 1);
+
+        // V16 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vector_binary_codes'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ivf_centroids'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ivf_assignments'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vector_index_meta'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V16 — idx_ivf_assign_cluster index
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ivf_assign_cluster'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Final version check
+        let version: u32 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 16);
     }
 
     #[test]
@@ -1064,6 +1193,6 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 14);
+        assert_eq!(version, 16);
     }
 }

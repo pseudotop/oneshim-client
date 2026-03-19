@@ -686,6 +686,20 @@ impl VectorStore for SqliteVectorStore {
         })
         .await
     }
+
+    async fn count_active_vectors(&self) -> Result<u64, CoreError> {
+        self.with_conn(move |conn| {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM embedding_vectors WHERE is_stale = 0",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|e| CoreError::Internal(format!("Failed to count active vectors: {e}")))?;
+            Ok(count as u64)
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -1523,6 +1537,37 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].segment_id, "q-keep");
+    }
+
+    #[tokio::test]
+    async fn count_active_vectors_basic() {
+        let conn = setup_db();
+        let store = SqliteVectorStore::new(conn);
+
+        assert_eq!(store.count_active_vectors().await.unwrap(), 0);
+
+        // Store 3 vectors
+        for i in 0..3 {
+            store
+                .store(
+                    vec![1.0, 0.0],
+                    EmbeddingMetadata {
+                        segment_id: format!("seg-{i}"),
+                        content_type: EmbeddingContentType::ContentActivity,
+                        content_label: None,
+                        timestamp: Utc::now(),
+                        original_text: format!("text-{i}"),
+                        model_id: "test-model".to_string(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        assert_eq!(store.count_active_vectors().await.unwrap(), 3);
+
+        // Mark stale
+        store.mark_stale("test-model").await.unwrap();
+        assert_eq!(store.count_active_vectors().await.unwrap(), 0);
     }
 
     #[tokio::test]

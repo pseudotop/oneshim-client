@@ -270,6 +270,25 @@ pub struct EmbeddingConfig {
     /// The column itself remains in the schema until a future migration drops it.
     #[serde(default = "default_quantization_float32_retention")]
     pub quantization_float32_retention: bool,
+
+    /// Index strategy for vector search.
+    /// "auto" (default): select based on collection size.
+    /// "brute_force": always use brute-force INT8 scan.
+    /// "ivf": always use IVF partitioning.
+    /// "ivf_binary": always use IVF + 2-bit binary filter + INT8 re-rank.
+    #[serde(default = "default_index_strategy")]
+    pub index_strategy: String,
+
+    /// Number of IVF partitions to probe at query time.
+    /// Default 0 = auto-select (N / 10 where N = number of clusters).
+    #[serde(default)]
+    pub ivf_nprobe: usize,
+
+    /// Oversample factor for 2-bit binary filter stage.
+    /// Candidates = limit * oversample_factor, then re-ranked with INT8.
+    /// Default 10.
+    #[serde(default = "default_oversample_factor")]
+    pub binary_oversample_factor: usize,
 }
 
 impl Default for EmbeddingConfig {
@@ -287,12 +306,23 @@ impl Default for EmbeddingConfig {
             digest_day: default_digest_day(),
             quantization_enabled: false,
             quantization_float32_retention: default_quantization_float32_retention(),
+            index_strategy: default_index_strategy(),
+            ivf_nprobe: 0,
+            binary_oversample_factor: default_oversample_factor(),
         }
     }
 }
 
 fn default_quantization_float32_retention() -> bool {
     true
+}
+
+fn default_index_strategy() -> String {
+    "auto".to_string()
+}
+
+fn default_oversample_factor() -> usize {
+    10
 }
 
 fn default_embedding_provider() -> EmbeddingProviderType {

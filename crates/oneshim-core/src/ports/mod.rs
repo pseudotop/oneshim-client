@@ -29,6 +29,7 @@ pub mod skill_loader;
 pub mod storage;
 pub mod sync_transport;
 pub mod text_search;
+pub mod vector_index;
 pub mod vector_store;
 pub mod vision;
 pub mod web_storage;

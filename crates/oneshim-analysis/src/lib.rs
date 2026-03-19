@@ -1,3 +1,4 @@
+pub mod adaptive_search;
 mod adaptive_trigger;
 mod analyzer;
 mod assembler;
@@ -57,6 +58,7 @@ pub use work_type_classifier::WorkTypeClassifier;
 pub use auto_tuner::{DriftDetector, EmaStatsTracker};
 pub use clustering_strategy::{ClusterAssignment, ClusteringResult, ClusteringStrategy};
 
+pub use adaptive_search::{AdaptiveSearchCoordinator, SearchConfig, SearchStrategy};
 pub use daily_digest_generator::DailyDigestGenerator;
 pub use daily_insight_generator::DailyInsightGenerator;
 pub use embedding_pipeline::EmbeddingPipeline;
