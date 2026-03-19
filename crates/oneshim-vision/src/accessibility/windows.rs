@@ -16,7 +16,7 @@
 #[cfg(target_os = "windows")]
 mod inner {
     use async_trait::async_trait;
-    use tracing::debug;
+    use tracing::{debug, warn};
 
     use oneshim_core::config::PiiFilterLevel;
     use oneshim_core::error::CoreError;
@@ -35,6 +35,13 @@ mod inner {
         pub fn new() -> Self {
             Self
         }
+
+        /// Check if a debugger is attached to the current process.
+        /// When detected, text extraction is skipped to prevent memory
+        /// inspection of sensitive accessibility data.
+        fn is_debugger_attached() -> bool {
+            unsafe { windows_sys::Win32::System::Diagnostics::Debug::IsDebuggerPresent() != 0 }
+        }
     }
 
     #[async_trait]
@@ -44,6 +51,10 @@ mod inner {
             _pii_level: PiiFilterLevel,
             _has_full_text_consent: bool,
         ) -> Result<Option<FocusedElementInfo>, CoreError> {
+            if Self::is_debugger_attached() {
+                warn!("Debugger detected; skipping accessibility text extraction");
+                return Ok(None);
+            }
             debug!("WindowsUiaAccessibility: stub -- returning None (Phase 2 TODO)");
             Ok(None)
         }
