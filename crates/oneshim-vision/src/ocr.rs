@@ -1,3 +1,4 @@
+use oneshim_core::models::frame::{BoundingBox, OcrRegion};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use thiserror::Error;
@@ -225,6 +226,126 @@ impl OcrExtractor {
     }
 }
 
+impl OcrExtractor {
+    /// Extract text with bounding box positions as `OcrRegion` values.
+    ///
+    /// Uses Tesseract word-level component images to obtain spatial coordinates.
+    /// Each word that matches a component box is returned as a separate region.
+    pub fn extract_regions(&self, image: &image::DynamicImage) -> Result<Vec<OcrRegion>, OcrError> {
+        let rgba = image.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+
+        if w == 0 || h == 0 {
+            return Err(OcrError::EmptyImage);
+        }
+
+        let tessdata = self
+            .tessdata_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let tessdata_ref = tessdata.as_deref();
+
+        let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
+            .map_err(|e| OcrError::Init(format!("{e}")))?;
+
+        lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
+            .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+
+        let boxes = lt
+            .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
+            .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
+
+        let full_text = lt
+            .get_utf8_text()
+            .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+        let words: Vec<&str> = full_text.split_whitespace().collect();
+
+        let mut regions = Vec::new();
+        for (i, b) in boxes.iter().enumerate() {
+            let geom = b.get_geometry();
+            let word_text = words.get(i).unwrap_or(&"").to_string();
+            if !word_text.is_empty() {
+                regions.push(OcrRegion {
+                    text: word_text,
+                    bbox: BoundingBox {
+                        x: geom.x.max(0) as u32,
+                        y: geom.y.max(0) as u32,
+                        width: geom.w.max(0) as u32,
+                        height: geom.h.max(0) as u32,
+                    },
+                    // Tesseract word-level confidence is not directly available per-box
+                    // via leptess component API; default to 0.5 as a conservative estimate.
+                    confidence: 0.5,
+                });
+            }
+        }
+
+        Ok(regions)
+    }
+
+    /// Async version of `extract_regions`.
+    pub async fn extract_regions_async(
+        &self,
+        image: &image::DynamicImage,
+    ) -> Result<Vec<OcrRegion>, OcrError> {
+        let rgba = image.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+
+        if w == 0 || h == 0 {
+            return Err(OcrError::EmptyImage);
+        }
+
+        let tessdata = self
+            .tessdata_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let raw_data = rgba.into_raw();
+
+        tokio::task::spawn_blocking(move || {
+            let tessdata_ref = tessdata.as_deref();
+
+            let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
+                .map_err(|e| OcrError::Init(format!("{e}")))?;
+
+            lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+
+            let boxes = lt
+                .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
+                .ok_or_else(|| {
+                    OcrError::Extraction("Failed to extract word boxes".to_string())
+                })?;
+
+            let full_text = lt
+                .get_utf8_text()
+                .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+            let words: Vec<&str> = full_text.split_whitespace().collect();
+
+            let mut regions = Vec::new();
+            for (i, b) in boxes.iter().enumerate() {
+                let geom = b.get_geometry();
+                let word_text = words.get(i).unwrap_or(&"").to_string();
+                if !word_text.is_empty() {
+                    regions.push(OcrRegion {
+                        text: word_text,
+                        bbox: BoundingBox {
+                            x: geom.x.max(0) as u32,
+                            y: geom.y.max(0) as u32,
+                            width: geom.w.max(0) as u32,
+                            height: geom.h.max(0) as u32,
+                        },
+                        confidence: 0.5,
+                    });
+                }
+            }
+
+            Ok(regions)
+        })
+        .await
+        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?
+    }
+}
+
 pub fn extract_text(image: &image::DynamicImage) -> Result<String, OcrError> {
     let extractor = OcrExtractor::new(None);
     extractor.extract(image)
@@ -323,5 +444,36 @@ mod tests {
 
         let result = extractor.extract_roi_async(&img, 0.5).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_regions_empty_image_returns_error() {
+        let extractor = OcrExtractor::new(None);
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
+        let result = extractor.extract_regions(&img);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+    }
+
+    #[tokio::test]
+    async fn extract_regions_async_empty_image_returns_error() {
+        let extractor = OcrExtractor::new(None);
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
+        let result = extractor.extract_regions_async(&img).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+    }
+
+    #[test]
+    fn ocr_region_has_valid_bbox_fields() {
+        use oneshim_core::models::frame::{BoundingBox, OcrRegion};
+        let region = OcrRegion {
+            text: "test".to_string(),
+            bbox: BoundingBox { x: 10, y: 20, width: 50, height: 15 },
+            confidence: 0.5,
+        };
+        assert_eq!(region.text, "test");
+        assert!(region.bbox.contains_point(30, 25));
+        assert!(!region.bbox.contains_point(100, 100));
     }
 }
