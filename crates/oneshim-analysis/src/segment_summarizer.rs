@@ -190,10 +190,7 @@ pub fn to_content_summary_entries(
             content_type: format!("{:?}", ca.content_type),
             work_type: format!("{:?}", ca.work_type),
             mins: (ca.duration_secs / 60).max(1) as u32,
-            gui_summary_line: ca
-                .gui_summary
-                .as_ref()
-                .map(|gs| gs.summary_line.clone()),
+            gui_summary_line: ca.gui_summary.as_ref().map(|gs| gs.summary_line.clone()),
         })
         .collect()
 }

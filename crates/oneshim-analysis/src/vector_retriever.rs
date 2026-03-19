@@ -4,6 +4,7 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::embedding::{SearchFilters, SearchResult};
 use oneshim_core::ports::embedding_provider::EmbeddingProvider;
 use oneshim_core::ports::vector_store::VectorStore;
+use oneshim_core::quantization::ScalarQuantizer;
 
 use crate::assembler::PiiFilter;
 
@@ -17,6 +18,7 @@ pub struct VectorRetriever {
     pii_filter: PiiFilter,
     max_results: usize,
     time_decay_hours: f32,
+    quantization_enabled: bool,
 }
 
 impl VectorRetriever {
@@ -26,6 +28,7 @@ impl VectorRetriever {
         pii_filter: PiiFilter,
         max_results: usize,
         time_decay_hours: f32,
+        quantization_enabled: bool,
     ) -> Self {
         Self {
             embedding_provider,
@@ -33,6 +36,7 @@ impl VectorRetriever {
             pii_filter,
             max_results,
             time_decay_hours,
+            quantization_enabled,
         }
     }
 
@@ -57,9 +61,21 @@ impl VectorRetriever {
 
         let query_vector = self.embedding_provider.embed(&query_text).await?;
 
-        self.vector_store
-            .search(&query_vector, self.max_results, self.time_decay_hours)
-            .await
+        if self.quantization_enabled {
+            let quantized = ScalarQuantizer::quantize(&query_vector)?;
+            self.vector_store
+                .search_quantized(
+                    &quantized,
+                    self.max_results,
+                    self.time_decay_hours,
+                    &SearchFilters::default(),
+                )
+                .await
+        } else {
+            self.vector_store
+                .search(&query_vector, self.max_results, self.time_decay_hours)
+                .await
+        }
     }
 
     /// Natural language search (user/dashboard queries).
@@ -72,7 +88,18 @@ impl VectorRetriever {
     ) -> Result<Vec<SearchResult>, CoreError> {
         let query_vector = self.embedding_provider.embed(query).await?;
 
-        if let Some(filters) = filters {
+        if self.quantization_enabled {
+            let quantized = ScalarQuantizer::quantize(&query_vector)?;
+            let filters = filters.unwrap_or_default();
+            self.vector_store
+                .search_quantized(
+                    &quantized,
+                    self.max_results,
+                    self.time_decay_hours,
+                    &filters,
+                )
+                .await
+        } else if let Some(filters) = filters {
             self.vector_store
                 .search_filtered(
                     &query_vector,

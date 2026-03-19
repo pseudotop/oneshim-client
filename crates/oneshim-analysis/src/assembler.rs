@@ -603,15 +603,9 @@ mod tests {
                 gui_summary_line: Some("3 saves, 2 test runs".to_string()),
             }],
         };
-        let ctx = assembler.build_with_segment(
-            &make_current(),
-            &[],
-            &[],
-            &make_metrics(),
-            Some(&stats),
-        );
-        let parsed: serde_json::Value =
-            serde_json::from_str(&ctx.user_context_json).unwrap();
+        let ctx =
+            assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));
+        let parsed: serde_json::Value = serde_json::from_str(&ctx.user_context_json).unwrap();
         let content = parsed["current_segment"]["content_summary"][0]["content"]
             .as_str()
             .unwrap();
