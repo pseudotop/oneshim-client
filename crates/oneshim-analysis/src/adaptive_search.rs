@@ -472,4 +472,81 @@ mod tests {
         assert!(!store.brute_force_called.load(Ordering::Relaxed));
         assert!(index.ivf_binary_called.load(Ordering::Relaxed));
     }
+
+    // ── Backward compatibility tests (Task 22) ──────────────────
+
+    #[tokio::test]
+    async fn brute_force_config_skips_indexing() {
+        // Forced brute_force strategy should always delegate to vector_store,
+        // even when cached_vector_count is very high.
+        let store = Arc::new(MockVectorStore::new(999_999));
+        let index = Arc::new(MockVectorIndex::new());
+        let config = SearchConfig {
+            forced_strategy: Some("brute_force".to_string()),
+            ..Default::default()
+        };
+        let coordinator = AdaptiveSearchCoordinator::new(store.clone(), index.clone(), config);
+        coordinator.set_cached_count(999_999);
+
+        // Strategy should be brute force regardless of count
+        assert_eq!(
+            coordinator.determine_strategy(),
+            SearchStrategy::BruteForceInt8
+        );
+
+        // Search should go to vector_store.search_quantized, not index
+        let _ = coordinator
+            .search(&[0.1, 0.2, 0.3], 5, 168.0, &SearchFilters::default())
+            .await;
+
+        assert!(store.brute_force_called.load(Ordering::Relaxed));
+        assert!(!index.ivf_called.load(Ordering::Relaxed));
+        assert!(!index.ivf_binary_called.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn retriever_without_coordinator_works_unchanged() {
+        // VectorRetriever constructed without a coordinator should still work
+        // via the original brute-force / quantized path.
+        use crate::assembler::PiiFilter;
+        use crate::vector_retriever::VectorRetriever;
+        use oneshim_core::ports::embedding_provider::EmbeddingProvider;
+
+        struct MockEmbed;
+
+        #[async_trait]
+        impl EmbeddingProvider for MockEmbed {
+            async fn embed(&self, _text: &str) -> Result<Vec<f32>, CoreError> {
+                Ok(vec![0.1, 0.2, 0.3])
+            }
+            fn dimensions(&self) -> usize {
+                3
+            }
+            fn model_id(&self) -> &str {
+                "mock"
+            }
+        }
+
+        let store = Arc::new(MockVectorStore::new(0));
+        let noop_filter: PiiFilter = Box::new(|text: &str| text.to_string());
+
+        // Construct WITHOUT coordinator — the pre-Phase-C path
+        let retriever = VectorRetriever::new(
+            Arc::new(MockEmbed),
+            store.clone(),
+            noop_filter,
+            5,
+            168.0,
+            true, // quantization_enabled
+        );
+
+        // search_quantized should be called (no coordinator to intercept)
+        let results = retriever
+            .retrieve_for_context("VSCode", "main.rs", None)
+            .await
+            .unwrap();
+
+        assert!(results.is_empty()); // mock returns empty
+        assert!(store.brute_force_called.load(Ordering::Relaxed));
+    }
 }
