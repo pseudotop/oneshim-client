@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::error::CoreError;
 use crate::models::embedding::{EmbeddingMetadata, SearchFilters, SearchResult};
+use crate::quantization::QuantizedVector;
 
 /// Port for storing and searching embedding vectors.
 /// Primary adapter: brute-force cosine similarity implementation in oneshim-storage.
@@ -47,4 +48,39 @@ pub trait VectorStore: Send + Sync {
         vector: Vec<f32>,
         model_id: &str,
     ) -> Result<(), CoreError>;
+
+    /// Store a pre-quantized INT8 vector alongside its float32 original.
+    async fn store_quantized(
+        &self,
+        _vector_f32: Vec<f32>,
+        _vector_int8: &QuantizedVector,
+        _metadata: EmbeddingMetadata,
+    ) -> Result<(), CoreError> {
+        Err(CoreError::Internal(
+            "store_quantized not implemented".into(),
+        ))
+    }
+
+    /// Search using INT8 quantized cosine similarity (faster, approximate).
+    /// Accepts SearchFilters for parity with search_filtered.
+    async fn search_quantized(
+        &self,
+        _query_vector: &QuantizedVector,
+        _limit: usize,
+        _time_decay_hours: f32,
+        _filters: &SearchFilters,
+    ) -> Result<Vec<SearchResult>, CoreError> {
+        Err(CoreError::Internal(
+            "search_quantized not implemented".into(),
+        ))
+    }
+
+    /// Backfill INT8 quantization for existing float32-only vectors.
+    /// Processes rows WHERE vector_int8 IS NULL LIMIT batch_size.
+    /// Returns the number of rows backfilled.
+    async fn backfill_quantized(&self, _batch_size: usize) -> Result<u64, CoreError> {
+        Err(CoreError::Internal(
+            "backfill_quantized not implemented".into(),
+        ))
+    }
 }
