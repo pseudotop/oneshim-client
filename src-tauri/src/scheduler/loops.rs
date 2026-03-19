@@ -151,6 +151,7 @@ impl Scheduler {
         let input_collector1 = input_collector;
         let accessibility_extractor1 = self.accessibility_extractor.clone();
         let config_manager1 = self.config_manager.clone();
+        let consent_manager1 = self.consent_manager.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
@@ -237,11 +238,10 @@ impl Scheduler {
                                         .as_ref()
                                         .map(|cm| cm.get().analysis.text_intelligence.clone())
                                         .unwrap_or_default();
-                                    // full_text_extraction consent is managed by ConsentManager
-                                    // which is not available in this async block. Default to
-                                    // false so the extractor falls back to Standard PII level
-                                    // when pii_extraction_level is Off. This is the safe default.
-                                    let full_text_consent = false;
+                                    let full_text_consent = consent_manager1
+                                        .as_ref()
+                                        .map(|cm| cm.is_permitted(|p| p.full_text_extraction))
+                                        .unwrap_or(false);
 
                                     match ax
                                         .extract_focused_element(

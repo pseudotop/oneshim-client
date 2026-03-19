@@ -365,6 +365,11 @@ impl AgentRuntimeBundle {
             }
         }
 
+        // --- Phase 3: Wire ConsentManager into scheduler for runtime consent checks ---
+        if let Some(ref cm) = self.consent_manager {
+            scheduler = scheduler.with_consent_manager(cm.clone());
+        }
+
         // --- Phase 2: Accessibility extractor (gated by config + consent) ---
         {
             let text_config = self.config.analysis.text_intelligence.clone();

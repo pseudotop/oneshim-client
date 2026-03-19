@@ -12,6 +12,7 @@ pub use loops::record_to_segment_summary;
 use chrono::{Datelike, Timelike};
 use oneshim_core::config::{AppConfig, Weekday};
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::consent::ConsentManager;
 use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::tiered_memory::ResolvedParams;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
@@ -110,6 +111,9 @@ pub struct Scheduler {
     /// `None` when `text_intelligence.accessibility_extraction` is disabled
     /// or platform does not support it.
     pub(super) accessibility_extractor: Option<Arc<dyn AccessibilityExtractor>>,
+    /// ConsentManager for runtime consent checks (e.g., full_text_extraction).
+    /// Wrapped in Arc for shared access across async blocks.
+    pub(super) consent_manager: Option<Arc<ConsentManager>>,
 }
 
 impl Scheduler {
@@ -151,6 +155,7 @@ impl Scheduler {
             adaptive_trigger: Mutex::new(None),
             sync_engine: None,
             accessibility_extractor: None,
+            consent_manager: None,
         }
     }
 
@@ -219,6 +224,11 @@ impl Scheduler {
         extractor: Arc<dyn AccessibilityExtractor>,
     ) -> Self {
         self.accessibility_extractor = Some(extractor);
+        self
+    }
+
+    pub fn with_consent_manager(mut self, consent_manager: Arc<ConsentManager>) -> Self {
+        self.consent_manager = Some(consent_manager);
         self
     }
 
