@@ -1,7 +1,7 @@
 # Priority 1: UX Improvements — Design Spec
 
 > Created: 2026-03-18
-> Status: Draft
+> Status: Implemented
 > Depends on: Layer 2 (LLM Summary + Vector RAG, merged)
 
 ## 1. Goal

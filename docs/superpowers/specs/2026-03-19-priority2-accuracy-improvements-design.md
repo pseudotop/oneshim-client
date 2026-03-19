@@ -1,7 +1,7 @@
 # Priority 2: Accuracy Improvements — Design Spec
 
 > Created: 2026-03-19
-> Status: Draft
+> Status: Implemented
 > Depends on: Priority 1 UX Improvements, Layer 1 (Adaptive Tiered Memory), Layer 2 (Vector RAG)
 
 ## 1. Goal

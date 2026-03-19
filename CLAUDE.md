@@ -1,6 +1,6 @@
 # CLAUDE.md — client-rust
 
-ONESHIM Rust desktop client. 10-crate Cargo workspace, Hexagonal Architecture.
+ONESHIM Rust desktop client. 13-crate Cargo workspace, Hexagonal Architecture.
 
 ## Essential Commands
 
@@ -53,6 +53,8 @@ client-rust/
     ├── oneshim-vision/     # Screen capture, delta encoding, WebP, thumbnail, PII filter
     ├── oneshim-web/        # Local web dashboard — Axum REST API + React frontend
     ├── oneshim-automation/ # Automation control — policy-based command execution, audit logging
+    ├── oneshim-analysis/   # LLM analysis pipeline — segment summarization, vector RAG
+    ├── oneshim-embedding/  # Vector embedding + compression — INT8 quantization, similarity search
     ├── oneshim-app/        # Legacy adapter crate (CLI entry, standalone mode)
     └── oneshim-api-contracts/ # Shared API type contracts
 ```

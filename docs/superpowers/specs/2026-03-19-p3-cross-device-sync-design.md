@@ -1,7 +1,7 @@
 # P3: Cross-Device Sync — Design Spec
 
 > Created: 2026-03-19
-> Status: Draft
+> Status: Implemented (Phase 3a-1/3a-2)
 > Depends on: Layer 1 (Adaptive Tiered Memory), Layer 2 (Vector RAG)
 
 ## 1. Goal

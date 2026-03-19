@@ -1,7 +1,7 @@
 # P3 Vector Phase C: Advanced Compression + Indexing — Design Spec
 
 > Created: 2026-03-19
-> Status: Draft
+> Status: Implemented (Phase C.1-C.4)
 > Depends on: Phase A (INT8 scalar quantization — implemented), Phase B (query expansion — implemented)
 > Parent spec: [P3 Vector Compression + Embedding Optimization](2026-03-19-p3-vector-compression-embedding-optimization-design.md)
 

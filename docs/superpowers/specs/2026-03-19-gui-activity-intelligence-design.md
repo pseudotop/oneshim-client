@@ -1,7 +1,7 @@
 # GUI Activity Intelligence — Design Spec
 
 > Created: 2026-03-19
-> Status: Draft
+> Status: Implemented (Phase 1-3)
 > Depends on: OcrRegion extraction (parallel), Standalone LLM Analysis Pipeline (ADR-011)
 
 ## 1. Goal
@@ -601,12 +601,12 @@ The entire pipeline runs synchronously within the existing scheduler
 
 ## 13. Open Questions
 
-| Question | Options | Leaning |
-|----------|---------|---------|
-| Should we track mouse hover (not just clicks)? | Yes (richer data) / No (noise) | No for Phase 1-2, reconsider Phase 3 |
-| OCR frame rate vs input event rate mismatch? | Interpolate / use nearest frame | Use nearest frame within 2s window |
-| Should element type inference learn from user corrections? | Feedback loop / static rules | Static rules for Phase 1-2, feedback in Phase 3 |
-| Maximum interaction events per segment? | 1000 / 5000 / unlimited | 1000 with oldest-eviction, sufficient for 30min segments |
+| Question | Decision |
+|----------|----------|
+| Should we track mouse hover (not just clicks)? | **Decided:** No for Phase 1-3 — hover events add noise without proportional insight; revisit if future analytics require dwell-time heatmaps |
+| OCR frame rate vs input event rate mismatch? | **Decided:** Use nearest frame within 2s window — interpolation adds complexity with marginal accuracy gain |
+| Should element type inference learn from user corrections? | **Decided:** Static rules for Phase 1-3 — feedback loops require UI surface and storage that are out of scope |
+| Maximum interaction events per segment? | **Decided:** 1000 with oldest-eviction — sufficient for 30min segments at observed interaction rates |
 
 ## 14. Non-Goals
 

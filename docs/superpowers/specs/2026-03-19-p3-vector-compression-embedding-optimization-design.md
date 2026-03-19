@@ -1,7 +1,7 @@
 # P3: Vector Compression + Embedding Optimization — Design Spec
 
 > Created: 2026-03-19
-> Status: Draft
+> Status: Implemented (Phase A/B)
 > Depends on: Layer 2 LLM Summary + Vector RAG (implemented)
 > Parent ADR: [ADR-013: LLM Segment Summary + Vector RAG](../../architecture/ADR-013-llm-summary-vector-rag.md)
 

@@ -1,7 +1,7 @@
 # P3 Cross-Device Sync Phase 3b: Remote + LAN Transport — Design Spec
 
 > Created: 2026-03-19
-> Status: Draft
+> Status: Implemented
 > Parent spec: [P3 Cross-Device Sync](2026-03-19-p3-cross-device-sync-design.md)
 > Depends on: Phase 3a-2 (SyncEngine, ChangeExtractor, ChangeMerger, FileSyncTransport)
 

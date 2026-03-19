@@ -1,7 +1,7 @@
 # Text-Heavy App Intelligence — Design Spec
 
 > Created: 2026-03-19
-> Status: Draft
+> Status: Implemented (Phase 1-3)
 > Depends on: GUI Activity Intelligence (Phase 2), Standalone LLM Analysis Pipeline (ADR-011)
 > Supersedes: Scattered app lists in AppCategory::from_app_name, TitleBarParser, SENSITIVE_APP_KEYWORDS
 
@@ -1285,13 +1285,13 @@ audit trail.
 
 ## 15. Open Questions
 
-| Question | Options | Leaning |
-|----------|---------|---------|
-| Should `AppSubcategory` be stored in `WorkSession`? | Yes (richer session data) / No (computed on the fly) | Yes — store alongside `AppCategory` for historical queries |
-| Should `AppRegistry` be behind a port trait? | Yes (testability) / No (it is pure data, no I/O) | No for Phase 1 — it is a pure data lookup. Reconsider if user overrides need async file watching. |
-| Should we track inter-key interval (IKI) distributions? | Yes (richer typing dynamics) / No (privacy concern, complexity) | No — ratios are sufficient. IKI would reveal typing patterns that could be used for biometric identification. |
-| vim mode detection inside terminals? | Detect escape sequences / rely on arrow_ratio | Rely on arrow_ratio. Escape sequence detection requires key sequence analysis which violates privacy principles. |
-| Should `TitleBarParser` be fully replaced by `AppRegistry` hints? | Full replacement / fallback only | Fallback only for Phase 1. Registry hints supplement but do not replace the parser's app-specific logic. |
+| Question | Decision |
+|----------|----------|
+| Should `AppSubcategory` be stored in `WorkSession`? | **Decided:** Yes — stored alongside `AppCategory` for historical queries without recomputation |
+| Should `AppRegistry` be behind a port trait? | **Decided:** No — it is a pure data lookup with no I/O; a port trait would add indirection without testability benefit |
+| Should we track inter-key interval (IKI) distributions? | **Decided:** No — ratios are sufficient; IKI reveals typing patterns usable for biometric identification, violating privacy principles |
+| vim mode detection inside terminals? | **Decided:** Rely on arrow_ratio — escape sequence detection requires key sequence analysis which violates privacy principles |
+| Should `TitleBarParser` be fully replaced by `AppRegistry` hints? | **Decided:** Fallback only — registry hints supplement but do not replace the parser's app-specific logic |
 
 ## 16. Non-Goals
 
