@@ -1,6 +1,7 @@
 mod adaptive_trigger;
 mod analyzer;
 mod assembler;
+pub mod auto_tuner;
 pub mod calibration_buffer;
 pub mod clustering_strategy;
 pub mod constraint_builder;
