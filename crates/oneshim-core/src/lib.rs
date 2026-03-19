@@ -1,6 +1,7 @@
 //! # oneshim-core
 
 pub mod ai_model_lifecycle_policy;
+pub mod app_registry;
 pub mod config;
 pub mod config_manager;
 pub mod consent;
