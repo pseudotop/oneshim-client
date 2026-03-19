@@ -35,6 +35,13 @@ pub struct ConsentPermissions {
     // --- Tier 4: Tiered Memory ---
     #[serde(default)]
     pub activity_pattern_learning: bool,
+
+    // --- Tier 5: Cross-Device Sync ---
+    /// Permits cross-device synchronization of activity data.
+    /// GDPR Article 6 -- processing requires explicit consent for data
+    /// transfer between devices, even when both are owned by the same user.
+    #[serde(default)]
+    pub cross_device_sync: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -410,6 +417,58 @@ mod tests {
         assert!(
             !manager.has_pending_deletion(),
             "clear_pending_deletion() 이후 has_pending_deletion()은 false이어야 한다"
+        );
+    }
+
+    #[test]
+    fn consent_permissions_cross_device_sync_default_false() {
+        let perms = ConsentPermissions::default();
+        assert!(
+            !perms.cross_device_sync,
+            "cross_device_sync must default to false (GDPR Article 6)"
+        );
+    }
+
+    #[test]
+    fn consent_cross_device_sync_permission_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("consent.json");
+        let mut manager = ConsentManager::new(path);
+
+        // Without cross_device_sync
+        let perms = ConsentPermissions::default();
+        manager.grant_consent(perms, 30).unwrap();
+        assert!(!manager.is_permitted(|p| p.cross_device_sync));
+
+        // With cross_device_sync
+        let perms_with_sync = ConsentPermissions {
+            cross_device_sync: true,
+            ..Default::default()
+        };
+        manager.grant_consent(perms_with_sync, 30).unwrap();
+        assert!(manager.is_permitted(|p| p.cross_device_sync));
+    }
+
+    #[test]
+    fn consent_permissions_legacy_json_without_cross_device_sync() {
+        // Records written before cross_device_sync was added must deserialize.
+        let legacy_json = r#"{
+            "screen_capture": true,
+            "ocr_processing": false,
+            "telemetry": true,
+            "process_monitoring": true,
+            "input_activity": false,
+            "window_title_collection": false,
+            "app_usage_analytics": false,
+            "clipboard_monitoring": false,
+            "file_access_monitoring": false,
+            "activity_pattern_learning": false
+        }"#;
+        let perms: ConsentPermissions = serde_json::from_str(legacy_json).unwrap();
+        assert!(perms.screen_capture);
+        assert!(
+            !perms.cross_device_sync,
+            "missing field must default to false"
         );
     }
 }
