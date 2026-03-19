@@ -5,7 +5,7 @@
 //! through the port traits defined in oneshim-core.
 
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use oneshim_core::consent::ConsentManager;
 use oneshim_core::error::CoreError;
@@ -23,11 +23,15 @@ pub struct SyncEngine {
     consent_manager: Arc<parking_lot::Mutex<ConsentManager>>,
     device_id: String,
     device_name: String,
+    /// High-watermark HLC from the last successful push. Only rows with
+    /// HLC > this value will be extracted on the next push cycle, avoiding
+    /// re-extraction of all local data every cycle.
+    last_push_watermark: parking_lot::Mutex<Hlc>,
 }
 
 #[allow(dead_code)]
 impl SyncEngine {
-    pub fn new(
+    pub async fn new(
         extractor: Arc<dyn ChangeExtractor>,
         merger: Arc<dyn ChangeMerger>,
         transport: Arc<dyn SyncTransport>,
@@ -35,6 +39,25 @@ impl SyncEngine {
         device_id: String,
         device_name: String,
     ) -> Self {
+        // Seed the push watermark from storage so we never re-push rows that
+        // were already successfully pushed in a previous process lifetime.
+        let initial_watermark = match extractor.local_watermark().await {
+            Ok(wm) => {
+                if wm != Hlc::default() {
+                    debug!(
+                        wall_ms = wm.wall_ms,
+                        counter = wm.counter,
+                        "initialized push watermark from storage"
+                    );
+                }
+                wm
+            }
+            Err(e) => {
+                warn!("failed to read initial push watermark, starting from zero: {e}");
+                Hlc::default()
+            }
+        };
+
         Self {
             extractor,
             merger,
@@ -42,6 +65,7 @@ impl SyncEngine {
             consent_manager,
             device_id,
             device_name,
+            last_push_watermark: parking_lot::Mutex::new(initial_watermark),
         }
     }
 
@@ -99,12 +123,18 @@ impl SyncEngine {
         }
 
         // --- Push phase ---
-        let since = Hlc::default(); // Push all local changes (peers track their own watermarks)
+        // Use the last successful push watermark so we only extract rows
+        // that were created or modified since the previous push.
+        let since = { self.last_push_watermark.lock().clone() };
         let local_changes = self.extractor.get_changes_since(&since).await?;
 
         if !local_changes.is_empty() {
             info!(rows = local_changes.row_count(), "pushing local changes");
             self.transport.push(&local_changes).await?;
+            // Advance watermark only after a successful push so that a
+            // transient transport failure causes a retry of the same rows.
+            let new_watermark = local_changes.watermark.clone();
+            *self.last_push_watermark.lock() = new_watermark;
         }
 
         Ok(merge_result)
@@ -147,15 +177,27 @@ mod tests {
 
     struct MockExtractor {
         changeset: ChangeSet,
+        /// Records the `since` argument from each `get_changes_since` call.
+        since_log: std::sync::Mutex<Vec<Hlc>>,
+    }
+
+    impl MockExtractor {
+        fn new(changeset: ChangeSet) -> Self {
+            Self {
+                changeset,
+                since_log: std::sync::Mutex::new(Vec::new()),
+            }
+        }
     }
 
     #[async_trait]
     impl ChangeExtractor for MockExtractor {
-        async fn get_changes_since(&self, _since: &Hlc) -> Result<ChangeSet, CoreError> {
+        async fn get_changes_since(&self, since: &Hlc) -> Result<ChangeSet, CoreError> {
+            self.since_log.lock().unwrap().push(since.clone());
             Ok(self.changeset.clone())
         }
         async fn local_watermark(&self) -> Result<Hlc, CoreError> {
-            Ok(Hlc::default())
+            Ok(self.changeset.watermark.clone())
         }
     }
 
@@ -220,9 +262,7 @@ mod tests {
     #[tokio::test]
     async fn cycle_skipped_when_consent_not_granted() {
         let engine = SyncEngine::new(
-            Arc::new(MockExtractor {
-                changeset: ChangeSet::default(),
-            }),
+            Arc::new(MockExtractor::new(ChangeSet::default())),
             Arc::new(MockMerger {
                 apply_count: AtomicUsize::new(0),
             }),
@@ -233,7 +273,8 @@ mod tests {
             make_consent_manager(false),
             "dev-a".to_string(),
             "Test".to_string(),
-        );
+        )
+        .await;
 
         let result = engine.run_cycle().await.unwrap();
         assert!(result.is_none());
@@ -257,19 +298,18 @@ mod tests {
         });
 
         let engine = SyncEngine::new(
-            Arc::new(MockExtractor {
-                changeset: ChangeSet {
-                    segments: vec![serde_json::json!({"id": "local-seg"})],
-                    origin_device_id: "dev-a".to_string(),
-                    ..Default::default()
-                },
-            }),
+            Arc::new(MockExtractor::new(ChangeSet {
+                segments: vec![serde_json::json!({"id": "local-seg"})],
+                origin_device_id: "dev-a".to_string(),
+                ..Default::default()
+            })),
             merger.clone(),
             transport.clone(),
             make_consent_manager(true),
             "dev-a".to_string(),
             "Test".to_string(),
-        );
+        )
+        .await;
 
         let result = engine.run_cycle().await.unwrap();
         assert!(result.is_some());
@@ -288,19 +328,18 @@ mod tests {
         });
 
         let engine = SyncEngine::new(
-            Arc::new(MockExtractor {
-                changeset: ChangeSet {
-                    segments: vec![serde_json::json!({"id": "local-seg"})],
-                    origin_device_id: "dev-a".to_string(),
-                    ..Default::default()
-                },
-            }),
+            Arc::new(MockExtractor::new(ChangeSet {
+                segments: vec![serde_json::json!({"id": "local-seg"})],
+                origin_device_id: "dev-a".to_string(),
+                ..Default::default()
+            })),
             merger.clone(),
             transport.clone(),
             make_consent_manager(true),
             "dev-a".to_string(),
             "Test".to_string(),
-        );
+        )
+        .await;
 
         let result = engine.run_cycle().await.unwrap();
         assert!(result.is_none()); // no merge happened
@@ -333,9 +372,7 @@ mod tests {
         });
 
         let engine = SyncEngine::new(
-            Arc::new(MockExtractor {
-                changeset: ChangeSet::default(),
-            }),
+            Arc::new(MockExtractor::new(ChangeSet::default())),
             Arc::new(MockMerger {
                 apply_count: AtomicUsize::new(0),
             }),
@@ -343,7 +380,8 @@ mod tests {
             consent_mgr.clone(),
             "dev-a".to_string(),
             "Test".to_string(),
-        );
+        )
+        .await;
 
         let result = engine.run_cycle().await.unwrap();
         assert!(result.is_none());
@@ -351,5 +389,51 @@ mod tests {
 
         // pending_deletion should be cleared
         assert!(!consent_mgr.lock().has_pending_deletion());
+    }
+
+    #[tokio::test]
+    async fn push_watermark_advances_after_successful_push() {
+        let watermark = Hlc {
+            wall_ms: 5000,
+            counter: 3,
+            device_id: "dev-a".to_string(),
+        };
+        let extractor = Arc::new(MockExtractor::new(ChangeSet {
+            segments: vec![serde_json::json!({"id": "seg-1"})],
+            origin_device_id: "dev-a".to_string(),
+            watermark: watermark.clone(),
+            ..Default::default()
+        }));
+        let transport = Arc::new(MockTransport {
+            pull_result: std::sync::Mutex::new(vec![]),
+            push_count: AtomicUsize::new(0),
+        });
+
+        let engine = SyncEngine::new(
+            extractor.clone(),
+            Arc::new(MockMerger {
+                apply_count: AtomicUsize::new(0),
+            }),
+            transport,
+            make_consent_manager(true),
+            "dev-a".to_string(),
+            "Test".to_string(),
+        )
+        .await;
+
+        // First cycle: extractor is called with the initial watermark (seeded from local_watermark)
+        engine.run_cycle().await.unwrap();
+        // Second cycle: extractor should receive the advanced watermark, not Hlc::default()
+        engine.run_cycle().await.unwrap();
+
+        let log = extractor.since_log.lock().unwrap();
+        assert_eq!(log.len(), 2);
+        // Both calls should use the same watermark since the changeset watermark
+        // equals the initial local_watermark.
+        assert_eq!(log[0], watermark, "first push should use seeded watermark");
+        assert_eq!(
+            log[1], watermark,
+            "second push should use advanced watermark"
+        );
     }
 }
