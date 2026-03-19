@@ -16,6 +16,7 @@ pub mod llm_provider;
 pub mod monitor;
 pub mod notifier;
 pub mod oauth;
+pub mod override_store;
 pub mod ocr_provider;
 pub mod overlay_driver;
 pub mod sandbox;

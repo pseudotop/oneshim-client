@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: u32 = 11;
+const CURRENT_VERSION: u32 = 12;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -56,6 +56,10 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 11 {
         migrate_v11(conn)?;
+    }
+
+    if current < 12 {
+        migrate_v12(conn)?;
     }
 
     Ok(())
@@ -608,6 +612,33 @@ fn migrate_v11(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v12(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V12 execution: regime_overrides table for recalibration");
+
+    conn.execute_batch(
+        "
+        -- User regime overrides for constraint-based re-clustering
+        CREATE TABLE IF NOT EXISTS regime_overrides (
+            override_id TEXT PRIMARY KEY,
+            segment_id TEXT NOT NULL,
+            original_regime_id TEXT,
+            action_type TEXT NOT NULL,
+            action_data TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_override_segment ON regime_overrides(segment_id);
+        CREATE INDEX IF NOT EXISTS idx_override_created ON regime_overrides(created_at);
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (12);
+        ",
+    )?;
+
+    info!("migration V12 completed");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -775,7 +806,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
 
         // V9 tables
         let count: i64 = conn
@@ -852,6 +883,16 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+
+        // V12 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='regime_overrides'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -864,6 +905,6 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
     }
 }
