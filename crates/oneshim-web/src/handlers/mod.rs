@@ -5,6 +5,7 @@ pub mod automation_gui;
 pub mod daily_digest;
 pub mod dashboard;
 pub mod digests;
+pub mod recalibration;
 
 pub mod backup;
 pub mod data;

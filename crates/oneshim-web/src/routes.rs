@@ -228,6 +228,23 @@ pub fn api_routes() -> Router<AppState> {
             "/dashboard/day",
             get(handlers::dashboard::get_dashboard_day),
         )
+        // Recalibration endpoints
+        .route(
+            "/recalibration/override",
+            post(handlers::recalibration::create_override),
+        )
+        .route(
+            "/recalibration/override/{id}",
+            delete(handlers::recalibration::delete_override),
+        )
+        .route(
+            "/recalibration/overrides",
+            get(handlers::recalibration::list_overrides),
+        )
+        .route(
+            "/recalibration/recluster",
+            post(handlers::recalibration::trigger_recluster),
+        )
 }
 
 pub fn integration_routes() -> Router<AppState> {
@@ -279,6 +296,8 @@ mod tests {
             vector_store: None,
             embedding_provider: None,
             text_search: None,
+            override_store: None,
+            recluster_requested: None,
         };
         let _app: Router<()> = api_routes().with_state(state);
     }
@@ -310,6 +329,8 @@ mod tests {
             vector_store: None,
             embedding_provider: None,
             text_search: None,
+            override_store: None,
+            recluster_requested: None,
         };
         let _app: Router<()> = integration_routes().with_state(state);
     }

@@ -1,0 +1,142 @@
+//! Recalibration REST endpoints for user-driven regime correction.
+//!
+//! - `POST /api/recalibration/override` — create a regime override
+//! - `DELETE /api/recalibration/override/:id` — delete an override
+//! - `GET /api/recalibration/overrides` — list overrides in a time range
+//! - `POST /api/recalibration/recluster` — trigger on-demand re-clustering
+
+use axum::extract::{Path, Query, State};
+use axum::Json;
+use chrono::{DateTime, Duration, Utc};
+use oneshim_core::models::recalibration::{RegimeOverride, UserOverrideAction};
+use serde::{Deserialize, Serialize};
+
+use crate::error::ApiError;
+use crate::AppState;
+
+// ---------------------------------------------------------------------------
+// Request / Response types
+// ---------------------------------------------------------------------------
+
+/// Request body for creating an override.
+#[derive(Debug, Deserialize)]
+pub struct CreateOverrideRequest {
+    /// Segment ID to override.
+    pub segment_id: String,
+    /// Original regime ID (optional).
+    pub original_regime_id: Option<String>,
+    /// The corrective action.
+    pub action: UserOverrideAction,
+}
+
+/// Query parameters for listing overrides.
+#[derive(Debug, Deserialize)]
+pub struct ListOverridesQuery {
+    /// ISO 8601 datetime — start of range.
+    pub from: Option<String>,
+    /// ISO 8601 datetime — end of range.
+    pub to: Option<String>,
+}
+
+/// Generic success response with a message.
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub ok: bool,
+    pub message: String,
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+/// `POST /api/recalibration/override`
+pub async fn create_override(
+    State(state): State<AppState>,
+    Json(body): Json<CreateOverrideRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let store = state
+        .override_store
+        .as_ref()
+        .ok_or_else(|| ApiError::ServiceUnavailable("Override store not configured".to_string()))?;
+
+    let entry = RegimeOverride {
+        override_id: uuid::Uuid::new_v4().to_string(),
+        segment_id: body.segment_id,
+        original_regime_id: body.original_regime_id,
+        user_action: body.action,
+        created_at: Utc::now(),
+    };
+
+    store.save_override(&entry).await?;
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "override_id": entry.override_id,
+    })))
+}
+
+/// `DELETE /api/recalibration/override/:id`
+pub async fn delete_override(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let store = state
+        .override_store
+        .as_ref()
+        .ok_or_else(|| ApiError::ServiceUnavailable("Override store not configured".to_string()))?;
+
+    store.delete_override(&id).await?;
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "deleted_id": id,
+    })))
+}
+
+/// `GET /api/recalibration/overrides?from=...&to=...`
+pub async fn list_overrides(
+    State(state): State<AppState>,
+    Query(query): Query<ListOverridesQuery>,
+) -> Result<Json<Vec<RegimeOverride>>, ApiError> {
+    let store = state
+        .override_store
+        .as_ref()
+        .ok_or_else(|| ApiError::ServiceUnavailable("Override store not configured".to_string()))?;
+
+    let from: DateTime<Utc> = query
+        .from
+        .as_deref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|| Utc::now() - Duration::days(7));
+
+    let to: DateTime<Utc> = query
+        .to
+        .as_deref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(Utc::now);
+
+    let overrides = store.list_overrides(from, to).await?;
+
+    Ok(Json(overrides))
+}
+
+/// `POST /api/recalibration/recluster`
+///
+/// Sets the `recluster_requested` flag so the scheduler picks it up on
+/// the next cycle. The actual re-clustering is performed asynchronously.
+pub async fn trigger_recluster(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let flag = state.recluster_requested.as_ref().ok_or_else(|| {
+        ApiError::ServiceUnavailable("Recluster flag not configured".to_string())
+    })?;
+
+    flag.store(true, std::sync::atomic::Ordering::Relaxed);
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "message": "Re-clustering requested. It will run on the next scheduler cycle.",
+    })))
+}

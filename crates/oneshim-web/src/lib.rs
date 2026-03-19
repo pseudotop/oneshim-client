@@ -92,6 +92,8 @@ pub struct AppState {
     pub embedding_provider:
         Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
     pub text_search: Option<Arc<dyn oneshim_core::ports::text_search::TextSearchProvider>>,
+    pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 #[derive(Clone, Default)]
@@ -151,6 +153,8 @@ impl WebServer {
                 vector_store: None,
                 embedding_provider: None,
                 text_search: None,
+                override_store: None,
+                recluster_requested: None,
             },
             bound_port_state: None,
             bound_port_notifier: None,
@@ -725,6 +729,8 @@ mod tests {
             vector_store: None,
             embedding_provider: None,
             text_search: None,
+            override_store: None,
+            recluster_requested: None,
         }
     }
 

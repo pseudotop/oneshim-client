@@ -305,6 +305,8 @@ mod tests {
                 vector_store: None,
                 embedding_provider: None,
                 text_search: None,
+                override_store: None,
+                recluster_requested: None,
             }
         }
 
@@ -335,6 +337,8 @@ mod tests {
                 vector_store: None,
                 embedding_provider: None,
                 text_search: None,
+                override_store: None,
+                recluster_requested: None,
             }
         }
 
