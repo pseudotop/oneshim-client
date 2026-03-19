@@ -216,6 +216,7 @@ mod tests {
                 correction_count: 0,
             },
             app_name: "VS Code".to_string(),
+            keystroke_profile: None,
         }
     }
 

@@ -230,6 +230,7 @@ impl InputActivityCollector {
                 correction_count: corrections,
             },
             app_name,
+            keystroke_profile: None,
         }
     }
 }
