@@ -20,6 +20,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 base64 = { workspace = true }
 semver = { workspace = true }
+gethostname = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

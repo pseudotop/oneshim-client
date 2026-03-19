@@ -159,6 +159,12 @@ impl Scheduler {
             // capture 2 post-event frames after each flush.
             let ring_buffer = CaptureRingBuffer::new(6, 2, 0.5);
 
+            // GUI Activity Intelligence state (carried across ticks)
+            let mut last_gui_summary: Option<
+                oneshim_core::models::gui_activity::GuiActivitySummary,
+            > = None;
+            let last_ocr_regions: Vec<oneshim_core::models::frame::OcrRegion> = Vec::new();
+
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
@@ -319,7 +325,12 @@ impl Scheduler {
                                     ).await;
                                 }
 
+                                // ── Take input snapshot once for both pipelines ──
+                                let input_snap = input_collector.take_snapshot();
+
                                 // ── Adaptive tiered-memory pipeline ──
+                                // Feed GUI summary from the previous cycle (N-1) into
+                                // the current analysis tick (N).
                                 if let Some(ref mut ts) = adaptive_trigger_state {
                                     super::analysis_pipeline::run_analysis_tick(
                                         ts,
@@ -327,9 +338,39 @@ impl Scheduler {
                                         &focus_window_title,
                                         &prev_app,
                                         app_changed,
-                                        &input_collector,
+                                        &input_snap,
+                                        last_gui_summary.as_ref(),
                                         &storage1,
                                     ).await;
+                                }
+                                // Consume the GUI summary after feeding it to the analysis pipeline
+                                last_gui_summary = None;
+
+                                // ── GUI Activity Intelligence pipeline ──
+                                if let Some(ref mut ts) = adaptive_trigger_state {
+                                    if let Some(ref mut gui_state) = ts.gui_pipeline_state {
+                                        let parsed_content_label = ts
+                                            .title_bar_parser
+                                            .parse(&app_name, &focus_window_title)
+                                            .map(|c| c.content_label)
+                                            .unwrap_or_default();
+
+                                        let recent_shortcuts = input_collector.take_recent_shortcuts();
+
+                                        let gui_summary = super::gui_pipeline::run_gui_tick(
+                                            gui_state,
+                                            &last_ocr_regions,
+                                            &input_snap,
+                                            &recent_shortcuts,
+                                            &app_name,
+                                            &focus_window_title,
+                                            &parsed_content_label,
+                                        );
+
+                                        if gui_summary.is_some() {
+                                            last_gui_summary = gui_summary;
+                                        }
+                                    }
                                 }
 
                                 prev_app = Some(app_name);

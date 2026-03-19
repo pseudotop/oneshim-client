@@ -26,6 +26,7 @@ use chrono::Utc;
 /// separately. `GuiWorkTypeRefiner::refine()` is called from the analysis
 /// pipeline after it receives the `GuiActivitySummary` produced by this
 /// pipeline, not from the GUI pipeline itself.
+#[allow(dead_code)]
 pub(crate) struct GuiPipelineState {
     pub detector: GuiElementDetector,
     pub aggregator: GuiActivityAggregator,
@@ -46,6 +47,7 @@ pub(crate) fn run_gui_tick(
     state: &mut GuiPipelineState,
     ocr_regions: &[OcrRegion],
     input_snap: &InputActivityEvent,
+    recent_shortcuts: &[String],
     app_name: &str,
     window_title: &str,
     content_label: &str,
@@ -115,13 +117,11 @@ pub(crate) fn run_gui_tick(
             app_name: app_name.to_string(),
             window_title: Some(window_title.to_string()),
             screen_position: None,
-            // TODO: `InputActivityCollector` currently only exposes aggregate
-            // `shortcut_count`, not the actual key names (e.g., "Cmd+S"). To
-            // populate this field, `InputActivityCollector` needs to record
-            // recent shortcut key names (e.g., via a small ring buffer of
-            // shortcut strings) and expose them through its public API.
             interaction: Some(InteractionType::KeyboardShortcut {
-                keys: "unknown".to_string(),
+                keys: recent_shortcuts
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "unknown".to_string()),
             }),
         };
 

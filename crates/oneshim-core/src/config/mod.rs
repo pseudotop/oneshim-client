@@ -52,6 +52,8 @@ pub struct AppConfig {
     pub tls: TlsConfig,
     #[serde(default)]
     pub analysis: AnalysisConfig,
+    #[serde(default)]
+    pub sync: SyncConfig,
 }
 
 // AppConfig impl
@@ -101,6 +103,7 @@ impl AppConfig {
             integration: IntegrationConfig::default(),
             tls: TlsConfig::default(),
             analysis: AnalysisConfig::default(),
+            sync: SyncConfig::default(),
         }
     }
 

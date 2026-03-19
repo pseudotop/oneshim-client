@@ -6,10 +6,11 @@
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use oneshim_analysis::TriggerDecision;
+use oneshim_core::models::event::InputActivityEvent;
+use oneshim_core::models::gui_activity::GuiActivitySummary;
 use oneshim_core::models::tiered_memory::{TriggerInput, TriggerReason};
 use oneshim_core::models::work_session::AppCategory;
 use oneshim_core::ports::storage::StorageService;
-use oneshim_monitor::input_activity::InputActivityCollector;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -32,7 +33,8 @@ pub(super) async fn run_analysis_tick(
     window_title: &str,
     prev_app: &Option<String>,
     app_changed: bool,
-    input_collector: &Arc<InputActivityCollector>,
+    input_snap: &InputActivityEvent,
+    gui_summary: Option<&GuiActivitySummary>,
     storage: &Arc<dyn StorageService>,
 ) {
     let now = Utc::now();
@@ -53,8 +55,7 @@ pub(super) async fn run_analysis_tick(
     // 2. Parse title bar → content
     let parsed_content = ts.title_bar_parser.parse(app_name, window_title);
 
-    // 3. Get input activity snapshot
-    let input_snap = input_collector.take_snapshot();
+    // 3. Input activity snapshot (passed in by caller — shared with GUI pipeline)
 
     // 4. Classify work type
     let (work_type, engagement) = if let Some(ref content) = parsed_content {
@@ -81,7 +82,7 @@ pub(super) async fn run_analysis_tick(
                 engagement: engagement.clone(),
                 confidence: content.confidence,
                 timestamp: now,
-                gui_summary: None, // GUI summary injected by gui_pipeline after this tick
+                gui_summary: gui_summary.cloned(),
             });
     }
 
