@@ -299,8 +299,7 @@ end tell"#
 
         #[test]
         fn build_script_both_queries() {
-            let script =
-                MacOsAccessibilityFinder::build_script(Some("OK"), Some("AXButton"));
+            let script = MacOsAccessibilityFinder::build_script(Some("OK"), Some("AXButton"));
             assert!(script.contains("OK"));
             assert!(script.contains("AXButton"));
         }

@@ -35,6 +35,9 @@ pub struct ContentSummaryEntry {
     pub content_type: String,
     pub work_type: String,
     pub mins: u32,
+    /// GUI activity summary line (e.g., "15 clicks, 3 saves, 2 test runs").
+    /// When present, this enriches the content field in the LLM context.
+    pub gui_summary_line: Option<String>,
 }
 
 /// Current desktop activity snapshot.
@@ -230,11 +233,19 @@ impl ContextAssembler {
             content_summary: stats
                 .content_summary
                 .iter()
-                .map(|e| ContentSummaryItem {
-                    content: e.content.clone(),
-                    content_type: e.content_type.clone(),
-                    work_type: e.work_type.clone(),
-                    mins: e.mins,
+                .map(|e| {
+                    // When GUI summary line is present, enrich the content field
+                    let content = if let Some(ref gui_line) = e.gui_summary_line {
+                        format!("{} ({})", e.content, gui_line)
+                    } else {
+                        e.content.clone()
+                    };
+                    ContentSummaryItem {
+                        content,
+                        content_type: e.content_type.clone(),
+                        work_type: e.work_type.clone(),
+                        mins: e.mins,
+                    }
                 })
                 .collect(),
         });
@@ -559,6 +570,7 @@ mod tests {
                 content_type: "File".to_string(),
                 work_type: "ActiveCoding".to_string(),
                 mins: 10,
+                gui_summary_line: None,
             }],
         };
         let ctx =

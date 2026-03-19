@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use oneshim_core::models::gui_activity::GuiActivitySummary;
 use oneshim_core::models::tiered_memory::{
     ContentActivity, ContentType, EngagementMetrics, WorkType,
 };
@@ -22,6 +23,8 @@ struct ActiveContent {
     start_time: DateTime<Utc>,
     confidence: f32,
     update_count: u32,
+    /// Latest GUI activity summary for this content (updated each tick).
+    gui_summary: Option<GuiActivitySummary>,
 }
 
 impl ContentTracker {
@@ -33,6 +36,9 @@ impl ContentTracker {
     }
 
     /// Update with new content detection. Returns finalized activity if content changed.
+    ///
+    /// When `gui_summary` is `Some`, the latest GUI activity summary is stored
+    /// and propagated to the finalized `ContentActivity`.
     pub fn update(
         &mut self,
         content_label: &str,
@@ -41,6 +47,7 @@ impl ContentTracker {
         engagement: EngagementMetrics,
         confidence: f32,
         timestamp: DateTime<Utc>,
+        gui_summary: Option<GuiActivitySummary>,
     ) -> Option<ContentActivity> {
         let changed = self
             .current
@@ -61,6 +68,7 @@ impl ContentTracker {
                 start_time: timestamp,
                 confidence,
                 update_count: 1,
+                gui_summary,
             });
 
             if let Some(activity) = finalized {
@@ -98,6 +106,11 @@ impl ContentTracker {
             // Update work type and confidence to latest
             current.work_type = work_type;
             current.confidence = running_avg(current.confidence, confidence, n);
+
+            // Update GUI summary to latest (replaces previous)
+            if gui_summary.is_some() {
+                current.gui_summary = gui_summary;
+            }
         }
 
         None
@@ -126,7 +139,7 @@ impl ContentTracker {
             confidence: current.confidence,
             work_type: current.work_type,
             engagement: current.engagement,
-            gui_summary: None,
+            gui_summary: current.gui_summary,
         })
     }
 }
@@ -169,6 +182,7 @@ mod tests {
             make_engagement(40.0, 5.0, 2.0),
             0.95,
             now,
+            None,
         );
         // First update with no prior content returns None
         assert!(result.is_none());
@@ -188,6 +202,7 @@ mod tests {
             make_engagement(40.0, 5.0, 2.0),
             0.95,
             t0,
+            None,
         );
 
         let activity = tracker.update(
@@ -197,6 +212,7 @@ mod tests {
             make_engagement(35.0, 3.0, 1.0),
             0.90,
             t1,
+            None,
         );
 
         let activity = activity.unwrap();
@@ -218,6 +234,7 @@ mod tests {
             make_engagement(40.0, 5.0, 2.0),
             0.90,
             t0,
+            None,
         );
 
         let result = tracker.update(
@@ -227,6 +244,7 @@ mod tests {
             make_engagement(50.0, 7.0, 4.0),
             0.95,
             t1,
+            None,
         );
 
         // Same content, no finalized activity
@@ -252,6 +270,7 @@ mod tests {
             make_engagement(40.0, 5.0, 2.0),
             0.95,
             t0,
+            None,
         );
         tracker.update(
             "index.ts",
@@ -260,6 +279,7 @@ mod tests {
             make_engagement(35.0, 3.0, 1.0),
             0.90,
             t1,
+            None,
         );
         tracker.update(
             "#general",
@@ -268,6 +288,7 @@ mod tests {
             make_engagement(20.0, 2.0, 0.0),
             0.85,
             t2,
+            None,
         );
 
         let activities = tracker.drain_all(t3);
@@ -300,6 +321,7 @@ mod tests {
             make_engagement(25.0, 2.0, 1.0),
             0.90,
             t0,
+            None,
         );
 
         let activities = tracker.drain_all(t1);
@@ -319,6 +341,7 @@ mod tests {
             make_engagement(40.0, 5.0, 2.0),
             0.95,
             t0,
+            None,
         );
 
         // Switch immediately
@@ -329,9 +352,70 @@ mod tests {
             make_engagement(30.0, 4.0, 1.0),
             0.90,
             t0,
+            None,
         );
 
         let activity = activity.unwrap();
         assert_eq!(activity.duration_secs, 0);
+    }
+
+    #[test]
+    fn gui_summary_propagated_to_finalized_activity() {
+        use oneshim_core::models::gui_activity::GuiActivitySummary;
+
+        let mut tracker = ContentTracker::new();
+        let t0 = Utc::now();
+        let t1 = t0 + Duration::seconds(60);
+
+        let gui_summary = GuiActivitySummary {
+            app_name: "VS Code".to_string(),
+            window_title: "main.rs".to_string(),
+            content_label: "main.rs".to_string(),
+            start_time: t0,
+            end_time: t0,
+            duration_secs: 60,
+            button_clicks: 5,
+            text_entries: 2,
+            tab_switches: 0,
+            menu_accesses: 0,
+            tree_navigations: 0,
+            scroll_events: 0,
+            save_count: 1,
+            test_run_count: 0,
+            search_count: 0,
+            build_count: 0,
+            undo_redo_count: 0,
+            copy_paste_count: 0,
+            top_elements: vec![],
+            unmatched_click_count: 0,
+            summary_line: "5 clicks, 1 saves".to_string(),
+        };
+
+        tracker.update(
+            "main.rs",
+            ContentType::File,
+            WorkType::ActiveCoding,
+            make_engagement(40.0, 5.0, 2.0),
+            0.95,
+            t0,
+            Some(gui_summary.clone()),
+        );
+
+        // Switch to finalize
+        let activity = tracker.update(
+            "lib.rs",
+            ContentType::File,
+            WorkType::ActiveCoding,
+            make_engagement(30.0, 4.0, 1.0),
+            0.90,
+            t1,
+            None,
+        );
+
+        let activity = activity.unwrap();
+        assert!(activity.gui_summary.is_some());
+        let gs = activity.gui_summary.unwrap();
+        assert_eq!(gs.save_count, 1);
+        assert_eq!(gs.button_clicks, 5);
     }
 }

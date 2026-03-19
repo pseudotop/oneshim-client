@@ -80,6 +80,7 @@ pub(super) async fn run_analysis_tick(
             engagement.clone(),
             content.confidence,
             now,
+            None, // GUI summary injected by gui_pipeline after this tick
         );
     }
 
