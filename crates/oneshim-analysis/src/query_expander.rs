@@ -113,6 +113,11 @@ fn work_type_keyword(wt: &WorkType) -> Option<&'static str> {
         WorkType::PassiveMeeting => Some("meeting"),
         WorkType::ActiveMeeting => Some("meeting"),
         WorkType::Navigation => Some("navigation"),
+        WorkType::TerminalCommands => Some("terminal"),
+        WorkType::LogReading => Some("log"),
+        WorkType::DocumentWriting => Some("writing"),
+        WorkType::DocumentReading => Some("reading"),
+        WorkType::ChatComposing => Some("chat"),
         WorkType::Unknown => None,
     }
 }

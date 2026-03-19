@@ -31,7 +31,14 @@ pub enum WorkType {
     PassiveMeeting,
     ActiveMeeting,
     Navigation,
+    // Text-heavy app intelligence (Phase 1)
+    TerminalCommands,
+    LogReading,
+    DocumentWriting,
+    DocumentReading,
+    ChatComposing,
     #[default]
+    #[serde(other)]
     Unknown,
 }
 
@@ -77,4 +84,40 @@ pub struct ContainerInfo {
     pub container_app: String,
     pub container_type: ContainerType,
     pub detected_inner_apps: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn work_type_new_variants_serde() {
+        let val = WorkType::TerminalCommands;
+        let json = serde_json::to_string(&val).unwrap();
+        assert_eq!(json, r#""TERMINAL_COMMANDS""#);
+        let back: WorkType = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, WorkType::TerminalCommands);
+    }
+
+    #[test]
+    fn work_type_unknown_variant_falls_back() {
+        // Simulates a future variant name unknown to this build
+        let back: WorkType = serde_json::from_str(r#""SOME_FUTURE_VARIANT""#).unwrap();
+        assert_eq!(back, WorkType::Unknown);
+    }
+
+    #[test]
+    fn work_type_all_new_variants_roundtrip() {
+        for variant in [
+            WorkType::TerminalCommands,
+            WorkType::LogReading,
+            WorkType::DocumentWriting,
+            WorkType::DocumentReading,
+            WorkType::ChatComposing,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: WorkType = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, variant);
+        }
+    }
 }
