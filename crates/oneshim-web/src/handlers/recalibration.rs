@@ -8,42 +8,11 @@
 use axum::extract::{Path, Query, State};
 use axum::Json;
 use chrono::{DateTime, Duration, Utc};
-use oneshim_core::models::recalibration::{RegimeOverride, UserOverrideAction};
-use serde::{Deserialize, Serialize};
+use oneshim_api_contracts::recalibration::{CreateOverrideRequest, ListOverridesQuery};
+use oneshim_core::models::recalibration::RegimeOverride;
 
 use crate::error::ApiError;
 use crate::AppState;
-
-// ---------------------------------------------------------------------------
-// Request / Response types
-// ---------------------------------------------------------------------------
-
-/// Request body for creating an override.
-#[derive(Debug, Deserialize)]
-pub struct CreateOverrideRequest {
-    /// Segment ID to override.
-    pub segment_id: String,
-    /// Original regime ID (optional).
-    pub original_regime_id: Option<String>,
-    /// The corrective action.
-    pub action: UserOverrideAction,
-}
-
-/// Query parameters for listing overrides.
-#[derive(Debug, Deserialize)]
-pub struct ListOverridesQuery {
-    /// ISO 8601 datetime — start of range.
-    pub from: Option<String>,
-    /// ISO 8601 datetime — end of range.
-    pub to: Option<String>,
-}
-
-/// Generic success response with a message.
-#[derive(Debug, Serialize)]
-pub struct SuccessResponse {
-    pub ok: bool,
-    pub message: String,
-}
 
 // ---------------------------------------------------------------------------
 // Handlers

@@ -6,7 +6,9 @@ use tracing::debug;
 use oneshim_core::models::daily_digest::DailyDigest;
 
 use crate::error::ApiError;
-use crate::handlers::dashboard::{get_dashboard_day, DashboardDayQuery};
+use oneshim_api_contracts::dashboard::DashboardDayQuery;
+
+use crate::handlers::dashboard::get_dashboard_day;
 use crate::AppState;
 
 /// GET /api/digests/daily?date=YYYY-MM-DD — returns a daily digest.

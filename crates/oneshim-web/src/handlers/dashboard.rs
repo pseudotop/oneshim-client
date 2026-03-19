@@ -1,9 +1,11 @@
 use axum::extract::{Query, State};
 use axum::Json;
 use chrono::{NaiveDate, Utc};
-use serde::Deserialize;
 use tracing::{debug, warn};
 
+use oneshim_api_contracts::dashboard::{
+    DashboardDayQuery, RawContentActivity, RawContentActivityBrief,
+};
 use oneshim_core::models::daily_digest::{
     self, ContentBrief, DailyDigest, DailyStatistics, DayComparison, TimelineEntry,
 };
@@ -12,13 +14,6 @@ use oneshim_core::models::tiered_memory::WorkType;
 
 use crate::error::ApiError;
 use crate::AppState;
-
-/// Query parameters for the dashboard day endpoint.
-#[derive(Debug, Deserialize)]
-pub struct DashboardDayQuery {
-    /// Date in YYYY-MM-DD format. Defaults to today.
-    pub date: Option<String>,
-}
 
 /// GET /api/dashboard/day?date=YYYY-MM-DD — daily timetable + insight.
 pub async fn get_dashboard_day(
@@ -109,14 +104,7 @@ fn build_daily_digest_from_records(
 
 /// Parse content activities JSON into ContentBrief list (top 3).
 fn parse_content_briefs(json_str: &str) -> Vec<ContentBrief> {
-    #[derive(serde::Deserialize)]
-    struct RawActivity {
-        content_label: Option<String>,
-        duration_secs: Option<u64>,
-        work_type: Option<String>,
-    }
-
-    let activities: Vec<RawActivity> = serde_json::from_str(json_str).unwrap_or_default();
+    let activities: Vec<RawContentActivity> = serde_json::from_str(json_str).unwrap_or_default();
     let mut sorted = activities;
     sorted.sort_by(|a, b| {
         b.duration_secs
@@ -251,13 +239,8 @@ fn compute_statistics(
 
 /// Parse top content label from content activities JSON.
 fn parse_top_content(json_str: &str) -> String {
-    #[derive(serde::Deserialize)]
-    struct RawActivity {
-        content_label: Option<String>,
-        duration_secs: Option<u64>,
-    }
-
-    let activities: Vec<RawActivity> = serde_json::from_str(json_str).unwrap_or_default();
+    let activities: Vec<RawContentActivityBrief> =
+        serde_json::from_str(json_str).unwrap_or_default();
     activities
         .into_iter()
         .max_by_key(|a| a.duration_secs.unwrap_or(0))
