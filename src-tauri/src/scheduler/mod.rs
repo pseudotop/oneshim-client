@@ -1,5 +1,7 @@
 mod analysis_pipeline;
 mod config;
+#[allow(dead_code)] // Wired in future — full integration pending accessibility API (Batch 4)
+pub(crate) mod gui_pipeline;
 mod loops;
 
 // ── Public re-exports (external API) ────────────────────────────────
