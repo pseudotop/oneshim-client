@@ -284,6 +284,8 @@ impl AgentRuntimeBundle {
                     recluster_requested: self.recluster_requested.clone(),
                     llm_summarizer: llm_summarizer_arc,
                     embedding_pipeline: embedding_pipeline_arc,
+                    gui_pipeline_state: None,
+                    gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
                 };
                 scheduler = scheduler.with_adaptive_trigger(state);
                 info!("Adaptive tiered-memory pipeline enabled");

@@ -1,9 +1,7 @@
 mod analysis_pipeline;
 mod config;
-/// GUI Activity Intelligence pipeline. Not yet wired into the scheduler loop.
-/// Will be integrated after the accessibility API adapter stabilizes (Batch 4),
-/// which provides the OCR region stream needed by `run_gui_tick()`.
-#[allow(dead_code)]
+/// GUI Activity Intelligence pipeline — wired into the monitor loop.
+/// Called after `run_analysis_tick()` each cycle when `gui_intelligence.enabled`.
 pub(crate) mod gui_pipeline;
 mod loops;
 
@@ -73,6 +71,11 @@ pub(crate) struct AdaptiveTriggerState {
     // --- Layer 2: LLM summary + embedding pipeline ---
     pub(crate) llm_summarizer: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>>,
     pub(crate) embedding_pipeline: Option<Arc<oneshim_analysis::EmbeddingPipeline>>,
+    // --- GUI Activity Intelligence pipeline state ---
+    pub(crate) gui_pipeline_state: Option<gui_pipeline::GuiPipelineState>,
+    // --- GUI Work Type Refiner ---
+    #[allow(dead_code)]
+    pub(crate) gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
 }
 
 pub struct Scheduler {

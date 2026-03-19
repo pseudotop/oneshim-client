@@ -17,6 +17,7 @@ pub mod session;
 pub mod skill;
 pub mod storage_records;
 pub mod suggestion;
+pub mod sync;
 pub mod system;
 pub mod telemetry;
 pub mod tiered_memory;

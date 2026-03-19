@@ -4,7 +4,7 @@ use crate::error::CoreError;
 use crate::models::embedding::{EmbeddingMetadata, SearchFilters, SearchResult};
 
 /// Port for storing and searching embedding vectors.
-/// Primary adapter: sqlite-vec backed implementation in oneshim-storage.
+/// Primary adapter: brute-force cosine similarity implementation in oneshim-storage.
 #[async_trait]
 pub trait VectorStore: Send + Sync {
     /// Store a vector with its associated metadata.
