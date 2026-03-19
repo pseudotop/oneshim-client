@@ -1159,6 +1159,32 @@ export interface UiScene {
   elements: UiSceneElement[]
 }
 
+// ── Recalibration types ──────────────────────────────────────
+
+export type UserOverrideAction =
+  | { type: 'MarkAsNoise' }
+  | { type: 'ReassignRegime'; target_regime_id: string }
+  | { type: 'MarkAsPersonalTime'; from: string; to: string }
+
+export interface RegimeOverride {
+  override_id: string
+  segment_id: string
+  original_regime_id: string | null
+  user_action: UserOverrideAction
+  created_at: string
+}
+
+export interface CreateOverrideRequest {
+  segment_id: string
+  original_regime_id?: string
+  action: UserOverrideAction
+}
+
+export interface ListOverridesQuery {
+  from?: string
+  to?: string
+}
+
 export interface SceneCalibrationReport {
   schema_version: string
   scene_id: string

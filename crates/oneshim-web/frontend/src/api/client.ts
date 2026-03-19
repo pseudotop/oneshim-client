@@ -11,6 +11,7 @@ import type {
   SecretBackendCapabilities,
   BackupArchive,
   BackupParams,
+  CreateOverrideRequest,
   CreateTagRequest,
   DailySummary,
   DeleteRangeRequest,
@@ -38,6 +39,7 @@ import type {
   IntegrationInboxResponse,
   IntegrationStatus,
   Interruption,
+  ListOverridesQuery,
   LocalSuggestion,
   PaginatedResponse,
   PoliciesInfo,
@@ -47,6 +49,7 @@ import type {
   ProviderModelsRequest,
   ProviderModelsResponse,
   ProviderSurfaceCatalog,
+  RegimeOverride,
   ReportParams,
   ReportResponse,
   RestoreResult,
@@ -797,6 +800,54 @@ export async function fetchSceneCalibration(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Scene calibration query failure' }))
     throw new Error(err.error || 'Scene calibration query failure')
+  }
+  return res.json()
+}
+
+// ── Recalibration API ────────────────────────────────────────
+
+export async function createOverride(req: CreateOverrideRequest): Promise<RegimeOverride> {
+  const res = await fetchWithRetry(`${BASE_URL}/recalibration/override`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create override' }))
+    throw new Error(err.error || 'Failed to create override')
+  }
+  return res.json()
+}
+
+export async function deleteOverride(id: string): Promise<void> {
+  const res = await fetchWithRetry(`${BASE_URL}/recalibration/override/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to delete override' }))
+    throw new Error(err.error || 'Failed to delete override')
+  }
+}
+
+export async function listOverrides(query: ListOverridesQuery = {}): Promise<RegimeOverride[]> {
+  const params = new URLSearchParams()
+  if (query.from) params.set('from', query.from)
+  if (query.to) params.set('to', query.to)
+  const res = await fetchWithRetry(`${BASE_URL}/recalibration/overrides?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to list overrides' }))
+    throw new Error(err.error || 'Failed to list overrides')
+  }
+  return res.json()
+}
+
+export async function triggerRecluster(): Promise<{ ok: boolean; message: string }> {
+  const res = await fetchWithRetry(`${BASE_URL}/recalibration/recluster`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Re-clustering failed' }))
+    throw new Error(err.error || 'Re-clustering failed')
   }
   return res.json()
 }
