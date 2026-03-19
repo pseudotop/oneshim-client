@@ -1,8 +1,10 @@
 mod detectors;
+mod gui_patterns;
 mod itemset;
 mod sequential;
 
 pub(crate) use detectors::is_communication_app;
+pub use gui_patterns::{detect_gui_patterns, GuiPattern};
 
 use chrono::{DateTime, Utc};
 use oneshim_core::models::analysis::ActivityPattern;

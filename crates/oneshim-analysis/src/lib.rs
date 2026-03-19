@@ -39,7 +39,7 @@ pub use assembler::{
 pub use calibration_buffer::CalibrationBuffer;
 pub use content_tracker::ContentTracker;
 pub use param_resolver::ParamResolver;
-pub use pattern_miner::PatternMiner;
+pub use pattern_miner::{detect_gui_patterns, GuiPattern, PatternMiner};
 pub use prompts::ANALYSIS_SYSTEM_PROMPT;
 pub use regime_classifier::RegimeClassifier;
 pub use regime_detector::RegimeDetector;
