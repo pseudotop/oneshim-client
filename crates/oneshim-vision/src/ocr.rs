@@ -236,6 +236,54 @@ impl OcrExtractor {
     }
 }
 
+/// Build OCR regions from a prepared LepTess instance.
+///
+/// Extracts word-level component boxes, reads full text, and pairs each word
+/// with its bounding box. When word and box counts diverge (an unreliable
+/// assumption in Tesseract), truncates to the shorter list and logs a warning.
+/// Confidence is derived from `mean_text_conf()`.
+fn build_regions_from_leptess(lt: &mut leptess::LepTess) -> Result<Vec<OcrRegion>, OcrError> {
+    let boxes = lt
+        .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
+        .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
+
+    let full_text = lt
+        .get_utf8_text()
+        .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+    let words: Vec<&str> = full_text.split_whitespace().collect();
+
+    let box_count = boxes.len();
+    if words.len() != box_count {
+        warn!(
+            "OCR word/box count mismatch: {} words vs {} boxes — truncating to shorter",
+            words.len(),
+            box_count
+        );
+    }
+    let count = words.len().min(box_count);
+    let mean_conf = (lt.mean_text_conf() as f32 / 100.0).clamp(0.0, 1.0);
+
+    let mut regions = Vec::with_capacity(count);
+    for i in 0..count {
+        let geom = boxes.get(i).unwrap().get_geometry();
+        let word_text = words[i].to_string();
+        if !word_text.is_empty() {
+            regions.push(OcrRegion {
+                text: word_text,
+                bbox: BoundingBox {
+                    x: geom.x.max(0) as u32,
+                    y: geom.y.max(0) as u32,
+                    width: geom.w.max(0) as u32,
+                    height: geom.h.max(0) as u32,
+                },
+                confidence: mean_conf,
+            });
+        }
+    }
+
+    Ok(regions)
+}
+
 impl OcrExtractor {
     /// Extract text with bounding box positions as `OcrRegion` values.
     ///
@@ -261,45 +309,7 @@ impl OcrExtractor {
         lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
             .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
-        let boxes = lt
-            .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
-            .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
-
-        let full_text = lt
-            .get_utf8_text()
-            .map_err(|e| OcrError::Extraction(format!("{e}")))?;
-        let words: Vec<&str> = full_text.split_whitespace().collect();
-
-        let box_count = boxes.len();
-        if words.len() != box_count {
-            warn!(
-                "OCR word/box count mismatch: {} words vs {} boxes — truncating to shorter",
-                words.len(),
-                box_count
-            );
-        }
-        let count = words.len().min(box_count);
-        let mean_conf = (lt.mean_text_conf() as f32 / 100.0).clamp(0.0, 1.0);
-
-        let mut regions = Vec::new();
-        for i in 0..count {
-            let geom = boxes.get(i).unwrap().get_geometry();
-            let word_text = words[i].to_string();
-            if !word_text.is_empty() {
-                regions.push(OcrRegion {
-                    text: word_text,
-                    bbox: BoundingBox {
-                        x: geom.x.max(0) as u32,
-                        y: geom.y.max(0) as u32,
-                        width: geom.w.max(0) as u32,
-                        height: geom.h.max(0) as u32,
-                    },
-                    confidence: mean_conf,
-                });
-            }
-        }
-
-        Ok(regions)
+        build_regions_from_leptess(&mut lt)
     }
 
     /// Async version of `extract_regions`.
@@ -329,45 +339,7 @@ impl OcrExtractor {
             lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
                 .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
-            let boxes = lt
-                .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
-                .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
-
-            let full_text = lt
-                .get_utf8_text()
-                .map_err(|e| OcrError::Extraction(format!("{e}")))?;
-            let words: Vec<&str> = full_text.split_whitespace().collect();
-
-            let box_count = boxes.len();
-            if words.len() != box_count {
-                tracing::warn!(
-                    "OCR word/box count mismatch: {} words vs {} boxes — truncating to shorter",
-                    words.len(),
-                    box_count
-                );
-            }
-            let count = words.len().min(box_count);
-            let mean_conf = (lt.mean_text_conf() as f32 / 100.0).clamp(0.0, 1.0);
-
-            let mut regions = Vec::new();
-            for i in 0..count {
-                let geom = boxes.get(i).unwrap().get_geometry();
-                let word_text = words[i].to_string();
-                if !word_text.is_empty() {
-                    regions.push(OcrRegion {
-                        text: word_text,
-                        bbox: BoundingBox {
-                            x: geom.x.max(0) as u32,
-                            y: geom.y.max(0) as u32,
-                            width: geom.w.max(0) as u32,
-                            height: geom.h.max(0) as u32,
-                        },
-                        confidence: mean_conf,
-                    });
-                }
-            }
-
-            Ok(regions)
+            build_regions_from_leptess(&mut lt)
         })
         .await
         .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?

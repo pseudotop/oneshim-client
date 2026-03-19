@@ -1,8 +1,25 @@
-//! Correlates mouse/keyboard events with OCR regions to identify
-//! which GUI element the user interacted with.
+//! GUI element detection via OCR-input correlation.
+//!
+//! Phase 1 foundation: standalone detection logic.
+//! Integration into the monitor loop pipeline is Phase 2
+//! (see docs/superpowers/specs/2026-03-19-gui-activity-intelligence-design.md).
 
 use oneshim_core::models::frame::{BoundingBox, OcrRegion};
 use oneshim_core::models::gui_interaction::{GuiElement, GuiElementType};
+
+/// Title bar detection threshold in pixels. Covers both standard (30px)
+/// and 2x HiDPI displays. Adjust if targeting higher DPI configurations.
+const TITLE_BAR_MAX_Y: u32 = 60;
+
+/// Tab region: below title bar but still near top of screen.
+const TAB_BAR_MAX_Y: u32 = 120;
+
+/// Maximum text length considered a tab label.
+const TAB_LABEL_MAX_LEN: usize = 30;
+
+/// Minimum Y coordinate considered bottom-of-screen for status bar detection.
+/// This is a heuristic; actual screen height is unknown at this layer.
+const STATUS_BAR_MIN_Y: u32 = 900;
 
 /// Correlates input events (mouse clicks, keyboard activity) with OCR-extracted
 /// regions to determine which GUI element the user is interacting with.
@@ -46,17 +63,35 @@ impl InputOcrCorrelator {
     }
 
     /// Infer GUI element type from text content and position heuristics.
+    ///
+    /// Position thresholds are defined as module-level constants
+    /// (`TITLE_BAR_MAX_Y`, `TAB_BAR_MAX_Y`, `STATUS_BAR_MIN_Y`).
     fn infer_element_type(text: &str, bbox: &BoundingBox) -> GuiElementType {
         let lower = text.to_lowercase();
 
         // Very top of screen — likely title bar or menu bar
-        if bbox.y < 30 {
+        if bbox.y < TITLE_BAR_MAX_Y {
             return GuiElementType::TitleBar;
+        }
+
+        // Tab-like text: short, near top but below title bar
+        if bbox.y < TAB_BAR_MAX_Y && text.len() < TAB_LABEL_MAX_LEN {
+            return GuiElementType::TabLabel;
+        }
+
+        // Bottom of screen — likely status bar
+        if bbox.y >= STATUS_BAR_MIN_Y {
+            return GuiElementType::StatusBar;
         }
 
         // URLs
         if lower.contains("http") || lower.contains("://") {
             return GuiElementType::Link;
+        }
+
+        // Text with keyboard shortcut patterns (e.g., "Ctrl+S", "⌘N", "Alt+F4")
+        if Self::looks_like_menu_item(text) {
+            return GuiElementType::MenuItem;
         }
 
         // Common button labels
@@ -73,6 +108,13 @@ impl InputOcrCorrelator {
         }
 
         GuiElementType::Unknown
+    }
+
+    /// Check if text looks like a menu item with a keyboard shortcut.
+    fn looks_like_menu_item(text: &str) -> bool {
+        // Keyboard shortcut patterns: Ctrl+X, Cmd+X, Alt+X, ⌘X, ⇧⌘X
+        let shortcut_prefixes = ["Ctrl+", "Cmd+", "Alt+", "Shift+", "⌘", "⇧"];
+        shortcut_prefixes.iter().any(|prefix| text.contains(prefix))
     }
 }
 
@@ -194,5 +236,63 @@ mod tests {
             &bbox,
         );
         assert_eq!(t, GuiElementType::Unknown);
+    }
+
+    #[test]
+    fn infer_element_type_tab_label() {
+        let bbox = BoundingBox {
+            x: 100,
+            y: 80,
+            width: 80,
+            height: 20,
+        };
+        let t = InputOcrCorrelator::infer_element_type("main.rs", &bbox);
+        assert_eq!(t, GuiElementType::TabLabel);
+    }
+
+    #[test]
+    fn infer_element_type_status_bar() {
+        let bbox = BoundingBox {
+            x: 0,
+            y: 950,
+            width: 200,
+            height: 20,
+        };
+        let t = InputOcrCorrelator::infer_element_type("Ln 42, Col 10", &bbox);
+        assert_eq!(t, GuiElementType::StatusBar);
+    }
+
+    #[test]
+    fn infer_element_type_menu_item_shortcut() {
+        let bbox = BoundingBox {
+            x: 50,
+            y: 300,
+            width: 150,
+            height: 20,
+        };
+        let t = InputOcrCorrelator::infer_element_type("Save  Ctrl+S", &bbox);
+        assert_eq!(t, GuiElementType::MenuItem);
+    }
+
+    #[test]
+    fn infer_element_type_menu_item_mac_shortcut() {
+        let bbox = BoundingBox {
+            x: 50,
+            y: 300,
+            width: 150,
+            height: 20,
+        };
+        let t = InputOcrCorrelator::infer_element_type("New File  ⌘N", &bbox);
+        assert_eq!(t, GuiElementType::MenuItem);
+    }
+
+    #[test]
+    fn looks_like_menu_item_detection() {
+        assert!(InputOcrCorrelator::looks_like_menu_item("Save  Ctrl+S"));
+        assert!(InputOcrCorrelator::looks_like_menu_item("⌘N"));
+        assert!(InputOcrCorrelator::looks_like_menu_item("⇧⌘P"));
+        assert!(InputOcrCorrelator::looks_like_menu_item("Alt+F4"));
+        assert!(!InputOcrCorrelator::looks_like_menu_item("Save"));
+        assert!(!InputOcrCorrelator::looks_like_menu_item("Hello World"));
     }
 }
