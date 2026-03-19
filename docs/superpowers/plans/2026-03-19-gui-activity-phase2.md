@@ -424,13 +424,15 @@ Run: `cargo test -p oneshim-analysis -- assembler`
 
 - [ ] **Step 1: Create gui_pipeline.rs**
 
+> **Note:** `InputSnapshot` in this plan refers to `InputActivityEvent`, the return type of `InputActivityCollector::take_snapshot()` in `crates/oneshim-monitor/src/input_activity.rs`. Use `InputActivityEvent` as the concrete type.
+
 Follow the `analysis_pipeline.rs` pattern — a `run_gui_tick()` function:
 
 ```rust
 pub(super) fn run_gui_tick(
     gui_state: &mut GuiPipelineState,
     ocr_regions: &[OcrRegion],
-    input_snap: &InputSnapshot,
+    input_snap: &InputActivityEvent,  // from InputActivityCollector::take_snapshot()
     app_name: &str,
     window_title: &str,
     content_label: &str,
@@ -483,6 +485,20 @@ Pass the GUI summary into `content_tracker.update()` (wiring from Task 8).
 - [ ] **Step 4: Verify compilation**
 
 Run: `cargo check -p oneshim-tauri` (or the src-tauri crate name)
+
+---
+
+## Task 10.5: GUI interactions storage migration
+
+**Files:**
+- Modify: `crates/oneshim-storage/src/migration.rs`
+- Modify: `crates/oneshim-core/src/ports/web_storage.rs`
+- Modify: `crates/oneshim-storage/src/sqlite/web_storage_impl.rs`
+
+- [ ] V13 migration: create `gui_interactions` table (event_id, segment_id, timestamp, element_text, element_type, interaction_type, bbox_json, app_name)
+- [ ] Add `save_gui_interaction()` and `list_gui_interactions_for_segment()` to WebStorage
+- [ ] Implement in SqliteStorage
+- [ ] Commit: `feat(storage): V13 migration — gui_interactions table`
 
 ---
 

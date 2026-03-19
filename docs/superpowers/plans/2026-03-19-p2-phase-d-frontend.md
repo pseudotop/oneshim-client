@@ -111,14 +111,26 @@
 - [ ] Modify `TimelineView`:
   - Add `overrides?: RegimeOverride[]` and `regimeOptions?: Array<{id: string, label: string}>` to `TimelineViewProps`
   - Add optional `onCreateOverride?: (req: CreateOverrideRequest) => void` callback prop
-  - Add gear icon (lucide `Settings2`) to each segment block header, visible on hover
+  - Add gear icon (lucide `Settings2`) to each segment block header, visible on hover; show loading indicator (Spinner) on gear icon during mutation
   - On gear click: open `SegmentContextMenu` positioned relative to the button
   - Manage open menu state: `menuSegmentId: string | null`
+  - Reference i18n keys: `recalibration.markAsPersonalTime`, `recalibration.changeRegimeTo`, `recalibration.overridden`, `recalibration.personalTime`
   - Visual indicator for overridden segments: check if `segment_id` exists in `overrides` array, if so:
     - Show small "Overridden" badge (using `Badge` from `components/ui`)
     - Apply `line-through` to the original regime label
     - Show new regime label or "Personal time" in the badge
 - [ ] Commit: `feat(frontend): add inline segment recalibration to TimelineView`
+
+## Task 3.5: Wire overrides into DashboardDay
+
+**Files:**
+- Modify: `crates/oneshim-web/frontend/src/pages/DashboardDay.tsx`
+
+- [ ] Import `useOverrides`, `useCreateOverride` from the recalibration hook
+- [ ] Fetch overrides for the current date
+- [ ] Pass `overrides` and `onCreateOverride` to `TimelineView`
+- [ ] Pass `regimeOptions` (from dashboard data or hardcoded initial set)
+- [ ] Commit: `feat(frontend): wire override data into DashboardDay for inline recalibration`
 
 ## Task 4: RecalibrationPage
 
