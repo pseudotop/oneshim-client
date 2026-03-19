@@ -7,6 +7,7 @@ pub mod context;
 pub mod daily_digest;
 pub mod embedding;
 pub mod event;
+pub mod focused_element;
 pub mod frame;
 pub mod gui;
 pub mod gui_activity;
