@@ -19,6 +19,7 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = { workspace = true }
 core-graphics = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
