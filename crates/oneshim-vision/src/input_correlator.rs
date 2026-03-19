@@ -147,28 +147,48 @@ mod tests {
 
     #[test]
     fn infer_element_type_title_bar() {
-        let bbox = BoundingBox { x: 0, y: 10, width: 200, height: 20 };
+        let bbox = BoundingBox {
+            x: 0,
+            y: 10,
+            width: 200,
+            height: 20,
+        };
         let t = InputOcrCorrelator::infer_element_type("My Application", &bbox);
         assert_eq!(t, GuiElementType::TitleBar);
     }
 
     #[test]
     fn infer_element_type_link() {
-        let bbox = BoundingBox { x: 50, y: 300, width: 200, height: 20 };
+        let bbox = BoundingBox {
+            x: 50,
+            y: 300,
+            width: 200,
+            height: 20,
+        };
         let t = InputOcrCorrelator::infer_element_type("https://example.com", &bbox);
         assert_eq!(t, GuiElementType::Link);
     }
 
     #[test]
     fn infer_element_type_button() {
-        let bbox = BoundingBox { x: 50, y: 300, width: 60, height: 30 };
+        let bbox = BoundingBox {
+            x: 50,
+            y: 300,
+            width: 60,
+            height: 30,
+        };
         let t = InputOcrCorrelator::infer_element_type("Save", &bbox);
         assert_eq!(t, GuiElementType::Button);
     }
 
     #[test]
     fn infer_element_type_unknown() {
-        let bbox = BoundingBox { x: 50, y: 300, width: 400, height: 20 };
+        let bbox = BoundingBox {
+            x: 50,
+            y: 300,
+            width: 400,
+            height: 20,
+        };
         let t = InputOcrCorrelator::infer_element_type(
             "The quick brown fox jumps over the lazy dog",
             &bbox,

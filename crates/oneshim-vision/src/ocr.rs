@@ -312,9 +312,7 @@ impl OcrExtractor {
 
             let boxes = lt
                 .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
-                .ok_or_else(|| {
-                    OcrError::Extraction("Failed to extract word boxes".to_string())
-                })?;
+                .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
 
             let full_text = lt
                 .get_utf8_text()
@@ -469,7 +467,12 @@ mod tests {
         use oneshim_core::models::frame::{BoundingBox, OcrRegion};
         let region = OcrRegion {
             text: "test".to_string(),
-            bbox: BoundingBox { x: 10, y: 20, width: 50, height: 15 },
+            bbox: BoundingBox {
+                x: 10,
+                y: 20,
+                width: 50,
+                height: 15,
+            },
             confidence: 0.5,
         };
         assert_eq!(region.text, "test");

@@ -58,7 +58,12 @@ mod tests {
     fn gui_element_serde_roundtrip() {
         let element = GuiElement {
             text: "Save".to_string(),
-            bbox: BoundingBox { x: 100, y: 200, width: 80, height: 30 },
+            bbox: BoundingBox {
+                x: 100,
+                y: 200,
+                width: 80,
+                height: 30,
+            },
             element_type: GuiElementType::Button,
             confidence: 0.92,
         };
@@ -92,7 +97,12 @@ mod tests {
             timestamp: Utc::now(),
             element: GuiElement {
                 text: "File".to_string(),
-                bbox: BoundingBox { x: 0, y: 0, width: 40, height: 20 },
+                bbox: BoundingBox {
+                    x: 0,
+                    y: 0,
+                    width: 40,
+                    height: 20,
+                },
                 element_type: GuiElementType::MenuItem,
                 confidence: 0.88,
             },

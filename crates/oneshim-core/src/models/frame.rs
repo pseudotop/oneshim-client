@@ -104,7 +104,12 @@ mod tests {
 
     #[test]
     fn bounding_box_contains_point_inside() {
-        let bbox = BoundingBox { x: 10, y: 20, width: 100, height: 50 };
+        let bbox = BoundingBox {
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 50,
+        };
         assert!(bbox.contains_point(10, 20)); // top-left corner
         assert!(bbox.contains_point(50, 40)); // middle
         assert!(bbox.contains_point(109, 69)); // bottom-right edge (exclusive boundary)
@@ -112,7 +117,12 @@ mod tests {
 
     #[test]
     fn bounding_box_contains_point_outside() {
-        let bbox = BoundingBox { x: 10, y: 20, width: 100, height: 50 };
+        let bbox = BoundingBox {
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 50,
+        };
         assert!(!bbox.contains_point(9, 20)); // left of box
         assert!(!bbox.contains_point(10, 19)); // above box
         assert!(!bbox.contains_point(110, 20)); // right edge (exclusive)
@@ -121,31 +131,56 @@ mod tests {
 
     #[test]
     fn bounding_box_center() {
-        let bbox = BoundingBox { x: 10, y: 20, width: 100, height: 50 };
+        let bbox = BoundingBox {
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 50,
+        };
         assert_eq!(bbox.center(), (60, 45));
     }
 
     #[test]
     fn bounding_box_center_zero_origin() {
-        let bbox = BoundingBox { x: 0, y: 0, width: 200, height: 100 };
+        let bbox = BoundingBox {
+            x: 0,
+            y: 0,
+            width: 200,
+            height: 100,
+        };
         assert_eq!(bbox.center(), (100, 50));
     }
 
     #[test]
     fn bounding_box_area() {
-        let bbox = BoundingBox { x: 0, y: 0, width: 100, height: 50 };
+        let bbox = BoundingBox {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 50,
+        };
         assert_eq!(bbox.area(), 5000);
     }
 
     #[test]
     fn bounding_box_area_zero() {
-        let bbox = BoundingBox { x: 0, y: 0, width: 0, height: 50 };
+        let bbox = BoundingBox {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 50,
+        };
         assert_eq!(bbox.area(), 0);
     }
 
     #[test]
     fn bounding_box_serde_roundtrip() {
-        let bbox = BoundingBox { x: 10, y: 20, width: 100, height: 50 };
+        let bbox = BoundingBox {
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 50,
+        };
         let json = serde_json::to_string(&bbox).unwrap();
         let parsed: BoundingBox = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, bbox);
@@ -155,7 +190,12 @@ mod tests {
     fn ocr_region_serde_roundtrip() {
         let region = OcrRegion {
             text: "Hello".to_string(),
-            bbox: BoundingBox { x: 10, y: 20, width: 100, height: 50 },
+            bbox: BoundingBox {
+                x: 10,
+                y: 20,
+                width: 100,
+                height: 50,
+            },
             confidence: 0.95,
         };
         let json = serde_json::to_string(&region).unwrap();
