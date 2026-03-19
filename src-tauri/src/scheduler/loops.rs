@@ -749,7 +749,7 @@ impl Scheduler {
                                         let segments: Vec<oneshim_core::models::tiered_memory::SegmentSummary> =
                                             segment_records
                                                 .iter()
-                                                .filter_map(|r| record_to_segment_summary(r))
+                                                .filter_map(record_to_segment_summary)
                                                 .collect();
 
                                         // Load previous day for comparison

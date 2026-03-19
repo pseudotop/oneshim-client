@@ -413,9 +413,7 @@ mod tests {
 
         assert!(tracker.process_stats.contains_key("vscode"));
         assert!(tracker.process_stats.contains_key("terminal"));
-        assert!(
-            (tracker.process_stats["vscode"].ema_event_rate - 0.6).abs() < 0.05
-        );
+        assert!((tracker.process_stats["vscode"].ema_event_rate - 0.6).abs() < 0.05);
     }
 
     // ---- DriftDetector tests ----

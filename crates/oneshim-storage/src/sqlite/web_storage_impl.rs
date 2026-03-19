@@ -25,7 +25,7 @@ impl SqliteStorage {
         let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
             .map_err(|e| CoreError::Internal(format!("Invalid date in daily_digests: {e}")))?;
         let insight = insight_json
-            .map(|s| serde_json::from_str(s))
+            .map(serde_json::from_str)
             .transpose()
             .map_err(|e| CoreError::Internal(format!("Failed to deserialize insight: {e}")))?;
         let timeline = serde_json::from_str(timeline_json)
@@ -483,7 +483,7 @@ impl WebStorage for SqliteStorage {
         let insight_json = digest
             .insight
             .as_ref()
-            .map(|i| serde_json::to_string(i))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|e| CoreError::Internal(format!("Failed to serialize insight: {e}")))?;
         let timeline_json = serde_json::to_string(&digest.timeline)

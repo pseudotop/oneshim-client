@@ -142,7 +142,8 @@ pub(super) async fn run_analysis_tick(
     let density = ts.trigger.current_density_signal();
     let importance = ts.trigger.current_importance_signal();
     let cat_str = format!("{:?}", app_category).to_lowercase();
-    ts.ema_tracker.update(&cat_str, app_name, density, importance);
+    ts.ema_tracker
+        .update(&cat_str, app_name, density, importance);
 
     ts.auto_tune_tick_count += 1;
 
@@ -151,7 +152,8 @@ pub(super) async fn run_analysis_tick(
         let overrides = ts.ema_tracker.generate_overrides();
         for (cat_key, params) in &overrides {
             let category = AppCategory::from_category_str(cat_key);
-            ts.param_resolver.set_category_override(category, params.clone());
+            ts.param_resolver
+                .set_category_override(category, params.clone());
         }
         if !overrides.is_empty() {
             debug!(count = overrides.len(), "auto-tune overrides applied");
@@ -160,7 +162,8 @@ pub(super) async fn run_analysis_tick(
         // Check drift on importance signal
         if ts.drift_detector.observe(importance) {
             info!("drift detected — flagging for re-clustering");
-            ts.recluster_requested.store(true, std::sync::atomic::Ordering::Relaxed);
+            ts.recluster_requested
+                .store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -362,7 +365,10 @@ async fn run_periodic_regime_detection(ts: &mut AdaptiveTriggerState, now: DateT
                 // Fallback: legacy k-means regime detection
                 let detected = ts.regime_detector.detect(&features);
                 if !detected.is_empty() {
-                    info!(count = detected.len(), "regime detection completed (legacy)");
+                    info!(
+                        count = detected.len(),
+                        "regime detection completed (legacy)"
+                    );
                     ts.regime_manager.update_from_detection(detected);
                 }
             }
@@ -434,14 +440,22 @@ async fn run_constrained_clustering(
             .map(|(i, r)| (r.regime_id.clone(), i as i32))
             .collect();
 
-        let constraints =
-            constraint_builder::build_constraints(&overrides, &feature_indices, &regime_cluster_map);
+        let constraints = constraint_builder::build_constraints(
+            &overrides,
+            &feature_indices,
+            &regime_cluster_map,
+        );
 
         if constraints.is_empty() {
             strategy.as_ref().detect(features)
         } else {
-            info!(count = constraints.len(), "applying constraints to re-clustering");
-            strategy.as_ref().detect_with_constraints(features, &constraints)
+            info!(
+                count = constraints.len(),
+                "applying constraints to re-clustering"
+            );
+            strategy
+                .as_ref()
+                .detect_with_constraints(features, &constraints)
         }
     };
 
@@ -478,7 +492,10 @@ async fn run_constrained_clustering(
             // Fallback to legacy k-means
             let detected = ts.regime_detector.detect(features);
             if !detected.is_empty() {
-                info!(count = detected.len(), "regime detection completed (fallback)");
+                info!(
+                    count = detected.len(),
+                    "regime detection completed (fallback)"
+                );
                 ts.regime_manager.update_from_detection(detected);
             }
         }

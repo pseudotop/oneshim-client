@@ -625,7 +625,11 @@ pub async fn create_override(
     let override_id = entry.override_id.clone();
 
     use oneshim_core::ports::override_store::OverrideStore;
-    state.storage.save_override(&entry).await.map_err(|e| e.to_string())?;
+    state
+        .storage
+        .save_override(&entry)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({
         "ok": true,
@@ -640,7 +644,8 @@ pub async fn delete_override(
     override_id: String,
 ) -> Result<serde_json::Value, String> {
     use oneshim_core::ports::override_store::OverrideStore;
-    state.storage
+    state
+        .storage
         .delete_override(&override_id)
         .await
         .map_err(|e| e.to_string())?;
@@ -671,7 +676,8 @@ pub async fn list_overrides(
         .unwrap_or_else(chrono::Utc::now);
 
     use oneshim_core::ports::override_store::OverrideStore;
-    state.storage
+    state
+        .storage
         .list_overrides(from_dt, to_dt)
         .await
         .map_err(|e| e.to_string())
@@ -682,9 +688,7 @@ pub async fn list_overrides(
 pub async fn trigger_recluster(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    state
-        .recluster_requested
-        .store(true, Ordering::Relaxed);
+    state.recluster_requested.store(true, Ordering::Relaxed);
 
     Ok(serde_json::json!({
         "ok": true,

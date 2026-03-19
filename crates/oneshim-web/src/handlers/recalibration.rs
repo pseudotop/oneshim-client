@@ -129,9 +129,10 @@ pub async fn list_overrides(
 pub async fn trigger_recluster(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let flag = state.recluster_requested.as_ref().ok_or_else(|| {
-        ApiError::ServiceUnavailable("Recluster flag not configured".to_string())
-    })?;
+    let flag = state
+        .recluster_requested
+        .as_ref()
+        .ok_or_else(|| ApiError::ServiceUnavailable("Recluster flag not configured".to_string()))?;
 
     flag.store(true, std::sync::atomic::Ordering::Relaxed);
 

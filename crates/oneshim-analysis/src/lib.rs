@@ -48,6 +48,10 @@ pub use suggestion_filter::filter_by_regime;
 pub use title_bar_parser::{ParsedContent, TitleBarParser};
 pub use work_type_classifier::WorkTypeClassifier;
 
+// Priority 2: Accuracy Improvements re-exports
+pub use auto_tuner::{DriftDetector, EmaStatsTracker};
+pub use clustering_strategy::{ClusterAssignment, ClusteringResult, ClusteringStrategy};
+
 pub use daily_digest_generator::DailyDigestGenerator;
 pub use daily_insight_generator::DailyInsightGenerator;
 pub use embedding_pipeline::EmbeddingPipeline;
