@@ -573,4 +573,254 @@ mod tests {
         // Context signal boosted towards 1.0 after app switch (0 + (1-0)*0.5 = 0.5)
         assert!(trigger.current_context_signal() > 0.4);
     }
+
+    // ── Full segment lifecycle integration test ──────────────────────
+    //
+    // Tests the complete cycle using AdaptiveTrigger + SegmentBuffer +
+    // ContentTracker together (no mocks, no async, pure computation).
+
+    #[test]
+    fn full_segment_lifecycle_open_accumulate_close() {
+        use crate::content_tracker::{ContentTracker, ContentUpdateInput};
+        use crate::SegmentBuffer;
+        use oneshim_core::models::tiered_memory::{ContentType, EngagementMetrics};
+
+        let mut trigger = AdaptiveTrigger::new();
+        let mut segment_buffer = SegmentBuffer::new(200);
+        let mut content_tracker = ContentTracker::new();
+
+        // Use tuned params that make it easy to trigger open/close
+        let mut params = default_params();
+        params.t_high = 0.55;
+        params.t_low = 0.35;
+        params.min_segment_secs = 0; // disable min for predictable testing
+        params.max_segment_secs = 600;
+        params.buffer_capacity = 100;
+
+        let base = Utc::now();
+
+        // ── Phase 1: Feed high-importance events to trigger OpenSegment ──
+        let mut opened = false;
+        for i in 0..15 {
+            let ts = base + Duration::seconds(i * 2);
+            let input = TriggerInput::AppSwitchNew {
+                app_name: format!("App{}", i % 3),
+                prev_app: format!("App{}", (i + 1) % 3),
+                category: AppCategory::Development,
+            };
+            let (decision, _cal) = trigger.process_event(&input, ts, &params);
+
+            match decision {
+                TriggerDecision::OpenSegment => {
+                    trigger.start_new_segment(ts);
+                    segment_buffer.start_segment(ts);
+                    segment_buffer.push(ts, input.clone());
+                    opened = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            opened,
+            "segment should have opened after high-importance events"
+        );
+        assert!(segment_buffer.start_time().is_some());
+
+        // ── Phase 2: Feed content changes while segment is open ──
+        let content_labels = ["main.rs", "lib.rs", "README.md"];
+        for (i, label) in content_labels.iter().enumerate() {
+            let ts = base + Duration::seconds(30 + (i as i64) * 10);
+
+            // Push an event into the segment buffer
+            let input = TriggerInput::AppPoll {
+                app_name: "VS Code".to_string(),
+            };
+            segment_buffer.push(ts, input);
+
+            // Feed content into the content tracker
+            content_tracker.update(ContentUpdateInput {
+                content_label: label.to_string(),
+                content_type: ContentType::File,
+                work_type: oneshim_core::models::tiered_memory::WorkType::ActiveCoding,
+                engagement: EngagementMetrics {
+                    keystrokes_per_min: 40.0,
+                    mouse_clicks_per_min: 5.0,
+                    scroll_events_per_min: 2.0,
+                    shortcut_ratio: 0.1,
+                    typing_burst_count: 1,
+                    idle_ratio: 0.0,
+                },
+                confidence: 0.95,
+                timestamp: ts,
+                gui_summary: None,
+            });
+        }
+
+        // Verify segment buffer has accumulated events (3 content + 1 open)
+        assert!(
+            segment_buffer.len() >= 3,
+            "buffer should have at least 3 events, got {}",
+            segment_buffer.len()
+        );
+
+        // ── Phase 3: Force low-importance events to trigger CloseSegment ──
+        let mut closed = false;
+        for i in 0..30 {
+            let ts = base + Duration::seconds(60 + i * 3);
+            let input = TriggerInput::SystemMetric; // very low importance (0.05)
+            let (decision, _cal) = trigger.process_event(&input, ts, &params);
+
+            match decision {
+                TriggerDecision::CloseSegment | TriggerDecision::ForceCloseSegment => {
+                    closed = true;
+                    break;
+                }
+                _ => {
+                    segment_buffer.push(ts, input);
+                }
+            }
+        }
+        assert!(
+            closed,
+            "segment should have closed after low-importance events"
+        );
+
+        // ── Phase 4: Drain and verify ──
+        let seg_events = segment_buffer.drain_all();
+        assert!(!seg_events.is_empty(), "drained segment should have events");
+        assert!(
+            segment_buffer.is_empty(),
+            "buffer should be empty after drain"
+        );
+        assert!(
+            segment_buffer.start_time().is_none(),
+            "segment start should be cleared"
+        );
+
+        // Drain content tracker
+        let end_time = base + Duration::seconds(150);
+        let content_activities = content_tracker.drain_all(end_time);
+        assert_eq!(
+            content_activities.len(),
+            3,
+            "should have 3 content activities (main.rs, lib.rs, README.md)"
+        );
+        assert_eq!(content_activities[0].content_label, "main.rs");
+        assert_eq!(content_activities[1].content_label, "lib.rs");
+        assert_eq!(content_activities[2].content_label, "README.md");
+
+        // Verify durations: first two activities have 10s each (switched after 10s)
+        assert_eq!(content_activities[0].duration_secs, 10);
+        assert_eq!(content_activities[1].duration_secs, 10);
+        // Last activity: from t+50 to t+150 = 100s
+        assert_eq!(content_activities[2].duration_secs, 100);
+
+        // Trigger should be in a clean state after close_segment
+        trigger.close_segment();
+        assert!(trigger.current_segment_start().is_none());
+    }
+
+    #[test]
+    fn full_lifecycle_restart_segment() {
+        use crate::SegmentBuffer;
+
+        let mut trigger = AdaptiveTrigger::new();
+        let mut segment_buffer = SegmentBuffer::new(200);
+
+        let mut params = default_params();
+        params.t_high = 0.55;
+        params.t_low = 0.35;
+        params.min_segment_secs = 0;
+        params.max_segment_secs = 600;
+
+        let base = Utc::now();
+
+        // Open a segment first
+        let mut opened = false;
+        for i in 0..15 {
+            let ts = base + Duration::seconds(i * 2);
+            let input = app_switch(&format!("App{i}"));
+            let (decision, _) = trigger.process_event(&input, ts, &params);
+            if decision == TriggerDecision::OpenSegment {
+                trigger.start_new_segment(ts);
+                segment_buffer.start_segment(ts);
+                segment_buffer.push(ts, input);
+                opened = true;
+                break;
+            }
+        }
+        assert!(opened);
+
+        // Feed more high-importance events until RestartSegment
+        let mut restarted = false;
+        for i in 0..50 {
+            let ts = base + Duration::seconds(30 + i * 2);
+            let input = app_switch(&format!("App{i}"));
+            let (decision, _) = trigger.process_event(&input, ts, &params);
+
+            match decision {
+                TriggerDecision::RestartSegment => {
+                    // Close old segment
+                    let old_events = segment_buffer.drain_all();
+                    assert!(!old_events.is_empty(), "old segment should have events");
+
+                    // Start new segment
+                    trigger.start_new_segment(ts);
+                    segment_buffer.start_segment(ts);
+                    restarted = true;
+                    break;
+                }
+                TriggerDecision::Continue => {
+                    segment_buffer.push(ts, input);
+                }
+                _ => {
+                    segment_buffer.push(ts, input);
+                }
+            }
+        }
+        assert!(restarted, "should have triggered RestartSegment");
+        assert!(
+            segment_buffer.start_time().is_some(),
+            "new segment should be open after restart"
+        );
+    }
+
+    #[test]
+    fn full_lifecycle_force_close_max_duration() {
+        use crate::SegmentBuffer;
+
+        let mut trigger = AdaptiveTrigger::new();
+        let mut segment_buffer = SegmentBuffer::new(200);
+
+        let mut params = default_params();
+        params.t_high = 0.55;
+        params.t_low = 0.10; // very low, unlikely to trigger normal close
+        params.min_segment_secs = 0;
+        params.max_segment_secs = 30; // short max for testing
+
+        let base = Utc::now();
+
+        // Open a segment
+        trigger.start_new_segment(base);
+        segment_buffer.start_segment(base);
+
+        // Feed middling events until max duration forces close
+        let mut force_closed = false;
+        for i in 1..=20 {
+            let ts = base + Duration::seconds(i * 2);
+            let input = TriggerInput::AppPoll {
+                app_name: "VS Code".to_string(),
+            };
+            let (decision, _) = trigger.process_event(&input, ts, &params);
+
+            if decision == TriggerDecision::ForceCloseSegment {
+                force_closed = true;
+                break;
+            }
+            segment_buffer.push(ts, input);
+        }
+
+        assert!(force_closed, "should force-close at max_segment_secs=30");
+    }
 }
