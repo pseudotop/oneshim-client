@@ -428,10 +428,43 @@ async fn run_constrained_clustering(
         // No overrides — standard detection
         strategy.as_ref().detect(features)
     } else {
-        // Build feature_indices and regime_cluster_map for constraint builder
-        // For now, we use a simple segment_id = index mapping (calibration entries
-        // don't have segment_ids, so we use the override segment_ids against indices)
-        let feature_indices: HashMap<String, usize> = HashMap::new();
+        // Build feature_indices: map segment_id → feature vector index.
+        // Query activity_segments for the lookback window, then for each
+        // segment find the first calibration entry whose timestamp falls
+        // within [segment.start, segment.end]. That entry's index in the
+        // feature vector array becomes the segment's feature index.
+        let lookback = now - ChronoDuration::days(7);
+        let segment_ranges = match ts.calibration_reader.list_segment_time_ranges(lookback, now).await {
+            Ok(ranges) => ranges,
+            Err(e) => {
+                warn!("failed to load segment ranges for feature mapping: {e}");
+                vec![]
+            }
+        };
+
+        // Also need the calibration entries' timestamps to correlate indices.
+        // Re-fetch entries with timestamps (they were already fetched by the
+        // caller but we only received the derived feature vectors, not
+        // timestamps). We query them again; this is once-per-detection.
+        let entries_with_ts = match ts.calibration_reader.get_entries(lookback, now, true).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                warn!("failed to re-fetch calibration entries for index mapping: {e}");
+                vec![]
+            }
+        };
+
+        let feature_indices: HashMap<String, usize> = segment_ranges
+            .iter()
+            .filter_map(|(seg_id, seg_start, seg_end)| {
+                // Find the first calibration entry whose timestamp falls within
+                // this segment's time range. Its position = feature vector index.
+                entries_with_ts.iter().position(|e| {
+                    e.timestamp >= *seg_start && e.timestamp <= *seg_end
+                }).map(|idx| (seg_id.clone(), idx))
+            })
+            .collect();
+
         let regime_cluster_map: HashMap<String, i32> = ts
             .regime_manager
             .active_regimes()
