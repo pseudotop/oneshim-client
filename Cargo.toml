@@ -110,6 +110,8 @@ hex = "0.4"
 # LAN Sync (Phase 3b-2)
 rcgen = "0.14"
 mdns-sd = "0.18"
+axum-server = "0.8"
+rustls-pemfile = "2"
 
 # OS 키체인 (시크릿 저장)
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }

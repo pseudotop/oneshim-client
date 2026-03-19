@@ -1,48 +1,55 @@
-//! LanPeerServer -- Axum HTTP(S) peer server for LAN sync (Phase 3b-2).
+//! LanPeerServer -- Axum HTTPS peer server for LAN sync (Phase 3b-2).
 //!
 //! Lightweight server that serves changesets to authenticated LAN peers.
+//! Uses self-signed TLS certificates (via `axum-server` + `rustls`) and
+//! HMAC challenge-response authentication before allowing data exchange.
 //!
 //! ## Endpoints
 //!
-//! | Method | Path          | Description                          |
-//! |--------|---------------|--------------------------------------|
-//! | GET    | `/sync/info`  | Device info + protocol version       |
-//! | GET    | `/sync/pull`  | Return encrypted changesets since HLC |
-//! | POST   | `/sync/push`  | Receive encrypted changeset from peer|
+//! | Method | Path               | Auth     | Description                          |
+//! |--------|--------------------|----------|--------------------------------------|
+//! | GET    | `/sync/info`       | None     | Device info + protocol version       |
+//! | POST   | `/sync/challenge`  | None     | Request an HMAC nonce for auth       |
+//! | POST   | `/sync/verify`     | None     | Submit HMAC response, receive token  |
+//! | GET    | `/sync/pull`       | Token    | Return encrypted changesets since HLC|
+//! | POST   | `/sync/push`       | Token    | Receive encrypted changeset from peer|
 //!
-//! ## TLS Upgrade Path
+//! ## Authentication Flow
 //!
-//! The current implementation binds a plain HTTP server. For production
-//! LAN sync, wrap the listener with `tokio-rustls` using the self-signed
-//! cert from `lan_tls.rs`:
+//! 1. Client POSTs `/sync/challenge` with `{ "device_id": "..." }`
+//! 2. Server returns `{ "nonce": "<hex>" }`
+//! 3. Client computes `HMAC-SHA256(nonce, Argon2id(passphrase, peer_salt))`
+//! 4. Client POSTs `/sync/verify` with `{ "device_id": "...", "nonce": "<hex>", "response": "<hex>" }`
+//! 5. Server verifies and returns `{ "session_token": "<hex>", "expires_in_secs": 3600 }`
+//! 6. Client includes `Authorization: Bearer <token>` header on `/sync/push` and `/sync/pull`
 //!
-//! ```ignore
-//! let tls_config = rustls::ServerConfig::builder()
-//!     .with_no_client_auth()
-//!     .with_single_cert(cert_chain, private_key)?;
-//! let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(tls_config));
-//! // Wrap each accepted TCP stream with tls_acceptor.accept(stream)
-//! ```
+//! ## TLS
+//!
+//! When valid PEM cert/key are provided, the server binds with TLS via `axum-server`.
+//! If the cert/key are invalid or empty (e.g., in tests), falls back to plain HTTP.
 //!
 //! Requires the `lan-sync` feature flag.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use parking_lot::RwLock;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tokio::net::TcpListener;
 use tracing::{debug, error, info, warn};
 
 use oneshim_core::error::CoreError;
 use oneshim_core::models::sync::ChangeSet;
 use oneshim_core::sync::Hlc;
 
+use super::lan_crypto;
 use super::sync_crypto;
 
 /// Protocol version for compatibility negotiation.
@@ -55,6 +62,22 @@ const MAX_BODY_SIZE: usize = 16 * 1024 * 1024;
 /// When full, the oldest entries are evicted to make room.
 const MAX_OUTBOUND_QUEUE: usize = 1000;
 
+/// Session token TTL: 1 hour.
+const SESSION_TTL: Duration = Duration::from_secs(3600);
+
+/// Maximum number of active sessions (prevents memory exhaustion).
+const MAX_SESSIONS: usize = 100;
+
+/// Maximum number of pending nonces (prevents memory exhaustion).
+const MAX_PENDING_NONCES: usize = 200;
+
+/// Nonce TTL: 60 seconds (nonces must be used quickly).
+const NONCE_TTL: Duration = Duration::from_secs(60);
+
+// ---------------------------------------------------------------------------
+// DTOs
+// ---------------------------------------------------------------------------
+
 /// Device info returned by `GET /sync/info`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceInfoResponse {
@@ -62,6 +85,33 @@ pub struct DeviceInfoResponse {
     pub device_name: String,
     pub fingerprint: String,
     pub protocol_version: String,
+}
+
+/// Request body for `POST /sync/challenge`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChallengeRequest {
+    pub device_id: String,
+}
+
+/// Response from `POST /sync/challenge`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChallengeResponse {
+    pub nonce: String,
+}
+
+/// Request body for `POST /sync/verify`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifyRequest {
+    pub device_id: String,
+    pub nonce: String,
+    pub response: String,
+}
+
+/// Response from `POST /sync/verify`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifyResponse {
+    pub session_token: String,
+    pub expires_in_secs: u64,
 }
 
 /// Query parameters for `GET /sync/pull`.
@@ -75,6 +125,127 @@ pub struct PullQuery {
     pub device_id: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// Session store
+// ---------------------------------------------------------------------------
+
+/// A pending nonce awaiting verification.
+struct PendingNonce {
+    nonce_bytes: Vec<u8>,
+    peer_device_id: String,
+    created_at: Instant,
+}
+
+/// An authenticated session.
+struct Session {
+    #[allow(dead_code)]
+    peer_device_id: String,
+    created_at: Instant,
+}
+
+/// Thread-safe session store for HMAC challenge-response authentication.
+#[derive(Clone)]
+struct SessionStore {
+    /// Pending nonces: nonce_hex -> PendingNonce
+    pending: Arc<RwLock<HashMap<String, PendingNonce>>>,
+    /// Active sessions: token_hex -> Session
+    sessions: Arc<RwLock<HashMap<String, Session>>>,
+}
+
+impl SessionStore {
+    fn new() -> Self {
+        Self {
+            pending: Arc::new(RwLock::new(HashMap::new())),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Generate a random nonce and store it as pending.
+    fn create_nonce(&self, peer_device_id: &str) -> Vec<u8> {
+        let mut nonce = vec![0u8; 32];
+        rand::rng().fill_bytes(&mut nonce);
+        let hex_key = hex::encode(&nonce);
+
+        let mut pending = self.pending.write();
+        // Evict expired nonces
+        let now = Instant::now();
+        pending.retain(|_, v| now.duration_since(v.created_at) < NONCE_TTL);
+        // Evict oldest if at capacity
+        if pending.len() >= MAX_PENDING_NONCES {
+            if let Some(oldest_key) = pending
+                .iter()
+                .min_by_key(|(_, v)| v.created_at)
+                .map(|(k, _)| k.clone())
+            {
+                pending.remove(&oldest_key);
+            }
+        }
+        pending.insert(
+            hex_key,
+            PendingNonce {
+                nonce_bytes: nonce.clone(),
+                peer_device_id: peer_device_id.to_string(),
+                created_at: Instant::now(),
+            },
+        );
+        nonce
+    }
+
+    /// Consume a pending nonce (one-time use). Returns (nonce_bytes, peer_device_id).
+    fn take_nonce(&self, nonce_hex: &str) -> Option<(Vec<u8>, String)> {
+        let mut pending = self.pending.write();
+        let entry = pending.remove(nonce_hex)?;
+        // Check expiry
+        if Instant::now().duration_since(entry.created_at) >= NONCE_TTL {
+            return None;
+        }
+        Some((entry.nonce_bytes, entry.peer_device_id))
+    }
+
+    /// Create a session token for an authenticated peer.
+    fn create_session(&self, peer_device_id: &str) -> String {
+        let mut token = vec![0u8; 32];
+        rand::rng().fill_bytes(&mut token);
+        let token_hex = hex::encode(&token);
+
+        let mut sessions = self.sessions.write();
+        // Evict expired sessions
+        let now = Instant::now();
+        sessions.retain(|_, v| now.duration_since(v.created_at) < SESSION_TTL);
+        // Evict oldest if at capacity
+        if sessions.len() >= MAX_SESSIONS {
+            if let Some(oldest_key) = sessions
+                .iter()
+                .min_by_key(|(_, v)| v.created_at)
+                .map(|(k, _)| k.clone())
+            {
+                sessions.remove(&oldest_key);
+            }
+        }
+        sessions.insert(
+            token_hex.clone(),
+            Session {
+                peer_device_id: peer_device_id.to_string(),
+                created_at: Instant::now(),
+            },
+        );
+        token_hex
+    }
+
+    /// Validate a session token. Returns true if valid and not expired.
+    fn validate_token(&self, token: &str) -> bool {
+        let sessions = self.sessions.read();
+        match sessions.get(token) {
+            Some(session) => Instant::now().duration_since(session.created_at) < SESSION_TTL,
+            None => false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Server state
+// ---------------------------------------------------------------------------
+
 /// Shared state for the Axum server.
 #[derive(Clone)]
 struct ServerState {
@@ -82,6 +253,7 @@ struct ServerState {
     device_name: String,
     fingerprint: String,
     passphrase: String,
+    session_store: SessionStore,
     /// Changesets received via push, keyed by origin_device_id.
     /// In a full implementation this would be backed by the storage layer.
     received_changesets: Arc<RwLock<Vec<ChangeSet>>>,
@@ -97,6 +269,7 @@ pub struct LanPeerServer {
     passphrase: String,
     port: u16,
     fingerprint: String,
+    tls_enabled: bool,
     /// Changesets received from peers via POST /sync/push.
     received_changesets: Arc<RwLock<Vec<ChangeSet>>>,
     /// Changesets queued for peers to pull via GET /sync/pull.
@@ -120,6 +293,7 @@ impl LanPeerServer {
             passphrase,
             port: 0,
             fingerprint,
+            tls_enabled: false,
             received_changesets: Arc::new(RwLock::new(Vec::new())),
             outbound_changesets: Arc::new(RwLock::new(Vec::new())),
             shutdown_tx: None,
@@ -128,70 +302,124 @@ impl LanPeerServer {
         }
     }
 
-    /// Start the HTTP server on the specified port (0 = ephemeral OS-assigned).
+    /// Start the HTTPS server on the specified port (0 = ephemeral OS-assigned).
     ///
     /// Returns the actual bound port. The server runs in a background tokio task
     /// and can be stopped via `stop()`.
     ///
     /// ## TLS
     ///
-    /// `cert_pem` and `key_pem` are accepted for API compatibility with the
-    /// planned TLS upgrade. The current implementation binds plain HTTP.
-    /// See module docs for the TLS upgrade path.
+    /// If valid PEM-encoded `cert_pem` and `key_pem` are provided, the server
+    /// binds with TLS via `axum-server` + `rustls`. Otherwise falls back to
+    /// plain HTTP (e.g., in unit tests or when cert generation fails).
     pub async fn start(
         &mut self,
-        _cert_pem: &[u8],
-        _key_pem: &[u8],
+        cert_pem: &[u8],
+        key_pem: &[u8],
         port: u16,
     ) -> Result<u16, CoreError> {
         if self.running {
             return Ok(self.port);
         }
 
-        let addr = SocketAddr::from(([0, 0, 0, 0], port));
-        let listener = TcpListener::bind(addr).await.map_err(|e| {
-            CoreError::Internal(format!("failed to bind LAN server on {addr}: {e}"))
-        })?;
-
-        let actual_port = listener
-            .local_addr()
-            .map_err(|e| CoreError::Internal(format!("failed to get local addr: {e}")))?
-            .port();
-
         let state = ServerState {
             device_id: self.device_id.clone(),
             device_name: self.device_name.clone(),
             fingerprint: self.fingerprint.clone(),
             passphrase: self.passphrase.clone(),
+            session_store: SessionStore::new(),
             received_changesets: Arc::clone(&self.received_changesets),
             outbound_changesets: Arc::clone(&self.outbound_changesets),
         };
 
         let app = build_router(state);
+        let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
+        // Try TLS, fall back to plain HTTP on failure
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let tls_config = try_build_tls_config(cert_pem, key_pem).await;
+        let tls_enabled = tls_config.is_some();
 
-        let handle = tokio::task::spawn(async move {
-            let serve_result = axum::serve(listener, app)
-                .with_graceful_shutdown(async {
+        let actual_port = if let Some(config) = tls_config {
+            // TLS path via axum-server.
+            // Bind a TcpListener first to discover the actual port (important
+            // when the requested port is 0), then hand the std listener to
+            // axum-server for TLS wrapping.
+            let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+                CoreError::Internal(format!("failed to bind LAN server on {addr}: {e}"))
+            })?;
+            let actual_addr = listener
+                .local_addr()
+                .map_err(|e| CoreError::Internal(format!("failed to get local addr: {e}")))?;
+            let bound_port = actual_addr.port();
+
+            // Convert to std listener for axum-server
+            let std_listener = listener
+                .into_std()
+                .map_err(|e| CoreError::Internal(format!("failed to convert listener: {e}")))?;
+
+            let axum_handle = axum_server::Handle::new();
+            let shutdown_handle = axum_handle.clone();
+
+            let tls_server = axum_server::from_tcp_rustls(std_listener, config)
+                .map_err(|e| CoreError::Internal(format!("TLS server init: {e}")))?;
+
+            let handle = tokio::task::spawn(async move {
+                // Shutdown listener: wait for the oneshot then trigger graceful shutdown
+                tokio::spawn(async move {
                     let _ = shutdown_rx.await;
-                })
-                .await;
+                    shutdown_handle.graceful_shutdown(Some(Duration::from_secs(2)));
+                });
 
-            if let Err(e) = serve_result {
-                error!("LAN peer server error: {e}");
-            }
-        });
+                let serve_result = tls_server
+                    .handle(axum_handle)
+                    .serve(app.into_make_service())
+                    .await;
+
+                if let Err(e) = serve_result {
+                    error!("LAN peer server (TLS) error: {e}");
+                }
+            });
+
+            self.server_handle = Some(handle);
+            bound_port
+        } else {
+            // Plain HTTP fallback
+            let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+                CoreError::Internal(format!("failed to bind LAN server on {addr}: {e}"))
+            })?;
+
+            let actual_port = listener
+                .local_addr()
+                .map_err(|e| CoreError::Internal(format!("failed to get local addr: {e}")))?
+                .port();
+
+            let handle = tokio::task::spawn(async move {
+                let serve_result = axum::serve(listener, app)
+                    .with_graceful_shutdown(async {
+                        let _ = shutdown_rx.await;
+                    })
+                    .await;
+
+                if let Err(e) = serve_result {
+                    error!("LAN peer server (HTTP) error: {e}");
+                }
+            });
+
+            self.server_handle = Some(handle);
+            actual_port
+        };
 
         self.port = actual_port;
         self.shutdown_tx = Some(shutdown_tx);
-        self.server_handle = Some(handle);
+        self.tls_enabled = tls_enabled;
         self.running = true;
 
         info!(
             port = actual_port,
+            tls = tls_enabled,
             device_id = %self.device_id,
-            "LAN peer server started (HTTP, TLS upgrade pending)"
+            "LAN peer server started"
         );
 
         Ok(actual_port)
@@ -249,6 +477,11 @@ impl LanPeerServer {
         self.running
     }
 
+    /// Check if TLS is enabled.
+    pub fn is_tls_enabled(&self) -> bool {
+        self.tls_enabled
+    }
+
     /// Enqueue a changeset for peers to pull.
     ///
     /// Called by the SyncEngine when local changes are extracted.
@@ -283,12 +516,76 @@ impl Drop for LanPeerServer {
 }
 
 // ---------------------------------------------------------------------------
+// TLS configuration
+// ---------------------------------------------------------------------------
+
+/// Attempt to build a `rustls` `ServerConfig` from PEM cert/key bytes.
+///
+/// Returns `None` if the input is empty or malformed, allowing fallback
+/// to plain HTTP. This keeps the server usable in tests and on first
+/// run before certificates are generated.
+async fn try_build_tls_config(
+    cert_pem: &[u8],
+    key_pem: &[u8],
+) -> Option<axum_server::tls_rustls::RustlsConfig> {
+    if cert_pem.is_empty() || key_pem.is_empty() {
+        debug!("empty cert/key -- TLS disabled, using plain HTTP");
+        return None;
+    }
+
+    // Parse certificate chain from PEM
+    let cert_reader = &mut std::io::BufReader::new(cert_pem);
+    let certs: Vec<_> = rustls_pemfile::certs(cert_reader)
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if certs.is_empty() {
+        warn!("no valid certificates in PEM data -- TLS disabled");
+        return None;
+    }
+
+    // Parse private key from PEM
+    let key_reader = &mut std::io::BufReader::new(key_pem);
+    let key = rustls_pemfile::private_key(key_reader).ok().flatten();
+
+    let key = match key {
+        Some(k) => k,
+        None => {
+            warn!("no valid private key in PEM data -- TLS disabled");
+            return None;
+        }
+    };
+
+    // Build axum-server RustlsConfig (async constructor)
+    let config = axum_server::tls_rustls::RustlsConfig::from_der(
+        certs.into_iter().map(|c| c.to_vec()).collect(),
+        key.secret_der().to_vec(),
+    )
+    .await;
+
+    match config {
+        Ok(c) => {
+            debug!("TLS configuration built successfully");
+            Some(c)
+        }
+        Err(e) => {
+            warn!("failed to build TLS config: {e} -- TLS disabled");
+            None
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Axum router + handlers
 // ---------------------------------------------------------------------------
 
 fn build_router(state: ServerState) -> Router {
     Router::new()
+        // Public endpoints (no auth required)
         .route("/sync/info", get(handle_info))
+        .route("/sync/challenge", post(handle_challenge))
+        .route("/sync/verify", post(handle_verify))
+        // Protected endpoints (session token required)
         .route("/sync/pull", get(handle_pull))
         .route("/sync/push", post(handle_push))
         .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY_SIZE))
@@ -305,14 +602,170 @@ async fn handle_info(State(state): State<ServerState>) -> Json<DeviceInfoRespons
     })
 }
 
+/// POST /sync/challenge -- generate and return a random nonce.
+///
+/// The peer must compute `HMAC-SHA256(nonce, derived_key)` and submit it
+/// via `/sync/verify` to obtain a session token.
+async fn handle_challenge(
+    State(state): State<ServerState>,
+    Json(req): Json<ChallengeRequest>,
+) -> impl IntoResponse {
+    if req.device_id.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "device_id required"})),
+        )
+            .into_response();
+    }
+
+    let nonce = state.session_store.create_nonce(&req.device_id);
+    let nonce_hex = hex::encode(&nonce);
+
+    debug!(
+        peer_device_id = %req.device_id,
+        "challenge nonce issued"
+    );
+
+    Json(ChallengeResponse { nonce: nonce_hex }).into_response()
+}
+
+/// POST /sync/verify -- verify the HMAC challenge response and issue a session token.
+async fn handle_verify(
+    State(state): State<ServerState>,
+    Json(req): Json<VerifyRequest>,
+) -> impl IntoResponse {
+    if req.device_id.is_empty() || req.nonce.is_empty() || req.response.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "device_id, nonce, and response required"})),
+        )
+            .into_response();
+    }
+
+    // Consume the pending nonce (one-time use)
+    let (nonce_bytes, expected_peer_id) = match state.session_store.take_nonce(&req.nonce) {
+        Some(v) => v,
+        None => {
+            warn!(
+                peer_device_id = %req.device_id,
+                "verify failed: unknown or expired nonce"
+            );
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "invalid or expired nonce"})),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify the device_id matches
+    if req.device_id != expected_peer_id {
+        warn!(
+            expected = %expected_peer_id,
+            actual = %req.device_id,
+            "verify failed: device_id mismatch"
+        );
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "device_id mismatch"})),
+        )
+            .into_response();
+    }
+
+    // Decode the HMAC response
+    let response_bytes = match hex::decode(&req.response) {
+        Ok(b) => b,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "invalid hex response"})),
+            )
+                .into_response();
+        }
+    };
+
+    // Verify the HMAC
+    let valid = match lan_crypto::verify_challenge_response(
+        &nonce_bytes,
+        &response_bytes,
+        &state.passphrase,
+        &state.device_id, // local device (server)
+        &req.device_id,   // peer device (client)
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(error = %e, "HMAC verification error");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "verification error"})),
+            )
+                .into_response();
+        }
+    };
+
+    if !valid {
+        warn!(
+            peer_device_id = %req.device_id,
+            "verify failed: HMAC mismatch (wrong passphrase?)"
+        );
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "authentication failed"})),
+        )
+            .into_response();
+    }
+
+    // Issue a session token
+    let token = state.session_store.create_session(&req.device_id);
+
+    info!(
+        peer_device_id = %req.device_id,
+        "peer authenticated via HMAC challenge-response"
+    );
+
+    Json(VerifyResponse {
+        session_token: token,
+        expires_in_secs: SESSION_TTL.as_secs(),
+    })
+    .into_response()
+}
+
+/// Extract and validate the session token from the Authorization header.
+///
+/// Expects: `Authorization: Bearer <token_hex>`
+fn extract_session_token(
+    headers: &HeaderMap,
+    session_store: &SessionStore,
+) -> Result<(), StatusCode> {
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let token = auth_header.strip_prefix("Bearer ").unwrap_or("");
+
+    if token.is_empty() || !session_store.validate_token(token) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    Ok(())
+}
+
 /// GET /sync/pull -- return encrypted changesets newer than the given HLC.
 ///
+/// Requires a valid session token via `Authorization: Bearer <token>`.
 /// Query parameters: `since_wall_ms`, `since_counter`, `device_id`.
 /// Response: AES-256-GCM encrypted JSON array of changesets, or 204 if none.
 async fn handle_pull(
     State(state): State<ServerState>,
+    headers: HeaderMap,
     Query(params): Query<PullQuery>,
 ) -> impl IntoResponse {
+    // Authenticate
+    if let Err(status) = extract_session_token(&headers, &state.session_store) {
+        return (status, "unauthorized").into_response();
+    }
+
     let since = Hlc {
         wall_ms: params.since_wall_ms.unwrap_or(0),
         counter: params.since_counter.unwrap_or(0),
@@ -366,12 +819,19 @@ async fn handle_pull(
 
 /// POST /sync/push -- receive an encrypted changeset from a peer.
 ///
+/// Requires a valid session token via `Authorization: Bearer <token>`.
 /// Request body: AES-256-GCM encrypted JSON changeset.
 /// Response: 200 OK on success, 400 on decryption/parse failure.
 async fn handle_push(
     State(state): State<ServerState>,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
+    // Authenticate
+    if let Err(status) = extract_session_token(&headers, &state.session_store) {
+        return (status, "unauthorized").into_response();
+    }
+
     if body.len() > MAX_BODY_SIZE {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -433,6 +893,55 @@ mod tests {
         }
     }
 
+    /// Helper: perform challenge-response to get a session token.
+    async fn authenticate(
+        client: &reqwest::Client,
+        base: &str,
+        passphrase: &str,
+        local_device_id: &str,
+        server_device_id: &str,
+    ) -> String {
+        // Step 1: request challenge
+        let challenge_resp = client
+            .post(format!("{base}/sync/challenge"))
+            .json(&ChallengeRequest {
+                device_id: local_device_id.to_string(),
+            })
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(challenge_resp.status(), 200);
+        let challenge: ChallengeResponse = challenge_resp.json().await.unwrap();
+
+        // Step 2: compute HMAC response
+        let nonce_bytes = hex::decode(&challenge.nonce).unwrap();
+        let hmac_response = lan_crypto::compute_challenge_response(
+            &nonce_bytes,
+            passphrase,
+            local_device_id,
+            server_device_id,
+        )
+        .unwrap();
+
+        // Step 3: verify
+        let verify_resp = client
+            .post(format!("{base}/sync/verify"))
+            .json(&VerifyRequest {
+                device_id: local_device_id.to_string(),
+                nonce: challenge.nonce.clone(),
+                response: hex::encode(&hmac_response),
+            })
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(verify_resp.status(), 200);
+        let verify: VerifyResponse = verify_resp.json().await.unwrap();
+        assert!(!verify.session_token.is_empty());
+        assert!(verify.expires_in_secs > 0);
+
+        verify.session_token
+    }
+
     #[tokio::test]
     async fn server_start_stop() {
         let mut server = LanPeerServer::new(
@@ -446,6 +955,7 @@ mod tests {
         let port = server.start(b"cert", b"key", 0).await.unwrap();
         assert!(port > 0);
         assert!(server.is_running());
+        assert!(!server.is_tls_enabled()); // invalid PEM -> fallback
 
         server.stop();
         assert!(!server.is_running());
@@ -479,20 +989,133 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pull_returns_204_when_empty() {
+    async fn challenge_verify_flow() {
+        let passphrase = "shared-secret";
         let mut server = LanPeerServer::new(
-            "dev-pull".to_string(),
-            "Pull Test".to_string(),
+            "server-dev".to_string(),
+            "Server".to_string(),
+            passphrase.to_string(),
+            "fp".to_string(),
+        );
+        let port = server.start(b"", b"", 0).await.unwrap();
+        let base = format!("http://127.0.0.1:{port}");
+        let client = reqwest::Client::new();
+
+        let token = authenticate(&client, &base, passphrase, "client-dev", "server-dev").await;
+        assert!(!token.is_empty());
+        assert_eq!(token.len(), 64); // 32 bytes hex-encoded
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn challenge_wrong_passphrase_fails() {
+        let mut server = LanPeerServer::new(
+            "server-dev".to_string(),
+            "Server".to_string(),
+            "correct-pass".to_string(),
+            "fp".to_string(),
+        );
+        let port = server.start(b"", b"", 0).await.unwrap();
+        let base = format!("http://127.0.0.1:{port}");
+        let client = reqwest::Client::new();
+
+        // Get challenge
+        let challenge_resp = client
+            .post(format!("{base}/sync/challenge"))
+            .json(&ChallengeRequest {
+                device_id: "client-dev".to_string(),
+            })
+            .send()
+            .await
+            .unwrap();
+        let challenge: ChallengeResponse = challenge_resp.json().await.unwrap();
+        let nonce_bytes = hex::decode(&challenge.nonce).unwrap();
+
+        // Compute HMAC with wrong passphrase
+        let hmac_response = lan_crypto::compute_challenge_response(
+            &nonce_bytes,
+            "wrong-pass",
+            "client-dev",
+            "server-dev",
+        )
+        .unwrap();
+
+        // Verify should fail
+        let verify_resp = client
+            .post(format!("{base}/sync/verify"))
+            .json(&VerifyRequest {
+                device_id: "client-dev".to_string(),
+                nonce: challenge.nonce,
+                response: hex::encode(&hmac_response),
+            })
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(verify_resp.status(), 401);
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn pull_push_require_auth() {
+        let mut server = LanPeerServer::new(
+            "dev-auth".to_string(),
+            "Auth".to_string(),
             "pass".to_string(),
             "fp".to_string(),
         );
-        let port = server.start(b"cert", b"key", 0).await.unwrap();
-
+        let port = server.start(b"", b"", 0).await.unwrap();
         let client = reqwest::Client::new();
+        let base = format!("http://127.0.0.1:{port}");
+
+        // Pull without token -> 401
+        let pull_resp = client
+            .get(format!("{base}/sync/pull?since_wall_ms=0&since_counter=0"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(pull_resp.status(), 401);
+
+        // Push without token -> 401
+        let push_resp = client
+            .post(format!("{base}/sync/push"))
+            .body(vec![1, 2, 3])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(push_resp.status(), 401);
+
+        // Pull with invalid token -> 401
+        let pull_resp = client
+            .get(format!("{base}/sync/pull?since_wall_ms=0&since_counter=0"))
+            .header("authorization", "Bearer invalid-token")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(pull_resp.status(), 401);
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn pull_returns_204_when_empty() {
+        let passphrase = "test-pass";
+        let mut server = LanPeerServer::new(
+            "dev-pull".to_string(),
+            "Pull Test".to_string(),
+            passphrase.to_string(),
+            "fp".to_string(),
+        );
+        let port = server.start(b"", b"", 0).await.unwrap();
+        let base = format!("http://127.0.0.1:{port}");
+        let client = reqwest::Client::new();
+
+        let token = authenticate(&client, &base, passphrase, "client-dev", "dev-pull").await;
+
         let resp = client
-            .get(format!(
-                "http://127.0.0.1:{port}/sync/pull?since_wall_ms=0&since_counter=0"
-            ))
+            .get(format!("{base}/sync/pull?since_wall_ms=0&since_counter=0"))
+            .header("authorization", format!("Bearer {token}"))
             .send()
             .await
             .unwrap();
@@ -504,14 +1127,21 @@ mod tests {
     #[tokio::test]
     async fn push_and_pull_roundtrip() {
         let passphrase = "test-roundtrip-pass";
+        let server_id = "dev-rt";
+        let client_id = "client-rt";
+
         let mut server = LanPeerServer::new(
-            "dev-rt".to_string(),
+            server_id.to_string(),
             "Roundtrip".to_string(),
             passphrase.to_string(),
             "fp".to_string(),
         );
-        let port = server.start(b"cert", b"key", 0).await.unwrap();
+        let port = server.start(b"", b"", 0).await.unwrap();
+        let base = format!("http://127.0.0.1:{port}");
         let client = reqwest::Client::new();
+
+        // Authenticate
+        let token = authenticate(&client, &base, passphrase, client_id, server_id).await;
 
         // Push an encrypted changeset
         let cs = test_changeset();
@@ -519,7 +1149,8 @@ mod tests {
         let encrypted = sync_crypto::encrypt(passphrase, &json).unwrap();
 
         let push_resp = client
-            .post(format!("http://127.0.0.1:{port}/sync/push"))
+            .post(format!("{base}/sync/push"))
+            .header("authorization", format!("Bearer {token}"))
             .body(encrypted)
             .send()
             .await
@@ -533,12 +1164,12 @@ mod tests {
 
         // Enqueue an outbound changeset and pull it
         let outbound_cs = ChangeSet {
-            origin_device_id: "dev-rt".to_string(),
+            origin_device_id: server_id.to_string(),
             origin_device_name: "Roundtrip".to_string(),
             watermark: Hlc {
                 wall_ms: 200,
                 counter: 1,
-                device_id: "dev-rt".to_string(),
+                device_id: server_id.to_string(),
             },
             segments: vec![serde_json::json!({"id": "seg-out"})],
             ..Default::default()
@@ -546,9 +1177,8 @@ mod tests {
         server.enqueue_outbound(outbound_cs);
 
         let pull_resp = client
-            .get(format!(
-                "http://127.0.0.1:{port}/sync/pull?since_wall_ms=0&since_counter=0"
-            ))
+            .get(format!("{base}/sync/pull?since_wall_ms=0&since_counter=0"))
+            .header("authorization", format!("Bearer {token}"))
             .send()
             .await
             .unwrap();
@@ -558,29 +1188,37 @@ mod tests {
         let decrypted = sync_crypto::decrypt(passphrase, &pull_bytes).unwrap();
         let pulled: Vec<ChangeSet> = serde_json::from_slice(&decrypted).unwrap();
         assert_eq!(pulled.len(), 1);
-        assert_eq!(pulled[0].origin_device_id, "dev-rt");
+        assert_eq!(pulled[0].origin_device_id, server_id);
 
         server.stop();
     }
 
     #[tokio::test]
     async fn push_wrong_passphrase_returns_400() {
+        let server_pass = "correct-pass";
+        let server_id = "dev-auth";
+
         let mut server = LanPeerServer::new(
-            "dev-auth".to_string(),
+            server_id.to_string(),
             "Auth Test".to_string(),
-            "correct-pass".to_string(),
+            server_pass.to_string(),
             "fp".to_string(),
         );
-        let port = server.start(b"cert", b"key", 0).await.unwrap();
+        let port = server.start(b"", b"", 0).await.unwrap();
+        let base = format!("http://127.0.0.1:{port}");
+        let client = reqwest::Client::new();
 
-        // Encrypt with wrong passphrase
+        // Authenticate with correct passphrase
+        let token = authenticate(&client, &base, server_pass, "client-1", server_id).await;
+
+        // But encrypt the payload with wrong passphrase
         let cs = test_changeset();
         let json = serde_json::to_vec(&cs).unwrap();
         let encrypted = sync_crypto::encrypt("wrong-pass", &json).unwrap();
 
-        let client = reqwest::Client::new();
         let resp = client
-            .post(format!("http://127.0.0.1:{port}/sync/push"))
+            .post(format!("{base}/sync/push"))
+            .header("authorization", format!("Bearer {token}"))
             .body(encrypted)
             .send()
             .await
@@ -592,23 +1230,94 @@ mod tests {
 
     #[tokio::test]
     async fn push_empty_body_returns_400() {
+        let passphrase = "pass";
+        let server_id = "dev-empty";
+
         let mut server = LanPeerServer::new(
-            "dev-empty".to_string(),
+            server_id.to_string(),
             "Empty".to_string(),
-            "pass".to_string(),
+            passphrase.to_string(),
             "fp".to_string(),
         );
-        let port = server.start(b"cert", b"key", 0).await.unwrap();
-
+        let port = server.start(b"", b"", 0).await.unwrap();
+        let base = format!("http://127.0.0.1:{port}");
         let client = reqwest::Client::new();
+
+        let token = authenticate(&client, &base, passphrase, "client-1", server_id).await;
+
         let resp = client
-            .post(format!("http://127.0.0.1:{port}/sync/push"))
+            .post(format!("{base}/sync/push"))
+            .header("authorization", format!("Bearer {token}"))
             .body(vec![])
             .send()
             .await
             .unwrap();
 
         assert_eq!(resp.status(), 400);
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn nonce_is_single_use() {
+        let passphrase = "single-use";
+        let server_id = "dev-nonce";
+
+        let mut server = LanPeerServer::new(
+            server_id.to_string(),
+            "Nonce".to_string(),
+            passphrase.to_string(),
+            "fp".to_string(),
+        );
+        let port = server.start(b"", b"", 0).await.unwrap();
+        let base = format!("http://127.0.0.1:{port}");
+        let client = reqwest::Client::new();
+
+        // Get a challenge
+        let challenge_resp = client
+            .post(format!("{base}/sync/challenge"))
+            .json(&ChallengeRequest {
+                device_id: "client-dev".to_string(),
+            })
+            .send()
+            .await
+            .unwrap();
+        let challenge: ChallengeResponse = challenge_resp.json().await.unwrap();
+        let nonce_bytes = hex::decode(&challenge.nonce).unwrap();
+
+        // First verify should succeed
+        let hmac_response = lan_crypto::compute_challenge_response(
+            &nonce_bytes,
+            passphrase,
+            "client-dev",
+            server_id,
+        )
+        .unwrap();
+
+        let verify_resp = client
+            .post(format!("{base}/sync/verify"))
+            .json(&VerifyRequest {
+                device_id: "client-dev".to_string(),
+                nonce: challenge.nonce.clone(),
+                response: hex::encode(&hmac_response),
+            })
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(verify_resp.status(), 200);
+
+        // Second verify with same nonce should fail (consumed)
+        let verify_resp2 = client
+            .post(format!("{base}/sync/verify"))
+            .json(&VerifyRequest {
+                device_id: "client-dev".to_string(),
+                nonce: challenge.nonce,
+                response: hex::encode(&hmac_response),
+            })
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(verify_resp2.status(), 401);
+
         server.stop();
     }
 
@@ -636,5 +1345,64 @@ mod tests {
         server.enqueue_outbound(test_changeset());
         // outbound is separate from received
         assert!(server.drain_received().is_empty());
+    }
+
+    #[test]
+    fn session_store_basics() {
+        let store = SessionStore::new();
+
+        // Create nonce
+        let nonce = store.create_nonce("peer-1");
+        assert_eq!(nonce.len(), 32);
+
+        // Take nonce -- single use
+        let hex = hex::encode(&nonce);
+        let taken = store.take_nonce(&hex);
+        assert!(taken.is_some());
+        let (bytes, peer_id) = taken.unwrap();
+        assert_eq!(bytes, nonce);
+        assert_eq!(peer_id, "peer-1");
+
+        // Second take fails
+        assert!(store.take_nonce(&hex).is_none());
+
+        // Create and validate session
+        let token = store.create_session("peer-1");
+        assert!(store.validate_token(&token));
+        assert!(!store.validate_token("invalid"));
+    }
+
+    #[tokio::test]
+    async fn tls_with_real_cert() {
+        use super::super::lan_tls;
+
+        // Generate a real self-signed cert
+        let (cert_pem, key_pem) = lan_tls::generate_self_signed_cert("test-tls-dev").unwrap();
+
+        let mut server = LanPeerServer::new(
+            "test-tls-dev".to_string(),
+            "TLS Test".to_string(),
+            "pass".to_string(),
+            "fp-tls".to_string(),
+        );
+        let port = server.start(&cert_pem, &key_pem, 0).await.unwrap();
+        assert!(port > 0);
+        assert!(server.is_running());
+        assert!(server.is_tls_enabled());
+
+        // Verify TLS is active by confirming a plain HTTP connection fails.
+        // Note: reqwest in this project uses native-tls, which may have protocol
+        // compatibility issues with rustls on some platforms. So instead we verify
+        // that plain HTTP to a TLS port gets rejected (connection reset or error).
+        let plain_result = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/sync/info"))
+            .send()
+            .await;
+        assert!(
+            plain_result.is_err(),
+            "plain HTTP should not succeed against TLS server"
+        );
+
+        server.stop();
     }
 }
