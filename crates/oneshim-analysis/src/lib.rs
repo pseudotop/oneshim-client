@@ -2,6 +2,8 @@ mod adaptive_trigger;
 mod analyzer;
 mod assembler;
 pub mod calibration_buffer;
+pub mod clustering_strategy;
+pub mod hdbscan_detector;
 mod content_tracker;
 pub mod daily_digest_generator;
 pub mod daily_insight_generator;
