@@ -4,10 +4,10 @@ use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::daily_digest::DailyDigest;
 use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
-    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord, HourlyMetricsRecord,
-    LocalSuggestionRecord, MetricExportRecord, NewGuiInteraction, SearchEventRow, SearchFrameRow,
-    SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord,
-    TagRecord,
+    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiHeatmapRow, GuiInteractionRecord,
+    HourlyMetricsRecord, LocalSuggestionRecord, MetricExportRecord, NewGuiInteraction,
+    SearchEventRow, SearchFrameRow, SegmentDetailRecord, SegmentSummaryRecord,
+    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::WebStorage;
@@ -735,5 +735,160 @@ impl WebStorage for SqliteStorage {
             .collect();
 
         Ok(records)
+    }
+
+    fn get_gui_heatmap_data(&self, date: &str) -> Result<Vec<GuiHeatmapRow>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        // bbox_json stores a JSON object like {"x":100,"y":200,"w":50,"h":30}.
+        // We extract the centroid (x + w/2, y + h/2) and bin it into 50px cells.
+        //
+        // Use a range query instead of date(timestamp) so the timestamp index is
+        // used. `date` is expected to be "YYYY-MM-DD".
+        let date_start = format!("{date}T00:00:00");
+        let date_end = format!("{date}T23:59:59.999999");
+        let mut stmt = conn
+            .prepare(
+                "SELECT bbox_json, element_type
+                 FROM gui_interactions
+                 WHERE timestamp >= ?1 AND timestamp < ?2
+                   AND bbox_json IS NOT NULL
+                   AND bbox_json != ''",
+            )
+            .map_err(|e| {
+                CoreError::Internal(format!("Failed to prepare GUI heatmap query: {e}"))
+            })?;
+
+        let raw_rows: Vec<(String, Option<String>)> = stmt
+            .query_map(rusqlite::params![date_start, date_end], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query GUI heatmap: {e}")))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Aggregate in-process to handle varying bbox_json shapes.
+        use std::collections::HashMap;
+        let mut bins: HashMap<(u32, u32, String), u32> = HashMap::new();
+        let bin_size: u32 = 50;
+
+        for (bbox_json, element_type) in &raw_rows {
+            if let Some((cx, cy)) = parse_bbox_centroid(bbox_json) {
+                let bx = cx / bin_size;
+                let by = cy / bin_size;
+                let et = element_type.as_deref().unwrap_or("unknown").to_string();
+                *bins.entry((bx, by, et)).or_insert(0) += 1;
+            }
+        }
+
+        let rows = bins
+            .into_iter()
+            .map(|((bx, by, et), count)| GuiHeatmapRow {
+                bin_x: bx * bin_size,
+                bin_y: by * bin_size,
+                count,
+                element_type: et,
+            })
+            .collect();
+
+        Ok(rows)
+    }
+}
+
+/// Parse the centroid (center x, center y) from a bbox JSON string.
+///
+/// Accepts:
+/// - `{"x":100,"y":200,"w":50,"h":30}` → centroid (125, 215)
+/// - `{"x":100,"y":200}` → (100, 200)
+/// - `[100, 200, 150, 230]` (x, y, x2, y2) → centroid (125, 215)
+fn parse_bbox_centroid(json: &str) -> Option<(u32, u32)> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    if let Some(obj) = v.as_object() {
+        let x = obj.get("x").and_then(|v| v.as_f64())? as u32;
+        let y = obj.get("y").and_then(|v| v.as_f64())? as u32;
+        let w = obj.get("w").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32;
+        let h = obj.get("h").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32;
+        Some((x + w / 2, y + h / 2))
+    } else if let Some(arr) = v.as_array() {
+        if arr.len() >= 4 {
+            let x1 = arr[0].as_f64()? as u32;
+            let y1 = arr[1].as_f64()? as u32;
+            let x2 = arr[2].as_f64()? as u32;
+            let y2 = arr[3].as_f64()? as u32;
+            Some(((x1 + x2) / 2, (y1 + y2) / 2))
+        } else if arr.len() >= 2 {
+            let x = arr[0].as_f64()? as u32;
+            let y = arr[1].as_f64()? as u32;
+            Some((x, y))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_bbox_centroid;
+
+    #[test]
+    fn object_with_xywh_returns_centroid() {
+        // x=100, y=200, w=50, h=30 → centroid = (125, 215)
+        let json = r#"{"x":100,"y":200,"w":50,"h":30}"#;
+        assert_eq!(parse_bbox_centroid(json), Some((125, 215)));
+    }
+
+    #[test]
+    fn object_with_xy_only_returns_point() {
+        let json = r#"{"x":300,"y":400}"#;
+        assert_eq!(parse_bbox_centroid(json), Some((300, 400)));
+    }
+
+    #[test]
+    fn array_four_elements_returns_centroid() {
+        // [x1, y1, x2, y2] = [100, 200, 150, 230] → centroid = (125, 215)
+        let json = "[100, 200, 150, 230]";
+        assert_eq!(parse_bbox_centroid(json), Some((125, 215)));
+    }
+
+    #[test]
+    fn array_two_elements_returns_point() {
+        let json = "[50, 75]";
+        assert_eq!(parse_bbox_centroid(json), Some((50, 75)));
+    }
+
+    #[test]
+    fn short_array_returns_none() {
+        let json = "[42]";
+        assert_eq!(parse_bbox_centroid(json), None);
+
+        let json_empty = "[]";
+        assert_eq!(parse_bbox_centroid(json_empty), None);
+    }
+
+    #[test]
+    fn malformed_json_returns_none() {
+        assert_eq!(parse_bbox_centroid("not json"), None);
+        assert_eq!(parse_bbox_centroid("{broken"), None);
+        assert_eq!(parse_bbox_centroid(""), None);
+    }
+
+    #[test]
+    fn negative_coordinates_saturate_to_zero() {
+        // f64 → u32 cast: negative values saturate to 0 in Rust.
+        // x=-10 → 0u32, y=-20 → 0u32; w and h default to 0 when absent.
+        let json = r#"{"x":-10,"y":-20}"#;
+        let result = parse_bbox_centroid(json);
+        assert_eq!(result, Some((0, 0)));
+
+        // Negative coordinates in array form
+        let arr_json = "[-5, -15, -1, -3]";
+        let (cx, cy) = parse_bbox_centroid(arr_json).unwrap();
+        assert_eq!(cx, 0);
+        assert_eq!(cy, 0);
     }
 }

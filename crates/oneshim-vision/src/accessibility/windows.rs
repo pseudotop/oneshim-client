@@ -199,7 +199,7 @@ mod inner {
         const IELEMENT_GET_CURRENT_BOUNDING_RECT_INDEX: usize = 27;
         const IELEMENT_GET_CURRENT_PROPERTY_VALUE_INDEX: usize = 12;
 
-        /// RECT structure matching Windows RECT layout.
+        /// UIA bounding rectangle (uses f64, not i32 like Windows RECT).
         #[repr(C)]
         struct UiaRect {
             left: f64,
@@ -392,6 +392,11 @@ mod inner {
                     IELEMENT_GET_CURRENT_PROPERTY_VALUE_INDEX,
                 ));
                 let hr = get_property(element, UIA_VALUE_VALUE_PROPERTY_ID, &mut variant);
+                // UIA_ValueValuePropertyId only ever returns VT_BSTR or VT_EMPTY,
+                // so freeing the BSTR (via sys_free_string) is sufficient cleanup.
+                // TODO: If we extend this to other property IDs that may return
+                // VT_I4, VT_DISPATCH, VT_UNKNOWN, etc., add a VariantClear call
+                // here to safely release any variant-owned resources.
                 let value = if hr >= 0 && variant.vt == VT_BSTR {
                     let bstr = variant.data.bstr_val;
                     let s = bstr_to_string(bstr);
