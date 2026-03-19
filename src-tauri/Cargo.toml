@@ -112,3 +112,4 @@ mockito = { workspace = true }
 tokio-test = { workspace = true }
 axum = { workspace = true }
 futures = { workspace = true }
+zeroize = { workspace = true }
