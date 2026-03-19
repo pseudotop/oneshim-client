@@ -5,8 +5,8 @@ info:
   description: |
     Auto-generated from docs/contracts/http-interface-manifest.v1.json.
     This snapshot is transport-level and contract-focused.
-  x-oneshim-document-version: 1
-  x-oneshim-updated-at: "2026-03-18"
+  x-oneshim-document-version: 2
+  x-oneshim-updated-at: "2026-03-19"
   x-oneshim-routes-file: "crates/oneshim-web/src/routes.rs"
   x-oneshim-contracts-crate: "crates/oneshim-api-contracts"
 servers:
@@ -1448,6 +1448,106 @@ paths:
         - processes
       operationId: processes_get_api_processes
       summary: "GET /api/processes"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/recalibration/override":
+    post:
+      tags:
+        - recalibration
+      operationId: recalibration_post_api_recalibration_override
+      summary: "POST /api/recalibration/override"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/recalibration/override/{id}":
+    delete:
+      tags:
+        - recalibration
+      operationId: recalibration_delete_api_recalibration_override_id
+      summary: "DELETE /api/recalibration/override/{id}"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/recalibration/overrides":
+    get:
+      tags:
+        - recalibration
+      operationId: recalibration_get_api_recalibration_overrides
+      summary: "GET /api/recalibration/overrides"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/recalibration/recluster":
+    post:
+      tags:
+        - recalibration
+      operationId: recalibration_post_api_recalibration_recluster
+      summary: "POST /api/recalibration/recluster"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
       responses:
         "200":
           description: Success
