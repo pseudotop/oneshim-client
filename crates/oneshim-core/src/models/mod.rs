@@ -8,6 +8,7 @@ pub mod embedding;
 pub mod event;
 pub mod frame;
 pub mod gui;
+pub mod gui_interaction;
 pub mod integration;
 pub mod intent;
 pub mod recalibration;
