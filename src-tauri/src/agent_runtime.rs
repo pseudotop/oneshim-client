@@ -365,6 +365,27 @@ impl AgentRuntimeBundle {
             }
         }
 
+        // --- Phase 2: Accessibility extractor (gated by config + consent) ---
+        {
+            let text_config = self.config.analysis.text_intelligence.clone();
+            let ax_consent_ok = self
+                .consent_manager
+                .as_ref()
+                .and_then(|cm| cm.current_consent())
+                .map(|c| c.permissions.activity_pattern_learning)
+                .unwrap_or(false);
+
+            if text_config.enabled && text_config.accessibility_extraction && ax_consent_ok {
+                if let Some(extractor) = oneshim_vision::accessibility::create_extractor() {
+                    info!(
+                        name = extractor.name(),
+                        "Accessibility extractor enabled (Phase 2)"
+                    );
+                    scheduler = scheduler.with_accessibility_extractor(extractor);
+                }
+            }
+        }
+
         info!("Agent started (offline={})", self.offline_mode);
         scheduler.run(shutdown_rx, Some(self.app_handle)).await;
         info!("Agent ended");

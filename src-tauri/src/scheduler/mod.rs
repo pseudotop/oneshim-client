@@ -14,6 +14,7 @@ use oneshim_core::config::{AppConfig, Weekday};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::tiered_memory::ResolvedParams;
+use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::api_client::ApiClient;
 use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
@@ -105,6 +106,10 @@ pub struct Scheduler {
     /// Cross-device sync engine (P3 Phase 3a-2). Optional — only present
     /// when sync is enabled AND configured (folder + passphrase).
     pub(super) sync_engine: Option<Arc<crate::sync_engine::SyncEngine>>,
+    /// Accessibility API extractor for focused element context (Phase 2).
+    /// `None` when `text_intelligence.accessibility_extraction` is disabled
+    /// or platform does not support it.
+    pub(super) accessibility_extractor: Option<Arc<dyn AccessibilityExtractor>>,
 }
 
 impl Scheduler {
@@ -145,6 +150,7 @@ impl Scheduler {
             embedding_provider: None,
             adaptive_trigger: Mutex::new(None),
             sync_engine: None,
+            accessibility_extractor: None,
         }
     }
 
@@ -205,6 +211,14 @@ impl Scheduler {
 
     pub fn with_sync_engine(mut self, engine: Arc<crate::sync_engine::SyncEngine>) -> Self {
         self.sync_engine = Some(engine);
+        self
+    }
+
+    pub fn with_accessibility_extractor(
+        mut self,
+        extractor: Arc<dyn AccessibilityExtractor>,
+    ) -> Self {
+        self.accessibility_extractor = Some(extractor);
         self
     }
 
