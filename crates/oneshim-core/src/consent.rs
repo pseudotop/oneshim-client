@@ -42,6 +42,14 @@ pub struct ConsentPermissions {
     /// transfer between devices, even when both are owned by the same user.
     #[serde(default)]
     pub cross_device_sync: bool,
+
+    // --- Tier 6: Text Intelligence ---
+    /// Permits extraction of full text content from focused UI elements.
+    /// Required only when pii_extraction_level is set to Off.
+    /// GDPR Article 6 -- explicit consent for processing text content
+    /// that may contain personal data.
+    #[serde(default)]
+    pub full_text_extraction: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -447,6 +455,14 @@ mod tests {
         };
         manager.grant_consent(perms_with_sync, 30).unwrap();
         assert!(manager.is_permitted(|p| p.cross_device_sync));
+    }
+
+    #[test]
+    fn consent_without_full_text_extraction_deserializes() {
+        let json = r#"{"screen_capture":true,"activity_pattern_learning":true}"#;
+        let perms: ConsentPermissions = serde_json::from_str(json).unwrap();
+        assert!(!perms.full_text_extraction);
+        assert!(perms.activity_pattern_learning);
     }
 
     #[test]
