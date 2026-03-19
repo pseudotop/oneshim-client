@@ -1,6 +1,11 @@
 // Cross-device sync configuration (Phase 3 — P3).
 use serde::{Deserialize, Serialize};
 
+/// Minimum allowed sync interval. Callers should use
+/// `SyncConfig::validated_interval_secs()` to ensure the value is at least
+/// this floor (prevents excessive network/battery drain).
+pub const MIN_SYNC_INTERVAL_SECS: u64 = 30;
+
 /// Sync transport selection.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -57,6 +62,13 @@ fn default_sync_interval_secs() -> u64 {
 
 fn default_device_name() -> String {
     gethostname::gethostname().to_string_lossy().into_owned()
+}
+
+impl SyncConfig {
+    /// Return `interval_secs` clamped to at least [`MIN_SYNC_INTERVAL_SECS`].
+    pub fn validated_interval_secs(&self) -> u64 {
+        self.interval_secs.max(MIN_SYNC_INTERVAL_SECS)
+    }
 }
 
 impl Default for SyncConfig {
@@ -120,6 +132,29 @@ mod tests {
         assert_eq!(json, "\"remote\"");
         let json = serde_json::to_string(&SyncTransportKind::Lan).unwrap();
         assert_eq!(json, "\"lan\"");
+    }
+
+    #[test]
+    fn interval_secs_clamped_to_minimum() {
+        let config = SyncConfig {
+            interval_secs: 5, // well below MIN_SYNC_INTERVAL_SECS
+            ..SyncConfig::default()
+        };
+        assert_eq!(config.validated_interval_secs(), MIN_SYNC_INTERVAL_SECS);
+
+        // At the boundary
+        let config2 = SyncConfig {
+            interval_secs: MIN_SYNC_INTERVAL_SECS,
+            ..SyncConfig::default()
+        };
+        assert_eq!(config2.validated_interval_secs(), MIN_SYNC_INTERVAL_SECS);
+
+        // Above the minimum — unchanged
+        let config3 = SyncConfig {
+            interval_secs: 600,
+            ..SyncConfig::default()
+        };
+        assert_eq!(config3.validated_interval_secs(), 600);
     }
 
     #[test]
