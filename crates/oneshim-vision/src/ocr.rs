@@ -2,7 +2,7 @@ use oneshim_core::models::frame::{BoundingBox, OcrRegion};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use thiserror::Error;
-use tracing::debug;
+use tracing::{debug, warn};
 
 #[derive(Debug, Error)]
 pub enum OcrError {
@@ -204,10 +204,20 @@ impl OcrExtractor {
                 .map_err(|e| OcrError::Extraction(format!("{e}")))?;
             let words: Vec<&str> = full_text.split_whitespace().collect();
 
+            let box_count = boxes.len();
+            if words.len() != box_count {
+                warn!(
+                    "OCR word/box count mismatch: {} words vs {} boxes — truncating to shorter",
+                    words.len(),
+                    box_count
+                );
+            }
+            let count = words.len().min(box_count);
+
             let mut result = Vec::new();
-            for (i, b) in boxes.iter().enumerate() {
-                let geom = b.get_geometry();
-                let word_text = words.get(i).unwrap_or(&"").to_string();
+            for i in 0..count {
+                let geom = boxes.get(i).unwrap().get_geometry();
+                let word_text = words[i].to_string();
                 if !word_text.is_empty() {
                     result.push(OcrWordBox {
                         text: word_text,
@@ -260,10 +270,20 @@ impl OcrExtractor {
             .map_err(|e| OcrError::Extraction(format!("{e}")))?;
         let words: Vec<&str> = full_text.split_whitespace().collect();
 
+        let box_count = boxes.len();
+        if words.len() != box_count {
+            warn!(
+                "OCR word/box count mismatch: {} words vs {} boxes — truncating to shorter",
+                words.len(),
+                box_count
+            );
+        }
+        let count = words.len().min(box_count);
+
         let mut regions = Vec::new();
-        for (i, b) in boxes.iter().enumerate() {
-            let geom = b.get_geometry();
-            let word_text = words.get(i).unwrap_or(&"").to_string();
+        for i in 0..count {
+            let geom = boxes.get(i).unwrap().get_geometry();
+            let word_text = words[i].to_string();
             if !word_text.is_empty() {
                 regions.push(OcrRegion {
                     text: word_text,
@@ -273,8 +293,6 @@ impl OcrExtractor {
                         width: geom.w.max(0) as u32,
                         height: geom.h.max(0) as u32,
                     },
-                    // Tesseract word-level confidence is not directly available per-box
-                    // via leptess component API; default to 0.5 as a conservative estimate.
                     confidence: 0.5,
                 });
             }
@@ -319,10 +337,20 @@ impl OcrExtractor {
                 .map_err(|e| OcrError::Extraction(format!("{e}")))?;
             let words: Vec<&str> = full_text.split_whitespace().collect();
 
+            let box_count = boxes.len();
+            if words.len() != box_count {
+                tracing::warn!(
+                    "OCR word/box count mismatch: {} words vs {} boxes — truncating to shorter",
+                    words.len(),
+                    box_count
+                );
+            }
+            let count = words.len().min(box_count);
+
             let mut regions = Vec::new();
-            for (i, b) in boxes.iter().enumerate() {
-                let geom = b.get_geometry();
-                let word_text = words.get(i).unwrap_or(&"").to_string();
+            for i in 0..count {
+                let geom = boxes.get(i).unwrap().get_geometry();
+                let word_text = words[i].to_string();
                 if !word_text.is_empty() {
                     regions.push(OcrRegion {
                         text: word_text,
