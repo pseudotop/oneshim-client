@@ -322,12 +322,11 @@ impl AgentRuntimeBundle {
                                     self.config.sync.clone(),
                                 ),
                             );
-                            let merger = Arc::new(
-                                oneshim_storage::sync_merger::SqliteSyncMerger::new(
+                            let merger =
+                                Arc::new(oneshim_storage::sync_merger::SqliteSyncMerger::new(
                                     self.sqlite_storage_concrete.connection_arc(),
                                     device_id.clone(),
-                                ),
-                            );
+                                ));
                             match oneshim_storage::file_transport::FileSyncTransport::new(
                                 std::path::PathBuf::from(sync_folder),
                                 device_id.clone(),
@@ -337,9 +336,7 @@ impl AgentRuntimeBundle {
                                     // Build a parking_lot::Mutex-wrapped ConsentManager for the SyncEngine.
                                     // The SyncEngine needs &mut access to clear_pending_deletion.
                                     let consent_for_sync = Arc::new(parking_lot::Mutex::new(
-                                        ConsentManager::new(
-                                            self.data_dir.join("consent.json"),
-                                        ),
+                                        ConsentManager::new(self.data_dir.join("consent.json")),
                                     ));
 
                                     let sync_engine = Arc::new(SyncEngine::new(

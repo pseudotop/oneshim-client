@@ -141,7 +141,6 @@ mod tests {
     use async_trait::async_trait;
     use oneshim_core::consent::ConsentPermissions;
     use oneshim_core::models::sync::PeerInfo;
-    use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     // --- Mock implementations ---

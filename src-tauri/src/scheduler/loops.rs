@@ -1193,6 +1193,7 @@ impl Scheduler {
     }
 
     /// 12. Cross-device sync loop (P3 Phase 3a-2).
+    ///
     /// Runs the SyncEngine's pull/merge/push cycle at the configured interval.
     pub(super) fn spawn_cross_device_sync_loop(
         &self,
