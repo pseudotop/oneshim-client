@@ -182,6 +182,13 @@ impl Scheduler {
             // `GuiElementDetector::correlate_click()`.
             let mut last_ocr_regions: Vec<OcrRegion> = Vec::new();
 
+            // ── Audit tracking: consent and PII level changes (Task 7) ──
+            let mut prev_full_text_consent = false;
+            let mut prev_pii_level = config_manager1
+                .as_ref()
+                .map(|cm| cm.get().analysis.text_intelligence.pii_extraction_level)
+                .unwrap_or_default();
+
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
@@ -242,6 +249,33 @@ impl Scheduler {
                                         .as_ref()
                                         .map(|cm| cm.is_permitted(|p| p.full_text_extraction))
                                         .unwrap_or(false);
+
+                                    // Audit: log consent state changes
+                                    if full_text_consent != prev_full_text_consent {
+                                        if full_text_consent {
+                                            info!(
+                                                event = "full_text_extraction_consent_granted",
+                                                "User granted full_text_extraction consent — Off PII level now effective"
+                                            );
+                                        } else {
+                                            warn!(
+                                                event = "full_text_extraction_consent_revoked",
+                                                "User revoked full_text_extraction consent — falling back to Standard PII level"
+                                            );
+                                        }
+                                        prev_full_text_consent = full_text_consent;
+                                    }
+
+                                    // Audit: log PII extraction level config changes
+                                    if text_config.pii_extraction_level != prev_pii_level {
+                                        info!(
+                                            event = "pii_extraction_level_changed",
+                                            old = ?prev_pii_level,
+                                            new = ?text_config.pii_extraction_level,
+                                            "PII extraction level changed"
+                                        );
+                                        prev_pii_level = text_config.pii_extraction_level;
+                                    }
 
                                     match ax
                                         .extract_focused_element(

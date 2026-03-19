@@ -6,6 +6,7 @@
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use oneshim_analysis::TriggerDecision;
+use oneshim_core::models::app_registry::AppSubcategory;
 use oneshim_core::models::event::InputActivityEvent;
 use oneshim_core::models::focused_element::FocusedElementInfo;
 use oneshim_core::models::gui_activity::GuiActivitySummary;
@@ -114,6 +115,45 @@ pub(super) async fn run_analysis_tick(
     } else {
         work_type
     };
+
+    // 4d. Enrich terminal commands with accessibility text
+    let _terminal_command = focused_element
+        .and_then(|fe| fe.extracted_text.as_deref())
+        .and_then(|text| {
+            let subcategory = infer_subcategory(app_name);
+            if subcategory == AppSubcategory::Terminal {
+                oneshim_analysis::terminal_detector::detect_terminal_command(text)
+            } else {
+                None
+            }
+        });
+
+    if let Some(ref cmd_info) = _terminal_command {
+        debug!(
+            command = %cmd_info.command,
+            "Terminal command detected from accessibility text"
+        );
+    }
+
+    // 4e. Extract document heading from accessibility text for document editors
+    let _doc_heading = focused_element
+        .and_then(|fe| fe.extracted_text.as_deref())
+        .and_then(|text| {
+            let subcategory = infer_subcategory(app_name);
+            if subcategory == AppSubcategory::DocumentEditor {
+                oneshim_analysis::document_heading::extract_document_heading(text)
+            } else {
+                None
+            }
+        });
+
+    if let Some(ref heading) = _doc_heading {
+        debug!(
+            heading = %heading.heading,
+            level = heading.level,
+            "Document heading detected from accessibility text"
+        );
+    }
 
     // 5. Update content tracker
     if let Some(ref content) = parsed_content {
@@ -658,6 +698,61 @@ fn build_regimes_from_clustering(
             }
         })
         .collect()
+}
+
+/// Infer `AppSubcategory` from a bare app name using well-known patterns.
+///
+/// This is a lightweight fallback when `AppRegistry` is not available in the
+/// pipeline context. It covers the most common terminal and document editor
+/// app names so that terminal command detection and document heading extraction
+/// can fire in the analysis pipeline.
+fn infer_subcategory(app_name: &str) -> AppSubcategory {
+    let lower = app_name.to_lowercase();
+
+    // Terminal applications
+    const TERMINAL_PATTERNS: &[&str] = &[
+        "terminal",
+        "iterm",
+        "warp",
+        "hyper",
+        "alacritty",
+        "kitty",
+        "wezterm",
+        "konsole",
+        "gnome-terminal",
+        "xterm",
+        "cmd.exe",
+        "powershell",
+        "windows terminal",
+        "tabby",
+    ];
+    for pat in TERMINAL_PATTERNS {
+        if lower.contains(pat) {
+            return AppSubcategory::Terminal;
+        }
+    }
+
+    // Document editors
+    const DOC_EDITOR_PATTERNS: &[&str] = &[
+        "word",
+        "pages",
+        "google docs",
+        "libreoffice writer",
+        "notion",
+        "obsidian",
+        "typora",
+        "bear",
+        "ulysses",
+        "ia writer",
+        "scrivener",
+    ];
+    for pat in DOC_EDITOR_PATTERNS {
+        if lower.contains(pat) {
+            return AppSubcategory::DocumentEditor;
+        }
+    }
+
+    AppSubcategory::Other
 }
 
 #[cfg(test)]
