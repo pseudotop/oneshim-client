@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use oneshim_core::models::event::{InputActivityEvent, KeyboardActivity, MouseActivity};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tracing::error;
@@ -22,6 +23,11 @@ pub struct InputActivityCollector {
     shortcut_count: AtomicU32,
     correction_count: AtomicU32,
 
+    /// Small ring buffer of recent shortcut key strings (e.g., "Cmd+S").
+    /// Capacity: 16. Protected by Mutex (low contention — written on shortcut,
+    /// drained on snapshot).
+    recent_shortcuts: Mutex<VecDeque<String>>,
+
     last_activity_ms: AtomicU64,
     burst_threshold_ms: u64,
 }
@@ -42,6 +48,7 @@ impl InputActivityCollector {
             typing_bursts: AtomicU32::new(0),
             shortcut_count: AtomicU32::new(0),
             correction_count: AtomicU32::new(0),
+            recent_shortcuts: Mutex::new(VecDeque::with_capacity(16)),
             last_activity_ms: AtomicU64::new(0),
             burst_threshold_ms: 2000, // 2 s
         }
@@ -101,6 +108,28 @@ impl InputActivityCollector {
         }
 
         self.record_activity();
+    }
+
+    /// Record a keyboard shortcut with its human-readable name (e.g., "Cmd+S").
+    /// Also increments shortcut_count and total_keystrokes.
+    pub fn record_shortcut_name(&self, name: &str) {
+        self.total_keystrokes.fetch_add(1, Ordering::Relaxed);
+        self.shortcut_count.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut buf) = self.recent_shortcuts.lock() {
+            if buf.len() >= 16 {
+                buf.pop_front();
+            }
+            buf.push_back(name.to_string());
+        }
+        self.record_activity();
+    }
+
+    /// Drain and return all recent shortcut names since last call.
+    pub fn take_recent_shortcuts(&self) -> Vec<String> {
+        self.recent_shortcuts
+            .lock()
+            .map(|mut buf| buf.drain(..).collect())
+            .unwrap_or_default()
     }
 
     fn record_activity(&self) {
@@ -321,5 +350,32 @@ mod tests {
 
         let second = collector.take_snapshot();
         assert_eq!(second.mouse.last_position, None);
+    }
+
+    #[test]
+    fn records_shortcut_names() {
+        let collector = InputActivityCollector::new();
+        collector.record_shortcut_name("Cmd+S");
+        collector.record_shortcut_name("Cmd+Z");
+
+        let shortcuts = collector.take_recent_shortcuts();
+        assert_eq!(shortcuts, vec!["Cmd+S", "Cmd+Z"]);
+
+        let snapshot = collector.take_snapshot();
+        assert_eq!(snapshot.keyboard.shortcut_count, 2);
+        assert_eq!(snapshot.keyboard.total_keystrokes, 2);
+    }
+
+    #[test]
+    fn shortcut_ring_buffer_caps_at_16() {
+        let collector = InputActivityCollector::new();
+        for i in 0..20 {
+            collector.record_shortcut_name(&format!("Key+{i}"));
+        }
+
+        let shortcuts = collector.take_recent_shortcuts();
+        assert_eq!(shortcuts.len(), 16);
+        // Oldest 4 evicted, first remaining is "Key+4"
+        assert_eq!(shortcuts[0], "Key+4");
     }
 }
