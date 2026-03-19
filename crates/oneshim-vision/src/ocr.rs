@@ -1,6 +1,6 @@
 use oneshim_core::models::frame::{BoundingBox, OcrRegion};
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use thiserror::Error;
 use tracing::{debug, warn};
 
@@ -27,6 +27,9 @@ static TESSDATA_PATH: OnceLock<Option<String>> = OnceLock::new();
 pub struct OcrExtractor {
     tessdata_path: Option<PathBuf>,
     max_chars: usize,
+    /// Cached LepTess instance for reuse across extract calls.
+    /// Avoids re-initialization overhead (~10-50ms per call).
+    cached_leptess: Mutex<Option<leptess::LepTess>>,
 }
 
 impl OcrExtractor {
@@ -39,6 +42,7 @@ impl OcrExtractor {
         Self {
             tessdata_path,
             max_chars: 0,
+            cached_leptess: Mutex::new(None),
         }
     }
 
@@ -55,15 +59,40 @@ impl OcrExtractor {
             return Err(OcrError::EmptyImage);
         }
 
-        let tessdata = self
-            .tessdata_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
+        // Try to reuse cached LepTess instance; fall back to creating new one
+        let mut cached_guard = self.cached_leptess.lock().ok();
 
-        let tessdata_ref = tessdata.as_deref();
+        let create_new = || -> Result<leptess::LepTess, OcrError> {
+            let tessdata = self
+                .tessdata_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string());
+            leptess::LepTess::new(tessdata.as_deref(), "eng")
+                .map_err(|e| OcrError::Init(format!("{e}")))
+        };
 
-        let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
-            .map_err(|e| OcrError::Init(format!("{e}")))?;
+        let lt = if let Some(ref mut guard) = cached_guard {
+            if guard.is_none() {
+                **guard = Some(create_new()?);
+            }
+            guard.as_mut().unwrap()
+        } else {
+            // Lock failed — create a temporary instance
+            let mut lt = create_new()?;
+            lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+
+            let text = lt
+                .get_utf8_text()
+                .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+
+            let result = text.trim().to_string();
+            return if self.max_chars > 0 && result.len() > self.max_chars {
+                Ok(result.chars().take(self.max_chars).collect())
+            } else {
+                Ok(result)
+            };
+        };
 
         lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
             .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
@@ -289,6 +318,7 @@ impl OcrExtractor {
     ///
     /// Uses Tesseract word-level component images to obtain spatial coordinates.
     /// Each word that matches a component box is returned as a separate region.
+    /// Reuses cached LepTess instance when available.
     pub fn extract_regions(&self, image: &image::DynamicImage) -> Result<Vec<OcrRegion>, OcrError> {
         let rgba = image.to_rgba8();
         let (w, h) = (rgba.width(), rgba.height());
@@ -297,19 +327,34 @@ impl OcrExtractor {
             return Err(OcrError::EmptyImage);
         }
 
-        let tessdata = self
-            .tessdata_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        let tessdata_ref = tessdata.as_deref();
+        let create_new = || -> Result<leptess::LepTess, OcrError> {
+            let tessdata = self
+                .tessdata_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string());
+            leptess::LepTess::new(tessdata.as_deref(), "eng")
+                .map_err(|e| OcrError::Init(format!("{e}")))
+        };
 
-        let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
-            .map_err(|e| OcrError::Init(format!("{e}")))?;
+        let mut cached_guard = self.cached_leptess.lock().ok();
+
+        let lt = if let Some(ref mut guard) = cached_guard {
+            if guard.is_none() {
+                **guard = Some(create_new()?);
+            }
+            guard.as_mut().unwrap()
+        } else {
+            // Lock failed — create a temporary instance
+            let mut lt = create_new()?;
+            lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+            return build_regions_from_leptess(&mut lt);
+        };
 
         lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
             .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
 
-        build_regions_from_leptess(&mut lt)
+        build_regions_from_leptess(lt)
     }
 
     /// Async version of `extract_regions`.
