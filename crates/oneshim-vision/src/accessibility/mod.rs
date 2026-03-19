@@ -2,8 +2,8 @@
 //!
 //! Platform-dispatched module:
 //! - macOS: Native AXUIElement FFI (`macos.rs`)
-//! - Windows: UIAutomation stub (`windows.rs`)
-//! - Linux: Stub returning None (AT-SPI2 deferred)
+//! - Windows: UIAutomation COM API (`windows.rs`)
+//! - Linux: AT-SPI2 over D-Bus (`linux.rs`) — structural stub
 //!
 //! The `create_extractor()` factory function returns the appropriate
 //! platform implementation behind `Arc<dyn AccessibilityExtractor>`.
@@ -17,6 +17,9 @@ mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 
+#[cfg(target_os = "linux")]
+mod linux;
+
 use std::sync::Arc;
 
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
@@ -27,9 +30,12 @@ pub use macos::MacOsNativeAccessibility;
 #[cfg(target_os = "windows")]
 pub use windows::WindowsUiaAccessibility;
 
+#[cfg(target_os = "linux")]
+pub use linux::LinuxAccessibility;
+
 /// Create the platform-appropriate accessibility extractor.
 ///
-/// Returns `None` on Linux (AT-SPI2 deferred) or if the platform module
+/// Returns `None` on unsupported platforms or if the platform module
 /// is unavailable.
 pub fn create_extractor() -> Option<Arc<dyn AccessibilityExtractor>> {
     create_platform_extractor()
@@ -58,7 +64,16 @@ fn create_platform_extractor() -> Option<Arc<dyn AccessibilityExtractor>> {
     Some(Arc::new(WindowsUiaAccessibility::new()))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(target_os = "linux")]
+fn create_platform_extractor() -> Option<Arc<dyn AccessibilityExtractor>> {
+    let extractor = LinuxAccessibility::new();
+    tracing::info!(
+        "Linux AT-SPI2 accessibility extractor enabled (stub — returns None until full impl)"
+    );
+    Some(Arc::new(extractor))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 fn create_platform_extractor() -> Option<Arc<dyn AccessibilityExtractor>> {
     tracing::debug!("Accessibility extraction not available on this platform");
     None
@@ -70,12 +85,11 @@ mod tests {
 
     #[test]
     fn create_extractor_returns_some_on_supported_platform() {
-        // On macOS and Windows, create_extractor should return Some
-        // (even without permission on macOS, it returns the extractor).
+        // On macOS, Windows, and Linux, create_extractor should return Some.
         let extractor = create_extractor();
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         assert!(extractor.is_some());
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         assert!(extractor.is_none());
     }
 
@@ -91,5 +105,12 @@ mod tests {
     fn windows_extractor_name() {
         let extractor = create_extractor().expect("should return Some on Windows");
         assert_eq!(extractor.name(), "windows-uia-accessibility");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_extractor_name() {
+        let extractor = create_extractor().expect("should return Some on Linux");
+        assert_eq!(extractor.name(), "linux-atspi2-accessibility");
     }
 }
