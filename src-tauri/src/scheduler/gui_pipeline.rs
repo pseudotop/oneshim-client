@@ -167,3 +167,264 @@ pub(crate) fn run_gui_tick(
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oneshim_core::config::{GuiIntelligenceConfig, PiiFilterLevel};
+    use oneshim_core::models::event::{KeyboardActivity, MouseActivity};
+    use oneshim_core::models::frame::BoundingBox;
+
+    /// Helper: build a `GuiPipelineState` with 1920x1080 detector and a
+    /// short aggregation window for test-friendly flushing.
+    fn make_state(window_secs: u64, max_events: usize) -> GuiPipelineState {
+        let config = GuiIntelligenceConfig {
+            enabled: true,
+            aggregation_window_secs: window_secs,
+            max_events_per_segment: max_events,
+            proximity_threshold_px: 40,
+        };
+        GuiPipelineState {
+            detector: GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off),
+            aggregator: GuiActivityAggregator::new(&config),
+        }
+    }
+
+    /// Helper: build an `InputActivityEvent` with the given click/keyboard params.
+    fn make_input(
+        click_count: u32,
+        last_pos: Option<(f32, f32)>,
+        total_keystrokes: u32,
+        shortcut_count: u32,
+    ) -> InputActivityEvent {
+        InputActivityEvent {
+            timestamp: Utc::now(),
+            period_secs: 3,
+            mouse: MouseActivity {
+                click_count,
+                move_distance: 0.0,
+                scroll_count: 0,
+                last_position: last_pos,
+                double_click_count: 0,
+                right_click_count: 0,
+            },
+            keyboard: KeyboardActivity {
+                keystrokes_per_min: 0,
+                total_keystrokes,
+                typing_bursts: 0,
+                shortcut_count,
+                correction_count: 0,
+            },
+            app_name: "VS Code".to_string(),
+        }
+    }
+
+    fn make_ocr_region(text: &str, x: u32, y: u32, w: u32, h: u32) -> OcrRegion {
+        OcrRegion {
+            text: text.to_string(),
+            bbox: BoundingBox {
+                x,
+                y,
+                width: w,
+                height: h,
+            },
+            confidence: 0.9,
+        }
+    }
+
+    #[test]
+    fn click_with_ocr_produces_correlated_event() {
+        let mut state = make_state(60, 100);
+
+        // Place an OCR region ("Save" button) near the click position
+        let regions = vec![make_ocr_region("Save", 490, 290, 60, 30)];
+        let input = make_input(1, Some((500.0, 300.0)), 0, 0);
+
+        // First tick: event goes into aggregator buffer (no flush yet)
+        let result = run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+        );
+
+        // No flush yet (only 1 event, window not expired)
+        assert!(result.is_none());
+
+        // Force flush via content label change
+        let input2 = make_input(1, Some((500.0, 300.0)), 0, 0);
+        let result = run_gui_tick(
+            &mut state,
+            &regions,
+            &input2,
+            &[],
+            "VS Code",
+            "lib.rs",
+            "lib.rs", // different content_label triggers flush
+        );
+
+        let summary = result.expect("content label change should flush");
+        assert_eq!(summary.content_label, "main.rs");
+        assert!(summary.button_clicks > 0 || summary.save_count > 0);
+    }
+
+    #[test]
+    fn click_with_empty_ocr_produces_unknown_element() {
+        // max_events=1 so the 2nd event triggers a flush of the 1st window
+        let mut state = make_state(60, 1);
+
+        let input = make_input(1, Some((500.0, 300.0)), 0, 0);
+
+        // Push first event (fills the 1-event window)
+        run_gui_tick(
+            &mut state,
+            &[],
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+        );
+
+        // Push second event — triggers flush due to max_events=1
+        let result = run_gui_tick(
+            &mut state,
+            &[],
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+        );
+
+        let summary = result.expect("max_events should trigger flush");
+        // No OCR regions → the click lands on an Unknown element
+        assert_eq!(summary.unmatched_click_count, 1);
+    }
+
+    #[test]
+    fn keyboard_only_produces_text_entry() {
+        let mut state = make_state(60, 1);
+
+        // No clicks, just keystrokes
+        let input = make_input(0, None, 20, 0);
+
+        run_gui_tick(
+            &mut state,
+            &[],
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+        );
+
+        // Second event to flush
+        let result = run_gui_tick(
+            &mut state,
+            &[],
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+        );
+
+        let summary = result.expect("should flush via max_events");
+        assert!(summary.text_entries > 0);
+    }
+
+    #[test]
+    fn shortcuts_iterate_all() {
+        let mut state = make_state(60, 100);
+
+        let input = make_input(0, None, 3, 3);
+        let shortcuts = vec![
+            "Cmd+S".to_string(),
+            "Cmd+F".to_string(),
+            "Cmd+Z".to_string(),
+        ];
+
+        // Push events
+        run_gui_tick(
+            &mut state,
+            &[],
+            &input,
+            &shortcuts,
+            "VS Code",
+            "main.rs",
+            "main.rs",
+        );
+
+        // Flush via content change
+        let input2 = make_input(1, Some((100.0, 100.0)), 0, 0);
+        let result = run_gui_tick(&mut state, &[], &input2, &[], "VS Code", "lib.rs", "lib.rs");
+
+        let summary = result.expect("content change should flush");
+        // All 3 shortcuts were fed as events
+        assert_eq!(summary.save_count, 1); // Cmd+S
+        assert_eq!(summary.search_count, 1); // Cmd+F
+        assert_eq!(summary.undo_redo_count, 1); // Cmd+Z
+    }
+
+    #[test]
+    fn mixed_clicks_and_typing() {
+        let mut state = make_state(60, 100);
+
+        // Click + typing in same tick
+        let input = make_input(1, Some((500.0, 300.0)), 15, 0);
+        let regions = vec![make_ocr_region("Search", 490, 290, 80, 30)];
+
+        run_gui_tick(
+            &mut state,
+            &regions,
+            &input,
+            &[],
+            "Chrome",
+            "Google",
+            "search",
+        );
+
+        // Flush via content change
+        let input2 = make_input(1, Some((100.0, 100.0)), 0, 0);
+        let result = run_gui_tick(
+            &mut state,
+            &[],
+            &input2,
+            &[],
+            "Chrome",
+            "Results",
+            "results",
+        );
+
+        let summary = result.expect("should flush on content change");
+        assert!(summary.button_clicks > 0 || summary.search_count > 0);
+        assert!(summary.text_entries > 0);
+    }
+
+    #[test]
+    fn no_input_produces_nothing() {
+        let mut state = make_state(60, 100);
+
+        // Zero clicks, zero keystrokes
+        let input = make_input(0, None, 0, 0);
+
+        let result = run_gui_tick(
+            &mut state,
+            &[],
+            &input,
+            &[],
+            "VS Code",
+            "main.rs",
+            "main.rs",
+        );
+
+        assert!(result.is_none());
+        // Even flushing should return None since no events were pushed
+        let flushed = state.aggregator.flush();
+        assert!(flushed.is_none());
+    }
+}
