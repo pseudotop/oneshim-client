@@ -25,6 +25,8 @@ pub struct AnalysisConfig {
     pub embedding: EmbeddingConfig,
     #[serde(default)]
     pub gui_intelligence: GuiIntelligenceConfig,
+    #[serde(default)]
+    pub text_intelligence: TextIntelligenceConfig,
 }
 
 impl Default for AnalysisConfig {
@@ -40,6 +42,7 @@ impl Default for AnalysisConfig {
             tiered_memory: TieredMemoryConfig::default(),
             embedding: EmbeddingConfig::default(),
             gui_intelligence: GuiIntelligenceConfig::default(),
+            text_intelligence: TextIntelligenceConfig::default(),
         }
     }
 }
@@ -369,4 +372,76 @@ fn default_max_events_per_segment() -> usize {
 }
 fn default_proximity_threshold_px() -> u32 {
     40
+}
+
+// ---------------------------------------------------------------------------
+// Text Intelligence configuration
+// ---------------------------------------------------------------------------
+
+/// Configuration for the Text-Heavy App Intelligence subsystem (Phase 1).
+///
+/// **Privacy**: input_pattern_detail requires `activity_pattern_learning`
+/// consent (GDPR Tier 4). accessibility_extraction (Phase 2) requires the
+/// same consent tier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextIntelligenceConfig {
+    /// Master switch for text-heavy app intelligence.
+    /// When false, the system uses existing coarse classification only.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Enable key-category counters (Enter, Tab, Arrow, Backspace, Special).
+    /// When false, only aggregate keystroke counts are tracked.
+    #[serde(default = "default_input_pattern_detail")]
+    pub input_pattern_detail: bool,
+
+    /// Enable OS accessibility API extraction (Phase 2).
+    /// Requires Accessibility permission on macOS.
+    /// Requires `activity_pattern_learning` consent.
+    #[serde(default)]
+    pub accessibility_extraction: bool,
+
+    /// PII filter level for accessibility-extracted text (Phase 2).
+    #[serde(default = "default_pii_extraction_level")]
+    pub pii_extraction_level: crate::config::enums::PiiFilterLevel,
+}
+
+impl Default for TextIntelligenceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            input_pattern_detail: default_input_pattern_detail(),
+            accessibility_extraction: false,
+            pii_extraction_level: default_pii_extraction_level(),
+        }
+    }
+}
+
+fn default_input_pattern_detail() -> bool {
+    true
+}
+
+fn default_pii_extraction_level() -> crate::config::enums::PiiFilterLevel {
+    crate::config::enums::PiiFilterLevel::Standard
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn analysis_config_without_text_intelligence_deserializes() {
+        let json = r#"{"enabled": true}"#;
+        let config: AnalysisConfig = serde_json::from_str(json).unwrap();
+        assert!(!config.text_intelligence.enabled);
+        assert!(config.text_intelligence.input_pattern_detail);
+    }
+
+    #[test]
+    fn text_intelligence_config_defaults() {
+        let config = TextIntelligenceConfig::default();
+        assert!(!config.enabled);
+        assert!(config.input_pattern_detail);
+        assert!(!config.accessibility_extraction);
+    }
 }
