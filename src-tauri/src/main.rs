@@ -70,6 +70,13 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 fn main() {
+    // Windows DLL search order hardening (Spec Section 9.2):
+    // Remove CWD from DLL search path to prevent DLL hijacking.
+    #[cfg(target_os = "windows")]
+    unsafe {
+        windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW(windows_sys::core::w!(""));
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| {
