@@ -1192,6 +1192,61 @@ impl Scheduler {
         }))
     }
 
+    /// 12. Cross-device sync loop (P3 Phase 3a-2).
+    /// Runs the SyncEngine's pull/merge/push cycle at the configured interval.
+    pub(super) fn spawn_cross_device_sync_loop(
+        &self,
+        sync_interval: Duration,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
+        let sync_engine = self.sync_engine.clone();
+
+        tokio::spawn(async move {
+            let engine = match sync_engine {
+                Some(e) => e,
+                None => {
+                    let _ = shutdown_rx.changed().await;
+                    return;
+                }
+            };
+
+            // Startup delay: wait 10 seconds before first sync
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            let mut interval = tokio::time::interval(sync_interval);
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        match engine.run_cycle().await {
+                            Ok(Some(result)) => {
+                                info!(
+                                    applied = result.applied,
+                                    skipped = result.skipped_lww + result.skipped_dup,
+                                    "cross-device sync cycle completed"
+                                );
+                            }
+                            Ok(None) => {
+                                debug!("cross-device sync cycle: no changes or skipped");
+                            }
+                            Err(e) => {
+                                warn!("cross-device sync cycle failed: {e}");
+                            }
+                        }
+                    }
+                    _ = shutdown_rx.changed() => {
+                        // Push pending changes before shutdown
+                        if let Err(e) = engine.run_cycle().await {
+                            warn!("shutdown sync push failed: {e}");
+                        }
+                        info!("cross-device sync loop ended");
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
     #[allow(unused_variables)]
     pub(super) async fn run_scheduler_loops(
         &self,
@@ -1326,6 +1381,12 @@ impl Scheduler {
         let analysis_config = self.config.analysis_config.clone();
         let analysis_task = self.spawn_analysis_loop(analysis_config, shutdown_rx.clone());
 
+        // 12. Cross-device sync loop (P3 Phase 3a-2)
+        let cross_device_sync_task = self.spawn_cross_device_sync_loop(
+            self.config.cross_device_sync_interval,
+            shutdown_rx.clone(),
+        );
+
         let _ = shutdown_rx.changed().await;
         info!("ended received");
 
@@ -1348,6 +1409,7 @@ impl Scheduler {
             task.abort();
         }
         analysis_task.abort();
+        cross_device_sync_task.abort();
     }
 }
 

@@ -270,6 +270,8 @@ pub struct SchedulerConfig {
     pub idle_threshold_secs: u64,
     pub upload_enabled: bool,
     pub analysis_config: AnalysisConfig,
+    /// Interval for cross-device sync loop (P3 Phase 3a-2).
+    pub cross_device_sync_interval: Duration,
 }
 
 impl Default for SchedulerConfig {
@@ -289,6 +291,7 @@ impl Default for SchedulerConfig {
             idle_threshold_secs: 300, // 5 min
             upload_enabled: false,
             analysis_config: AnalysisConfig::default(),
+            cross_device_sync_interval: Duration::from_secs(300), // 5 min default
         }
     }
 }

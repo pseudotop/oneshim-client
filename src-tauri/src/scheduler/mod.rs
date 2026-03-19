@@ -102,6 +102,9 @@ pub struct Scheduler {
     /// Wrapped in Mutex so `run_scheduler_loops(&self)` can take ownership
     /// and move it into the monitor loop's async block.
     pub(super) adaptive_trigger: Mutex<Option<AdaptiveTriggerState>>,
+    /// Cross-device sync engine (P3 Phase 3a-2). Optional — only present
+    /// when sync is enabled AND configured (folder + passphrase).
+    pub(super) sync_engine: Option<Arc<crate::sync_engine::SyncEngine>>,
 }
 
 impl Scheduler {
@@ -141,6 +144,7 @@ impl Scheduler {
             vector_store: None,
             embedding_provider: None,
             adaptive_trigger: Mutex::new(None),
+            sync_engine: None,
         }
     }
 
@@ -196,6 +200,11 @@ impl Scheduler {
 
     pub fn with_adaptive_trigger(self, state: AdaptiveTriggerState) -> Self {
         *self.adaptive_trigger.lock().expect("adaptive trigger lock") = Some(state);
+        self
+    }
+
+    pub fn with_sync_engine(mut self, engine: Arc<crate::sync_engine::SyncEngine>) -> Self {
+        self.sync_engine = Some(engine);
         self
     }
 
