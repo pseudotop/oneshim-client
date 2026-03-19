@@ -331,6 +331,7 @@ mod tests {
             noop_filter(),
             5,
             168.0,
+            false,
         );
 
         let found = retriever
@@ -369,5 +370,49 @@ mod tests {
             .unwrap();
 
         assert_eq!(found.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn quantization_enabled_uses_search_quantized() {
+        let results = vec![make_search_result("Quantized result", 0.9)];
+        let store = Arc::new(MockVectorStore::new(results));
+        let retriever = VectorRetriever::new(
+            Arc::new(MockEmbeddingProvider),
+            store.clone(),
+            noop_filter(),
+            5,
+            168.0,
+            true,
+        );
+
+        let found = retriever
+            .retrieve_for_context("VSCode", "main.rs", None)
+            .await
+            .unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert!(store.was_quantized_search_called());
+    }
+
+    #[tokio::test]
+    async fn quantization_enabled_natural_language_uses_search_quantized() {
+        let results = vec![make_search_result("NL quantized", 0.85)];
+        let store = Arc::new(MockVectorStore::new(results));
+        let retriever = VectorRetriever::new(
+            Arc::new(MockEmbeddingProvider),
+            store.clone(),
+            noop_filter(),
+            5,
+            168.0,
+            true,
+        );
+
+        let found = retriever
+            .search_natural_language("what did I work on", None)
+            .await
+            .unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert!(store.was_quantized_search_called());
     }
 }
