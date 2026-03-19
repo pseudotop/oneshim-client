@@ -8,6 +8,8 @@ pub mod error;
 pub mod models;
 pub mod ports;
 pub mod provider_surface;
+pub mod quantization;
+pub mod sync;
 
 #[cfg(test)]
 mod tests {

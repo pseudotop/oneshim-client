@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: u32 = 13;
+const CURRENT_VERSION: u32 = 14;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -64,6 +64,10 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 13 {
         migrate_v13(conn)?;
+    }
+
+    if current < 14 {
+        migrate_v14(conn)?;
     }
 
     Ok(())
@@ -674,6 +678,77 @@ fn migrate_v13(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v14(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V14 execution: INT8 quantization columns + cross-device sync metadata");
+
+    conn.execute_batch(
+        "
+        -- === P3 Vector Compression: INT8 quantized vector columns ===
+        ALTER TABLE embedding_vectors ADD COLUMN vector_int8 BLOB;
+        ALTER TABLE embedding_vectors ADD COLUMN quant_scale REAL;
+        ALTER TABLE embedding_vectors ADD COLUMN quant_offset REAL;
+
+        -- === P3 Cross-Device Sync: HLC columns on syncable tables ===
+        ALTER TABLE activity_segments ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE activity_segments ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE activity_segments ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE regimes ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regimes ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regimes ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE regime_overrides ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regime_overrides ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regime_overrides ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE embedding_vectors ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE embedding_vectors ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE embedding_vectors ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE suggestions ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE suggestions ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE suggestions ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE trigger_params_snapshots ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE trigger_params_snapshots ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE trigger_params_snapshots ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        -- Tombstone columns for LWW-managed tables only
+        ALTER TABLE regimes ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regimes ADD COLUMN deleted_at TEXT;
+
+        ALTER TABLE suggestions ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE suggestions ADD COLUMN deleted_at TEXT;
+
+        ALTER TABLE embedding_vectors ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE embedding_vectors ADD COLUMN deleted_at TEXT;
+
+        -- Sync infrastructure tables
+        CREATE TABLE IF NOT EXISTS sync_peers (
+            device_id TEXT PRIMARY KEY,
+            device_name TEXT NOT NULL,
+            last_sync_at TEXT NOT NULL,
+            watermark_wall_ms INTEGER NOT NULL DEFAULT 0,
+            watermark_counter INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS device_identity (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            device_id TEXT NOT NULL UNIQUE,
+            device_name TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (14);
+        ",
+    )?;
+
+    info!("migration V14 completed");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -841,7 +916,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
 
         // V9 tables
         let count: i64 = conn
@@ -938,6 +1013,45 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+
+        // V14 — INT8 quantization column exists
+        let has_int8: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('embedding_vectors') WHERE name='vector_int8'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_int8, 1);
+
+        // V14 — sync tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_peers'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='device_identity'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V14 — HLC column on activity_segments
+        let has_hlc: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('activity_segments') WHERE name='hlc_wall_ms'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_hlc, 1);
     }
 
     #[test]
@@ -950,6 +1064,6 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
     }
 }
