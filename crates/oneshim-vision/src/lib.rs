@@ -1,5 +1,6 @@
 //! # oneshim-vision
 
+pub mod accessibility;
 #[cfg(target_os = "macos")]
 pub mod accessibility_macos;
 #[cfg(target_os = "windows")]

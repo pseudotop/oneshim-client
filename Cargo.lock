@@ -4987,6 +4987,8 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
  "criterion",
  "fast_image_resize",
  "image",
@@ -5004,6 +5006,7 @@ dependencies = [
  "uuid",
  "webp",
  "xcap",
+ "zeroize",
 ]
 
 [[package]]

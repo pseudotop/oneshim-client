@@ -34,6 +34,10 @@ parking_lot = { workspace = true }
 once_cell = { workspace = true }
 zeroize = { workspace = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = { workspace = true }
+core-foundation-sys = { workspace = true }
+
 [dev-dependencies]
 criterion = { workspace = true }
 tempfile = { workspace = true }
