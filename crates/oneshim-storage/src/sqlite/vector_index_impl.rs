@@ -11,12 +11,16 @@ use oneshim_core::models::embedding::{EmbeddingContentType, SearchFilters, Searc
 use oneshim_core::ports::vector_index::{IndexMeta, VectorIndex};
 use oneshim_core::quantization::{QuantizedVector, ScalarQuantizer};
 use rusqlite::{params, Connection};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 /// SQLite-backed vector index supporting IVF clustering and binary code search.
 pub struct SqliteVectorIndex {
     conn: Arc<Mutex<Connection>>,
+    /// Cached centroids for query-time probe selection.
+    /// Uses `tokio::sync::RwLock` so the guard is `Send` — safe to hold
+    /// briefly inside async methods without blocking the executor.
     centroid_cache: RwLock<Option<Vec<CachedCentroid>>>,
 }
 
@@ -53,57 +57,56 @@ impl SqliteVectorIndex {
     }
 
     /// Load centroids from DB into cache if not already cached.
-    fn ensure_cache(&self) -> Result<(), CoreError> {
-        let cache = self
-            .centroid_cache
-            .read()
-            .map_err(|e| CoreError::Internal(format!("centroid cache read lock failed: {e}")))?;
-        if cache.is_some() {
-            return Ok(());
+    async fn ensure_cache(&self) -> Result<(), CoreError> {
+        {
+            let cache = self.centroid_cache.read().await;
+            if cache.is_some() {
+                return Ok(());
+            }
         }
-        drop(cache);
 
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        // Scope the entire SQLite operation so conn + stmt are dropped
+        // before the tokio RwLock write-await below.
+        let centroids = {
+            let conn = self
+                .conn
+                .lock()
+                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
 
-        let mut stmt = conn
-            .prepare("SELECT id, centroid_int8, centroid_scale, centroid_offset FROM ivf_centroids ORDER BY id")
-            .map_err(|e| CoreError::Internal(format!("Failed to prepare centroid query: {e}")))?;
+            let mut stmt = conn
+                .prepare("SELECT id, centroid_int8, centroid_scale, centroid_offset FROM ivf_centroids ORDER BY id")
+                .map_err(|e| CoreError::Internal(format!("Failed to prepare centroid query: {e}")))?;
 
-        let centroids: Vec<CachedCentroid> = stmt
-            .query_map([], |row| {
-                let id: i64 = row.get(0)?;
-                let blob: Vec<u8> = row.get(1)?;
-                let scale: f32 = row.get(2)?;
-                let offset: f32 = row.get(3)?;
-                Ok(CachedCentroid {
-                    id: id as usize,
-                    vector: QuantizedVector {
-                        data: blob.iter().map(|&b| b as i8).collect(),
-                        scale,
-                        offset,
-                    },
+            let rows: Vec<CachedCentroid> = stmt
+                .query_map([], |row| {
+                    let id: i64 = row.get(0)?;
+                    let blob: Vec<u8> = row.get(1)?;
+                    let scale: f32 = row.get(2)?;
+                    let offset: f32 = row.get(3)?;
+                    Ok(CachedCentroid {
+                        id: id as usize,
+                        vector: QuantizedVector {
+                            data: blob.iter().map(|&b| b as i8).collect(),
+                            scale,
+                            offset,
+                        },
+                    })
                 })
-            })
-            .map_err(|e| CoreError::Internal(format!("Failed to query centroids: {e}")))?
-            .filter_map(|r| r.ok())
-            .collect();
+                .map_err(|e| CoreError::Internal(format!("Failed to query centroids: {e}")))?
+                .filter_map(|r| r.ok())
+                .collect();
+            rows
+        };
 
-        let mut cache = self
-            .centroid_cache
-            .write()
-            .map_err(|e| CoreError::Internal(format!("centroid cache write lock failed: {e}")))?;
+        let mut cache = self.centroid_cache.write().await;
         *cache = Some(centroids);
         Ok(())
     }
 
     /// Invalidate the centroid cache (e.g., after rebuild).
-    fn invalidate_cache(&self) {
-        if let Ok(mut cache) = self.centroid_cache.write() {
-            *cache = None;
-        }
+    async fn invalidate_cache(&self) {
+        let mut cache = self.centroid_cache.write().await;
+        *cache = None;
     }
 }
 
@@ -412,7 +415,7 @@ impl VectorIndex for SqliteVectorIndex {
         })
         .await?;
 
-        self.invalidate_cache();
+        self.invalidate_cache().await;
         Ok(n_clusters_result)
     }
 
@@ -536,13 +539,11 @@ impl VectorIndex for SqliteVectorIndex {
         time_decay_hours: f32,
         filters: &SearchFilters,
     ) -> Result<Vec<SearchResult>, CoreError> {
-        self.ensure_cache()?;
+        self.ensure_cache().await?;
 
-        // Compute probe IDs in a sync block so the RwLockGuard doesn't span await
+        // Clone probe IDs out of the cache guard before any further awaits.
         let probe_ids = {
-            let cache = self.centroid_cache.read().map_err(|e| {
-                CoreError::Internal(format!("centroid cache read lock failed: {e}"))
-            })?;
+            let cache = self.centroid_cache.read().await;
             let centroids = cache
                 .as_ref()
                 .ok_or_else(|| CoreError::Internal("IVF index not built yet".to_string()))?;
@@ -632,13 +633,11 @@ impl VectorIndex for SqliteVectorIndex {
         time_decay_hours: f32,
         filters: &SearchFilters,
     ) -> Result<Vec<SearchResult>, CoreError> {
-        self.ensure_cache()?;
+        self.ensure_cache().await?;
 
-        // Compute probe IDs in a sync block so the RwLockGuard doesn't span await
+        // Clone probe IDs out of the cache guard before any further awaits.
         let probe_ids = {
-            let cache = self.centroid_cache.read().map_err(|e| {
-                CoreError::Internal(format!("centroid cache read lock failed: {e}"))
-            })?;
+            let cache = self.centroid_cache.read().await;
             let centroids = cache
                 .as_ref()
                 .ok_or_else(|| CoreError::Internal("IVF index not built yet".to_string()))?;
@@ -774,12 +773,10 @@ impl VectorIndex for SqliteVectorIndex {
         vector_id: i64,
         vector: &QuantizedVector,
     ) -> Result<(), CoreError> {
-        self.ensure_cache()?;
+        self.ensure_cache().await?;
 
         let cluster_id = {
-            let cache = self.centroid_cache.read().map_err(|e| {
-                CoreError::Internal(format!("centroid cache read lock failed: {e}"))
-            })?;
+            let cache = self.centroid_cache.read().await;
             let centroids = cache
                 .as_ref()
                 .ok_or_else(|| CoreError::Internal("IVF index not built yet".to_string()))?;

@@ -713,10 +713,13 @@ impl Scheduler {
         let vector_store = self.vector_store.clone();
         let embedding_provider = self.embedding_provider.clone();
         let config_manager = self.config_manager.clone();
+        let vector_index = self.vector_index.clone();
+        let search_coordinator = self.search_coordinator.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(aggregation_interval);
             let mut last_reindex_check: Option<chrono::DateTime<Utc>> = None;
+            let mut last_index_maintenance: Option<chrono::DateTime<Utc>> = None;
 
             loop {
                 tokio::select! {
@@ -930,6 +933,62 @@ impl Scheduler {
                                             warn!("daily digest save failure: {e}");
                                         } else {
                                             info!("Daily digest generated for {}", date_str);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // --- Vector index maintenance (every 5 minutes) ---
+                        if let Some(ref vi) = vector_index {
+                            let should_run = last_index_maintenance
+                                .map(|last| (now - last).num_minutes() >= 5)
+                                .unwrap_or(true);
+
+                            if should_run {
+                                last_index_maintenance = Some(now);
+
+                                // Refresh cached vector count in the search coordinator
+                                if let Some(ref coord) = search_coordinator {
+                                    if let Err(e) = coord.refresh_count().await {
+                                        warn!("search coordinator refresh_count failure: {e}");
+                                    }
+                                }
+
+                                let embedding_config = config_manager
+                                    .as_ref()
+                                    .map(|cm| cm.get().analysis.embedding.clone())
+                                    .unwrap_or_default();
+
+                                if embedding_config.index_strategy != "brute_force" {
+                                    match vi.get_index_meta().await {
+                                        Ok(meta) => {
+                                            let total = meta.total_vector_count;
+                                            if total >= 10_000 {
+                                                let needs_rebuild = meta.ivf_built_at.is_none()
+                                                    || (meta.unindexed_count as f64 / total.max(1) as f64 > 0.10);
+
+                                                if needs_rebuild {
+                                                    let n_clusters = (total as f64).sqrt() as usize;
+                                                    info!(
+                                                        "Rebuilding IVF index: {} vectors, {} clusters",
+                                                        total, n_clusters
+                                                    );
+                                                    if let Err(e) = vi.build_ivf_index(n_clusters, 10).await {
+                                                        warn!("IVF index build failure: {e}");
+                                                    }
+
+                                                    if total > 100_000 {
+                                                        info!("Building binary codes for {} vectors", total);
+                                                        if let Err(e) = vi.build_binary_codes().await {
+                                                            warn!("Binary code build failure: {e}");
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            warn!("get_index_meta failure: {e}");
                                         }
                                     }
                                 }

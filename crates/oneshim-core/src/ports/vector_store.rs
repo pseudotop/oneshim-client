@@ -8,6 +8,8 @@ use crate::quantization::QuantizedVector;
 /// Primary adapter: brute-force cosine similarity implementation in oneshim-storage.
 #[async_trait]
 pub trait VectorStore: Send + Sync {
+    // --- Core CRUD ---
+
     /// Store a vector with its associated metadata.
     async fn store(&self, vector: Vec<f32>, metadata: EmbeddingMetadata) -> Result<(), CoreError>;
 
@@ -34,13 +36,6 @@ pub trait VectorStore: Send + Sync {
     /// Mark vectors produced by an old model as stale. Returns count of marked rows.
     async fn mark_stale(&self, old_model_id: &str) -> Result<u64, CoreError>;
 
-    /// Get the model_id of the most recent non-stale vector, if any.
-    async fn get_current_model_id(&self) -> Result<Option<String>, CoreError>;
-
-    /// Fetch a batch of stale vectors for re-embedding.
-    /// Returns (id, original_text) pairs. Limit controls batch size.
-    async fn get_stale_vectors(&self, limit: usize) -> Result<Vec<(i64, String)>, CoreError>;
-
     /// Update a re-embedded vector: replace the BLOB, model_id, and clear stale flag.
     async fn update_vector(
         &self,
@@ -48,6 +43,8 @@ pub trait VectorStore: Send + Sync {
         vector: Vec<f32>,
         model_id: &str,
     ) -> Result<(), CoreError>;
+
+    // --- Quantized (Phase A) ---
 
     /// Store a pre-quantized INT8 vector alongside its float32 original.
     ///
@@ -94,6 +91,15 @@ pub trait VectorStore: Send + Sync {
     async fn count_unquantized(&self) -> Result<u64, CoreError> {
         Ok(0)
     }
+
+    // --- Metadata ---
+
+    /// Get the model_id of the most recent non-stale vector, if any.
+    async fn get_current_model_id(&self) -> Result<Option<String>, CoreError>;
+
+    /// Fetch a batch of stale vectors for re-embedding.
+    /// Returns (id, original_text) pairs. Limit controls batch size.
+    async fn get_stale_vectors(&self, limit: usize) -> Result<Vec<(i64, String)>, CoreError>;
 
     /// Count the number of active (non-stale) vectors in the store.
     /// Used by AdaptiveSearchCoordinator to select search strategy.

@@ -21,6 +21,7 @@ use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
 use oneshim_core::ports::storage::StorageService;
+use oneshim_core::ports::vector_index::VectorIndex;
 use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
 #[cfg(feature = "server")]
 use oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator;
@@ -37,6 +38,7 @@ use crate::notification_manager::NotificationManager;
 /// Kept as owned (non-Arc) so the monitor loop can mutate the components
 /// without interior-mutability overhead.
 pub(crate) struct AdaptiveTriggerState {
+    // --- Base analysis pipeline ---
     pub trigger: oneshim_analysis::AdaptiveTrigger,
     pub segment_buffer: oneshim_analysis::SegmentBuffer,
     pub calibration_buffer: oneshim_analysis::CalibrationBuffer,
@@ -46,7 +48,8 @@ pub(crate) struct AdaptiveTriggerState {
     pub segment_summarizer: oneshim_analysis::SegmentSummarizer,
     pub params: ResolvedParams,
     pub calibration_writer: Arc<dyn CalibrationWriter>,
-    // --- Phase 1b Batch 2: regime-aware pipeline ---
+
+    // --- Regime-aware pipeline ---
     pub regime_classifier: oneshim_analysis::RegimeClassifier,
     pub regime_manager: oneshim_analysis::RegimeManager,
     pub regime_detector: oneshim_analysis::RegimeDetector,
@@ -56,7 +59,8 @@ pub(crate) struct AdaptiveTriggerState {
     pub current_regime_id: Option<String>,
     /// Last time regime detection (k-means) was run.
     pub last_detection_time: Option<chrono::DateTime<chrono::Utc>>,
-    // --- Priority 2: Auto-Tuning ---
+
+    // --- Auto-tuning ---
     /// Per-category EMA statistics tracker for auto-tuning trigger params.
     pub ema_tracker: oneshim_analysis::auto_tuner::EmaStatsTracker,
     /// EWMA-based drift detector for regime shift detection.
@@ -70,12 +74,13 @@ pub(crate) struct AdaptiveTriggerState {
     pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     /// Flag set by REST/Tauri to request on-demand re-clustering.
     pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
-    // --- Layer 2: LLM summary + embedding pipeline ---
+
+    // --- LLM/embedding pipeline ---
     pub(crate) llm_summarizer: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>>,
     pub(crate) embedding_pipeline: Option<Arc<oneshim_analysis::EmbeddingPipeline>>,
-    // --- GUI Activity Intelligence pipeline state ---
+
+    // --- GUI Activity Intelligence ---
     pub(crate) gui_pipeline_state: Option<gui_pipeline::GuiPipelineState>,
-    // --- GUI Work Type Refiner ---
     pub(crate) gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
 }
 
@@ -101,6 +106,8 @@ pub struct Scheduler {
     pub(super) vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
     pub(super) embedding_provider:
         Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
+    pub(super) vector_index: Option<Arc<dyn VectorIndex>>,
+    pub(super) search_coordinator: Option<Arc<oneshim_analysis::AdaptiveSearchCoordinator>>,
     /// Wrapped in Mutex so `run_scheduler_loops(&self)` can take ownership
     /// and move it into the monitor loop's async block.
     pub(super) adaptive_trigger: Mutex<Option<AdaptiveTriggerState>>,
@@ -152,6 +159,8 @@ impl Scheduler {
             config_manager: None,
             vector_store: None,
             embedding_provider: None,
+            vector_index: None,
+            search_coordinator: None,
             adaptive_trigger: Mutex::new(None),
             sync_engine: None,
             accessibility_extractor: None,
@@ -206,6 +215,21 @@ impl Scheduler {
         provider: Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>,
     ) -> Self {
         self.embedding_provider = Some(provider);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_vector_index(mut self, index: Arc<dyn VectorIndex>) -> Self {
+        self.vector_index = Some(index);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_search_coordinator(
+        mut self,
+        coordinator: Arc<oneshim_analysis::AdaptiveSearchCoordinator>,
+    ) -> Self {
+        self.search_coordinator = Some(coordinator);
         self
     }
 

@@ -706,6 +706,9 @@ fn build_regimes_from_clustering(
 /// pipeline context. It covers the most common terminal and document editor
 /// app names so that terminal command detection and document heading extraction
 /// can fire in the analysis pipeline.
+// TODO: Replace with `AppRegistry::classify()` once AppRegistry is threaded
+// into the analysis pipeline (passed via AdaptiveTriggerState). This will
+// remove the hard-coded pattern list and use the centralized registry instead.
 fn infer_subcategory(app_name: &str) -> AppSubcategory {
     let lower = app_name.to_lowercase();
 
