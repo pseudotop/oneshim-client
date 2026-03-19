@@ -289,6 +289,9 @@ impl AgentRuntimeBundle {
                             oneshim_core::config::ClusteringAlgorithm::Kmeans => Some(Box::new(
                                 oneshim_analysis::kmeans_adapter::KmeansDetector::new(),
                             )),
+                            oneshim_core::config::ClusteringAlgorithm::Gmm => {
+                                Some(Box::new(oneshim_analysis::gmm_detector::GmmDetector::new()))
+                            }
                         }
                     },
                     override_store: self.override_store.clone(),

@@ -12,6 +12,7 @@ pub mod daily_insight_generator;
 pub mod document_heading;
 pub mod embedding_pipeline;
 pub mod focus_shared;
+pub mod gmm_detector;
 pub mod gui_aggregator;
 pub mod gui_work_type_refiner;
 pub mod hdbscan_detector;

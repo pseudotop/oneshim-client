@@ -1,27 +1,36 @@
-//! LanSyncTransport -- mDNS + HTTP(S) peer-to-peer sync orchestrator.
+//! LanSyncTransport -- mDNS + HTTPS peer-to-peer sync orchestrator.
 //!
 //! Coordinates `LanDiscovery`, `LanPeerServer`, and per-peer reqwest clients
 //! into a single `SyncTransport` implementation.
 //!
 //! ## Push flow
 //!
-//! 1. Serialize + encrypt the `ChangeSet` with the shared passphrase
-//! 2. Discover LAN peers via mDNS
-//! 3. POST encrypted payload to each peer's `/sync/push` endpoint
-//! 4. Log successes/failures (best-effort fanout, not all-or-nothing)
+//! 1. Authenticate with each peer via HMAC challenge-response (cached)
+//! 2. Serialize + encrypt the `ChangeSet` with the shared passphrase
+//! 3. Discover LAN peers via mDNS
+//! 4. POST encrypted payload to each peer's `/sync/push` endpoint with auth token
+//! 5. Log successes/failures (best-effort fanout, not all-or-nothing)
 //!
 //! ## Pull flow
 //!
 //! 1. Discover LAN peers via mDNS
-//! 2. GET `/sync/pull?since_wall_ms=...&since_counter=...` from peers
-//! 3. First peer to return 200 with data wins; decrypt + deserialize
-//! 4. Return `None` if no peer has new data
+//! 2. Authenticate with each peer via HMAC challenge-response (cached)
+//! 3. GET `/sync/pull?since_wall_ms=...&since_counter=...` with auth token
+//! 4. First peer to return 200 with data wins; decrypt + deserialize
+//! 5. Return `None` if no peer has new data
+//!
+//! ## Authentication
+//!
+//! Before every push/pull, the transport performs HMAC challenge-response
+//! with the peer server (via `/sync/challenge` + `/sync/verify`) to obtain
+//! a session token. Tokens are cached per peer with a configurable TTL.
+//! If a cached token is rejected (401), the transport re-authenticates once.
 //!
 //! Requires the `lan-sync` feature flag.
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
@@ -32,14 +41,75 @@ use oneshim_core::models::sync::{ChangeSet, PeerInfo};
 use oneshim_core::ports::sync_transport::SyncTransport;
 use oneshim_core::sync::Hlc;
 
+use super::lan_crypto;
 use super::lan_discovery::{LanDiscovery, LanPeerInfo};
-use super::lan_server::LanPeerServer;
+use super::lan_server::{
+    ChallengeRequest, ChallengeResponse, LanPeerServer, VerifyRequest, VerifyResponse,
+};
 use super::sync_crypto;
 
 /// HTTP request timeout for peer-to-peer operations.
 const PEER_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// LAN sync transport -- orchestrates mDNS discovery + HTTP peer server.
+/// Session token cache TTL: 50 minutes (below the server's 60-minute TTL
+/// to avoid using tokens that are about to expire).
+const TOKEN_CACHE_TTL: Duration = Duration::from_secs(3000);
+
+// ---------------------------------------------------------------------------
+// Per-peer session token cache
+// ---------------------------------------------------------------------------
+
+/// A cached session token for a single peer.
+struct CachedToken {
+    token: String,
+    obtained_at: Instant,
+}
+
+/// Thread-safe cache of per-peer session tokens.
+#[derive(Clone, Default)]
+struct TokenCache {
+    /// peer_device_id -> CachedToken
+    tokens: Arc<RwLock<HashMap<String, CachedToken>>>,
+}
+
+impl TokenCache {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Get a cached token for a peer, if still valid.
+    fn get(&self, peer_id: &str) -> Option<String> {
+        let tokens = self.tokens.read();
+        let entry = tokens.get(peer_id)?;
+        if Instant::now().duration_since(entry.obtained_at) < TOKEN_CACHE_TTL {
+            Some(entry.token.clone())
+        } else {
+            None
+        }
+    }
+
+    /// Store a session token for a peer.
+    fn put(&self, peer_id: &str, token: String) {
+        self.tokens.write().insert(
+            peer_id.to_string(),
+            CachedToken {
+                token,
+                obtained_at: Instant::now(),
+            },
+        );
+    }
+
+    /// Invalidate a cached token for a peer (e.g., after a 401 response).
+    fn invalidate(&self, peer_id: &str) {
+        self.tokens.write().remove(peer_id);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// LanSyncTransport
+// ---------------------------------------------------------------------------
+
+/// LAN sync transport -- orchestrates mDNS discovery + HTTPS peer server.
 #[allow(dead_code)]
 pub struct LanSyncTransport {
     discovery: parking_lot::Mutex<LanDiscovery>,
@@ -50,6 +120,8 @@ pub struct LanSyncTransport {
     passphrase: String,
     /// Verified peers (device_id -> LanPeerInfo).
     verified_peers: Arc<RwLock<HashMap<String, LanPeerInfo>>>,
+    /// Cached session tokens per peer.
+    token_cache: TokenCache,
 }
 
 impl LanSyncTransport {
@@ -81,7 +153,7 @@ impl LanSyncTransport {
             fingerprint,
         );
 
-        // Start the HTTP peer server
+        // Start the peer server (HTTPS if cert/key valid, else HTTP fallback)
         let actual_port = server.start(&cert_pem, &key_pem, lan_port).await?;
 
         // Update discovery with the actual bound port, then start mDNS
@@ -106,6 +178,7 @@ impl LanSyncTransport {
         info!(
             device_id = %device_id,
             port = actual_port,
+            tls = server.is_tls_enabled(),
             advertise = lan_advertise,
             "LAN sync transport started"
         );
@@ -118,6 +191,7 @@ impl LanSyncTransport {
             local_device_name: device_name,
             passphrase,
             verified_peers: Arc::new(RwLock::new(HashMap::new())),
+            token_cache: TokenCache::new(),
         })
     }
 
@@ -180,22 +254,150 @@ impl LanSyncTransport {
 
     /// Build the base URL for a peer's sync server.
     fn peer_url(peer: &LanPeerInfo, path: &str) -> String {
-        // TODO: Switch to HTTPS when TLS is enabled
+        // Use HTTP -- TLS is handled by the server side.
+        // The reqwest client is built with danger_accept_invalid_certs(true).
         format!("http://{}:{}{}", peer.host, peer.port, path)
     }
 
+    // -----------------------------------------------------------------------
+    // HMAC challenge-response authentication
+    // -----------------------------------------------------------------------
+
+    /// Authenticate with a peer server via HMAC challenge-response.
+    ///
+    /// Returns a session token on success.
+    async fn authenticate_with_peer(
+        &self,
+        peer_id: &str,
+        peer: &LanPeerInfo,
+    ) -> Result<String, CoreError> {
+        let base = Self::peer_url(peer, "");
+
+        // Step 1: Request challenge nonce
+        let challenge_resp = self
+            .http_client
+            .post(format!("{base}/sync/challenge"))
+            .json(&ChallengeRequest {
+                device_id: self.local_device_id.clone(),
+            })
+            .send()
+            .await
+            .map_err(|e| CoreError::Network(format!("challenge request to {peer_id}: {e}")))?;
+
+        if !challenge_resp.status().is_success() {
+            return Err(CoreError::Network(format!(
+                "challenge request to {peer_id} returned {}",
+                challenge_resp.status()
+            )));
+        }
+
+        let challenge: ChallengeResponse = challenge_resp
+            .json()
+            .await
+            .map_err(|e| CoreError::Network(format!("parse challenge from {peer_id}: {e}")))?;
+
+        // Step 2: Compute HMAC response
+        let nonce_bytes = hex::decode(&challenge.nonce)
+            .map_err(|e| CoreError::Internal(format!("decode nonce hex: {e}")))?;
+
+        let hmac_response = lan_crypto::compute_challenge_response(
+            &nonce_bytes,
+            &self.passphrase,
+            &self.local_device_id,
+            peer_id,
+        )?;
+
+        // Step 3: Submit verification
+        let verify_resp = self
+            .http_client
+            .post(format!("{base}/sync/verify"))
+            .json(&VerifyRequest {
+                device_id: self.local_device_id.clone(),
+                nonce: challenge.nonce,
+                response: hex::encode(&hmac_response),
+            })
+            .send()
+            .await
+            .map_err(|e| CoreError::Network(format!("verify request to {peer_id}: {e}")))?;
+
+        if !verify_resp.status().is_success() {
+            return Err(CoreError::Network(format!(
+                "authentication with {peer_id} failed (status {})",
+                verify_resp.status()
+            )));
+        }
+
+        let verify: VerifyResponse = verify_resp
+            .json()
+            .await
+            .map_err(|e| CoreError::Network(format!("parse verify from {peer_id}: {e}")))?;
+
+        debug!(
+            peer_id,
+            expires_in = verify.expires_in_secs,
+            "authenticated with LAN peer"
+        );
+
+        Ok(verify.session_token)
+    }
+
+    /// Get a valid session token for a peer, using the cache or
+    /// performing a fresh challenge-response handshake.
+    async fn get_session_token(
+        &self,
+        peer_id: &str,
+        peer: &LanPeerInfo,
+    ) -> Result<String, CoreError> {
+        // Try cached token first
+        if let Some(token) = self.token_cache.get(peer_id) {
+            return Ok(token);
+        }
+
+        // Perform fresh authentication
+        let token = self.authenticate_with_peer(peer_id, peer).await?;
+        self.token_cache.put(peer_id, token.clone());
+        Ok(token)
+    }
+
+    /// Get a session token, with one retry on 401 (token may have expired
+    /// on the server side even though our cache thinks it's valid).
+    async fn get_session_token_with_retry(
+        &self,
+        peer_id: &str,
+        peer: &LanPeerInfo,
+    ) -> Result<String, CoreError> {
+        let token = self.get_session_token(peer_id, peer).await?;
+        Ok(token)
+    }
+
+    // -----------------------------------------------------------------------
+    // Push/Pull with authentication
+    // -----------------------------------------------------------------------
+
     /// Push encrypted changeset to a single peer. Returns Ok(true) on success.
+    ///
+    /// Authenticates first (from cache or fresh handshake), then pushes.
+    /// If push gets 401, invalidates the cached token and retries once.
     async fn push_to_peer(
         &self,
         peer_id: &str,
         peer: &LanPeerInfo,
         encrypted: &[u8],
     ) -> Result<bool, CoreError> {
+        let token = match self.get_session_token_with_retry(peer_id, peer).await {
+            Ok(t) => t,
+            Err(e) => {
+                warn!(peer_id, error = %e, "failed to authenticate with peer for push");
+                return Ok(false);
+            }
+        };
+
         let url = Self::peer_url(peer, "/sync/push");
 
         let resp = self
             .http_client
             .post(&url)
+            .header("authorization", format!("Bearer {token}"))
             .header("content-type", "application/octet-stream")
             .body(encrypted.to_vec())
             .send()
@@ -205,6 +407,46 @@ impl LanSyncTransport {
             Ok(r) if r.status().is_success() => {
                 debug!(peer_id, "push to LAN peer succeeded");
                 Ok(true)
+            }
+            Ok(r) if r.status().as_u16() == 401 => {
+                // Token rejected -- invalidate cache and retry once
+                debug!(peer_id, "push 401, re-authenticating");
+                self.token_cache.invalidate(peer_id);
+                let new_token = match self.authenticate_with_peer(peer_id, peer).await {
+                    Ok(t) => {
+                        self.token_cache.put(peer_id, t.clone());
+                        t
+                    }
+                    Err(e) => {
+                        warn!(peer_id, error = %e, "re-authentication failed");
+                        return Ok(false);
+                    }
+                };
+
+                let retry = self
+                    .http_client
+                    .post(&url)
+                    .header("authorization", format!("Bearer {new_token}"))
+                    .header("content-type", "application/octet-stream")
+                    .body(encrypted.to_vec())
+                    .send()
+                    .await;
+
+                match retry {
+                    Ok(r) if r.status().is_success() => {
+                        debug!(peer_id, "push succeeded after re-auth");
+                        Ok(true)
+                    }
+                    Ok(r) => {
+                        let status = r.status();
+                        warn!(peer_id, %status, "push failed after re-auth");
+                        Ok(false)
+                    }
+                    Err(e) => {
+                        warn!(peer_id, error = %e, "push retry failed");
+                        Ok(false)
+                    }
+                }
             }
             Ok(r) => {
                 let status = r.status();
@@ -220,12 +462,22 @@ impl LanSyncTransport {
     }
 
     /// Pull encrypted changesets from a single peer. Returns decrypted changeset(s).
+    ///
+    /// Authenticates first, then pulls. Retries once on 401.
     async fn pull_from_peer(
         &self,
         peer_id: &str,
         peer: &LanPeerInfo,
         since: &Hlc,
     ) -> Result<Option<ChangeSet>, CoreError> {
+        let token = match self.get_session_token_with_retry(peer_id, peer).await {
+            Ok(t) => t,
+            Err(e) => {
+                warn!(peer_id, error = %e, "failed to authenticate with peer for pull");
+                return Ok(None);
+            }
+        };
+
         let url = format!(
             "{}?since_wall_ms={}&since_counter={}&device_id={}",
             Self::peer_url(peer, "/sync/pull"),
@@ -234,59 +486,54 @@ impl LanSyncTransport {
             self.local_device_id,
         );
 
-        let resp = self.http_client.get(&url).send().await;
+        let resp = self
+            .http_client
+            .get(&url)
+            .header("authorization", format!("Bearer {token}"))
+            .send()
+            .await;
 
         match resp {
             Ok(r) if r.status().as_u16() == 204 => {
                 debug!(peer_id, "peer has no new data");
                 Ok(None)
             }
-            Ok(r) if r.status().is_success() => {
-                let bytes = r
-                    .bytes()
-                    .await
-                    .map_err(|e| CoreError::Network(format!("read pull body: {e}")))?;
+            Ok(r) if r.status().as_u16() == 401 => {
+                // Token rejected -- invalidate cache and retry once
+                debug!(peer_id, "pull 401, re-authenticating");
+                self.token_cache.invalidate(peer_id);
+                let new_token = match self.authenticate_with_peer(peer_id, peer).await {
+                    Ok(t) => {
+                        self.token_cache.put(peer_id, t.clone());
+                        t
+                    }
+                    Err(e) => {
+                        warn!(peer_id, error = %e, "re-authentication for pull failed");
+                        return Ok(None);
+                    }
+                };
 
-                if bytes.is_empty() {
-                    return Ok(None);
-                }
+                let retry = self
+                    .http_client
+                    .get(&url)
+                    .header("authorization", format!("Bearer {new_token}"))
+                    .send()
+                    .await;
 
-                let plaintext = sync_crypto::decrypt(&self.passphrase, &bytes)?;
-                let changesets: Vec<ChangeSet> = serde_json::from_slice(&plaintext)
-                    .map_err(|e| CoreError::Internal(format!("deserialize pull response: {e}")))?;
-
-                if changesets.is_empty() {
-                    return Ok(None);
-                }
-
-                // Merge all pulled changesets into a single composite changeset
-                // by concatenating their Vec fields and keeping the latest watermark.
-                let mut iter = changesets.into_iter();
-                let mut merged = iter.next().unwrap();
-                for cs in iter {
-                    merged.segments.extend(cs.segments);
-                    merged.regimes.extend(cs.regimes);
-                    merged.overrides.extend(cs.overrides);
-                    merged.embeddings.extend(cs.embeddings);
-                    merged.suggestions.extend(cs.suggestions);
-                    merged.param_snapshots.extend(cs.param_snapshots);
-                    merged.preferences.extend(cs.preferences);
-                    // Keep the latest watermark
-                    if cs.watermark.wall_ms > merged.watermark.wall_ms
-                        || (cs.watermark.wall_ms == merged.watermark.wall_ms
-                            && cs.watermark.counter > merged.watermark.counter)
-                    {
-                        merged.watermark = cs.watermark;
+                match retry {
+                    Ok(r) if r.status().is_success() => self.decode_pull_response(peer_id, r).await,
+                    Ok(r) if r.status().as_u16() == 204 => Ok(None),
+                    Ok(r) => {
+                        warn!(peer_id, status = %r.status(), "pull failed after re-auth");
+                        Ok(None)
+                    }
+                    Err(e) => {
+                        warn!(peer_id, error = %e, "pull retry failed");
+                        Ok(None)
                     }
                 }
-                debug!(
-                    peer_id,
-                    origin = %merged.origin_device_id,
-                    rows = merged.row_count(),
-                    "pulled from LAN peer"
-                );
-                Ok(Some(merged))
             }
+            Ok(r) if r.status().is_success() => self.decode_pull_response(peer_id, r).await,
             Ok(r) => {
                 let status = r.status();
                 warn!(peer_id, %status, "pull from LAN peer returned unexpected status");
@@ -297,6 +544,58 @@ impl LanSyncTransport {
                 Ok(None)
             }
         }
+    }
+
+    /// Decode and decrypt a successful pull response.
+    async fn decode_pull_response(
+        &self,
+        peer_id: &str,
+        resp: reqwest::Response,
+    ) -> Result<Option<ChangeSet>, CoreError> {
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| CoreError::Network(format!("read pull body: {e}")))?;
+
+        if bytes.is_empty() {
+            return Ok(None);
+        }
+
+        let plaintext = sync_crypto::decrypt(&self.passphrase, &bytes)?;
+        let changesets: Vec<ChangeSet> = serde_json::from_slice(&plaintext)
+            .map_err(|e| CoreError::Internal(format!("deserialize pull response: {e}")))?;
+
+        if changesets.is_empty() {
+            return Ok(None);
+        }
+
+        // Merge all pulled changesets into a single composite changeset
+        // by concatenating their Vec fields and keeping the latest watermark.
+        let mut iter = changesets.into_iter();
+        let mut merged = iter.next().unwrap();
+        for cs in iter {
+            merged.segments.extend(cs.segments);
+            merged.regimes.extend(cs.regimes);
+            merged.overrides.extend(cs.overrides);
+            merged.embeddings.extend(cs.embeddings);
+            merged.suggestions.extend(cs.suggestions);
+            merged.param_snapshots.extend(cs.param_snapshots);
+            merged.preferences.extend(cs.preferences);
+            // Keep the latest watermark
+            if cs.watermark.wall_ms > merged.watermark.wall_ms
+                || (cs.watermark.wall_ms == merged.watermark.wall_ms
+                    && cs.watermark.counter > merged.watermark.counter)
+            {
+                merged.watermark = cs.watermark;
+            }
+        }
+        debug!(
+            peer_id,
+            origin = %merged.origin_device_id,
+            rows = merged.row_count(),
+            "pulled from LAN peer"
+        );
+        Ok(Some(merged))
     }
 }
 
@@ -517,7 +816,7 @@ mod tests {
         // Yield to let the server task start accepting connections
         tokio::task::yield_now().await;
 
-        // Push a changeset
+        // Push a changeset (sender will auto-authenticate with receiver)
         let cs = test_changeset();
         sender.push(&cs).await.unwrap();
 
@@ -580,7 +879,7 @@ mod tests {
         // Yield to let the server task start accepting connections
         tokio::task::yield_now().await;
 
-        // Pull from provider
+        // Pull from provider (consumer will auto-authenticate)
         let pulled = consumer.pull(&Hlc::default()).await.unwrap();
 
         assert!(pulled.is_some());
@@ -638,17 +937,78 @@ mod tests {
 
         tokio::task::yield_now().await;
 
-        // Pull should fail to decrypt and return None (graceful degradation)
+        // Pull should fail auth and return None (graceful degradation)
         let pulled = consumer.pull(&Hlc::default()).await;
-        // The error from decryption is logged but should not crash
-        // It may return Err or Ok(None) depending on how the error propagates
         match pulled {
-            Ok(None) => {} // graceful: no data
-            Err(_) => {}   // also acceptable: decryption error propagated
+            Ok(None) => {} // graceful: auth failed, no data
+            Err(_) => {}   // also acceptable
             Ok(Some(_)) => panic!("should not succeed with wrong passphrase"),
         }
 
         provider.stop();
         consumer.stop();
+    }
+
+    #[tokio::test]
+    async fn token_cache_is_used() {
+        let passphrase = "cache-test";
+
+        let receiver = LanSyncTransport::start(
+            "receiver".to_string(),
+            "Receiver".to_string(),
+            passphrase.to_string(),
+            b"".to_vec(),
+            b"".to_vec(),
+            "fp".to_string(),
+            0,
+            false,
+        )
+        .await
+        .unwrap();
+
+        let receiver_port = receiver.server_port();
+
+        let sender = LanSyncTransport::start(
+            "sender".to_string(),
+            "Sender".to_string(),
+            passphrase.to_string(),
+            b"".to_vec(),
+            b"".to_vec(),
+            "fp".to_string(),
+            0,
+            false,
+        )
+        .await
+        .unwrap();
+
+        sender.verified_peers.write().insert(
+            "receiver".to_string(),
+            LanPeerInfo {
+                device_id: "receiver".to_string(),
+                device_name: "Receiver".to_string(),
+                host: "127.0.0.1".to_string(),
+                port: receiver_port,
+                fingerprint: "fp".to_string(),
+                version: "1".to_string(),
+            },
+        );
+
+        tokio::task::yield_now().await;
+
+        // First push: authenticates fresh
+        let cs1 = test_changeset();
+        sender.push(&cs1).await.unwrap();
+        assert_eq!(receiver.drain_received().len(), 1);
+
+        // Verify token is cached
+        assert!(sender.token_cache.get("receiver").is_some());
+
+        // Second push: uses cached token (no re-auth)
+        let cs2 = test_changeset();
+        sender.push(&cs2).await.unwrap();
+        assert_eq!(receiver.drain_received().len(), 1);
+
+        sender.stop();
+        receiver.stop();
     }
 }

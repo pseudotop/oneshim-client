@@ -56,6 +56,8 @@ pub enum ClusteringAlgorithm {
     Hdbscan,
     /// K-means: centroid-based clustering (legacy fallback).
     Kmeans,
+    /// Gaussian Mixture Model: probabilistic soft clustering with BIC-based K selection.
+    Gmm,
 }
 
 /// Configuration for the auto-tuning subsystem (EMA stats + drift detection).
