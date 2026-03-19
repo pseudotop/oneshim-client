@@ -1,3 +1,4 @@
+use oneshim_core::models::app_registry::{AppSubcategory, KeystrokeProfile};
 use oneshim_core::models::event::{KeyboardActivity, MouseActivity};
 use oneshim_core::models::tiered_memory::{EngagementMetrics, WorkType};
 use oneshim_core::models::work_session::AppCategory;
@@ -24,6 +25,117 @@ impl WorkTypeClassifier {
         let engagement = self.compute_engagement(keyboard, mouse);
         let work_type = self.infer_work_type(&engagement, content_label, app_category);
         (work_type, engagement)
+    }
+
+    /// Extended classify method that accepts app subcategory and keystroke profile.
+    ///
+    /// Falls back to the existing classify() behavior when subcategory is None
+    /// or keystroke_profile is None.
+    pub fn classify_extended(
+        &self,
+        keyboard: &KeyboardActivity,
+        mouse: &MouseActivity,
+        content_label: &str,
+        app_category: AppCategory,
+        app_subcategory: Option<AppSubcategory>,
+        keystroke_profile: Option<&KeystrokeProfile>,
+    ) -> (WorkType, EngagementMetrics) {
+        let engagement = self.compute_engagement(keyboard, mouse);
+
+        // Try subcategory-aware rules first
+        if let (Some(subcategory), Some(profile)) = (app_subcategory, keystroke_profile) {
+            if let Some(work_type) = self.infer_from_subcategory(&engagement, subcategory, profile)
+            {
+                return (work_type, engagement);
+            }
+        }
+
+        // Fall back to existing rules
+        let work_type = self.infer_work_type(&engagement, content_label, app_category);
+        (work_type, engagement)
+    }
+
+    /// Subcategory-aware classification rules.
+    ///
+    /// Rule table (spec Section 7.2):
+    /// Terminal   + enter_ratio>0.15 + keys>5/min   -> TerminalCommands
+    /// Terminal   + keys<5/min + scroll>5/min        -> LogReading
+    /// Terminal   + keys>40/min + arrow_ratio>0.2    -> ActiveCoding (TUI)
+    /// Terminal   + keys>40/min                      -> ActiveCoding
+    /// DocEditor  + keys>40/min + enter_ratio<0.05   -> DocumentWriting
+    /// DocEditor  + keys<5/min + scroll>3/min        -> DocumentReading
+    /// DocEditor  + keys>20/min + enter_ratio>0.1    -> Writing (list/outline)
+    /// Chat       + keys>20/min + enter_ratio>0.1    -> ChatComposing
+    /// Chat       + keys<5/min                       -> Reading
+    /// Spreadsheet+ tab_ratio>0.15 + keys>10/min     -> FormFilling
+    /// Spreadsheet+ scroll>5/min + keys<5/min        -> Reading
+    fn infer_from_subcategory(
+        &self,
+        engagement: &EngagementMetrics,
+        subcategory: AppSubcategory,
+        profile: &KeystrokeProfile,
+    ) -> Option<WorkType> {
+        let kpm = engagement.keystrokes_per_min;
+        // NOTE: scroll_events_per_min is a raw count per snapshot period
+        // (not a true per-minute rate). Thresholds are calibrated for a
+        // 5-30s snapshot interval. Normalize if snapshot interval changes.
+        let spm = engagement.scroll_events_per_min;
+
+        match subcategory {
+            AppSubcategory::Terminal => {
+                if profile.enter_ratio > 0.15 && kpm > 5.0 {
+                    return Some(WorkType::TerminalCommands);
+                }
+                if kpm < 5.0 && spm > 5.0 {
+                    return Some(WorkType::LogReading);
+                }
+                if kpm > 40.0 && profile.arrow_ratio > 0.2 {
+                    return Some(WorkType::ActiveCoding);
+                }
+                if kpm > 40.0 {
+                    return Some(WorkType::ActiveCoding);
+                }
+                None
+            }
+            AppSubcategory::DocumentEditor => {
+                if kpm > 40.0 && profile.enter_ratio < 0.05 {
+                    return Some(WorkType::DocumentWriting);
+                }
+                if kpm < 5.0 && spm > 3.0 {
+                    return Some(WorkType::DocumentReading);
+                }
+                if kpm > 20.0 && profile.enter_ratio > 0.1 {
+                    return Some(WorkType::Writing);
+                }
+                None
+            }
+            AppSubcategory::Chat => {
+                if kpm > 20.0 && profile.enter_ratio > 0.1 {
+                    return Some(WorkType::ChatComposing);
+                }
+                if kpm < 5.0 {
+                    return Some(WorkType::Reading);
+                }
+                None
+            }
+            AppSubcategory::Spreadsheet => {
+                if profile.tab_ratio > 0.15 && kpm > 10.0 {
+                    return Some(WorkType::FormFilling);
+                }
+                if spm > 5.0 && kpm < 5.0 {
+                    return Some(WorkType::Reading);
+                }
+                None
+            }
+            AppSubcategory::TuiEditor => {
+                if kpm > 40.0 {
+                    return Some(WorkType::ActiveCoding);
+                }
+                None
+            }
+            // Ide and other subcategories fall through to existing rules
+            _ => None,
+        }
     }
 
     /// Compute per-minute rates and ratios from raw input counts.
@@ -354,5 +466,242 @@ mod tests {
         );
         // FormFilling: moderate typing + high clicks + browser category
         assert_eq!(work_type, WorkType::FormFilling);
+    }
+
+    // ── classify_extended / infer_from_subcategory tests ──
+
+    use oneshim_core::models::app_registry::{AppSubcategory, KeystrokeProfile};
+
+    fn profile(
+        enter: f32,
+        tab: f32,
+        arrow: f32,
+        backspace: f32,
+        special: f32,
+        total: u32,
+    ) -> KeystrokeProfile {
+        KeystrokeProfile {
+            enter_ratio: enter,
+            tab_ratio: tab,
+            arrow_ratio: arrow,
+            backspace_ratio: backspace,
+            special_ratio: special,
+            total_keystrokes: total,
+        }
+    }
+
+    // ── Terminal rules ──
+
+    #[test]
+    fn terminal_commands_high_enter() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(30, 100, 0, 0),
+            &mouse(0, 0),
+            "",
+            AppCategory::Development,
+            Some(AppSubcategory::Terminal),
+            Some(&profile(0.20, 0.0, 0.0, 0.0, 0.0, 100)),
+        );
+        assert_eq!(wt, WorkType::TerminalCommands);
+    }
+
+    #[test]
+    fn terminal_log_reading_low_keys_high_scroll() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(2, 5, 0, 0),
+            &mouse(0, 10),
+            "",
+            AppCategory::Development,
+            Some(AppSubcategory::Terminal),
+            Some(&profile(0.0, 0.0, 0.0, 0.0, 0.0, 5)),
+        );
+        assert_eq!(wt, WorkType::LogReading);
+    }
+
+    #[test]
+    fn terminal_tui_editor_arrows() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(50, 200, 0, 0),
+            &mouse(0, 0),
+            "",
+            AppCategory::Development,
+            Some(AppSubcategory::Terminal),
+            Some(&profile(0.05, 0.0, 0.25, 0.0, 0.0, 200)),
+        );
+        assert_eq!(wt, WorkType::ActiveCoding);
+    }
+
+    #[test]
+    fn terminal_active_coding_fast_typing() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(50, 200, 0, 0),
+            &mouse(0, 0),
+            "",
+            AppCategory::Development,
+            Some(AppSubcategory::Terminal),
+            Some(&profile(0.05, 0.0, 0.05, 0.1, 0.0, 200)),
+        );
+        assert_eq!(wt, WorkType::ActiveCoding);
+    }
+
+    // ── Document Editor rules ──
+
+    #[test]
+    fn doc_editor_writing_high_keys_low_enter() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(50, 200, 0, 2),
+            &mouse(0, 0),
+            "",
+            AppCategory::Documentation,
+            Some(AppSubcategory::DocumentEditor),
+            Some(&profile(0.02, 0.0, 0.0, 0.05, 0.0, 200)),
+        );
+        assert_eq!(wt, WorkType::DocumentWriting);
+    }
+
+    #[test]
+    fn doc_editor_reading_low_keys_scrolling() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(2, 5, 0, 0),
+            &mouse(0, 5),
+            "",
+            AppCategory::Documentation,
+            Some(AppSubcategory::DocumentEditor),
+            Some(&profile(0.0, 0.0, 0.0, 0.0, 0.0, 5)),
+        );
+        assert_eq!(wt, WorkType::DocumentReading);
+    }
+
+    #[test]
+    fn doc_editor_outline_writing() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(25, 100, 0, 1),
+            &mouse(0, 0),
+            "",
+            AppCategory::Documentation,
+            Some(AppSubcategory::DocumentEditor),
+            Some(&profile(0.12, 0.0, 0.0, 0.0, 0.0, 100)),
+        );
+        assert_eq!(wt, WorkType::Writing);
+    }
+
+    // ── Chat rules ──
+
+    #[test]
+    fn chat_composing() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(30, 100, 0, 1),
+            &mouse(2, 0),
+            "",
+            AppCategory::Communication,
+            Some(AppSubcategory::Chat),
+            Some(&profile(0.12, 0.0, 0.0, 0.05, 0.0, 100)),
+        );
+        assert_eq!(wt, WorkType::ChatComposing);
+    }
+
+    #[test]
+    fn chat_reading() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(2, 5, 0, 0),
+            &mouse(0, 3),
+            "",
+            AppCategory::Communication,
+            Some(AppSubcategory::Chat),
+            Some(&profile(0.0, 0.0, 0.0, 0.0, 0.0, 5)),
+        );
+        assert_eq!(wt, WorkType::Reading);
+    }
+
+    // ── Spreadsheet rules ──
+
+    #[test]
+    fn spreadsheet_form_filling() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(15, 60, 0, 0),
+            &mouse(5, 0),
+            "",
+            AppCategory::Documentation,
+            Some(AppSubcategory::Spreadsheet),
+            Some(&profile(0.0, 0.20, 0.0, 0.0, 0.0, 60)),
+        );
+        assert_eq!(wt, WorkType::FormFilling);
+    }
+
+    #[test]
+    fn spreadsheet_reading() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(2, 5, 0, 0),
+            &mouse(0, 10),
+            "",
+            AppCategory::Documentation,
+            Some(AppSubcategory::Spreadsheet),
+            Some(&profile(0.0, 0.0, 0.0, 0.0, 0.0, 5)),
+        );
+        assert_eq!(wt, WorkType::Reading);
+    }
+
+    // ── TUI Editor ──
+
+    #[test]
+    fn tui_editor_active_coding() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(50, 200, 0, 0),
+            &mouse(0, 0),
+            "",
+            AppCategory::Development,
+            Some(AppSubcategory::TuiEditor),
+            Some(&profile(0.0, 0.0, 0.3, 0.0, 0.1, 200)),
+        );
+        assert_eq!(wt, WorkType::ActiveCoding);
+    }
+
+    // ── Fallback ──
+
+    #[test]
+    fn ide_subcategory_falls_through() {
+        let c = WorkTypeClassifier::new();
+        let (wt, _) = c.classify_extended(
+            &kb(65, 300, 10, 5),
+            &mouse(5, 2),
+            "main.rs",
+            AppCategory::Development,
+            Some(AppSubcategory::Ide),
+            Some(&profile(0.02, 0.0, 0.0, 0.1, 0.0, 300)),
+        );
+        // Falls through to existing rules -> ActiveCoding
+        assert_eq!(wt, WorkType::ActiveCoding);
+    }
+
+    #[test]
+    fn no_subcategory_uses_existing_rules() {
+        let c = WorkTypeClassifier::new();
+        let (wt1, _) = c.classify(
+            &kb(65, 300, 10, 5),
+            &mouse(5, 2),
+            "main.rs",
+            AppCategory::Development,
+        );
+        let (wt2, _) = c.classify_extended(
+            &kb(65, 300, 10, 5),
+            &mouse(5, 2),
+            "main.rs",
+            AppCategory::Development,
+            None,
+            None,
+        );
+        assert_eq!(wt1, wt2);
     }
 }
