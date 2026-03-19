@@ -135,7 +135,10 @@ impl GuiActivityAggregator {
                 GuiElementType::TabLabel => tab_switches += 1,
                 GuiElementType::MenuItem => menu_accesses += 1,
                 GuiElementType::TreeItem => tree_navigations += 1,
-                GuiElementType::ScrollBar => scroll_events += 1,
+                // ScrollBar element clicks are counted via InteractionType::Scroll
+                // below to avoid double-counting.
+                GuiElementType::ScrollBar => {}
+                GuiElementType::ToolbarIcon | GuiElementType::StatusBar => button_clicks += 1,
                 GuiElementType::Unknown => {
                     // Count unmatched clicks
                     if matches!(
@@ -147,7 +150,7 @@ impl GuiActivityAggregator {
                         unmatched_click_count += 1;
                     }
                 }
-                _ => {}
+                GuiElementType::TitleBar => {}
             }
 
             // Also count scroll from structured interaction type
@@ -636,6 +639,97 @@ mod tests {
         assert!(flushed.is_some());
         let summary = flushed.unwrap();
         assert_eq!(summary.button_clicks, 3);
+    }
+
+    #[test]
+    fn toolbar_icon_counts_as_button_click() {
+        let config = make_config();
+        let mut agg = GuiActivityAggregator::new(&config);
+        let now = Utc::now();
+
+        agg.push(
+            make_event(
+                "X",
+                GuiElementType::ToolbarIcon,
+                GuiInteractionType::Click,
+                now,
+                "App",
+            ),
+            "file.rs",
+        );
+
+        let summary = agg.flush().unwrap();
+        assert_eq!(summary.button_clicks, 1);
+    }
+
+    #[test]
+    fn status_bar_counts_as_button_click() {
+        let config = make_config();
+        let mut agg = GuiActivityAggregator::new(&config);
+        let now = Utc::now();
+
+        agg.push(
+            make_event(
+                "Ln 42",
+                GuiElementType::StatusBar,
+                GuiInteractionType::Click,
+                now,
+                "VS Code",
+            ),
+            "file.rs",
+        );
+
+        let summary = agg.flush().unwrap();
+        assert_eq!(summary.button_clicks, 1);
+    }
+
+    #[test]
+    fn scroll_bar_element_without_scroll_interaction_not_counted() {
+        let config = make_config();
+        let mut agg = GuiActivityAggregator::new(&config);
+        let now = Utc::now();
+
+        // A click on a ScrollBar element without a Scroll interaction type
+        // should NOT increment scroll_events (avoids double-counting).
+        agg.push(
+            make_event(
+                "",
+                GuiElementType::ScrollBar,
+                GuiInteractionType::Click,
+                now,
+                "App",
+            ),
+            "file.rs",
+        );
+
+        let summary = agg.flush().unwrap();
+        assert_eq!(summary.scroll_events, 0);
+    }
+
+    #[test]
+    fn scroll_interaction_counted_once() {
+        let config = make_config();
+        let mut agg = GuiActivityAggregator::new(&config);
+        let now = Utc::now();
+
+        // Event with ScrollBar element AND Scroll interaction should count once
+        let mut event = make_event(
+            "",
+            GuiElementType::ScrollBar,
+            GuiInteractionType::Click,
+            now,
+            "App",
+        );
+        event.interaction = Some(InteractionType::Scroll {
+            direction: oneshim_core::models::gui_interaction::ScrollDirection::Down,
+            amount: 3.0,
+        });
+
+        agg.push(event, "file.rs");
+
+        let summary = agg.flush().unwrap();
+        // Only counted once via InteractionType::Scroll, not also via ScrollBar element
+        assert_eq!(summary.scroll_events, 1);
     }
 
     #[test]

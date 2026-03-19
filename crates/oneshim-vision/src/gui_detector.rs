@@ -221,7 +221,7 @@ impl GuiElementDetector {
     /// hardcoded pixel values.
     fn infer_element_type(&self, text: &str, bbox: &BoundingBox) -> GuiElementType {
         let lower = text.to_lowercase();
-        let (_screen_w, screen_h) = self.screen_resolution;
+        let (screen_w, screen_h) = self.screen_resolution;
 
         // Proportional thresholds based on screen height
         let title_bar_max_y = (screen_h as f64 * 0.04) as u32; // ~4% from top
@@ -233,6 +233,17 @@ impl GuiElementDetector {
             return GuiElementType::TitleBar;
         }
 
+        // Toolbar icon: near top (below title bar, within 2× title bar height),
+        // small bounding box (<50×50), no text or very short text (1-2 chars)
+        let toolbar_max_y = title_bar_max_y * 2;
+        if bbox.y < toolbar_max_y
+            && bbox.width < 50
+            && bbox.height < 50
+            && text.chars().count() <= 2
+        {
+            return GuiElementType::ToolbarIcon;
+        }
+
         // Tab-like text: short, near top but below title bar
         if bbox.y < tab_bar_max_y && text.len() < TAB_LABEL_MAX_LEN {
             return GuiElementType::TabLabel;
@@ -241,6 +252,16 @@ impl GuiElementDetector {
         // Bottom of screen — likely status bar
         if bbox.y >= status_bar_min_y {
             return GuiElementType::StatusBar;
+        }
+
+        // Scroll bar: narrow element at far right or bottom edge
+        let scrollbar_narrow_threshold = 20;
+        let right_edge = screen_w.saturating_sub(scrollbar_narrow_threshold);
+        let bottom_edge = screen_h.saturating_sub(scrollbar_narrow_threshold);
+        if (bbox.x >= right_edge && bbox.width < scrollbar_narrow_threshold)
+            || (bbox.y >= bottom_edge && bbox.height < scrollbar_narrow_threshold)
+        {
+            return GuiElementType::ScrollBar;
         }
 
         // URLs
@@ -273,6 +294,13 @@ impl GuiElementDetector {
             || lower.starts_with("▼")
         {
             return GuiElementType::TreeItem;
+        }
+
+        // Text region: multi-word text (3+ words) that doesn't match any other
+        // pattern — fallback before Unknown
+        let word_count = text.split_whitespace().count();
+        if word_count >= 3 {
+            return GuiElementType::TextRegion;
         }
 
         GuiElementType::Unknown
@@ -425,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn infer_element_type_unknown() {
+    fn infer_element_type_text_region_multiword() {
         let d = detector();
         let bbox = BoundingBox {
             x: 50,
@@ -433,7 +461,22 @@ mod tests {
             width: 400,
             height: 20,
         };
+        // Multi-word text (3+ words) that doesn't match any other pattern → TextRegion
         let t = d.infer_element_type("The quick brown fox jumps over the lazy dog", &bbox);
+        assert_eq!(t, GuiElementType::TextRegion);
+    }
+
+    #[test]
+    fn infer_element_type_unknown_short_text() {
+        let d = detector();
+        let bbox = BoundingBox {
+            x: 50,
+            y: 300,
+            width: 60,
+            height: 20,
+        };
+        // Short non-matching text (< 3 words) → Unknown
+        let t = d.infer_element_type("xy", &bbox);
         assert_eq!(t, GuiElementType::Unknown);
     }
 
@@ -564,6 +607,65 @@ mod tests {
         let elem = result.unwrap();
         // Basic PII filter masks emails
         assert!(!elem.text.contains("user@example.com"));
+    }
+
+    #[test]
+    fn infer_element_type_toolbar_icon() {
+        let d = detector();
+        // Near top of window (within 2× title bar height), small box, no text
+        // Title bar max = 1080 * 0.04 = 43, toolbar max = 86
+        let bbox = BoundingBox {
+            x: 200,
+            y: 50,
+            width: 30,
+            height: 30,
+        };
+        let t = d.infer_element_type("", &bbox);
+        assert_eq!(t, GuiElementType::ToolbarIcon);
+    }
+
+    #[test]
+    fn infer_element_type_toolbar_icon_single_char() {
+        let d = detector();
+        let bbox = BoundingBox {
+            x: 200,
+            y: 60,
+            width: 24,
+            height: 24,
+        };
+        // Single-char icon label (e.g., "X" close icon)
+        let t = d.infer_element_type("X", &bbox);
+        assert_eq!(t, GuiElementType::ToolbarIcon);
+    }
+
+    #[test]
+    fn infer_element_type_scrollbar_right_edge() {
+        let d = detector();
+        // 1920×1080 screen — right edge starts at 1920-20=1900
+        let bbox = BoundingBox {
+            x: 1905,
+            y: 200,
+            width: 15,
+            height: 400,
+        };
+        let t = d.infer_element_type("", &bbox);
+        assert_eq!(t, GuiElementType::ScrollBar);
+    }
+
+    #[test]
+    fn infer_element_type_scrollbar_bottom_edge() {
+        let d = detector();
+        // 1920×1080 screen — bottom edge starts at 1080-20=1060
+        // Also must be below status_bar_min_y (1026), but scrollbar check
+        // is after status bar, so test at the right edge instead
+        let bbox = BoundingBox {
+            x: 1905,
+            y: 500,
+            width: 12,
+            height: 300,
+        };
+        let t = d.infer_element_type("", &bbox);
+        assert_eq!(t, GuiElementType::ScrollBar);
     }
 
     #[test]

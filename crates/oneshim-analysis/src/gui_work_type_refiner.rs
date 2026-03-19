@@ -105,56 +105,80 @@ mod tests {
     fn unknown_with_saves_becomes_active_coding() {
         let refiner = GuiWorkTypeRefiner;
         let summary = make_summary_with(5, 2, 0, 0, 3);
-        assert_eq!(refiner.refine(WorkType::Unknown, &summary), WorkType::ActiveCoding);
+        assert_eq!(
+            refiner.refine(WorkType::Unknown, &summary),
+            WorkType::ActiveCoding
+        );
     }
 
     #[test]
     fn unknown_with_heavy_text_becomes_form_filling() {
         let refiner = GuiWorkTypeRefiner;
         let summary = make_summary_with(2, 10, 0, 0, 0);
-        assert_eq!(refiner.refine(WorkType::Unknown, &summary), WorkType::FormFilling);
+        assert_eq!(
+            refiner.refine(WorkType::Unknown, &summary),
+            WorkType::FormFilling
+        );
     }
 
     #[test]
     fn unknown_with_high_clicks_low_keys_becomes_browsing() {
         let refiner = GuiWorkTypeRefiner;
         let summary = make_summary_with(15, 2, 0, 0, 0);
-        assert_eq!(refiner.refine(WorkType::Unknown, &summary), WorkType::Browsing);
+        assert_eq!(
+            refiner.refine(WorkType::Unknown, &summary),
+            WorkType::Browsing
+        );
     }
 
     #[test]
     fn reading_with_clicks_becomes_navigation() {
         let refiner = GuiWorkTypeRefiner;
         let summary = make_summary_with(6, 0, 0, 0, 0);
-        assert_eq!(refiner.refine(WorkType::Reading, &summary), WorkType::Navigation);
+        assert_eq!(
+            refiner.refine(WorkType::Reading, &summary),
+            WorkType::Navigation
+        );
     }
 
     #[test]
     fn reading_without_clicks_stays_reading() {
         let refiner = GuiWorkTypeRefiner;
         let summary = make_summary_with(2, 0, 0, 0, 0);
-        assert_eq!(refiner.refine(WorkType::Reading, &summary), WorkType::Reading);
+        assert_eq!(
+            refiner.refine(WorkType::Reading, &summary),
+            WorkType::Reading
+        );
     }
 
     #[test]
     fn browsing_with_text_becomes_form_filling() {
         let refiner = GuiWorkTypeRefiner;
         let summary = make_summary_with(5, 8, 0, 0, 0);
-        assert_eq!(refiner.refine(WorkType::Browsing, &summary), WorkType::FormFilling);
+        assert_eq!(
+            refiner.refine(WorkType::Browsing, &summary),
+            WorkType::FormFilling
+        );
     }
 
     #[test]
     fn active_coding_unchanged() {
         let refiner = GuiWorkTypeRefiner;
         let summary = make_summary_with(5, 5, 0, 0, 0);
-        assert_eq!(refiner.refine(WorkType::ActiveCoding, &summary), WorkType::ActiveCoding);
+        assert_eq!(
+            refiner.refine(WorkType::ActiveCoding, &summary),
+            WorkType::ActiveCoding
+        );
     }
 
     #[test]
     fn unknown_with_no_signals_stays_unknown() {
         let refiner = GuiWorkTypeRefiner;
         let summary = make_summary_with(0, 0, 0, 0, 0);
-        assert_eq!(refiner.refine(WorkType::Unknown, &summary), WorkType::Unknown);
+        assert_eq!(
+            refiner.refine(WorkType::Unknown, &summary),
+            WorkType::Unknown
+        );
     }
 
     #[test]
@@ -162,6 +186,9 @@ mod tests {
         let refiner = GuiWorkTypeRefiner;
         // button_clicks=3, tab_switches=5, menu_accesses=4 → total 12 > 10
         let summary = make_summary_with(3, 2, 5, 4, 0);
-        assert_eq!(refiner.refine(WorkType::Unknown, &summary), WorkType::Browsing);
+        assert_eq!(
+            refiner.refine(WorkType::Unknown, &summary),
+            WorkType::Browsing
+        );
     }
 }

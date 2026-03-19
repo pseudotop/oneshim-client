@@ -1,6 +1,9 @@
 mod analysis_pipeline;
 mod config;
-#[allow(dead_code)] // Wired in future — full integration pending accessibility API (Batch 4)
+/// GUI Activity Intelligence pipeline. Not yet wired into the scheduler loop.
+/// Will be integrated after the accessibility API adapter stabilizes (Batch 4),
+/// which provides the OCR region stream needed by `run_gui_tick()`.
+#[allow(dead_code)]
 pub(crate) mod gui_pipeline;
 mod loops;
 

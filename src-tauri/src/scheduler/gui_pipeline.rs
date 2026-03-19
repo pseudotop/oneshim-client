@@ -1,29 +1,34 @@
 //! GUI Activity Intelligence pipeline for the scheduler.
 //!
-//! Integrates `GuiElementDetector`, `GuiActivityAggregator`, and
-//! `GuiWorkTypeRefiner` into a single `run_gui_tick()` function that
-//! follows the `analysis_pipeline::run_analysis_tick()` pattern.
+//! Integrates `GuiElementDetector` and `GuiActivityAggregator` into a single
+//! `run_gui_tick()` function that follows the `analysis_pipeline::run_analysis_tick()`
+//! pattern. `GuiWorkTypeRefiner` is called from the analysis pipeline, not here
+//! (see `GuiPipelineState` doc comment for rationale).
 //!
 //! Called from the monitor loop after `run_analysis_tick()`. The returned
 //! `GuiActivitySummary` is fed into `ContentTracker` on the next tick.
 
 use oneshim_analysis::gui_aggregator::GuiActivityAggregator;
-use oneshim_analysis::gui_work_type_refiner::GuiWorkTypeRefiner;
+use oneshim_core::models::event::InputActivityEvent;
 use oneshim_core::models::frame::OcrRegion;
 use oneshim_core::models::gui_activity::GuiActivitySummary;
 use oneshim_core::models::gui_interaction::{
     GuiElement, GuiElementType, GuiInteractionEvent, GuiInteractionType, InteractionType,
 };
-use oneshim_core::models::event::InputActivityEvent;
 use oneshim_vision::gui_detector::GuiElementDetector;
 
 use chrono::Utc;
 
 /// Mutable state for the GUI pipeline, owned by the monitor loop.
+///
+/// Note: `GuiWorkTypeRefiner` is intentionally NOT included here. The refiner
+/// requires an initial `WorkType` from the analysis pipeline, which runs
+/// separately. `GuiWorkTypeRefiner::refine()` is called from the analysis
+/// pipeline after it receives the `GuiActivitySummary` produced by this
+/// pipeline, not from the GUI pipeline itself.
 pub(crate) struct GuiPipelineState {
     pub detector: GuiElementDetector,
     pub aggregator: GuiActivityAggregator,
-    pub refiner: GuiWorkTypeRefiner,
 }
 
 /// Run a single tick of the GUI activity intelligence pipeline.
@@ -109,6 +114,11 @@ pub(crate) fn run_gui_tick(
             app_name: app_name.to_string(),
             window_title: Some(window_title.to_string()),
             screen_position: None,
+            // TODO: `InputActivityCollector` currently only exposes aggregate
+            // `shortcut_count`, not the actual key names (e.g., "Cmd+S"). To
+            // populate this field, `InputActivityCollector` needs to record
+            // recent shortcut key names (e.g., via a small ring buffer of
+            // shortcut strings) and expose them through its public API.
             interaction: Some(InteractionType::KeyboardShortcut {
                 keys: "unknown".to_string(),
             }),
