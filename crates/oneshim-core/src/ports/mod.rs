@@ -4,6 +4,7 @@ pub mod audit_log;
 pub mod automation;
 pub mod batch_sink;
 pub mod calibration_store;
+pub mod change_extractor;
 pub mod compressor;
 pub mod credential_source;
 pub mod element_finder;

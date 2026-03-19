@@ -370,6 +370,27 @@ impl Scheduler {
                                         if gui_summary.is_some() {
                                             last_gui_summary = gui_summary;
                                         }
+
+                                        // Persist GUI interaction to SQLite (V13 table)
+                                        if input_snap.mouse.click_count > 0 {
+                                            let event_id = uuid::Uuid::new_v4().to_string();
+                                            let timestamp_str = chrono::Utc::now().to_rfc3339();
+
+                                            let input = oneshim_core::models::storage_records::NewGuiInteraction {
+                                                event_id: &event_id,
+                                                segment_id: None,
+                                                timestamp: &timestamp_str,
+                                                element_text: None,
+                                                element_type: Some("Click"),
+                                                interaction_type: "Click",
+                                                bbox_json: None,
+                                                app_name: &app_name,
+                                            };
+
+                                            if let Err(e) = sqlite1.save_gui_interaction(&input) {
+                                                warn!("GUI interaction save failure: {e}");
+                                            }
+                                        }
                                     }
                                 }
 

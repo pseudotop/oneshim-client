@@ -67,6 +67,13 @@ pub trait SchedulerStorage: MetricsStorage + Send + Sync {
         &self,
         date: &str,
     ) -> Result<Vec<oneshim_core::models::storage_records::SegmentSummaryRecord>, CoreError>;
+
+    /// Save a GUI interaction event (delegates to WebStorage V13 table).
+    #[allow(dead_code)]
+    fn save_gui_interaction(
+        &self,
+        input: &oneshim_core::models::storage_records::NewGuiInteraction<'_>,
+    ) -> Result<(), CoreError>;
 }
 
 impl SchedulerStorage for SqliteStorage {
@@ -138,6 +145,14 @@ impl SchedulerStorage for SqliteStorage {
     ) -> Result<Vec<oneshim_core::models::storage_records::SegmentSummaryRecord>, CoreError> {
         use oneshim_core::ports::web_storage::WebStorage;
         WebStorage::get_segments_for_date(self, date)
+    }
+
+    fn save_gui_interaction(
+        &self,
+        input: &oneshim_core::models::storage_records::NewGuiInteraction<'_>,
+    ) -> Result<(), CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::save_gui_interaction(self, input)
     }
 }
 
