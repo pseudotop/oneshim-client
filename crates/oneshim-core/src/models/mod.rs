@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod analysis;
+pub mod app_registry;
 pub mod audit;
 pub mod automation;
 pub mod context;
