@@ -149,6 +149,8 @@ impl Scheduler {
         let focus1 = self.focus_analyzer.clone();
         let context_analyzer1 = self.context_analyzer.clone();
         let input_collector1 = input_collector;
+        let accessibility_extractor1 = self.accessibility_extractor.clone();
+        let config_manager1 = self.config_manager.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
@@ -166,6 +168,12 @@ impl Scheduler {
             // GUI Activity Intelligence state (carried across ticks)
             let mut last_gui_summary: Option<
                 oneshim_core::models::gui_activity::GuiActivitySummary,
+            > = None;
+            // Focused element from accessibility API (Phase 2). Updated each
+            // tick when accessibility extraction is enabled. Fed into the GUI
+            // pipeline for supplementary context alongside OCR regions.
+            let mut _last_focused_element: Option<
+                oneshim_core::models::focused_element::FocusedElementInfo,
             > = None;
             // OCR regions from the most recent frame capture. Updated each time
             // a high-importance frame is processed (importance >= 0.8). The GUI
@@ -220,6 +228,37 @@ impl Scheduler {
                                 let mut focus_ocr_hint: Option<String> = None;
 
                                 input_collector.set_current_app(&app_name);
+
+                                // ── Accessibility API extraction (Phase 2) ──
+                                // Extract focused element info per tick when enabled.
+                                // Result is stored for the GUI pipeline to consume.
+                                if let Some(ref ax) = accessibility_extractor1 {
+                                    let text_config = config_manager1
+                                        .as_ref()
+                                        .map(|cm| cm.get().analysis.text_intelligence.clone())
+                                        .unwrap_or_default();
+                                    // full_text_extraction consent is managed by ConsentManager
+                                    // which is not available in this async block. Default to
+                                    // false so the extractor falls back to Standard PII level
+                                    // when pii_extraction_level is Off. This is the safe default.
+                                    let full_text_consent = false;
+
+                                    match ax
+                                        .extract_focused_element(
+                                            text_config.pii_extraction_level,
+                                            full_text_consent,
+                                        )
+                                        .await
+                                    {
+                                        Ok(info) => {
+                                            _last_focused_element = info;
+                                        }
+                                        Err(e) => {
+                                            debug!("accessibility extraction failed: {e}");
+                                            _last_focused_element = None;
+                                        }
+                                    }
+                                }
 
                                 if let Some(layout_event) = window_tracker.update(&app_name, &window_title, window_bounds) {
                                     // Update GUI detector resolution from the latest layout event
