@@ -91,7 +91,14 @@ pub screen_position: Option<(u32, u32)>,
 pub interaction: Option<InteractionType>,  // Phase 2 structured; coexists with interaction_type
 ```
 
-- [ ] **Step 4: Verify compilation**
+- [ ] **Step 4: Document GuiElement vs UiElement model relationship**
+
+Add doc comments to `GuiElementType` and `GuiElement` explaining the dual-model design:
+- `GuiElement` / `GuiElementType` (observation layer) — used by `InputOcrCorrelator`/`GuiElementDetector` to track what the user interacts with. Passive observation only.
+- `UiElement` / `UiSceneElement` (automation layer) — used by `ElementFinder` to locate targets for automated actions. Active execution.
+- Both coexist by design: observation tracks user behavior, automation executes agent actions. They share similar spatial data but serve different purposes and lifecycles.
+
+- [ ] **Step 5: Verify compilation**
 
 Run: `cargo check -p oneshim-core`
 
@@ -132,6 +139,8 @@ pub struct GuiActivitySummary {
     pub copy_paste_count: u32,
     // Top elements
     pub top_elements: Vec<(String, GuiElementType, u32)>,
+    // Coverage metrics
+    pub unmatched_click_count: u32,  // clicks returning None from GuiElementDetector — justifies Phase 3 improvements
     // Human-readable
     pub summary_line: String,
 }
@@ -221,7 +230,16 @@ Run: `cargo check --workspace`
 mv crates/oneshim-vision/src/input_correlator.rs crates/oneshim-vision/src/gui_detector.rs
 ```
 
-- [ ] **Step 2: Rename struct and add proximity fallback**
+- [ ] **Step 2: Word grouping pre-pass on OcrRegions**
+
+Before passing regions to the detector, merge adjacent words on the same horizontal line into single `OcrRegion` entries:
+1. Sort regions by Y (±5px tolerance for same-line grouping), then X.
+2. Merge when horizontal gap between adjacent regions < 1.5x average character width (estimated from region width / char count).
+3. Merged region inherits the bounding box union and concatenated text.
+
+This reduces fragmentation from per-word OCR output and improves click-to-element matching accuracy.
+
+- [ ] **Step 3: Rename struct and add proximity fallback**
 
 Rename `InputOcrCorrelator` → `GuiElementDetector`. Add `screen_resolution: (u32, u32)` parameter to `correlate_click`. Add 40px proximity fallback per spec §4.1:
 
@@ -239,21 +257,57 @@ pub fn correlate_click(
 
 Update `infer_element_type` to use `screen_resolution` for proportional thresholds (status bar = y > 95% height) instead of hardcoded pixel values.
 
-- [ ] **Step 3: Apply PII filter to GuiElement.text at creation**
+- [ ] **Step 4: Apply PII filter to GuiElement.text at creation**
 
-Import `sanitize_title_with_level` from `crate::privacy`. Apply to `GuiElement.text` in both `correlate_click` and `correlate_typing`, using the configured `PiiFilterLevel`.
+Import `sanitize_title_with_level` from `crate::privacy`. Apply to `GuiElement.text` in both `correlate_click` and `correlate_typing`, using the configured `PiiFilterLevel`. Accept a `PiiFilter` closure parameter in the constructor or method signature to allow caller-controlled filtering.
 
-- [ ] **Step 4: Update lib.rs module export**
+- [ ] **Step 5: Investigate per-word OCR confidence**
+
+Investigate `leptess::ResultIterator` or raw Tesseract FFI (`TessBaseAPIGetIterator` + `RIL_WORD`) for per-word confidence scores. If available, add `confidence: Option<f32>` to `OcrRegion`. If not feasible with current `leptess` API, document as **Phase 3 TODO** with a note to either contribute upstream or use raw FFI.
+
+- [ ] **Step 6: Update lib.rs module export**
 
 Replace `pub mod input_correlator;` with `pub mod gui_detector;`. Add re-export alias for backward compat if needed.
 
-- [ ] **Step 5: Fix all import sites**
+- [ ] **Step 7: Fix all import sites**
 
 Search for `InputOcrCorrelator` across workspace and update to `GuiElementDetector`. Update import paths from `input_correlator` to `gui_detector`.
 
-- [ ] **Step 6: Verify compilation + run existing tests**
+- [ ] **Step 8: Verify compilation + run existing tests**
 
 Run: `cargo test -p oneshim-vision`
+
+---
+
+## Task 5.5: OcrExtractor performance — LepTess caching
+
+**Files:**
+- Modify: `crates/oneshim-vision/src/ocr.rs`
+
+- [ ] **Step 1: Cache LepTess instance using interior mutability**
+
+Add `Mutex<Option<LepTess>>` field to `OcrExtractor`. On first call, initialize and store the instance. On subsequent calls, reuse the cached instance via `set_image_from_mem()` instead of creating a new `LepTess` each time.
+
+- [ ] **Step 2: Implement set_image_from_mem reuse pattern**
+
+```rust
+// Instead of:
+let mut lt = LepTess::new(None, "eng")?;
+lt.set_image_from_mem(&image_bytes)?;
+
+// Use:
+let mut cached = self.leptess.lock().unwrap();
+let lt = cached.get_or_insert_with(|| LepTess::new(None, "eng").unwrap());
+lt.set_image_from_mem(&image_bytes)?;
+```
+
+- [ ] **Step 3: Verify no regressions in OCR tests**
+
+Expected improvement: ~10-50ms saved per OCR call (LepTess initialization cost eliminated).
+
+Run: `cargo test -p oneshim-vision -- ocr`
+
+- [ ] **Commit:** `perf(vision): cache LepTess instance for OCR reuse`
 
 ---
 
