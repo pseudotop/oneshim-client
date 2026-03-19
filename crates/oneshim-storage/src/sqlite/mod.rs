@@ -7,6 +7,7 @@ mod fts_search_impl;
 mod integration_query_impl;
 mod maintenance;
 mod metrics;
+mod override_store_impl;
 mod tags;
 pub mod vector_store_impl;
 mod web_storage_impl;

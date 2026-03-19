@@ -55,10 +55,7 @@ impl HdbscanDetector {
     }
 
     /// Compute centroids (mean feature vector) per cluster label.
-    fn compute_centroids(
-        features: &[RegimeFeatures],
-        labels: &[i32],
-    ) -> Vec<RegimeFeatures> {
+    fn compute_centroids(features: &[RegimeFeatures], labels: &[i32]) -> Vec<RegimeFeatures> {
         let mut sums: HashMap<i32, [f64; RegimeFeatures::DIMENSIONS]> = HashMap::new();
         let mut counts: HashMap<i32, usize> = HashMap::new();
 
@@ -105,10 +102,7 @@ impl HdbscanDetector {
     }
 
     /// Build a ClusteringResult from labels and features.
-    fn build_result(
-        features: &[RegimeFeatures],
-        labels: Vec<i32>,
-    ) -> ClusteringResult {
+    fn build_result(features: &[RegimeFeatures], labels: Vec<i32>) -> ClusteringResult {
         let noise_count = labels.iter().filter(|&&l| l < 0).count();
         let centroids = Self::compute_centroids(features, &labels);
         let cluster_count = centroids.len();
@@ -143,8 +137,8 @@ impl ClusteringStrategy for HdbscanDetector {
             .collect();
 
         // Build hyperparams
-        let mut builder = hdbscan::HdbscanHyperParams::builder()
-            .min_cluster_size(self.min_cluster_size);
+        let mut builder =
+            hdbscan::HdbscanHyperParams::builder().min_cluster_size(self.min_cluster_size);
 
         if let Some(ms) = self.min_samples {
             builder = builder.min_samples(ms);
@@ -153,9 +147,9 @@ impl ClusteringStrategy for HdbscanDetector {
         let params = builder.build();
         let clusterer = hdbscan::Hdbscan::new(&data, params);
 
-        let labels = clusterer.cluster().map_err(|e| {
-            CoreError::Analysis(format!("HDBSCAN clustering failed: {e:?}"))
-        })?;
+        let labels = clusterer
+            .cluster()
+            .map_err(|e| CoreError::Analysis(format!("HDBSCAN clustering failed: {e:?}")))?;
 
         let result = Self::build_result(features, labels.clone());
         self.store_state(&result.centroids, &labels);
@@ -218,14 +212,10 @@ impl ClusteringStrategy for HdbscanDetector {
                     force_clusters.insert(*idx, *cluster_id);
                 }
                 ClusterConstraint::MustLink(a, b) => {
-                    warn!(
-                        "MustLink({a}, {b}) constraint ignored — not supported in Phase 1"
-                    );
+                    warn!("MustLink({a}, {b}) constraint ignored — not supported in Phase 1");
                 }
                 ClusterConstraint::CannotLink(a, b) => {
-                    warn!(
-                        "CannotLink({a}, {b}) constraint ignored — not supported in Phase 1"
-                    );
+                    warn!("CannotLink({a}, {b}) constraint ignored — not supported in Phase 1");
                 }
             }
         }

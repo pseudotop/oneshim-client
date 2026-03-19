@@ -103,7 +103,7 @@ impl KmeansDetector {
             labels,
             centroids,
             cluster_count: regimes.len(),
-            noise_count: 0, // k-means has no noise concept
+            noise_count: 0,      // k-means has no noise concept
             probabilities: None, // k-means is hard assignment
         }
     }
@@ -179,9 +179,7 @@ impl ClusteringStrategy for KmeansDetector {
                     warn!("MustLink({a}, {b}) constraint ignored by k-means — not supported");
                 }
                 ClusterConstraint::CannotLink(a, b) => {
-                    warn!(
-                        "CannotLink({a}, {b}) constraint ignored by k-means — not supported"
-                    );
+                    warn!("CannotLink({a}, {b}) constraint ignored by k-means — not supported");
                 }
             }
         }
