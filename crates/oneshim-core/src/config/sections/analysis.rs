@@ -23,6 +23,8 @@ pub struct AnalysisConfig {
     pub tiered_memory: TieredMemoryConfig,
     #[serde(default)]
     pub embedding: EmbeddingConfig,
+    #[serde(default)]
+    pub gui_intelligence: GuiIntelligenceConfig,
 }
 
 impl Default for AnalysisConfig {
@@ -37,6 +39,7 @@ impl Default for AnalysisConfig {
             server_coexistence_lookback_secs: default_server_coexistence_lookback_secs(),
             tiered_memory: TieredMemoryConfig::default(),
             embedding: EmbeddingConfig::default(),
+            gui_intelligence: GuiIntelligenceConfig::default(),
         }
     }
 }
@@ -289,4 +292,55 @@ fn default_min_segment_for_summary() -> u64 {
 }
 fn default_digest_day() -> Weekday {
     Weekday::Sun
+}
+
+// ---------------------------------------------------------------------------
+// GUI Intelligence configuration
+// ---------------------------------------------------------------------------
+
+/// Configuration for the GUI Activity Intelligence subsystem (Phase 2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuiIntelligenceConfig {
+    /// Master switch for GUI intelligence pipeline.
+    #[serde(default = "default_gui_enabled")]
+    pub enabled: bool,
+
+    /// Aggregation time window in seconds. Events within a window are
+    /// grouped into a single `GuiActivitySummary`.
+    #[serde(default = "default_aggregation_window_secs")]
+    pub aggregation_window_secs: u64,
+
+    /// Maximum number of events buffered per segment before force-flush.
+    #[serde(default = "default_max_events_per_segment")]
+    pub max_events_per_segment: usize,
+
+    /// Pixel distance threshold for proximity fallback in click-to-element
+    /// matching. When no direct hit is found, the nearest region within
+    /// this distance is used.
+    #[serde(default = "default_proximity_threshold_px")]
+    pub proximity_threshold_px: u32,
+}
+
+impl Default for GuiIntelligenceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_gui_enabled(),
+            aggregation_window_secs: default_aggregation_window_secs(),
+            max_events_per_segment: default_max_events_per_segment(),
+            proximity_threshold_px: default_proximity_threshold_px(),
+        }
+    }
+}
+
+fn default_gui_enabled() -> bool {
+    false
+}
+fn default_aggregation_window_secs() -> u64 {
+    300
+}
+fn default_max_events_per_segment() -> usize {
+    500
+}
+fn default_proximity_threshold_px() -> u32 {
+    40
 }
