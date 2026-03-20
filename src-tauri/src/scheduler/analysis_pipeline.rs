@@ -265,6 +265,8 @@ pub(super) async fn run_analysis_tick(
             info!("drift detected — flagging for re-clustering");
             ts.recluster_requested
                 .store(true, std::sync::atomic::Ordering::Relaxed);
+            ts.last_drift_detected
+                .store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -901,6 +903,7 @@ mod tests {
             clustering_strategy: None,
             override_store: None,
             recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            last_drift_detected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             llm_summarizer: None,
             embedding_pipeline: None,
             gui_pipeline_state: None,
@@ -1078,5 +1081,23 @@ mod tests {
         assert!(ts.params.t_high > 0.0);
         assert!(ts.params.t_low >= 0.0);
         assert!(ts.params.t_low < ts.params.t_high);
+    }
+
+    #[tokio::test]
+    async fn drift_detection_sets_last_drift_flag() {
+        let mut ts = make_trigger_state();
+        // Feed stable data to initialize detector
+        for _ in 0..200 {
+            ts.drift_detector.observe(0.5);
+        }
+        // Force a drift observation with a shifted value
+        let drifted = ts.drift_detector.observe(0.95);
+        if drifted {
+            ts.last_drift_detected
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        assert!(ts
+            .last_drift_detected
+            .load(std::sync::atomic::Ordering::Relaxed));
     }
 }

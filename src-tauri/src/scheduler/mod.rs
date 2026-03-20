@@ -75,6 +75,9 @@ pub(crate) struct AdaptiveTriggerState {
     pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     /// Flag set by REST/Tauri to request on-demand re-clustering.
     pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
+    /// Flag: last drift observation result. Set by analysis pipeline,
+    /// read-and-cleared by coaching evaluation in the monitor loop.
+    pub last_drift_detected: Arc<std::sync::atomic::AtomicBool>,
 
     // --- LLM/embedding pipeline ---
     pub(crate) llm_summarizer: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>>,

@@ -298,6 +298,7 @@ impl AgentRuntimeBundle {
                     },
                     override_store: self.override_store.clone(),
                     recluster_requested: self.recluster_requested.clone(),
+                    last_drift_detected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     llm_summarizer: llm_summarizer_arc,
                     embedding_pipeline: embedding_pipeline_arc,
                     gui_pipeline_state: None,

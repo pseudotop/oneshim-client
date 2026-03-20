@@ -530,7 +530,10 @@ impl Scheduler {
                                     let avg_regime_duration_secs: u64 = coaching
                                         .avg_regime_duration_secs(regime_label_for_coaching)
                                         .await;
-                                    let drift_detected = false;
+                                    let drift_detected = adaptive_trigger_state
+                                        .as_ref()
+                                        .map(|ts| ts.last_drift_detected.swap(false, std::sync::atomic::Ordering::Relaxed))
+                                        .unwrap_or(false);
 
                                     // Track real regime dwell time: reset timer on regime change
                                     let current_coaching_regime = regime_id_for_coaching.map(String::from);
