@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: u32 = 16;
+const CURRENT_VERSION: u32 = 17;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -77,6 +77,10 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 16 {
         migrate_v16(conn)?;
+    }
+
+    if current < 17 {
+        migrate_v17(conn)?;
     }
 
     Ok(())
@@ -829,6 +833,65 @@ fn migrate_v16(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v17(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V17 execution: coaching engine tables");
+
+    conn.execute_batch(
+        "
+        -- Coaching event log: every coaching message shown
+        CREATE TABLE IF NOT EXISTS coaching_events (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id              TEXT NOT NULL UNIQUE,
+            trigger_type          TEXT NOT NULL,
+            profile_name          TEXT NOT NULL,
+            regime_id             TEXT,
+            message_template      TEXT NOT NULL,
+            personalized_message  TEXT,
+            shown_at              TEXT NOT NULL,
+            dismissed_at          TEXT,
+            dismiss_action        TEXT,
+            feedback_type         TEXT,
+            feedback_score        REAL,
+            behavior_change_detected INTEGER DEFAULT 0,
+            created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_coaching_events_profile
+            ON coaching_events(profile_name, shown_at);
+        CREATE INDEX IF NOT EXISTS idx_coaching_events_regime
+            ON coaching_events(regime_id, shown_at);
+
+        -- Per-regime daily time goals (user-configured)
+        CREATE TABLE IF NOT EXISTS regime_goals (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            regime_label       TEXT NOT NULL UNIQUE,
+            daily_target_minutes INTEGER NOT NULL,
+            created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Aggregated coaching effectiveness scores
+        CREATE TABLE IF NOT EXISTS coaching_effectiveness (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_name        TEXT NOT NULL,
+            trigger_type        TEXT NOT NULL,
+            total_shown         INTEGER NOT NULL DEFAULT 0,
+            positive_feedback   REAL NOT NULL DEFAULT 0.0,
+            negative_feedback   REAL NOT NULL DEFAULT 0.0,
+            neutral_count       INTEGER NOT NULL DEFAULT 0,
+            behavior_change_count INTEGER NOT NULL DEFAULT 0,
+            updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(profile_name, trigger_type)
+        );
+
+        INSERT INTO schema_version (version) VALUES (17);
+        ",
+    )?;
+
+    info!("migration V17 complete: coaching engine tables created");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -996,7 +1059,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
 
         // V9 tables
         let count: i64 = conn
@@ -1196,7 +1259,53 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
+
+        // V17 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='coaching_events'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='regime_goals'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='coaching_effectiveness'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V17 indexes
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_coaching_events_profile'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Final version check
+        let version: u32 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 17);
     }
 
     #[test]
@@ -1209,6 +1318,6 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
     }
 }
