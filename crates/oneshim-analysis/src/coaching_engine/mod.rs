@@ -161,10 +161,10 @@ impl CoachingEngine {
             .build_variables(regime_label, regime_duration_secs, app_name)
             .await;
 
-        // 8. Select template
-        let template_text = self
-            .templates
-            .select(&profile, &trigger, &config.tone, &variables);
+        // 8. Select template (locale-aware, falls back to "en")
+        let template_text =
+            self.templates
+                .select(&profile, &trigger, &config.tone, &config.locale, &variables);
 
         // 9. Record alert timestamp
         self.record_alert(&profile).await;

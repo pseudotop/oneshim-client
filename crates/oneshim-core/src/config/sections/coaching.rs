@@ -32,6 +32,10 @@ pub struct CoachingConfig {
     #[serde(default)]
     pub regime_goals: HashMap<String, u32>,
 
+    /// Locale for coaching messages ("en", "ko"). Default: "en".
+    #[serde(default = "default_locale")]
+    pub locale: String,
+
     /// Overlay display mode (Phase 2 — stored for forward compatibility).
     #[serde(default)]
     pub overlay_mode: OverlayMode,
@@ -50,10 +54,15 @@ impl Default for CoachingConfig {
             tone: CoachingTone::default(),
             quiet_hours: vec![],
             regime_goals: HashMap::new(),
+            locale: default_locale(),
             overlay_mode: OverlayMode::default(),
             overlay_hotkey: default_overlay_hotkey(),
         }
     }
+}
+
+fn default_locale() -> String {
+    "en".to_string()
 }
 
 fn default_overlay_hotkey() -> String {
@@ -169,6 +178,27 @@ mod tests {
         let config: CoachingConfig =
             serde_json::from_str(json).expect("unknown fields must be ignored");
         assert!(config.enabled);
+    }
+
+    #[test]
+    fn coaching_config_locale_defaults_to_en() {
+        let config = CoachingConfig::default();
+        assert_eq!(config.locale, "en", "locale must default to 'en'");
+    }
+
+    #[test]
+    fn coaching_config_locale_deserializes_from_json() {
+        let json = r#"{ "enabled": true, "locale": "ko" }"#;
+        let config: CoachingConfig = serde_json::from_str(json).expect("locale must deserialize");
+        assert_eq!(config.locale, "ko");
+    }
+
+    #[test]
+    fn coaching_config_locale_defaults_when_missing_in_json() {
+        let json = r#"{ "enabled": true }"#;
+        let config: CoachingConfig =
+            serde_json::from_str(json).expect("missing locale must use default");
+        assert_eq!(config.locale, "en");
     }
 
     #[test]

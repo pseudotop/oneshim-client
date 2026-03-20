@@ -13,6 +13,7 @@ pub struct CoachingTemplate {
     pub profile: CoachingProfile,
     pub trigger_type: &'static str,
     pub tone: CoachingTone,
+    pub locale: &'static str,
     pub text: &'static str,
 }
 
@@ -38,10 +39,13 @@ impl CoachingTemplateRegistry {
         }
     }
 
-    /// Select a template matching the profile, trigger, and config tone,
+    /// Select a template matching the profile, trigger, tone, and locale,
     /// then substitute variables.
     ///
-    /// Fallback tiers:
+    /// Locale filtering: prefer templates matching `locale`, fall back to
+    /// "en" if no match exists for the requested locale.
+    ///
+    /// Fallback tiers (within locale-filtered set):
     /// 1. Exact match: profile + trigger + tone
     /// 2. Profile + trigger (any tone)
     /// 3. First template for this profile
@@ -50,25 +54,38 @@ impl CoachingTemplateRegistry {
         profile: &CoachingProfile,
         trigger: &TriggerType,
         tone: &CoachingTone,
+        locale: &str,
         variables: &HashMap<String, String>,
     ) -> String {
         let trigger_name = trigger_type_name(trigger);
 
-        // Best match: profile + trigger + tone
-        let template = self
+        // Filter by locale, fall back to "en" if no match
+        let locale_filtered: Vec<_> = self
             .templates
+            .iter()
+            .filter(|t| t.locale == locale)
+            .collect();
+        let candidates: Vec<_> = if locale_filtered.is_empty() {
+            self.templates.iter().filter(|t| t.locale == "en").collect()
+        } else {
+            locale_filtered
+        };
+
+        // Best match: profile + trigger + tone
+        let fallback = &self.templates[0];
+        let template = candidates
             .iter()
             .find(|t| t.profile == *profile && t.trigger_type == trigger_name && t.tone == *tone)
             // Fallback: profile + trigger (any tone)
             .or_else(|| {
-                self.templates
+                candidates
                     .iter()
                     .find(|t| t.profile == *profile && t.trigger_type == trigger_name)
             })
             // Ultimate fallback: first template for this profile
-            .or_else(|| self.templates.iter().find(|t| t.profile == *profile))
+            .or_else(|| candidates.iter().find(|t| t.profile == *profile))
             // Should never happen — we have 50+ templates
-            .unwrap_or(&self.templates[0]);
+            .unwrap_or(&fallback);
 
         substitute(template.text, variables)
     }
@@ -113,6 +130,7 @@ mod tests {
                 to_regime: Some("Communication".to_string()),
             },
             &CoachingTone::Direct,
+            "en",
             &vars,
         );
 
@@ -153,6 +171,7 @@ mod tests {
                     regime_label: "Coding".to_string(),
                 },
                 &tone,
+                "en",
                 &vars,
             );
             assert!(!result.is_empty(), "fallback must return non-empty text");
@@ -204,6 +223,40 @@ mod tests {
                 "profile {:?} must have at least 1 template, got {}",
                 profile,
                 count
+            );
+        }
+    }
+
+    #[test]
+    fn select_falls_back_to_en_for_unknown_locale() {
+        let registry = CoachingTemplateRegistry::new();
+        let vars = HashMap::new();
+        let text = registry.select(
+            &CoachingProfile::FocusGuard,
+            &TriggerType::RegimeTransition {
+                from_regime: None,
+                to_regime: None,
+            },
+            &CoachingTone::Direct,
+            "ko",
+            &vars,
+        );
+        // Should return English template, not empty
+        assert!(
+            !text.is_empty(),
+            "locale fallback must return non-empty text"
+        );
+    }
+
+    #[test]
+    fn all_templates_have_locale_field() {
+        let registry = CoachingTemplateRegistry::new();
+        for t in &registry.templates {
+            assert!(
+                !t.locale.is_empty(),
+                "template for {:?}/{} must have a locale",
+                t.profile,
+                t.trigger_type
             );
         }
     }
