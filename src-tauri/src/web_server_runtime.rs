@@ -106,6 +106,7 @@ pub(crate) struct WebServerSupportContext {
     config_manager: ConfigManager,
     update_control: UpdateControl,
     integration_runtime_status: IntegrationOutboundRuntimeStatus,
+    app_handle: Option<tauri::AppHandle>,
     #[cfg(feature = "server")]
     server: Option<WebServerServerSupport>,
 }
@@ -120,9 +121,15 @@ impl WebServerSupportContext {
             config_manager,
             update_control,
             integration_runtime_status,
+            app_handle: None,
             #[cfg(feature = "server")]
             server: None,
         }
+    }
+
+    pub(crate) fn with_app_handle(mut self, handle: tauri::AppHandle) -> Self {
+        self.app_handle = Some(handle);
+        self
     }
 
     #[cfg(feature = "server")]
@@ -135,6 +142,12 @@ impl WebServerSupportContext {
         &self,
         builder: AutomationControllerBuilder<'a>,
     ) -> AutomationControllerBuilder<'a> {
+        let builder = if let Some(ref handle) = self.app_handle {
+            builder.with_app_handle(handle.clone())
+        } else {
+            builder
+        };
+
         #[cfg(feature = "server")]
         {
             if let Some(server) = self.server.as_ref() {

@@ -14,14 +14,12 @@ use oneshim_core::models::gui::{HighlightHandle, HighlightRequest};
 use oneshim_core::ports::overlay_driver::OverlayDriver;
 
 /// Serializable highlight data emitted to the overlay WebView.
-#[allow(dead_code)] // Wired when GuiInteractionService is connected to MagicOverlayDriver
 #[derive(Debug, Clone, Serialize)]
 struct FocusHighlightPayload {
     pub handle_id: String,
     pub targets: Vec<FocusTargetPayload>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 struct FocusTargetPayload {
     pub candidate_id: String,
@@ -37,7 +35,6 @@ struct FocusTargetPayload {
 ///
 /// Emits `overlay:update-focus` and `overlay:clear-focus` events that the
 /// FocusHighlight React component listens for.
-#[allow(dead_code)] // DI wiring pending — connected when GUI V2 session flow is activated
 pub struct MagicOverlayDriver {
     app_handle: AppHandle,
 }
