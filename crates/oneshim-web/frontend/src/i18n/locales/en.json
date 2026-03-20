@@ -29,6 +29,7 @@
     "privacy": "Privacy",
     "search": "Search",
     "automation": "Automation",
+    "coaching": "Coaching",
     "recalibration": "Recalibration",
     "mainNavLabel": "Main Navigation"
   },
@@ -141,7 +142,8 @@
       "privacy": "Privacy",
       "monitoring": "Monitoring",
       "aiAutomation": "AI & Automation",
-      "dataStorage": "Data & Storage"
+      "dataStorage": "Data & Storage",
+      "coaching": "Coaching Goals"
     },
     "dataCollection": "Data Collection",
     "enableCapture": "Enable Screenshot Capture",
@@ -967,6 +969,31 @@
     "recentSearches": "Recent Searches",
     "browseTags": "Browse Tags",
     "segments": "Segments",
-    "overrideHistory": "Override History"
+    "overrideHistory": "Override History",
+    "coachingGoals": "Goals",
+    "coachingEvents": "Events"
+  },
+  "coaching": {
+    "title": "Coaching History",
+    "goalsTitle": "Today's Goals",
+    "noGoals": "No goals configured.",
+    "recentEvents": "Recent Events",
+    "noEvents": "No coaching events yet.",
+    "goalAdded": "Goal added",
+    "goalRemoved": "Goal removed",
+    "goalsUpdated": "Goals updated",
+    "settingsTitle": "Coaching Goals",
+    "regimeLabel": "Regime Label",
+    "targetMinutes": "Target (min)",
+    "addGoal": "Add Goal",
+    "remove": "Remove",
+    "perDay": "min/day",
+    "profiles": {
+      "FocusGuard": "Focus Guard",
+      "TimeAware": "Time Aware",
+      "DeepWorkCoach": "Deep Work Coach",
+      "ContextRestore": "Context Restore",
+      "GoalTracker": "Goal Tracker"
+    }
   }
 }

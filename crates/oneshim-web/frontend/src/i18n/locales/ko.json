@@ -29,6 +29,7 @@
     "privacy": "개인정보",
     "search": "검색",
     "automation": "자동화",
+    "coaching": "코칭",
     "recalibration": "재보정",
     "mainNavLabel": "메인 내비게이션"
   },
@@ -141,7 +142,8 @@
       "privacy": "개인정보",
       "monitoring": "모니터링",
       "aiAutomation": "AI & 자동화",
-      "dataStorage": "데이터 & 저장소"
+      "dataStorage": "데이터 & 저장소",
+      "coaching": "코칭 목표"
     },
     "dataCollection": "데이터 수집",
     "enableCapture": "스크린샷 캡처 활성화",
@@ -961,6 +963,31 @@
     "recentSearches": "최근 검색",
     "browseTags": "태그 탐색",
     "segments": "세그먼트",
-    "overrideHistory": "오버라이드 기록"
+    "overrideHistory": "오버라이드 기록",
+    "coachingGoals": "목표",
+    "coachingEvents": "이벤트"
+  },
+  "coaching": {
+    "title": "코칭 히스토리",
+    "goalsTitle": "오늘의 목표",
+    "noGoals": "설정된 목표가 없습니다.",
+    "recentEvents": "최근 이벤트",
+    "noEvents": "아직 코칭 이벤트가 없습니다.",
+    "goalAdded": "목표 추가됨",
+    "goalRemoved": "목표 삭제됨",
+    "goalsUpdated": "목표 업데이트됨",
+    "settingsTitle": "코칭 목표",
+    "regimeLabel": "레짐 라벨",
+    "targetMinutes": "목표 (분)",
+    "addGoal": "목표 추가",
+    "remove": "삭제",
+    "perDay": "분/일",
+    "profiles": {
+      "FocusGuard": "집중 가드",
+      "TimeAware": "시간 인식",
+      "DeepWorkCoach": "딥워크 코치",
+      "ContextRestore": "컨텍스트 복원",
+      "GoalTracker": "목표 추적"
+    }
   }
 }
