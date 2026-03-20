@@ -139,6 +139,11 @@ impl AutomationController {
             .ok_or_else(|| CoreError::Internal("Scene analyzer is not configured".to_string()))
     }
 
+    /// Returns a reference to the GUI interaction service, if configured.
+    pub fn gui_service(&self) -> Option<&Arc<GuiInteractionService>> {
+        self.gui_service.as_ref()
+    }
+
     pub(super) fn require_gui_service(
         &self,
     ) -> Result<&Arc<GuiInteractionService>, GuiInteractionError> {

@@ -44,6 +44,19 @@ pub struct FocusedElementInfo {
     pub extracted_text: Option<String>,
 }
 
+/// A single element from the accessibility tree snapshot.
+/// Used for dashcam tagging and overlay highlights.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AccessibilityElement {
+    /// Accessibility role (e.g., "AXButton", "Edit", "push_button").
+    pub role: String,
+    /// Accessibility label/name.
+    pub label: String,
+    /// Bounding rectangle (x, y, width, height) in screen coordinates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<ElementRect>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +118,30 @@ mod tests {
         let info: FocusedElementInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.role, "AXGroup");
         assert!(info.position.is_none());
+    }
+
+    #[test]
+    fn accessibility_element_serde_roundtrip() {
+        let elem = AccessibilityElement {
+            role: "AXButton".to_string(),
+            label: "Save".to_string(),
+            bounds: Some(ElementRect {
+                x: 10.0,
+                y: 20.0,
+                width: 80.0,
+                height: 30.0,
+            }),
+        };
+        let json = serde_json::to_string(&elem).unwrap();
+        let decoded: AccessibilityElement = serde_json::from_str(&json).unwrap();
+        assert_eq!(elem, decoded);
+    }
+
+    #[test]
+    fn accessibility_element_default_has_empty_fields() {
+        let elem = AccessibilityElement::default();
+        assert_eq!(elem.role, "");
+        assert_eq!(elem.label, "");
+        assert!(elem.bounds.is_none());
     }
 }

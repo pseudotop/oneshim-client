@@ -6,6 +6,7 @@
 //! continue capturing "after" frames.
 
 use chrono::{DateTime, Utc};
+use oneshim_core::models::focused_element::AccessibilityElement;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
@@ -18,6 +19,8 @@ pub struct RingFrame {
     pub thumbnail_data: Vec<u8>,
     pub app_name: String,
     pub window_title: String,
+    /// Accessibility tree snapshot at capture time (empty if unavailable).
+    pub accessibility_elements: Vec<AccessibilityElement>,
 }
 
 /// Result of flushing the ring buffer on a significant event.
@@ -146,6 +149,7 @@ mod tests {
             thumbnail_data: vec![0u8; 100],
             app_name: app.to_string(),
             window_title: title.to_string(),
+            accessibility_elements: Vec::new(),
         }
     }
 
@@ -232,6 +236,42 @@ mod tests {
         let result = rb.check_and_flush(0.9, make_frame("app", "trigger"));
         assert!(result.is_some());
         assert!(result.unwrap().pre_event_frames.is_empty());
+    }
+
+    #[test]
+    fn push_frame_with_accessibility_elements() {
+        use oneshim_core::models::focused_element::{AccessibilityElement, ElementRect};
+
+        let rb = CaptureRingBuffer::new(5, 2, 0.5);
+        let frame = RingFrame {
+            timestamp: Utc::now(),
+            thumbnail_data: vec![0u8; 50],
+            app_name: "VSCode".to_string(),
+            window_title: "main.rs".to_string(),
+            accessibility_elements: vec![
+                AccessibilityElement {
+                    role: "Editor".to_string(),
+                    label: "main.rs".to_string(),
+                    bounds: Some(ElementRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1200.0,
+                        height: 800.0,
+                    }),
+                },
+                AccessibilityElement {
+                    role: "Tab".to_string(),
+                    label: "main.rs".to_string(),
+                    bounds: None,
+                },
+            ],
+        };
+        rb.push(frame);
+        assert_eq!(rb.len(), 1);
+
+        let buf = rb.buffer.lock().unwrap();
+        assert_eq!(buf[0].accessibility_elements.len(), 2);
+        assert_eq!(buf[0].accessibility_elements[0].role, "Editor");
     }
 
     #[test]

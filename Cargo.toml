@@ -120,6 +120,9 @@ rustls-pemfile = "2"
 # OS 키체인 (시크릿 저장)
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 
+# Linux AT-SPI2 accessibility (D-Bus based)
+atspi = { version = "0.29", default-features = false, features = ["tokio"] }
+
 # 성능 최적화 (Phase 31-33)
 lru = "0.16"
 crossbeam = "0.8"

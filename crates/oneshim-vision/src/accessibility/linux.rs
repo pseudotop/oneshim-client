@@ -53,6 +53,8 @@ mod inner {
 
     use oneshim_core::config::PiiFilterLevel;
     use oneshim_core::error::CoreError;
+    #[cfg(feature = "linux-atspi")]
+    use oneshim_core::models::focused_element::AccessibilityElement;
     use oneshim_core::models::focused_element::FocusedElementInfo;
     use oneshim_core::ports::accessibility::AccessibilityExtractor;
 
@@ -106,15 +108,17 @@ mod inner {
         }
 
         /// Check if the AT-SPI2 D-Bus service is reachable.
-        ///
-        /// In the full implementation this would attempt a lightweight D-Bus
-        /// ping to `org.a11y.Bus`. For now, returns `true` since AT-SPI2
-        /// does not require special permissions.
         fn check_atspi_available() -> bool {
-            // TODO: Probe the AT-SPI2 bus via D-Bus
-            // let connection = zbus::Connection::session().ok()?;
-            // connection.call_method("org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress", &())
-            true
+            #[cfg(feature = "linux-atspi")]
+            {
+                // Check if the AT-SPI2 bus address environment variable is set
+                std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok()
+                    || std::env::var("ATSPI_BUS_ADDRESS").is_ok()
+            }
+            #[cfg(not(feature = "linux-atspi"))]
+            {
+                true // Stub mode, claim available
+            }
         }
 
         /// Extract focused element via AT-SPI2 (stub).
@@ -182,6 +186,45 @@ mod inner {
             }
         }
 
+        #[cfg(feature = "linux-atspi")]
+        async fn extract_window_elements(
+            &self,
+            _max_depth: u32,
+            _max_elements: usize,
+            pii_level: PiiFilterLevel,
+            has_full_text_consent: bool,
+        ) -> Result<Vec<AccessibilityElement>, CoreError> {
+            use atspi::connection::AccessibilityConnection;
+
+            if !Self::circuit_allows() {
+                return Ok(Vec::new());
+            }
+
+            let _effective_level = if pii_level == PiiFilterLevel::Off && !has_full_text_consent {
+                PiiFilterLevel::Standard
+            } else {
+                pii_level
+            };
+
+            // AT-SPI is async-native, no spawn_blocking needed
+            let _conn = AccessibilityConnection::new().await.map_err(|e| {
+                CoreError::PermissionDenied(format!(
+                    "AT-SPI2 D-Bus connection failed. Ensure at-spi2-core is installed: {e}"
+                ))
+            })?;
+
+            // TODO: Implement full tree traversal via AT-SPI proxies.
+            // For Phase 1, return empty vec (connection validated).
+            // Full implementation will:
+            // 1. Get focused application via FocusTracker event
+            // 2. Walk children up to max_depth using AccessibleProxy::get_children()
+            // 3. Extract role, name, extents for each child
+
+            Self::record_success();
+            debug!("AT-SPI2 connection established; tree traversal not yet implemented");
+            Ok(Vec::new())
+        }
+
         fn has_permission(&self) -> bool {
             // AT-SPI2 does not require special permissions on Linux.
             // Any user-session process can connect to the accessibility bus.
@@ -225,5 +268,27 @@ mod tests {
             .unwrap();
         // Stub always returns None until AT-SPI2 is wired
         assert!(result.is_none());
+    }
+
+    #[cfg(feature = "linux-atspi")]
+    #[tokio::test]
+    async fn extract_window_elements_atspi_connection() {
+        let extractor = LinuxAccessibility::new();
+        let result = extractor
+            .extract_window_elements(3, 300, PiiFilterLevel::Standard, false)
+            .await;
+        // On CI without AT-SPI2, this may return PermissionDenied
+        // On desktop Linux, should return Ok (possibly empty)
+        match result {
+            Ok(elements) => {
+                eprintln!("AT-SPI2 returned {} elements", elements.len());
+            }
+            Err(oneshim_core::error::CoreError::PermissionDenied(msg)) => {
+                eprintln!("AT-SPI2 not available: {msg}");
+            }
+            Err(e) => {
+                panic!("unexpected error: {e}");
+            }
+        }
     }
 }

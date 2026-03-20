@@ -199,6 +199,89 @@ mod tests {
         }
     }
 
+    // ── PermissionDeniedElementFinder ────────────────────────────────────
+
+    struct PermissionDeniedElementFinder;
+
+    #[async_trait]
+    impl ElementFinder for PermissionDeniedElementFinder {
+        async fn find_element(
+            &self,
+            _text: Option<&str>,
+            _role: Option<&str>,
+            _region: Option<&ElementBounds>,
+        ) -> Result<Vec<UiElement>, CoreError> {
+            Err(CoreError::PolicyDenied(
+                "Accessibility permission denied".to_string(),
+            ))
+        }
+
+        async fn analyze_scene(
+            &self,
+            _app_name: Option<&str>,
+            _screen_id: Option<&str>,
+        ) -> Result<UiScene, CoreError> {
+            Err(CoreError::PolicyDenied(
+                "Accessibility permission denied".to_string(),
+            ))
+        }
+
+        fn name(&self) -> &str {
+            "permission-denied-mock"
+        }
+    }
+
+    // ── DriftingFocusProbe ───────────────────────────────────────────────
+
+    struct DriftingFocusProbe {
+        initial_focus: FocusSnapshot,
+        drifted_focus: FocusSnapshot,
+        /// current_focus returns initial_focus for first `drift_after` calls,
+        /// then drifted_focus.
+        drift_after: usize,
+        call_count: AtomicUsize,
+    }
+
+    impl DriftingFocusProbe {
+        fn new(initial: FocusSnapshot, drifted: FocusSnapshot, drift_after: usize) -> Self {
+            Self {
+                initial_focus: initial,
+                drifted_focus: drifted,
+                drift_after,
+                call_count: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl FocusProbe for DriftingFocusProbe {
+        async fn current_focus(&self) -> Result<FocusSnapshot, CoreError> {
+            let n = self.call_count.fetch_add(1, Ordering::SeqCst);
+            if n < self.drift_after {
+                Ok(self.initial_focus.clone())
+            } else {
+                Ok(self.drifted_focus.clone())
+            }
+        }
+
+        async fn validate_execution_binding(
+            &self,
+            _binding: &ExecutionBinding,
+        ) -> Result<FocusValidation, CoreError> {
+            let n = self.call_count.load(Ordering::SeqCst);
+            let valid = n <= self.drift_after;
+            Ok(FocusValidation {
+                valid,
+                reason: if valid {
+                    None
+                } else {
+                    Some("Window focus changed to another application".to_string())
+                },
+                current_focus: None,
+            })
+        }
+    }
+
     // ── Fixture builders ────────────────────────────────────────────────
 
     fn make_element(id: &str, label: &str, confidence: f64) -> UiSceneElement {
@@ -270,6 +353,29 @@ mod tests {
             Some(TEST_HMAC_SECRET.to_string()),
         ));
         (service, probe, overlay)
+    }
+
+    fn make_service_with_finder(
+        finder: Arc<dyn ElementFinder>,
+        focus: FocusSnapshot,
+    ) -> Arc<GuiInteractionService> {
+        Arc::new(GuiInteractionService::new(
+            finder,
+            Arc::new(MockFocusProbe::new(focus)),
+            Arc::new(MockOverlayDriver::new()),
+            Some(TEST_HMAC_SECRET.to_string()),
+        ))
+    }
+
+    fn make_drifted_focus() -> FocusSnapshot {
+        FocusSnapshot {
+            app_name: "OtherApp".to_string(),
+            window_title: "Other Window".to_string(),
+            pid: 9999,
+            bounds: None,
+            captured_at: Utc::now(),
+            focus_hash: "drifted-hash-999".to_string(),
+        }
     }
 
     fn default_create_request() -> GuiCreateSessionRequest {
@@ -2177,5 +2283,215 @@ mod tests {
 
         assert_eq!(event.event_type, "gui_session.expired");
         assert_eq!(event.session_id, sid);
+    }
+
+    // ── M5: Failure scenario tests ────────────────────────────────────
+
+    #[tokio::test]
+    async fn m5_permission_denied_returns_forbidden() {
+        let service =
+            make_service_with_finder(Arc::new(PermissionDeniedElementFinder), make_focus());
+
+        let err = service
+            .create_session(default_create_request())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, GuiInteractionError::Forbidden(_)),
+            "Expected Forbidden, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn m5_focus_drift_on_confirm_returns_focus_drift() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, probe) = make_service(scene, make_focus());
+
+        let (sid, token) = create_and_highlight(&service).await;
+
+        // Drift focus before confirm
+        probe.set_validation_valid(false);
+
+        let err = service
+            .confirm_candidate(
+                &sid,
+                &token,
+                GuiConfirmRequest {
+                    candidate_id: "el-1".to_string(),
+                    action: GuiActionRequest {
+                        action_type: GuiActionType::Click,
+                        text: None,
+                    },
+                    ticket_ttl_secs: Some(60),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, GuiInteractionError::FocusDrift(_)),
+            "Expected FocusDrift, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn m5_focus_drift_on_execute_returns_focus_drift() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, probe) = make_service(scene, make_focus());
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+
+        // Drift focus after confirm, before execute
+        probe.set_validation_valid(false);
+
+        let err = service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, GuiInteractionError::FocusDrift(_)),
+            "Expected FocusDrift, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn m5_expired_ticket_returns_ticket_invalid() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let (sid, token, mut ticket) = create_highlight_and_confirm(&service).await;
+
+        // Backdate the ticket so it is expired past grace
+        ticket.expires_at = Utc::now() - ChronoDuration::seconds(TICKET_EXPIRY_GRACE_SECS + 10);
+
+        let err = service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, GuiInteractionError::TicketInvalid(_)),
+            "Expected TicketInvalid for expired ticket, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn m5_nonce_replay_blocked_deterministically() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let (sid, token, ticket) = create_highlight_and_confirm(&service).await;
+
+        // First execution succeeds
+        let _ = service
+            .prepare_execution(
+                &sid,
+                &token,
+                GuiExecutionRequest {
+                    ticket: ticket.clone(),
+                },
+            )
+            .await
+            .unwrap();
+
+        // Revert to Confirmed so state gate passes
+        service
+            .complete_execution(&sid, false, None, 0, 1)
+            .await
+            .unwrap();
+
+        // Replay same nonce — must be rejected
+        let err = service
+            .prepare_execution(&sid, &token, GuiExecutionRequest { ticket })
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, GuiInteractionError::TicketInvalid(_)),
+            "Expected TicketInvalid for nonce replay, got: {err:?}"
+        );
+        // Verify the error message is specific
+        if let GuiInteractionError::TicketInvalid(msg) = &err {
+            assert!(
+                msg.contains("nonce") || msg.contains("replay"),
+                "Error message should mention nonce replay, got: {msg}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn m5_session_ttl_boundary_marks_expired() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _) = make_service(scene, make_focus());
+
+        let mut req = default_create_request();
+        req.session_ttl_secs = Some(30);
+        let resp = service.create_session(req).await.unwrap();
+        let sid = resp.session.session_id.clone();
+        let token = resp.capability_token.clone();
+
+        // Manually expire
+        {
+            let mut sessions = service.sessions.write().await;
+            if let Some(stored) = sessions.get_mut(&sid) {
+                stored.session.expires_at = Utc::now() - ChronoDuration::seconds(2);
+            }
+        }
+
+        // get_session should reflect Expired state
+        let session = service.get_session(&sid, &token).await.unwrap();
+        assert_eq!(session.state, GuiSessionState::Expired);
+
+        // Operations on expired session should fail
+        let err = service
+            .highlight_session(
+                &sid,
+                &token,
+                GuiHighlightRequest {
+                    candidate_ids: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, GuiInteractionError::TicketInvalid(_)));
+    }
+
+    #[tokio::test]
+    async fn m5_expire_sessions_removes_and_emits_event() {
+        let scene = make_scene(vec![make_element("el-1", "Save", 0.9)]);
+        let (service, _, overlay) = make_service_full(scene, make_focus());
+
+        let (sid, token) = create_and_highlight(&service).await;
+
+        let mut rx = service.subscribe();
+
+        // Expire the session
+        {
+            let mut sessions = service.sessions.write().await;
+            if let Some(stored) = sessions.get_mut(&sid) {
+                stored.session.expires_at = Utc::now() - ChronoDuration::seconds(1);
+            }
+        }
+
+        service.expire_sessions().await;
+
+        // Session should be gone
+        let err = service.get_session(&sid, &token).await.unwrap_err();
+        assert!(matches!(err, GuiInteractionError::NotFound(_)));
+
+        // Expired event should have been emitted
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+        let expired_events: Vec<_> = events
+            .iter()
+            .filter(|e| e.event_type == "gui_session.expired")
+            .collect();
+        assert_eq!(expired_events.len(), 1);
+        assert_eq!(expired_events[0].session_id, sid);
+
+        // Overlay clear should have been called (session was highlighted)
+        assert!(
+            overlay.clear_count.load(Ordering::SeqCst) >= 1,
+            "Overlay clear_highlights should be called on expire"
+        );
     }
 }

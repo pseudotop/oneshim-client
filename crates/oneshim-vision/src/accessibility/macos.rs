@@ -18,7 +18,9 @@ mod inner {
 
     use oneshim_core::config::PiiFilterLevel;
     use oneshim_core::error::CoreError;
-    use oneshim_core::models::focused_element::{ElementRect, FocusedElementInfo};
+    use oneshim_core::models::focused_element::{
+        AccessibilityElement, ElementRect, FocusedElementInfo,
+    };
     use oneshim_core::ports::accessibility::AccessibilityExtractor;
 
     use crate::accessibility::ffi_macos::ax::*;
@@ -210,6 +212,86 @@ mod inner {
             }
         }
 
+        /// Recursively traverse the accessibility tree from an element.
+        ///
+        /// SAFETY: All CFTypeRef values are released. The function returns owned
+        /// Rust data. `remaining` is decremented for each element collected to
+        /// enforce the max_elements cap.
+        unsafe fn traverse_tree(
+            element: AXUIElementRef,
+            depth: u32,
+            max_depth: u32,
+            remaining: &mut usize,
+            pii_level: PiiFilterLevel,
+        ) -> Vec<AccessibilityElement> {
+            if depth > max_depth || *remaining == 0 {
+                return Vec::new();
+            }
+
+            let mut results = Vec::new();
+
+            // Extract role + label + bounds for this element
+            let role_key = ax_attr(AX_ROLE_ATTR);
+            let role = Self::get_string_attr(element, as_cf_ref(&role_key)).unwrap_or_default();
+
+            let label = if pii_level != PiiFilterLevel::Strict {
+                let title_key = ax_attr(AX_TITLE_ATTR);
+                let desc_key = ax_attr(AX_DESCRIPTION_ATTR);
+                Self::get_string_attr(element, as_cf_ref(&title_key))
+                    .or_else(|| Self::get_string_attr(element, as_cf_ref(&desc_key)))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+            let bounds = Self::get_position_and_size(element);
+
+            results.push(AccessibilityElement {
+                role,
+                label,
+                bounds,
+            });
+            *remaining = remaining.saturating_sub(1);
+
+            // Recurse into children
+            if depth < max_depth && *remaining > 0 {
+                let children_key = ax_attr(AX_CHILDREN_ATTR);
+                let mut children_ref: CFTypeRef = ptr::null();
+                let err = AXUIElementCopyAttributeValue(
+                    element,
+                    as_cf_ref(&children_key),
+                    &mut children_ref,
+                );
+                if err == kAXErrorSuccess && !children_ref.is_null() {
+                    let count = core_foundation_sys::array::CFArrayGetCount(
+                        children_ref as core_foundation_sys::array::CFArrayRef,
+                    );
+                    for i in 0..count {
+                        if *remaining == 0 {
+                            break;
+                        }
+                        let child = core_foundation_sys::array::CFArrayGetValueAtIndex(
+                            children_ref as core_foundation_sys::array::CFArrayRef,
+                            i,
+                        );
+                        if !child.is_null() {
+                            let child_elements = Self::traverse_tree(
+                                child,
+                                depth + 1,
+                                max_depth,
+                                remaining,
+                                pii_level,
+                            );
+                            results.extend(child_elements);
+                        }
+                    }
+                    CFRelease(children_ref);
+                }
+            }
+
+            results
+        }
+
         /// Apply PII-level filtering to raw extracted data.
         fn filter_by_level(raw: RawFocusedElement, level: PiiFilterLevel) -> FocusedElementInfo {
             match level {
@@ -301,12 +383,107 @@ mod inner {
             }
         }
 
+        async fn extract_window_elements(
+            &self,
+            max_depth: u32,
+            max_elements: usize,
+            pii_level: PiiFilterLevel,
+            has_full_text_consent: bool,
+        ) -> Result<Vec<AccessibilityElement>, CoreError> {
+            if !Self::check_permission() {
+                return Err(CoreError::PermissionDenied(
+                    "macOS Accessibility permission not granted. \
+                     Enable in System Settings > Privacy & Security > Accessibility."
+                        .to_string(),
+                ));
+            }
+            if !Self::circuit_allows() {
+                return Ok(Vec::new());
+            }
+
+            let effective_level = if pii_level == PiiFilterLevel::Off && !has_full_text_consent {
+                PiiFilterLevel::Standard
+            } else {
+                pii_level
+            };
+
+            let result = tokio::task::spawn_blocking(move || unsafe {
+                let system_wide = AXUIElementCreateSystemWide();
+                if system_wide.is_null() {
+                    return Vec::new();
+                }
+
+                // Get focused element
+                let focused_window_key = ax_attr(AX_FOCUSED_UI_ELEMENT_ATTR);
+                let mut focused: CFTypeRef = ptr::null();
+                let err = AXUIElementCopyAttributeValue(
+                    system_wide,
+                    as_cf_ref(&focused_window_key),
+                    &mut focused,
+                );
+                CFRelease(system_wide);
+
+                if err != kAXErrorSuccess || focused.is_null() {
+                    return Vec::new();
+                }
+
+                // Try to get the window containing the focused element
+                let window_key = ax_attr(AX_WINDOW_ATTR);
+                let mut window_ref: CFTypeRef = ptr::null();
+                let w_err =
+                    AXUIElementCopyAttributeValue(focused, as_cf_ref(&window_key), &mut window_ref);
+
+                let traverse_root = if w_err == kAXErrorSuccess && !window_ref.is_null() {
+                    CFRelease(focused);
+                    window_ref
+                } else {
+                    // Fallback: traverse from focused element itself
+                    focused
+                };
+
+                let mut remaining = max_elements;
+                let elements = Self::traverse_tree(
+                    traverse_root,
+                    0,
+                    max_depth,
+                    &mut remaining,
+                    effective_level,
+                );
+                CFRelease(traverse_root);
+                elements
+            })
+            .await
+            .map_err(|e| CoreError::Internal(format!("AX tree traversal task failed: {e}")))?;
+
+            if result.is_empty() {
+                Self::record_failure();
+            } else {
+                Self::record_success();
+                debug!(count = result.len(), "AX window tree extracted");
+            }
+
+            Ok(result)
+        }
+
         fn has_permission(&self) -> bool {
             Self::check_permission()
         }
 
         fn name(&self) -> &str {
             "macos-native-accessibility"
+        }
+
+        fn request_permission(&self) -> bool {
+            unsafe {
+                use core_foundation::boolean::CFBoolean;
+                use core_foundation::dictionary::CFDictionary;
+
+                let key = CFString::new("AXTrustedCheckOptionPrompt");
+                let value = CFBoolean::true_value();
+                let options =
+                    CFDictionary::from_CFType_pairs(&[(key.as_CFType(), value.as_CFType())]);
+                AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef() as CFTypeRef)
+            }
         }
     }
 }
@@ -418,6 +595,45 @@ mod tests {
             .await;
         assert!(result.is_ok());
         // May be None if no element is focused (headless CI)
+    }
+
+    /// Integration test for tree traversal -- requires Accessibility permission.
+    /// Run manually: `cargo test -p oneshim-vision -- macos_tree_traversal --ignored`
+    #[tokio::test]
+    #[ignore]
+    async fn extract_window_elements_integration() {
+        let extractor = MacOsNativeAccessibility::new();
+        if !extractor.has_permission() {
+            eprintln!("SKIP: Accessibility permission not granted");
+            return;
+        }
+        let result = extractor
+            .extract_window_elements(3, 300, PiiFilterLevel::Standard, false)
+            .await;
+        assert!(result.is_ok());
+        let elements = result.unwrap();
+        // Should return at least 1 element (the window or focused element)
+        // May return 0 on headless CI
+        eprintln!("extracted {} elements", elements.len());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn extract_window_elements_permission_denied_without_access() {
+        // This test verifies the PermissionDenied path, but only
+        // meaningful when run without Accessibility permission.
+        let extractor = MacOsNativeAccessibility::new();
+        if extractor.has_permission() {
+            eprintln!("SKIP: permission already granted, cannot test denial");
+            return;
+        }
+        let result = extractor
+            .extract_window_elements(3, 300, PiiFilterLevel::Standard, false)
+            .await;
+        assert!(matches!(
+            result,
+            Err(oneshim_core::error::CoreError::PermissionDenied(_))
+        ));
     }
 
     /// Apply PII filter to test data by reconstructing the filter logic.

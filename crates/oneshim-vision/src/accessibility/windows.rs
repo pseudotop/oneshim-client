@@ -28,7 +28,9 @@ mod inner {
 
     use oneshim_core::config::PiiFilterLevel;
     use oneshim_core::error::CoreError;
-    use oneshim_core::models::focused_element::{ElementRect, FocusedElementInfo};
+    use oneshim_core::models::focused_element::{
+        AccessibilityElement, ElementRect, FocusedElementInfo,
+    };
     use oneshim_core::ports::accessibility::AccessibilityExtractor;
 
     use crate::privacy::sanitize_title_with_level;
@@ -198,6 +200,16 @@ mod inner {
         const IELEMENT_GET_CURRENT_NAME_INDEX: usize = 23;
         const IELEMENT_GET_CURRENT_BOUNDING_RECT_INDEX: usize = 27;
         const IELEMENT_GET_CURRENT_PROPERTY_VALUE_INDEX: usize = 12;
+
+        // IUIAutomation: get_RawViewWalker is at vtable index 15
+        const IUIAUTOMATION_GET_RAW_VIEW_WALKER_INDEX: usize = 15;
+
+        // IUIAutomationTreeWalker vtable offsets
+        // IUnknown: 0-2
+        // GetFirstChildElement: index 4
+        // GetNextSiblingElement: index 6
+        const ITREEWALKER_GET_FIRST_CHILD_INDEX: usize = 4;
+        const ITREEWALKER_GET_NEXT_SIBLING_INDEX: usize = 6;
 
         /// UIA bounding rectangle (uses f64, not i32 like Windows RECT).
         #[repr(C)]
@@ -417,6 +429,177 @@ mod inner {
             }
         }
 
+        /// Extract the accessibility subtree of the focused element's parent window.
+        ///
+        /// Uses IUIAutomation TreeWalker for breadth-first traversal with
+        /// depth and element count limits.
+        pub(super) fn extract_tree_via_uia(
+            max_depth: u32,
+            max_elements: usize,
+        ) -> Vec<(String, Option<String>, Option<ElementRect>)> {
+            unsafe {
+                let hr = windows_sys::Win32::System::Com::CoInitializeEx(
+                    ptr::null(),
+                    windows_sys::Win32::System::Com::COINIT_MULTITHREADED,
+                );
+                if hr < 0 {
+                    return Vec::new();
+                }
+                let _com_guard = ComGuard;
+
+                // Create IUIAutomation
+                let mut automation: *mut std::ffi::c_void = ptr::null_mut();
+                let hr = windows_sys::Win32::System::Com::CoCreateInstance(
+                    &CLSID_CUIAUTOMATION,
+                    ptr::null_mut(),
+                    windows_sys::Win32::System::Com::CLSCTX_INPROC_SERVER,
+                    &IID_IUIAUTOMATION,
+                    &mut automation,
+                );
+                if hr < 0 || automation.is_null() {
+                    return Vec::new();
+                }
+
+                // Get focused element
+                let mut element: *mut std::ffi::c_void = ptr::null_mut();
+                let get_focused: unsafe extern "system" fn(
+                    *mut std::ffi::c_void,
+                    *mut *mut std::ffi::c_void,
+                ) -> i32 = std::mem::transmute(vtable_fn(
+                    automation,
+                    IUIAUTOMATION_GET_FOCUSED_ELEMENT_INDEX,
+                ));
+                let hr = get_focused(automation, &mut element);
+                if hr < 0 || element.is_null() {
+                    release(automation);
+                    return Vec::new();
+                }
+
+                // Get RawViewWalker
+                let mut walker: *mut std::ffi::c_void = ptr::null_mut();
+                let get_walker: unsafe extern "system" fn(
+                    *mut std::ffi::c_void,
+                    *mut *mut std::ffi::c_void,
+                ) -> i32 = std::mem::transmute(vtable_fn(
+                    automation,
+                    IUIAUTOMATION_GET_RAW_VIEW_WALKER_INDEX,
+                ));
+                let hr = get_walker(automation, &mut walker);
+                release(automation);
+                if hr < 0 || walker.is_null() {
+                    release(element);
+                    return Vec::new();
+                }
+
+                let mut results = Vec::new();
+                let mut remaining = max_elements;
+                collect_subtree(walker, element, 0, max_depth, &mut remaining, &mut results);
+
+                release(walker);
+                release(element);
+                results
+            }
+        }
+
+        /// Recursive depth-limited subtree collection.
+        unsafe fn collect_subtree(
+            walker: *mut std::ffi::c_void,
+            element: *mut std::ffi::c_void,
+            depth: u32,
+            max_depth: u32,
+            remaining: &mut usize,
+            results: &mut Vec<(String, Option<String>, Option<ElementRect>)>,
+        ) {
+            if *remaining == 0 || depth > max_depth {
+                return;
+            }
+
+            // Extract properties from current element
+            let mut control_type: i32 = 0;
+            let get_ct: unsafe extern "system" fn(*mut std::ffi::c_void, *mut i32) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_CONTROL_TYPE_INDEX));
+            let hr = get_ct(element, &mut control_type);
+            let role = if hr >= 0 {
+                control_type_to_role(control_type).to_string()
+            } else {
+                "Unknown".to_string()
+            };
+
+            let mut name_bstr: *mut u16 = ptr::null_mut();
+            let get_name: unsafe extern "system" fn(*mut std::ffi::c_void, *mut *mut u16) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_NAME_INDEX));
+            let hr = get_name(element, &mut name_bstr);
+            let name = if hr >= 0 {
+                let s = bstr_to_string(name_bstr);
+                sys_free_string(name_bstr);
+                s.filter(|s| !s.is_empty())
+            } else {
+                None
+            };
+
+            let mut rect = UiaRect {
+                left: 0.0,
+                top: 0.0,
+                width: 0.0,
+                height: 0.0,
+            };
+            let get_rect: unsafe extern "system" fn(*mut std::ffi::c_void, *mut UiaRect) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_BOUNDING_RECT_INDEX));
+            let hr = get_rect(element, &mut rect);
+            let position = if hr >= 0 && (rect.width > 0.0 || rect.height > 0.0) {
+                Some(ElementRect {
+                    x: rect.left as f32,
+                    y: rect.top as f32,
+                    width: rect.width as f32,
+                    height: rect.height as f32,
+                })
+            } else {
+                None
+            };
+
+            results.push((role, name, position));
+            *remaining = remaining.saturating_sub(1);
+
+            // Recurse into children
+            if depth < max_depth && *remaining > 0 {
+                let get_first_child: unsafe extern "system" fn(
+                    *mut std::ffi::c_void,
+                    *mut std::ffi::c_void,
+                    *mut *mut std::ffi::c_void,
+                ) -> i32 =
+                    std::mem::transmute(vtable_fn(walker, ITREEWALKER_GET_FIRST_CHILD_INDEX));
+
+                let mut child: *mut std::ffi::c_void = ptr::null_mut();
+                let hr = get_first_child(walker, element, &mut child);
+                if hr >= 0 && !child.is_null() {
+                    collect_subtree(walker, child, depth + 1, max_depth, remaining, results);
+
+                    // Traverse siblings
+                    let get_next_sibling: unsafe extern "system" fn(
+                        *mut std::ffi::c_void,
+                        *mut std::ffi::c_void,
+                        *mut *mut std::ffi::c_void,
+                    ) -> i32 =
+                        std::mem::transmute(vtable_fn(walker, ITREEWALKER_GET_NEXT_SIBLING_INDEX));
+
+                    loop {
+                        if *remaining == 0 {
+                            release(child);
+                            break;
+                        }
+                        let mut sibling: *mut std::ffi::c_void = ptr::null_mut();
+                        let hr = get_next_sibling(walker, child, &mut sibling);
+                        release(child);
+                        if hr < 0 || sibling.is_null() {
+                            break;
+                        }
+                        child = sibling;
+                        collect_subtree(walker, child, depth + 1, max_depth, remaining, results);
+                    }
+                }
+            }
+        }
+
         /// RAII guard to call `CoUninitialize` when dropped.
         struct ComGuard;
 
@@ -574,6 +757,57 @@ mod inner {
             }
         }
 
+        async fn extract_window_elements(
+            &self,
+            max_depth: u32,
+            max_elements: usize,
+            pii_level: PiiFilterLevel,
+            has_full_text_consent: bool,
+        ) -> Result<Vec<AccessibilityElement>, CoreError> {
+            if Self::is_debugger_attached() {
+                return Ok(Vec::new());
+            }
+            if !Self::circuit_allows() {
+                return Ok(Vec::new());
+            }
+
+            let effective_level = if pii_level == PiiFilterLevel::Off && !has_full_text_consent {
+                PiiFilterLevel::Standard
+            } else {
+                pii_level
+            };
+
+            let result = tokio::task::spawn_blocking(move || {
+                com::extract_tree_via_uia(max_depth, max_elements)
+            })
+            .await
+            .map_err(|e| CoreError::Internal(format!("UIA tree traversal task failed: {e}")))?;
+
+            if result.is_empty() {
+                Self::record_failure();
+            } else {
+                Self::record_success();
+            }
+
+            // Already handled: COM failures return empty Vec, not PermissionDenied.
+            // Windows UIA does not require special permissions.
+            Ok(result
+                .into_iter()
+                .map(|(role, name, bounds)| {
+                    let label = if effective_level == PiiFilterLevel::Strict {
+                        String::new()
+                    } else {
+                        name.unwrap_or_default()
+                    };
+                    AccessibilityElement {
+                        role,
+                        label,
+                        bounds,
+                    }
+                })
+                .collect())
+        }
+
         fn has_permission(&self) -> bool {
             // Windows UIAutomation does not require special permissions
             true
@@ -632,6 +866,15 @@ mod tests {
         let extractor = WindowsUiaAccessibility::new();
         let result = extractor
             .extract_focused_element(PiiFilterLevel::Standard, false)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn extract_window_elements_returns_ok() {
+        let extractor = WindowsUiaAccessibility::new();
+        let result = extractor
+            .extract_window_elements(3, 300, PiiFilterLevel::Standard, false)
             .await;
         assert!(result.is_ok());
     }

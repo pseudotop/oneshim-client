@@ -12,6 +12,7 @@ authors.workspace = true
 [features]
 default = []
 ocr = ["leptess"]
+linux-atspi = ["atspi"]
 
 [dependencies]
 oneshim-core = { workspace = true }
@@ -41,6 +42,9 @@ core-foundation-sys = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+atspi = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

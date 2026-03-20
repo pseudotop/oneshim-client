@@ -1,6 +1,7 @@
 use chrono::{Datelike, Duration as ChronoDuration, Timelike, Utc};
 use oneshim_core::models::activity::{IdleState, ProcessSnapshot, ProcessSnapshotEntry};
 use oneshim_core::models::event::{ContextEvent, Event, ProcessSnapshotEvent};
+use oneshim_core::models::focused_element::AccessibilityElement;
 use oneshim_core::models::frame::{ImagePayload, OcrRegion};
 use oneshim_monitor::idle::IdleTracker;
 use oneshim_monitor::input_activity::InputActivityCollector;
@@ -396,6 +397,16 @@ impl Scheduler {
                                         thumbnail_data: thumb_data,
                                         app_name: app_name.clone(),
                                         window_title: event.window_title.clone(),
+                                        accessibility_elements: last_focused_element
+                                            .as_ref()
+                                            .map(|f| {
+                                                vec![AccessibilityElement {
+                                                    role: f.role.clone(),
+                                                    label: f.label.clone().unwrap_or_default(),
+                                                    bounds: f.position,
+                                                }]
+                                            })
+                                            .unwrap_or_default(),
                                     });
                                 }
 
@@ -413,6 +424,7 @@ impl Scheduler {
                                                 thumbnail_data: vec![],
                                                 app_name: capture_req.app_name.clone(),
                                                 window_title: capture_req.window_title.clone(),
+                                                accessibility_elements: Vec::new(),
                                             };
                                             if let Some(flush) = ring_buffer.check_and_flush(capture_req.importance, flush_frame) {
                                                 let batch: Vec<_> = flush.pre_event_frames

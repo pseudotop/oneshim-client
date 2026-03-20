@@ -71,6 +71,9 @@ pub enum CoreError {
     #[error("Privacy denied: {0}")]
     PrivacyDenied(String),
 
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
+
     #[error("OCR error: {0}")]
     OcrError(String),
 
@@ -120,4 +123,17 @@ pub enum GuiInteractionError {
 
     #[error("GUI runtime failed: {0}")]
     Internal(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permission_denied_display() {
+        let err = CoreError::PermissionDenied("macOS Accessibility".to_string());
+        let msg = format!("{err}");
+        assert!(msg.contains("Permission denied"));
+        assert!(msg.contains("macOS Accessibility"));
+    }
 }

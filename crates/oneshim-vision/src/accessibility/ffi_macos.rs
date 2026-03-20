@@ -30,6 +30,7 @@ pub(crate) mod ax {
     pub const kAXErrorAPIDisabled: AXError = -25211;
     pub const kAXErrorNoValue: AXError = -25212;
     pub const kAXErrorAttributeUnsupported: AXError = -25205;
+    pub const kAXErrorNotImplemented: AXError = -25208;
 
     // Attribute key string values -- constructed at call time.
     // These correspond to the Apple-defined kAX*Attribute constants.
@@ -41,6 +42,9 @@ pub(crate) mod ax {
     pub const AX_POSITION_ATTR: &str = "AXPosition";
     pub const AX_SIZE_ATTR: &str = "AXSize";
     pub const AX_PLACEHOLDER_VALUE_ATTR: &str = "AXPlaceholderValue";
+    pub const AX_CHILDREN_ATTR: &str = "AXChildren";
+    pub const AX_WINDOW_ATTR: &str = "AXWindow";
+    pub const AX_FOCUSED_WINDOW_ATTR: &str = "AXFocusedWindow";
 
     /// Create a CFStringRef from a Rust string constant.
     /// The returned CFString is autoreleased/owned by the caller through
@@ -72,6 +76,16 @@ pub(crate) mod ax {
         /// permission. `options` can be NULL or a dictionary containing
         /// kAXTrustedCheckOptionPrompt.
         pub fn AXIsProcessTrustedWithOptions(options: CFTypeRef) -> bool;
+
+        /// Copy multiple attribute values from an accessibility element in a single IPC.
+        /// `attributes` is a CFArrayRef of CFStringRef attribute names.
+        /// `values` receives a CFArrayRef of CFTypeRef values (same order).
+        pub fn AXUIElementCopyMultipleAttributeValues(
+            element: AXUIElementRef,
+            attributes: core_foundation_sys::array::CFArrayRef,
+            options: u32, // 0 = default
+            values: *mut core_foundation_sys::array::CFArrayRef,
+        ) -> AXError;
     }
 
     // Extract a CGPoint / CGSize from an AXValue.

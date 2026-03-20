@@ -287,6 +287,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         let ai_runtime_status = automation_build.ai_runtime_status.clone();
         let automation_controller = automation_build.controller;
         let automation_controller_for_state = automation_controller.clone();
+        let gui_audit_logger = web_audit_logger.clone();
         let mut runtime_bindings = self.support_context.build_runtime_bindings(
             self.launch_context.event_tx.clone(),
             self.data_dir,
@@ -296,6 +297,11 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         runtime_bindings.override_store = self.override_store;
         runtime_bindings.recluster_requested = self.recluster_requested;
         runtime_bindings.coaching_engine = self.coaching_engine;
+
+        // Spawn GUI audit forwarder if the automation controller has a GUI service
+        if let Some(ref controller) = automation_controller {
+            spawn_gui_audit_forwarder(controller, gui_audit_logger);
+        }
 
         let web_storage = self.storage.clone();
         let web_config = self.config.web.clone();
@@ -326,4 +332,37 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             automation_controller: automation_controller_for_state,
         }
     }
+}
+
+/// Subscribes to GUI session events and forwards them to the audit logger.
+fn spawn_gui_audit_forwarder(
+    automation_controller: &Arc<AutomationController>,
+    audit_logger: Arc<tokio::sync::RwLock<AuditLogger>>,
+) {
+    let Some(gui_service) = automation_controller.gui_service() else {
+        tracing::debug!("GUI service not configured; skipping audit forwarder");
+        return;
+    };
+
+    let mut rx = gui_service.subscribe();
+
+    tokio::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let action_type = format!("gui.session.{}", event.event_type);
+                    let details = event.message.unwrap_or_default();
+                    let mut logger = audit_logger.write().await;
+                    logger.log_event(&action_type, &event.session_id, &details);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("GUI audit forwarder lagged by {n} events");
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    tracing::debug!("GUI event channel closed; audit forwarder exiting");
+                    break;
+                }
+            }
+        }
+    });
 }

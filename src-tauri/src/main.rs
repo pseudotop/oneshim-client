@@ -41,6 +41,7 @@ mod lifecycle;
 #[cfg(target_os = "macos")]
 mod macos_integration;
 mod magic_overlay;
+mod magic_overlay_driver;
 mod memory_profiler;
 mod notification_manager;
 mod oauth_provider_registry;
