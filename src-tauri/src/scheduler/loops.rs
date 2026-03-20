@@ -20,6 +20,24 @@ use oneshim_storage::frame_storage::FrameFileStorage;
 use super::config::{base64_decode, PlatformEgressPolicy, SchedulerStorage};
 use super::Scheduler;
 
+// ── Coaching LLM personalization ──────────────────────────────────────
+
+const COACHING_SYSTEM_PROMPT: &str =
+    "You are a concise productivity coach. Rewrite the given message \
+     to be more personalized and contextual. Keep the same intent. \
+     Respond with ONLY the rewritten message, no preamble.";
+
+fn build_personalization_prompt(template_text: &str, regime_label: &str) -> String {
+    format!(
+        "Rewrite this productivity coaching message to be more personalized \
+         and contextual. Keep the same intent and information, but make it \
+         feel natural.\n\n\
+         Original: {template_text}\n\
+         Current regime: {regime_label}\n\
+         Respond with ONLY the rewritten message, no preamble.",
+    )
+}
+
 /// Run event-driven LLM analysis when the user switches to a new app.
 /// Persists any resulting suggestions to storage.
 async fn handle_event_analysis(
@@ -153,6 +171,9 @@ impl Scheduler {
         let config_manager1 = self.config_manager.clone();
         let consent_manager1 = self.consent_manager.clone();
         let coaching_engine_ref = self.coaching_engine.clone();
+        let overlay_ref = self.magic_overlay.clone();
+        let coaching_storage_ref = self.coaching_storage.clone();
+        let coaching_analysis_provider = self.analysis_provider.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
@@ -537,14 +558,39 @@ impl Scheduler {
                                         )
                                         .await
                                     {
-                                        // Send desktop notification (Phase 1 delivery)
+                                        // 1. Show on MagicOverlay (primary delivery)
+                                        if let Some(ref overlay) = overlay_ref {
+                                            overlay.show_coaching(&message).await;
+                                        }
+
+                                        // 2. Also send desktop notification (fallback)
                                         if let Some(ref notif) = notif1 {
                                             notif
                                                 .notify_coaching(&message.template_text)
                                                 .await;
                                         }
 
-                                        // Register for feedback tracking
+                                        // 3. Persist coaching event to storage
+                                        if let Some(ref cs) = coaching_storage_ref {
+                                            let event_row = oneshim_core::models::coaching::CoachingEventRow {
+                                                event_id: message.message_id.clone(),
+                                                trigger_type: oneshim_core::models::coaching::trigger_type_name(&message.trigger),
+                                                profile_name: format!("{:?}", message.profile),
+                                                regime_id: regime_id_for_coaching.map(String::from),
+                                                message_template: message.template_text.clone(),
+                                                personalized_message: None,
+                                                shown_at: chrono::Utc::now().to_rfc3339(),
+                                                dismissed_at: None,
+                                                dismiss_action: None,
+                                                feedback_type: None,
+                                                feedback_score: None,
+                                            };
+                                            if let Err(e) = cs.insert_coaching_event(&event_row) {
+                                                warn!("coaching event persist failure: {e}");
+                                            }
+                                        }
+
+                                        // 4. Register for feedback tracking
                                         coaching
                                             .register_pending_feedback(
                                                 &message.message_id,
@@ -563,6 +609,43 @@ impl Scheduler {
                                             "coaching message: {}",
                                             message.template_text,
                                         );
+
+                                        // 5. Spawn background LLM personalization
+                                        if let Some(ref provider) = coaching_analysis_provider {
+                                            let msg_clone = message.clone();
+                                            let provider_clone = provider.clone();
+                                            let overlay_clone = overlay_ref.clone();
+                                            let storage_clone = coaching_storage_ref.clone();
+                                            let regime = regime_label_for_coaching.to_string();
+                                            tokio::spawn(async move {
+                                                let prompt = build_personalization_prompt(
+                                                    &msg_clone.template_text,
+                                                    &regime,
+                                                );
+                                                match provider_clone.analyze(&prompt, COACHING_SYSTEM_PROMPT).await {
+                                                    Ok(suggestions) if !suggestions.is_empty() => {
+                                                        let personalized = &suggestions[0].content;
+                                                        // Upgrade overlay if still visible
+                                                        if let Some(ref overlay) = overlay_clone {
+                                                            overlay.upgrade_message(&msg_clone.message_id, personalized).await;
+                                                        }
+                                                        // Persist personalized text to storage
+                                                        if let Some(ref cs) = storage_clone {
+                                                            if let Err(e) = cs.update_coaching_event_personalized(
+                                                                &msg_clone.message_id,
+                                                                personalized,
+                                                            ) {
+                                                                debug!("coaching personalization persist: {e}");
+                                                            }
+                                                        }
+                                                    }
+                                                    Ok(_) => { /* No suggestions returned — template remains */ }
+                                                    Err(e) => {
+                                                        debug!("LLM coaching personalization failed: {e}");
+                                                    }
+                                                }
+                                            });
+                                        }
                                     }
                                 }
 

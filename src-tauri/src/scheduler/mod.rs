@@ -131,6 +131,14 @@ pub struct Scheduler {
     /// `None` when coaching is not configured. The engine checks `enabled`
     /// internally and returns `None` from `evaluate()` when disabled.
     pub(super) coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
+    /// MagicOverlay handle for coaching message delivery (Phase 2).
+    pub(super) magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    /// Analysis provider for LLM personalization of coaching messages (Phase 2).
+    pub(super) analysis_provider:
+        Option<Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>>,
+    /// Concrete SQLite storage for coaching event persistence (Phase 2).
+    /// The coaching storage methods are on `SqliteStorage` directly, not via a trait.
+    pub(super) coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
 }
 
 impl Scheduler {
@@ -176,6 +184,9 @@ impl Scheduler {
             accessibility_extractor: None,
             consent_manager: None,
             coaching_engine: None,
+            magic_overlay: None,
+            analysis_provider: None,
+            coaching_storage: None,
         }
     }
 
@@ -270,6 +281,30 @@ impl Scheduler {
     #[allow(dead_code)]
     pub fn with_coaching_engine(mut self, engine: Arc<oneshim_analysis::CoachingEngine>) -> Self {
         self.coaching_engine = Some(engine);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_magic_overlay(mut self, overlay: crate::magic_overlay::MagicOverlayHandle) -> Self {
+        self.magic_overlay = Some(overlay);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_analysis_provider(
+        mut self,
+        provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>,
+    ) -> Self {
+        self.analysis_provider = Some(provider);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_coaching_storage(
+        mut self,
+        storage: Arc<oneshim_storage::sqlite::SqliteStorage>,
+    ) -> Self {
+        self.coaching_storage = Some(storage);
         self
     }
 
