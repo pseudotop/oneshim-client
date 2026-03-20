@@ -8,6 +8,7 @@ pub mod digests;
 pub mod recalibration;
 
 pub mod backup;
+pub mod coaching;
 pub mod data;
 pub mod events;
 pub mod export;

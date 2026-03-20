@@ -248,6 +248,16 @@ pub fn api_routes() -> Router<AppState> {
             post(handlers::recalibration::trigger_recluster),
         )
         // Pomodoro timer
+        // Coaching endpoints
+        .route(
+            "/coaching/history",
+            get(handlers::coaching::get_coaching_history),
+        )
+        .route(
+            "/coaching/goals",
+            get(handlers::coaching::get_goals).put(handlers::coaching::update_goals),
+        )
+        // Pomodoro timer
         .route("/pomodoro/start", post(handlers::pomodoro::start_pomodoro))
         .route(
             "/pomodoro/current",
@@ -314,6 +324,7 @@ mod tests {
             text_search: None,
             override_store: None,
             recluster_requested: None,
+            coaching_engine: None,
             pomodoro: Arc::new(Mutex::new(None)),
         };
         let _app: Router<()> = api_routes().with_state(state);
@@ -348,6 +359,7 @@ mod tests {
             text_search: None,
             override_store: None,
             recluster_requested: None,
+            coaching_engine: None,
             pomodoro: Arc::new(Mutex::new(None)),
         };
         let _app: Router<()> = integration_routes().with_state(state);

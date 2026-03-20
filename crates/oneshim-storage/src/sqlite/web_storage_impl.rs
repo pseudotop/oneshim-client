@@ -736,6 +736,15 @@ impl WebStorage for SqliteStorage {
 
         Ok(records)
     }
+
+    fn query_coaching_events(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, CoreError> {
+        // Delegate to the coaching_storage impl on SqliteStorage
+        self.query_coaching_events(limit, offset)
+    }
 }
 
 /// Parse the centroid (center x, center y) from a bbox JSON string.

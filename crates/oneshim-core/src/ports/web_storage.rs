@@ -230,4 +230,14 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
     ) -> Result<Vec<GuiInteractionRecord>, CoreError> {
         Ok(vec![])
     }
+
+    /// Query coaching events, newest first, with pagination.
+    /// Default returns empty — storage adapters that support coaching tables override.
+    fn query_coaching_events(
+        &self,
+        _limit: u32,
+        _offset: u32,
+    ) -> Result<Vec<crate::models::coaching::CoachingEventRow>, CoreError> {
+        Ok(vec![])
+    }
 }
