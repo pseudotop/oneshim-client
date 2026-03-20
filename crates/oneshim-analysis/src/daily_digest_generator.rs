@@ -25,7 +25,7 @@ impl DailyDigestGenerator {
 
         DailyDigest {
             date,
-            insight: None, // Filled by DailyInsightGenerator (Task 8)
+            insight: None, // Filled by DailyInsightGenerator in scheduler aggregation loop
             timeline,
             statistics,
             generated_at: Utc::now(),

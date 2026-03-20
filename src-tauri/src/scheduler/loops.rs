@@ -707,6 +707,7 @@ impl Scheduler {
     pub(super) fn spawn_aggregation_loop(
         &self,
         aggregation_interval: Duration,
+        llm_summarizer: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let sqlite6 = self.sqlite_storage.clone();
@@ -928,11 +929,36 @@ impl Scheduler {
                                             .ok()
                                             .flatten();
 
-                                        let digest = oneshim_analysis::DailyDigestGenerator::generate(
+                                        let mut digest = oneshim_analysis::DailyDigestGenerator::generate(
                                             &segments,
                                             yesterday,
                                             prev_digest.as_ref(),
                                         );
+
+                                        // Generate LLM narrative insight if provider is available.
+                                        if let Some(ref summarizer) = llm_summarizer {
+                                            let pii_level = config_manager
+                                                .as_ref()
+                                                .map(|cm| cm.get().privacy.pii_filter_level)
+                                                .unwrap_or(oneshim_core::config::PiiFilterLevel::Standard);
+                                            let pii_filter: oneshim_analysis::PiiFilter =
+                                                Box::new(move |text: &str| {
+                                                    oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
+                                                });
+                                            let insight_gen = oneshim_analysis::DailyInsightGenerator::new(
+                                                summarizer.analysis_provider(),
+                                                pii_filter,
+                                            );
+                                            match insight_gen.generate(&digest).await {
+                                                Some(insight) => {
+                                                    debug!("LLM daily insight generated for {}", date_str);
+                                                    digest.insight = Some(insight);
+                                                }
+                                                None => {
+                                                    debug!("LLM daily insight unavailable for {}", date_str);
+                                                }
+                                            }
+                                        }
 
                                         if let Err(e) = sqlite6.save_daily_digest(&digest) {
                                             warn!("daily digest save failure: {e}");
@@ -1499,6 +1525,13 @@ impl Scheduler {
             .expect("adaptive trigger lock")
             .take();
 
+        // Clone the LLM summarizer Arc (if present) before the adaptive trigger
+        // state is moved into the monitor loop. The aggregation loop uses this to
+        // generate LLM narratives for daily digests.
+        let llm_summarizer_for_digest = adaptive_trigger_state
+            .as_ref()
+            .and_then(|ts| ts.llm_summarizer.clone());
+
         // Construct GUI pipeline state if enabled + consented
         if let Some(ref mut ts) = adaptive_trigger_state {
             let gui_config = self
@@ -1553,7 +1586,11 @@ impl Scheduler {
             shutdown_rx.clone(),
         );
 
-        let aggregation_task = self.spawn_aggregation_loop(aggregation, shutdown_rx.clone());
+        let aggregation_task = self.spawn_aggregation_loop(
+            aggregation,
+            llm_summarizer_for_digest,
+            shutdown_rx.clone(),
+        );
 
         let notification_task = self.spawn_notification_loop(shutdown_rx.clone());
 
