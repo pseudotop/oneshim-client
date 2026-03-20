@@ -610,15 +610,12 @@ mod tests {
             };
             let (decision, _cal) = trigger.process_event(&input, ts, &params);
 
-            match decision {
-                TriggerDecision::OpenSegment => {
-                    trigger.start_new_segment(ts);
-                    segment_buffer.start_segment(ts);
-                    segment_buffer.push(ts, input.clone());
-                    opened = true;
-                    break;
-                }
-                _ => {}
+            if decision == TriggerDecision::OpenSegment {
+                trigger.start_new_segment(ts);
+                segment_buffer.start_segment(ts);
+                segment_buffer.push(ts, input.clone());
+                opened = true;
+                break;
             }
         }
         assert!(

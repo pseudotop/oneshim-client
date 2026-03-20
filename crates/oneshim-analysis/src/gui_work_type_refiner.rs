@@ -66,7 +66,6 @@ impl GuiWorkTypeRefiner {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use oneshim_core::models::gui_interaction::GuiElementType;
 
     fn make_summary_with(
         button_clicks: u32,
