@@ -1,25 +1,69 @@
-/**
- * HeatmapGhost — semi-transparent attention heatmap overlay showing
- * click/interaction density as colored regions on screen.
- *
- * Status: Phase 3 placeholder (renders null).
- *
- * Prerequisites for implementation:
- * 1. Monitor loop: aggregate mouse position into a per-pixel heat counter
- *    (ring buffer, 5-minute sliding window, 50x50 grid buckets).
- *    Data source: InputActivityCollector already tracks mouse position;
- *    aggregation into grid buckets is the missing piece.
- * 2. Tauri event: `coaching://heatmap-update` with grid data (JSON array).
- * 3. Canvas renderer: draw semi-transparent colored rectangles per bucket,
- *    mapping interaction count to a warm-to-hot color gradient.
- * 4. Performance: must stay under 5ms render time per update to avoid
- *    blocking the overlay's animation frame budget.
- *
- * The GUI heatmap data pipeline already exists (monitor crate collects
- * mouse/keyboard input patterns). Canvas rendering will be added in
- * Phase 3 once real-time position data aggregation is wired through
- * the Tauri event bridge.
- */
+import { useEffect, useRef } from 'react'
+
+interface HeatmapPayload {
+  grid: number[]
+  cols: number
+  rows: number
+}
+
+/** Warm-to-hot color gradient: transparent → green → yellow → red */
+function valueToColor(v: number): string {
+  if (v < 0.05) return 'transparent'
+  // Green (low) → Yellow (mid) → Red (high)
+  const r = v < 0.5 ? Math.floor(v * 2 * 255) : 255
+  const g = v < 0.5 ? 255 : Math.floor((1 - (v - 0.5) * 2) * 255)
+  const alpha = 0.15 + v * 0.35 // 0.15 → 0.50
+  return `rgba(${r}, ${g}, 0, ${alpha})`
+}
+
 export default function HeatmapGhost() {
-  return null
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null
+
+    async function setup() {
+      const { listen } = await import('@tauri-apps/api/event')
+
+      unlisten = await listen<HeatmapPayload>('overlay:heatmap-update', (e) => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+
+        const { grid, cols, rows } = e.payload
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+
+        const w = canvas.width
+        const h = canvas.height
+        const cellW = w / cols
+        const cellH = h / rows
+
+        ctx.clearRect(0, 0, w, h)
+
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            const v = grid[row * cols + col]
+            if (v < 0.05) continue
+            ctx.fillStyle = valueToColor(v)
+            ctx.fillRect(col * cellW, row * cellH, cellW, cellH)
+          }
+        }
+      })
+    }
+
+    setup()
+    return () => {
+      unlisten?.()
+    }
+  }, [])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={window.innerWidth}
+      height={window.innerHeight}
+      className="pointer-events-none fixed inset-0"
+      style={{ zIndex: 0 }}
+    />
+  )
 }

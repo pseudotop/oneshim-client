@@ -290,6 +290,27 @@ impl MagicOverlayHandle {
             debug!("Overlay interactive={interactive}");
         }
     }
+
+    /// Emit heatmap grid data to the overlay for HeatmapGhost rendering.
+    /// `grid` is a flat 50×50 array of normalized [0.0, 1.0] values (row-major).
+    pub fn emit_heatmap(&self, grid: Vec<f32>) {
+        #[derive(Serialize)]
+        struct HeatmapPayload {
+            grid: Vec<f32>,
+            cols: usize,
+            rows: usize,
+        }
+
+        let payload = HeatmapPayload {
+            grid,
+            cols: 50,
+            rows: 50,
+        };
+
+        if let Err(e) = self.app_handle.emit("overlay:heatmap-update", &payload) {
+            debug!("failed to emit overlay:heatmap-update: {e}");
+        }
+    }
 }
 
 #[cfg(test)]

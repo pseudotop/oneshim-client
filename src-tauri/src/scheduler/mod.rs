@@ -3,6 +3,7 @@ mod config;
 /// GUI Activity Intelligence pipeline — wired into the monitor loop.
 /// Called after `run_analysis_tick()` each cycle when `gui_intelligence.enabled`.
 pub(crate) mod gui_pipeline;
+pub(crate) mod heatmap;
 mod loops;
 
 // ── Public re-exports (external API) ────────────────────────────────
@@ -91,6 +92,10 @@ pub(crate) struct AdaptiveTriggerState {
     /// Centralized app registry for subcategory classification.
     /// Replaces the hardcoded `infer_subcategory()` fallback.
     pub(crate) app_registry: Arc<AppRegistry>,
+
+    // --- Heatmap ---
+    /// Mouse interaction heatmap aggregator for overlay visualization.
+    pub(crate) heatmap_aggregator: heatmap::HeatmapAggregator,
 }
 
 pub struct Scheduler {

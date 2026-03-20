@@ -321,12 +321,13 @@ impl Scheduler {
                                 }
 
                                 if let Some(layout_event) = window_tracker.update(&app_name, &window_title, window_bounds) {
-                                    // Update GUI detector resolution from the latest layout event
+                                    // Update GUI detector + heatmap resolution from the latest layout event
                                     let (res_w, res_h) = layout_event.screen_resolution;
                                     if let Some(ref mut ts) = adaptive_trigger_state {
                                         if let Some(ref mut gui_state) = ts.gui_pipeline_state {
                                             gui_state.detector.update_resolution(res_w, res_h);
                                         }
+                                        ts.heatmap_aggregator.update_resolution(res_w, res_h);
                                     }
 
                                     let win_event = Event::Window(layout_event);
@@ -511,6 +512,19 @@ impl Scheduler {
                                             if let Err(e) = sqlite1.save_gui_interaction(&input) {
                                                 warn!("GUI interaction save failure: {e}");
                                             }
+                                        }
+                                    }
+                                }
+
+                                // ── Heatmap aggregation ──
+                                // Record click positions and periodically emit to overlay.
+                                if let Some(ref mut ts) = adaptive_trigger_state {
+                                    if let Some((x, y)) = input_snap.mouse.last_position {
+                                        ts.heatmap_aggregator.record(x, y, input_snap.mouse.click_count);
+                                    }
+                                    if let Some(grid) = ts.heatmap_aggregator.take_snapshot() {
+                                        if let Some(ref overlay) = overlay_ref {
+                                            overlay.emit_heatmap(grid);
                                         }
                                     }
                                 }

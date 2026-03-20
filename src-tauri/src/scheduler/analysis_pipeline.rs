@@ -909,6 +909,7 @@ mod tests {
             gui_pipeline_state: None,
             gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
             app_registry: Arc::new(oneshim_core::app_registry::AppRegistry::new()),
+            heatmap_aggregator: crate::scheduler::heatmap::HeatmapAggregator::new(),
         }
     }
 
