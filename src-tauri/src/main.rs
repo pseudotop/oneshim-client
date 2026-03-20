@@ -109,7 +109,9 @@ fn main() {
     }
 
     #[allow(unused_mut)]
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
     // WebDriver 서버 플러그인 — E2E 테스트용 (production 빌드에 절대 포함 금지)
     #[cfg(feature = "webdriver")]
