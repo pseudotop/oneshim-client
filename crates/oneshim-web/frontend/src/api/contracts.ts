@@ -1197,3 +1197,21 @@ export interface SceneCalibrationReport {
   passed: boolean
   reasons: string[]
 }
+
+// Pomodoro timer
+export type PomodoroStatus = 'running' | 'on_break' | 'completed' | 'cancelled'
+
+export interface PomodoroSession {
+  id: string
+  started_at: string
+  duration_minutes: number
+  break_minutes: number
+  status: PomodoroStatus
+  remaining_secs: number
+  completed_at: string | null
+}
+
+export interface StartPomodoroRequest {
+  duration_minutes?: number
+  break_minutes?: number
+}

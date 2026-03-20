@@ -43,6 +43,7 @@ import type {
   OAuthFlowStatus,
   PaginatedResponse,
   PoliciesInfo,
+  PomodoroSession,
   PresetRunResult,
   ProcessSnapshot,
   ProviderEndpointProbeResult,
@@ -57,6 +58,7 @@ import type {
   SearchParams,
   SearchResponse,
   SecretBackendCapabilities,
+  StartPomodoroRequest,
   Session,
   StorageStats,
   SuggestionFeedbackAction,
@@ -903,4 +905,43 @@ export async function probeProviderSurfaceEndpoint(args: {
     endpointKind: args.endpoint_kind,
     endpoint: args.endpoint,
   })
+}
+
+// ── Pomodoro Timer ─────────────────────────────────────────────
+
+export async function startPomodoro(req?: StartPomodoroRequest): Promise<PomodoroSession> {
+  const res = await fetchWithRetry(`${BASE_URL}/pomodoro/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req ?? {}),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || `Start pomodoro failed (${res.status})`)
+  }
+  return res.json()
+}
+
+export async function fetchCurrentPomodoro(): Promise<PomodoroSession | null> {
+  const res = await fetchWithRetry(`${BASE_URL}/pomodoro/current`)
+  if (!res.ok) throw new Error('Failed to fetch current pomodoro')
+  return res.json()
+}
+
+export async function cancelPomodoro(): Promise<PomodoroSession> {
+  const res = await fetchWithRetry(`${BASE_URL}/pomodoro/cancel`, { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || `Cancel pomodoro failed (${res.status})`)
+  }
+  return res.json()
+}
+
+export async function completePomodoro(): Promise<PomodoroSession> {
+  const res = await fetchWithRetry(`${BASE_URL}/pomodoro/complete`, { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || `Complete pomodoro failed (${res.status})`)
+  }
+  return res.json()
 }

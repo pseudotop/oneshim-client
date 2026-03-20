@@ -5076,6 +5076,7 @@ dependencies = [
  "oneshim-core",
  "serde",
  "sysinfo",
+ "tempfile",
  "tokio",
  "tracing",
  "windows-sys 0.61.2",

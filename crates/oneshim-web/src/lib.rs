@@ -94,6 +94,7 @@ pub struct AppState {
     pub text_search: Option<Arc<dyn oneshim_core::ports::text_search::TextSearchProvider>>,
     pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
+    pub pomodoro: Arc<std::sync::Mutex<Option<oneshim_core::models::pomodoro::PomodoroSession>>>,
 }
 
 #[derive(Clone, Default)]
@@ -157,6 +158,7 @@ impl WebServer {
                 text_search: None,
                 override_store: None,
                 recluster_requested: None,
+                pomodoro: Arc::new(std::sync::Mutex::new(None)),
             },
             bound_port_state: None,
             bound_port_notifier: None,
@@ -739,6 +741,7 @@ mod tests {
             text_search: None,
             override_store: None,
             recluster_requested: None,
+            pomodoro: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 

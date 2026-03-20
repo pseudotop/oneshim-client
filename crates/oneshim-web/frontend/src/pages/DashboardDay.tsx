@@ -1,10 +1,12 @@
 /**
- * DashboardDay — daily timetable view with insight, timeline, and statistics.
+ * DashboardDay — daily timetable view with insight, timeline, statistics,
+ * and a Pomodoro focus timer widget.
  */
 import { useQuery } from '@tanstack/react-query'
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import InsightCard from '../components/InsightCard'
+import PomodoroTimer from '../components/PomodoroTimer'
 import StatisticsPanel from '../components/StatisticsPanel'
 import TimelineView from '../components/TimelineView'
 import { Button, Card, Skeleton } from '../components/ui'
@@ -110,9 +112,9 @@ export default function DashboardDay() {
   const isToday = date === todayStr()
 
   return (
-    <div className="min-h-full space-y-6 p-6">
+    <div className="min-h-full p-6">
       {/* Date navigation */}
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+      <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <h1 className={cn(typography.h1, colors.text.pageTitle)}>Daily Timetable</h1>
 
         <div className="flex items-center gap-2">
@@ -155,43 +157,54 @@ export default function DashboardDay() {
       </div>
 
       {/* Display date */}
-      <p className={cn('text-sm', colors.text.secondary)}>{formatDisplayDate(date)}</p>
+      <p className={cn('mb-6 text-sm', colors.text.secondary)}>{formatDisplayDate(date)}</p>
 
-      {/* Loading state */}
-      {isLoading && (
-        <div className="space-y-4">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-64 w-full" />
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
-          </div>
+      {/* Two-column layout: main content + sidebar timer */}
+      <div className="flex flex-col gap-6 lg:flex-row">
+        {/* Main content */}
+        <div className="min-w-0 flex-1 space-y-6">
+          {/* Loading state */}
+          {isLoading && (
+            <div className="space-y-4">
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-64 w-full" />
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            </div>
+          )}
+
+          {/* Error state */}
+          {error && (
+            <Card variant="danger" padding="md">
+              <p className="text-red-400">Failed to load daily digest. Please try again later.</p>
+            </Card>
+          )}
+
+          {/* Content */}
+          {data && !isLoading && (
+            <>
+              <InsightCard insight={data.insight} />
+              <TimelineView
+                timeline={data.timeline}
+                overrides={overrides}
+                regimeOptions={regimeOptions}
+                onCreateOverride={(req) => createOverrideMutation.mutate(req)}
+                isMutating={createOverrideMutation.isPending}
+              />
+              <StatisticsPanel statistics={data.statistics} />
+            </>
+          )}
         </div>
-      )}
 
-      {/* Error state */}
-      {error && (
-        <Card variant="danger" padding="md">
-          <p className="text-red-400">Failed to load daily digest. Please try again later.</p>
-        </Card>
-      )}
-
-      {/* Content */}
-      {data && !isLoading && (
-        <>
-          <InsightCard insight={data.insight} />
-          <TimelineView
-            timeline={data.timeline}
-            overrides={overrides}
-            regimeOptions={regimeOptions}
-            onCreateOverride={(req) => createOverrideMutation.mutate(req)}
-            isMutating={createOverrideMutation.isPending}
-          />
-          <StatisticsPanel statistics={data.statistics} />
-        </>
-      )}
+        {/* Sidebar: Pomodoro timer */}
+        <aside className="w-full shrink-0 lg:w-56">
+          <PomodoroTimer />
+        </aside>
+      </div>
     </div>
   )
 }
