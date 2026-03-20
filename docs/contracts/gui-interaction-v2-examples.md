@@ -50,7 +50,7 @@ curl -s -X POST http://localhost:10090/api/automation/gui/sessions \
           "role": "button",
           "text_masked": "Save File",
           "confidence": 0.92,
-          "source": "accessibility",
+          "label": "Save File",
           "bbox_abs": { "x": 120, "y": 45, "width": 80, "height": 32 },
           "bbox_norm": { "x": 0.0625, "y": 0.0417, "width": 0.0417, "height": 0.0296 }
         },
@@ -59,7 +59,7 @@ curl -s -X POST http://localhost:10090/api/automation/gui/sessions \
           "role": "text_field",
           "text_masked": "Search...",
           "confidence": 0.88,
-          "source": "accessibility",
+          "label": "Search...",
           "bbox_abs": { "x": 300, "y": 10, "width": 200, "height": 28 },
           "bbox_norm": { "x": 0.1563, "y": 0.0093, "width": 0.1042, "height": 0.0259 }
         }
@@ -81,7 +81,7 @@ curl -s -X POST http://localhost:10090/api/automation/gui/sessions \
           "role": "button",
           "text_masked": "Save File",
           "confidence": 0.92,
-          "source": "accessibility",
+          "label": "Save File",
           "bbox_abs": { "x": 120, "y": 45, "width": 80, "height": 32 },
           "bbox_norm": { "x": 0.0625, "y": 0.0417, "width": 0.0417, "height": 0.0296 }
         },
@@ -94,7 +94,7 @@ curl -s -X POST http://localhost:10090/api/automation/gui/sessions \
           "role": "text_field",
           "text_masked": "Search...",
           "confidence": 0.88,
-          "source": "accessibility",
+          "label": "Search...",
           "bbox_abs": { "x": 300, "y": 10, "width": 200, "height": 28 },
           "bbox_norm": { "x": 0.1563, "y": 0.0093, "width": 0.1042, "height": 0.0259 }
         },
@@ -371,7 +371,7 @@ curl -s -X POST http://localhost:10090/api/automation/gui/sessions/a1b2c3d4-e5f6
       "bounds": { "x": 120, "y": 45, "width": 80, "height": 32 },
       "role": "button",
       "confidence": 0.92,
-      "source": "accessibility"
+      "source": "Ocr"
     },
     "verification": {
       "screen_changed": true,

@@ -231,57 +231,6 @@ mod tests {
         }
     }
 
-    // ── DriftingFocusProbe ───────────────────────────────────────────────
-
-    struct DriftingFocusProbe {
-        initial_focus: FocusSnapshot,
-        drifted_focus: FocusSnapshot,
-        /// current_focus returns initial_focus for first `drift_after` calls,
-        /// then drifted_focus.
-        drift_after: usize,
-        call_count: AtomicUsize,
-    }
-
-    impl DriftingFocusProbe {
-        fn new(initial: FocusSnapshot, drifted: FocusSnapshot, drift_after: usize) -> Self {
-            Self {
-                initial_focus: initial,
-                drifted_focus: drifted,
-                drift_after,
-                call_count: AtomicUsize::new(0),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl FocusProbe for DriftingFocusProbe {
-        async fn current_focus(&self) -> Result<FocusSnapshot, CoreError> {
-            let n = self.call_count.fetch_add(1, Ordering::SeqCst);
-            if n < self.drift_after {
-                Ok(self.initial_focus.clone())
-            } else {
-                Ok(self.drifted_focus.clone())
-            }
-        }
-
-        async fn validate_execution_binding(
-            &self,
-            _binding: &ExecutionBinding,
-        ) -> Result<FocusValidation, CoreError> {
-            let n = self.call_count.load(Ordering::SeqCst);
-            let valid = n <= self.drift_after;
-            Ok(FocusValidation {
-                valid,
-                reason: if valid {
-                    None
-                } else {
-                    Some("Window focus changed to another application".to_string())
-                },
-                current_focus: None,
-            })
-        }
-    }
-
     // ── Fixture builders ────────────────────────────────────────────────
 
     fn make_element(id: &str, label: &str, confidence: f64) -> UiSceneElement {
