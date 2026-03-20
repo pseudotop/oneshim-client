@@ -43,18 +43,19 @@ const WM_STOP_HOOK: u32 = WM_USER + 1;
 ///
 /// Each key-down event is classified via `classify_keycode()` and forwarded
 /// to `InputActivityCollector::record_categorized_keystroke()`.
+// Module-scope thread-locals shared between `run_raw_input_hook` (populates)
+// and `raw_input_wnd_proc` (reads). Must be at module scope so both functions
+// reference the same storage.
+#[cfg(target_os = "windows")]
+thread_local! {
+    static TL_COLLECTOR: std::cell::RefCell<Option<Arc<InputActivityCollector>>> =
+        std::cell::RefCell::new(None);
+    static TL_RUNNING: std::cell::RefCell<Option<Arc<AtomicBool>>> =
+        std::cell::RefCell::new(None);
+}
+
 #[cfg(target_os = "windows")]
 pub fn run_raw_input_hook(collector: Arc<InputActivityCollector>, running: Arc<AtomicBool>) {
-    // Store collector in a thread-local so the window procedure can access it.
-    // This is safe because the window procedure runs on the same thread as the
-    // message loop.
-    thread_local! {
-        static TL_COLLECTOR: std::cell::RefCell<Option<Arc<InputActivityCollector>>> =
-            std::cell::RefCell::new(None);
-        static TL_RUNNING: std::cell::RefCell<Option<Arc<AtomicBool>>> =
-            std::cell::RefCell::new(None);
-    }
-
     TL_COLLECTOR.with(|c| *c.borrow_mut() = Some(collector));
     TL_RUNNING.with(|r| *r.borrow_mut() = Some(running.clone()));
 
@@ -192,11 +193,6 @@ unsafe extern "system" fn raw_input_wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    thread_local! {
-        static TL_COLLECTOR: std::cell::RefCell<Option<Arc<InputActivityCollector>>> =
-            std::cell::RefCell::new(None);
-    }
-
     if msg == WM_INPUT {
         // Retrieve the size of the RAWINPUT structure.
         let mut size: u32 = 0;
