@@ -979,4 +979,84 @@ mod tests {
         );
         assert_eq!(name3, "Second"); // Name from reset is preserved
     }
+
+    #[test]
+    fn enforce_all_retention_runs_without_error() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // Insert test data into tables covered by enforce_all_retention
+        {
+            let conn = storage.conn.lock().unwrap();
+
+            // work_sessions — old closed session (schema: primary_app, category, started_at, ended_at)
+            conn.execute(
+                "INSERT INTO work_sessions (primary_app, category, started_at, ended_at)
+                 VALUES ('Code', 'Development', datetime('now', '-100 days'), datetime('now', '-100 days', '+1 hour'))",
+                [],
+            ).unwrap();
+
+            // interruptions — old record (schema: interrupted_at, from_app, from_category, to_app, to_category)
+            conn.execute(
+                "INSERT INTO interruptions (interrupted_at, from_app, from_category, to_app, to_category)
+                 VALUES (datetime('now', '-100 days'), 'Code', 'Development', 'Slack', 'Communication')",
+                [],
+            ).unwrap();
+
+            // suggestions — old record
+            conn.execute(
+                "INSERT INTO suggestions (suggestion_id, suggestion_type, content, priority, source, created_at)
+                 VALUES ('sugg-001', 'general', 'Take a break', 'Low', 'server', datetime('now', '-100 days'))",
+                [],
+            ).unwrap();
+
+            // local_suggestions — old record
+            conn.execute(
+                "INSERT INTO local_suggestions (suggestion_type, payload, created_at)
+                 VALUES ('TakeBreak', '{}', datetime('now', '-100 days'))",
+                [],
+            )
+            .unwrap();
+
+            // focus_metrics — old record
+            conn.execute(
+                "INSERT INTO focus_metrics (date, total_active_secs)
+                 VALUES (date('now', '-400 days'), 0)",
+                [],
+            )
+            .unwrap();
+        }
+
+        // enforce_all_retention should delete the old rows
+        let deleted = storage.enforce_all_retention().unwrap();
+        assert!(
+            deleted >= 5,
+            "expected at least 5 rows deleted, got {deleted}"
+        );
+    }
+
+    #[test]
+    fn enforce_all_retention_keeps_recent_data() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        {
+            let conn = storage.conn.lock().unwrap();
+
+            // Recent work_session (should NOT be deleted)
+            conn.execute(
+                "INSERT INTO work_sessions (primary_app, category, started_at, ended_at)
+                 VALUES ('Code', 'Development', datetime('now', '-1 day'), datetime('now', '-1 day', '+1 hour'))",
+                [],
+            ).unwrap();
+
+            // Recent interruption (should NOT be deleted)
+            conn.execute(
+                "INSERT INTO interruptions (interrupted_at, from_app, from_category, to_app, to_category)
+                 VALUES (datetime('now', '-1 day'), 'Code', 'Development', 'Slack', 'Communication')",
+                [],
+            ).unwrap();
+        }
+
+        let deleted = storage.enforce_all_retention().unwrap();
+        assert_eq!(deleted, 0, "recent data should not be deleted");
+    }
 }

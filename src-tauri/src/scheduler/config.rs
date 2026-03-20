@@ -74,6 +74,11 @@ pub trait SchedulerStorage: MetricsStorage + Send + Sync {
         &self,
         input: &oneshim_core::models::storage_records::NewGuiInteraction<'_>,
     ) -> Result<(), CoreError>;
+
+    /// Enforce retention for all auxiliary tables (work_sessions, interruptions,
+    /// gui_interactions, suggestions, local_suggestions, focus_metrics,
+    /// daily_digests, regime_overrides). Returns total rows deleted.
+    fn enforce_all_retention(&self) -> Result<u64, CoreError>;
 }
 
 impl SchedulerStorage for SqliteStorage {
@@ -153,6 +158,10 @@ impl SchedulerStorage for SqliteStorage {
     ) -> Result<(), CoreError> {
         use oneshim_core::ports::web_storage::WebStorage;
         WebStorage::save_gui_interaction(self, input)
+    }
+
+    fn enforce_all_retention(&self) -> Result<u64, CoreError> {
+        SqliteStorage::enforce_all_retention(self)
     }
 }
 

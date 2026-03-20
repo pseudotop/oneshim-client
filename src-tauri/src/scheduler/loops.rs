@@ -831,6 +831,11 @@ impl Scheduler {
                             if let Err(e) = sqlite6.enforce_digest_retention(52) {
                                 warn!("digest retention failure: {e}");
                             }
+
+                            // Auxiliary table retention (work_sessions, interruptions, etc.)
+                            if let Err(e) = sqlite6.enforce_all_retention() {
+                                warn!("auxiliary table retention failure: {e}");
+                            }
                         }
 
                         // --- Weekly digest auto-generation ---
