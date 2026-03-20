@@ -159,6 +159,18 @@ impl CoachingEngine {
         *rid = new_regime_id.map(String::from);
         let mut entered = self.current_regime_entered.write().await;
         *entered = Some(Utc::now());
+
+        // Daily reset + increment context switch counter
+        let today = Utc::now().date_naive();
+        {
+            let mut date = self.context_switch_date.write().await;
+            let mut count = self.context_switch_count.write().await;
+            if *date != today {
+                *count = 0;
+                *date = today;
+            }
+            *count += 1;
+        }
     }
 
     /// Build the variable substitution map for template rendering.
@@ -194,13 +206,21 @@ impl CoachingEngine {
             vars.insert("remaining_minutes".to_string(), "0".to_string());
         }
 
-        // Placeholder values for Phase 1 (will be enriched in Phase 2)
-        // TODO(Phase 2): wire actual context switch count from regime transition history
-        vars.insert("context_switches".to_string(), "N/A".to_string());
-        // TODO(Phase 2): wire historical comparison data from daily digest / weekly trends
-        vars.insert("comparison".to_string(), "N/A".to_string());
-        // TODO(Phase 2): wire previous context from regime transition tracking
-        vars.insert("previous_context".to_string(), "N/A".to_string());
+        // Context switch count (daily)
+        let switch_count = *self.context_switch_count.read().await;
+        vars.insert("context_switches".to_string(), switch_count.to_string());
+
+        // Historical comparison — EMA of regime dwell duration
+        let avgs = self.regime_avg_duration.read().await;
+        let avg_secs = avgs.get(regime_label).copied().unwrap_or(1800.0) as u64;
+        vars.insert("comparison".to_string(), super::humanize_duration(avg_secs));
+
+        // Previous context — last known regime before the current one
+        let prev_regime = self.current_regime_id.read().await;
+        vars.insert(
+            "previous_context".to_string(),
+            prev_regime.as_deref().unwrap_or("unknown").to_string(),
+        );
 
         vars
     }

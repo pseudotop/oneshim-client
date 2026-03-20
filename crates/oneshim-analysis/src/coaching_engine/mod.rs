@@ -40,6 +40,11 @@ pub struct CoachingEngine {
     /// Per-regime-label EMA of dwell duration in seconds.
     /// Key: regime_label (not regime_id, since IDs are opaque).
     pub(super) regime_avg_duration: RwLock<HashMap<String, f64>>,
+
+    /// Count of regime transitions today. Reset at midnight.
+    pub(super) context_switch_count: RwLock<u32>,
+    /// Date of last reset (for daily reset logic).
+    pub(super) context_switch_date: RwLock<chrono::NaiveDate>,
 }
 
 impl CoachingEngine {
@@ -59,6 +64,8 @@ impl CoachingEngine {
             current_regime_entered: RwLock::new(None),
             snoozed_until: RwLock::new(None),
             regime_avg_duration: RwLock::new(HashMap::new()),
+            context_switch_count: RwLock::new(0),
+            context_switch_date: RwLock::new(chrono::Utc::now().date_naive()),
         }
     }
 
@@ -616,5 +623,15 @@ mod tests {
             "avg should reflect actual short dwell, got {}",
             avg
         );
+    }
+
+    #[tokio::test]
+    async fn context_switch_count_increments() {
+        let engine = CoachingEngine::new(enabled_config());
+        engine.on_regime_change(Some("r-a")).await;
+        engine.on_regime_change(Some("r-b")).await;
+        engine.on_regime_change(Some("r-c")).await;
+        let vars = engine.build_variables("Test", 600, "VS Code").await;
+        assert_eq!(vars.get("context_switches").unwrap(), "3");
     }
 }
