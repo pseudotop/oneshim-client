@@ -1,8 +1,9 @@
-use chrono::{DateTime, Local, NaiveTime, Utc};
+mod guards;
+mod triggers;
+
+use chrono::{DateTime, Utc};
 use oneshim_core::config::CoachingConfig;
-use oneshim_core::models::coaching::{
-    trigger_type_name, CoachingMessage, CoachingProfile, GoalProgressView, TriggerType,
-};
+use oneshim_core::models::coaching::{trigger_type_name, CoachingMessage, GoalProgressView};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -22,19 +23,19 @@ use crate::regime_goal_tracker::RegimeGoalTracker;
 pub struct CoachingEngine {
     config: RwLock<CoachingConfig>,
     templates: CoachingTemplateRegistry,
-    goal_tracker: RwLock<RegimeGoalTracker>,
-    feedback_tracker: RwLock<FeedbackTracker>,
+    pub(super) goal_tracker: RwLock<RegimeGoalTracker>,
+    pub(super) feedback_tracker: RwLock<FeedbackTracker>,
 
     /// Profile display name -> last alert timestamp (cooldown enforcement).
-    last_alert: RwLock<HashMap<String, DateTime<Utc>>>,
+    pub(super) last_alert: RwLock<HashMap<String, DateTime<Utc>>>,
     /// Current regime ID for transition detection.
-    current_regime_id: RwLock<Option<String>>,
+    pub(super) current_regime_id: RwLock<Option<String>>,
     /// Timestamp when the current regime was entered.
-    current_regime_entered: RwLock<Option<DateTime<Utc>>>,
+    pub(super) current_regime_entered: RwLock<Option<DateTime<Utc>>>,
 
     /// Tracks a snoozed profile: (profile_name, snooze_expiry_instant).
     /// When set, `evaluate()` skips triggers for this profile until the Instant passes.
-    snoozed_until: RwLock<Option<(String, Instant)>>,
+    pub(super) snoozed_until: RwLock<Option<(String, Instant)>>,
 }
 
 impl CoachingEngine {
@@ -95,14 +96,7 @@ impl CoachingEngine {
         }
 
         // 2b. Clear expired snooze eagerly (before trigger detection)
-        {
-            let mut guard = self.snoozed_until.write().await;
-            if let Some((_, until)) = guard.as_ref() {
-                if Instant::now() >= *until {
-                    *guard = None;
-                }
-            }
-        }
+        self.clear_expired_snooze().await;
 
         // 3. Detect trigger
         let trigger = self
@@ -118,16 +112,9 @@ impl CoachingEngine {
         // 4. Match profile
         let profile = Self::match_profile(&config, &trigger, regime_label, app_name)?;
 
-        // 4b. Snooze check — compare matched profile name against snoozed profile
-        {
-            let guard = self.snoozed_until.read().await;
-            if let Some((ref snoozed_profile, until)) = *guard {
-                let matched_profile_name = format!("{:?}", profile);
-                if Instant::now() < until && matched_profile_name == *snoozed_profile {
-                    debug!(profile = %snoozed_profile, "coaching suppressed: snoozed");
-                    return None;
-                }
-            }
+        // 4b. Snooze check
+        if self.is_profile_snoozed(&profile).await {
+            return None;
         }
 
         // 5. Cooldown check
@@ -173,246 +160,7 @@ impl CoachingEngine {
         })
     }
 
-    /// Detect which trigger type fired (if any).
-    ///
-    /// Priority order:
-    /// 1. RegimeTransition (regime ID changed)
-    /// 2. RegimeDrift (attention drift flagged)
-    /// 3. GoalThreshold (milestone crossed)
-    /// 4. RegimeOverstay (duration > 1.2x average)
-    async fn detect_trigger(
-        &self,
-        regime_id: Option<&str>,
-        regime_label: &str,
-        regime_duration_secs: u64,
-        avg_regime_duration_secs: u64,
-        drift_detected: bool,
-    ) -> Option<TriggerType> {
-        // 1. Regime transition — read current, compare, then drop guard before write
-        let transition = {
-            let current = self.current_regime_id.read().await;
-            let current_str = current.as_deref();
-            let changed = match (current_str, regime_id) {
-                (Some(old), Some(new)) => old != new,
-                (None, Some(_)) => true,
-                (Some(_), None) => true,
-                (None, None) => false,
-            };
-            if changed {
-                Some(current.clone()) // clone the Option<String>, then guard drops
-            } else {
-                None
-            }
-        }; // read guard dropped here
-        if let Some(from_regime) = transition {
-            let to_regime = regime_id.map(String::from);
-            // Update internal tracking (acquires write lock, safe now)
-            self.on_regime_change(regime_id).await;
-            return Some(TriggerType::RegimeTransition {
-                from_regime,
-                to_regime,
-            });
-        }
-
-        // 2. Regime drift
-        if drift_detected {
-            return Some(TriggerType::RegimeDrift {
-                regime_label: regime_label.to_string(),
-            });
-        }
-
-        // 3. Goal threshold
-        {
-            let mut gt = self.goal_tracker.write().await;
-            if let Some(threshold) = gt.check_threshold(regime_label) {
-                let progress = gt.progress(regime_label);
-                let (target, current) = progress
-                    .map(|p| (p.target_minutes, p.current_minutes))
-                    .unwrap_or((0, 0));
-                return Some(TriggerType::GoalThreshold {
-                    regime_label: regime_label.to_string(),
-                    target_minutes: target,
-                    current_minutes: current,
-                    threshold_percent: threshold,
-                });
-            }
-        }
-
-        // 4. Regime overstay (duration > 1.2x average)
-        if avg_regime_duration_secs > 0
-            && regime_duration_secs > avg_regime_duration_secs * 120 / 100
-        {
-            return Some(TriggerType::RegimeOverstay {
-                regime_label: regime_label.to_string(),
-                duration_secs: regime_duration_secs,
-                avg_duration_secs: avg_regime_duration_secs,
-            });
-        }
-
-        None
-    }
-
-    /// Map a trigger to a coaching profile, checking if that profile is enabled.
-    fn match_profile(
-        config: &CoachingConfig,
-        trigger: &TriggerType,
-        _regime_label: &str,
-        _app_name: &str,
-    ) -> Option<CoachingProfile> {
-        let profile = match trigger {
-            TriggerType::RegimeTransition { from_regime, .. } => {
-                // If returning from idle/break -> ContextRestore
-                let from_lower = from_regime.as_deref().unwrap_or("").to_lowercase();
-                if from_lower.contains("idle")
-                    || from_lower.contains("break")
-                    || from_lower.contains("away")
-                {
-                    CoachingProfile::ContextRestore
-                } else {
-                    CoachingProfile::FocusGuard
-                }
-            }
-            TriggerType::RegimeDrift { .. } => CoachingProfile::FocusGuard,
-            TriggerType::RegimeOverstay { regime_label, .. } => {
-                let label_lower = regime_label.to_lowercase();
-                if label_lower.contains("deep")
-                    || label_lower.contains("focus")
-                    || label_lower.contains("coding")
-                {
-                    CoachingProfile::DeepWorkCoach
-                } else {
-                    CoachingProfile::TimeAware
-                }
-            }
-            TriggerType::GoalThreshold { .. } => CoachingProfile::GoalTracker,
-        };
-
-        // Check if the matched profile is enabled
-        let profile_name = format!("{:?}", profile);
-        if let Some(profile_config) = config.profiles.get(&profile_name) {
-            if !profile_config.enabled {
-                debug!(profile = %profile_name, "coaching profile disabled");
-                return None;
-            }
-        }
-
-        Some(profile)
-    }
-
-    /// Check if the current time falls within any configured quiet hour range.
-    fn is_quiet_hour(config: &CoachingConfig) -> bool {
-        if config.quiet_hours.is_empty() {
-            return false;
-        }
-
-        let now = Local::now().time();
-
-        for range in &config.quiet_hours {
-            let start = match NaiveTime::parse_from_str(&range.start, "%H:%M") {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-            let end = match NaiveTime::parse_from_str(&range.end, "%H:%M") {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-
-            if start <= end {
-                // Normal range: e.g. 22:00 - 23:00
-                if now >= start && now < end {
-                    return true;
-                }
-            } else {
-                // Overnight range: e.g. 22:00 - 06:00
-                if now >= start || now < end {
-                    return true;
-                }
-            }
-        }
-
-        false
-    }
-
-    /// Check if enough time has passed since the last alert for this profile.
-    /// Returns `true` if the message should be allowed (cooldown passed).
-    async fn check_cooldown(&self, config: &CoachingConfig, profile: &CoachingProfile) -> bool {
-        let profile_name = format!("{:?}", profile);
-        let min_interval = config
-            .profiles
-            .get(&profile_name)
-            .map(|p| p.min_interval_secs)
-            .unwrap_or(300);
-
-        let last = self.last_alert.read().await;
-        match last.get(&profile_name) {
-            Some(last_time) => {
-                let elapsed = (Utc::now() - *last_time).num_seconds();
-                elapsed >= min_interval as i64
-            }
-            None => true,
-        }
-    }
-
-    /// Record the current time as the last alert for this profile.
-    async fn record_alert(&self, profile: &CoachingProfile) {
-        let profile_name = format!("{:?}", profile);
-        let mut last = self.last_alert.write().await;
-        last.insert(profile_name, Utc::now());
-    }
-
-    /// Build the variable substitution map for template rendering.
-    async fn build_variables(
-        &self,
-        regime_label: &str,
-        regime_duration_secs: u64,
-        app_name: &str,
-    ) -> HashMap<String, String> {
-        let mut vars = HashMap::new();
-        vars.insert("regime".to_string(), regime_label.to_string());
-        vars.insert(
-            "duration".to_string(),
-            humanize_duration(regime_duration_secs),
-        );
-        vars.insert("app_name".to_string(), app_name.to_string());
-
-        // Goal-related variables
-        let gt = self.goal_tracker.read().await;
-        if let Some(progress) = gt.progress(regime_label) {
-            vars.insert("goal_progress".to_string(), progress.percentage.to_string());
-            vars.insert(
-                "goal_minutes".to_string(),
-                progress.target_minutes.to_string(),
-            );
-            let remaining = progress
-                .target_minutes
-                .saturating_sub(progress.current_minutes);
-            vars.insert("remaining_minutes".to_string(), remaining.to_string());
-        } else {
-            vars.insert("goal_progress".to_string(), "0".to_string());
-            vars.insert("goal_minutes".to_string(), "0".to_string());
-            vars.insert("remaining_minutes".to_string(), "0".to_string());
-        }
-
-        // Placeholder values for Phase 1 (will be enriched in Phase 2)
-        // TODO(Phase 2): wire actual context switch count from regime transition history
-        vars.insert("context_switches".to_string(), "N/A".to_string());
-        // TODO(Phase 2): wire historical comparison data from daily digest / weekly trends
-        vars.insert("comparison".to_string(), "N/A".to_string());
-        // TODO(Phase 2): wire previous context from regime transition tracking
-        vars.insert("previous_context".to_string(), "N/A".to_string());
-
-        vars
-    }
-
     // ── Public delegation methods ──────────────────────────────────────
-
-    /// Update internal regime tracking when a regime change is detected.
-    pub async fn on_regime_change(&self, new_regime_id: Option<&str>) {
-        let mut rid = self.current_regime_id.write().await;
-        *rid = new_regime_id.map(String::from);
-        let mut entered = self.current_regime_entered.write().await;
-        *entered = Some(Utc::now());
-    }
 
     /// Hot-reload coaching config at runtime.
     ///
@@ -554,8 +302,9 @@ fn humanize_duration(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Timelike;
+    use chrono::{Local, Timelike};
     use oneshim_core::config::{ProfileConfig, TimeRange};
+    use oneshim_core::models::coaching::{CoachingProfile, TriggerType};
 
     fn disabled_config() -> CoachingConfig {
         CoachingConfig {
