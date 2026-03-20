@@ -54,6 +54,7 @@
 | File | Change |
 |------|--------|
 | `src-tauri/src/main.rs` | Add `mod magic_overlay;` declaration |
+| `crates/oneshim-analysis/src/coaching_engine.rs` | Add `snooze_current_profile()`, `all_goal_progress()`, `update_regime_goals()` methods |
 | `src-tauri/src/commands.rs` | Add 8 coaching IPC commands |
 | `src-tauri/src/runtime_state.rs` | Add `MagicOverlayHandle` + `coaching_engine` to `AppState` |
 | `src-tauri/src/scheduler/loops.rs` | Wire `MagicOverlayHandle` + LLM spawn into coaching evaluation |
@@ -64,7 +65,8 @@
 | `crates/oneshim-web/frontend/src/pages/Settings.tsx` | Add coaching goals tab |
 | `crates/oneshim-web/frontend/src/components/shell/TreeView.tsx` | Add "Coaching" nav entry |
 | `crates/oneshim-web/frontend/src/i18n/index.ts` | Add coaching i18n keys (en/ko) |
-| `crates/oneshim-web/src/routes.rs` | Add `/api/coaching/*` REST endpoints |
+| `crates/oneshim-web/src/lib.rs` | Add `coaching_engine: Option<Arc<CoachingEngine>>` to web `AppState` |
+| `crates/oneshim-web/src/routes.rs` | Add `/api/coaching/*` REST endpoints; update `routes_compile` test constructor |
 | `crates/oneshim-web/src/handlers/mod.rs` | Add `pub mod coaching;` |
 | `src-tauri/Cargo.toml` | Add `tauri-plugin-global-shortcut` dependency |
 
@@ -151,7 +153,7 @@ pub struct MagicOverlayHandle {
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 1.2: Implement window lifecycle methods**
@@ -219,7 +221,7 @@ async fn ensure_window(&self) -> Result<(), String> {
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 1.3: Register module and add to AppState**
@@ -242,7 +244,7 @@ let overlay_handle = magic_overlay::MagicOverlayHandle::new(
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 1.4: Create Tauri capability permissions for overlay**
@@ -268,7 +270,7 @@ Create `src-tauri/capabilities/overlay.json`:
 Tauri v2 auto-discovers capability files in the `src-tauri/capabilities/` directory. No additional registration is needed in `tauri.conf.json`.
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 1.5: Add click-through behavior**
@@ -292,7 +294,7 @@ pub async fn set_cursor_passthrough(&self, passthrough: bool) {
 Default state: `ignore_cursor_events(true)` set during window creation.
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 1.6: Add tests**
@@ -307,7 +309,7 @@ Add `#[cfg(test)] mod tests` at the bottom of `magic_overlay.rs`:
 Note: `MagicOverlayHandle` methods that require a real `AppHandle` cannot be tested in unit tests. They are covered by manual testing and integration tests.
 
 ```
-cargo test -p oneshim-tauri -- magic_overlay
+cargo test -p oneshim-app -- magic_overlay
 ```
 
 ---
@@ -317,6 +319,7 @@ cargo test -p oneshim-tauri -- magic_overlay
 **Why:** The React overlay and dashboard apps need to communicate with the Rust backend. IPC commands bridge the gap. These commands are called by the overlay UI (dismiss, feedback, cursor passthrough) and by the dashboard pages (get history, update goals).
 
 **Files:**
+- Modify: `crates/oneshim-analysis/src/coaching_engine.rs` (add `snooze_current_profile`, `all_goal_progress`, `update_regime_goals`)
 - Modify: `src-tauri/src/commands.rs`
 - Modify: `src-tauri/src/runtime_state.rs` (promote `coaching_engine` to `AppState`)
 
@@ -349,10 +352,76 @@ let app_state = AppState {
 This ensures that IPC commands (`dismiss_coaching_message`, `submit_coaching_feedback`, `get_goal_progress`, `update_regime_goals`) can access the engine directly from `AppState`, while the scheduler's coaching loop continues to use the same engine instance.
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
-- [ ] **Step 2.2: Add `dismiss_coaching_message` command**
+- [ ] **Step 2.2: Implement required `CoachingEngine` methods**
+
+The IPC commands in subsequent steps reference `CoachingEngine` methods that may not exist from Phase 1. Add the following methods to `CoachingEngine` in `crates/oneshim-analysis/src/coaching_engine.rs`:
+
+```rust
+/// Set a temporary cooldown override on the last active coaching profile.
+/// While snoozed, `evaluate()` skips that profile's triggers.
+/// The snooze expires after `duration` elapses.
+/// Implementation: store `(profile_name, Instant::now() + duration)` in the
+/// engine state; check it at the start of `evaluate()`.
+pub fn snooze_current_profile(&self, duration: Duration) {
+    let mut state = self.state.lock();
+    if let Some(ref profile_name) = state.last_active_profile {
+        state.snoozed_until = Some((profile_name.clone(), Instant::now() + duration));
+    }
+}
+
+/// Return goal progress for all configured regimes.
+/// Delegates to `RegimeGoalTracker::all_progress()`, maps each `GoalProgress`
+/// to `GoalProgressView` with a deterministic display color assignment.
+pub fn all_goal_progress(&self) -> Vec<GoalProgressView> {
+    const COLORS: &[&str] = &["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+    self.goal_tracker
+        .all_progress()
+        .into_iter()
+        .enumerate()
+        .map(|(i, gp)| GoalProgressView {
+            regime_label: gp.regime_label,
+            current_minutes: gp.current_minutes,
+            target_minutes: gp.target_minutes,
+            percentage: gp.percentage,
+            display_color: COLORS[i % COLORS.len()].to_string(),
+        })
+        .collect()
+}
+
+/// Update the goal tracker's regime targets at runtime.
+/// Called from the IPC `update_regime_goals` command.
+pub fn update_regime_goals(&self, goals: &HashMap<String, u32>) {
+    self.goal_tracker.update_targets(goals);
+}
+```
+
+Also add the `snoozed_until` field to the engine's internal state struct (alongside the existing `last_active_profile`):
+
+```rust
+snoozed_until: Option<(String, Instant)>,
+```
+
+And update the `evaluate()` method to skip snoozed profiles:
+
+```rust
+// At the start of evaluate(), check snooze:
+if let Some((ref profile, until)) = self.state.lock().snoozed_until {
+    if Instant::now() < *until && current_profile == profile {
+        return None; // snoozed, skip evaluation
+    } else if Instant::now() >= *until {
+        self.state.lock().snoozed_until = None; // expired
+    }
+}
+```
+
+```
+cargo check -p oneshim-analysis
+```
+
+- [ ] **Step 2.3: Add `dismiss_coaching_message` command**
 
 ```rust
 #[command]
@@ -384,10 +453,10 @@ pub async fn dismiss_coaching_message(
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
-- [ ] **Step 2.3: Add `submit_coaching_feedback` command**
+- [ ] **Step 2.4: Add `submit_coaching_feedback` command**
 
 ```rust
 #[command]
@@ -404,10 +473,10 @@ pub async fn submit_coaching_feedback(
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
-- [ ] **Step 2.4: Add `set_overlay_mode` and `get_overlay_state` commands**
+- [ ] **Step 2.5: Add `set_overlay_mode` and `get_overlay_state` commands**
 
 ```rust
 #[command]
@@ -452,10 +521,10 @@ pub struct OverlayStateResponse {
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
-- [ ] **Step 2.5: Add `set_overlay_cursor_passthrough` command**
+- [ ] **Step 2.6: Add `set_overlay_cursor_passthrough` command**
 
 ```rust
 #[command]
@@ -471,10 +540,10 @@ pub async fn set_overlay_cursor_passthrough(
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
-- [ ] **Step 2.6: Add `get_coaching_history` command**
+- [ ] **Step 2.7: Add `get_coaching_history` command**
 
 Returns coaching events from SQLite for the history page.
 
@@ -485,10 +554,7 @@ pub async fn get_coaching_history(
     limit: Option<u32>,
     offset: Option<u32>,
 ) -> Result<Vec<CoachingEventRow>, String> {
-    let storage = state.storage.as_ref()
-        .ok_or("Storage not available")?;
-
-    storage.query_coaching_events(
+    state.storage.query_coaching_events(
         limit.unwrap_or(50),
         offset.unwrap_or(0),
     ).await.map_err(|e| e.to_string())
@@ -498,10 +564,10 @@ pub async fn get_coaching_history(
 This requires adding a `query_coaching_events()` method to the storage adapter (see Task 3).
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
-- [ ] **Step 2.7: Add `get_goal_progress` and `update_regime_goals` commands**
+- [ ] **Step 2.8: Add `get_goal_progress` and `update_regime_goals` commands**
 
 ```rust
 #[command]
@@ -526,9 +592,9 @@ pub async fn update_regime_goals(
 
     // Persist to config file
     if let Some(ref config_manager) = state.config_manager {
-        let mut config = config_manager.load().map_err(|e| e.to_string())?;
+        let mut config = config_manager.get().map_err(|e| e.to_string())?;
         config.coaching.regime_goals = goals;
-        config_manager.save(&config).map_err(|e| e.to_string())?;
+        config_manager.update(&config).map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -536,10 +602,10 @@ pub async fn update_regime_goals(
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
-- [ ] **Step 2.8: Register all new commands in Tauri builder**
+- [ ] **Step 2.9: Register all new commands in Tauri builder**
 
 In `src-tauri/src/setup.rs` (or wherever `tauri::Builder` is configured), add the new commands to `.invoke_handler(tauri::generate_handler![...])`:
 
@@ -555,15 +621,8 @@ update_regime_goals,
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
-
-> **Phase 1 API surface note:** Steps 2.2 and 2.7 reference `CoachingEngine` methods that may not exist from Phase 1. If the following methods are not already present on `CoachingEngine`, they must be added as part of this task:
->
-> - **`snooze_current_profile(duration: Duration)`** — Sets a temporary cooldown override on the currently active coaching profile. While snoozed, `evaluate()` skips that profile's triggers. The snooze expires after `duration` elapses. Implementation: store `(profile_name, Instant::now() + duration)` in the engine state; check it at the start of `evaluate()`.
-> - **`all_goal_progress() -> Vec<GoalProgressView>`** — Returns goal progress for all configured regimes. Delegates to `RegimeGoalTracker::all_progress()`, which iterates over the `regime_goals` config map and computes `current_minutes` from today's tracked time per regime label.
->
-> If these methods already exist from Phase 1, no action is needed here.
 
 ---
 
@@ -691,7 +750,7 @@ magic_overlay: Option<Arc<magic_overlay::MagicOverlayHandle>>,
 Pass it in from the `Scheduler` constructor.
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 4.2: Replace desktop notification with overlay delivery**
@@ -756,7 +815,7 @@ if let Some(message) = coaching.evaluate(/* ... */).await {
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 4.3: Implement `build_personalization_prompt()` function**
@@ -799,7 +858,7 @@ fn build_personalization_prompt(
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 ---
@@ -1793,10 +1852,25 @@ import CoachingGoalsTab from './settingSections/CoachingGoalsTab'
 
 **Files:**
 - Create: `crates/oneshim-web/src/handlers/coaching.rs`
+- Modify: `crates/oneshim-web/src/lib.rs` (add `coaching_engine` field to web `AppState`)
 - Modify: `crates/oneshim-web/src/handlers/mod.rs`
 - Modify: `crates/oneshim-web/src/routes.rs`
 
-- [ ] **Step 10.1: Create coaching REST handlers**
+- [ ] **Step 10.1: Add `coaching_engine` field to `oneshim-web::AppState`**
+
+The web `AppState` (in `crates/oneshim-web/src/lib.rs` or wherever it is defined) needs an `Option<Arc<CoachingEngine>>` field so that coaching REST handlers can access the engine for live goal progress. Add:
+
+```rust
+pub coaching_engine: Option<Arc<CoachingEngine>>,
+```
+
+Update the `AppState` construction site in `src-tauri/src/main.rs` (or `oneshim-app/src/main.rs` for standalone mode) to pass the shared `CoachingEngine` instance.
+
+```
+cargo check -p oneshim-web
+```
+
+- [ ] **Step 10.2: Create coaching REST handlers**
 
 Create `crates/oneshim-web/src/handlers/coaching.rs` with:
 
@@ -1819,8 +1893,7 @@ pub async fn get_coaching_history(
     State(state): State<AppState>,
     Query(params): Query<CoachingHistoryQuery>,
 ) -> Result<Json<Vec<CoachingEventResponse>>, ApiError> {
-    let storage = state.storage_service();
-    let events = storage
+    let events = state.storage
         .query_coaching_events(params.limit.unwrap_or(50), params.offset.unwrap_or(0))
         .await
         .map_err(|e| ApiError::internal(&e.to_string()))?;
@@ -1832,9 +1905,12 @@ pub async fn get_coaching_history(
 pub async fn get_goals(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<GoalProgressResponse>>, ApiError> {
-    // Delegate to coaching engine for live progress
-    // Fallback to storage for persisted goals
-    todo!("Wire to CoachingEngine or storage adapter")
+    if let Some(ref engine) = state.coaching_engine {
+        let progress = engine.all_goal_progress();
+        Ok(Json(progress.into_iter().map(GoalProgressResponse::from).collect()))
+    } else {
+        Ok(Json(vec![]))
+    }
 }
 
 /// PUT /api/coaching/goals
@@ -1842,11 +1918,14 @@ pub async fn update_goals(
     State(state): State<AppState>,
     Json(goals): Json<UpdateGoalsRequest>,
 ) -> Result<Json<()>, ApiError> {
-    todo!("Wire to config manager + coaching engine")
+    if let Some(ref engine) = state.coaching_engine {
+        engine.update_regime_goals(&goals.goals);
+    }
+    Ok(Json(()))
 }
 ```
 
-- [ ] **Step 10.2: Register routes**
+- [ ] **Step 10.3: Register routes**
 
 In `crates/oneshim-web/src/routes.rs`, add:
 
@@ -1863,6 +1942,22 @@ pub mod coaching;
 
 ```
 cargo check -p oneshim-web
+```
+
+- [ ] **Step 10.4: Update `routes_compile` test constructors**
+
+The `routes_compile` test (and any other test in `oneshim-web` that constructs `AppState`) must be updated to include the new `coaching_engine` field. Set it to `None` in test constructors:
+
+```rust
+// In routes.rs #[cfg(test)] or tests/ directory:
+let state = AppState {
+    // ... existing fields ...
+    coaching_engine: None,
+};
+```
+
+```
+cargo test -p oneshim-web
 ```
 
 ---
@@ -1957,7 +2052,7 @@ tauri-plugin-global-shortcut = "2"
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 12.2: Register the plugin in the Tauri builder**
@@ -1972,7 +2067,7 @@ tauri::Builder::default()
 ```
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 - [ ] **Step 12.3: Add capability permission for global shortcuts**
@@ -2020,7 +2115,7 @@ app.global_shortcut().on_shortcut(hotkey, move |_app, _shortcut, event| {
 Note: `CommandOrControl` maps to Cmd on macOS and Ctrl on Windows/Linux.
 
 ```
-cargo check -p oneshim-tauri
+cargo check -p oneshim-app
 ```
 
 ---
@@ -2093,7 +2188,7 @@ Verify both `index.html` and `overlay.html` are in the `dist/` output.
 | Task | Files | Tests | Description |
 |------|-------|-------|-------------|
 | 1 | 2 new + 2 modified | 5 | MagicOverlayHandle + capability permissions — Tauri WebView window manager |
-| 2 | 2 modified | 0 | 8 Tauri IPC commands + promote coaching_engine to AppState |
+| 2 | 1 new + 2 modified | 0 | 8 Tauri IPC commands + 3 CoachingEngine methods + promote coaching_engine to AppState |
 | 3 | 2 modified | 4 | Storage adapter coaching query methods |
 | 4 | 2 modified | 0 | Wire LLM personalization + overlay into scheduler |
 | 5 | 4 new + 1 modified | 0 | Overlay React app entry + Vite multi-page build |
@@ -2101,11 +2196,11 @@ Verify both `index.html` and `overlay.html` are in the `dist/` output.
 | 7 | 5 new | 0 | Overlay React components (popup, highlight, progress, heatmap) |
 | 8 | 3 new + 2 modified | 0 | Coaching history page + hooks + API client |
 | 9 | 1 new + 1 modified | 0 | Regime goal settings UI |
-| 10 | 1 new + 2 modified | 0 | REST API endpoints for coaching data |
+| 10 | 1 new + 3 modified | 0 | REST API endpoints for coaching data + AppState coaching_engine field |
 | 11 | 1 modified | 0 | i18n keys (en/ko) |
 | 12 | 3 modified | 0 | Global shortcut plugin + capability + hotkey registration |
 | 13 | 0 | 0 | Workspace verification + manual testing |
-| **Total** | **17 new + 14 modified** | **~9** | |
+| **Total** | **18 new + 15 modified** | **~9** | |
 
 ### Dependency Order
 
