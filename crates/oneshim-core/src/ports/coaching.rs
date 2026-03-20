@@ -9,16 +9,21 @@ use crate::models::coaching::GoalProgressView;
 /// Used by `oneshim-web` REST handlers (blocking variants) and Tauri IPC
 /// commands (async variants).
 ///
-/// # Why synchronous `_blocking` methods?
+/// # Why synchronous `_blocking` methods? (ADR-001 section 2 deviation)
 ///
-/// The Axum web handlers in `oneshim-web` run inside a `tokio::spawn_blocking`
-/// context where `.await` is not available. The `_blocking` suffix signals that
-/// these methods bridge the async `RwLock` internals via
-/// `tokio::task::block_in_place` + `Handle::block_on`. This is a deliberate
-/// deviation from the ADR-001 section 2 async-trait convention: the coaching engine's
-/// internal state uses `tokio::sync::RwLock`, so a fully sync trait is not
-/// possible, but the blocking wrappers let Axum handlers call through the port
-/// without requiring an async context.
+/// The Axum web handlers in `oneshim-web` run inside a synchronous handler
+/// context where `.await` is not directly available. The `_blocking` suffix
+/// signals that these methods bridge the async `tokio::sync::RwLock` internals
+/// via `tokio::task::block_in_place` + `Handle::block_on`.
+///
+/// This is a **deliberate deviation** from ADR-001 section 2 ("Apply `#[async_trait]`
+/// to all port traits"). The coaching engine's internal state uses
+/// `tokio::sync::RwLock` (not `std::sync`), making a fully sync-only trait
+/// impossible. The hybrid approach (sync blocking wrappers + async methods)
+/// serves both consumers:
+///
+/// - **Axum handlers** (`oneshim-web`): call `_blocking` variants
+/// - **Tauri IPC commands** (`src-tauri`): call async variants directly
 ///
 /// # Async methods
 ///
