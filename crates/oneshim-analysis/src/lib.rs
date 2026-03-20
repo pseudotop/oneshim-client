@@ -36,6 +36,7 @@ pub mod weekly_digest_generator;
 mod work_type_classifier;
 
 pub mod coaching_template;
+pub mod regime_goal_tracker;
 
 pub use adaptive_trigger::{AdaptiveTrigger, TriggerDecision};
 pub use analyzer::ContextAnalyzer;
@@ -74,3 +75,4 @@ pub use vector_retriever::VectorRetriever;
 pub use weekly_digest_generator::WeeklyDigestGenerator;
 
 pub use coaching_template::CoachingTemplateRegistry;
+pub use regime_goal_tracker::RegimeGoalTracker;
