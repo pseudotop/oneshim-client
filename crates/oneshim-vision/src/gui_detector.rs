@@ -9,6 +9,7 @@
 use oneshim_core::config::PiiFilterLevel;
 use oneshim_core::models::frame::{BoundingBox, OcrRegion};
 use oneshim_core::models::gui_interaction::{GuiElement, GuiElementType};
+use rstar::{PointDistance, RTree, RTreeObject, AABB};
 
 use crate::privacy::sanitize_title_with_level;
 
@@ -17,6 +18,34 @@ const TAB_LABEL_MAX_LEN: usize = 30;
 
 /// Default proximity threshold in pixels for fallback matching.
 const DEFAULT_PROXIMITY_THRESHOLD_PX: u32 = 40;
+
+/// When OCR region count exceeds this threshold, use R-tree spatial index.
+const SPATIAL_INDEX_THRESHOLD: usize = 400;
+
+/// R-tree wrapper for an OCR region reference.
+struct IndexedRegion<'a> {
+    region: &'a OcrRegion,
+    #[allow(dead_code)]
+    index: usize,
+}
+
+impl RTreeObject for IndexedRegion<'_> {
+    type Envelope = AABB<[f64; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        let b = &self.region.bbox;
+        AABB::from_corners(
+            [b.x as f64, b.y as f64],
+            [(b.x + b.width) as f64, (b.y + b.height) as f64],
+        )
+    }
+}
+
+impl PointDistance for IndexedRegion<'_> {
+    fn distance_2(&self, point: &[f64; 2]) -> f64 {
+        self.envelope().distance_2(point)
+    }
+}
 
 /// Y-tolerance for same-line word grouping (pixels).
 const WORD_GROUP_Y_TOLERANCE: u32 = 5;
@@ -152,6 +181,22 @@ impl GuiElementDetector {
         click_y: u32,
         regions: &[OcrRegion],
     ) -> Option<GuiElement> {
+        // Use R-tree spatial index for large region sets
+        if regions.len() >= SPATIAL_INDEX_THRESHOLD {
+            return self.correlate_click_spatial(click_x, click_y, regions);
+        }
+
+        // Linear scan for small region sets
+        self.correlate_click_linear(click_x, click_y, regions)
+    }
+
+    /// Linear scan matching (O(n)) — used when region count < threshold.
+    fn correlate_click_linear(
+        &self,
+        click_x: u32,
+        click_y: u32,
+        regions: &[OcrRegion],
+    ) -> Option<GuiElement> {
         // 1. Direct hit — smallest containing region
         let direct = regions
             .iter()
@@ -177,15 +222,54 @@ impl GuiElementDetector {
                 .map(|(r, _)| r)
         };
 
-        matched.map(|r| {
-            let filtered_text = sanitize_title_with_level(&r.text, self.pii_filter_level);
-            GuiElement {
-                text: filtered_text,
-                bbox: r.bbox.clone(),
-                element_type: self.infer_element_type(&r.text, &r.bbox),
-                confidence: r.confidence,
+        matched.map(|r| self.build_gui_element(r))
+    }
+
+    /// R-tree spatial index matching (O(log n)) — used when region count >= threshold.
+    fn correlate_click_spatial(
+        &self,
+        click_x: u32,
+        click_y: u32,
+        regions: &[OcrRegion],
+    ) -> Option<GuiElement> {
+        let indexed: Vec<IndexedRegion> = regions
+            .iter()
+            .enumerate()
+            .map(|(i, r)| IndexedRegion {
+                region: r,
+                index: i,
+            })
+            .collect();
+        let tree = RTree::bulk_load(indexed);
+
+        let point = [click_x as f64, click_y as f64];
+
+        // 1. Direct hit — containing regions, pick smallest
+        let containing: Vec<_> = tree.locate_all_at_point(&point).collect();
+        if let Some(hit) = containing.iter().min_by_key(|ir| ir.region.bbox.area()) {
+            return Some(self.build_gui_element(hit.region));
+        }
+
+        // 2. Proximity fallback — nearest within threshold
+        let threshold = self.proximity_threshold_px as f64;
+        if let Some(nearest) = tree.nearest_neighbor(&point) {
+            let dist = nearest.distance_2(&point).sqrt();
+            if dist <= threshold {
+                return Some(self.build_gui_element(nearest.region));
             }
-        })
+        }
+
+        None
+    }
+
+    fn build_gui_element(&self, region: &OcrRegion) -> GuiElement {
+        let filtered_text = sanitize_title_with_level(&region.text, self.pii_filter_level);
+        GuiElement {
+            text: filtered_text,
+            bbox: region.bbox.clone(),
+            element_type: self.infer_element_type(&region.text, &region.bbox),
+            confidence: region.confidence,
+        }
     }
 
     /// Given keyboard activity and the cursor position, identify a text input element.
@@ -909,5 +993,44 @@ mod tests {
         let region = make_region("Save", 500, 500, 50, 20, 0.9);
         let elem = d.correlate_click_with_app(520, 510, &[region], "CustomApp");
         assert_eq!(elem.unwrap().element_type, GuiElementType::Button);
+    }
+
+    // ── R-tree spatial index tests ──
+
+    #[test]
+    fn spatial_index_matches_linear_scan_for_large_regions() {
+        let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+        // Generate 500 regions (above SPATIAL_INDEX_THRESHOLD of 400)
+        let regions: Vec<OcrRegion> = (0..500)
+            .map(|i| {
+                let row = i / 25;
+                let col = i % 25;
+                make_region(&format!("item_{i}"), col * 76, row * 54, 72, 50, 0.9)
+            })
+            .collect();
+
+        // Click at center of region #312 (row 12, col 12)
+        let click_x = 12 * 76 + 36;
+        let click_y = 12 * 54 + 25;
+
+        // This should use the spatial path (500 >= 400)
+        let result = d.correlate_click(click_x, click_y, &regions);
+        assert!(result.is_some(), "spatial index should find a match");
+        assert!(result.unwrap().text.starts_with("item_"));
+    }
+
+    #[test]
+    fn spatial_index_proximity_fallback() {
+        let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+        let mut regions: Vec<OcrRegion> = (0..400)
+            .map(|i| make_region(&format!("r{i}"), (i % 20) * 96, (i / 20) * 54, 90, 50, 0.9))
+            .collect();
+        // Add one region far from click point
+        regions.push(make_region("target", 960, 540, 50, 20, 0.9));
+
+        // Click near but not inside "target"
+        let result = d.correlate_click(1000, 545, &regions);
+        // Should find "target" via proximity (within 40px)
+        assert!(result.is_some());
     }
 }

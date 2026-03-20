@@ -72,6 +72,9 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-webdriver = "0.2"
 
+# 공간 인덱스
+rstar = "0.12"
+
 # 에러 처리
 thiserror = "2"
 anyhow = "1"
