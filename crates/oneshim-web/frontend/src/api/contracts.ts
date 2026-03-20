@@ -1215,3 +1215,10 @@ export interface StartPomodoroRequest {
   duration_minutes?: number
   break_minutes?: number
 }
+
+// GUI activity intelligence — click-position heatmap point (50x50 grid bin)
+export interface GuiHeatmapPoint {
+  x: number
+  y: number
+  count: number
+}

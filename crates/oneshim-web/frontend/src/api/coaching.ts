@@ -32,7 +32,7 @@ export async function fetchCoachingHistory(limit = 50, offset = 0): Promise<Coac
   if (IS_TAURI) {
     return tauriInvoke<CoachingEvent[]>('get_coaching_history', { limit, offset })
   }
-  const url = resolveApiUrl(`/api/coaching/history?limit=${limit}&offset=${offset}`)
+  const url = await resolveApiUrl(`/api/coaching/history?limit=${limit}&offset=${offset}`)
   const response = await fetch(url)
   if (!response.ok) throw new Error(`Failed to fetch coaching history: ${response.statusText}`)
   return response.json()
@@ -42,7 +42,7 @@ export async function fetchGoalProgress(): Promise<GoalProgress[]> {
   if (IS_TAURI) {
     return tauriInvoke<GoalProgress[]>('get_goal_progress')
   }
-  const url = resolveApiUrl('/api/coaching/goals')
+  const url = await resolveApiUrl('/api/coaching/goals')
   const response = await fetch(url)
   if (!response.ok) throw new Error(`Failed to fetch goal progress: ${response.statusText}`)
   return response.json()
@@ -52,7 +52,7 @@ export async function updateRegimeGoals(goals: Record<string, number>): Promise<
   if (IS_TAURI) {
     return tauriInvoke<void>('update_regime_goals', { goals })
   }
-  const url = resolveApiUrl('/api/coaching/goals')
+  const url = await resolveApiUrl('/api/coaching/goals')
   const response = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
