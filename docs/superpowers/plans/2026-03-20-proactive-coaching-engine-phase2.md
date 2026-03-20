@@ -32,6 +32,7 @@
 | File | Content |
 |------|---------|
 | `src-tauri/src/magic_overlay.rs` | `MagicOverlayHandle` — Tauri WebView window creation, event emission, state management |
+| `src-tauri/capabilities/overlay.json` | Tauri v2 capability permissions for the overlay window (events, cursor, show/hide) |
 | `crates/oneshim-web/frontend/src/overlay/main.tsx` | Overlay React app entry point (separate from dashboard) |
 | `crates/oneshim-web/frontend/src/overlay/App.tsx` | Overlay root component — layout, event listeners, mode state |
 | `crates/oneshim-web/frontend/src/overlay/components/CoachingPopup.tsx` | Coaching message bubble with OK/Later/thumbs actions |
@@ -53,8 +54,8 @@
 | File | Change |
 |------|--------|
 | `src-tauri/src/main.rs` | Add `mod magic_overlay;` declaration |
-| `src-tauri/src/commands.rs` | Add 7 coaching IPC commands |
-| `src-tauri/src/runtime_state.rs` | Add `MagicOverlayHandle` to `AppState` |
+| `src-tauri/src/commands.rs` | Add 8 coaching IPC commands |
+| `src-tauri/src/runtime_state.rs` | Add `MagicOverlayHandle` + `coaching_engine` to `AppState` |
 | `src-tauri/src/scheduler/loops.rs` | Wire `MagicOverlayHandle` + LLM spawn into coaching evaluation |
 | `src-tauri/src/scheduler/mod.rs` | Store `MagicOverlayHandle` reference; pass to coaching loop |
 | `src-tauri/tauri.conf.json` | No static window needed (overlay created at runtime via `WebviewWindowBuilder`) |
@@ -65,6 +66,7 @@
 | `crates/oneshim-web/frontend/src/i18n/index.ts` | Add coaching i18n keys (en/ko) |
 | `crates/oneshim-web/src/routes.rs` | Add `/api/coaching/*` REST endpoints |
 | `crates/oneshim-web/src/handlers/mod.rs` | Add `pub mod coaching;` |
+| `src-tauri/Cargo.toml` | Add `tauri-plugin-global-shortcut` dependency |
 
 ---
 
@@ -74,6 +76,7 @@
 
 **Files:**
 - Create: `src-tauri/src/magic_overlay.rs`
+- Create: `src-tauri/capabilities/overlay.json`
 - Modify: `src-tauri/src/main.rs`
 - Modify: `src-tauri/src/runtime_state.rs`
 
@@ -242,7 +245,33 @@ let overlay_handle = magic_overlay::MagicOverlayHandle::new(
 cargo check -p oneshim-tauri
 ```
 
-- [ ] **Step 1.4: Add click-through behavior**
+- [ ] **Step 1.4: Create Tauri capability permissions for overlay**
+
+The overlay window requires explicit Tauri v2 capability permissions to use event listening, cursor passthrough, and window show/hide APIs. Without this file, IPC calls from the overlay React app will be rejected at runtime.
+
+Create `src-tauri/capabilities/overlay.json`:
+
+```json
+{
+  "identifier": "overlay",
+  "windows": ["magic-overlay"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-show",
+    "core:window:allow-hide"
+  ]
+}
+```
+
+Tauri v2 auto-discovers capability files in the `src-tauri/capabilities/` directory. No additional registration is needed in `tauri.conf.json`.
+
+```
+cargo check -p oneshim-tauri
+```
+
+- [ ] **Step 1.5: Add click-through behavior**
 
 The overlay window must be click-through except for interactive elements (the coaching popup, buttons). Tauri v2 supports `ignore_cursor_events(true)` on the window level. However, we need the popup to be interactive.
 
@@ -266,7 +295,7 @@ Default state: `ignore_cursor_events(true)` set during window creation.
 cargo check -p oneshim-tauri
 ```
 
-- [ ] **Step 1.5: Add tests**
+- [ ] **Step 1.6: Add tests**
 
 Add `#[cfg(test)] mod tests` at the bottom of `magic_overlay.rs`:
 - `overlay_state_default_mode`: create `OverlayState` with `Minimal`, assert mode and visibility.
@@ -289,8 +318,41 @@ cargo test -p oneshim-tauri -- magic_overlay
 
 **Files:**
 - Modify: `src-tauri/src/commands.rs`
+- Modify: `src-tauri/src/runtime_state.rs` (promote `coaching_engine` to `AppState`)
 
-- [ ] **Step 2.1: Add `dismiss_coaching_message` command**
+- [ ] **Step 2.1: Promote `coaching_engine` to `AppState`**
+
+The IPC commands in this task reference `state.coaching_engine` for goal progress, feedback recording, and snooze control. In Phase 1, `CoachingEngine` is only held inside the `Scheduler`. It must also be available in `AppState` (or a shared `CoachingState` struct) so that the Tauri IPC commands can access it.
+
+In `src-tauri/src/runtime_state.rs`, add:
+
+```rust
+pub coaching_engine: Option<Arc<CoachingEngine>>,
+```
+
+During app setup, create the `CoachingEngine` instance once with `Arc`, then share it with both the `Scheduler` and `AppState`:
+
+```rust
+let coaching_engine = Arc::new(CoachingEngine::new(/* ... */));
+
+// Pass to Scheduler
+let scheduler = Scheduler::new(/* ..., coaching_engine: Some(coaching_engine.clone()), ... */);
+
+// Store in AppState for IPC access
+let app_state = AppState {
+    // ... existing fields ...
+    coaching_engine: Some(coaching_engine.clone()),
+    // ...
+};
+```
+
+This ensures that IPC commands (`dismiss_coaching_message`, `submit_coaching_feedback`, `get_goal_progress`, `update_regime_goals`) can access the engine directly from `AppState`, while the scheduler's coaching loop continues to use the same engine instance.
+
+```
+cargo check -p oneshim-tauri
+```
+
+- [ ] **Step 2.2: Add `dismiss_coaching_message` command**
 
 ```rust
 #[command]
@@ -325,7 +387,7 @@ pub async fn dismiss_coaching_message(
 cargo check -p oneshim-tauri
 ```
 
-- [ ] **Step 2.2: Add `submit_coaching_feedback` command**
+- [ ] **Step 2.3: Add `submit_coaching_feedback` command**
 
 ```rust
 #[command]
@@ -345,7 +407,7 @@ pub async fn submit_coaching_feedback(
 cargo check -p oneshim-tauri
 ```
 
-- [ ] **Step 2.3: Add `set_overlay_mode` and `get_overlay_state` commands**
+- [ ] **Step 2.4: Add `set_overlay_mode` and `get_overlay_state` commands**
 
 ```rust
 #[command]
@@ -393,7 +455,7 @@ pub struct OverlayStateResponse {
 cargo check -p oneshim-tauri
 ```
 
-- [ ] **Step 2.4: Add `set_overlay_cursor_passthrough` command**
+- [ ] **Step 2.5: Add `set_overlay_cursor_passthrough` command**
 
 ```rust
 #[command]
@@ -412,7 +474,7 @@ pub async fn set_overlay_cursor_passthrough(
 cargo check -p oneshim-tauri
 ```
 
-- [ ] **Step 2.5: Add `get_coaching_history` command**
+- [ ] **Step 2.6: Add `get_coaching_history` command**
 
 Returns coaching events from SQLite for the history page.
 
@@ -439,7 +501,7 @@ This requires adding a `query_coaching_events()` method to the storage adapter (
 cargo check -p oneshim-tauri
 ```
 
-- [ ] **Step 2.6: Add `get_goal_progress` and `update_regime_goals` commands**
+- [ ] **Step 2.7: Add `get_goal_progress` and `update_regime_goals` commands**
 
 ```rust
 #[command]
@@ -477,7 +539,7 @@ pub async fn update_regime_goals(
 cargo check -p oneshim-tauri
 ```
 
-- [ ] **Step 2.7: Register all new commands in Tauri builder**
+- [ ] **Step 2.8: Register all new commands in Tauri builder**
 
 In `src-tauri/src/setup.rs` (or wherever `tauri::Builder` is configured), add the new commands to `.invoke_handler(tauri::generate_handler![...])`:
 
@@ -495,6 +557,13 @@ update_regime_goals,
 ```
 cargo check -p oneshim-tauri
 ```
+
+> **Phase 1 API surface note:** Steps 2.2 and 2.7 reference `CoachingEngine` methods that may not exist from Phase 1. If the following methods are not already present on `CoachingEngine`, they must be added as part of this task:
+>
+> - **`snooze_current_profile(duration: Duration)`** — Sets a temporary cooldown override on the currently active coaching profile. While snoozed, `evaluate()` skips that profile's triggers. The snooze expires after `duration` elapses. Implementation: store `(profile_name, Instant::now() + duration)` in the engine state; check it at the start of `evaluate()`.
+> - **`all_goal_progress() -> Vec<GoalProgressView>`** — Returns goal progress for all configured regimes. Delegates to `RegimeGoalTracker::all_progress()`, which iterates over the `regime_goals` config map and computes `current_minutes` from today's tracked time per regime label.
+>
+> If these methods already exist from Phase 1, no action is needed here.
 
 ---
 
@@ -806,7 +875,9 @@ ReactDOM.createRoot(document.getElementById('overlay-root')!).render(
 
 - [ ] **Step 5.4: Update Vite config for multi-page build**
 
-Modify `crates/oneshim-web/frontend/vite.config.ts` to add the overlay entry point. Add to `build.rollupOptions.input`:
+Modify `crates/oneshim-web/frontend/vite.config.ts` to add the overlay entry point. **Important:** The existing config already has `build.rollupOptions.output.manualChunks` for vendor chunk splitting. You must merge the new `input` entries into the existing `rollupOptions` without overwriting `output.manualChunks`.
+
+Add `input` alongside the existing `output`:
 
 ```ts
 import { resolve } from 'path'
@@ -819,12 +890,17 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         overlay: resolve(__dirname, 'overlay.html'),
       },
+      output: {
+        manualChunks: { /* preserve existing manualChunks entries */ },
+      },
     },
   },
 })
 ```
 
-This ensures both the dashboard and overlay HTML files are built and included in the Tauri bundle.
+In practice, this means inserting the `input` block into the existing `rollupOptions` object rather than replacing it. The existing `manualChunks` configuration (e.g., vendor splitting for `react`, `recharts`, `@tanstack`) must be preserved exactly as-is.
+
+This ensures both the dashboard and overlay HTML files are built and included in the Tauri bundle, while maintaining the existing chunk splitting optimization.
 
 ```
 cd crates/oneshim-web/frontend && pnpm build
@@ -1867,33 +1943,81 @@ Add corresponding Korean translations:
 **Why:** The spec defines Cmd+Shift+O (macOS) / Ctrl+Shift+O (Windows/Linux) as the overlay mode toggle hotkey. Tauri v2 provides global shortcut registration.
 
 **Files:**
-- Modify: `src-tauri/src/magic_overlay.rs`
-- Modify: `src-tauri/src/setup.rs` (or wherever global shortcuts are registered)
+- Modify: `src-tauri/Cargo.toml` (add `tauri-plugin-global-shortcut` dependency)
+- Modify: `src-tauri/src/main.rs` (or `setup.rs` — register plugin in Tauri builder)
+- Modify: `src-tauri/capabilities/overlay.json` (add `global-shortcut:allow-register` permission)
 
-- [ ] **Step 12.1: Register global shortcut for overlay toggle**
+- [ ] **Step 12.1: Add `tauri-plugin-global-shortcut` dependency**
 
-During app setup, register the hotkey:
+Tauri v2 global shortcuts require the `tauri-plugin-global-shortcut` plugin. Add it to `src-tauri/Cargo.toml`:
+
+```toml
+[dependencies]
+tauri-plugin-global-shortcut = "2"
+```
+
+```
+cargo check -p oneshim-tauri
+```
+
+- [ ] **Step 12.2: Register the plugin in the Tauri builder**
+
+In `src-tauri/src/main.rs` (or `setup.rs`), register the global shortcut plugin in the Tauri builder chain:
 
 ```rust
-use tauri::GlobalShortcutManager;
+tauri::Builder::default()
+    // ... existing plugins ...
+    .plugin(tauri_plugin_global_shortcut::init())
+    // ... rest of builder ...
+```
+
+```
+cargo check -p oneshim-tauri
+```
+
+- [ ] **Step 12.3: Add capability permission for global shortcuts**
+
+Add the `global-shortcut:allow-register` permission. Either add it to an existing capability file (e.g., `src-tauri/capabilities/default.json`) or create a new one. If adding to the overlay capability file (`src-tauri/capabilities/overlay.json`), append it to the permissions array:
+
+```json
+{
+  "identifier": "overlay",
+  "windows": ["magic-overlay"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "global-shortcut:allow-register"
+  ]
+}
+```
+
+Alternatively, if global shortcuts should be available to the main window too, add `"global-shortcut:allow-register"` to the main window's capability file instead.
+
+- [ ] **Step 12.4: Register global shortcut for overlay toggle**
+
+During app setup, register the hotkey using the `tauri_plugin_global_shortcut` API:
+
+```rust
+use tauri_plugin_global_shortcut::ShortcutState;
 
 // In setup function, after MagicOverlayHandle is created:
 let overlay_for_hotkey = overlay_handle.clone();
-let hotkey = if cfg!(target_os = "macos") {
-    "CommandOrControl+Shift+O"
-} else {
-    "Ctrl+Shift+O"
-};
+let hotkey = "CommandOrControl+Shift+O";
 
-app.global_shortcut().on_shortcut(hotkey, move |_app, _shortcut, _event| {
-    let overlay = overlay_for_hotkey.clone();
-    tauri::async_runtime::spawn(async move {
-        overlay.toggle_mode().await;
-    });
+app.global_shortcut().on_shortcut(hotkey, move |_app, _shortcut, event| {
+    if event.state == ShortcutState::Pressed {
+        let overlay = overlay_for_hotkey.clone();
+        tauri::async_runtime::spawn(async move {
+            overlay.toggle_mode().await;
+        });
+    }
 });
 ```
 
-Note: Tauri v2 uses `app.global_shortcut()` API. The exact API depends on the Tauri version. Check the Tauri v2 docs for the current shortcut registration pattern. If `tauri-plugin-global-shortcut` is needed, add it to `Cargo.toml`.
+Note: `CommandOrControl` maps to Cmd on macOS and Ctrl on Windows/Linux.
 
 ```
 cargo check -p oneshim-tauri
@@ -1968,8 +2092,8 @@ Verify both `index.html` and `overlay.html` are in the `dist/` output.
 
 | Task | Files | Tests | Description |
 |------|-------|-------|-------------|
-| 1 | 1 new + 2 modified | 5 | MagicOverlayHandle — Tauri WebView window manager |
-| 2 | 1 modified | 0 | 7 Tauri IPC commands for coaching/overlay |
+| 1 | 2 new + 2 modified | 5 | MagicOverlayHandle + capability permissions — Tauri WebView window manager |
+| 2 | 2 modified | 0 | 8 Tauri IPC commands + promote coaching_engine to AppState |
 | 3 | 2 modified | 4 | Storage adapter coaching query methods |
 | 4 | 2 modified | 0 | Wire LLM personalization + overlay into scheduler |
 | 5 | 4 new + 1 modified | 0 | Overlay React app entry + Vite multi-page build |
@@ -1979,9 +2103,9 @@ Verify both `index.html` and `overlay.html` are in the `dist/` output.
 | 9 | 1 new + 1 modified | 0 | Regime goal settings UI |
 | 10 | 1 new + 2 modified | 0 | REST API endpoints for coaching data |
 | 11 | 1 modified | 0 | i18n keys (en/ko) |
-| 12 | 2 modified | 0 | Hotkey integration for overlay mode toggle |
+| 12 | 3 modified | 0 | Global shortcut plugin + capability + hotkey registration |
 | 13 | 0 | 0 | Workspace verification + manual testing |
-| **Total** | **18 new + 13 modified** | **~9** | |
+| **Total** | **17 new + 14 modified** | **~9** | |
 
 ### Dependency Order
 
