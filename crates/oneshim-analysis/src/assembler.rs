@@ -26,6 +26,8 @@ pub struct SegmentStats {
     pub context_switches: u32,
     pub dominant_category: String,
     pub content_summary: Vec<ContentSummaryEntry>,
+    /// Aggregated GUI patterns across all content activities in this segment.
+    pub gui_patterns: Vec<String>,
 }
 
 /// A single content activity summary within a segment.
@@ -38,6 +40,8 @@ pub struct ContentSummaryEntry {
     /// GUI activity summary line (e.g., "15 clicks, 3 saves, 2 test runs").
     /// When present, this enriches the content field in the LLM context.
     pub gui_summary_line: Option<String>,
+    /// GUI behavioral patterns detected from this content activity (e.g. "TestDrivenDevelopment").
+    pub gui_patterns: Vec<String>,
 }
 
 /// Current desktop activity snapshot.
@@ -586,7 +590,9 @@ mod tests {
                 work_type: "ActiveCoding".to_string(),
                 mins: 10,
                 gui_summary_line: None,
+                gui_patterns: vec![],
             }],
+            gui_patterns: vec![],
         };
         let ctx =
             assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));
@@ -616,7 +622,9 @@ mod tests {
                 work_type: "ActiveCoding".to_string(),
                 mins: 15,
                 gui_summary_line: Some("3 saves, 2 test runs".to_string()),
+                gui_patterns: vec![],
             }],
+            gui_patterns: vec![],
         };
         let ctx =
             assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));

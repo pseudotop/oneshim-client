@@ -185,12 +185,26 @@ pub fn to_content_summary_entries(
 ) -> Vec<crate::assembler::ContentSummaryEntry> {
     activities
         .iter()
-        .map(|ca| crate::assembler::ContentSummaryEntry {
-            content: ca.content_label.clone(),
-            content_type: format!("{:?}", ca.content_type),
-            work_type: format!("{:?}", ca.work_type),
-            mins: (ca.duration_secs / 60).max(1) as u32,
-            gui_summary_line: ca.gui_summary.as_ref().map(|gs| gs.summary_line.clone()),
+        .map(|ca| {
+            let gui_patterns = ca
+                .gui_summary
+                .as_ref()
+                .map(|gs| {
+                    crate::pattern_miner::detect_gui_patterns(gs, ca.work_type)
+                        .into_iter()
+                        .map(|p| format!("{p:?}"))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+
+            crate::assembler::ContentSummaryEntry {
+                content: ca.content_label.clone(),
+                content_type: format!("{:?}", ca.content_type),
+                work_type: format!("{:?}", ca.work_type),
+                mins: (ca.duration_secs / 60).max(1) as u32,
+                gui_summary_line: ca.gui_summary.as_ref().map(|gs| gs.summary_line.clone()),
+                gui_patterns,
+            }
         })
         .collect()
 }
@@ -412,5 +426,76 @@ mod tests {
         );
 
         assert_eq!(summary.context_switch_count, 0);
+    }
+
+    #[test]
+    fn gui_patterns_populated_from_summary() {
+        use oneshim_core::models::gui_activity::GuiActivitySummary;
+        use oneshim_core::models::tiered_memory::{ContentType, EngagementMetrics, WorkType};
+
+        let t0 = Utc::now();
+        let gui = GuiActivitySummary {
+            app_name: "VS Code".to_string(),
+            window_title: "main.rs".to_string(),
+            content_label: "main.rs".to_string(),
+            start_time: t0,
+            end_time: t0 + Duration::seconds(300),
+            duration_secs: 300,
+            button_clicks: 5,
+            text_entries: 10,
+            tab_switches: 0,
+            menu_accesses: 0,
+            tree_navigations: 0,
+            scroll_events: 0,
+            save_count: 2,
+            test_run_count: 1,
+            search_count: 0,
+            build_count: 0,
+            undo_redo_count: 0,
+            copy_paste_count: 0,
+            top_elements: vec![],
+            unmatched_click_count: 0,
+            summary_line: "5 clicks, 2 saves, 1 test".to_string(),
+        };
+
+        let activities = vec![ContentActivity {
+            content_label: "main.rs".to_string(),
+            content_type: ContentType::File,
+            start_time: t0,
+            duration_secs: 300,
+            confidence: 0.9,
+            work_type: WorkType::ActiveCoding,
+            engagement: EngagementMetrics::default(),
+            gui_summary: Some(gui),
+        }];
+
+        let entries = to_content_summary_entries(&activities);
+        assert_eq!(entries.len(), 1);
+        assert!(
+            entries[0]
+                .gui_patterns
+                .contains(&"TestDrivenDevelopment".to_string()),
+            "TDD pattern should be detected (test_run=1 + save=2 + ActiveCoding): {:?}",
+            entries[0].gui_patterns
+        );
+    }
+
+    #[test]
+    fn gui_patterns_empty_when_no_gui_summary() {
+        use oneshim_core::models::tiered_memory::{ContentType, EngagementMetrics, WorkType};
+        let t0 = Utc::now();
+        let activities = vec![ContentActivity {
+            content_label: "readme.md".to_string(),
+            content_type: ContentType::File,
+            start_time: t0,
+            duration_secs: 60,
+            confidence: 0.8,
+            work_type: WorkType::Reading,
+            engagement: EngagementMetrics::default(),
+            gui_summary: None,
+        }];
+
+        let entries = to_content_summary_entries(&activities);
+        assert!(entries[0].gui_patterns.is_empty());
     }
 }
