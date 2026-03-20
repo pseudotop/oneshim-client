@@ -688,4 +688,250 @@ mod tests {
         let ft = engine.feedback_tracker.read().await;
         assert_eq!(ft.pending_count(), 0);
     }
+
+    // ── Gap 6: Full coaching cycle integration test ──────────────
+
+    /// Helper: create an enabled config with FocusGuard profile and a regime goal.
+    fn focus_guard_config_with_goal(regime: &str, target_minutes: u32) -> CoachingConfig {
+        let mut goals = HashMap::new();
+        goals.insert(regime.to_string(), target_minutes);
+        CoachingConfig {
+            enabled: true,
+            regime_goals: goals,
+            ..CoachingConfig::default()
+        }
+    }
+
+    /// Helper: clear all cooldowns so the next evaluate() is not suppressed.
+    async fn clear_cooldowns(engine: &CoachingEngine) {
+        let mut la = engine.last_alert.write().await;
+        la.clear();
+    }
+
+    /// Integration test exercising the full coaching cycle:
+    ///
+    /// 1. Construct CoachingEngine with enabled config + FocusGuard + regime goal
+    /// 2. Regime transition (None -> "deep-work") -> RegimeTransition message
+    /// 3. Record 60 min on deep-work -> GoalThreshold 50%
+    /// 4. Record 60 more min -> GoalThreshold 100%
+    /// 5. Drift detection -> RegimeDrift message
+    /// 6. Snooze FocusGuard, evaluate again -> no message
+    /// 7. Cooldown: evaluate immediately -> no message (within 5min cooldown)
+    /// 8. Explicit positive feedback -> effectiveness score updates
+    #[tokio::test]
+    async fn integration_full_coaching_cycle() {
+        // ── Step 1: Setup ──────────────────────────────────────
+        let config = focus_guard_config_with_goal("DeepWork", 120);
+        let engine = CoachingEngine::new(config);
+
+        // ── Step 2: Regime transition (None -> "deep-work") ────
+        // Engine starts with no regime. Evaluating with a regime_id triggers
+        // a transition from None -> Some("deep-work").
+        let msg1 = engine
+            .evaluate(Some("deep-work"), "DeepWork", 0, 1800, false, "VS Code")
+            .await;
+        assert!(
+            msg1.is_some(),
+            "step 2: initial regime should fire RegimeTransition"
+        );
+        let m1 = msg1.unwrap();
+        assert!(
+            matches!(m1.trigger, TriggerType::RegimeTransition { .. }),
+            "step 2: expected RegimeTransition, got {:?}",
+            m1.trigger
+        );
+
+        // ── Step 3: Record 60 minutes -> GoalThreshold 50% ────
+        // Clear cooldown so the next evaluate() is not suppressed.
+        clear_cooldowns(&engine).await;
+        engine.record_minutes("DeepWork", 60).await;
+
+        // Same regime, no transition, no drift -> goal threshold check
+        let msg2 = engine
+            .evaluate(Some("deep-work"), "DeepWork", 3600, 1800, false, "VS Code")
+            .await;
+        assert!(msg2.is_some(), "step 3: 50% goal threshold should fire");
+        let m2 = msg2.unwrap();
+        match &m2.trigger {
+            TriggerType::GoalThreshold {
+                threshold_percent, ..
+            } => {
+                // 60 / 120 = 50% -> first uncrossed threshold is 25%, but
+                // check_threshold fires the lowest uncrossed, so 25% fires first.
+                // After that, 50% fires. Both 25% and 50% are crossed at 60 min.
+                // check_threshold returns the *first* uncrossed threshold sequentially.
+                assert!(
+                    *threshold_percent == 25 || *threshold_percent == 50,
+                    "step 3: expected 25% or 50% threshold, got {}%",
+                    threshold_percent
+                );
+            }
+            other => panic!("step 3: expected GoalThreshold, got {:?}", other),
+        }
+
+        // If 25% fired first, evaluate again to get 50%
+        if matches!(
+            m2.trigger,
+            TriggerType::GoalThreshold {
+                threshold_percent: 25,
+                ..
+            }
+        ) {
+            clear_cooldowns(&engine).await;
+            let msg2b = engine
+                .evaluate(Some("deep-work"), "DeepWork", 3600, 1800, false, "VS Code")
+                .await;
+            assert!(
+                msg2b.is_some(),
+                "step 3b: 50% threshold should fire after 25%"
+            );
+            let m2b = msg2b.unwrap();
+            match &m2b.trigger {
+                TriggerType::GoalThreshold {
+                    threshold_percent, ..
+                } => {
+                    assert_eq!(*threshold_percent, 50, "step 3b: expected 50%");
+                }
+                other => panic!("step 3b: expected GoalThreshold, got {:?}", other),
+            }
+        }
+
+        // ── Step 4: Record 60 more minutes -> GoalThreshold 100% ─
+        clear_cooldowns(&engine).await;
+        engine.record_minutes("DeepWork", 60).await;
+
+        let msg3 = engine
+            .evaluate(Some("deep-work"), "DeepWork", 7200, 1800, false, "VS Code")
+            .await;
+        assert!(msg3.is_some(), "step 4: 100% goal threshold should fire");
+        let m3 = msg3.unwrap();
+        match &m3.trigger {
+            TriggerType::GoalThreshold {
+                threshold_percent, ..
+            } => {
+                // 75% or 100% should fire (75% not yet notified, fires first)
+                assert!(
+                    *threshold_percent == 75 || *threshold_percent == 100,
+                    "step 4: expected 75% or 100%, got {}%",
+                    threshold_percent
+                );
+            }
+            other => panic!("step 4: expected GoalThreshold, got {:?}", other),
+        }
+
+        // Drain remaining thresholds to reach 100%
+        let mut hit_100 = matches!(
+            m3.trigger,
+            TriggerType::GoalThreshold {
+                threshold_percent: 100,
+                ..
+            }
+        );
+        while !hit_100 {
+            clear_cooldowns(&engine).await;
+            let msg = engine
+                .evaluate(Some("deep-work"), "DeepWork", 7200, 1800, false, "VS Code")
+                .await;
+            match msg {
+                Some(m) => match &m.trigger {
+                    TriggerType::GoalThreshold {
+                        threshold_percent: 100,
+                        ..
+                    } => {
+                        hit_100 = true;
+                    }
+                    TriggerType::GoalThreshold { .. } => {
+                        // Intermediate threshold (75%), continue
+                    }
+                    _ => break,
+                },
+                None => break,
+            }
+        }
+        assert!(hit_100, "step 4: should have reached 100% goal threshold");
+
+        // ── Step 5: Drift detection -> RegimeDrift message ─────
+        clear_cooldowns(&engine).await;
+        let msg4 = engine
+            .evaluate(
+                Some("deep-work"),
+                "DeepWork",
+                300,
+                1800,
+                true, // drift_detected = true
+                "VS Code",
+            )
+            .await;
+        assert!(msg4.is_some(), "step 5: drift should fire");
+        let m4 = msg4.unwrap();
+        assert!(
+            matches!(m4.trigger, TriggerType::RegimeDrift { .. }),
+            "step 5: expected RegimeDrift, got {:?}",
+            m4.trigger
+        );
+
+        // ── Step 6: Snooze FocusGuard, evaluate again -> no message
+        engine
+            .snooze_current_profile("FocusGuard", Duration::from_secs(60))
+            .await;
+        clear_cooldowns(&engine).await;
+        // Trigger another drift (which maps to FocusGuard profile)
+        let msg5 = engine
+            .evaluate(Some("deep-work"), "DeepWork", 300, 1800, true, "VS Code")
+            .await;
+        assert!(
+            msg5.is_none(),
+            "step 6: snoozed FocusGuard should suppress drift message"
+        );
+
+        // ── Step 7: Cooldown — evaluate immediately -> no message
+        // Un-snooze first by clearing the snooze, then rely on the 5-min
+        // (300s) default cooldown from the step 5 alert.
+        {
+            let mut guard = engine.snoozed_until.write().await;
+            *guard = None;
+        }
+        // Restore the step 5 alert timestamp so cooldown is active.
+        // (We cleared cooldowns for step 6, but step 5's alert was real.)
+        {
+            let mut la = engine.last_alert.write().await;
+            la.insert("FocusGuard".to_string(), Utc::now());
+        }
+        let msg6 = engine
+            .evaluate(Some("deep-work"), "DeepWork", 300, 1800, true, "VS Code")
+            .await;
+        assert!(
+            msg6.is_none(),
+            "step 7: cooldown should suppress repeated alert"
+        );
+
+        // ── Step 8: Explicit positive feedback -> effectiveness update
+        // Use the message from step 5 (drift message)
+        let drift_msg_id = m4.message_id.clone();
+        let profile_name = format!("{:?}", m4.profile);
+        let trigger_name = oneshim_core::models::coaching::trigger_type_name(&m4.trigger);
+
+        engine
+            .register_pending_feedback(
+                &drift_msg_id,
+                &profile_name,
+                &trigger_name,
+                Some("deep-work"),
+                "VS Code",
+            )
+            .await;
+        engine.record_explicit_feedback(&drift_msg_id, true).await;
+
+        // Verify effectiveness score was updated
+        let ft = engine.feedback_tracker.read().await;
+        let score = ft
+            .get_effectiveness(&profile_name, &trigger_name)
+            .expect("step 8: effectiveness score should exist");
+        assert!(
+            score.positive_signals > 0.0,
+            "step 8: positive_signals should be > 0 after explicit positive feedback, got {}",
+            score.positive_signals
+        );
+        assert_eq!(score.total_shown, 1, "step 8: total_shown should be 1");
+    }
 }
