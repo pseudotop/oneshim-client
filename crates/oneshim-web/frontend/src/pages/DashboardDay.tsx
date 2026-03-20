@@ -197,8 +197,8 @@ export default function DashboardDay() {
                 isMutating={createOverrideMutation.isPending}
               />
               <GuiInteractionTrack
-                start={`${selectedDate}T00:00:00Z`}
-                end={`${selectedDate}T23:59:59Z`}
+                start={`${date}T00:00:00Z`}
+                end={`${date}T23:59:59Z`}
               />
               <StatisticsPanel statistics={data.statistics} />
             </>
