@@ -1095,6 +1095,16 @@ impl Scheduler {
             clipboard_pii_level,
         ));
 
+        // File access watcher — polls monitored directories for changes each input tick.
+        let file_access_config = self
+            .config_manager
+            .as_ref()
+            .map(|cm| cm.get().file_access.clone())
+            .unwrap_or_default();
+        let file_watcher = Arc::new(oneshim_monitor::file_access::FileAccessWatcher::new(
+            file_access_config,
+        ));
+
         tokio::spawn(async move {
             let mut process_interval = tokio::time::interval(detailed_process_interval);
             let mut input_interval = tokio::time::interval(input_activity_interval);
@@ -1168,6 +1178,23 @@ impl Scheduler {
                             let event = Event::Clipboard(clip_event);
                             if let Err(e) = storage9.save_event(&event).await {
                                 warn!("clipboard event save failure: {e}");
+                            }
+                        }
+
+                        // Poll monitored directories for file changes.
+                        let fw = file_watcher.clone();
+                        let file_events = tokio::task::spawn_blocking(move || {
+                            fw.poll_changes()
+                        }).await.unwrap_or_default();
+                        for file_event in file_events {
+                            debug!(
+                                event_type = ?file_event.event_type,
+                                path = %file_event.relative_path.display(),
+                                "file change detected"
+                            );
+                            let event = Event::FileAccess(file_event);
+                            if let Err(e) = storage9.save_event(&event).await {
+                                warn!("file access event save failure: {e}");
                             }
                         }
                     }
