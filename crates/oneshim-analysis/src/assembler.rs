@@ -121,6 +121,26 @@ struct ContextPayload {
     current_segment: Option<SegmentSnapshot>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     relevant_history: Vec<HistoryEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gui: Option<GuiSection>,
+}
+
+#[derive(Serialize)]
+struct GuiSection {
+    patterns: Vec<String>,
+    actions: GuiActionCounts,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    top_elements: Vec<(String, String, u32)>,
+}
+
+#[derive(Serialize, Default)]
+struct GuiActionCounts {
+    saves: u32,
+    test_runs: u32,
+    searches: u32,
+    builds: u32,
+    undo_redos: u32,
+    copy_pastes: u32,
 }
 
 #[derive(Serialize)]
@@ -270,6 +290,33 @@ impl ContextAssembler {
             })
             .collect();
 
+        let gui = segment_stats.and_then(|stats| {
+            let has_patterns = !stats.gui_patterns.is_empty();
+            let has_gui_lines = stats
+                .content_summary
+                .iter()
+                .any(|e| e.gui_summary_line.is_some());
+            if !has_patterns && !has_gui_lines {
+                return None;
+            }
+
+            let mut actions = GuiActionCounts::default();
+            let all_top: Vec<(String, String, u32)> = Vec::new();
+
+            // Parse action counts from gui_summary_line strings
+            for entry in &stats.content_summary {
+                if let Some(ref line) = entry.gui_summary_line {
+                    Self::parse_gui_action_counts(line, &mut actions);
+                }
+            }
+
+            Some(GuiSection {
+                patterns: stats.gui_patterns.clone(),
+                actions,
+                top_elements: all_top,
+            })
+        });
+
         let payload = ContextPayload {
             current: CurrentSnapshot {
                 app: current.app_name.clone(),
@@ -291,6 +338,7 @@ impl ContextAssembler {
             },
             current_segment,
             relevant_history: history_entries,
+            gui,
         };
 
         let user_context_json =
@@ -330,6 +378,35 @@ impl ContextAssembler {
         }
 
         result
+    }
+
+    /// Parse action counts from a gui_summary_line like "5 clicks, 3 saves, 2 test runs".
+    fn parse_gui_action_counts(line: &str, counts: &mut GuiActionCounts) {
+        let lower = line.to_lowercase();
+        for part in lower.split(',') {
+            let part = part.trim();
+            if let Some(n) = Self::extract_leading_number(part) {
+                if part.contains("save") {
+                    counts.saves += n;
+                } else if part.contains("test") {
+                    counts.test_runs += n;
+                } else if part.contains("search") || part.contains("find") {
+                    counts.searches += n;
+                } else if part.contains("build") {
+                    counts.builds += n;
+                } else if part.contains("undo") || part.contains("redo") {
+                    counts.undo_redos += n;
+                } else if part.contains("copy") || part.contains("paste") {
+                    counts.copy_pastes += n;
+                }
+            }
+        }
+    }
+
+    fn extract_leading_number(s: &str) -> Option<u32> {
+        s.split_whitespace()
+            .next()
+            .and_then(|tok| tok.parse::<u32>().ok())
     }
 
     fn filter_pii(&self, text: &str) -> String {
@@ -676,5 +753,62 @@ mod tests {
         let ctx = assembler.build(&current, &[], &[], &make_metrics());
         assert!(ctx.user_context_json.contains("[EMAIL]"));
         assert!(!ctx.user_context_json.contains("user@example.com"));
+    }
+
+    #[test]
+    fn gui_section_included_when_patterns_present() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let stats = SegmentStats {
+            duration_mins: 10,
+            regime_label: None,
+            event_count: 20,
+            context_switches: 1,
+            dominant_category: "Development".to_string(),
+            content_summary: vec![ContentSummaryEntry {
+                content: "main.rs".to_string(),
+                content_type: "File".to_string(),
+                work_type: "ActiveCoding".to_string(),
+                mins: 10,
+                gui_summary_line: Some("3 saves, 1 test runs".to_string()),
+                gui_patterns: vec!["TestDrivenDevelopment".to_string()],
+            }],
+            gui_patterns: vec!["TestDrivenDevelopment".to_string()],
+        };
+        let ctx =
+            assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));
+        assert!(
+            ctx.user_context_json.contains("\"gui\""),
+            "gui section should be present"
+        );
+        assert!(ctx.user_context_json.contains("TestDrivenDevelopment"));
+        assert!(ctx.user_context_json.contains("\"saves\":3"));
+        assert!(ctx.user_context_json.contains("\"test_runs\":1"));
+    }
+
+    #[test]
+    fn gui_section_omitted_when_no_gui_data() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let stats = SegmentStats {
+            duration_mins: 5,
+            regime_label: None,
+            event_count: 10,
+            context_switches: 0,
+            dominant_category: "Development".to_string(),
+            content_summary: vec![ContentSummaryEntry {
+                content: "readme.md".to_string(),
+                content_type: "File".to_string(),
+                work_type: "Reading".to_string(),
+                mins: 5,
+                gui_summary_line: None,
+                gui_patterns: vec![],
+            }],
+            gui_patterns: vec![],
+        };
+        let ctx =
+            assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));
+        assert!(
+            !ctx.user_context_json.contains("\"gui\""),
+            "gui section should be absent when no gui data"
+        );
     }
 }
