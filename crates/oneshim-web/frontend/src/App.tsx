@@ -24,6 +24,7 @@ const Automation = lazy(() => import('./pages/Automation'))
 const Updates = lazy(() => import('./pages/Updates'))
 const DashboardDay = lazy(() => import('./pages/DashboardDay'))
 const RecalibrationPage = lazy(() => import('./pages/RecalibrationPage'))
+const Coaching = lazy(() => import('./pages/Coaching'))
 
 function App() {
   const { t } = useTranslation()
@@ -92,6 +93,7 @@ function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/recalibration" element={<RecalibrationPage />} />
+                <Route path="/coaching" element={<Coaching />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

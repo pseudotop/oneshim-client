@@ -60,6 +60,13 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
       { id: 'export', labelKey: 'sidebar.exportData' },
     ],
   },
+  '/coaching': {
+    titleKey: 'nav.coaching',
+    nodes: [
+      { id: 'goals', labelKey: 'sidebar.coachingGoals' },
+      { id: 'events', labelKey: 'sidebar.coachingEvents' },
+    ],
+  },
   '/focus': {
     titleKey: 'nav.focus',
     nodes: [
