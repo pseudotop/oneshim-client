@@ -1085,6 +1085,16 @@ impl Scheduler {
         let input_collector9 = input_collector;
         let egress9 = egress_policy;
 
+        // Clipboard monitor — polls system clipboard for changes each input tick.
+        let clipboard_pii_level = self
+            .config_manager
+            .as_ref()
+            .map(|cm| cm.get().privacy.pii_filter_level)
+            .unwrap_or(oneshim_core::config::PiiFilterLevel::Standard);
+        let clipboard_monitor = Arc::new(oneshim_monitor::clipboard::ClipboardMonitor::new(
+            clipboard_pii_level,
+        ));
+
         tokio::spawn(async move {
             let mut process_interval = tokio::time::interval(detailed_process_interval);
             let mut input_interval = tokio::time::interval(input_activity_interval);
@@ -1141,6 +1151,23 @@ impl Scheduler {
                                 if let Some(upload_event) = egress9.prepare_event_for_upload(event) {
                                     sink.enqueue(upload_event);
                                 }
+                            }
+                        }
+
+                        // Poll clipboard for changes (non-blocking on macOS/Linux/Windows).
+                        // Runs on the same cadence as input activity collection.
+                        let cb = clipboard_monitor.clone();
+                        if let Some(clip_event) = tokio::task::spawn_blocking(move || {
+                            cb.poll_system_clipboard()
+                        }).await.unwrap_or(None) {
+                            debug!(
+                                content_type = ?clip_event.content_type,
+                                chars = clip_event.char_count,
+                                "clipboard change detected"
+                            );
+                            let event = Event::Clipboard(clip_event);
+                            if let Err(e) = storage9.save_event(&event).await {
+                                warn!("clipboard event save failure: {e}");
                             }
                         }
                     }
