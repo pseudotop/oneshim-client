@@ -162,8 +162,12 @@ mod tests {
 
         let json = serde_json::to_string(&msg).expect("serialize");
         let restored: CoachingMessage = serde_json::from_str(&json).expect("deserialize");
+
+        // Compare via serde_json::Value (HashMap order is non-deterministic)
+        let val1: serde_json::Value = serde_json::from_str(&json).expect("parse original");
         let json2 = serde_json::to_string(&restored).expect("re-serialize");
-        assert_eq!(json, json2);
+        let val2: serde_json::Value = serde_json::from_str(&json2).expect("parse restored");
+        assert_eq!(val1, val2, "JSON values must match after round-trip");
     }
 
     #[test]

@@ -12,6 +12,7 @@
 mod ai;
 mod ai_validation;
 mod analysis;
+mod coaching;
 mod integration;
 mod monitoring;
 mod network;
@@ -22,6 +23,7 @@ mod sync;
 pub use ai::*;
 pub use ai_validation::*;
 pub use analysis::*;
+pub use coaching::*;
 pub use integration::*;
 pub use monitoring::*;
 pub use network::*;
