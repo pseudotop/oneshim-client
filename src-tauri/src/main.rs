@@ -40,7 +40,6 @@ mod launch_resources;
 mod lifecycle;
 #[cfg(target_os = "macos")]
 mod macos_integration;
-#[allow(dead_code)] // Phase 2: wired incrementally by subsequent tasks
 mod magic_overlay;
 mod memory_profiler;
 mod notification_manager;

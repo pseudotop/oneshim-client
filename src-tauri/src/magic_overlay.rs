@@ -25,6 +25,7 @@ pub struct OverlayUpgradePayload {
     pub personalized_text: String,
 }
 
+#[allow(dead_code)] // Phase 3: wired when focus highlight overlay is connected
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverlayFocusPayload {
     pub x: i32,
@@ -35,6 +36,7 @@ pub struct OverlayFocusPayload {
     pub opacity: f32,
 }
 
+#[allow(dead_code)] // Phase 3: wired when goal progress overlay is connected
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverlayGoalPayload {
     pub goals: Vec<GoalProgressView>,
@@ -219,6 +221,7 @@ impl MagicOverlayHandle {
     }
 
     /// Update focus highlight overlay element.
+    #[allow(dead_code)] // Phase 3: wired when focus highlight feature is connected
     pub async fn update_focus_highlight(&self, highlight: OverlayFocusPayload) {
         if let Err(e) = self.app_handle.emit("overlay:update-focus", &highlight) {
             warn!("failed to emit overlay:update-focus: {e}");
@@ -226,6 +229,7 @@ impl MagicOverlayHandle {
     }
 
     /// Update goal progress data on the overlay.
+    #[allow(dead_code)] // Phase 3: wired when goal progress feature is connected
     pub async fn update_goal_progress(&self, goals: Vec<GoalProgressView>) {
         let payload = OverlayGoalPayload { goals };
         if let Err(e) = self.app_handle.emit("overlay:update-goals", &payload) {
@@ -256,6 +260,7 @@ impl MagicOverlayHandle {
     }
 
     /// Cycle through overlay modes: Minimal -> Rich -> Adaptive -> Minimal.
+    #[allow(dead_code)] // Phase 3: wired when overlay mode toggle shortcut is connected
     pub async fn toggle_mode(&self) {
         let new_mode = {
             let state = self.state.read().await;

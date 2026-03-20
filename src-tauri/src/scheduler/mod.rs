@@ -287,7 +287,6 @@ impl Scheduler {
         self
     }
 
-    #[allow(dead_code)]
     pub fn with_magic_overlay(mut self, overlay: crate::magic_overlay::MagicOverlayHandle) -> Self {
         self.magic_overlay = Some(overlay);
         self

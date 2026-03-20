@@ -47,6 +47,7 @@ pub(crate) struct AgentRuntimeBundle {
     app_handle: AppHandle,
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
 }
 
 impl AgentRuntimeBundle {
@@ -221,6 +222,13 @@ impl AgentRuntimeBundle {
         // Config validation: embedding requires tiered_memory
         if self.config.analysis.embedding.enabled && !self.config.analysis.tiered_memory.enabled {
             warn!("embedding.enabled requires tiered_memory.enabled — embedding will not function");
+        }
+
+        // Config validation: gui_intelligence requires tiered_memory
+        if self.config.analysis.gui_intelligence.enabled
+            && !self.config.analysis.tiered_memory.enabled
+        {
+            warn!("gui_intelligence.enabled requires tiered_memory.enabled — GUI pipeline will not function");
         }
 
         // Wire adaptive tiered-memory pipeline when enabled + consented.
@@ -455,12 +463,15 @@ impl AgentRuntimeBundle {
             scheduler = scheduler.with_consent_manager(cm.clone());
         }
 
-        // --- Coaching engine + storage wiring ---
+        // --- Coaching engine + storage + overlay wiring ---
         if let Some(engine) = self.coaching_engine {
             scheduler = scheduler.with_coaching_engine(engine);
         }
         if let Some(coaching_storage) = self.coaching_storage {
             scheduler = scheduler.with_coaching_storage(coaching_storage);
+        }
+        if let Some(overlay) = self.magic_overlay {
+            scheduler = scheduler.with_magic_overlay(overlay);
         }
 
         // --- Phase 2: Accessibility extractor (gated by config + consent) ---
@@ -513,6 +524,7 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     app_handle: AppHandle,
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -549,6 +561,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             app_handle,
             coaching_engine: None,
             coaching_storage: None,
+            magic_overlay: None,
         }
     }
 
@@ -621,6 +634,14 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_magic_overlay(
+        mut self,
+        overlay: crate::magic_overlay::MagicOverlayHandle,
+    ) -> Self {
+        self.magic_overlay = Some(overlay);
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -643,6 +664,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             app_handle: self.app_handle,
             coaching_engine: self.coaching_engine,
             coaching_storage: self.coaching_storage,
+            magic_overlay: self.magic_overlay,
         }
     }
 }

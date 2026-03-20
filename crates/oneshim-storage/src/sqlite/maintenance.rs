@@ -413,6 +413,11 @@ impl SqliteStorage {
         // V15-V16 tables (index + sync)
         let _ = conn.execute("DELETE FROM lan_peer_pins", []);
 
+        // V17: coaching tables
+        let _ = conn.execute("DELETE FROM coaching_events", []);
+        let _ = conn.execute("DELETE FROM regime_goals", []);
+        let _ = conn.execute("DELETE FROM coaching_effectiveness", []);
+
         Ok(DeletedRangeCounts {
             events_deleted,
             frames_deleted,

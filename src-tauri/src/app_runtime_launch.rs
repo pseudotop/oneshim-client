@@ -7,6 +7,7 @@ use tracing::info;
 use crate::agent_runtime::AgentRuntimeBuilder;
 use crate::bootstrap_runtime::BootstrapRuntimeBundle;
 use crate::launch_resources::LaunchCoreResourcesBuilder;
+use crate::magic_overlay::MagicOverlayHandle;
 use crate::runtime_state::{AppState, ManagedStateBuilder};
 #[cfg(feature = "server")]
 use crate::server_runtime_context::ServerLaunchContext;
@@ -79,6 +80,10 @@ impl AppRuntimeLaunchBuilder {
             config.coaching.clone(),
         ));
 
+        // Create MagicOverlay handle (window is lazily created on first coaching message)
+        let magic_overlay =
+            MagicOverlayHandle::new(self.app_handle.clone(), config.coaching.overlay_mode);
+
         let agent_runtime = {
             let builder = AgentRuntimeBuilder::new(
                 sqlite_storage.clone(),
@@ -109,7 +114,8 @@ impl AppRuntimeLaunchBuilder {
                 data_dir_path.join("consent.json"),
             )))
             .with_coaching_engine(coaching_engine.clone())
-            .with_coaching_storage(sqlite_storage.clone());
+            .with_coaching_storage(sqlite_storage.clone())
+            .with_magic_overlay(magic_overlay.clone());
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()
@@ -158,7 +164,7 @@ impl AppRuntimeLaunchBuilder {
             automation_controller,
             shutdown_tx,
             recluster_requested: recluster_requested.clone(),
-            magic_overlay: None,
+            magic_overlay: Some(magic_overlay),
             coaching_engine: Some(
                 coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
             ),
