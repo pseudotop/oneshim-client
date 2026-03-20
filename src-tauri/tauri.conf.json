@@ -9,6 +9,7 @@
     "beforeBuildCommand": "cd ../crates/oneshim-web/frontend && pnpm build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "withGlobalTauri": false,
     "windows": [
       {

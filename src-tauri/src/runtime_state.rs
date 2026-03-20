@@ -1,3 +1,4 @@
+use oneshim_analysis::CoachingEngine;
 use oneshim_automation::controller::AutomationController;
 use oneshim_core::config::{AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
@@ -9,6 +10,8 @@ use serde::Serialize;
 use std::sync::atomic::AtomicU16;
 use std::sync::Arc;
 use tauri::{App, Manager};
+
+use crate::magic_overlay::MagicOverlayHandle;
 
 #[cfg(feature = "server")]
 pub(crate) type OAuthCoordinator =
@@ -29,6 +32,10 @@ pub struct AppState {
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
     /// Shared flag for on-demand re-clustering requests from Tauri/REST.
     pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
+    /// MagicOverlay handle for transparent coaching overlay window.
+    pub magic_overlay: Option<MagicOverlayHandle>,
+    /// Coaching engine for proactive coaching messages (Phase 2 IPC access).
+    pub coaching_engine: Option<Arc<CoachingEngine>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -226,6 +233,8 @@ mod tests {
             automation_controller: None,
             shutdown_tx,
             recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            magic_overlay: None,
+            coaching_engine: None,
         })
         .build();
 

@@ -1,0 +1,11 @@
+{
+  "identifier": "overlay",
+  "windows": ["magic-overlay"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-show",
+    "core:window:allow-hide"
+  ]
+}
