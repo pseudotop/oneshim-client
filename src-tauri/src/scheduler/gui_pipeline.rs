@@ -68,9 +68,10 @@ pub(crate) fn run_gui_tick(
             .map(|(x, y)| (x as u32, y as u32))
             .unwrap_or((0, 0));
 
-        let element = state
-            .detector
-            .correlate_click(click_x, click_y, ocr_regions);
+        let element =
+            state
+                .detector
+                .correlate_click_with_app(click_x, click_y, ocr_regions, app_name);
 
         let gui_element = element.unwrap_or_else(|| {
             // If accessibility provides a focused element label, use it as

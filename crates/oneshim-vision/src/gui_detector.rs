@@ -327,6 +327,78 @@ impl GuiElementDetector {
         let shortcut_prefixes = ["Ctrl+", "Cmd+", "Alt+", "Shift+", "⌘", "⇧"];
         shortcut_prefixes.iter().any(|prefix| text.contains(prefix))
     }
+
+    /// Like `correlate_click`, but applies app-specific element type overrides.
+    pub fn correlate_click_with_app(
+        &self,
+        click_x: u32,
+        click_y: u32,
+        regions: &[OcrRegion],
+        app_name: &str,
+    ) -> Option<GuiElement> {
+        self.correlate_click(click_x, click_y, regions)
+            .map(|mut e| {
+                if let Some(override_type) = self.app_override(app_name, &e.text, &e.bbox) {
+                    e.element_type = override_type;
+                }
+                e
+            })
+    }
+
+    /// App-specific element type overrides for well-known applications.
+    fn app_override(
+        &self,
+        app_name: &str,
+        text: &str,
+        bbox: &BoundingBox,
+    ) -> Option<GuiElementType> {
+        let lower = app_name.to_lowercase();
+        let (screen_w, screen_h) = self.screen_resolution;
+
+        // IDE apps
+        if [
+            "code",
+            "visual studio",
+            "intellij",
+            "pycharm",
+            "webstorm",
+            "xcode",
+            "cursor",
+            "zed",
+        ]
+        .iter()
+        .any(|k| lower.contains(k))
+        {
+            let sidebar_max_x = screen_w / 5;
+            if bbox.x < sidebar_max_x && bbox.y > (screen_h as f64 * 0.09) as u32 {
+                return Some(GuiElementType::TreeItem);
+            }
+        }
+
+        // Browser apps
+        if ["chrome", "safari", "firefox", "edge", "arc", "brave"]
+            .iter()
+            .any(|k| lower.contains(k))
+        {
+            let url_bar_max_y = (screen_h as f64 * 0.08) as u32;
+            if bbox.y < url_bar_max_y && (text.contains('.') || text.contains('/')) {
+                return Some(GuiElementType::Link);
+            }
+        }
+
+        // Chat/Communication apps
+        if ["slack", "teams", "discord", "telegram", "messages"]
+            .iter()
+            .any(|k| lower.contains(k))
+        {
+            let sidebar_max_x = screen_w / 4;
+            if bbox.x < sidebar_max_x && bbox.y > (screen_h as f64 * 0.09) as u32 {
+                return Some(GuiElementType::TreeItem);
+            }
+        }
+
+        None
+    }
 }
 
 // TODO Phase 3: Per-word OCR confidence scores.
@@ -800,5 +872,42 @@ mod tests {
             GuiElementType::Button,
             "with proper resolution, Save button is correctly identified"
         );
+    }
+
+    // ── App-specific override tests ──
+
+    #[test]
+    fn ide_sidebar_override_to_tree_item() {
+        let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+        // Left 20% of screen (< 384px), below title bar (y > 97)
+        let region = make_region("src/main.rs", 30, 200, 120, 16, 0.9);
+        let elem = d.correlate_click_with_app(60, 208, &[region], "Visual Studio Code");
+        assert_eq!(elem.unwrap().element_type, GuiElementType::TreeItem);
+    }
+
+    #[test]
+    fn browser_url_override_to_link() {
+        let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+        // Top 8% of screen (< 86px), contains URL-like text
+        let region = make_region("github.com/repo", 200, 60, 400, 20, 0.9);
+        let elem = d.correlate_click_with_app(300, 70, &[region], "Google Chrome");
+        assert_eq!(elem.unwrap().element_type, GuiElementType::Link);
+    }
+
+    #[test]
+    fn chat_sidebar_override_to_tree_item() {
+        let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+        // Left 25% of screen (< 480px), below title bar
+        let region = make_region("#general", 50, 200, 100, 18, 0.9);
+        let elem = d.correlate_click_with_app(80, 209, &[region], "Slack");
+        assert_eq!(elem.unwrap().element_type, GuiElementType::TreeItem);
+    }
+
+    #[test]
+    fn non_matching_app_uses_generic_inference() {
+        let d = GuiElementDetector::new((1920, 1080), PiiFilterLevel::Off);
+        let region = make_region("Save", 500, 500, 50, 20, 0.9);
+        let elem = d.correlate_click_with_app(520, 510, &[region], "CustomApp");
+        assert_eq!(elem.unwrap().element_type, GuiElementType::Button);
     }
 }
