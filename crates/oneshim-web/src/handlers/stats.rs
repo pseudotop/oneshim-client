@@ -44,6 +44,42 @@ pub async fn get_heatmap(
     ))
 }
 
+/// GET /api/stats/gui-heatmap?start=...&end=...
+pub async fn get_gui_heatmap(
+    State(context): State<StorageWebContext>,
+    Query(params): Query<GuiHeatmapQuery>,
+) -> Result<Json<Vec<GuiHeatmapCell>>, ApiError> {
+    let now = chrono::Utc::now();
+    let start = params
+        .start
+        .unwrap_or_else(|| now.format("%Y-%m-%dT00:00:00Z").to_string());
+    let end = params.end.unwrap_or_else(|| now.to_rfc3339());
+
+    let density = context
+        .storage
+        .query_gui_interaction_density(&start, &end)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let cells: Vec<GuiHeatmapCell> = density
+        .into_iter()
+        .map(|(hour, count)| GuiHeatmapCell { hour, count })
+        .collect();
+
+    Ok(Json(cells))
+}
+
+#[derive(serde::Deserialize)]
+pub struct GuiHeatmapQuery {
+    pub start: Option<String>,
+    pub end: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct GuiHeatmapCell {
+    pub hour: String,
+    pub count: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

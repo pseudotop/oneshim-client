@@ -448,6 +448,20 @@ export async function fetchHeatmap(days = 7): Promise<HeatmapResponse> {
   return res.json()
 }
 
+export interface GuiHeatmapCell {
+  hour: string
+  count: number
+}
+
+export async function fetchGuiHeatmap(start?: string, end?: string): Promise<GuiHeatmapCell[]> {
+  const params = new URLSearchParams()
+  if (start) params.set('start', start)
+  if (end) params.set('end', end)
+  const res = await fetchWithRetry(`${BASE_URL}/stats/gui-heatmap?${params}`)
+  if (!res.ok) throw new Error('GUI heatmap query failed')
+  return res.json()
+}
+
 export async function exportData(
   dataType: ExportDataType,
   format: ExportFormat = 'json',

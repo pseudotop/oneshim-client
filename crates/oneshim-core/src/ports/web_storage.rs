@@ -231,6 +231,16 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
         Ok(vec![])
     }
 
+    /// Count GUI interactions per hour within a date range.
+    /// Returns `(hour_string, count)` pairs sorted chronologically.
+    fn query_gui_interaction_density(
+        &self,
+        _start: &str,
+        _end: &str,
+    ) -> Result<Vec<(String, u32)>, CoreError> {
+        Ok(vec![])
+    }
+
     /// Query coaching events, newest first, with pagination.
     /// Default returns empty — storage adapters that support coaching tables override.
     fn query_coaching_events(

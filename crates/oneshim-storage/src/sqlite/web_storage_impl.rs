@@ -737,6 +737,40 @@ impl WebStorage for SqliteStorage {
         Ok(records)
     }
 
+    fn query_gui_interaction_density(
+        &self,
+        start: &str,
+        end: &str,
+    ) -> Result<Vec<(String, u32)>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT strftime('%Y-%m-%dT%H:00:00Z', timestamp) AS hour, COUNT(*) AS cnt
+                 FROM gui_interactions
+                 WHERE timestamp >= ?1 AND timestamp < ?2
+                 GROUP BY hour
+                 ORDER BY hour",
+            )
+            .map_err(|e| {
+                CoreError::Internal(format!(
+                    "Failed to prepare GUI interaction density query: {e}"
+                ))
+            })?;
+
+        let rows: Vec<(String, u32)> = stmt
+            .query_map(rusqlite::params![start, end], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+            })
+            .map_err(|e| CoreError::Internal(format!("GUI interaction density query failed: {e}")))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(rows)
+    }
+
     fn query_coaching_events(
         &self,
         limit: u32,

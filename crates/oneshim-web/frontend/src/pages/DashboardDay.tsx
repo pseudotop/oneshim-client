@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react'
 import InsightCard from '../components/InsightCard'
 import PomodoroTimer from '../components/PomodoroTimer'
 import StatisticsPanel from '../components/StatisticsPanel'
+import GuiInteractionTrack from '../components/GuiInteractionTrack'
 import TimelineView from '../components/TimelineView'
 import { Button, Card, Skeleton } from '../components/ui'
 import { useCreateOverride, useOverrides } from '../hooks/useRecalibration'
@@ -194,6 +195,10 @@ export default function DashboardDay() {
                 regimeOptions={regimeOptions}
                 onCreateOverride={(req) => createOverrideMutation.mutate(req)}
                 isMutating={createOverrideMutation.isPending}
+              />
+              <GuiInteractionTrack
+                start={`${selectedDate}T00:00:00Z`}
+                end={`${selectedDate}T23:59:59Z`}
               />
               <StatisticsPanel statistics={data.statistics} />
             </>

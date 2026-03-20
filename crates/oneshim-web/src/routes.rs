@@ -21,6 +21,7 @@ pub fn api_routes() -> Router<AppState> {
         .route("/stats/summary", get(handlers::stats::get_summary))
         .route("/stats/apps", get(handlers::stats::get_app_usage))
         .route("/stats/heatmap", get(handlers::stats::get_heatmap))
+        .route("/stats/gui-heatmap", get(handlers::stats::get_gui_heatmap))
         .route("/reports", get(handlers::reports::generate_report))
         .route("/settings", get(handlers::settings::get_settings))
         .route("/settings", post(handlers::settings::update_settings))
