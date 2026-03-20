@@ -127,6 +127,10 @@ pub struct Scheduler {
     /// ConsentManager for runtime consent checks (e.g., full_text_extraction).
     /// Wrapped in Arc for shared access across async blocks.
     pub(super) consent_manager: Option<Arc<ConsentManager>>,
+    /// Coaching engine for proactive coaching messages (Phase 1).
+    /// `None` when coaching is not configured. The engine checks `enabled`
+    /// internally and returns `None` from `evaluate()` when disabled.
+    pub(super) coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
 }
 
 impl Scheduler {
@@ -171,6 +175,7 @@ impl Scheduler {
             sync_engine: None,
             accessibility_extractor: None,
             consent_manager: None,
+            coaching_engine: None,
         }
     }
 
@@ -259,6 +264,12 @@ impl Scheduler {
 
     pub fn with_consent_manager(mut self, consent_manager: Arc<ConsentManager>) -> Self {
         self.consent_manager = Some(consent_manager);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_coaching_engine(mut self, engine: Arc<oneshim_analysis::CoachingEngine>) -> Self {
+        self.coaching_engine = Some(engine);
         self
     }
 

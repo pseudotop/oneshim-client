@@ -184,6 +184,9 @@ pub(super) const IDLE_PERIOD_RETENTION_DAYS: i64 = 30;
 #[cfg(feature = "server")]
 pub(super) const OAUTH_REFRESH_INTERVAL_SECS: u64 = 120;
 
+/// Coaching evaluation interval — 30 seconds.
+pub(super) const COACHING_INTERVAL_SECS: u64 = 30;
+
 #[derive(Clone)]
 pub(super) struct PlatformEgressPolicy {
     enabled: bool,

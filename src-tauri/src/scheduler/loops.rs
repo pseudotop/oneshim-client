@@ -152,6 +152,7 @@ impl Scheduler {
         let accessibility_extractor1 = self.accessibility_extractor.clone();
         let config_manager1 = self.config_manager.clone();
         let consent_manager1 = self.consent_manager.clone();
+        let coaching_engine_ref = self.coaching_engine.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
@@ -486,6 +487,81 @@ impl Scheduler {
                                                 warn!("GUI interaction save failure: {e}");
                                             }
                                         }
+                                    }
+                                }
+
+                                // ── Coaching evaluation (Phase 1) ──
+                                // Uses placeholder values for regime data in Phase 1.
+                                // Full integration with AdaptiveTriggerState will use
+                                // regime_classifier and drift_detector outputs.
+                                if let Some(ref coaching) = coaching_engine_ref {
+                                    // Extract regime data from adaptive trigger state
+                                    // TODO(Phase 2): use real regime data from classifier
+                                    let regime_id_for_coaching: Option<&str> =
+                                        adaptive_trigger_state.as_ref().and_then(|ts| {
+                                            ts.current_regime_id.as_deref()
+                                        });
+                                    let regime_label_for_coaching =
+                                        regime_id_for_coaching.unwrap_or("Unknown");
+                                    // Placeholder: avg_duration 30 min, no drift
+                                    let avg_regime_duration_secs: u64 = 1800;
+                                    let drift_detected = false;
+                                    let regime_duration_secs: u64 = adaptive_trigger_state
+                                        .as_ref()
+                                        .and_then(|ts| ts.current_regime_id.as_ref())
+                                        .map(|_| poll.as_secs())
+                                        .unwrap_or(0);
+
+                                    // Record elapsed minutes for goal tracking
+                                    let elapsed_minutes =
+                                        (poll.as_secs() as f32 / 60.0).max(0.0) as u32;
+                                    if elapsed_minutes > 0 {
+                                        coaching
+                                            .record_minutes(
+                                                regime_label_for_coaching,
+                                                elapsed_minutes,
+                                            )
+                                            .await;
+                                    }
+
+                                    // Evaluate coaching triggers
+                                    if let Some(message) = coaching
+                                        .evaluate(
+                                            regime_id_for_coaching,
+                                            regime_label_for_coaching,
+                                            regime_duration_secs,
+                                            avg_regime_duration_secs,
+                                            drift_detected,
+                                            prev_app.as_deref().unwrap_or(""),
+                                        )
+                                        .await
+                                    {
+                                        // Send desktop notification (Phase 1 delivery)
+                                        if let Some(ref notif) = notif1 {
+                                            notif
+                                                .notify_coaching(&message.template_text)
+                                                .await;
+                                        }
+
+                                        // Register for feedback tracking
+                                        coaching
+                                            .register_pending_feedback(
+                                                &message.message_id,
+                                                &format!("{:?}", message.profile),
+                                                &oneshim_core::models::coaching::trigger_type_name(
+                                                    &message.trigger,
+                                                ),
+                                                regime_id_for_coaching,
+                                                prev_app.as_deref().unwrap_or(""),
+                                            )
+                                            .await;
+
+                                        info!(
+                                            profile = ?message.profile,
+                                            trigger = ?message.trigger,
+                                            "coaching message: {}",
+                                            message.template_text,
+                                        );
                                     }
                                 }
 
@@ -1467,6 +1543,47 @@ impl Scheduler {
         })
     }
 
+    /// 13. Coaching feedback evaluation loop.
+    ///
+    /// Runs implicit feedback evaluation on pending coaching messages every 30s.
+    /// The actual coaching `evaluate()` call is performed inside `spawn_monitor_loop()`
+    /// where live regime data is available (Option A from the plan).
+    pub(super) fn spawn_coaching_loop(
+        &self,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
+        let coaching = self.coaching_engine.clone();
+        let _notif = self.notification_manager.clone();
+
+        tokio::spawn(async move {
+            let engine = match coaching {
+                Some(e) => e,
+                None => {
+                    let _ = shutdown_rx.changed().await;
+                    return;
+                }
+            };
+
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(super::config::COACHING_INTERVAL_SECS));
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        // Evaluate implicit feedback for messages past the 5-min window.
+                        // In Phase 1, regime_id and app are placeholders — the monitor
+                        // loop provides the real coaching evaluation with live data.
+                        engine.evaluate_implicit_feedback(None, "", Utc::now()).await;
+                    }
+                    _ = shutdown_rx.changed() => {
+                        info!("coaching loop ended");
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
     #[allow(unused_variables)]
     pub(super) async fn run_scheduler_loops(
         &self,
@@ -1618,6 +1735,9 @@ impl Scheduler {
             shutdown_rx.clone(),
         );
 
+        // 13. Coaching feedback evaluation loop
+        let coaching_task = self.spawn_coaching_loop(shutdown_rx.clone());
+
         let _ = shutdown_rx.changed().await;
         info!("ended received");
 
@@ -1641,6 +1761,7 @@ impl Scheduler {
         }
         analysis_task.abort();
         cross_device_sync_task.abort();
+        coaching_task.abort();
     }
 }
 
