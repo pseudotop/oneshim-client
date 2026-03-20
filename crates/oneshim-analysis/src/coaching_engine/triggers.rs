@@ -134,7 +134,27 @@ impl CoachingEngine {
     }
 
     /// Update internal regime tracking when a regime change is detected.
+    ///
+    /// Before overwriting the current regime, records the completed dwell time
+    /// and updates the per-regime EMA duration tracker.
+    ///
+    /// Lock ordering: `current_regime_entered(R)` -> `current_regime_id(R)` ->
+    /// `regime_avg_duration(W)` -> `current_regime_id(W)` -> `current_regime_entered(W)`.
     pub async fn on_regime_change(&self, new_regime_id: Option<&str>) {
+        // Record completed dwell time into the EMA tracker
+        let entered = self.current_regime_entered.read().await;
+        if let Some(enter_time) = *entered {
+            let dwell_secs = (Utc::now() - enter_time).num_seconds().max(0) as f64;
+            let prev_id = self.current_regime_id.read().await;
+            if let Some(ref label) = *prev_id {
+                let mut avgs = self.regime_avg_duration.write().await;
+                let ema = avgs.entry(label.clone()).or_insert(dwell_secs);
+                // EMA alpha 0.2: responsive but stable
+                *ema = *ema * 0.8 + dwell_secs * 0.2;
+            }
+        }
+        drop(entered);
+
         let mut rid = self.current_regime_id.write().await;
         *rid = new_regime_id.map(String::from);
         let mut entered = self.current_regime_entered.write().await;

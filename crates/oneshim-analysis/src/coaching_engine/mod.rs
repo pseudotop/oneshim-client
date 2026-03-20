@@ -36,6 +36,10 @@ pub struct CoachingEngine {
     /// Tracks a snoozed profile: (profile_name, snooze_expiry_instant).
     /// When set, `evaluate()` skips triggers for this profile until the Instant passes.
     pub(super) snoozed_until: RwLock<Option<(String, Instant)>>,
+
+    /// Per-regime-label EMA of dwell duration in seconds.
+    /// Key: regime_label (not regime_id, since IDs are opaque).
+    pub(super) regime_avg_duration: RwLock<HashMap<String, f64>>,
 }
 
 impl CoachingEngine {
@@ -54,6 +58,7 @@ impl CoachingEngine {
             current_regime_id: RwLock::new(None),
             current_regime_entered: RwLock::new(None),
             snoozed_until: RwLock::new(None),
+            regime_avg_duration: RwLock::new(HashMap::new()),
         }
     }
 
@@ -67,7 +72,7 @@ impl CoachingEngine {
     /// - `regime_id`: opaque ID of the current regime (for transition detection)
     /// - `regime_label`: human-readable label (e.g., "Deep Work")
     /// - `regime_duration_secs`: seconds in the current regime
-    /// - `avg_regime_duration_secs`: historical average (TODO: placeholder 1800 in Phase 1)
+    /// - `avg_regime_duration_secs`: historical EMA average (from `avg_regime_duration_secs()`)
     /// - `drift_detected`: true if the drift detector flagged attention drift
     /// - `app_name`: currently focused application name
     pub async fn evaluate(
@@ -176,6 +181,13 @@ impl CoachingEngine {
     pub async fn record_minutes(&self, regime_label: &str, minutes: u32) {
         let mut gt = self.goal_tracker.write().await;
         gt.record_minutes(regime_label, minutes);
+    }
+
+    /// Get the EMA of dwell duration for a regime label, in seconds.
+    /// Returns 1800 (30 min) as default when no history exists.
+    pub async fn avg_regime_duration_secs(&self, regime_label: &str) -> u64 {
+        let avgs = self.regime_avg_duration.read().await;
+        avgs.get(regime_label).copied().unwrap_or(1800.0) as u64
     }
 
     /// Register a coaching message for pending feedback evaluation.
@@ -588,5 +600,21 @@ mod tests {
         assert_eq!(views.len(), 2);
         let coding = views.iter().find(|v| v.regime_label == "Coding").unwrap();
         assert_eq!(coding.target_minutes, 180);
+    }
+
+    #[tokio::test]
+    async fn avg_regime_duration_updates_on_transition() {
+        let engine = CoachingEngine::new(enabled_config());
+        engine.on_regime_change(Some("r-a")).await;
+        // Simulate a short dwell in regime-a
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        engine.on_regime_change(Some("r-b")).await;
+        let avg = engine.avg_regime_duration_secs("r-a").await;
+        // Should be > 0 (actual dwell) and < 1800 (default)
+        assert!(
+            avg < 1800,
+            "avg should reflect actual short dwell, got {}",
+            avg
+        );
     }
 }

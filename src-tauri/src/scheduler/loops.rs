@@ -527,8 +527,9 @@ impl Scheduler {
                                         });
                                     let regime_label_for_coaching =
                                         regime_id_for_coaching.unwrap_or("Unknown");
-                                    // Placeholder: avg_duration 30 min, no drift
-                                    let avg_regime_duration_secs: u64 = 1800;
+                                    let avg_regime_duration_secs: u64 = coaching
+                                        .avg_regime_duration_secs(regime_label_for_coaching)
+                                        .await;
                                     let drift_detected = false;
 
                                     // Track real regime dwell time: reset timer on regime change
