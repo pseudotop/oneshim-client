@@ -3,6 +3,7 @@
 //! - `RemoteSyncTransport` -- REST push/pull to a cloud endpoint.
 //! - `LanSyncTransport` -- mDNS + HTTPS peer-to-peer (behind `lan-sync` feature).
 
+pub mod reference_server;
 pub mod remote_transport;
 pub mod sync_crypto;
 
