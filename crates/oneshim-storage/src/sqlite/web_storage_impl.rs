@@ -4,10 +4,10 @@ use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::daily_digest::DailyDigest;
 use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
-    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiHeatmapRow, GuiInteractionRecord,
-    HourlyMetricsRecord, LocalSuggestionRecord, MetricExportRecord, NewGuiInteraction,
-    SearchEventRow, SearchFrameRow, SegmentDetailRecord, SegmentSummaryRecord,
-    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
+    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord, HourlyMetricsRecord,
+    LocalSuggestionRecord, MetricExportRecord, NewGuiInteraction, SearchEventRow, SearchFrameRow,
+    SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord,
+    TagRecord,
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::WebStorage;
@@ -736,66 +736,6 @@ impl WebStorage for SqliteStorage {
 
         Ok(records)
     }
-
-    fn get_gui_heatmap_data(&self, date: &str) -> Result<Vec<GuiHeatmapRow>, CoreError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
-
-        // bbox_json stores a JSON object like {"x":100,"y":200,"w":50,"h":30}.
-        // We extract the centroid (x + w/2, y + h/2) and bin it into 50px cells.
-        //
-        // Use a range query instead of date(timestamp) so the timestamp index is
-        // used. `date` is expected to be "YYYY-MM-DD".
-        let date_start = format!("{date}T00:00:00");
-        let date_end = format!("{date}T23:59:59.999999");
-        let mut stmt = conn
-            .prepare(
-                "SELECT bbox_json, element_type
-                 FROM gui_interactions
-                 WHERE timestamp >= ?1 AND timestamp < ?2
-                   AND bbox_json IS NOT NULL
-                   AND bbox_json != ''",
-            )
-            .map_err(|e| {
-                CoreError::Internal(format!("Failed to prepare GUI heatmap query: {e}"))
-            })?;
-
-        let raw_rows: Vec<(String, Option<String>)> = stmt
-            .query_map(rusqlite::params![date_start, date_end], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-            })
-            .map_err(|e| CoreError::Internal(format!("Failed to query GUI heatmap: {e}")))?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        // Aggregate in-process to handle varying bbox_json shapes.
-        use std::collections::HashMap;
-        let mut bins: HashMap<(u32, u32, String), u32> = HashMap::new();
-        let bin_size: u32 = 50;
-
-        for (bbox_json, element_type) in &raw_rows {
-            if let Some((cx, cy)) = parse_bbox_centroid(bbox_json) {
-                let bx = cx / bin_size;
-                let by = cy / bin_size;
-                let et = element_type.as_deref().unwrap_or("unknown").to_string();
-                *bins.entry((bx, by, et)).or_insert(0) += 1;
-            }
-        }
-
-        let rows = bins
-            .into_iter()
-            .map(|((bx, by, et), count)| GuiHeatmapRow {
-                bin_x: bx * bin_size,
-                bin_y: by * bin_size,
-                count,
-                element_type: et,
-            })
-            .collect();
-
-        Ok(rows)
-    }
 }
 
 /// Parse the centroid (center x, center y) from a bbox JSON string.
@@ -804,6 +744,7 @@ impl WebStorage for SqliteStorage {
 /// - `{"x":100,"y":200,"w":50,"h":30}` → centroid (125, 215)
 /// - `{"x":100,"y":200}` → (100, 200)
 /// - `[100, 200, 150, 230]` (x, y, x2, y2) → centroid (125, 215)
+#[cfg(test)]
 fn parse_bbox_centroid(json: &str) -> Option<(u32, u32)> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     if let Some(obj) = v.as_object() {

@@ -62,37 +62,166 @@ impl TextSearchProvider for SqliteStorage {
     async fn sync_segment(&self, segment_id: &str, searchable_text: &str) -> Result<(), CoreError> {
         let segment_id = segment_id.to_string();
         let searchable_text = searchable_text.to_string();
+        self.with_conn(move |conn| Self::upsert_fts(conn, &segment_id, "segment", &searchable_text))
+            .await
+    }
+}
+
+// ── Enriched FTS indexing (storage-level, not a port method) ───────
+impl SqliteStorage {
+    /// Index a segment with enriched content from multiple sources.
+    ///
+    /// In addition to the base `searchable_text` (llm_summary + dominant_category),
+    /// this method gathers window titles from `events`, `element_text` from
+    /// `gui_interactions`, and suggestion `content` from `suggestions` that fall
+    /// within the segment's time range and concatenates them into the FTS index.
+    pub async fn sync_segment_enriched(
+        &self,
+        segment_id: &str,
+        searchable_text: &str,
+        start_time: &str,
+        end_time: &str,
+    ) -> Result<(), CoreError> {
+        let segment_id = segment_id.to_string();
+        let searchable_text = searchable_text.to_string();
+        let start_time = start_time.to_string();
+        let end_time = end_time.to_string();
         self.with_conn(move |conn| {
-            // Check if the FTS5 table exists
+            let mut parts: Vec<String> = vec![searchable_text];
+
+            // Gather window titles from events table
+            let titles = Self::collect_window_titles(conn, &start_time, &end_time);
+            if !titles.is_empty() {
+                parts.push(titles);
+            }
+
+            // Gather GUI interaction element_text from gui_interactions table
+            let gui_text = Self::collect_gui_element_text(conn, &segment_id);
+            if !gui_text.is_empty() {
+                parts.push(gui_text);
+            }
+
+            // Gather suggestion content from suggestions table
+            let suggestion_text = Self::collect_suggestion_content(conn, &start_time, &end_time);
+            if !suggestion_text.is_empty() {
+                parts.push(suggestion_text);
+            }
+
+            let combined = parts.join(" ");
+            Self::upsert_fts(conn, &segment_id, "segment", &combined)
+        })
+        .await
+    }
+
+    /// Insert or replace a row in the FTS5 search_fts table.
+    fn upsert_fts(
+        conn: &rusqlite::Connection,
+        segment_id: &str,
+        content_type: &str,
+        searchable_text: &str,
+    ) -> Result<(), CoreError> {
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='search_fts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            warn!("search_fts table not available; skipping FTS upsert");
+            return Ok(());
+        }
+
+        conn.execute(
+            "DELETE FROM search_fts WHERE segment_id = ?1",
+            rusqlite::params![segment_id],
+        )
+        .map_err(|e| CoreError::Internal(format!("FTS5 delete failed: {e}")))?;
+
+        conn.execute(
+            "INSERT INTO search_fts (segment_id, content_type, searchable_text) VALUES (?1, ?2, ?3)",
+            rusqlite::params![segment_id, content_type, searchable_text],
+        )
+        .map_err(|e| CoreError::Internal(format!("FTS5 insert failed: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Collect distinct window titles from the events table within the given time range.
+    /// The events table stores event data as JSON in the `data` column, so we
+    /// extract `window_title` via `json_extract`.
+    fn collect_window_titles(
+        conn: &rusqlite::Connection,
+        start_time: &str,
+        end_time: &str,
+    ) -> String {
+        let result: Result<Vec<String>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT json_extract(data, '$.window_title') AS wt FROM events
+                 WHERE timestamp >= ?1 AND timestamp <= ?2
+                   AND wt IS NOT NULL AND wt != ''
+                 LIMIT 100",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![start_time, end_time], |row| {
+                row.get::<_, String>(0)
+            })?;
+            Ok(rows.filter_map(|r| r.ok()).collect())
+        })();
+
+        result.unwrap_or_default().join(" ")
+    }
+
+    /// Collect GUI interaction element_text for the given segment.
+    fn collect_gui_element_text(conn: &rusqlite::Connection, segment_id: &str) -> String {
+        let result: Result<Vec<String>, rusqlite::Error> = (|| {
+            // Check if the table exists first (V13 migration)
             let table_exists: bool = conn
                 .query_row(
-                    "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='search_fts'",
+                    "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='gui_interactions'",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap_or(false);
 
             if !table_exists {
-                warn!("search_fts table not available; skipping sync_segment");
-                return Ok(());
+                return Ok(vec![]);
             }
 
-            // Delete existing entry then insert (FTS5 does not support INSERT OR REPLACE)
-            conn.execute(
-                "DELETE FROM search_fts WHERE segment_id = ?1",
-                rusqlite::params![segment_id],
-            )
-            .map_err(|e| CoreError::Internal(format!("FTS5 delete failed: {e}")))?;
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT element_text FROM gui_interactions
+                 WHERE segment_id = ?1
+                   AND element_text IS NOT NULL AND element_text != ''
+                 LIMIT 100",
+            )?;
+            let rows =
+                stmt.query_map(rusqlite::params![segment_id], |row| row.get::<_, String>(0))?;
+            Ok(rows.filter_map(|r| r.ok()).collect())
+        })();
 
-            conn.execute(
-                "INSERT INTO search_fts (segment_id, content_type, searchable_text) VALUES (?1, ?2, ?3)",
-                rusqlite::params![segment_id, "segment", searchable_text],
-            )
-            .map_err(|e| CoreError::Internal(format!("FTS5 insert failed: {e}")))?;
+        result.unwrap_or_default().join(" ")
+    }
 
-            Ok(())
-        })
-        .await
+    /// Collect suggestion content from the suggestions table within the given time range.
+    fn collect_suggestion_content(
+        conn: &rusqlite::Connection,
+        start_time: &str,
+        end_time: &str,
+    ) -> String {
+        let result: Result<Vec<String>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT content FROM suggestions
+                 WHERE created_at >= ?1 AND created_at <= ?2
+                   AND content IS NOT NULL AND content != ''
+                 LIMIT 50",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![start_time, end_time], |row| {
+                row.get::<_, String>(0)
+            })?;
+            Ok(rows.filter_map(|r| r.ok()).collect())
+        })();
+
+        result.unwrap_or_default().join(" ")
     }
 }
 
@@ -192,5 +321,128 @@ mod tests {
 
         let results = storage.search_fts("keyword", 2).await.unwrap();
         assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn enriched_sync_includes_window_titles() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // Insert events with window titles in the time range (data column stores JSON)
+        {
+            let conn = storage.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO events (event_id, event_type, timestamp, data)
+                 VALUES ('evt-1', 'window_change', '2026-03-01T10:00:00Z',
+                         '{\"app_name\":\"Code\",\"window_title\":\"authentication.rs - VS Code\"}')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO events (event_id, event_type, timestamp, data)
+                 VALUES ('evt-2', 'window_change', '2026-03-01T10:30:00Z',
+                         '{\"app_name\":\"Firefox\",\"window_title\":\"Rust Documentation\"}')",
+                [],
+            )
+            .unwrap();
+        }
+
+        storage
+            .sync_segment_enriched(
+                "seg-enriched-1",
+                "deep work session",
+                "2026-03-01T09:00:00Z",
+                "2026-03-01T11:00:00Z",
+            )
+            .await
+            .unwrap();
+
+        // Should find via window title text
+        let results = storage.search_fts("authentication", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].segment_id, "seg-enriched-1");
+
+        let results = storage.search_fts("Documentation", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn enriched_sync_includes_suggestion_content() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // Insert a suggestion in the time range
+        {
+            let conn = storage.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO suggestions (suggestion_id, suggestion_type, content, priority, source, created_at)
+                 VALUES ('sugg-001', 'focus', 'Take a break after debugging session', 'Medium', 'local', '2026-03-01T10:15:00Z')",
+                [],
+            )
+            .unwrap();
+        }
+
+        storage
+            .sync_segment_enriched(
+                "seg-enriched-2",
+                "coding session",
+                "2026-03-01T09:00:00Z",
+                "2026-03-01T11:00:00Z",
+            )
+            .await
+            .unwrap();
+
+        let results = storage.search_fts("debugging", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].segment_id, "seg-enriched-2");
+    }
+
+    #[tokio::test]
+    async fn enriched_sync_includes_gui_interactions() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // Insert a gui_interaction for the segment (V13 schema: event_id, segment_id,
+        // timestamp, element_text, element_type, interaction_type, app_name)
+        {
+            let conn = storage.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO gui_interactions (event_id, segment_id, timestamp, element_type, element_text, interaction_type, app_name)
+                 VALUES ('gui-evt-1', 'seg-enriched-3', '2026-03-01T10:00:00Z', 'button', 'Submit Pull Request', 'click', 'GitHub')",
+                [],
+            )
+            .unwrap();
+        }
+
+        storage
+            .sync_segment_enriched(
+                "seg-enriched-3",
+                "development work",
+                "2026-03-01T09:00:00Z",
+                "2026-03-01T11:00:00Z",
+            )
+            .await
+            .unwrap();
+
+        let results = storage.search_fts("Pull Request", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].segment_id, "seg-enriched-3");
+    }
+
+    #[tokio::test]
+    async fn enriched_sync_no_extra_sources_works_like_basic() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // No events/gui/suggestions in range -- should still index the base text
+        storage
+            .sync_segment_enriched(
+                "seg-basic",
+                "plain segment text",
+                "2099-01-01T00:00:00Z",
+                "2099-01-01T01:00:00Z",
+            )
+            .await
+            .unwrap();
+
+        let results = storage.search_fts("plain", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].segment_id, "seg-basic");
     }
 }
