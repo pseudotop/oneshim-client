@@ -4,6 +4,7 @@ use chrono::{DateTime, Duration, Utc};
 use oneshim_api_contracts::export::{
     EventExportRecord, ExportQuery, FrameExportRecord, MetricExportRecord,
 };
+use oneshim_core::models::storage_records::FocusWorkSessionRecord;
 use serde::Serialize;
 
 use crate::error::ApiError;
@@ -62,6 +63,58 @@ impl ExportQueryService {
             .collect();
 
         export_response(&records, &params.format, "frames")
+    }
+
+    /// Export work sessions as iCalendar (.ics) VEVENT entries.
+    pub fn export_ical(&self, params: &ExportQuery) -> Result<Response, ApiError> {
+        let (from, to) = resolve_export_range(params);
+        let sessions = self
+            .ctx
+            .storage
+            .list_work_sessions(&from.to_rfc3339(), &to.to_rfc3339(), 1000)
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
+
+        let ical = sessions_to_ical(&sessions);
+        let now = Utc::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("sessions_{now}.ics");
+
+        Ok((
+            [
+                (header::CONTENT_TYPE, "text/calendar; charset=utf-8"),
+                (
+                    header::CONTENT_DISPOSITION,
+                    &format!("attachment; filename=\"{filename}\""),
+                ),
+            ],
+            ical,
+        )
+            .into_response())
+    }
+
+    /// Export work sessions in Toggl-compatible CSV format.
+    pub fn export_toggl(&self, params: &ExportQuery) -> Result<Response, ApiError> {
+        let (from, to) = resolve_export_range(params);
+        let sessions = self
+            .ctx
+            .storage
+            .list_work_sessions(&from.to_rfc3339(), &to.to_rfc3339(), 1000)
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
+
+        let csv = sessions_to_toggl_csv(&sessions);
+        let now = Utc::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("sessions_toggl_{now}.csv");
+
+        Ok((
+            [
+                (header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+                (
+                    header::CONTENT_DISPOSITION,
+                    &format!("attachment; filename=\"{filename}\""),
+                ),
+            ],
+            csv,
+        )
+            .into_response())
     }
 }
 
@@ -122,6 +175,101 @@ fn export_response<T: Serialize>(
             )
                 .into_response())
         }
+    }
+}
+
+/// Convert work sessions to iCalendar (RFC 5545) format.
+///
+/// Each completed session maps to a VEVENT with DTSTART/DTEND/SUMMARY.
+/// Sessions without an `ended_at` timestamp are skipped.
+pub(crate) fn sessions_to_ical(sessions: &[FocusWorkSessionRecord]) -> String {
+    let mut buf = String::with_capacity(sessions.len() * 256);
+    buf.push_str("BEGIN:VCALENDAR\r\n");
+    buf.push_str("VERSION:2.0\r\n");
+    buf.push_str("PRODID:-//ONESHIM//Work Sessions//EN\r\n");
+    buf.push_str("CALSCALE:GREGORIAN\r\n");
+
+    for session in sessions {
+        let Some(ended_at) = &session.ended_at else {
+            continue;
+        };
+
+        let dtstart = rfc3339_to_ical(&session.started_at);
+        let dtend = rfc3339_to_ical(ended_at);
+
+        buf.push_str("BEGIN:VEVENT\r\n");
+        buf.push_str(&format!("UID:session-{}@oneshim\r\n", session.id));
+        buf.push_str(&format!("DTSTART:{dtstart}\r\n"));
+        buf.push_str(&format!("DTEND:{dtend}\r\n"));
+        buf.push_str(&format!(
+            "SUMMARY:{} ({})\r\n",
+            session.primary_app, session.category
+        ));
+        buf.push_str(&format!(
+            "DESCRIPTION:Duration: {}s | Deep work: {}s | Interruptions: {}\r\n",
+            session.duration_secs, session.deep_work_secs, session.interruption_count
+        ));
+        buf.push_str("END:VEVENT\r\n");
+    }
+
+    buf.push_str("END:VCALENDAR\r\n");
+    buf
+}
+
+/// Convert work sessions to Toggl-compatible CSV format.
+///
+/// Columns: Description, Start date, Start time, Duration, Tags
+pub(crate) fn sessions_to_toggl_csv(sessions: &[FocusWorkSessionRecord]) -> String {
+    let mut buf = String::from("Description,Start date,Start time,Duration,Tags\n");
+
+    for session in sessions {
+        let description = csv_escape(&format!("{} ({})", session.primary_app, session.category));
+        let (start_date, start_time) = split_rfc3339_date_time(&session.started_at);
+        let duration = format_toggl_duration(session.duration_secs);
+        let tags = &session.category;
+
+        buf.push_str(&format!(
+            "{description},{start_date},{start_time},{duration},{tags}\n"
+        ));
+    }
+
+    buf
+}
+
+/// Convert an RFC 3339 timestamp to iCal DATETIME format (yyyyMMddTHHmmssZ).
+fn rfc3339_to_ical(ts: &str) -> String {
+    DateTime::parse_from_rfc3339(ts)
+        .map(|dt| dt.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string())
+        .unwrap_or_else(|_| ts.replace(['-', ':'], ""))
+}
+
+/// Split an RFC 3339 timestamp into (YYYY-MM-DD, HH:MM:SS) parts for Toggl CSV.
+fn split_rfc3339_date_time(ts: &str) -> (String, String) {
+    DateTime::parse_from_rfc3339(ts)
+        .map(|dt| {
+            let utc = dt.with_timezone(&Utc);
+            (
+                utc.format("%Y-%m-%d").to_string(),
+                utc.format("%H:%M:%S").to_string(),
+            )
+        })
+        .unwrap_or_else(|_| (ts.to_string(), "00:00:00".to_string()))
+}
+
+/// Format seconds as HH:MM:SS for Toggl duration column.
+fn format_toggl_duration(secs: u64) -> String {
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+    format!("{h:02}:{m:02}:{s:02}")
+}
+
+/// Escape a CSV field value: quote it if it contains comma, quote, or newline.
+fn csv_escape(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
     }
 }
 

@@ -78,6 +78,8 @@ pub fn api_routes() -> Router<AppState> {
         .route("/export/metrics", get(handlers::export::export_metrics))
         .route("/export/events", get(handlers::export::export_events))
         .route("/export/frames", get(handlers::export::export_frames))
+        .route("/export/ical", get(handlers::export::export_ical))
+        .route("/export/toggl", get(handlers::export::export_toggl))
         .route("/backup", get(handlers::backup::create_backup))
         .route("/backup/restore", post(handlers::backup::restore_backup))
         .route("/tags", get(handlers::tags::list_tags))
@@ -245,6 +247,20 @@ pub fn api_routes() -> Router<AppState> {
             "/recalibration/recluster",
             post(handlers::recalibration::trigger_recluster),
         )
+        // Pomodoro timer
+        .route("/pomodoro/start", post(handlers::pomodoro::start_pomodoro))
+        .route(
+            "/pomodoro/current",
+            get(handlers::pomodoro::get_current_pomodoro),
+        )
+        .route(
+            "/pomodoro/cancel",
+            post(handlers::pomodoro::cancel_pomodoro),
+        )
+        .route(
+            "/pomodoro/complete",
+            post(handlers::pomodoro::complete_pomodoro),
+        )
 }
 
 pub fn integration_routes() -> Router<AppState> {
@@ -266,7 +282,7 @@ mod tests {
     use super::*;
     use crate::AppState;
     use oneshim_storage::sqlite::SqliteStorage;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use tokio::sync::broadcast;
 
     #[test]
@@ -298,6 +314,7 @@ mod tests {
             text_search: None,
             override_store: None,
             recluster_requested: None,
+            pomodoro: Arc::new(Mutex::new(None)),
         };
         let _app: Router<()> = api_routes().with_state(state);
     }
@@ -331,6 +348,7 @@ mod tests {
             text_search: None,
             override_store: None,
             recluster_requested: None,
+            pomodoro: Arc::new(Mutex::new(None)),
         };
         let _app: Router<()> = integration_routes().with_state(state);
     }
