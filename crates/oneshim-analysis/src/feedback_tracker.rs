@@ -188,10 +188,11 @@ impl FeedbackTracker {
             return true;
         }
 
+        #[allow(clippy::manual_is_multiple_of)] // MSRV 1.77.1: is_multiple_of() requires 1.83+
         if score.ratio() < LOW_EFFECTIVENESS_THRESHOLD {
             self.gate_counter += 1;
             // Allow 1-in-3
-            return self.gate_counter.is_multiple_of(3);
+            return self.gate_counter % 3 == 0;
         }
 
         true

@@ -54,7 +54,7 @@ impl RegimeGoalTracker {
         };
 
         let current = self.today_minutes.get(regime_label).copied().unwrap_or(0);
-        let percentage = ((current as f64 / target as f64) * 100.0).min(255.0) as u8;
+        let percentage = ((current as f64 / target as f64) * 100.0).min(u16::MAX as f64) as u16;
 
         let thresholds = [25u8, 50, 75, 100];
         let notified = self
@@ -63,7 +63,7 @@ impl RegimeGoalTracker {
             .or_default();
 
         for &threshold in &thresholds {
-            if percentage >= threshold && !notified.contains(&threshold) {
+            if percentage >= threshold as u16 && !notified.contains(&threshold) {
                 notified.push(threshold);
                 return Some(threshold);
             }
@@ -79,7 +79,7 @@ impl RegimeGoalTracker {
             return None;
         }
         let current = self.today_minutes.get(regime_label).copied().unwrap_or(0);
-        let percentage = ((current as f64 / target as f64) * 100.0).min(255.0) as u8;
+        let percentage = ((current as f64 / target as f64) * 100.0).min(u16::MAX as f64) as u16;
 
         Some(GoalProgress {
             regime_label: regime_label.to_string(),

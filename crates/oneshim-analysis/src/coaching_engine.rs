@@ -362,11 +362,11 @@ impl CoachingEngine {
         }
 
         // Placeholder values for Phase 1 (will be enriched in Phase 2)
-        // TODO: Fill from real context switch counter
+        // TODO(Phase 2): wire actual context switch count from regime transition history
         vars.insert("context_switches".to_string(), "N/A".to_string());
-        // TODO: Fill from historical comparison data
+        // TODO(Phase 2): wire historical comparison data from daily digest / weekly trends
         vars.insert("comparison".to_string(), "N/A".to_string());
-        // TODO: Fill from previous context tracking
+        // TODO(Phase 2): wire previous context from regime transition tracking
         vars.insert("previous_context".to_string(), "N/A".to_string());
 
         vars

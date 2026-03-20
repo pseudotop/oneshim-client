@@ -506,6 +506,7 @@ impl Scheduler {
                                     // Placeholder: avg_duration 30 min, no drift
                                     let avg_regime_duration_secs: u64 = 1800;
                                     let drift_detected = false;
+                                    // TODO(Phase 2): track actual regime dwell time; currently poll interval makes overstay trigger inert
                                     let regime_duration_secs: u64 = adaptive_trigger_state
                                         .as_ref()
                                         .and_then(|ts| ts.current_regime_id.as_ref())
@@ -1573,6 +1574,7 @@ impl Scheduler {
                         // Evaluate implicit feedback for messages past the 5-min window.
                         // In Phase 1, regime_id and app are placeholders — the monitor
                         // loop provides the real coaching evaluation with live data.
+                        // TODO(Phase 2): pass real current_regime_id and current_app for accurate implicit feedback classification
                         engine.evaluate_implicit_feedback(None, "", Utc::now()).await;
                     }
                     _ = shutdown_rx.changed() => {

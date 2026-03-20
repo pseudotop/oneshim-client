@@ -105,8 +105,8 @@ pub struct GoalProgress {
     pub current_minutes: u32,
     /// User-configured daily target for this regime.
     pub target_minutes: u32,
-    /// Completion percentage (0-100+, can exceed 100%).
-    pub percentage: u8,
+    /// Completion percentage. Values >100 are valid (user exceeded the goal).
+    pub percentage: u16,
 }
 
 /// Extended goal progress with UI display hints.
@@ -118,8 +118,8 @@ pub struct GoalProgressView {
     pub current_minutes: u32,
     /// User-configured daily target.
     pub target_minutes: u32,
-    /// Completion percentage.
-    pub percentage: u8,
+    /// Completion percentage. Values >100 are valid (user exceeded the goal).
+    pub percentage: u16,
     /// CSS-compatible color string for progress bar rendering.
     pub display_color: String,
 }
