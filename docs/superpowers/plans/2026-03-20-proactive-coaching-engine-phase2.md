@@ -13,7 +13,14 @@
 - `RegimeGoalTracker` and `FeedbackTracker`
 - `coaching_loop` in the scheduler + `notify_coaching()` in `NotificationManager`
 
-**Architecture:** The MagicOverlay is a second Tauri WebView window (transparent, always-on-top, click-through) that renders a lightweight React app. The main dashboard window communicates with it via Tauri events. The Rust backend exposes IPC commands that the overlay React app calls for dismissal/feedback, and that the scheduler calls (via `AppHandle.emit()`) to push coaching messages. The LLM personalization spawns a background `tokio::spawn` task using the existing `AnalysisProvider` port.
+**Architecture:** The MagicOverlay is a second Tauri WebView window (transparent, always-on-top, click-through by default) that renders a lightweight React app. The main dashboard window communicates with it via Tauri events. The Rust backend exposes IPC commands that the overlay React app calls for dismissal/feedback, and that the scheduler calls (via `AppHandle.emit()`) to push coaching messages. The LLM personalization spawns a background `tokio::spawn` task using the existing `AnalysisProvider` port.
+
+**Click-through model:** Tauri v2 does not support per-element click-through (no `forward` option on `set_ignore_cursor_events`). The overlay uses a **two-state model**: by default, the entire window is click-through (`set_ignore_cursor_events(true)`). The user presses Cmd+Shift+O (Ctrl+Shift+O on Windows/Linux) to toggle the overlay into interactive mode (`set_ignore_cursor_events(false)`), enabling clicks on popup buttons. After dismissal or a 5-second inactivity timeout, the overlay automatically returns to click-through.
+
+**Platform considerations:**
+- **macOS:** Requires `macos-private-api` feature flag in `Cargo.toml` for transparent windows.
+- **Windows:** Requires `shadow: false` on the window builder to avoid rendering artifacts with transparency.
+- **Linux (Wayland):** Transparent always-on-top overlays are not reliably supported. The system gracefully degrades to desktop-notification-only delivery on Wayland, with full overlay support on X11.
 
 **Tech Stack:**
 - Rust: Tauri v2 (`WebviewWindowBuilder`, `AppHandle.emit`, `#[tauri::command]`), tokio, serde
@@ -68,7 +75,7 @@
 | `crates/oneshim-web/src/lib.rs` | Add `coaching_engine: Option<Arc<CoachingEngine>>` to web `AppState` |
 | `crates/oneshim-web/src/routes.rs` | Add `/api/coaching/*` REST endpoints; update `routes_compile` test constructor |
 | `crates/oneshim-web/src/handlers/mod.rs` | Add `pub mod coaching;` |
-| `src-tauri/Cargo.toml` | Add `tauri-plugin-global-shortcut` dependency |
+| `src-tauri/Cargo.toml` | Add `tauri-plugin-global-shortcut` dependency; add `macos-private-api` feature to `tauri` for transparent windows |
 
 ---
 
@@ -186,6 +193,13 @@ Window creation pattern (reference `WebviewWindowBuilder` from Tauri v2):
 
 ```rust
 async fn ensure_window(&self) -> Result<(), String> {
+    // Wayland graceful degradation: skip overlay creation entirely
+    #[cfg(target_os = "linux")]
+    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        warn!("Wayland detected — MagicOverlay disabled, using notification fallback");
+        return Err("Wayland does not support transparent overlay windows".to_string());
+    }
+
     // Check if window already exists
     if self.app_handle.get_webview_window(OVERLAY_LABEL).is_some() {
         return Ok(());
@@ -198,7 +212,7 @@ async fn ensure_window(&self) -> Result<(), String> {
 
     let size = monitor.size();
 
-    let _window = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         &self.app_handle,
         OVERLAY_LABEL,
         WebviewUrl::App(OVERLAY_URL.into()),
@@ -212,13 +226,31 @@ async fn ensure_window(&self) -> Result<(), String> {
     .resizable(false)
     .visible(false)
     .skip_taskbar(true)
-    .build()
-    .map_err(|e| format!("Failed to create overlay window: {e}"))?;
+    // Windows: shadow must be false for transparent windows to render correctly
+    .shadow(false);
+
+    let window = builder
+        .build()
+        .map_err(|e| format!("Failed to create overlay window: {e}"))?;
+
+    // Default: click-through. User presses Cmd+Shift+O to make interactive.
+    let _ = window.set_ignore_cursor_events(true);
 
     info!("MagicOverlay window created");
     Ok(())
 }
 ```
+
+**Important `Cargo.toml` requirement for macOS:**
+
+Transparent windows on macOS require the `macos-private-api` feature flag. Add to `src-tauri/Cargo.toml`:
+
+```toml
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
+```
+
+Without this feature flag, `transparent(true)` will silently fail on macOS and the overlay background will be opaque white.
 
 ```
 cargo check -p oneshim-app
@@ -273,25 +305,43 @@ Tauri v2 auto-discovers capability files in the `src-tauri/capabilities/` direct
 cargo check -p oneshim-app
 ```
 
-- [ ] **Step 1.5: Add click-through behavior**
+- [ ] **Step 1.5: Add click-through behavior with two-state overlay**
 
-The overlay window must be click-through except for interactive elements (the coaching popup, buttons). Tauri v2 supports `ignore_cursor_events(true)` on the window level. However, we need the popup to be interactive.
+The overlay window must default to fully click-through so it never blocks user interaction with underlying windows. Tauri v2 does **not** support per-element click-through (there is no `forward` option on `set_ignore_cursor_events`), so a mouseenter/mouseleave approach would not work — the event never fires on a click-through window.
 
-Strategy: use Tauri's `set_ignore_cursor_events` API. The overlay React app calls `set_ignore_cursor_events(false)` when the mouse enters an interactive element and `set_ignore_cursor_events(true)` when it leaves. This requires a Tauri IPC command.
+**Two-state overlay strategy:**
+- **Default state:** `set_ignore_cursor_events(true)` — the entire overlay is click-through. Set during window creation in `ensure_window()`.
+- **Interactive state:** When the user presses the global shortcut (Cmd+Shift+O / Ctrl+Shift+O), toggle to `set_ignore_cursor_events(false)` — the overlay becomes interactive and the user can click the coaching popup, buttons, etc.
+- **Return to click-through:** After the user dismisses the coaching popup, or after a 5-second timeout of no interaction, automatically call `set_ignore_cursor_events(true)` to return to click-through mode.
 
 Add to `magic_overlay.rs`:
 
 ```rust
-/// Set whether the overlay window ignores cursor events.
-/// Called from React when mouse enters/leaves interactive elements.
-pub async fn set_cursor_passthrough(&self, passthrough: bool) {
+/// Toggle overlay interactivity.
+///
+/// When `interactive = true`, the overlay captures mouse/keyboard input
+/// (user can interact with popup buttons).
+/// When `interactive = false`, all events pass through to underlying windows.
+///
+/// Triggered by:
+///   - Global shortcut Cmd+Shift+O: toggle to interactive
+///   - Coaching popup dismissed: return to click-through
+///   - 5-second no-interaction timeout: return to click-through
+pub async fn set_interactive(&self, interactive: bool) {
     if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
-        let _ = window.set_ignore_cursor_events(passthrough);
+        // set_ignore_cursor_events is the inverse of "interactive"
+        let _ = window.set_ignore_cursor_events(!interactive);
+        debug!("Overlay interactive={interactive}");
     }
 }
 ```
 
-Default state: `ignore_cursor_events(true)` set during window creation.
+Default state: `window.set_ignore_cursor_events(true)` set during window creation in `ensure_window()`.
+
+**Platform notes:**
+- **macOS:** Transparent windows require the `macos-private-api` feature flag in `Cargo.toml` (`tauri = { features = ["macos-private-api"] }`). Without it, transparent + always-on-top windows may not render correctly.
+- **Windows:** Transparent windows require `shadow: false` in the window builder to avoid rendering artifacts. Add `.shadow(false)` to `WebviewWindowBuilder` in `ensure_window()`.
+- **Linux (Wayland):** Wayland does not support always-on-top or transparent overlay windows reliably. The overlay should gracefully degrade: detect Wayland via `std::env::var("WAYLAND_DISPLAY")` and fall back to desktop-notification-only delivery (skip overlay creation). Log a warning: `"Wayland detected — MagicOverlay disabled, using notification fallback"`.
 
 ```
 cargo check -p oneshim-app
@@ -359,25 +409,44 @@ cargo check -p oneshim-app
 
 The IPC commands in subsequent steps reference `CoachingEngine` methods that may not exist from Phase 1. Add the following methods to `CoachingEngine` in `crates/oneshim-analysis/src/coaching_engine.rs`:
 
+First, add a `snoozed_until` field to the `CoachingEngine` struct itself (not to an internal state struct — `CoachingEngine` does not have a `self.state` mutex):
+
 ```rust
-/// Set a temporary cooldown override on the last active coaching profile.
+/// Tracks a snoozed profile: (profile_name, snooze_expiry_instant).
+/// When set, `evaluate()` skips triggers for this profile until the Instant passes.
+snoozed_until: RwLock<Option<(String, Instant)>>,
+```
+
+Initialize it in `CoachingEngine::new()`:
+
+```rust
+snoozed_until: RwLock::new(None),
+```
+
+Then add the following methods:
+
+```rust
+/// Set a temporary cooldown override on the specified coaching profile.
 /// While snoozed, `evaluate()` skips that profile's triggers.
 /// The snooze expires after `duration` elapses.
-/// Implementation: store `(profile_name, Instant::now() + duration)` in the
-/// engine state; check it at the start of `evaluate()`.
-pub fn snooze_current_profile(&self, duration: Duration) {
-    let mut state = self.state.lock();
-    if let Some(ref profile_name) = state.last_active_profile {
-        state.snoozed_until = Some((profile_name.clone(), Instant::now() + duration));
-    }
+///
+/// Called from the `dismiss_coaching_message` IPC command when the user
+/// clicks "Later". The profile name is read from the most recently
+/// shown coaching message.
+pub async fn snooze_current_profile(&self, profile_name: &str, duration: Duration) {
+    let mut guard = self.snoozed_until.write().await;
+    *guard = Some((profile_name.to_string(), Instant::now() + duration));
 }
 
 /// Return goal progress for all configured regimes.
 /// Delegates to `RegimeGoalTracker::all_progress()`, maps each `GoalProgress`
 /// to `GoalProgressView` with a deterministic display color assignment.
-pub fn all_goal_progress(&self) -> Vec<GoalProgressView> {
+///
+/// Async because it reads from `RwLock<RegimeGoalTracker>`.
+pub async fn all_goal_progress(&self) -> Vec<GoalProgressView> {
     const COLORS: &[&str] = &["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
-    self.goal_tracker
+    let tracker = self.goal_tracker.read().await;
+    tracker
         .all_progress()
         .into_iter()
         .enumerate()
@@ -393,26 +462,32 @@ pub fn all_goal_progress(&self) -> Vec<GoalProgressView> {
 
 /// Update the goal tracker's regime targets at runtime.
 /// Called from the IPC `update_regime_goals` command.
-pub fn update_regime_goals(&self, goals: &HashMap<String, u32>) {
-    self.goal_tracker.update_targets(goals);
+/// Note: delegates to `RegimeGoalTracker::update_goals()` (not `update_targets`).
+pub async fn update_regime_goals(&self, goals: &HashMap<String, u32>) {
+    let mut tracker = self.goal_tracker.write().await;
+    tracker.update_goals(goals);
 }
 ```
 
-Also add the `snoozed_until` field to the engine's internal state struct (alongside the existing `last_active_profile`):
-
-```rust
-snoozed_until: Option<(String, Instant)>,
-```
-
-And update the `evaluate()` method to skip snoozed profiles:
+And update the `evaluate()` method to check the snooze before processing triggers:
 
 ```rust
 // At the start of evaluate(), check snooze:
-if let Some((ref profile, until)) = self.state.lock().snoozed_until {
-    if Instant::now() < *until && current_profile == profile {
-        return None; // snoozed, skip evaluation
-    } else if Instant::now() >= *until {
-        self.state.lock().snoozed_until = None; // expired
+{
+    let guard = self.snoozed_until.read().await;
+    if let Some((ref profile, until)) = *guard {
+        if Instant::now() < until && current_profile == profile {
+            return None; // snoozed, skip evaluation
+        }
+    }
+}
+// If expired, clear it:
+{
+    let mut guard = self.snoozed_until.write().await;
+    if let Some((_, until)) = guard.as_ref() {
+        if Instant::now() >= *until {
+            *guard = None; // expired, clear snooze
+        }
     }
 }
 ```
@@ -428,7 +503,8 @@ cargo check -p oneshim-analysis
 pub async fn dismiss_coaching_message(
     state: tauri::State<'_, AppState>,
     message_id: String,
-    action: String, // "ok" | "later" | "timeout"
+    action: String,   // "ok" | "later" | "timeout"
+    profile: String,  // profile name from the coaching payload
 ) -> Result<(), String> {
     let dismiss_action = match action.as_str() {
         "ok" => DismissAction::Ok,
@@ -444,8 +520,13 @@ pub async fn dismiss_coaching_message(
     // If "Later", snooze the profile for 15 minutes via CoachingEngine
     if dismiss_action == DismissAction::Later {
         if let Some(ref engine) = state.coaching_engine {
-            engine.snooze_current_profile(std::time::Duration::from_secs(900)).await;
+            engine.snooze_current_profile(&profile, std::time::Duration::from_secs(900)).await;
         }
+    }
+
+    // Return overlay to click-through mode after dismissal
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_interactive(false).await;
     }
 
     Ok(())
@@ -524,16 +605,18 @@ pub struct OverlayStateResponse {
 cargo check -p oneshim-app
 ```
 
-- [ ] **Step 2.6: Add `set_overlay_cursor_passthrough` command**
+- [ ] **Step 2.6: Add `toggle_overlay_interactive` command**
+
+This replaces the per-element `set_overlay_cursor_passthrough` approach. The global shortcut (Cmd+Shift+O) calls this to toggle the overlay between click-through and interactive modes. The React overlay also calls this with `interactive: false` after a 5-second no-interaction timeout.
 
 ```rust
 #[command]
-pub async fn set_overlay_cursor_passthrough(
+pub async fn toggle_overlay_interactive(
     state: tauri::State<'_, AppState>,
-    passthrough: bool,
+    interactive: bool,
 ) -> Result<(), String> {
     if let Some(ref overlay) = state.magic_overlay {
-        overlay.set_cursor_passthrough(passthrough).await;
+        overlay.set_interactive(interactive).await;
     }
     Ok(())
 }
@@ -591,8 +674,9 @@ pub async fn update_regime_goals(
     }
 
     // Persist to config file
+    // Note: config_manager.get() returns AppConfig directly (not Result)
     if let Some(ref config_manager) = state.config_manager {
-        let mut config = config_manager.get().map_err(|e| e.to_string())?;
+        let mut config = config_manager.get();
         config.coaching.regime_goals = goals;
         config_manager.update(&config).map_err(|e| e.to_string())?;
     }
@@ -614,7 +698,7 @@ dismiss_coaching_message,
 submit_coaching_feedback,
 set_overlay_mode,
 get_overlay_state,
-set_overlay_cursor_passthrough,
+toggle_overlay_interactive,
 get_coaching_history,
 get_goal_progress,
 update_regime_goals,
@@ -906,12 +990,13 @@ Create `crates/oneshim-web/frontend/src/overlay/index.css`:
   background: transparent;
   overflow: hidden;
   user-select: none;
-  pointer-events: none;  /* Default: click-through */
-}
-
-/* Interactive elements opt back in to pointer events */
-.overlay-interactive {
-  pointer-events: auto;
+  /*
+   * Click-through is NOT managed via CSS pointer-events.
+   * Tauri v2 does not support per-element click-through forwarding.
+   * Instead, the Rust backend calls set_ignore_cursor_events(true/false)
+   * on the entire window. The global shortcut Cmd+Shift+O toggles
+   * the window between click-through and interactive modes.
+   */
 }
 ```
 
@@ -1241,8 +1326,7 @@ Key behavior:
 - Thumbs icons are low opacity (0.3), full opacity (1.0) on hover
 - When LLM upgrade arrives (text changes), smooth CSS transition
 - Auto-dismisses after `autoDismissSecs` (default 15) via `useAutoDismiss` hook
-- On mouse enter: calls `set_overlay_cursor_passthrough(false)` IPC
-- On mouse leave: calls `set_overlay_cursor_passthrough(true)` IPC
+- **Click-through note:** The overlay is click-through by default. The user presses Cmd+Shift+O to make it interactive, at which point popup buttons become clickable. After dismissal, the overlay returns to click-through (handled by the `dismiss_coaching_message` IPC command). No per-element mouseenter/mouseleave cursor passthrough management is needed.
 
 ```tsx
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -1282,8 +1366,9 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
     await tauriInvoke('dismiss_coaching_message', {
       messageId: message.message_id,
       action,
+      profile: message.profile,
     })
-  }, [message.message_id])
+  }, [message.message_id, message.profile])
 
   const { reset } = useAutoDismiss(true, autoDismissSecs, () => dismiss('timeout'))
 
@@ -1301,15 +1386,14 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
     })
   }, [message.message_id])
 
-  // Cursor passthrough management
-  const onMouseEnter = () => tauriInvoke('set_overlay_cursor_passthrough', { passthrough: false })
-  const onMouseLeave = () => tauriInvoke('set_overlay_cursor_passthrough', { passthrough: true })
+  // Note: No per-element mouseenter/mouseleave cursor passthrough management.
+  // The overlay is click-through by default. The user presses Cmd+Shift+O to
+  // make it interactive. After dismissal, the Rust backend returns it to
+  // click-through mode automatically.
 
   return (
     <div
-      className="overlay-interactive fixed right-4 top-4 z-50"
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      className="fixed right-4 top-4 z-50"
     >
       <div className="w-80 rounded-xl border border-white/10 bg-gray-900/90 p-4 shadow-2xl backdrop-blur-md">
         {/* Message text with transition */}
@@ -1423,16 +1507,10 @@ interface GoalProgressBarProps {
 
 export default function GoalProgressBar({ goals }: GoalProgressBarProps) {
   return (
-    <div className="overlay-interactive fixed inset-x-0 bottom-0 z-40">
+    <div className="fixed inset-x-0 bottom-0 z-40">
+      {/* No per-element cursor passthrough — overlay interactivity is toggled
+          globally via Cmd+Shift+O hotkey */}
       <div className="mx-auto max-w-3xl rounded-t-lg border border-b-0 border-white/10 bg-gray-900/80 px-4 py-2 backdrop-blur-md"
-        onMouseEnter={async () => {
-          const { invoke } = await import('@tauri-apps/api/core')
-          invoke('set_overlay_cursor_passthrough', { passthrough: false })
-        }}
-        onMouseLeave={async () => {
-          const { invoke } = await import('@tauri-apps/api/core')
-          invoke('set_overlay_cursor_passthrough', { passthrough: true })
-        }}
       >
         <div className="flex flex-wrap gap-3">
           {goals.map((goal) => (
@@ -1889,6 +1967,12 @@ pub struct CoachingHistoryQuery {
 }
 
 /// GET /api/coaching/history
+///
+/// Note: `state.storage` accesses the web `AppState::storage` field (type `Arc<SqliteStorage>`).
+/// `query_coaching_events` must be added to the `WebStorage` trait or called directly on
+/// `SqliteStorage` — see Task 3 for the implementation. If using the `WebStorage` trait,
+/// add `query_coaching_events(&self, limit: u32, offset: u32) -> Result<Vec<CoachingEventRow>, CoreError>`
+/// to the trait definition.
 pub async fn get_coaching_history(
     State(state): State<AppState>,
     Query(params): Query<CoachingHistoryQuery>,
@@ -1906,7 +1990,8 @@ pub async fn get_goals(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<GoalProgressResponse>>, ApiError> {
     if let Some(ref engine) = state.coaching_engine {
-        let progress = engine.all_goal_progress();
+        // all_goal_progress() is async (reads from RwLock<RegimeGoalTracker>)
+        let progress = engine.all_goal_progress().await;
         Ok(Json(progress.into_iter().map(GoalProgressResponse::from).collect()))
     } else {
         Ok(Json(vec![]))
@@ -1919,7 +2004,8 @@ pub async fn update_goals(
     Json(goals): Json<UpdateGoalsRequest>,
 ) -> Result<Json<()>, ApiError> {
     if let Some(ref engine) = state.coaching_engine {
-        engine.update_regime_goals(&goals.goals);
+        // update_regime_goals() is async (writes to RwLock<RegimeGoalTracker>)
+        engine.update_regime_goals(&goals.goals).await;
     }
     Ok(Json(()))
 }
@@ -1944,12 +2030,18 @@ pub mod coaching;
 cargo check -p oneshim-web
 ```
 
-- [ ] **Step 10.4: Update `routes_compile` test constructors**
+- [ ] **Step 10.4: Update ALL test constructors that build `AppState`**
 
-The `routes_compile` test (and any other test in `oneshim-web` that constructs `AppState`) must be updated to include the new `coaching_engine` field. Set it to `None` in test constructors:
+There are **3** test constructors in `oneshim-web` that build `AppState` and all must include the new `coaching_engine: None` field. Without this, the tests will fail to compile:
+
+1. **`routes_compile`** (in `routes.rs` `#[cfg(test)]`) — the basic route compilation test
+2. **`integration_routes_compile`** (in `tests/` integration test directory) — the integration-level route test
+3. **`test_state_with_config_manager`** (helper function used by config-related tests) — test utility
+
+Add `coaching_engine: None` to each:
 
 ```rust
-// In routes.rs #[cfg(test)] or tests/ directory:
+// In all 3 constructors:
 let state = AppState {
     // ... existing fields ...
     coaching_engine: None,
@@ -2091,22 +2183,41 @@ Add the `global-shortcut:allow-register` permission. Either add it to an existin
 
 Alternatively, if global shortcuts should be available to the main window too, add `"global-shortcut:allow-register"` to the main window's capability file instead.
 
-- [ ] **Step 12.4: Register global shortcut for overlay toggle**
+- [ ] **Step 12.4: Register global shortcut for overlay interactivity toggle**
 
-During app setup, register the hotkey using the `tauri_plugin_global_shortcut` API:
+During app setup, register the hotkey using the `tauri_plugin_global_shortcut` API. The shortcut toggles the overlay between click-through and interactive modes (not overlay display mode). When activated, the user can interact with the coaching popup. After 5 seconds of no interaction or after dismissal, the overlay returns to click-through automatically.
 
 ```rust
 use tauri_plugin_global_shortcut::ShortcutState;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // In setup function, after MagicOverlayHandle is created:
 let overlay_for_hotkey = overlay_handle.clone();
 let hotkey = "CommandOrControl+Shift+O";
+let is_interactive = Arc::new(AtomicBool::new(false));
 
+let interactive_flag = is_interactive.clone();
 app.global_shortcut().on_shortcut(hotkey, move |_app, _shortcut, event| {
     if event.state == ShortcutState::Pressed {
         let overlay = overlay_for_hotkey.clone();
+        let flag = interactive_flag.clone();
         tauri::async_runtime::spawn(async move {
-            overlay.toggle_mode().await;
+            let new_state = !flag.load(Ordering::SeqCst);
+            flag.store(new_state, Ordering::SeqCst);
+            overlay.set_interactive(new_state).await;
+
+            // Auto-return to click-through after 5 seconds if toggled on
+            if new_state {
+                let overlay_timeout = overlay.clone();
+                let flag_timeout = flag.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    if flag_timeout.load(Ordering::SeqCst) {
+                        flag_timeout.store(false, Ordering::SeqCst);
+                        overlay_timeout.set_interactive(false).await;
+                    }
+                });
+            }
         });
     }
 });
@@ -2169,17 +2280,19 @@ Verify both `index.html` and `overlay.html` are in the `dist/` output.
 1. Enable coaching (`coaching.enabled: true` in config)
 2. Set a regime goal (e.g., "Deep Coding": 120 min)
 3. Trigger a regime change — verify MagicOverlay appears with coaching popup
-4. Verify popup has OK, Later, thumbs-up/down buttons
-5. Click OK — verify overlay dismisses
-6. Trigger another message — click Later — verify 15-minute snooze
-7. Trigger message — wait 15 seconds — verify auto-dismiss
-8. Press Cmd+Shift+O — verify overlay toggles between Minimal and Rich mode
-9. In Rich mode, verify bottom goal progress bar appears
-10. Open dashboard `/coaching` page — verify coaching event timeline
-11. Open Settings > Coaching Goals — add/remove goals
-12. If LLM is available: verify template text upgrades to personalized text within 3 seconds
-13. Click thumbs-down on several messages — verify reduced frequency
-14. Verify click-through: click on areas outside the popup — verify clicks pass through to underlying windows
+4. Verify overlay is click-through by default — clicking through the overlay reaches underlying windows
+5. Press Cmd+Shift+O — verify overlay becomes interactive (popup buttons become clickable)
+6. Click OK — verify overlay dismisses and returns to click-through mode
+7. Trigger another message — press Cmd+Shift+O — click Later — verify 15-minute snooze
+8. Trigger message — wait 15 seconds — verify auto-dismiss
+9. Press Cmd+Shift+O but do not interact — verify overlay returns to click-through after 5 seconds
+10. Verify popup has OK, Later, thumbs-up/down buttons
+11. Set overlay mode to Rich (via Settings) — verify bottom goal progress bar appears
+12. Open dashboard `/coaching` page — verify coaching event timeline
+13. Open Settings > Coaching Goals — add/remove goals
+14. If LLM is available: verify template text upgrades to personalized text within 3 seconds
+15. Click thumbs-down on several messages — verify reduced frequency
+16. (Linux X11 only) Verify overlay works; (Linux Wayland) verify graceful fallback to desktop notifications only
 
 ---
 
