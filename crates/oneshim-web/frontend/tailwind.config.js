@@ -7,6 +7,7 @@ function withAlpha(varName) {
 export default {
   content: [
     "./index.html",
+    "./overlay.html",
     "./src/**/*.{js,ts,jsx,tsx}",
     "./.storybook/**/*.{js,ts,jsx,tsx}",
   ],
