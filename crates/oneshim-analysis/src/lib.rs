@@ -76,6 +76,7 @@ pub use query_expander::{ActivityContext, QueryExpander};
 pub use vector_retriever::VectorRetriever;
 pub use weekly_digest_generator::WeeklyDigestGenerator;
 
+pub use coaching_engine::CoachingEngine;
 pub use coaching_template::CoachingTemplateRegistry;
 pub use feedback_tracker::FeedbackTracker;
 pub use regime_goal_tracker::RegimeGoalTracker;
