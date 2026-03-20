@@ -106,6 +106,7 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
       { id: 'monitoring', labelKey: 'settings.tabs.monitoring' },
       { id: 'ai-automation', labelKey: 'settings.tabs.aiAutomation' },
       { id: 'data', labelKey: 'settings.tabs.dataStorage' },
+      { id: 'coaching', labelKey: 'settings.tabs.coaching' },
     ],
   },
   '/privacy': {
