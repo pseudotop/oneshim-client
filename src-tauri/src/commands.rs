@@ -823,6 +823,23 @@ pub async fn dismiss_coaching_message(
         overlay.dismiss(&message_id, dismiss_action).await;
     }
 
+    // Persist dismiss feedback to SQLite
+    let action_str = match dismiss_action {
+        DismissAction::Ok => "ok",
+        DismissAction::Later => "later",
+        DismissAction::Timeout => "timeout",
+    };
+    let dismissed_at = chrono::Utc::now().to_rfc3339();
+    if let Err(e) = state.storage.update_coaching_event_feedback(
+        &message_id,
+        Some(action_str),
+        Some(&dismissed_at),
+        None,
+        None,
+    ) {
+        tracing::warn!("coaching dismiss persist failure: {e}");
+    }
+
     // If "Later", snooze the profile for 15 minutes via CoachingEngine
     if dismiss_action == DismissAction::Later {
         if let Some(ref engine) = state.coaching_engine {

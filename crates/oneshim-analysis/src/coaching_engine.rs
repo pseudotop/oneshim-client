@@ -78,8 +78,12 @@ impl CoachingEngine {
         drift_detected: bool,
         app_name: &str,
     ) -> Option<CoachingMessage> {
-        // 1. Check master switch
-        let config = self.config.read().await;
+        // 1. Clone config and drop read guard immediately to prevent deadlock.
+        //    evaluate() later acquires goal_tracker.write(); update_config() acquires
+        //    config.write() then goal_tracker.write(). Holding config.read() here while
+        //    waiting on goal_tracker.write() would deadlock if update_config() holds
+        //    goal_tracker.write() and waits for config.write().
+        let config = self.config.read().await.clone();
         if !config.enabled {
             return None;
         }
@@ -90,17 +94,7 @@ impl CoachingEngine {
             return None;
         }
 
-        // 2b. Snooze check — skip evaluation if the current profile is snoozed
-        {
-            let guard = self.snoozed_until.read().await;
-            if let Some((ref snoozed_profile, until)) = *guard {
-                if Instant::now() < until && regime_label == snoozed_profile {
-                    debug!(profile = %snoozed_profile, "coaching suppressed: snoozed");
-                    return None;
-                }
-            }
-        }
-        // Clear expired snooze
+        // 2b. Clear expired snooze eagerly (before trigger detection)
         {
             let mut guard = self.snoozed_until.write().await;
             if let Some((_, until)) = guard.as_ref() {
@@ -123,6 +117,18 @@ impl CoachingEngine {
 
         // 4. Match profile
         let profile = Self::match_profile(&config, &trigger, regime_label, app_name)?;
+
+        // 4b. Snooze check — compare matched profile name against snoozed profile
+        {
+            let guard = self.snoozed_until.read().await;
+            if let Some((ref snoozed_profile, until)) = *guard {
+                let matched_profile_name = format!("{:?}", profile);
+                if Instant::now() < until && matched_profile_name == *snoozed_profile {
+                    debug!(profile = %snoozed_profile, "coaching suppressed: snoozed");
+                    return None;
+                }
+            }
+        }
 
         // 5. Cooldown check
         if !self.check_cooldown(&config, &profile).await {
@@ -409,10 +415,12 @@ impl CoachingEngine {
     }
 
     /// Hot-reload coaching config at runtime.
+    ///
+    /// Lock ordering: config -> goal_tracker (same as evaluate()) to prevent deadlock.
     pub async fn update_config(&self, config: CoachingConfig) {
+        let mut current = self.config.write().await;
         let mut gt = self.goal_tracker.write().await;
         gt.update_goals(&config.regime_goals);
-        let mut current = self.config.write().await;
         *current = config;
     }
 
@@ -495,6 +503,20 @@ impl CoachingEngine {
     pub async fn update_regime_goals(&self, goals: &HashMap<String, u32>) {
         let mut tracker = self.goal_tracker.write().await;
         tracker.update_goals(goals);
+    }
+}
+
+impl oneshim_core::ports::coaching::CoachingPort for CoachingEngine {
+    fn all_goal_progress_blocking(&self) -> Vec<GoalProgressView> {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.all_goal_progress())
+        })
+    }
+
+    fn update_regime_goals_blocking(&self, goals: &HashMap<String, u32>) {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.update_regime_goals(goals))
+        })
     }
 }
 
@@ -744,20 +766,18 @@ mod tests {
         let engine = CoachingEngine::new(enabled_config());
         engine.on_regime_change(Some("regime-a")).await;
 
-        // Snooze the regime label for 60 seconds
+        // Snooze the "FocusGuard" profile for 60 seconds.
+        // A regime transition from a non-idle regime maps to FocusGuard.
         engine
-            .snooze_current_profile("Communication", Duration::from_secs(60))
+            .snooze_current_profile("FocusGuard", Duration::from_secs(60))
             .await;
 
-        // Evaluate with a regime transition to "Communication"
+        // Evaluate with a regime transition -> triggers FocusGuard profile
         let result = engine
             .evaluate(Some("regime-b"), "Communication", 60, 1800, false, "Slack")
             .await;
 
-        // Even though there's a regime transition, snooze suppresses it
-        // because the label matches the snoozed profile.
-        // Note: The snooze compares against regime_label, not profile name,
-        // so it matches when the regime_label is the snoozed value.
+        // Snooze suppresses the matched FocusGuard profile
         assert!(
             result.is_none(),
             "snoozed profile should suppress evaluation"

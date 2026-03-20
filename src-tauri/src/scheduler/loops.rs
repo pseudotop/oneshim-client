@@ -204,6 +204,10 @@ impl Scheduler {
             // `GuiElementDetector::correlate_click()`.
             let mut last_ocr_regions: Vec<OcrRegion> = Vec::new();
 
+            // ── Coaching: track real regime dwell time ──
+            let mut regime_entered_at: Option<std::time::Instant> = None;
+            let mut prev_coaching_regime_id: Option<String> = None;
+
             // ── Audit tracking: consent and PII level changes (Task 7) ──
             let mut prev_full_text_consent = false;
             let mut prev_pii_level = config_manager1
@@ -517,7 +521,6 @@ impl Scheduler {
                                 // regime_classifier and drift_detector outputs.
                                 if let Some(ref coaching) = coaching_engine_ref {
                                     // Extract regime data from adaptive trigger state
-                                    // TODO(Phase 2): use real regime data from classifier
                                     let regime_id_for_coaching: Option<&str> =
                                         adaptive_trigger_state.as_ref().and_then(|ts| {
                                             ts.current_regime_id.as_deref()
@@ -527,11 +530,15 @@ impl Scheduler {
                                     // Placeholder: avg_duration 30 min, no drift
                                     let avg_regime_duration_secs: u64 = 1800;
                                     let drift_detected = false;
-                                    // TODO(Phase 2): track actual regime dwell time; currently poll interval makes overstay trigger inert
-                                    let regime_duration_secs: u64 = adaptive_trigger_state
-                                        .as_ref()
-                                        .and_then(|ts| ts.current_regime_id.as_ref())
-                                        .map(|_| poll.as_secs())
+
+                                    // Track real regime dwell time: reset timer on regime change
+                                    let current_coaching_regime = regime_id_for_coaching.map(String::from);
+                                    if current_coaching_regime != prev_coaching_regime_id {
+                                        regime_entered_at = Some(std::time::Instant::now());
+                                        prev_coaching_regime_id = current_coaching_regime;
+                                    }
+                                    let regime_duration_secs: u64 = regime_entered_at
+                                        .map(|t| t.elapsed().as_secs())
                                         .unwrap_or(0);
 
                                     // Record elapsed minutes for goal tracking

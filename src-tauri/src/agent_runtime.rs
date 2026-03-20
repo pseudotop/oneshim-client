@@ -45,6 +45,8 @@ pub(crate) struct AgentRuntimeBundle {
     #[cfg(feature = "server")]
     oauth_coordinator: Option<Arc<TokenRefreshCoordinator>>,
     app_handle: AppHandle,
+    coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
+    coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
 }
 
 impl AgentRuntimeBundle {
@@ -452,6 +454,14 @@ impl AgentRuntimeBundle {
             scheduler = scheduler.with_consent_manager(cm.clone());
         }
 
+        // --- Coaching engine + storage wiring ---
+        if let Some(engine) = self.coaching_engine {
+            scheduler = scheduler.with_coaching_engine(engine);
+        }
+        if let Some(coaching_storage) = self.coaching_storage {
+            scheduler = scheduler.with_coaching_storage(coaching_storage);
+        }
+
         // --- Phase 2: Accessibility extractor (gated by config + consent) ---
         {
             let text_config = self.config.analysis.text_intelligence.clone();
@@ -500,6 +510,8 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     #[cfg(feature = "server")]
     oauth_coordinator: Option<Arc<TokenRefreshCoordinator>>,
     app_handle: AppHandle,
+    coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
+    coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -534,6 +546,8 @@ impl<'a> AgentRuntimeBuilder<'a> {
             #[cfg(feature = "server")]
             oauth_coordinator: None,
             app_handle,
+            coaching_engine: None,
+            coaching_storage: None,
         }
     }
 
@@ -590,6 +604,22 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_coaching_engine(
+        mut self,
+        engine: Arc<oneshim_analysis::CoachingEngine>,
+    ) -> Self {
+        self.coaching_engine = Some(engine);
+        self
+    }
+
+    pub(crate) fn with_coaching_storage(
+        mut self,
+        storage: Arc<oneshim_storage::sqlite::SqliteStorage>,
+    ) -> Self {
+        self.coaching_storage = Some(storage);
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -610,6 +640,8 @@ impl<'a> AgentRuntimeBuilder<'a> {
             #[cfg(feature = "server")]
             oauth_coordinator: self.oauth_coordinator,
             app_handle: self.app_handle,
+            coaching_engine: self.coaching_engine,
+            coaching_storage: self.coaching_storage,
         }
     }
 }

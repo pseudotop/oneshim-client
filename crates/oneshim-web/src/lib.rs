@@ -121,6 +121,7 @@ pub struct WebServerRuntimeBindings {
     pub update_control: Option<update_control::UpdateControl>,
     pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
+    pub coaching_engine: Option<Arc<dyn CoachingPort>>,
 }
 
 pub struct WebServer {
@@ -336,6 +337,9 @@ impl WebServer {
         }
         if let Some(recluster_requested) = bindings.recluster_requested {
             self.state.recluster_requested = Some(recluster_requested);
+        }
+        if let Some(coaching_engine) = bindings.coaching_engine {
+            self.state.coaching_engine = Some(coaching_engine);
         }
         self
     }

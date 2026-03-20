@@ -199,6 +199,7 @@ pub(crate) struct WebServerRuntimeBuilder<'a> {
     support_context: WebServerSupportContext,
     override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
+    coaching_engine: Option<Arc<dyn oneshim_core::ports::coaching::CoachingPort>>,
 }
 
 impl<'a> WebServerRuntimeBuilder<'a> {
@@ -217,6 +218,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             support_context,
             override_store: None,
             recluster_requested: None,
+            coaching_engine: None,
         }
     }
 
@@ -239,6 +241,14 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         flag: Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
         self.recluster_requested = Some(flag);
+        self
+    }
+
+    pub(crate) fn with_coaching_engine(
+        mut self,
+        engine: Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
+    ) -> Self {
+        self.coaching_engine = Some(engine);
         self
     }
 
@@ -285,6 +295,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         );
         runtime_bindings.override_store = self.override_store;
         runtime_bindings.recluster_requested = self.recluster_requested;
+        runtime_bindings.coaching_engine = self.coaching_engine;
 
         let web_storage = self.storage.clone();
         let web_config = self.config.web.clone();

@@ -74,6 +74,11 @@ impl AppRuntimeLaunchBuilder {
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
 
+        // Create shared CoachingEngine for scheduler, web server, and Tauri IPC
+        let coaching_engine = Arc::new(oneshim_analysis::CoachingEngine::new(
+            config.coaching.clone(),
+        ));
+
         let agent_runtime = {
             let builder = AgentRuntimeBuilder::new(
                 sqlite_storage.clone(),
@@ -102,7 +107,9 @@ impl AppRuntimeLaunchBuilder {
             .with_override_store(sqlite_storage.clone())
             .with_consent_manager(Arc::new(ConsentManager::new(
                 data_dir_path.join("consent.json"),
-            )));
+            )))
+            .with_coaching_engine(coaching_engine.clone())
+            .with_coaching_storage(sqlite_storage.clone());
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()
@@ -126,7 +133,10 @@ impl AppRuntimeLaunchBuilder {
                 support_context,
             )
             .with_override_store(sqlite_storage.clone())
-            .with_recluster_requested(recluster_requested.clone());
+            .with_recluster_requested(recluster_requested.clone())
+            .with_coaching_engine(
+                coaching_engine.clone() as Arc<dyn oneshim_core::ports::coaching::CoachingPort>
+            );
             #[cfg(feature = "server")]
             let builder = server_context.configure_web_server_builder(builder);
             let web_server_runtime = builder.build_and_spawn();
@@ -149,7 +159,7 @@ impl AppRuntimeLaunchBuilder {
             shutdown_tx,
             recluster_requested: recluster_requested.clone(),
             magic_overlay: None,
-            coaching_engine: None,
+            coaching_engine: Some(coaching_engine),
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);
