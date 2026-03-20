@@ -231,6 +231,35 @@ mod tests {
     fn select_falls_back_to_en_for_unknown_locale() {
         let registry = CoachingTemplateRegistry::new();
         let vars = HashMap::new();
+        // "ja" has no templates, should fall back to English
+        let text = registry.select(
+            &CoachingProfile::FocusGuard,
+            &TriggerType::RegimeTransition {
+                from_regime: None,
+                to_regime: None,
+            },
+            &CoachingTone::Direct,
+            "ja",
+            &vars,
+        );
+        assert!(
+            !text.is_empty(),
+            "locale fallback must return non-empty text"
+        );
+        // Verify it returned English text (not Korean)
+        assert!(
+            !text.contains('\u{AC00}'),
+            "fallback for 'ja' should return English, not Korean"
+        );
+    }
+
+    #[test]
+    fn select_returns_korean_for_ko_locale() {
+        let registry = CoachingTemplateRegistry::new();
+        let mut vars = HashMap::new();
+        vars.insert("regime".to_string(), "Deep Work".to_string());
+        vars.insert("context_switches".to_string(), "5".to_string());
+
         let text = registry.select(
             &CoachingProfile::FocusGuard,
             &TriggerType::RegimeTransition {
@@ -241,10 +270,33 @@ mod tests {
             "ko",
             &vars,
         );
-        // Should return English template, not empty
+        assert!(!text.is_empty(), "ko locale must return non-empty text");
+        // Korean text should contain Korean characters (Hangul block U+AC00..U+D7AF)
         assert!(
-            !text.is_empty(),
-            "locale fallback must return non-empty text"
+            text.chars().any(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c)),
+            "ko locale should return Korean text, got: '{}'",
+            text
+        );
+        // Variables should still be substituted
+        assert!(
+            text.contains("Deep Work"),
+            "Korean template should substitute {{regime}}: got '{}'",
+            text
+        );
+    }
+
+    #[test]
+    fn registry_has_54_korean_templates() {
+        let registry = CoachingTemplateRegistry::new();
+        let ko_count = registry
+            .templates
+            .iter()
+            .filter(|t| t.locale == "ko")
+            .count();
+        assert_eq!(
+            ko_count, 54,
+            "expected 54 Korean templates, got {}",
+            ko_count
         );
     }
 
@@ -257,6 +309,36 @@ mod tests {
                 "template for {:?}/{} must have a locale",
                 t.profile,
                 t.trigger_type
+            );
+        }
+    }
+
+    #[test]
+    fn all_en_profiles_have_ko_counterparts() {
+        let registry = CoachingTemplateRegistry::new();
+        let profiles = [
+            CoachingProfile::FocusGuard,
+            CoachingProfile::TimeAware,
+            CoachingProfile::DeepWorkCoach,
+            CoachingProfile::ContextRestore,
+            CoachingProfile::GoalTracker,
+        ];
+
+        for profile in &profiles {
+            let en_count = registry
+                .templates
+                .iter()
+                .filter(|t| t.profile == *profile && t.locale == "en")
+                .count();
+            let ko_count = registry
+                .templates
+                .iter()
+                .filter(|t| t.profile == *profile && t.locale == "ko")
+                .count();
+            assert_eq!(
+                en_count, ko_count,
+                "profile {:?}: en has {} templates but ko has {}",
+                profile, en_count, ko_count
             );
         }
     }

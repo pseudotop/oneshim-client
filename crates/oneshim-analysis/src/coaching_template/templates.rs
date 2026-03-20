@@ -3,7 +3,7 @@ use oneshim_core::models::coaching::CoachingProfile;
 
 use super::CoachingTemplate;
 
-// ── 54 built-in templates ──────────────────────────────────────────────
+// ── 108 built-in templates (54 English + 54 Korean) ─────────────────────
 
 pub(super) const TEMPLATES: &[CoachingTemplate] = &[
     // ── FocusGuard x RegimeTransition ──
@@ -402,5 +402,404 @@ pub(super) const TEMPLATES: &[CoachingTemplate] = &[
         tone: CoachingTone::DataDriven,
         locale: "en",
         text: "Focus time: {goal_progress}% of {goal_minutes} min target. {remaining_minutes} min left.",
+    },
+    // ════════════════════════════════════════════════════════════════════
+    // ── Korean templates (locale: "ko") ─────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════
+    // ── FocusGuard x RegimeTransition ──
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{regime}에서 전환됨 — 30분간 {context_switches}회 전환.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "알림: {regime}에서 벗어났습니다. 돌아가실 건가요?",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "오늘 컨텍스트 전환 {context_switches}회. 평균은 {comparison}입니다.",
+    },
+    // ── FocusGuard x RegimeDrift ──
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{regime}에서 주의 분산 감지. 현재 작업에 다시 집중하세요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "{regime}에서 주의가 분산된 것 같습니다. 다시 집중해 볼까요?",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime} 주의 분산: 앱 전환 {context_switches}회 감지.",
+    },
+    // ── TimeAware x RegimeOverstay ──
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{regime}에서 {duration} 경과. 마무리를 고려해 보세요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "{regime}에서 {duration} 동안 작업 중입니다 — 평소보다 깁니다. 휴식이 도움될 수 있어요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime}에서 {duration} 경과. 평균 세션은 {comparison}입니다.",
+    },
+    // ── TimeAware x GoalThreshold ──
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{regime} 목표의 {goal_progress}% 달성 ({goal_minutes}분 목표).",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "좋은 진행이에요! {regime} 목표의 {goal_progress}% 달성 중.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime} 목표: {goal_progress}% 완료. {remaining_minutes}분 남음.",
+    },
+    // ── DeepWorkCoach x RegimeOverstay ──
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "딥워크 {duration} 경과. 5분간 휴식을 취하세요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "훌륭한 집중 세션! 딥워크 {duration}. 짧은 휴식이 도움될 수 있어요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "딥워크 세션 {duration}. 평균은 {comparison}. 휴식 권장.",
+    },
+    // ── DeepWorkCoach x RegimeTransition ──
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{duration} 후 딥워크 종료. 진행 상황을 저장하세요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "딥워크에서 전환 중. 훌륭한 세션이었습니다! 소요: {duration}.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "딥워크 {duration} 후 종료. 오늘 합계: {goal_minutes}분.",
+    },
+    // ── ContextRestore x RegimeTransition ──
+    CoachingTemplate {
+        profile: CoachingProfile::ContextRestore,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "돌아오셨습니다. 마지막 컨텍스트는 {app_name}의 {previous_context}였습니다.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::ContextRestore,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "휴식에서 복귀! {previous_context} 작업 중이었습니다. 계속하시겠어요?",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::ContextRestore,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "유휴에서 복귀. 이전: {previous_context} ({app_name}), {duration} 전.",
+    },
+    // ── GoalTracker x GoalThreshold (25%) ──
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{regime} 목표의 25% 완료. {remaining_minutes}분 남았습니다.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "{regime} 목표의 1/4 지점에 도달했습니다! 계속 화이팅!",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime}: 25% 완료 ({goal_progress}분 / {goal_minutes}분 목표).",
+    },
+    // ── GoalTracker x GoalThreshold (50%) ──
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{regime} 목표의 절반 도달. {remaining_minutes}분 남음.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "좋은 진행이에요! {regime} 목표의 절반에 도달했습니다.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime}: 50% 완료 ({goal_progress}분 / {goal_minutes}분).",
+    },
+    // ── GoalTracker x GoalThreshold (75%) ──
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "거의 다 왔습니다 — {regime} 목표의 75%. 끝까지 힘내세요!",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "{regime} 목표의 75%에 도달했습니다. 훌륭한 페이스!",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime}: 75% 완료 ({goal_progress}분 / {goal_minutes}분). {remaining_minutes}분 남음.",
+    },
+    // ── GoalTracker x GoalThreshold (100%) ──
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{regime} 목표 달성! {goal_minutes}분 목표 완료.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "축하합니다! 오늘의 {regime} 목표를 달성했습니다.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime}: 100% 완료 — {goal_minutes}분 목표 달성.",
+    },
+    // ── GoalTracker x GoalThreshold (over 100%) ──
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "목표 초과! {regime} 목표의 {goal_progress}% ({goal_minutes}분).",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "{regime} 목표를 초과 달성했습니다 — {goal_progress}%. 잘 하셨어요!",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime}: {goal_minutes}분 목표의 {goal_progress}%. {goal_progress}분 기록.",
+    },
+    // ── FocusGuard x RegimeOverstay ──
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{duration} 후에도 {regime} 계속 중. 전환을 고려해 보세요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "{regime}에서 {duration} 동안 집중하셨습니다. 괜찮으신가요?",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime}: {duration} 경과. 일반적인 세션: {comparison}.",
+    },
+    // ── ContextRestore x RegimeDrift ──
+    CoachingTemplate {
+        profile: CoachingProfile::ContextRestore,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "컨텍스트가 분산되고 있습니다. 참고: {previous_context} 중이었습니다.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::ContextRestore,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "주의가 분산된 것 같습니다. 이전 컨텍스트는 {previous_context}였습니다.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::ContextRestore,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{previous_context}에서 분산. 이 세션에서 {context_switches}회 전환.",
+    },
+    // ── DeepWorkCoach x RegimeDrift ──
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "딥워크 중 주의 분산 감지. {app_name}을 닫고 다시 집중하세요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "딥워크 흐름이 중단되었습니다. 다시 돌아가시겠어요?",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::DeepWorkCoach,
+        trigger_type: "RegimeDrift",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "딥워크 분산: {context_switches}회 전환. 평균 무중단 시간: {comparison}.",
+    },
+    // ── TimeAware x RegimeTransition ──
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{duration} 후 {regime}에서 전환.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "{regime}에서 체제 변경. {duration} 동안 머물렀습니다.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::TimeAware,
+        trigger_type: "RegimeTransition",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime} 세션 종료: {duration}. 평균: {comparison}.",
+    },
+    // ── GoalTracker x RegimeOverstay ──
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "{regime} 초과 체류: {duration}. 오늘 목표는 {goal_minutes}분입니다.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "긴 {regime} 세션 ({duration}). {goal_minutes}분 목표 중 {goal_progress}분 기록.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::GoalTracker,
+        trigger_type: "RegimeOverstay",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "{regime}: {duration} 세션. 일일 합계: {goal_progress}/{goal_minutes}분 ({goal_progress}%).",
+    },
+    // ── FocusGuard x GoalThreshold ──
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Direct,
+        locale: "ko",
+        text: "집중 목표: {goal_minutes}분의 {goal_progress}%. 작업에 집중하세요.",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::Gentle,
+        locale: "ko",
+        text: "집중 목표의 {goal_progress}% 달성 중. 계속 화이팅!",
+    },
+    CoachingTemplate {
+        profile: CoachingProfile::FocusGuard,
+        trigger_type: "GoalThreshold",
+        tone: CoachingTone::DataDriven,
+        locale: "ko",
+        text: "집중 시간: {goal_minutes}분 목표의 {goal_progress}%. {remaining_minutes}분 남음.",
     },
 ];
