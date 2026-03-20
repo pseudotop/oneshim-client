@@ -159,7 +159,9 @@ impl AppRuntimeLaunchBuilder {
             shutdown_tx,
             recluster_requested: recluster_requested.clone(),
             magic_overlay: None,
-            coaching_engine: Some(coaching_engine),
+            coaching_engine: Some(
+                coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
+            ),
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

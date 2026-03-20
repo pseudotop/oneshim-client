@@ -1,7 +1,7 @@
-use oneshim_analysis::CoachingEngine;
 use oneshim_automation::controller::AutomationController;
 use oneshim_core::config::{AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
 use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_storage::sqlite::SqliteStorage;
@@ -35,7 +35,9 @@ pub struct AppState {
     /// MagicOverlay handle for transparent coaching overlay window.
     pub magic_overlay: Option<MagicOverlayHandle>,
     /// Coaching engine for proactive coaching messages (Phase 2 IPC access).
-    pub coaching_engine: Option<Arc<CoachingEngine>>,
+    /// Typed as `dyn CoachingPort` so Tauri IPC commands call through the port trait,
+    /// keeping the binary crate decoupled from the concrete `CoachingEngine` type.
+    pub coaching_engine: Option<Arc<dyn CoachingPort>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);

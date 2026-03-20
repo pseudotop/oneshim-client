@@ -840,12 +840,10 @@ pub async fn dismiss_coaching_message(
         tracing::warn!("coaching dismiss persist failure: {e}");
     }
 
-    // If "Later", snooze the profile for 15 minutes via CoachingEngine
+    // If "Later", snooze the profile for 15 minutes via CoachingPort
     if dismiss_action == DismissAction::Later {
         if let Some(ref engine) = state.coaching_engine {
-            engine
-                .snooze_current_profile(&profile, std::time::Duration::from_secs(900))
-                .await;
+            engine.snooze_profile(&profile, 900).await;
         }
     }
 
@@ -865,7 +863,7 @@ pub async fn submit_coaching_feedback(
     positive: bool,
 ) -> Result<(), String> {
     if let Some(ref engine) = state.coaching_engine {
-        engine.record_explicit_feedback(&message_id, positive).await;
+        engine.record_feedback(&message_id, positive).await;
     }
     Ok(())
 }
