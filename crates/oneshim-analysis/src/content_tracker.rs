@@ -121,6 +121,28 @@ impl ContentTracker {
         None
     }
 
+    /// Non-destructive snapshot of completed + current activities.
+    /// Used by the scheduler to build `SegmentStats` for the LLM context
+    /// without consuming the tracker state.
+    pub fn peek(&self) -> Vec<ContentActivity> {
+        let now = Utc::now();
+        let mut result = self.completed.clone();
+        if let Some(ref current) = self.current {
+            let duration_secs = (now - current.start_time).num_seconds().max(0) as u64;
+            result.push(ContentActivity {
+                content_label: current.content_label.clone(),
+                content_type: current.content_type,
+                start_time: current.start_time,
+                duration_secs,
+                confidence: current.confidence,
+                work_type: current.work_type,
+                engagement: current.engagement.clone(),
+                gui_summary: current.gui_summary.clone(),
+            });
+        }
+        result
+    }
+
     /// Drain all activities (called when segment closes).
     /// Finalizes the current content and returns all completed activities.
     pub fn drain_all(&mut self, end_time: DateTime<Utc>) -> Vec<ContentActivity> {

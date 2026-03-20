@@ -38,6 +38,46 @@ fn build_personalization_prompt(template_text: &str, regime_label: &str) -> Stri
     )
 }
 
+/// Build a `SegmentStats` snapshot from the current `AdaptiveTriggerState`.
+/// Returns `None` if the content tracker has no active content.
+fn build_segment_stats_snapshot(
+    ts: &super::AdaptiveTriggerState,
+) -> Option<oneshim_analysis::SegmentStats> {
+    let entries = oneshim_analysis::to_content_summary_entries(&ts.content_tracker.peek());
+    if entries.is_empty() {
+        return None;
+    }
+
+    let duration_mins = ts
+        .trigger
+        .current_segment_start()
+        .map(|start| {
+            let elapsed = (chrono::Utc::now() - start).num_seconds().max(0) as u32;
+            elapsed / 60
+        })
+        .unwrap_or(0);
+
+    let gui_patterns: Vec<String> = entries
+        .iter()
+        .flat_map(|e| e.gui_patterns.iter().cloned())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    Some(oneshim_analysis::SegmentStats {
+        duration_mins,
+        regime_label: ts.current_regime_id.clone(),
+        event_count: 0, // not tracked per-tick; segment summarizer computes on close
+        context_switches: 0,
+        dominant_category: entries
+            .first()
+            .map(|e| e.content_type.clone())
+            .unwrap_or_default(),
+        content_summary: entries,
+        gui_patterns,
+    })
+}
+
 /// Run event-driven LLM analysis when the user switches to a new app.
 /// Persists any resulting suggestions to storage.
 async fn handle_event_analysis(
@@ -464,6 +504,13 @@ impl Scheduler {
                                         &storage1,
                                     ).await;
                                 }
+                                // Update ContextAnalyzer with current segment stats
+                                // so that analyze() includes segment context in LLM prompts.
+                                if let (Some(ref ts), Some(ref analyzer)) = (&adaptive_trigger_state, &context_analyzer1) {
+                                    let stats = build_segment_stats_snapshot(ts);
+                                    analyzer.set_segment_stats(stats).await;
+                                }
+
                                 // Consume the GUI summary after feeding it to the analysis pipeline
                                 last_gui_summary = None;
 
