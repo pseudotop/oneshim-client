@@ -1,4 +1,5 @@
 mod calibration_store_impl;
+mod coaching_storage;
 pub(crate) mod edge_intelligence;
 mod events;
 mod focus_storage_impl;

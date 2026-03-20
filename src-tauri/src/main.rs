@@ -165,6 +165,14 @@ fn main() {
             commands::delete_override,
             commands::list_overrides,
             commands::trigger_recluster,
+            commands::dismiss_coaching_message,
+            commands::submit_coaching_feedback,
+            commands::set_overlay_mode,
+            commands::get_overlay_state,
+            commands::toggle_overlay_interactive,
+            commands::get_coaching_history,
+            commands::get_goal_progress,
+            commands::update_regime_goals,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

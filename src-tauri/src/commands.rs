@@ -799,6 +799,166 @@ pub async fn get_analysis_status(
     })
 }
 
+// ── Coaching IPC commands ──────────────────────────────────────
+
+/// Dismiss a coaching overlay message with the given action.
+/// If "later", snoozes the profile for 15 minutes.
+#[command]
+pub async fn dismiss_coaching_message(
+    state: tauri::State<'_, AppState>,
+    message_id: String,
+    action: String,
+    profile: String,
+) -> Result<(), String> {
+    use oneshim_core::models::coaching::DismissAction;
+
+    let dismiss_action = match action.as_str() {
+        "ok" => DismissAction::Ok,
+        "later" => DismissAction::Later,
+        "timeout" => DismissAction::Timeout,
+        _ => return Err(format!("Invalid dismiss action: {action}")),
+    };
+
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.dismiss(&message_id, dismiss_action).await;
+    }
+
+    // If "Later", snooze the profile for 15 minutes via CoachingEngine
+    if dismiss_action == DismissAction::Later {
+        if let Some(ref engine) = state.coaching_engine {
+            engine
+                .snooze_current_profile(&profile, std::time::Duration::from_secs(900))
+                .await;
+        }
+    }
+
+    // Return overlay to click-through mode after dismissal
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_interactive(false).await;
+    }
+
+    Ok(())
+}
+
+/// Record explicit feedback (thumbs-up/down) for a coaching message.
+#[command]
+pub async fn submit_coaching_feedback(
+    state: tauri::State<'_, AppState>,
+    message_id: String,
+    positive: bool,
+) -> Result<(), String> {
+    if let Some(ref engine) = state.coaching_engine {
+        engine.record_explicit_feedback(&message_id, positive).await;
+    }
+    Ok(())
+}
+
+/// Set the overlay display mode (minimal/rich/adaptive).
+#[command]
+pub async fn set_overlay_mode(
+    state: tauri::State<'_, AppState>,
+    mode: String,
+) -> Result<(), String> {
+    use oneshim_core::config::OverlayMode;
+
+    let overlay_mode = match mode.as_str() {
+        "minimal" => OverlayMode::Minimal,
+        "rich" => OverlayMode::Rich,
+        "adaptive" => OverlayMode::Adaptive,
+        _ => return Err(format!("Invalid overlay mode: {mode}")),
+    };
+
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_mode(overlay_mode).await;
+    }
+    Ok(())
+}
+
+/// Get current overlay state (mode and visibility).
+#[command]
+pub async fn get_overlay_state(
+    state: tauri::State<'_, AppState>,
+) -> Result<OverlayStateResponse, String> {
+    use oneshim_core::config::OverlayMode;
+
+    let (mode, visible) = if let Some(ref overlay) = state.magic_overlay {
+        (overlay.get_mode().await, overlay.is_visible().await)
+    } else {
+        (OverlayMode::Minimal, false)
+    };
+
+    Ok(OverlayStateResponse {
+        mode: format!("{:?}", mode).to_lowercase(),
+        visible,
+    })
+}
+
+/// Overlay state response for IPC.
+#[derive(Serialize)]
+pub struct OverlayStateResponse {
+    pub mode: String,
+    pub visible: bool,
+}
+
+/// Toggle overlay between click-through and interactive modes.
+#[command]
+pub async fn toggle_overlay_interactive(
+    state: tauri::State<'_, AppState>,
+    interactive: bool,
+) -> Result<(), String> {
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_interactive(interactive).await;
+    }
+    Ok(())
+}
+
+/// Get coaching event history with pagination.
+#[command]
+pub async fn get_coaching_history(
+    state: tauri::State<'_, AppState>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, String> {
+    state
+        .storage
+        .query_coaching_events(limit.unwrap_or(50), offset.unwrap_or(0))
+        .map_err(|e| e.to_string())
+}
+
+/// Get goal progress for all configured regimes.
+#[command]
+pub async fn get_goal_progress(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<oneshim_core::models::coaching::GoalProgressView>, String> {
+    if let Some(ref engine) = state.coaching_engine {
+        Ok(engine.all_goal_progress().await)
+    } else {
+        Ok(vec![])
+    }
+}
+
+/// Update regime goal targets and persist to config.
+#[command]
+pub async fn update_regime_goals(
+    state: tauri::State<'_, AppState>,
+    goals: std::collections::HashMap<String, u32>,
+) -> Result<(), String> {
+    if let Some(ref engine) = state.coaching_engine {
+        engine.update_regime_goals(&goals).await;
+    }
+
+    // Persist to config file
+    state
+        .config_manager
+        .update_with(|config| {
+            config.coaching.regime_goals = goals.clone();
+            Ok(())
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

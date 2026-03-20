@@ -124,6 +124,22 @@ pub struct GoalProgressView {
     pub display_color: String,
 }
 
+/// Storage query result for coaching history display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoachingEventRow {
+    pub event_id: String,
+    pub trigger_type: String,
+    pub profile_name: String,
+    pub regime_id: Option<String>,
+    pub message_template: String,
+    pub personalized_message: Option<String>,
+    pub shown_at: String,
+    pub dismissed_at: Option<String>,
+    pub dismiss_action: Option<String>,
+    pub feedback_type: Option<String>,
+    pub feedback_score: Option<f64>,
+}
+
 /// Extract the variant name of a `TriggerType` for template matching and storage keys.
 pub fn trigger_type_name(trigger: &TriggerType) -> String {
     match trigger {

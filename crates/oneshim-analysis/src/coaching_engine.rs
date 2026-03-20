@@ -1,9 +1,10 @@
 use chrono::{DateTime, Local, NaiveTime, Utc};
 use oneshim_core::config::CoachingConfig;
 use oneshim_core::models::coaching::{
-    trigger_type_name, CoachingMessage, CoachingProfile, TriggerType,
+    trigger_type_name, CoachingMessage, CoachingProfile, GoalProgressView, TriggerType,
 };
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::debug;
 
@@ -30,6 +31,10 @@ pub struct CoachingEngine {
     current_regime_id: RwLock<Option<String>>,
     /// Timestamp when the current regime was entered.
     current_regime_entered: RwLock<Option<DateTime<Utc>>>,
+
+    /// Tracks a snoozed profile: (profile_name, snooze_expiry_instant).
+    /// When set, `evaluate()` skips triggers for this profile until the Instant passes.
+    snoozed_until: RwLock<Option<(String, Instant)>>,
 }
 
 impl CoachingEngine {
@@ -47,6 +52,7 @@ impl CoachingEngine {
             last_alert: RwLock::new(HashMap::new()),
             current_regime_id: RwLock::new(None),
             current_regime_entered: RwLock::new(None),
+            snoozed_until: RwLock::new(None),
         }
     }
 
@@ -82,6 +88,26 @@ impl CoachingEngine {
         if Self::is_quiet_hour(&config) {
             debug!("coaching suppressed: quiet hours");
             return None;
+        }
+
+        // 2b. Snooze check — skip evaluation if the current profile is snoozed
+        {
+            let guard = self.snoozed_until.read().await;
+            if let Some((ref snoozed_profile, until)) = *guard {
+                if Instant::now() < until && regime_label == snoozed_profile {
+                    debug!(profile = %snoozed_profile, "coaching suppressed: snoozed");
+                    return None;
+                }
+            }
+        }
+        // Clear expired snooze
+        {
+            let mut guard = self.snoozed_until.write().await;
+            if let Some((_, until)) = guard.as_ref() {
+                if Instant::now() >= *until {
+                    *guard = None;
+                }
+            }
         }
 
         // 3. Detect trigger
@@ -425,6 +451,51 @@ impl CoachingEngine {
         let mut ft = self.feedback_tracker.write().await;
         ft.evaluate_implicit(current_regime_id, current_app, now);
     }
+
+    // ── Phase 2 methods ──────────────────────────────────────────────
+
+    /// Set a temporary cooldown override on the specified coaching profile.
+    /// While snoozed, `evaluate()` skips that profile's triggers.
+    /// The snooze expires after `duration` elapses.
+    ///
+    /// Called from the `dismiss_coaching_message` IPC command when the user
+    /// clicks "Later". The profile name is read from the most recently
+    /// shown coaching message.
+    pub async fn snooze_current_profile(&self, profile_name: &str, duration: Duration) {
+        let mut guard = self.snoozed_until.write().await;
+        *guard = Some((profile_name.to_string(), Instant::now() + duration));
+    }
+
+    /// Return goal progress for all configured regimes.
+    /// Delegates to `RegimeGoalTracker::all_progress()`, maps each `GoalProgress`
+    /// to `GoalProgressView` with a deterministic display color assignment.
+    ///
+    /// Async because it reads from `RwLock<RegimeGoalTracker>`.
+    pub async fn all_goal_progress(&self) -> Vec<GoalProgressView> {
+        const COLORS: &[&str] = &[
+            "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899",
+        ];
+        let tracker = self.goal_tracker.read().await;
+        tracker
+            .all_progress()
+            .into_iter()
+            .enumerate()
+            .map(|(i, gp)| GoalProgressView {
+                regime_label: gp.regime_label,
+                current_minutes: gp.current_minutes,
+                target_minutes: gp.target_minutes,
+                percentage: gp.percentage,
+                display_color: COLORS[i % COLORS.len()].to_string(),
+            })
+            .collect()
+    }
+
+    /// Update the goal tracker's regime targets at runtime.
+    /// Called from the IPC `update_regime_goals` command.
+    pub async fn update_regime_goals(&self, goals: &HashMap<String, u32>) {
+        let mut tracker = self.goal_tracker.write().await;
+        tracker.update_goals(goals);
+    }
 }
 
 /// Humanize a duration in seconds to a compact "Xh Ym" format.
@@ -664,5 +735,71 @@ mod tests {
             result.is_none(),
             "evaluate() must return None when coaching is disabled"
         );
+    }
+
+    // ── Phase 2 method tests ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn snooze_current_profile_suppresses_evaluation() {
+        let engine = CoachingEngine::new(enabled_config());
+        engine.on_regime_change(Some("regime-a")).await;
+
+        // Snooze the regime label for 60 seconds
+        engine
+            .snooze_current_profile("Communication", Duration::from_secs(60))
+            .await;
+
+        // Evaluate with a regime transition to "Communication"
+        let result = engine
+            .evaluate(Some("regime-b"), "Communication", 60, 1800, false, "Slack")
+            .await;
+
+        // Even though there's a regime transition, snooze suppresses it
+        // because the label matches the snoozed profile.
+        // Note: The snooze compares against regime_label, not profile name,
+        // so it matches when the regime_label is the snoozed value.
+        assert!(
+            result.is_none(),
+            "snoozed profile should suppress evaluation"
+        );
+    }
+
+    #[tokio::test]
+    async fn all_goal_progress_returns_views_with_colors() {
+        let mut goals = HashMap::new();
+        goals.insert("Deep Work".to_string(), 120);
+        goals.insert("Communication".to_string(), 60);
+        let config = CoachingConfig {
+            enabled: true,
+            regime_goals: goals,
+            ..CoachingConfig::default()
+        };
+        let engine = CoachingEngine::new(config);
+
+        engine.record_minutes("Deep Work", 30).await;
+        engine.record_minutes("Communication", 45).await;
+
+        let views = engine.all_goal_progress().await;
+        assert_eq!(views.len(), 2);
+        // All views should have a non-empty display_color
+        for view in &views {
+            assert!(!view.display_color.is_empty());
+            assert!(view.display_color.starts_with('#'));
+        }
+    }
+
+    #[tokio::test]
+    async fn update_regime_goals_changes_tracker() {
+        let engine = CoachingEngine::new(enabled_config());
+
+        let mut goals = HashMap::new();
+        goals.insert("Coding".to_string(), 180);
+        goals.insert("Email".to_string(), 30);
+        engine.update_regime_goals(&goals).await;
+
+        let views = engine.all_goal_progress().await;
+        assert_eq!(views.len(), 2);
+        let coding = views.iter().find(|v| v.regime_label == "Coding").unwrap();
+        assert_eq!(coding.target_minutes, 180);
     }
 }
