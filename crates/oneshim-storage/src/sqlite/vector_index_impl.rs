@@ -946,6 +946,7 @@ mod tests {
             .unwrap();
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn build_ivf_and_search_roundtrip() {
         let conn = setup_db();
@@ -1005,6 +1006,7 @@ mod tests {
         );
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn build_binary_codes_and_search() {
         let conn = setup_db();
@@ -1058,6 +1060,7 @@ mod tests {
         debug!("IVF+binary search returned {} results", results.len());
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn assign_to_cluster_incremental() {
         let conn = setup_db();
