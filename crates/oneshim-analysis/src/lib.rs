@@ -35,6 +35,8 @@ pub mod vector_retriever;
 pub mod weekly_digest_generator;
 mod work_type_classifier;
 
+pub mod coaching_template;
+
 pub use adaptive_trigger::{AdaptiveTrigger, TriggerDecision};
 pub use analyzer::ContextAnalyzer;
 pub use assembler::{
@@ -70,3 +72,5 @@ pub use llm_segment_summarizer::{LlmSegmentSummarizer, SEGMENT_SUMMARY_PROMPT};
 pub use query_expander::{ActivityContext, QueryExpander};
 pub use vector_retriever::VectorRetriever;
 pub use weekly_digest_generator::WeeklyDigestGenerator;
+
+pub use coaching_template::CoachingTemplateRegistry;
