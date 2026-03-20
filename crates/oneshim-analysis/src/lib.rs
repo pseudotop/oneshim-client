@@ -35,6 +35,7 @@ pub mod vector_retriever;
 pub mod weekly_digest_generator;
 mod work_type_classifier;
 
+pub mod coaching_engine;
 pub mod coaching_template;
 pub mod feedback_tracker;
 pub mod regime_goal_tracker;
