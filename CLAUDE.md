@@ -63,7 +63,7 @@ client-rust/
 
 ### Hexagonal Architecture (Ports & Adapters)
 
-`oneshim-core` defines all traits (ports) and models. The other 9 crates act as adapters.
+`oneshim-core` defines all traits (ports) and models. The other 12 crates act as adapters.
 
 ```
 oneshim-core  ←  oneshim-monitor
@@ -72,7 +72,10 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-storage
               ←  oneshim-suggestion  ←  oneshim-network
               ←  oneshim-automation
-              ←  oneshim-app         ←  (all)
+              ←  oneshim-analysis    ←  oneshim-core
+              ←  oneshim-embedding   ←  oneshim-core
+              ←  oneshim-api-contracts
+              ←  oneshim-app         ←  (all, legacy adapter crate)
               ←  src-tauri           ←  (all, Tauri v2 main binary)
 ```
 
@@ -143,7 +146,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ### oneshim-storage (Local Storage)
 - `sqlite.rs`: `SqliteStorage` (impl StorageService) — WAL mode + PRAGMA optimizations
-- `migration.rs`: schema V1-V7 (events, frames, work_sessions, interruptions, focus_metrics, local_suggestions)
+- `migration.rs`: schema V1-V17 (events, frames, work_sessions, interruptions, focus_metrics, local_suggestions, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching)
 - `frame_storage.rs`: Frame image file storage + retention policy + buffer pool + parallel I/O
 - Retention Policy: 30 days, 500MB
 - Performance optimization: compound indexes, batch inserts, memory cache, ArrayQueue buffer pool
@@ -193,7 +196,25 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - `token.rs`: token generation, parsing, signature verification
 - `audit.rs`: `AuditLogger` — local VecDeque buffer + batched audit logs transmission, buffer overflow management
 
-### oneshim-app (Orchestrator, Binary)
+### oneshim-analysis (LLM Analysis Pipeline)
+- `analyzer.rs`: `ContextAnalyzer` — segment summarization via LLM, regime classification
+- `embedding_pipeline.rs`: `EmbeddingPipeline` — content activity + LLM summary embedding with optional INT8 quantization
+- `vector_retriever.rs`: `VectorRetriever` — vector similarity search with quantized + adaptive strategy support
+- `regime_classifier.rs`: `RegimeClassifier` — behavioral regime detection and labeling
+- `regime_manager.rs`: `RegimeManager` — regime lifecycle (create, merge, split, mark_seen)
+- `auto_tuner.rs`: `EmaStatsTracker`, `DriftDetector` — exponential moving average baselines and behavioral drift detection
+- `coaching_engine.rs`: `CoachingEngine` — proactive productivity coaching with template-first + LLM personalization
+- `adaptive_search.rs`: `AdaptiveSearchCoordinator` — auto strategy selection (brute-force / IVF / IVF+binary)
+
+### oneshim-embedding (Vector Embedding + Compression)
+- `lib.rs`: `EmbeddingService` — vector embedding generation, INT8 scalar quantization, similarity search
+- Compression: 4x storage reduction via INT8 quantization with configurable float32 retention
+
+### oneshim-api-contracts (Shared API Type Contracts)
+- Shared request/response types between client crates
+- Ensures API contract consistency across the workspace
+
+### oneshim-app (Legacy Adapter Crate)
 - `main.rs`: tokio runtime + tracing + complete DI wiring + spawned tasks
 - `scheduler/`: 9-loop scheduler — directory module (ADR-003)
   - `mod.rs`: `Scheduler` struct + `run()` orchestrator + re-exports
@@ -265,7 +286,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ## Current Status
 
-- Phase 0-35 + Privacy & Permission Control System implementation completed (10 crates)
+- Phase 0-35 + Privacy & Permission Control System + Superpowers-era features completed (13 crates)
 - Current quality metrics (test counts, pass/fail, lint/build status) are maintained in `docs/STATUS.md` as the single source of truth
 - Actual adapters connected to all ports: `SmartCaptureTrigger`, `EdgeFrameProcessor`, `DesktopNotifierImpl`
 - Windows active window detection implemented (`windows-sys` + `sysinfo`)
@@ -290,3 +311,4 @@ Key capabilities by phase:
 - **Edge Intelligence** (P28, P30-33): Focus analyzer, SQLite perf, LRU cache, lock-free queue
 - **Server Integration** (P34-37): HTTP retry, gRPC client, REST standardization, port fallback
 - **Privacy** (Tier 1-3): Telemetry control, PII filter, GDPR consent, automation crate
+- **Superpowers** (S1-S5): GUI Intelligence (accessibility + text extraction), Text Intelligence (LLM analysis pipeline + regime classification), Vector Compression (INT8/2-bit quantization + IVF index), Cross-Device Sync (device identity + LAN peer discovery), Coaching Engine (proactive productivity coaching + MagicOverlay)

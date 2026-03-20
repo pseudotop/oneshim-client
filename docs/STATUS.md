@@ -30,24 +30,25 @@ cargo fmt --check
 
 ## Current Snapshot
 
-### Rust Tests (2026-03-09)
+### Rust Tests (2026-03-20)
 
 | Crate | Tests | Status |
 |-------|------:|--------|
-| oneshim-core | 106 | pass |
-| oneshim-network | 91 + 3 | pass |
+| oneshim-core | 341 | pass |
+| oneshim-network | 258 + 28 | pass |
 | oneshim-suggestion | 17 | pass |
-| oneshim-storage | 42 | pass |
-| oneshim-monitor | 39 | pass |
-| oneshim-vision | 85 | pass |
-| oneshim-ui | 37 | pass |
-| oneshim-web | 129 | pass |
-| oneshim-automation | 203 | pass |
-| oneshim-app (unit) | 99 | pass |
-| oneshim-app (integration) | 32 | pass (4 ignored) |
-| oneshim-api-contracts | 8 | pass |
+| oneshim-storage | 188 | pass (3 ignored) |
+| oneshim-monitor | 78 | pass |
+| oneshim-vision | 151 | pass (2 ignored) |
+| oneshim-web | 221 | pass |
+| oneshim-automation | 202 + 1 | pass |
+| oneshim-analysis | 484 | pass |
+| oneshim-embedding | 1 | pass (2 ignored) |
+| oneshim-api-contracts | 42 | pass |
+| oneshim-app (unit) | 209 | pass |
+| oneshim-app (integration) | 55 | pass (3 ignored) |
 | language-check | 4 | pass |
-| **Total** | **882** | **0 failed** |
+| **Total** | **2,281** | **0 failed** |
 
 ### Build & Lint
 

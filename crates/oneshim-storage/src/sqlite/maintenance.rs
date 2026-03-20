@@ -400,6 +400,8 @@ impl SqliteStorage {
         let _ = conn.execute("DELETE FROM regime_overrides", []);
         let _ = conn.execute("DELETE FROM regimes", []);
         let _ = conn.execute("DELETE FROM trigger_params_snapshots", []);
+        // V11: FTS5 virtual table
+        let _ = conn.execute("DELETE FROM search_fts", []);
 
         // V12-V14 tables
         let _ = conn.execute("DELETE FROM vector_binary_codes", []);

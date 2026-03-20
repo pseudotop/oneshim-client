@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-03-19-p3-vector-compression-embedding-optimization-design.md`
 
+> **Historical note:** CURRENT_VERSION was 14 when this plan was written; now V17.
+
 ---
 
 ## What is already done (DO NOT re-implement)
