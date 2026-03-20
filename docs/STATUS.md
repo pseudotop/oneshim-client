@@ -82,6 +82,20 @@ cargo fmt --check
 | M3 | SSE Event Stream Integration | done (10 tests, `b700804`) |
 | M4 | End-to-End Workflow Tests | done (10 tests, `0b0880e`) |
 
+### GUI V2 Performance Baselines
+
+| Operation | Target | Instrumented |
+|-----------|--------|-------------|
+| `create_session` (scene analysis + candidate ranking) | <50ms | `#[tracing::instrument]` |
+| `highlight_session` (overlay render) | <16ms | `#[tracing::instrument]` |
+| `confirm_candidate` (focus validation + ticket signing) | <10ms | `#[tracing::instrument]` |
+| `prepare_execution` (focus revalidation + ticket verify) | <10ms | `#[tracing::instrument]` |
+| `build_candidates` (200 elements) | <5ms | `#[tracing::instrument]` |
+| `sign_ticket` / `verify_ticket` (HMAC-SHA256) | <1ms | `#[tracing::instrument]` |
+| Accessibility tree query (depth 3) | <30ms | per-platform impl |
+
+Baselines measured via `RUST_LOG=oneshim_automation=debug` tracing spans. QA template: `docs/qa/runs/TEMPLATE-adr-002-gui-smoke-matrix.md`.
+
 ## Notes
 
 - Historical numbers may remain in CHANGELOG entries because they describe past releases.

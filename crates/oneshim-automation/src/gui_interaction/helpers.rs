@@ -7,6 +7,7 @@ use oneshim_core::models::ui_scene::UiScene;
 use super::types::GuiInteractionError;
 use crate::controller::AutomationAction;
 
+#[tracing::instrument(skip_all, fields(element_count = scene.elements.len()))]
 pub(super) fn build_candidates(
     scene: &UiScene,
     min_confidence: f64,
