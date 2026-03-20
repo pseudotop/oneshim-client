@@ -45,6 +45,9 @@ pub struct CoachingEngine {
     pub(super) context_switch_count: RwLock<u32>,
     /// Date of last reset (for daily reset logic).
     pub(super) context_switch_date: RwLock<chrono::NaiveDate>,
+
+    /// Last app name passed to evaluate() — used for implicit feedback.
+    pub(super) last_app_name: RwLock<String>,
 }
 
 impl CoachingEngine {
@@ -66,6 +69,7 @@ impl CoachingEngine {
             regime_avg_duration: RwLock::new(HashMap::new()),
             context_switch_count: RwLock::new(0),
             context_switch_date: RwLock::new(chrono::Utc::now().date_naive()),
+            last_app_name: RwLock::new(String::new()),
         }
     }
 
@@ -109,6 +113,12 @@ impl CoachingEngine {
 
         // 2b. Clear expired snooze eagerly (before trigger detection)
         self.clear_expired_snooze().await;
+
+        // 2c. Record last app name for implicit feedback
+        {
+            let mut app = self.last_app_name.write().await;
+            *app = app_name.to_string();
+        }
 
         // 3. Detect trigger
         let trigger = self
@@ -217,14 +227,29 @@ impl CoachingEngine {
     }
 
     /// Evaluate implicit feedback for messages past the 5-minute window.
+    ///
+    /// When called with `(None, "")` (from the coaching loop which lacks live data),
+    /// falls back to the engine's internal `current_regime_id` and `last_app_name`.
+    /// When called with real data (from the monitor loop), uses the provided values.
     pub async fn evaluate_implicit_feedback(
         &self,
         current_regime_id: Option<&str>,
         current_app: &str,
         now: DateTime<Utc>,
     ) {
+        // Use internal state when caller provides placeholders
+        let regime_id_to_use: Option<String>;
+        let app_to_use: String;
+        if current_regime_id.is_none() && current_app.is_empty() {
+            regime_id_to_use = self.current_regime_id.read().await.clone();
+            app_to_use = self.last_app_name.read().await.clone();
+        } else {
+            regime_id_to_use = current_regime_id.map(String::from);
+            app_to_use = current_app.to_string();
+        }
+
         let mut ft = self.feedback_tracker.write().await;
-        ft.evaluate_implicit(current_regime_id, current_app, now);
+        ft.evaluate_implicit(regime_id_to_use.as_deref(), &app_to_use, now);
     }
 
     // ── Phase 2 methods ──────────────────────────────────────────────
@@ -633,5 +658,34 @@ mod tests {
         engine.on_regime_change(Some("r-c")).await;
         let vars = engine.build_variables("Test", 600, "VS Code").await;
         assert_eq!(vars.get("context_switches").unwrap(), "3");
+    }
+
+    #[tokio::test]
+    async fn implicit_feedback_uses_internal_state() {
+        let engine = CoachingEngine::new(enabled_config());
+        // Simulate an evaluate() call that sets internal state
+        engine.on_regime_change(Some("r-a")).await;
+        {
+            let mut app = engine.last_app_name.write().await;
+            *app = "VS Code".to_string();
+        }
+        // Register a pending message
+        engine
+            .register_pending_feedback(
+                "msg-1",
+                "FocusGuard",
+                "RegimeTransition",
+                Some("r-a"),
+                "VS Code",
+            )
+            .await;
+        // Simulate regime change (so implicit feedback would detect it)
+        engine.on_regime_change(Some("r-b")).await;
+        // Call with placeholder args — should use internal state
+        let future = Utc::now() + chrono::Duration::seconds(301);
+        engine.evaluate_implicit_feedback(None, "", future).await;
+        // Pending should be consumed
+        let ft = engine.feedback_tracker.read().await;
+        assert_eq!(ft.pending_count(), 0);
     }
 }
