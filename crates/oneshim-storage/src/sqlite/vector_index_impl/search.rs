@@ -27,10 +27,22 @@ pub(super) async fn search_ivf_impl(
             return Ok(vec![]);
         }
 
+        // Pre-validate dimensions once before the hot loop.
+        if let Some(first) = centroids.first() {
+            if first.vector.data.len() != query_vector.data.len() {
+                return Err(CoreError::InvalidArguments(format!(
+                    "Dimension mismatch: centroid {} vs query {}",
+                    first.vector.data.len(),
+                    query_vector.data.len()
+                )));
+            }
+        }
+
         let mut sims: Vec<(usize, f32)> = centroids
             .iter()
             .map(|c| {
-                let sim = ScalarQuantizer::cosine_similarity_int8(&c.vector, query_vector);
+                let sim =
+                    ScalarQuantizer::cosine_similarity_int8_unchecked(&c.vector, query_vector);
                 (c.id, sim)
             })
             .collect();
@@ -123,10 +135,22 @@ pub(super) async fn search_ivf_binary_impl(
             return Ok(vec![]);
         }
 
+        // Pre-validate dimensions once before the hot loop.
+        if let Some(first) = centroids.first() {
+            if first.vector.data.len() != query_vector.data.len() {
+                return Err(CoreError::InvalidArguments(format!(
+                    "Dimension mismatch: centroid {} vs query {}",
+                    first.vector.data.len(),
+                    query_vector.data.len()
+                )));
+            }
+        }
+
         let mut sims: Vec<(usize, f32)> = centroids
             .iter()
             .map(|c| {
-                let sim = ScalarQuantizer::cosine_similarity_int8(&c.vector, query_vector);
+                let sim =
+                    ScalarQuantizer::cosine_similarity_int8_unchecked(&c.vector, query_vector);
                 (c.id, sim)
             })
             .collect();

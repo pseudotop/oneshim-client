@@ -153,6 +153,9 @@ pub fn brute_force_search(
 }
 
 /// Execute brute-force search on INT8 quantized rows.
+///
+/// Uses `cosine_similarity_int8_unchecked` because all rows originate from
+/// the same model and share the query's dimensionality.
 pub fn brute_force_search_quantized(
     rows: Vec<QuantizedVectorRow>,
     query_vector: &QuantizedVector,
@@ -168,10 +171,11 @@ pub fn brute_force_search_quantized(
                 scale: row.quant_scale,
                 offset: row.quant_offset,
             };
-            let similarity = oneshim_core::quantization::ScalarQuantizer::cosine_similarity_int8(
-                query_vector,
-                &row_qv,
-            );
+            let similarity =
+                oneshim_core::quantization::ScalarQuantizer::cosine_similarity_int8_unchecked(
+                    query_vector,
+                    &row_qv,
+                );
             let age_hours = (now - row.timestamp).num_seconds().max(0) as f32 / 3600.0;
             let time_decay = if time_decay_hours > 0.0 {
                 (-age_hours / time_decay_hours).exp()

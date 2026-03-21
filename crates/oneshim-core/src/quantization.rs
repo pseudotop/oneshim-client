@@ -72,6 +72,24 @@ impl ScalarQuantizer {
         })
     }
 
+    /// Quantize with dimension validation.
+    ///
+    /// Like [`Self::quantize`] but additionally verifies that the input
+    /// vector length matches `expected_dim`. Intended for entry-point
+    /// validation where the embedding model dimension is known.
+    pub fn quantize_with_expected_dim(
+        vector: &[f32],
+        expected_dim: usize,
+    ) -> Result<QuantizedVector, CoreError> {
+        if vector.len() != expected_dim {
+            return Err(CoreError::InvalidArguments(format!(
+                "Vector dimension mismatch: expected {expected_dim}, got {}",
+                vector.len()
+            )));
+        }
+        Self::quantize(vector)
+    }
+
     /// Dequantize an INT8 vector back to f32 (approximate reconstruction).
     pub fn dequantize(qv: &QuantizedVector) -> Vec<f32> {
         qv.data
@@ -82,11 +100,36 @@ impl ScalarQuantizer {
 
     /// Compute approximate cosine similarity between two quantized vectors
     /// using INT8 dot product (avoids full dequantization).
-    pub fn cosine_similarity_int8(a: &QuantizedVector, b: &QuantizedVector) -> f32 {
-        if a.data.len() != b.data.len() || a.data.is_empty() {
-            return 0.0;
+    ///
+    /// Returns `Err(CoreError::InvalidArguments)` on dimension mismatch or
+    /// empty vectors.
+    pub fn cosine_similarity_int8(
+        a: &QuantizedVector,
+        b: &QuantizedVector,
+    ) -> Result<f32, CoreError> {
+        if a.data.is_empty() || b.data.is_empty() {
+            return Err(CoreError::InvalidArguments(
+                "cannot compute cosine similarity on empty vectors".to_string(),
+            ));
+        }
+        if a.data.len() != b.data.len() {
+            return Err(CoreError::InvalidArguments(format!(
+                "Dimension mismatch: {} vs {}",
+                a.data.len(),
+                b.data.len()
+            )));
         }
 
+        Ok(Self::cosine_similarity_int8_unchecked(a, b))
+    }
+
+    /// Compute approximate cosine similarity without dimension validation.
+    ///
+    /// Intended for hot-path loops where dimensions have been pre-validated.
+    /// Caller is responsible for ensuring `a.data.len() == b.data.len()` and
+    /// both are non-empty. Behavior on mismatched lengths is unspecified
+    /// (may silently truncate).
+    pub fn cosine_similarity_int8_unchecked(a: &QuantizedVector, b: &QuantizedVector) -> f32 {
         // i32 accumulator: max possible value for 384 dims of i8 is
         // 384 * 127 * 127 = 6,193,152, well within i32 max (2,147,483,647).
         // Using i32 enables LLVM auto-vectorization with SIMD (SDOT on ARM, SSSE3 on x86).
@@ -163,7 +206,7 @@ mod tests {
     fn cosine_similarity_identical() {
         let v = vec![0.1, 0.5, 0.9, -0.3, 0.7];
         let qv = ScalarQuantizer::quantize(&v).unwrap();
-        let sim = ScalarQuantizer::cosine_similarity_int8(&qv, &qv);
+        let sim = ScalarQuantizer::cosine_similarity_int8(&qv, &qv).unwrap();
         assert!((sim - 1.0).abs() < 0.01);
     }
 
@@ -181,8 +224,73 @@ mod tests {
         }
         let qa = ScalarQuantizer::quantize(&a).unwrap();
         let qb = ScalarQuantizer::quantize(&b).unwrap();
-        let sim = ScalarQuantizer::cosine_similarity_int8(&qa, &qb);
+        let sim = ScalarQuantizer::cosine_similarity_int8(&qa, &qb).unwrap();
         // Quantized orthogonal vectors — similarity should be low
         assert!(sim < 0.3, "expected low similarity, got {sim}");
+    }
+
+    #[test]
+    fn cosine_similarity_dimension_mismatch_returns_error() {
+        let a = ScalarQuantizer::quantize(&[1.0, 0.0, 0.0]).unwrap();
+        let b = ScalarQuantizer::quantize(&[1.0, 0.0, 0.0, 0.5, 0.5]).unwrap();
+        let result = ScalarQuantizer::cosine_similarity_int8(&a, &b);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(
+            err_msg.contains("Dimension mismatch"),
+            "error should mention dimension mismatch, got: {err_msg}"
+        );
+        assert!(
+            err_msg.contains("3") && err_msg.contains("5"),
+            "error should contain both dimensions, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn cosine_similarity_empty_vectors_returns_error() {
+        let a = QuantizedVector {
+            data: vec![],
+            scale: 1.0,
+            offset: 0.0,
+        };
+        let b = QuantizedVector {
+            data: vec![],
+            scale: 1.0,
+            offset: 0.0,
+        };
+        let result = ScalarQuantizer::cosine_similarity_int8(&a, &b);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cosine_similarity_unchecked_same_as_checked() {
+        let v = vec![0.1, 0.5, 0.9, -0.3, 0.7];
+        let qv = ScalarQuantizer::quantize(&v).unwrap();
+        let checked = ScalarQuantizer::cosine_similarity_int8(&qv, &qv).unwrap();
+        let unchecked = ScalarQuantizer::cosine_similarity_int8_unchecked(&qv, &qv);
+        assert!(
+            (checked - unchecked).abs() < f32::EPSILON,
+            "checked ({checked}) and unchecked ({unchecked}) should produce identical results"
+        );
+    }
+
+    #[test]
+    fn quantize_with_expected_dim_accepts_correct() {
+        let v = vec![0.1; 384];
+        let qv = ScalarQuantizer::quantize_with_expected_dim(&v, 384);
+        assert!(qv.is_ok());
+        assert_eq!(qv.unwrap().data.len(), 384);
+    }
+
+    #[test]
+    fn quantize_with_expected_dim_rejects_wrong_size() {
+        let v = vec![0.1; 100];
+        let result = ScalarQuantizer::quantize_with_expected_dim(&v, 384);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(
+            err_msg.contains("384") && err_msg.contains("100"),
+            "error should mention expected and actual dims, got: {err_msg}"
+        );
     }
 }

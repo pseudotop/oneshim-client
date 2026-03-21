@@ -132,6 +132,9 @@ type ScoringRow = (
 );
 
 /// Build search results from INT8 rows with cosine similarity + time decay.
+///
+/// Uses `cosine_similarity_int8_unchecked` because all rows originate from
+/// the same model/index and share the query's dimensionality.
 fn score_and_rank(
     rows: Vec<ScoringRow>,
     query: &QuantizedVector,
@@ -157,7 +160,7 @@ fn score_and_rank(
                     scale,
                     offset,
                 };
-                let similarity = ScalarQuantizer::cosine_similarity_int8(query, &row_qv);
+                let similarity = ScalarQuantizer::cosine_similarity_int8_unchecked(query, &row_qv);
 
                 let timestamp = chrono::DateTime::parse_from_rfc3339(&ts_str)
                     .map(|dt| dt.with_timezone(&chrono::Utc))

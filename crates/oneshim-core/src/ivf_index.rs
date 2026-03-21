@@ -282,35 +282,65 @@ impl IvfIndex {
     /// Find the `nprobe` nearest centroids to a query vector (by cosine similarity).
     ///
     /// Returns cluster IDs sorted by similarity descending.
-    pub fn nearest_centroids(&self, query: &QuantizedVector, nprobe: usize) -> Vec<usize> {
+    /// Returns `Err` if query dimensions do not match centroid dimensions.
+    pub fn nearest_centroids(
+        &self,
+        query: &QuantizedVector,
+        nprobe: usize,
+    ) -> Result<Vec<usize>, CoreError> {
+        // Pre-validate dimensions once before the hot loop.
+        if let Some(first) = self.centroids.first() {
+            if first.vector.data.len() != query.data.len() {
+                return Err(CoreError::InvalidArguments(format!(
+                    "Dimension mismatch: centroid {} vs query {}",
+                    first.vector.data.len(),
+                    query.data.len()
+                )));
+            }
+        }
+
         let mut sims: Vec<(usize, f32)> = self
             .centroids
             .iter()
             .map(|c| {
-                let sim = ScalarQuantizer::cosine_similarity_int8(&c.vector, query);
+                let sim = ScalarQuantizer::cosine_similarity_int8_unchecked(&c.vector, query);
                 (c.id, sim)
             })
             .collect();
 
         sims.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        sims.into_iter()
+        Ok(sims
+            .into_iter()
             .take(nprobe.min(self.centroids.len()))
             .map(|(id, _)| id)
-            .collect()
+            .collect())
     }
 
     /// Assign a single vector to its nearest centroid. Returns the cluster ID.
-    pub fn assign(&self, vector: &QuantizedVector) -> usize {
-        self.centroids
+    /// Returns `Err` if query dimensions do not match centroid dimensions.
+    pub fn assign(&self, vector: &QuantizedVector) -> Result<usize, CoreError> {
+        // Pre-validate dimensions once before the hot loop.
+        if let Some(first) = self.centroids.first() {
+            if first.vector.data.len() != vector.data.len() {
+                return Err(CoreError::InvalidArguments(format!(
+                    "Dimension mismatch: centroid {} vs query {}",
+                    first.vector.data.len(),
+                    vector.data.len()
+                )));
+            }
+        }
+
+        Ok(self
+            .centroids
             .iter()
             .map(|c| {
-                let sim = ScalarQuantizer::cosine_similarity_int8(&c.vector, vector);
+                let sim = ScalarQuantizer::cosine_similarity_int8_unchecked(&c.vector, vector);
                 (c.id, sim)
             })
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(id, _)| id)
-            .unwrap_or(0)
+            .unwrap_or(0))
     }
 
     /// Get all vector IDs assigned to a given cluster.
@@ -479,7 +509,7 @@ mod tests {
 
         // Query near cluster 1 center
         let query = make_qv(&[1.0, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
-        let nearest = index.nearest_centroids(&query, 3);
+        let nearest = index.nearest_centroids(&query, 3).unwrap();
         assert_eq!(nearest.len(), 3);
         assert!(!nearest.is_empty());
     }
@@ -502,7 +532,7 @@ mod tests {
 
         let index = IvfIndex::build(&vectors, &config).unwrap();
         let query = make_qv(&[1.0, 0.0, 0.0, 0.0, 0.0]);
-        let nearest = index.nearest_centroids(&query, 2);
+        let nearest = index.nearest_centroids(&query, 2).unwrap();
         assert_eq!(nearest.len(), 2);
     }
 
@@ -524,7 +554,7 @@ mod tests {
 
         // New vector near center1
         let new_vec = make_qv(&[0.95, 0.05, 0.0, 0.0, 0.0]);
-        let cluster = index.assign(&new_vec);
+        let cluster = index.assign(&new_vec).unwrap();
         assert!(cluster < 2);
     }
 
