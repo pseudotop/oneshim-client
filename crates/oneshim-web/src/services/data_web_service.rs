@@ -67,8 +67,13 @@ impl DataCommandService {
     }
 
     pub fn delete_all_data(&self) -> Result<DeleteResult, ApiError> {
-        let mut result = DeleteResult::empty();
+        // Phase 1: Atomic DB deletion (transaction — all-or-nothing)
+        self.ctx
+            .storage
+            .delete_all_data()
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
 
+        // Phase 2: Best-effort frame file deletion (after DB commit)
         if let Some(ref frames_dir) = self.ctx.frames_dir {
             if frames_dir.exists() {
                 if let Ok(entries) = std::fs::read_dir(frames_dir) {
@@ -82,18 +87,8 @@ impl DataCommandService {
             }
         }
 
-        let deleted = self
-            .ctx
-            .storage
-            .delete_all_data()
-            .map_err(|error| ApiError::Internal(error.to_string()))?;
-
-        result.events_deleted = deleted.events_deleted;
-        result.frames_deleted = deleted.frames_deleted;
-        result.metrics_deleted = deleted.metrics_deleted;
-        result.process_snapshots_deleted = deleted.process_snapshots_deleted;
-        result.idle_periods_deleted = deleted.idle_periods_deleted;
-        result.message = format!("All data was deleted ({} records)", result.total());
+        let mut result = DeleteResult::empty();
+        result.message = "All data was deleted".to_string();
 
         Ok(result)
     }

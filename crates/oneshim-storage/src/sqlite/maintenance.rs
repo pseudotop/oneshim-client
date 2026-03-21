@@ -354,79 +354,76 @@ impl SqliteStorage {
         Ok(counts)
     }
 
-    pub fn delete_all_data(&self) -> Result<DeletedRangeCounts, CoreError> {
-        let conn = self
+    /// Atomically delete all user data from every known table inside a single
+    /// SQLite transaction. On any failure the transaction auto-rolls-back so
+    /// the database is never left in a partially-deleted state (GDPR compliance).
+    pub fn delete_all_data(&self) -> Result<(), CoreError> {
+        let mut conn = self
             .conn
             .lock()
             .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
-        // V1-V7 tables
-        let events_deleted = conn
-            .execute("DELETE FROM events", [])
-            .map_err(|e| CoreError::Internal(format!("event delete failure: {e}")))?
-            as u64;
-        let frames_deleted = conn
-            .execute("DELETE FROM frames", [])
-            .map_err(|e| CoreError::Internal(format!("frame delete failure: {e}")))?
-            as u64;
-        let metrics_deleted = conn
-            .execute("DELETE FROM system_metrics", [])
-            .map_err(|e| CoreError::Internal(format!("Failed to delete metrics: {e}")))?
-            as u64;
-        let _ = conn.execute("DELETE FROM system_metrics_hourly", []);
-        let process_snapshots_deleted = conn
-            .execute("DELETE FROM process_snapshots", [])
-            .map_err(|e| CoreError::Internal(format!("Failed to delete process snapshots: {e}")))?
-            as u64;
-        let idle_periods_deleted = conn
-            .execute("DELETE FROM idle_periods", [])
-            .map_err(|e| CoreError::Internal(format!("idle record delete failure: {e}")))?
-            as u64;
-        let _ = conn.execute("DELETE FROM session_stats", []);
-        let _ = conn.execute("DELETE FROM work_sessions", []);
-        let _ = conn.execute("DELETE FROM interruptions", []);
-        let _ = conn.execute("DELETE FROM focus_metrics", []);
-        let _ = conn.execute("DELETE FROM suggestions", []);
-        let _ = conn.execute("DELETE FROM local_suggestions", []);
-        let _ = conn.execute("DELETE FROM tags", []);
-        let _ = conn.execute("DELETE FROM frame_tags", []);
+        // All tables created by V1-V17 migrations (excluding schema_version).
+        // Order: child/referencing tables before parent tables to avoid FK issues
+        // if foreign keys are ever enabled.
+        const ALL_TABLES: &[&str] = &[
+            // V1-V7
+            "events",
+            "frames",
+            "system_metrics",
+            "system_metrics_hourly",
+            "process_snapshots",
+            "idle_periods",
+            "session_stats",
+            "work_sessions",
+            "interruptions",
+            "focus_metrics",
+            "suggestions",
+            "local_suggestions",
+            "frame_tags",
+            "tags",
+            // V8-V10
+            "activity_segments",
+            "calibration_log",
+            "daily_digests",
+            "weekly_digests",
+            "embedding_vectors",
+            "regime_overrides",
+            "regimes",
+            "trigger_params_snapshots",
+            // V11: FTS5 virtual table
+            "search_fts",
+            // V12-V14
+            "vector_binary_codes",
+            "vector_index_meta",
+            "ivf_centroids",
+            "ivf_assignments",
+            "gui_interactions",
+            "device_identity",
+            "sync_peers",
+            // V15-V16
+            "lan_peer_pins",
+            // V17: coaching
+            "coaching_events",
+            "regime_goals",
+            "coaching_effectiveness",
+        ];
 
-        // V8-V11 tables
-        let _ = conn.execute("DELETE FROM activity_segments", []);
-        let _ = conn.execute("DELETE FROM calibration_log", []);
-        let _ = conn.execute("DELETE FROM daily_digests", []);
-        let _ = conn.execute("DELETE FROM weekly_digests", []);
-        let _ = conn.execute("DELETE FROM embedding_vectors", []);
-        let _ = conn.execute("DELETE FROM regime_overrides", []);
-        let _ = conn.execute("DELETE FROM regimes", []);
-        let _ = conn.execute("DELETE FROM trigger_params_snapshots", []);
-        // V11: FTS5 virtual table
-        let _ = conn.execute("DELETE FROM search_fts", []);
+        let tx = conn
+            .transaction()
+            .map_err(|e| CoreError::Internal(format!("Failed to begin transaction: {e}")))?;
 
-        // V12-V14 tables
-        let _ = conn.execute("DELETE FROM vector_binary_codes", []);
-        let _ = conn.execute("DELETE FROM vector_index_meta", []);
-        let _ = conn.execute("DELETE FROM ivf_centroids", []);
-        let _ = conn.execute("DELETE FROM ivf_assignments", []);
-        let _ = conn.execute("DELETE FROM gui_interactions", []);
-        let _ = conn.execute("DELETE FROM device_identity", []);
-        let _ = conn.execute("DELETE FROM sync_peers", []);
+        for table in ALL_TABLES {
+            tx.execute(&format!("DELETE FROM {table}"), [])
+                .map_err(|e| {
+                    CoreError::Internal(format!("GDPR delete failed on table '{table}': {e}"))
+                })?;
+        }
 
-        // V15-V16 tables (index + sync)
-        let _ = conn.execute("DELETE FROM lan_peer_pins", []);
+        tx.commit()
+            .map_err(|e| CoreError::Internal(format!("Failed to commit GDPR deletion: {e}")))?;
 
-        // V17: coaching tables
-        let _ = conn.execute("DELETE FROM coaching_events", []);
-        let _ = conn.execute("DELETE FROM regime_goals", []);
-        let _ = conn.execute("DELETE FROM coaching_effectiveness", []);
-
-        Ok(DeletedRangeCounts {
-            events_deleted,
-            frames_deleted,
-            metrics_deleted,
-            process_snapshots_deleted,
-            idle_periods_deleted,
-        })
+        Ok(())
     }
 
     pub fn list_event_exports(
