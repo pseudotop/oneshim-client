@@ -1,6 +1,4 @@
-use super::*;
 use crate::services::settings_assembler::config_to_settings;
-use oneshim_api_contracts::settings::AppSettings;
 use oneshim_core::config::{
     AiAccessMode, AiProviderProfileConfig, AiProviderType, CredentialAuthMode,
     CredentialBackendKind, CredentialBinding, ExternalApiEndpoint, LlmProviderType,

@@ -5,7 +5,6 @@ use oneshim_api_contracts::settings::{
     AiProviderProfileConfig as ApiAiProviderProfileConfig, AppSettings, ExternalApiSettings,
     OcrValidationSettings, SceneActionOverrideSettings, SceneIntelligenceSettings,
 };
-use oneshim_core::config::CredentialBackendKind;
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::secret_store::SecretStore;
