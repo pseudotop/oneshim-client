@@ -1,3 +1,7 @@
+//! LLM provider port — defines the contract for interpreting user intent
+//! from screen context via a remote large language model.
+//! Implemented by `RemoteLlmProvider` in `oneshim-network`.
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 

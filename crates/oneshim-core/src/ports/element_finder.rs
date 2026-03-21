@@ -1,3 +1,7 @@
+//! UI element discovery port — defines the contract for finding clickable
+//! elements and analyzing UI scenes for the automation pipeline.
+//! Implemented by accessibility and vision adapters in `oneshim-vision`.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

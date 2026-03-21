@@ -1,3 +1,7 @@
+//! Focus probe port — defines the contract for querying the currently
+//! focused UI element and validating execution bindings before automation.
+//! Implemented by platform-specific adapters in `oneshim-vision`.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

@@ -86,7 +86,9 @@ impl SuggestionReceiver {
             }
         }
 
-        let _ = self.suggestion_tx.send(suggestion).await;
+        if self.suggestion_tx.send(suggestion).await.is_err() {
+            tracing::debug!("suggestion channel full or closed — suggestion dropped");
+        }
     }
 
     pub async fn queue_size(&self) -> usize {

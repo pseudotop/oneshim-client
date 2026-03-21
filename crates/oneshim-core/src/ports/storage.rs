@@ -1,3 +1,7 @@
+//! Local persistence ports — defines contracts for storing events, metrics,
+//! sessions, suggestions, and activity segments in the local SQLite database.
+//! Implemented by `SqliteStorage` in `oneshim-storage`.
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 

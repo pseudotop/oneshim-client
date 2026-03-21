@@ -1,3 +1,7 @@
+//! Synthetic input driver port — defines the contract for injecting
+//! mouse, keyboard, and hotkey events into the OS for automation.
+//! Implemented by platform-specific adapters in `oneshim-automation`.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

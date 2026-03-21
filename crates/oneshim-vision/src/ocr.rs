@@ -75,7 +75,7 @@ impl OcrExtractor {
             if guard.is_none() {
                 **guard = Some(create_new()?);
             }
-            guard.as_mut().unwrap()
+            guard.as_mut().expect("LepTess instance initialized above")
         } else {
             // Lock failed — create a temporary instance
             let mut lt = create_new()?;
@@ -245,7 +245,8 @@ impl OcrExtractor {
 
             let mut result = Vec::new();
             for i in 0..count {
-                let geom = boxes.get(i).unwrap().get_geometry();
+                let Some(b) = boxes.get(i) else { continue };
+                let geom = b.get_geometry();
                 let word_text = words[i].to_string();
                 if !word_text.is_empty() {
                     result.push(OcrWordBox {
@@ -294,7 +295,8 @@ fn build_regions_from_leptess(lt: &mut leptess::LepTess) -> Result<Vec<OcrRegion
 
     let mut regions = Vec::with_capacity(count);
     for i in 0..count {
-        let geom = boxes.get(i).unwrap().get_geometry();
+        let Some(b) = boxes.get(i) else { continue };
+        let geom = b.get_geometry();
         let word_text = words[i].to_string();
         if !word_text.is_empty() {
             regions.push(OcrRegion {
@@ -342,7 +344,7 @@ impl OcrExtractor {
             if guard.is_none() {
                 **guard = Some(create_new()?);
             }
-            guard.as_mut().unwrap()
+            guard.as_mut().expect("LepTess instance initialized above")
         } else {
             // Lock failed — create a temporary instance
             let mut lt = create_new()?;

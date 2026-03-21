@@ -572,7 +572,8 @@ impl LanSyncTransport {
         // Merge all pulled changesets into a single composite changeset
         // by concatenating their Vec fields and keeping the latest watermark.
         let mut iter = changesets.into_iter();
-        let mut merged = iter.next().unwrap();
+        // Safe: checked `changesets.is_empty()` above, so at least one element exists.
+        let mut merged = iter.next().expect("non-empty checked above");
         for cs in iter {
             merged.segments.extend(cs.segments);
             merged.regimes.extend(cs.regimes);

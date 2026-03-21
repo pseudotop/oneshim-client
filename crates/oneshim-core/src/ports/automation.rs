@@ -1,3 +1,7 @@
+//! Automation controller port — defines the contract for executing
+//! commands, intents, workflows, and GUI interaction sessions.
+//! Implemented by `AutomationController` in `oneshim-automation`.
+
 use async_trait::async_trait;
 use tokio::sync::broadcast;
 

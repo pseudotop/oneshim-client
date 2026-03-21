@@ -15,6 +15,14 @@ pub fn set_dock_icon() {
 
     let icon_bytes: &[u8] = include_bytes!("../icons/dock_icon.png");
 
+    // SAFETY: ObjC msg_send calls to NSData, NSImage, and NSApplication.
+    // - Class::get returns None if the class doesn't exist (checked before use).
+    // - NSData dataWithBytes receives a valid pointer and length from include_bytes!.
+    // - All returned object pointers are null-checked before subsequent msg_send.
+    // - NSImage alloc+initWithData follows standard ObjC two-phase init.
+    // - sharedApplication returns a singleton; setApplicationIconImage does not
+    //   take ownership. No manual release needed (autorelease pool handles it).
+    // - Must run on the main thread (guaranteed by Tauri's app lifecycle).
     unsafe {
         let ns_data_class = match Class::get("NSData") {
             Some(c) => c,

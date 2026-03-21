@@ -1,3 +1,8 @@
+//! Screen capture and frame processing ports — defines contracts for
+//! deciding when to capture (`CaptureTrigger`) and how to process frames
+//! (`FrameProcessor`: full, delta, thumbnail, or metadata-only).
+//! Implemented by `SmartCaptureTrigger` and `EdgeFrameProcessor` in `oneshim-vision`.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

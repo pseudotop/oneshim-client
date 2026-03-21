@@ -59,6 +59,15 @@ pub fn run_raw_input_hook(collector: Arc<InputActivityCollector>, running: Arc<A
     TL_COLLECTOR.with(|c| *c.borrow_mut() = Some(collector));
     TL_RUNNING.with(|r| *r.borrow_mut() = Some(running.clone()));
 
+    // SAFETY: Win32 window class + Raw Input registration sequence.
+    // - class_name is a null-terminated UTF-16 vec kept alive for the block.
+    // - GetModuleHandleW(null) returns the current module handle (always valid).
+    // - RegisterClassW/CreateWindowExW operate on stack-local structs; HWND is
+    //   checked for null/zero before use and destroyed via DestroyWindow on exit.
+    // - RAWINPUTDEVICE points to a stack-local struct with valid hwndTarget.
+    // - MSG is zeroed POD; GetMessageW/DispatchMessageW run on the current thread.
+    // - Raw Input device is unregistered (RIDEV_REMOVE) before DestroyWindow.
+    // - No cross-thread data races: entire block runs on a single dedicated thread.
     unsafe {
         // Register a unique window class for our message-only window.
         let class_name: Vec<u16> = "OneshimRawInputKeyHook\0".encode_utf16().collect();
@@ -224,6 +233,10 @@ unsafe extern "system" fn raw_input_wnd_proc(
             return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
 
+        // SAFETY: GetRawInputData wrote `copied` bytes into `buffer`.
+        // `buffer` is sized to `size` (queried from the API). The cast is
+        // valid because RAWINPUT is a POD struct and `buffer` is properly
+        // aligned by Vec<u8> (RAWINPUT requires no special alignment).
         let raw = &*(buffer.as_ptr() as *const RAWINPUT);
 
         // Only process keyboard events.
