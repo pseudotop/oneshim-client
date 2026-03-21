@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::embedding::{EmbeddingMetadata, SearchFilters, SearchResult};
 use oneshim_core::ports::vector_store::VectorStore;
@@ -9,7 +11,7 @@ use tracing::debug;
 
 use super::helpers::{
     brute_force_search, brute_force_search_quantized, bytes_to_f32_vec, content_type_to_str,
-    f32_vec_to_bytes, i8_vec_to_bytes, map_quantized_row, map_vector_row,
+    f32_vec_to_bytes, i8_vec_to_bytes, map_quantized_row, map_vector_row, parse_content_type,
 };
 use super::SqliteVectorStore;
 
@@ -475,6 +477,106 @@ impl VectorStore for SqliteVectorStore {
                 )
                 .map_err(|e| CoreError::Internal(format!("Failed to count active vectors: {e}")))?;
             Ok(count as u64)
+        })
+        .await
+    }
+
+    async fn get_metadata_by_ids(
+        &self,
+        ids: &[u64],
+    ) -> Result<HashMap<u64, EmbeddingMetadata>, CoreError> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let ids = ids.to_vec();
+        self.with_conn(move |conn| {
+            // Build parameterized IN clause: WHERE id IN (?1, ?2, ...)
+            let placeholders: Vec<String> =
+                (1..=ids.len()).map(|i| format!("?{i}")).collect();
+            let sql = format!(
+                "SELECT id, segment_id, content_type, content_label, timestamp, original_text, model_id \
+                 FROM embedding_vectors WHERE id IN ({})",
+                placeholders.join(", ")
+            );
+
+            let mut stmt = conn.prepare(&sql).map_err(|e| {
+                CoreError::Internal(format!("Failed to prepare metadata batch query: {e}"))
+            })?;
+
+            let params_boxed: Vec<Box<dyn rusqlite::types::ToSql>> =
+                ids.iter().map(|id| Box::new(*id as i64) as Box<dyn rusqlite::types::ToSql>).collect();
+            let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+                params_boxed.iter().map(|p| p.as_ref()).collect();
+
+            let mut result = HashMap::new();
+            let rows = stmt
+                .query_map(params_ref.as_slice(), |row| {
+                    let id: i64 = row.get(0)?;
+                    let segment_id: String = row.get(1)?;
+                    let content_type_str: String = row.get(2)?;
+                    let content_label: Option<String> = row.get(3)?;
+                    let ts_str: String = row.get(4)?;
+                    let original_text: String = row.get(5)?;
+                    let model_id: String = row.get(6)?;
+                    Ok((id, segment_id, content_type_str, content_label, ts_str, original_text, model_id))
+                })
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to query metadata by ids: {e}"))
+                })?;
+
+            for row_result in rows {
+                let (id, segment_id, content_type_str, content_label, ts_str, original_text, model_id) =
+                    row_result.map_err(|e| {
+                        CoreError::Internal(format!("Failed to read metadata row: {e}"))
+                    })?;
+                let timestamp = DateTime::parse_from_rfc3339(&ts_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now());
+                let content_type = parse_content_type(&content_type_str);
+                result.insert(
+                    id as u64,
+                    EmbeddingMetadata {
+                        segment_id,
+                        content_type,
+                        content_label,
+                        timestamp,
+                        original_text,
+                        model_id,
+                    },
+                );
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    async fn get_all_vectors_for_rebuild(&self) -> Result<Vec<(u64, Vec<f32>)>, CoreError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, vector FROM embedding_vectors \
+                     WHERE is_stale = 0 AND LENGTH(vector) > 0",
+                )
+                .map_err(|e| {
+                    CoreError::Internal(format!(
+                        "Failed to prepare get_all_vectors_for_rebuild: {e}"
+                    ))
+                })?;
+
+            let rows: Vec<(u64, Vec<f32>)> = stmt
+                .query_map([], |row| {
+                    let id: i64 = row.get(0)?;
+                    let blob: Vec<u8> = row.get(1)?;
+                    Ok((id as u64, bytes_to_f32_vec(&blob)))
+                })
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to query vectors for rebuild: {e}"))
+                })?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            debug!("Fetched {} vectors for HNSW rebuild", rows.len());
+            Ok(rows)
         })
         .await
     }
