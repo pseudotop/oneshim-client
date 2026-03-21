@@ -53,6 +53,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, oneshot, watch};
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
@@ -377,6 +378,7 @@ impl WebServer {
             .nest("/api", internal_api)
             .nest("/integration/v1", integration_api)
             .fallback(loopback_only_static)
+            .layer(CompressionLayer::new())
             .layer(cors)
             .layer(TraceLayer::new_for_http())
             .with_state(state)
@@ -812,5 +814,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(authorized.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn gzip_compression_applied_when_accept_encoding_present() {
+        let app = WebServer::build_router(test_state_with_config_manager(None))
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 45000))));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/stats/summary")
+                    .header("accept-encoding", "gzip")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-encoding")
+                .and_then(|v| v.to_str().ok()),
+            Some("gzip"),
+            "JSON responses should be gzip-compressed when client accepts gzip"
+        );
     }
 }

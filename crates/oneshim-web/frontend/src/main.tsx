@@ -10,8 +10,8 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5000,
-      refetchInterval: 10000, // 10 s
+      refetchInterval: false, // No global polling — set per-query where needed
+      staleTime: 30_000, // 30s default stale time
     },
   },
 })

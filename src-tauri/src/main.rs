@@ -38,6 +38,7 @@ mod integration_runtime;
 mod integrity_guard;
 mod launch_resources;
 mod lifecycle;
+mod log_retention;
 #[cfg(target_os = "macos")]
 mod macos_integration;
 mod magic_overlay;
@@ -69,8 +70,20 @@ mod workflow_intelligence;
 
 use tauri::{Manager, RunEvent};
 use tracing::{info, warn};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
+/// Wrapper for `tracing_appender::non_blocking::WorkerGuard`.
+///
+/// Stored as Tauri managed state so it is dropped (and flushed) when the
+/// app exits rather than leaked.  The inner field is intentionally never
+/// read — its purpose is to keep the guard alive for the duration of the
+/// process.
+#[allow(dead_code)]
+pub(crate) struct LogWorkerGuard(tracing_appender::non_blocking::WorkerGuard);
+
+#[allow(deprecated)] // get_metrics, get_settings, get_update_status — superseded by REST
 fn main() {
     // Windows DLL search order hardening (Spec Section 9.2):
     // Remove CWD from DLL search path to prevent DLL hijacking.
@@ -79,13 +92,42 @@ fn main() {
         windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW(windows_sys::core::w!(""));
     }
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                EnvFilter::new("oneshim=info,oneshim_app=info,oneshim_core=info,oneshim_monitor=info,oneshim_vision=info,oneshim_storage=info,oneshim_network=info,oneshim_suggestion=info")
-            }),
-        )
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new("oneshim=info,oneshim_app=info,oneshim_core=info,oneshim_monitor=info,oneshim_vision=info,oneshim_storage=info,oneshim_network=info,oneshim_suggestion=info")
+    });
+
+    // Console layer — writes to stderr (same as previous fmt() subscriber).
+    let console_layer = tracing_subscriber::fmt::layer().with_ansi(true);
+
+    // File layer — daily rolling log files in {data_dir}/logs/.
+    // WorkerGuard MUST outlive the subscriber; we store it in Tauri state.
+    let log_dir = oneshim_core::config_manager::ConfigManager::data_dir()
+        .map(|d| d.join("logs"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("logs"));
+
+    std::fs::create_dir_all(&log_dir).ok();
+
+    // Cleanup old log files before creating new appender
+    let deleted = log_retention::cleanup_old_logs(&log_dir, log_retention::DEFAULT_MAX_AGE_DAYS);
+    if deleted > 0 {
+        // Cannot use tracing yet — subscriber not initialized.
+        eprintln!("[oneshim] startup log cleanup: deleted {deleted} old log file(s)");
+    }
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "oneshim.log");
+    let (non_blocking, worker_guard) = tracing_appender::non_blocking(file_appender);
+
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_writer(non_blocking);
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(console_layer)
+        .with(file_layer)
         .init();
+
+    info!(log_dir = %log_dir.display(), "persistent file logging initialized");
 
     // CLI pre-dispatch: handle "auth" subcommand before Tauri boot
     let args: Vec<String> = std::env::args().collect();
@@ -111,7 +153,8 @@ fn main() {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .manage(LogWorkerGuard(worker_guard));
 
     // WebDriver 서버 플러그인 — E2E 테스트용 (production 빌드에 절대 포함 금지)
     #[cfg(feature = "webdriver")]
@@ -134,47 +177,47 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::get_metrics,
-            commands::get_settings,
-            commands::update_setting,
-            commands::get_update_status,
-            commands::approve_update,
-            commands::defer_update,
-            commands::get_automation_status,
-            commands::get_web_port,
-            commands::get_secret_backend_capabilities,
-            commands::get_feature_capabilities,
-            commands::probe_provider_surface_endpoint,
-            commands::get_allowed_setting_keys,
-            commands::integration_auth_status,
-            commands::integration_start_device_authorization,
-            commands::integration_poll_device_authorization,
-            commands::integration_cancel_device_authorization,
-            commands::integration_reset_auth_state,
-            commands::oauth_start_flow,
-            commands::oauth_flow_status,
-            commands::oauth_cancel_flow,
-            commands::oauth_revoke,
-            commands::oauth_connection_status,
-            commands::get_analysis_config,
-            commands::update_analysis_config,
-            commands::get_analysis_status,
-            commands::semantic_search,
-            commands::get_weekly_digest,
-            commands::get_dashboard_day,
-            commands::get_daily_digest,
-            commands::create_override,
-            commands::delete_override,
-            commands::list_overrides,
-            commands::trigger_recluster,
-            commands::dismiss_coaching_message,
-            commands::submit_coaching_feedback,
-            commands::set_overlay_mode,
-            commands::get_overlay_state,
-            commands::toggle_overlay_interactive,
-            commands::get_coaching_history,
-            commands::get_goal_progress,
-            commands::update_regime_goals,
+            commands::settings::get_metrics,
+            commands::settings::get_settings,
+            commands::settings::update_setting,
+            commands::system::get_update_status,
+            commands::system::approve_update,
+            commands::system::defer_update,
+            commands::system::get_automation_status,
+            commands::settings::get_web_port,
+            commands::system::get_secret_backend_capabilities,
+            commands::system::get_feature_capabilities,
+            commands::system::probe_provider_surface_endpoint,
+            commands::settings::get_allowed_setting_keys,
+            commands::integration::integration_auth_status,
+            commands::integration::integration_start_device_authorization,
+            commands::integration::integration_poll_device_authorization,
+            commands::integration::integration_cancel_device_authorization,
+            commands::integration::integration_reset_auth_state,
+            commands::integration::oauth_start_flow,
+            commands::integration::oauth_flow_status,
+            commands::integration::oauth_cancel_flow,
+            commands::integration::oauth_revoke,
+            commands::integration::oauth_connection_status,
+            commands::analysis::get_analysis_config,
+            commands::analysis::update_analysis_config,
+            commands::analysis::get_analysis_status,
+            commands::dashboard::semantic_search,
+            commands::dashboard::get_weekly_digest,
+            commands::dashboard::get_dashboard_day,
+            commands::dashboard::get_daily_digest,
+            commands::dashboard::create_override,
+            commands::dashboard::delete_override,
+            commands::dashboard::list_overrides,
+            commands::dashboard::trigger_recluster,
+            commands::coaching::dismiss_coaching_message,
+            commands::coaching::submit_coaching_feedback,
+            commands::coaching::set_overlay_mode,
+            commands::coaching::get_overlay_state,
+            commands::coaching::toggle_overlay_interactive,
+            commands::coaching::get_coaching_history,
+            commands::coaching::get_goal_progress,
+            commands::coaching::update_regime_goals,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

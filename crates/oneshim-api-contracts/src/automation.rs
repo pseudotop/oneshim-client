@@ -10,7 +10,9 @@ pub struct AutomationStatusDto {
     pub llm_provider: String,
     pub ocr_source: String,
     pub llm_source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ocr_fallback_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_fallback_reason: Option<String>,
     pub external_data_policy: String,
     pub pending_audit_entries: usize,
@@ -25,7 +27,9 @@ pub struct AuditEntryDto {
     pub command_id: String,
     pub action_type: String,
     pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub elapsed_ms: Option<u64>,
 }
 

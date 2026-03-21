@@ -18,6 +18,8 @@ use oneshim_core::consent::ConsentManager;
 use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::tiered_memory::ResolvedParams;
 use oneshim_core::ports::accessibility::AccessibilityExtractor;
+#[cfg(feature = "hnsw")]
+use oneshim_core::ports::ann_index::AnnIndex;
 use oneshim_core::ports::api_client::ApiClient;
 use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
@@ -122,6 +124,10 @@ pub struct Scheduler {
         Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
     pub(super) vector_index: Option<Arc<dyn VectorIndex>>,
     pub(super) search_coordinator: Option<Arc<oneshim_analysis::AdaptiveSearchCoordinator>>,
+    /// Optional HNSW ANN index for approximate nearest neighbor search.
+    /// Only present when the `hnsw` feature is enabled and configured.
+    #[cfg(feature = "hnsw")]
+    pub(super) ann_index: Option<Arc<dyn AnnIndex>>,
     /// Wrapped in Mutex so `run_scheduler_loops(&self)` can take ownership
     /// and move it into the monitor loop's async block.
     pub(super) adaptive_trigger: Mutex<Option<AdaptiveTriggerState>>,
@@ -187,6 +193,8 @@ impl Scheduler {
             embedding_provider: None,
             vector_index: None,
             search_coordinator: None,
+            #[cfg(feature = "hnsw")]
+            ann_index: None,
             adaptive_trigger: Mutex::new(None),
             sync_engine: None,
             accessibility_extractor: None,
@@ -260,6 +268,14 @@ impl Scheduler {
         coordinator: Arc<oneshim_analysis::AdaptiveSearchCoordinator>,
     ) -> Self {
         self.search_coordinator = Some(coordinator);
+        self
+    }
+
+    /// Attach an HNSW ANN index for approximate nearest neighbor search.
+    #[cfg(feature = "hnsw")]
+    #[allow(dead_code)]
+    pub fn with_ann_index(mut self, ann: Arc<dyn AnnIndex>) -> Self {
+        self.ann_index = Some(ann);
         self
     }
 

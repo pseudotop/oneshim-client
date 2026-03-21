@@ -38,6 +38,7 @@ oneshim-embedding = { workspace = true, optional = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
@@ -70,6 +71,7 @@ analysis = ["dep:oneshim-network"]
 server = ["analysis"]
 grpc = ["server", "oneshim-network/grpc"]
 embedding = ["dep:oneshim-embedding"]
+hnsw = ["oneshim-analysis/hnsw"]
 lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 

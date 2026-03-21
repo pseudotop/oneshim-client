@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;
@@ -104,6 +106,44 @@ pub trait VectorStore: Send + Sync {
     /// Count the number of active (non-stale) vectors in the store.
     /// Used by AdaptiveSearchCoordinator to select search strategy.
     async fn count_active_vectors(&self) -> Result<u64, CoreError> {
+        Ok(0)
+    }
+
+    /// Batch-fetch metadata for a set of vector row IDs.
+    ///
+    /// Used by the HNSW search path to join ANN results (key, distance)
+    /// with full metadata from the embedding_vectors table.
+    /// Returns a map from row id to metadata. IDs not found are silently skipped.
+    async fn get_metadata_by_ids(
+        &self,
+        _ids: &[u64],
+    ) -> Result<HashMap<u64, EmbeddingMetadata>, CoreError> {
+        Ok(HashMap::new())
+    }
+
+    /// Fetch all active vectors as (row_id, f32_vector) pairs.
+    ///
+    /// Used for HNSW index rebuild when the persisted index file is
+    /// corrupt or missing. Only returns rows where `is_stale = 0`
+    /// and the f32 vector column is non-empty.
+    async fn get_all_vectors_for_rebuild(&self) -> Result<Vec<(u64, Vec<f32>)>, CoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Return row IDs of vectors that would be deleted by `enforce_retention(max_days)`.
+    ///
+    /// Used by the HNSW integration to remove corresponding entries from the
+    /// ANN index before the SQLite rows are deleted. The caller should invoke
+    /// this *before* `enforce_retention` so the IDs are still available.
+    async fn get_expired_ids(&self, _max_days: u32) -> Result<Vec<u64>, CoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Return the last-inserted row ID.
+    ///
+    /// Used by the embedding pipeline to obtain the key for a newly stored
+    /// vector so it can be inserted into the HNSW index.
+    async fn last_insert_id(&self) -> Result<u64, CoreError> {
         Ok(0)
     }
 }

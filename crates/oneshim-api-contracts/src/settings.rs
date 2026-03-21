@@ -8,7 +8,9 @@ pub struct StorageStats {
     pub frame_count: u64,
     pub event_count: u64,
     pub metric_count: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub oldest_data_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub newest_data_date: Option<String>,
 }
 
@@ -180,9 +182,11 @@ pub struct AiProviderSettings {
     #[serde(default)]
     pub scene_intelligence: SceneIntelligenceSettings,
     pub fallback_to_local: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ocr_api: Option<ExternalApiSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_api: Option<ExternalApiSettings>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_profile_id: Option<String>,
     #[serde(default)]
     pub saved_profiles: Vec<SavedAiProviderProfile>,
@@ -203,7 +207,9 @@ pub struct AiProviderProfileConfig {
     #[serde(default)]
     pub scene_intelligence: SceneIntelligenceSettings,
     pub fallback_to_local: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ocr_api: Option<ExternalApiSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_api: Option<ExternalApiSettings>,
 }
 
@@ -213,7 +219,7 @@ pub struct SavedAiProviderProfile {
     pub name: String,
     #[serde(default)]
     pub ai_provider: AiProviderProfileConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
 }
 
@@ -229,6 +235,7 @@ pub struct SceneActionOverrideSettings {
     pub enabled: bool,
     pub reason: String,
     pub approved_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
 }
 
@@ -322,10 +329,11 @@ impl Default for SavedAiProviderProfile {
 pub struct ExternalApiSettings {
     pub endpoint: String,
     pub api_key_masked: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(default = "default_provider_type")]
     pub provider_type: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface_id: Option<String>,
     #[serde(default = "default_external_timeout")]
     pub timeout_secs: u64,
@@ -337,7 +345,7 @@ pub struct ExternalApiSettings {
     pub has_secret: bool,
     #[serde(default = "default_true")]
     pub can_edit_secret: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret_display_hint: Option<String>,
     #[serde(default)]
     pub projection_enabled: bool,

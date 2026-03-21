@@ -85,6 +85,7 @@ async-trait = "0.1"
 # 로깅
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 # 설정
 config = "0.14"
@@ -149,7 +150,7 @@ zip = "8"
 # 웹 프레임워크 (Axum)
 axum = { version = "0.8", features = ["macros"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors", "fs"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "fs", "compression-gzip"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 rust-embed = { version = "8", features = ["include-exclude"] }
 mime_guess = "2"

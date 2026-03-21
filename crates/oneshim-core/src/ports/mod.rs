@@ -1,5 +1,6 @@
 pub mod accessibility;
 pub mod analysis_provider;
+pub mod ann_index;
 pub mod api_client;
 pub mod audit_log;
 pub mod automation;

@@ -1,6 +1,7 @@
 pub mod adaptive_search;
 mod adaptive_trigger;
 mod analyzer;
+
 mod assembler;
 pub mod auto_tuner;
 pub mod calibration_buffer;
@@ -16,6 +17,8 @@ pub mod gmm_detector;
 pub mod gui_aggregator;
 pub mod gui_work_type_refiner;
 pub mod hdbscan_detector;
+#[cfg(feature = "hnsw")]
+pub mod hnsw_adapter;
 pub mod hybrid_search_service;
 pub mod kmeans_adapter;
 pub mod llm_segment_summarizer;
@@ -80,3 +83,6 @@ pub use coaching_engine::CoachingEngine;
 pub use coaching_template::CoachingTemplateRegistry;
 pub use feedback_tracker::FeedbackTracker;
 pub use regime_goal_tracker::RegimeGoalTracker;
+
+#[cfg(feature = "hnsw")]
+pub use hnsw_adapter::HnswAdapter;

@@ -9,6 +9,7 @@ use super::super::Scheduler;
 
 impl Scheduler {
     /// Periodically check and refresh OAuth tokens.
+    #[tracing::instrument(skip_all)]
     #[cfg(feature = "server")]
     pub(in crate::scheduler) fn spawn_oauth_refresh_loop(
         &self,
@@ -81,6 +82,7 @@ impl Scheduler {
     /// 12. Cross-device sync loop (P3 Phase 3a-2).
     ///
     /// Runs the SyncEngine's pull/merge/push cycle at the configured interval.
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_cross_device_sync_loop(
         &self,
         sync_interval: Duration,
@@ -134,6 +136,7 @@ impl Scheduler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     #[allow(unused_variables)]
     pub(in crate::scheduler) async fn run_scheduler_loops(
         &self,

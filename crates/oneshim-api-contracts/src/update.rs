@@ -17,7 +17,9 @@ pub struct PendingUpdateInfo {
     pub current_version: String,
     pub latest_version: String,
     pub release_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub release_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub published_at: Option<String>,
     pub download_url: String,
 }
@@ -27,7 +29,9 @@ pub struct UpdateStatus {
     pub enabled: bool,
     pub auto_install: bool,
     pub phase: UpdatePhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pending: Option<PendingUpdateInfo>,
     pub revision: u64,
     pub updated_at: String,

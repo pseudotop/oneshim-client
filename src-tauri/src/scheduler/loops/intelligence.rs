@@ -8,6 +8,7 @@ impl Scheduler {
     /// Periodic LLM analysis loop — runs `analyze_if_changed()` on each tick
     /// and forces a full `analyze()` every `full_interval_secs`.
     /// Generated suggestions are persisted to SQLite for the web dashboard.
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_analysis_loop(
         &self,
         config: oneshim_core::config::AnalysisConfig,
@@ -113,6 +114,7 @@ impl Scheduler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_focus_loop(
         &self,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
@@ -148,6 +150,7 @@ impl Scheduler {
     /// Runs implicit feedback evaluation on pending coaching messages every 30s.
     /// The actual coaching `evaluate()` call is performed inside `spawn_monitor_loop()`
     /// where live regime data is available (Option A from the plan).
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_coaching_loop(
         &self,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,

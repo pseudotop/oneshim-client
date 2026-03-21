@@ -70,6 +70,7 @@ pub(super) fn build_segment_stats_snapshot(
 
 /// Run event-driven LLM analysis when the user switches to a new app.
 /// Persists any resulting suggestions to storage.
+#[tracing::instrument(skip_all)]
 pub(super) async fn handle_event_analysis(
     analyzer: &Option<Arc<oneshim_analysis::ContextAnalyzer>>,
     storage: &Arc<dyn StorageService>,
@@ -105,6 +106,7 @@ pub(super) async fn handle_event_analysis(
 /// Capture a frame, process it (full/delta/thumbnail), save image data and
 /// metadata.  Returns the OCR text extracted from the frame (if any) and
 /// any OCR regions with bounding boxes for GUI element correlation.
+#[tracing::instrument(skip_all)]
 pub(super) async fn handle_frame_capture(
     capture_req: &CaptureRequest,
     processor: &Arc<dyn FrameProcessor>,

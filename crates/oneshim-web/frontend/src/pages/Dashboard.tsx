@@ -71,11 +71,13 @@ export default function Dashboard() {
   const { data: hourlyMetrics } = useQuery({
     queryKey: ['hourlyMetrics'],
     queryFn: () => fetchHourlyMetrics(24),
+    refetchInterval: 60_000, // hourly chart — refresh every 60s
   })
 
   const { data: processes } = useQuery({
     queryKey: ['processes'],
     queryFn: () => fetchProcesses(undefined, undefined, 5),
+    refetchInterval: 30_000, // process list — refresh every 30s
   })
 
   if (summaryLoading) {

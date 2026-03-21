@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::text_search::{TextSearchProvider, TextSearchResult};
+use std::sync::atomic::Ordering;
 use tracing::warn;
 
-use super::SqliteStorage;
+use super::{SqliteStorage, FTS_AVAILABLE, GUI_INTERACTIONS_AVAILABLE};
 
 #[async_trait]
 impl TextSearchProvider for SqliteStorage {
@@ -15,24 +16,14 @@ impl TextSearchProvider for SqliteStorage {
         if query.trim().is_empty() {
             return Ok(vec![]);
         }
+        if !FTS_AVAILABLE.load(Ordering::Relaxed) {
+            warn!("search_fts table not available; returning empty results");
+            return Ok(vec![]);
+        }
         let query = query.to_string();
         self.with_conn(move |conn| {
-            // Check if the FTS5 table exists before querying
-            let table_exists: bool = conn
-                .query_row(
-                    "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='search_fts'",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap_or(false);
-
-            if !table_exists {
-                warn!("search_fts table not available; returning empty results");
-                return Ok(vec![]);
-            }
-
             let mut stmt = conn
-                .prepare(
+                .prepare_cached(
                     "SELECT segment_id, content_type, searchable_text, rank
                      FROM search_fts
                      WHERE search_fts MATCH ?1
@@ -120,15 +111,7 @@ impl SqliteStorage {
         content_type: &str,
         searchable_text: &str,
     ) -> Result<(), CoreError> {
-        let table_exists: bool = conn
-            .query_row(
-                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='search_fts'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
-
-        if !table_exists {
+        if !FTS_AVAILABLE.load(Ordering::Relaxed) {
             warn!("search_fts table not available; skipping FTS upsert");
             return Ok(());
         }
@@ -157,7 +140,7 @@ impl SqliteStorage {
         end_time: &str,
     ) -> String {
         let result: Result<Vec<String>, rusqlite::Error> = (|| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT DISTINCT json_extract(data, '$.window_title') AS wt FROM events
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                    AND wt IS NOT NULL AND wt != ''
@@ -174,21 +157,11 @@ impl SqliteStorage {
 
     /// Collect GUI interaction element_text for the given segment.
     fn collect_gui_element_text(conn: &rusqlite::Connection, segment_id: &str) -> String {
+        if !GUI_INTERACTIONS_AVAILABLE.load(Ordering::Relaxed) {
+            return String::new();
+        }
         let result: Result<Vec<String>, rusqlite::Error> = (|| {
-            // Check if the table exists first (V13 migration)
-            let table_exists: bool = conn
-                .query_row(
-                    "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='gui_interactions'",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap_or(false);
-
-            if !table_exists {
-                return Ok(vec![]);
-            }
-
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT DISTINCT element_text FROM gui_interactions
                  WHERE segment_id = ?1
                    AND element_text IS NOT NULL AND element_text != ''
@@ -209,7 +182,7 @@ impl SqliteStorage {
         end_time: &str,
     ) -> String {
         let result: Result<Vec<String>, rusqlite::Error> = (|| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT DISTINCT content FROM suggestions
                  WHERE created_at >= ?1 AND created_at <= ?2
                    AND content IS NOT NULL AND content != ''

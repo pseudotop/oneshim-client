@@ -41,7 +41,7 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
         delete_processes: bool,
         delete_idle: bool,
     ) -> Result<DeletedRangeCounts, CoreError>;
-    fn delete_all_data(&self) -> Result<DeletedRangeCounts, CoreError>;
+    fn delete_all_data(&self) -> Result<(), CoreError>;
 
     fn count_search_frames(&self, count_sql: &str, pattern: Option<&str>)
         -> Result<u64, CoreError>;

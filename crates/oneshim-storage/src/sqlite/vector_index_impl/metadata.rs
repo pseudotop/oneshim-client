@@ -19,10 +19,21 @@ pub(super) async fn assign_to_cluster_impl(
             .as_ref()
             .ok_or_else(|| CoreError::Internal("IVF index not built yet".to_string()))?;
 
+        // Pre-validate dimensions once before the hot loop.
+        if let Some(first) = centroids.first() {
+            if first.vector.data.len() != vector.data.len() {
+                return Err(CoreError::InvalidArguments(format!(
+                    "Dimension mismatch: centroid {} vs query {}",
+                    first.vector.data.len(),
+                    vector.data.len()
+                )));
+            }
+        }
+
         centroids
             .iter()
             .map(|c| {
-                let sim = ScalarQuantizer::cosine_similarity_int8(&c.vector, vector);
+                let sim = ScalarQuantizer::cosine_similarity_int8_unchecked(&c.vector, vector);
                 (c.id, sim)
             })
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))

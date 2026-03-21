@@ -1,8 +1,11 @@
 # usearch HNSW Vector Index — Design Spec
 
 > Created: 2026-03-21
+> Revised: 2026-03-21 (post-review)
+> Priority: P1
+> Effort: 8 days
 > Status: Proposed
-> Scope: oneshim-analysis, oneshim-embedding, oneshim-storage
+> Scope: oneshim-core (new port trait), oneshim-analysis, oneshim-storage
 > Reference: IVF index in oneshim-storage, vector pipeline in oneshim-analysis
 
 ## 1. Goal
@@ -27,7 +30,7 @@ Replace or supplement the existing IVF index with usearch HNSW for sub-milliseco
 
 > **Send + Sync: Resolved in usearch v2.15+ (PR #492).** `unsafe impl Send/Sync` provided natively. `Arc<Index>` works directly without Mutex wrapper. No performance penalty.
 
-> **Thread init required:** Must call `reserve_capacity_and_threads(capacity, num_cpus::get())` at construction to avoid crashes ([#389](https://github.com/unum-cloud/usearch/issues/389)).
+> **Thread init required:** Must call `reserve(capacity)` at construction to pre-allocate memory. The Rust API exposes `reserve(capacity: usize)` — do NOT use the C++ API name `reserve_capacity_and_threads`.
 
 > **`save()` thread safety:** Not documented as safe during concurrent `search()`. Use `save_to_buffer()` + async file write for persistence.
 
@@ -57,14 +60,28 @@ index.reserve(50_000).expect("failed to reserve capacity");
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `add` | `add(key: u64, vector: &[f32])` | Insert vector (incremental, no rebuild) |
-| `search` | `search(vector: &[f32], count: usize)` | Find k-nearest neighbors |
+| `search` | `search(vector: &[f32], count: usize) -> Matches` | Find k-nearest neighbors; returns `Matches { keys: Vec<u64>, distances: Vec<f32> }` |
 | `remove` | `remove(key: u64)` | Lazy-delete (marks tombstone) |
 | `save` | `save(path: &str)` | Persist to file |
 | `load` | `load(path: &str)` | Load from file |
 | `save_to_buffer` | `save_to_buffer(buffer: &mut [u8])` | Thread-safe serialization to buffer |
-| `reserve` | `reserve(capacity: usize)` | Pre-allocate capacity |
+| `reserve` | `reserve(capacity: usize)` | Pre-allocate capacity (Rust API) |
 | `len` | `len() -> usize` | Current vector count |
 | `capacity` | `capacity() -> usize` | Reserved capacity |
+
+### Search Result Mapping
+
+usearch `search()` returns `Matches { keys: Vec<u64>, distances: Vec<f32> }`. These must be joined with metadata from SQLite:
+
+```sql
+SELECT id, segment_id, content_type, content_label, timestamp, original_text
+FROM embedding_vectors
+WHERE id IN (?, ?, ?, ...)
+```
+
+Distance-to-similarity conversion: `similarity = 1.0 - distance` (for cosine metric).
+
+Time decay is applied post-search via the existing `score_and_rank()` pattern in `VectorRetriever`.
 
 ### INT8 Index Creation Example
 
@@ -88,32 +105,121 @@ index.reserve(50_000)?;
 let embedding: Vec<f32> = vec![0.1; 384];
 index.add(42, &embedding)?;
 
-// Search returns (keys, distances)
+// Search returns Matches { keys, distances }
 let results = index.search(&embedding, 10)?;
 for (key, distance) in results.keys.iter().zip(results.distances.iter()) {
-    println!("key={key}, distance={distance}");
+    let similarity = 1.0 - distance;
+    println!("key={key}, similarity={similarity:.4}");
 }
 ```
 
 ## 3. Architecture
 
-### 3.1 Integration Point
+### 3.1 AnnIndex Port Trait (KEY ARCHITECTURAL FIX)
 
-Add HNSW as an alternative backend in `AdaptiveSearchCoordinator`:
+Define a port trait in `oneshim-core` to maintain hexagonal architecture. The HNSW implementation is an adapter behind this port.
 
 ```rust
+// oneshim-core/src/ports/ann_index.rs
+use async_trait::async_trait;
+
+/// Approximate Nearest Neighbor index port.
+/// Implementations: HnswAdapter (oneshim-analysis, feature = "hnsw")
+#[async_trait]
+pub trait AnnIndex: Send + Sync {
+    /// Insert a vector with the given key.
+    async fn add(&self, key: u64, vector: &[f32]) -> Result<(), CoreError>;
+
+    /// Find the k nearest neighbors of the query vector.
+    /// Returns (keys, distances) pairs.
+    async fn search(&self, query: &[f32], k: usize) -> Result<Vec<(u64, f32)>, CoreError>;
+
+    /// Remove a vector by key (lazy tombstone).
+    async fn remove(&self, key: u64) -> Result<(), CoreError>;
+
+    /// Persist the index to storage.
+    async fn save(&self) -> Result<(), CoreError>;
+
+    /// Load the index from storage.
+    async fn load(&self) -> Result<(), CoreError>;
+
+    /// Current number of vectors in the index.
+    fn len(&self) -> usize;
+
+    /// Reserved capacity.
+    fn capacity(&self) -> usize;
+
+    /// Whether the index is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+```
+
+### 3.2 HnswAdapter Implementation
+
+```rust
+// oneshim-analysis/src/hnsw_adapter.rs (behind #[cfg(feature = "hnsw")])
+use usearch::Index;
+use oneshim_core::ports::AnnIndex;
+
+pub struct HnswAdapter {
+    index: Index,
+    data_path: PathBuf,
+}
+
+#[async_trait]
+impl AnnIndex for HnswAdapter {
+    async fn add(&self, key: u64, vector: &[f32]) -> Result<(), CoreError> {
+        self.index.add(key, vector).map_err(|e| CoreError::Storage(e.to_string()))
+    }
+    // ... other methods
+}
+```
+
+### 3.3 Error Handling
+
+Map `usearch::Error` to `CoreError`:
+
+```rust
+impl From<usearch::Error> for CoreError {
+    fn from(e: usearch::Error) -> Self {
+        CoreError::Storage(format!("HNSW index error: {}", e))
+    }
+}
+```
+
+Or, if `CoreError` variants should remain specific, use manual mapping in the adapter.
+
+### 3.4 Integration with AdaptiveSearchCoordinator
+
+The coordinator takes `Option<Arc<dyn AnnIndex>>` instead of a concrete usearch type:
+
+```rust
+pub struct AdaptiveSearchCoordinator {
+    // Existing fields...
+    ann_index: Option<Arc<dyn AnnIndex>>,
+}
+
+#[cfg(feature = "hnsw")]
 pub enum VectorIndexBackend {
     BruteForce,
     Ivf,
-    Hnsw(Arc<Index>),  // Arc<Index> works directly — no Mutex needed
+    Hnsw,  // Uses ann_index field — no concrete type here
+}
+
+#[cfg(not(feature = "hnsw"))]
+pub enum VectorIndexBackend {
+    BruteForce,
+    Ivf,
 }
 ```
 
 HNSW is incrementally maintained via `add()` — no periodic rebuild needed (unlike IVF). This eliminates the rebuild-blocks-checkpoint problem.
 
-### 3.2 Feature Flag
+### 3.5 Feature Flag
 
-Reference `hdbscan` pattern in `oneshim-analysis` as exact template for the `usearch` feature flag. No `oneshim-core` propagation needed — the feature is local to `oneshim-analysis`.
+Reference `hdbscan` pattern in `oneshim-analysis` as exact template for the `usearch` feature flag.
 
 ```toml
 # crates/oneshim-analysis/Cargo.toml
@@ -125,20 +231,105 @@ default = []
 hnsw = ["usearch"]
 ```
 
-### 3.3 Persistence
+Feature propagation in binary crate:
+
+```toml
+# src-tauri/Cargo.toml
+[dependencies]
+oneshim-analysis = { path = "../crates/oneshim-analysis", features = ["hnsw"] }
+```
+
+The `AnnIndex` port trait lives in `oneshim-core` and has no feature flag — it is always available. Only the `HnswAdapter` implementation in `oneshim-analysis` is gated behind `#[cfg(feature = "hnsw")]`.
+
+### 3.6 Graceful Degradation
+
+If HNSW search fails (index corruption, load failure, etc.), fall back to IVF or brute-force:
+
+```rust
+async fn search(&self, query: &[f32], k: usize) -> Result<Vec<SearchResult>, CoreError> {
+    if let Some(ref ann) = self.ann_index {
+        match ann.search(query, k).await {
+            Ok(results) => return self.join_metadata(results).await,
+            Err(e) => {
+                warn!("HNSW search failed, falling back to IVF: {}", e);
+                // Fall through to IVF/brute-force
+            }
+        }
+    }
+    // Existing IVF or brute-force path
+    self.ivf_or_brute_search(query, k).await
+}
+```
+
+### 3.7 Retention Integration
+
+When `VectorStore::enforce_retention()` deletes vectors from SQLite, the HNSW index must also be updated:
+
+```rust
+// In enforce_retention() or wherever vectors are deleted
+for deleted_id in deleted_vector_ids {
+    if let Some(ref ann) = self.ann_index {
+        let _ = ann.remove(deleted_id).await; // Best-effort; tombstone is acceptable
+    }
+}
+```
+
+### 3.8 Corruption Recovery
+
+On `load()` failure, rebuild the index from SQLite `embedding_vectors` table:
+
+```rust
+async fn load_or_rebuild(&self) -> Result<(), CoreError> {
+    match self.ann_index.load().await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            warn!("HNSW index load failed, rebuilding from SQLite: {}", e);
+            let vectors = self.storage.get_all_embeddings().await?;
+            for (id, vector) in vectors {
+                self.ann_index.add(id, &vector).await?;
+            }
+            self.ann_index.save().await?;
+            Ok(())
+        }
+    }
+}
+```
+
+### 3.9 Capacity Growth
+
+Double capacity at 80% utilization to avoid reallocation during normal operation:
+
+```rust
+fn maybe_grow(&self) -> Result<(), CoreError> {
+    let util = self.ann_index.len() as f64 / self.ann_index.capacity() as f64;
+    if util > 0.8 {
+        let new_cap = self.ann_index.capacity() * 2;
+        self.index.reserve(new_cap)?;
+    }
+    Ok(())
+}
+```
+
+### 3.10 Persistence
 
 - File size: ~27MB for 50K vectors / INT8 quantization
 - Storage path: `{data_dir}/hnsw_index.usearch`
 - Use `save_to_buffer()` + async file write for thread-safe persistence
 - Load at startup via `Index::load()` (blocking, run in `spawn_blocking`)
+- Atomic rename pattern: write to `.tmp`, then `rename()` to final path
 
-### 3.4 Lifecycle
+### 3.11 Lifecycle
 
-1. **Startup**: Load from `{data_dir}/hnsw_index.usearch` if exists, else create empty
-2. **Insert**: `index.add(key, vector)` on each new embedding (incremental)
-3. **Search**: `index.search(query, k)` — lock-free reads via `Arc<Index>`
+1. **Startup**: Load from `{data_dir}/hnsw_index.usearch` if exists; on failure, rebuild from SQLite; if no data, create empty
+2. **Insert**: `ann_index.add(key, vector)` on each new embedding (incremental) + call `maybe_grow()`
+3. **Search**: `ann_index.search(query, k)` + batch SQL metadata join + `score_and_rank()` time decay
 4. **Persist**: Periodic `save_to_buffer()` on sync loop (every 60s) or on graceful shutdown
-5. **Delete**: `index.remove(key)` — lazy tombstone (compaction not yet supported by usearch)
+5. **Delete**: `ann_index.remove(key)` — lazy tombstone (compaction not yet supported by usearch)
+6. **Retention**: When `enforce_retention()` deletes SQLite vectors, also remove from HNSW
+
+### 3.12 Scope: HybridSearchService
+
+Explicitly out of scope for this spec. HNSW is accessed only via `AdaptiveSearchCoordinator`. A future `HybridSearchService` (combining HNSW + FTS5 + metadata filters) is a separate design.
 
 ## 4. Benchmarking
 
@@ -156,6 +347,31 @@ Criterion 0.8 infrastructure already exists (4 bench files in workspace). Create
 | `hnsw_load_50k` | Load from 27MB file | <200ms |
 | `hnsw_vs_ivf_search` | 50K index, k=10 | Compare latency |
 | `hnsw_vs_brute_search` | 1K/10K/50K, k=10 | Crossover point |
+| `hnsw_recall_at_10` | 50K index, k=10 | recall@10 vs brute-force ground truth |
+
+### Recall@10 Benchmark
+
+Compare HNSW approximate results against brute-force exact results to measure accuracy:
+
+```rust
+fn recall_at_10_benchmark(c: &mut Criterion) {
+    let (index, brute_vectors) = build_test_index_with_ground_truth(50_000, 384);
+    let queries: Vec<Vec<f32>> = (0..100).map(|_| random_vector(384)).collect();
+
+    let mut total_recall = 0.0;
+    for query in &queries {
+        let hnsw_results = index.search(query, 10).unwrap();
+        let brute_results = brute_force_search(&brute_vectors, query, 10);
+        let overlap = hnsw_results.keys.iter()
+            .filter(|k| brute_results.contains(k))
+            .count();
+        total_recall += overlap as f64 / 10.0;
+    }
+    let avg_recall = total_recall / queries.len() as f64;
+    // Target: recall@10 >= 0.95
+    assert!(avg_recall >= 0.95, "recall@10 = {avg_recall:.3}, expected >= 0.95");
+}
+```
 
 ### Benchmark Setup
 
@@ -179,21 +395,47 @@ criterion_main!(benches);
 ## 5. Testing Strategy
 
 - Unit tests: Index creation, add, search, remove, persistence round-trip
-- Property tests: search results match brute-force for small datasets
-- Integration: `AdaptiveSearchCoordinator` routing with HNSW backend
+- Property tests: search results match brute-force for small datasets (recall@10 >= 0.95)
+- Integration: `AdaptiveSearchCoordinator` routing with HNSW backend via `Arc<dyn AnnIndex>`
+- Degradation: HNSW failure falls back to IVF/brute-force without panic
+- Corruption recovery: Delete index file, verify rebuild from SQLite
+- Retention: Delete vectors from SQLite, verify HNSW `remove()` called
 - Benchmark: Criterion 0.8 comparison vs IVF and brute-force
 
 ## 6. Risks
 
-- usearch C++ core linkage — ensure `cc` build works on all 3 platforms
-- Index file corruption on crash during save — mitigate with atomic rename
-- Memory usage: ~27MB resident for 50K/INT8 — acceptable for desktop
-- Tombstone accumulation from `remove()` — monitor and rebuild if >20% tombstones
+| Risk | Mitigation |
+|------|------------|
+| usearch C++ core linkage — ensure `cc` build works on all 3 platforms | CI matrix: macOS, Windows, Linux. usearch publishes pre-built binaries. |
+| Index file corruption on crash during save | Atomic rename pattern (write `.tmp`, then `rename()`) |
+| Memory usage: ~27MB resident for 50K/INT8 | Acceptable for desktop. Monitor with `sysinfo` metrics. |
+| Tombstone accumulation from `remove()` | Monitor tombstone ratio; rebuild if >20% tombstones |
+| `usearch::Error` not `Send` or has unusual types | Wrap in `CoreError::Storage(String)` at adapter boundary |
+| Capacity exhaustion without `maybe_grow()` | Grow at 80% utilization; initial reserve 50K is generous |
 
 ## 7. Migration Path
 
-1. Add `hnsw` feature flag (off by default)
-2. Implement `HnswIndex` wrapper in `oneshim-analysis`
-3. Wire into `AdaptiveSearchCoordinator` as third backend
-4. Benchmark against IVF — if HNSW wins, make it default
-5. Eventually deprecate IVF rebuild path
+1. Add `AnnIndex` port trait to `oneshim-core/src/ports/` (always available, no feature flag)
+2. Add `hnsw` feature flag to `oneshim-analysis` (off by default)
+3. Implement `HnswAdapter` in `oneshim-analysis` (behind `#[cfg(feature = "hnsw")]`)
+4. Wire `Option<Arc<dyn AnnIndex>>` into `AdaptiveSearchCoordinator`
+5. Add `features = ["hnsw"]` to `src-tauri/Cargo.toml` dependency on `oneshim-analysis`
+6. Implement metadata join (batch SQL lookup from `embedding_vectors`)
+7. Implement graceful degradation, retention integration, corruption recovery
+8. Benchmark against IVF — if HNSW wins, make it default
+9. Eventually deprecate IVF rebuild path
+
+## 8. Effort (8 days)
+
+| Task | Days |
+|------|------|
+| AnnIndex port trait in oneshim-core | 0.5 |
+| HnswAdapter implementation + error mapping | 1.5 |
+| AdaptiveSearchCoordinator integration + feature flag | 1.0 |
+| SearchResult metadata join (batch SQL lookup) | 1.0 |
+| Graceful degradation + corruption recovery | 1.0 |
+| Retention integration (remove on delete) | 0.5 |
+| Capacity growth + persistence (atomic rename) | 0.5 |
+| Benchmarks (criterion + recall@10) | 1.0 |
+| Testing (unit + integration + degradation) | 1.0 |
+| **Total** | **8.0** |

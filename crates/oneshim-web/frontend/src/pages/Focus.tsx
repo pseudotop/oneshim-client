@@ -102,6 +102,7 @@ export default function Focus() {
   } = useQuery({
     queryKey: ['focusMetrics'],
     queryFn: fetchFocusMetrics,
+    staleTime: 10_000, // focus data — 10s stale time
   })
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
     queryKey: ['workSessions', dateRange.from.toISOString(), dateRange.to.toISOString()],

@@ -115,7 +115,7 @@ impl WebStorage for SqliteStorage {
         )
     }
 
-    fn delete_all_data(&self) -> Result<DeletedRangeCounts, CoreError> {
+    fn delete_all_data(&self) -> Result<(), CoreError> {
         SqliteStorage::delete_all_data(self)
     }
 

@@ -117,7 +117,7 @@ impl SqliteStorage {
             .map_err(|e| CoreError::Internal(format!("Failed to acquire lock: {e}")))?;
 
         let mut stmt = conn
-            .prepare(
+            .prepare_cached(
                 "SELECT id, timestamp, trigger_type, app_name, window_title, importance, resolution_w, resolution_h, file_path, ocr_text
                  FROM frames
                  WHERE timestamp >= ?1 AND timestamp <= ?2

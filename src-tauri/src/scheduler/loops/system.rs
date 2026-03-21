@@ -9,6 +9,7 @@ use super::super::Scheduler;
 use super::helpers::record_to_segment_summary;
 
 impl Scheduler {
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_metrics_loop(
         &self,
         metrics_interval: Duration,
@@ -66,6 +67,7 @@ impl Scheduler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_process_loop(
         &self,
         process_interval: Duration,
@@ -109,6 +111,7 @@ impl Scheduler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_aggregation_loop(
         &self,
         aggregation_interval: Duration,
@@ -121,11 +124,21 @@ impl Scheduler {
         let config_manager = self.config_manager.clone();
         let vector_index = self.vector_index.clone();
         let search_coordinator = self.search_coordinator.clone();
+        #[cfg(feature = "hnsw")]
+        let ann_index = self.ann_index.clone();
+
+        // Resolve log directory once for periodic log retention cleanup.
+        let log_dir = oneshim_core::config_manager::ConfigManager::data_dir()
+            .map(|d| d.join("logs"))
+            .ok();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(aggregation_interval);
             let mut last_reindex_check: Option<chrono::DateTime<Utc>> = None;
             let mut last_index_maintenance: Option<chrono::DateTime<Utc>> = None;
+            let mut last_log_cleanup: Option<chrono::DateTime<Utc>> = None;
+            let mut last_sqlite_maintenance: Option<chrono::DateTime<Utc>> = None;
+            let mut last_fts_optimize: Option<chrono::DateTime<Utc>> = None;
 
             loop {
                 tokio::select! {
@@ -212,11 +225,36 @@ impl Scheduler {
                                     }
                                 }
 
-                                // Enforce vector retention
+                                // Enforce vector retention (HNSW removal + SQLite deletion)
                                 let retention_days = config_manager
                                     .as_ref()
                                     .map(|cm| cm.get().analysis.embedding.retention_days)
                                     .unwrap_or(90);
+
+                                // Best-effort: remove expired vectors from HNSW before SQLite deletes them
+                                #[cfg(feature = "hnsw")]
+                                if let Some(ref ann) = ann_index {
+                                    match vs.get_expired_ids(retention_days).await {
+                                        Ok(ids) if !ids.is_empty() => {
+                                            let mut removed = 0u64;
+                                            for id in &ids {
+                                                if let Err(e) = ann.remove(*id).await {
+                                                    warn!("HNSW remove key={id} failed (best-effort): {e}");
+                                                } else {
+                                                    removed += 1;
+                                                }
+                                            }
+                                            if removed > 0 {
+                                                debug!("Removed {removed}/{} expired vectors from HNSW index", ids.len());
+                                            }
+                                        }
+                                        Ok(_) => {} // no expired IDs
+                                        Err(e) => {
+                                            warn!("get_expired_ids failed (best-effort): {e}");
+                                        }
+                                    }
+                                }
+
                                 if let Err(e) = vs.enforce_retention(retention_days).await {
                                     warn!("vector retention failure: {e}");
                                 }
@@ -391,6 +429,14 @@ impl Scheduler {
                                     }
                                 }
 
+                                // Periodic HNSW save (only writes if dirty)
+                                #[cfg(feature = "hnsw")]
+                                if let Some(ref ann) = ann_index {
+                                    if let Err(e) = ann.save().await {
+                                        warn!("HNSW periodic save failure: {e}");
+                                    }
+                                }
+
                                 let embedding_config = config_manager
                                     .as_ref()
                                     .map(|cm| cm.get().analysis.embedding.clone())
@@ -428,6 +474,65 @@ impl Scheduler {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // --- SQLite periodic maintenance (WAL checkpoint, FTS merge, conditional VACUUM) ---
+                        {
+                            let should_maintain = last_sqlite_maintenance
+                                .map(|last| (now - last).num_minutes() >= super::super::config::SQLITE_MAINTENANCE_INTERVAL_MINS)
+                                .unwrap_or(true);
+
+                            if should_maintain {
+                                last_sqlite_maintenance = Some(now);
+
+                                // WAL checkpoint (PASSIVE — non-blocking)
+                                if let Err(e) = sqlite6.wal_checkpoint_passive() {
+                                    warn!("WAL checkpoint failure: {e}");
+                                }
+
+                                // FTS5 incremental merge
+                                if let Err(e) = sqlite6.fts_merge(super::super::config::FTS_MERGE_PAGES) {
+                                    warn!("FTS5 merge failure: {e}");
+                                }
+
+                                // Conditional VACUUM (only when freelist > 20%)
+                                match sqlite6.maybe_vacuum(super::super::config::VACUUM_FREELIST_THRESHOLD_PERCENT) {
+                                    Ok(true) => info!("VACUUM completed during maintenance"),
+                                    Ok(false) => {}
+                                    Err(e) => warn!("VACUUM check failure: {e}"),
+                                }
+                            }
+                        }
+
+                        // --- FTS5 daily full optimize ---
+                        {
+                            let should_optimize = last_fts_optimize
+                                .map(|last| (now - last).num_hours() >= 24)
+                                .unwrap_or(true);
+
+                            if should_optimize {
+                                last_fts_optimize = Some(now);
+                                if let Err(e) = sqlite6.fts_optimize() {
+                                    warn!("FTS5 optimize failure: {e}");
+                                }
+                            }
+                        }
+
+                        // --- Daily log file retention cleanup ---
+                        if let Some(ref dir) = log_dir {
+                            let should_cleanup = last_log_cleanup
+                                .map(|last| (now - last).num_hours() >= 24)
+                                .unwrap_or(true);
+                            if should_cleanup {
+                                last_log_cleanup = Some(now);
+                                let dir = dir.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    crate::log_retention::cleanup_old_logs(
+                                        &dir,
+                                        crate::log_retention::DEFAULT_MAX_AGE_DAYS,
+                                    );
+                                });
                             }
                         }
 

@@ -912,3 +912,36 @@ async fn search_quantized_empty_exclusion_returns_all() {
         .unwrap();
     assert_eq!(results.len(), 2);
 }
+
+#[tokio::test]
+async fn store_quantized_rejects_empty_int8_vector() {
+    use oneshim_core::quantization::QuantizedVector;
+
+    let conn = setup_db();
+    let store = SqliteVectorStore::new(conn);
+
+    let meta = EmbeddingMetadata {
+        segment_id: "seg_empty".to_string(),
+        content_type: EmbeddingContentType::ContentActivity,
+        content_label: None,
+        original_text: "test".to_string(),
+        model_id: "test-model".to_string(),
+        timestamp: Utc::now(),
+    };
+
+    let empty_qv = QuantizedVector {
+        data: vec![],
+        scale: 1.0,
+        offset: 0.0,
+    };
+
+    let result = store
+        .store_quantized(vec![1.0, 2.0, 3.0], &empty_qv, meta, false)
+        .await;
+    assert!(result.is_err(), "should reject empty INT8 vector");
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(
+        err_msg.contains("empty INT8 vector"),
+        "error should mention empty INT8 vector, got: {err_msg}"
+    );
+}
