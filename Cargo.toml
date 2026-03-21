@@ -55,7 +55,7 @@ rusqlite = { version = "0.39", features = ["bundled", "fallible_uint"] }
 # 압축
 flate2 = "1"
 zstd = "0.13"
-lz4_flex = "0.12"
+lz4_flex = "0.13"
 
 # 이미지 처리 (Edge Processing)
 image = "0.25"
