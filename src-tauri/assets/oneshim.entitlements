@@ -10,12 +10,13 @@
     <key>com.apple.security.network.server</key>
     <true/>
 
-    <!-- Screen capture: xcap-based screenshot + OCR -->
-    <key>com.apple.security.screen-recording</key>
-    <true/>
+    <!-- Screen recording & Accessibility: NOT entitlement keys.
+         These are TCC-protected (Transparency, Consent, and Control).
+         macOS prompts the user at runtime via system dialogs.
+         Usage descriptions are declared in Info.plist (via tauri.conf.json bundle.macOS.infoPlist). -->
 
-    <!-- Accessibility: active window detection via AX API -->
-    <key>com.apple.security.accessibility</key>
+    <!-- Dyld: allows loading of dylibs injected via DYLD_ env vars (recommended for production) -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
     <true/>
 
     <!-- JIT: WKWebView JavaScript execution under hardened runtime -->
