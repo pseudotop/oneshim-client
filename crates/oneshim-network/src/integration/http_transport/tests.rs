@@ -8,6 +8,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use futures::{SinkExt, StreamExt};
 use mockito::Matcher;
+use oneshim_api_contracts::integration::{
+    IntegrationSessionDisconnectPayload, IntegrationSessionHeartbeatPayload,
+};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
     InsightPacket, InsightSourceWindow, IntegrationAckCursor, IntegrationAuthContext,
@@ -18,25 +21,6 @@ use oneshim_core::models::integration::{
 };
 use oneshim_core::ports::integration::IntegrationAuthPort;
 use std::sync::{Arc as StdArc, Mutex as StdMutex};
-use tokio::net::TcpListener;
-use tokio::sync::{mpsc, Mutex};
-use tokio_tungstenite::accept_hdr_async;
-use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
-use tokio_tungstenite::tungstenite::Message;
-
-use std::sync::{Arc as StdArc, Mutex as StdMutex};
-
-use super::*;
-use crate::integration::IntegrationRequestProof;
-
-use async_trait::async_trait;
-use futures::{SinkExt, StreamExt};
-use mockito::Matcher;
-use oneshim_core::models::integration::{
-    InsightPacket, InsightSourceWindow, IntegrationEnvelope, IntegrationMessageType,
-    IntegrationOrigin, IntegrationOutboundPayload, IntegrationPrivacyClassification,
-    ProactivePromptCategory, ProactivePromptPriority, QueuedIntegrationEgressMessage,
-};
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::accept_hdr_async;

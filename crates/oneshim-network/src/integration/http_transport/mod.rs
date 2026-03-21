@@ -6,17 +6,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
-use chrono::Utc;
-use oneshim_api_contracts::integration::{
-    IntegrationBootstrapRequest, IntegrationBootstrapResponse, IntegrationSessionDisconnectPayload,
-    IntegrationSessionHeartbeatPayload,
-};
+use oneshim_api_contracts::integration::IntegrationBootstrapResponse;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::integration::{
-    IntegrationAckCursor, IntegrationAuthContext, IntegrationAuthScheme,
-    IntegrationCapabilityScope, IntegrationTransportKind, ProactivePrompt,
-    QueuedIntegrationEgressMessage,
+    IntegrationAuthContext, IntegrationAuthScheme, IntegrationCapabilityScope,
+    IntegrationTransportKind,
 };
 use oneshim_core::ports::integration::IntegrationAuthPort;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -24,16 +18,8 @@ use tokio::sync::RwLock;
 
 use crate::resilience::extract_retry_after;
 
-use super::transport::{
-    IntegrationEgressTransportClient, IntegrationEgressTransportResponse,
-    IntegrationInboxTransportClient, IntegrationInboxTransportResponse,
-    IntegrationRequestProofFactory, IntegrationTransportClient, IntegrationTransportConnectRequest,
-    IntegrationTransportConnectResponse,
-};
-use super::{
-    outbound_message_to_cloudevent, prompt_from_cloudevent, IntegrationOutboundCloudEventBatch,
-    IntegrationOutboundCloudEventBatchItem, WebSocketIntegrationSessionChannel,
-};
+use super::transport::{IntegrationRequestProofFactory, IntegrationTransportConnectRequest};
+use super::WebSocketIntegrationSessionChannel;
 
 #[derive(Debug, Clone)]
 pub struct HttpsIntegrationTransportConfig {

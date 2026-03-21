@@ -13,16 +13,11 @@ use oneshim_core::models::integration::{
 use oneshim_core::ports::integration::IntegrationAuthPort;
 use oneshim_core::ports::secret_store::{
     SecretStore, INTEGRATION_ACCESS_TOKEN_SECRET_KEY, INTEGRATION_AUTH_SECRET_NAMESPACE,
-    INTEGRATION_REFRESH_TOKEN_SECRET_KEY,
+    INTEGRATION_EXPIRES_AT_SECRET_KEY, INTEGRATION_REFRESH_TOKEN_SECRET_KEY,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-
-use super::*;
-use mockito::Matcher;
-use oneshim_core::ports::secret_store::SecretStore;
-use std::collections::HashMap;
 
 #[derive(Default)]
 struct InMemorySecretStore {

@@ -1,3 +1,8 @@
+use serde::Deserialize;
+use serde_json::Value;
+
+use oneshim_core::error::CoreError;
+
 #[derive(Debug, Deserialize)]
 struct OllamaShowResponse {
     #[serde(default)]
@@ -75,7 +80,7 @@ fn parse_ollama_show_supports_ocr(body: &str, model: &str) -> Result<Option<bool
     Ok(Some(supports_vision))
 }
 
-async fn probe_ollama_model_supports_ocr(
+pub(super) async fn probe_ollama_model_supports_ocr(
     client: &reqwest::Client,
     endpoint: &str,
     model: &str,

@@ -5,7 +5,7 @@ use base64::Engine as _;
 use chrono::Utc;
 use ed25519_dalek::{Signer, SigningKey};
 use oneshim_core::error::CoreError;
-use oneshim_core::models::integration::{IntegrationAuthContext, IntegrationAuthScheme};
+use oneshim_core::models::integration::IntegrationAuthContext;
 use oneshim_core::ports::secret_store::{
     SecretStore, INTEGRATION_AUTH_SECRET_NAMESPACE, INTEGRATION_DPOP_SIGNING_KEY_SECRET_KEY,
 };

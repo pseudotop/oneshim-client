@@ -1,4 +1,13 @@
-    fn parse_claude_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
+use serde::Deserialize;
+use serde_json::Value;
+
+use oneshim_core::error::CoreError;
+use oneshim_core::ports::ocr_provider::OcrResult;
+
+use super::RemoteOcrProvider;
+
+impl RemoteOcrProvider {
+    pub(super) fn parse_claude_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
         let response: serde_json::Value = serde_json::from_str(body)
             .map_err(|e| CoreError::OcrError(format!("Failed to parse response JSON: {}", e)))?;
 
@@ -27,7 +36,7 @@
         Ok(results)
     }
 
-    fn parse_openai_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
+    pub(super) fn parse_openai_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
         if let Ok(results) = Self::parse_generic_response(body) {
             return Ok(results);
         }
@@ -48,7 +57,7 @@
         Ok(parse_text_lines_to_results(&text))
     }
 
-    fn parse_generic_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
+    pub(super) fn parse_generic_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
         #[derive(Deserialize)]
         struct GenericResponse {
             results: Option<Vec<OcrResult>>,
@@ -98,7 +107,7 @@
         }
     }
 
-    fn parse_google_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
+    pub(super) fn parse_google_vision_response(body: &str) -> Result<Vec<OcrResult>, CoreError> {
         let response: serde_json::Value = serde_json::from_str(body).map_err(|e| {
             CoreError::OcrError(format!("Failed to parse Google Vision response: {}", e))
         })?;
@@ -143,224 +152,9 @@
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct OllamaShowResponse {
-    #[serde(default)]
-    capabilities: Vec<String>,
-    #[serde(default)]
-    details: Option<OllamaShowDetails>,
-    #[serde(default)]
-    projector_info: Option<Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaShowDetails {
-    #[serde(default)]
-    capabilities: Vec<String>,
-    #[serde(default)]
-    families: Vec<String>,
-}
-
-fn derive_ollama_show_endpoint(endpoint: &str) -> String {
-    let trimmed = endpoint.trim().trim_end_matches('/');
-    for suffix in [
-        "/v1/responses",
-        "/v1/chat/completions",
-        "/api/tags",
-        "/api/show",
-    ] {
-        if let Some(prefix) = trimmed.strip_suffix(suffix) {
-            return format!("{prefix}/api/show");
-        }
-    }
-    format!("{trimmed}/api/show")
-}
-
-fn infer_ollama_vision_support(model: &str) -> bool {
-    let normalized = model.trim().to_ascii_lowercase();
-    [
-        "vision",
-        "vl",
-        "llava",
-        "bakllava",
-        "moondream",
-        "minicpm-v",
-        "minicpmv",
-        "gemma3",
-    ]
-    .iter()
-    .any(|token| normalized.contains(token))
-}
-
-fn parse_ollama_show_supports_ocr(body: &str, model: &str) -> Result<Option<bool>, CoreError> {
-    let parsed: OllamaShowResponse = serde_json::from_str(body).map_err(|error| {
-        CoreError::Network(format!("Failed to parse Ollama model details: {error}"))
-    })?;
-    let mut capabilities = parsed.capabilities;
-    if let Some(details) = parsed.details {
-        capabilities.extend(details.capabilities);
-        capabilities.extend(details.families);
-    }
-    if parsed.projector_info.is_some() {
-        capabilities.push("projector".to_string());
-    }
-
-    if capabilities.is_empty() {
-        return Ok(Some(infer_ollama_vision_support(model)));
-    }
-
-    let supports_vision = capabilities.iter().any(|entry| {
-        let normalized = entry.trim().to_ascii_lowercase();
-        normalized.contains("vision")
-            || normalized.contains("clip")
-            || normalized.contains("projector")
-            || normalized.contains("vl")
-            || normalized.contains("llava")
-    });
-    Ok(Some(supports_vision))
-}
-
-async fn probe_ollama_model_supports_ocr(
-    client: &reqwest::Client,
-    endpoint: &str,
-    model: &str,
-) -> Result<Option<bool>, CoreError> {
-    let response = client
-        .post(derive_ollama_show_endpoint(endpoint))
-        .header("Content-Type", "application/json")
-        .json(&serde_json::json!({ "model": model }))
-        .send()
-        .await
-        .map_err(|error| {
-            CoreError::Network(format!("Ollama model capability probe failed: {error}"))
-        })?;
-    let status = response.status();
-    let body = response.text().await.map_err(|error| {
-        CoreError::Network(format!(
-            "Failed to read Ollama model capability probe response: {error}"
-        ))
-    })?;
-    if !status.is_success() {
-        return Err(CoreError::Network(format!(
-            "Ollama model capability probe failed ({status}): {body}"
-        )));
-    }
-
-    parse_ollama_show_supports_ocr(&body, model)
-}
-
-#[async_trait]
-impl OcrProvider for RemoteOcrProvider {
-    async fn extract_elements(
-        &self,
-        image: &[u8],
-        image_format: &str,
-    ) -> Result<Vec<OcrResult>, CoreError> {
-        use base64::Engine;
-
-        let encoded = base64::engine::general_purpose::STANDARD.encode(image);
-        let media_type = match image_format {
-            "png" => "image/png",
-            "jpeg" | "jpg" => "image/jpeg",
-            "webp" => "image/webp",
-            _ => "image/png",
-        };
-
-        let model = self.model.as_deref().unwrap_or("");
-        self.ensure_runtime_ocr_model_ready(model).await?;
-        let request_shape = self.ocr_request_shape()?;
-        match request_shape {
-            ProviderRequestShape::AnthropicMessages
-            | ProviderRequestShape::AnthropicVisionMessages => {
-                self.ensure_ocr_parameters_supported(&["model", "max_tokens", "messages"])?;
-            }
-            ProviderRequestShape::OpenAiChatCompletions
-            | ProviderRequestShape::OpenAiVisionChatCompletions
-            | ProviderRequestShape::OpenAiResponses => {
-                self.ensure_ocr_parameters_supported(&[
-                    "model",
-                    "max_tokens",
-                    "response_format",
-                    "messages",
-                ])?;
-            }
-            ProviderRequestShape::GoogleGenerateContent
-            | ProviderRequestShape::GoogleVisionAnnotate => {
-                self.ensure_ocr_parameters_supported(&[
-                    "requests",
-                    "TEXT_DETECTION",
-                    "maxResults",
-                ])?;
-            }
-        }
-        let strategy = OcrProviderStrategy::try_from(request_shape)?;
-
-        let request_body = strategy.build_request_body(&encoded, media_type, model);
-
-        debug!(
-            endpoint = %self.endpoint,
-            model = model,
-            image_size = image.len(),
-            "Calling external OCR API"
-        );
-
-        let mut builder = self
-            .http_client
-            .post(&self.endpoint)
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
-        let auth_scheme = self.ocr_auth_scheme()?;
-        if matches!(auth_scheme, ProviderAuthScheme::None) {
-            builder = apply_auth_headers(auth_scheme, builder, "");
-        } else {
-            let bearer_token = self.credential.resolve_bearer_token().await?;
-            builder = apply_auth_headers(auth_scheme, builder, &bearer_token);
-        }
-
-        // ChatGPT OAuth requires a version header for model access (GPT-5.4 etc.).
-        // Only applies to OpenAI-compatible providers, matching LLM client behaviour.
-        // Ref: openai/codex codex-rs/core/src/model_provider_info.rs
-        if self.credential.is_managed() && matches!(auth_scheme, ProviderAuthScheme::Bearer) {
-            builder = builder.header("version", env!("CARGO_PKG_VERSION"));
-        }
-
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| CoreError::Network(format!("OCR API request failed: {}", e)))?;
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| CoreError::Network(format!("OCR API response read failure: {}", e)))?;
-
-        if !status.is_success() {
-            warn!(status = %status, "OCR API error response");
-            return Err(CoreError::OcrError(format!(
-                "OCR API error ({}): {}",
-                status,
-                body.chars().take(200).collect::<String>()
-            )));
-        }
-
-        let results = strategy.parse_response(&body)?;
-
-        debug!(count = results.len(), "OCR received");
-        Ok(results)
-    }
-
-    fn provider_name(&self) -> &str {
-        "remote-ocr"
-    }
-
-    fn is_external(&self) -> bool {
-        true
-    }
-}
-
-fn parse_bounding_vertices(vertices: Option<&Vec<serde_json::Value>>) -> (i32, i32, u32, u32) {
+pub(super) fn parse_bounding_vertices(
+    vertices: Option<&Vec<serde_json::Value>>,
+) -> (i32, i32, u32, u32) {
     let Some(vertices) = vertices else {
         return (0, 0, 0, 0);
     };
@@ -426,7 +220,7 @@ fn extract_json_fragment(text: &str) -> Option<String> {
     Some(text[start..=end].to_string())
 }
 
-fn parse_text_lines_to_results(text: &str) -> Vec<OcrResult> {
+pub(super) fn parse_text_lines_to_results(text: &str) -> Vec<OcrResult> {
     text.lines()
         .enumerate()
         .filter_map(|(idx, line)| {
