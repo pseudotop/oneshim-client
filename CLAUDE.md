@@ -312,3 +312,4 @@ Key capabilities by phase:
 - **Server Integration** (P34-37): HTTP retry, gRPC client, REST standardization, port fallback
 - **Privacy** (Tier 1-3): Telemetry control, PII filter, GDPR consent, automation crate
 - **Superpowers** (S1-S5): GUI Intelligence (accessibility + text extraction), Text Intelligence (LLM analysis pipeline + regime classification), Vector Compression (INT8/2-bit quantization + IVF index), Cross-Device Sync (device identity + LAN peer discovery), Coaching Engine (proactive productivity coaching + MagicOverlay)
+- **ADR-002 M3** (Native Adapters): macOS AX tree traversal (batch), Windows UIA CacheRequest, Linux AT-SPI (atspi 0.29), MagicOverlayDriver (Tauri WebView bridge), dashcam accessibility tagging, permission gating, R-tree spatial index (rstar), app-specific element type overrides, ContextAssembler GUI section, 13 failure scenario tests, 6 E2E smoke tests, ops docs (runbook + contract examples + security review + audit logger)
