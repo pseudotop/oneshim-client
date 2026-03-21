@@ -68,6 +68,19 @@ Review and tune existing PRAGMA settings:
 - Idle callback identified: `IdleState::Active -> Idle` transition is optimal VACUUM insertion point
 - Add `wal_autocheckpoint=1000` to PRAGMA setup (default already, but make explicit)
 
+### I. Edge Intelligence Retention Gap
+
+**Gap (round 3):** V6 tables `work_sessions`, `interruptions`, `focus_metrics` have
+**no retention policy** — data accumulates indefinitely. Other tables (events, frames,
+metrics) have 30-day retention.
+
+**Fix:** Add retention enforcement in the aggregation loop:
+- `work_sessions`: DELETE WHERE `ended_at < cutoff AND state = 'completed'` (30 days)
+- `interruptions`: DELETE WHERE `interrupted_at < cutoff` (30 days)
+- `focus_metrics`: DELETE WHERE `date < cutoff` (90 days — daily aggregates, longer lifecycle)
+
+**Write frequency confirmed:** ~7 writes/sec peak, single Mutex sufficient. No connection pool needed.
+
 ## 3. Testing Strategy
 
 - Benchmark before/after each PRAGMA change

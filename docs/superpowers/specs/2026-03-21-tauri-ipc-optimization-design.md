@@ -87,6 +87,30 @@ Implementation approach:
 3. Handle `If-None-Match` header — return 304 Not Modified when ETag matches
 4. Frontend: add `If-None-Match` header to polling requests
 
+### D. Response Compression (HIGH impact)
+
+**Gap (round 3):** `tower_http::CompressionLayer` NOT applied despite `tower_http` being
+in dependencies. Timeline responses (260-365KB) sent uncompressed.
+
+**Fix:** Add to Axum router in `crates/oneshim-web/src/lib.rs`:
+```rust
+use tower_http::compression::CompressionLayer;
+// Add before or after TraceLayer
+.layer(CompressionLayer::new())
+```
+
+Typical gzip compression ratio for JSON: 5-10x. Timeline 260KB → ~30-50KB.
+
+### E. Frontend Query Optimization
+
+**Gap (round 3):** TanStack React Query uses default `staleTime: 0` — every component
+mount triggers a re-fetch. `fetchTimeline()` has no default limit from frontend.
+
+**Fix:**
+- Add `staleTime: 30_000` (30s) for dashboard queries
+- Add `max_events: 500, max_frames: 200` defaults in `fetchTimeline()`
+- Add `refetchInterval: 60_000` only for status-bar metrics
+
 ## 4. String Cloning Analysis
 
 Timeline request path (`handlers/frames.rs`):

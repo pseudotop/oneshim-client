@@ -73,6 +73,21 @@ async fn upload_batch(&self, payload: &BatchPayload) -> Result<(), CoreError> {
 - Configure via `AppConfig::telemetry.log_format` (text/json)
 - File rotation: `tracing-appender` with daily rotation, 7-day retention
 
+#### Persistent Logging (round 3)
+
+**Gap:** Tracing is console-only (`tracing_subscriber::fmt()` in main.rs:72-78).
+No file output, no audit trail.
+
+**Fix:** Add `tracing-appender` with rolling daily file:
+```rust
+let file_appender = tracing_appender::rolling::daily(log_dir, "oneshim.log");
+let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+tracing_subscriber::fmt()
+    .with_writer(non_blocking)
+    .with_env_filter(...)
+    .init();
+```
+
 ### B. Vector Validation
 
 #### B.1 Problem
@@ -120,6 +135,23 @@ pub struct QuantizedVector {
 ```
 
 ### C. GDPR Compliance Hardening
+
+#### GDPR Transaction Safety (round 3, CRITICAL)
+
+**Gap:** `delete_all_data()` (`maintenance.rs:357-421`) executes 34 DELETE statements
+with **no BEGIN/COMMIT transaction**. If one fails midway:
+- Previous DELETEs already committed (auto-commit mode)
+- Function returns success via `let _ =` on 27 of 34 DELETEs
+- **Result:** Partial data deletion reported as success
+
+**Fix:** Wrap in explicit transaction:
+```rust
+conn.execute_batch("BEGIN IMMEDIATE;")?;
+// ... all 34 DELETEs ...
+conn.execute_batch("COMMIT;")?;
+```
+
+If any DELETE fails, ROLLBACK ensures atomicity. Replace `let _ =` with error collection.
 
 #### C.1 Problem
 
@@ -216,6 +248,7 @@ Test cases:
 
 - Adding `dimensions` field to `QuantizedVector` requires storage migration (V18)
 - Changing `cosine_similarity_int8()` return type is a breaking change — update all callers
+- **CoreError variant for dimension validation:** Use `CoreError::Validation { field, message }` or `CoreError::InvalidArguments(String)`. No `InvalidInput` variant exists.
 - Transaction-based deletion may be slower than individual DELETEs — benchmark
 - Tracing instrumentation adds small overhead per function call (~100ns)
 

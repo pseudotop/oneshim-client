@@ -111,6 +111,27 @@ pub enum VectorIndexBackend {
 
 HNSW is incrementally maintained via `add()` — no periodic rebuild needed (unlike IVF). This eliminates the rebuild-blocks-checkpoint problem.
 
+### Integration Details (round 3)
+
+**IVF rebuild trigger** (`scheduler/loops/system.rs:378-432`):
+- Every 5 min: check `total >= 10K` AND `unindexed / total > 0.10`
+- n_clusters = `sqrt(total)`
+- HNSW can reuse same mechanism with independent thresholds
+
+**SearchConfig gap:** `EmbeddingConfig` fields NOT wired to `SearchConfig` in production.
+Config only used in scheduler via `config_manager.get().analysis.embedding`. Add:
+- `hnsw_enabled: bool` (default: false)
+- `hnsw_threshold: u64` (default: 5_000)
+
+**forced_strategy validation:** Unknown values silently fall back to BruteForceInt8 (no warning).
+Add `warn!()` log + `"hnsw"` variant to match arm.
+
+**Distance mapping:** usearch returns `distance = 1.0 - cosine_similarity`.
+Convert: `similarity = 1.0 - distance`. Time decay applied post-search via existing `score_and_rank()`.
+
+**Index lifecycle:** Lazy-loaded (no preload on startup). First search triggers `ensure_cache()`.
+HNSW should follow same pattern: `ensure_hnsw_graph()` on first search in HNSW range.
+
 ### 3.2 Feature Flag
 
 Reference `hdbscan` pattern in `oneshim-analysis` as exact template for the `usearch` feature flag. No `oneshim-core` propagation needed — the feature is local to `oneshim-analysis`.
