@@ -71,6 +71,7 @@ analysis = ["dep:oneshim-network"]
 server = ["analysis"]
 grpc = ["server", "oneshim-network/grpc"]
 embedding = ["dep:oneshim-embedding"]
+hnsw = ["oneshim-analysis/hnsw"]
 lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 
