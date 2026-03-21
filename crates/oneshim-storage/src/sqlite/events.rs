@@ -147,6 +147,14 @@ impl SqliteStorage {
         tx.commit()
             .map_err(|e| CoreError::Internal(format!("Failed to commit transaction: {e}")))?;
 
+        // Refresh query planner statistics after large batch inserts (>100 events).
+        // Uses the already-held MutexGuard — do NOT re-lock self.conn.
+        if events.len() > 100 {
+            if let Err(e) = Self::run_analyze_with_conn(&conn) {
+                warn!("ANALYZE after batch insert failed: {e}");
+            }
+        }
+
         debug!("event batch save: {}items", events.len());
         Ok(events.len())
     }
@@ -183,7 +191,7 @@ impl StorageService for SqliteStorage {
 
         self.with_conn(move |conn| {
             let mut stmt = conn
-                .prepare(
+                .prepare_cached(
                     "SELECT data FROM events WHERE timestamp >= ?1 AND timestamp <= ?2 ORDER BY timestamp DESC LIMIT ?3",
                 )
                 .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;
@@ -212,7 +220,7 @@ impl StorageService for SqliteStorage {
     async fn get_pending_events(&self, limit: usize) -> Result<Vec<Event>, CoreError> {
         self.with_conn(move |conn| {
             let mut stmt = conn
-                .prepare(
+                .prepare_cached(
                     "SELECT data FROM events WHERE is_sent = 0 ORDER BY timestamp ASC LIMIT ?1",
                 )
                 .map_err(|e| CoreError::Internal(format!("Failed to prepare query: {e}")))?;

@@ -23,7 +23,7 @@ impl TextSearchProvider for SqliteStorage {
         let query = query.to_string();
         self.with_conn(move |conn| {
             let mut stmt = conn
-                .prepare(
+                .prepare_cached(
                     "SELECT segment_id, content_type, searchable_text, rank
                      FROM search_fts
                      WHERE search_fts MATCH ?1
@@ -140,7 +140,7 @@ impl SqliteStorage {
         end_time: &str,
     ) -> String {
         let result: Result<Vec<String>, rusqlite::Error> = (|| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT DISTINCT json_extract(data, '$.window_title') AS wt FROM events
                  WHERE timestamp >= ?1 AND timestamp <= ?2
                    AND wt IS NOT NULL AND wt != ''
@@ -161,7 +161,7 @@ impl SqliteStorage {
             return String::new();
         }
         let result: Result<Vec<String>, rusqlite::Error> = (|| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT DISTINCT element_text FROM gui_interactions
                  WHERE segment_id = ?1
                    AND element_text IS NOT NULL AND element_text != ''
@@ -182,7 +182,7 @@ impl SqliteStorage {
         end_time: &str,
     ) -> String {
         let result: Result<Vec<String>, rusqlite::Error> = (|| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT DISTINCT content FROM suggestions
                  WHERE created_at >= ?1 AND created_at <= ?2
                    AND content IS NOT NULL AND content != ''
