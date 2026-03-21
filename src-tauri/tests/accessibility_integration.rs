@@ -283,13 +283,13 @@ fn zeroizing_string_deref_works() {
 fn create_extractor_returns_expected_on_platform() {
     let extractor = oneshim_vision::accessibility::create_extractor();
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     assert!(
         extractor.is_some(),
-        "create_extractor() should return Some on supported platforms"
+        "create_extractor() should return Some on supported platforms (macOS/Windows/Linux)"
     );
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     assert!(
         extractor.is_none(),
         "create_extractor() should return None on unsupported platforms"
