@@ -69,14 +69,38 @@
 
 ## 4. Architecture Impact
 
-Add HNSW methods to existing `VectorIndex` trait (no new trait).
+### Code-Level Integration Points (deep dive 2026-03-21)
+
+**AdaptiveSearchCoordinator** (`adaptive_search.rs`):
+- `SearchStrategy` enum (line 20): add `HnswInt8` variant
+- `SearchConfig` (line 28): add `hnsw_threshold: u64` (default: 5,000)
+- `determine_strategy()` (line 87): add threshold check between brute-force and IVF
+- `search()` (line 120): add match arm delegating to `hnsw_index.search()`
+- Coordinator holds `Arc<dyn VectorStore>` + `Arc<dyn VectorIndex>` — add optional `HnswIndex` field
+
+**VectorIndex trait** (`vector_index.rs`): Add default-impl methods:
+- `build_hnsw(max_vectors: usize) -> Result<usize, CoreError>`
+- `search_hnsw(query: &QuantizedVector, limit: usize, ...) -> Result<Vec<SearchResult>, CoreError>`
+- `assign_to_hnsw(vector_id: i64, vector: &QuantizedVector) -> Result<(), CoreError>`
+
+**DI wiring** (`scheduler/mod.rs:120-124`):
+- Already has `vector_store`, `vector_index`, `search_coordinator` fields
+- Builder methods (`with_vector_store()`, etc.) at lines 242-264
+- `VectorRetriever` is transparent — delegates to coordinator, **no changes needed**
+
+**Vector loading for HNSW build:**
+Same pattern as brute-force: fetch all INT8 vectors WHERE `is_stale = 0` into memory.
+`brute_force_search_quantized()` in `helpers.rs:156-202` shows the existing bulk-load pattern.
+
+**Incremental updates:**
+Follow existing `assign_to_cluster(vector_id, &quantized)` pattern for IVF.
 
 | File | Change |
 |---|---|
-| `crates/oneshim-analysis/src/adaptive_search.rs` | `HnswInt8` variant, `HnswIndex` wrapper field |
+| `crates/oneshim-analysis/src/adaptive_search.rs` | `HnswInt8` variant, threshold, search dispatch |
 | `crates/oneshim-analysis/Cargo.toml` | `usearch = { version = "2", optional = true }` |
-| `crates/oneshim-core/src/config/sections.rs` | `hnsw_enabled`, `hnsw_max_vectors` in `SearchConfig` |
-| `crates/oneshim-core/src/ports/vector_store.rs` | Dimensionality validation |
+| `crates/oneshim-core/src/config/sections.rs` | `hnsw_threshold` in `SearchConfig` |
+| `crates/oneshim-core/src/ports/vector_index.rs` | `build_hnsw`, `search_hnsw`, `assign_to_hnsw` default impls |
 
 **New:** `crates/oneshim-analysis/src/hnsw_index.rs` — build, search, serialize/load, Send+Sync shim.
 

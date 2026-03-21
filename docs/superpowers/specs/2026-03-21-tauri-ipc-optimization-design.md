@@ -24,12 +24,14 @@
 | `/api/integration/status` | **7 parallel** | All data | 800-1.5KB |
 | `/api/integration/audit` | 1 | Hardcoded 50 | 5KB |
 
-**Key findings:**
-- **N+1 NOT confirmed** — `record_to_segment_summary()` is pure in-memory transformation
-- **Timeline is the largest payload** at 260-365KB (1,500 items default)
-- **Policy events reads 8x limit** then filters in-memory
+**Key findings (deep dive verified):**
+- **N+1 NOT confirmed** — `record_to_segment_summary()` and `timeline_assembler.rs` are pure in-memory transformations (no DB queries per item)
+- **Timeline is the largest payload** at **260-365KB** (1,500 items default) — much larger than original 10-50KB estimate
+- **Policy events reads 8x limit** then filters in-memory (e.g., limit=500 reads 4,000 rows)
 - **Focus sessions/interruptions** have no pagination bounds
 - **Settings payload** is tiny (1.5-2KB) — optimization unjustified
+- **Integration status** makes 7 sequential/parallel async calls to build one response
+- **Timeline string cloning** — `app_name.clone()` and `timestamp.clone()` per item in segment calculation
 
 ---
 
