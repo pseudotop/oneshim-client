@@ -9,6 +9,7 @@ use super::super::Scheduler;
 use super::helpers::record_to_segment_summary;
 
 impl Scheduler {
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_metrics_loop(
         &self,
         metrics_interval: Duration,
@@ -66,6 +67,7 @@ impl Scheduler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_process_loop(
         &self,
         process_interval: Duration,
@@ -109,6 +111,7 @@ impl Scheduler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_aggregation_loop(
         &self,
         aggregation_interval: Duration,
@@ -122,10 +125,16 @@ impl Scheduler {
         let vector_index = self.vector_index.clone();
         let search_coordinator = self.search_coordinator.clone();
 
+        // Resolve log directory once for periodic log retention cleanup.
+        let log_dir = oneshim_core::config_manager::ConfigManager::data_dir()
+            .map(|d| d.join("logs"))
+            .ok();
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(aggregation_interval);
             let mut last_reindex_check: Option<chrono::DateTime<Utc>> = None;
             let mut last_index_maintenance: Option<chrono::DateTime<Utc>> = None;
+            let mut last_log_cleanup: Option<chrono::DateTime<Utc>> = None;
 
             loop {
                 tokio::select! {
@@ -428,6 +437,23 @@ impl Scheduler {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // --- Daily log file retention cleanup ---
+                        if let Some(ref dir) = log_dir {
+                            let should_cleanup = last_log_cleanup
+                                .map(|last| (now - last).num_hours() >= 24)
+                                .unwrap_or(true);
+                            if should_cleanup {
+                                last_log_cleanup = Some(now);
+                                let dir = dir.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    crate::log_retention::cleanup_old_logs(
+                                        &dir,
+                                        crate::log_retention::DEFAULT_MAX_AGE_DAYS,
+                                    );
+                                });
                             }
                         }
 
