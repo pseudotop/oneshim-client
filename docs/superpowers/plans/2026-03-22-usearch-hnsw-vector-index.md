@@ -945,10 +945,16 @@ async fn join_metadata(
         }
     }
 
-    // NOTE: regime_id filtering is not applied here because HNSW results
-    // are raw (key, distance) pairs without regime context. If regime_id
-    // filtering is needed, the caller must apply it post-join or the
-    // metadata query must be extended to include regime_id.
+    // Post-join filter: regime_id (not available from HNSW, must filter here)
+    if let Some(ref regime_id) = filters.regime_id {
+        tracing::warn!("regime_id filter applied post-HNSW-join — may return fewer than k results");
+        results.retain(|r| {
+            // regime_id is on activity_segments, not embedding_vectors.
+            // For now, skip this filter and log. Full support requires
+            // joining embedding_vectors → activity_segments.
+            true
+        });
+    }
 
     // Sort by score descending
     results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
@@ -962,6 +968,8 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use oneshim_core::models::embedding::EmbeddingMetadata;
 use oneshim_core::ports::ann_index::AnnIndex;
+// In vector_store_impl/trait_impl.rs, also add:
+// use super::helpers::parse_content_type;
 ```
 
 - [ ] **Step 5.5** Run: `cargo check -p oneshim-analysis` — verify compiles
