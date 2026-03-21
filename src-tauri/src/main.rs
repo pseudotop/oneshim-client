@@ -38,6 +38,7 @@ mod integration_runtime;
 mod integrity_guard;
 mod launch_resources;
 mod lifecycle;
+mod log_retention;
 #[cfg(target_os = "macos")]
 mod macos_integration;
 mod magic_overlay;
@@ -69,7 +70,18 @@ mod workflow_intelligence;
 
 use tauri::{Manager, RunEvent};
 use tracing::{info, warn};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
+
+/// Wrapper for `tracing_appender::non_blocking::WorkerGuard`.
+///
+/// Stored as Tauri managed state so it is dropped (and flushed) when the
+/// app exits rather than leaked.  The inner field is intentionally never
+/// read — its purpose is to keep the guard alive for the duration of the
+/// process.
+#[allow(dead_code)]
+pub(crate) struct LogWorkerGuard(tracing_appender::non_blocking::WorkerGuard);
 
 fn main() {
     // Windows DLL search order hardening (Spec Section 9.2):
@@ -79,13 +91,42 @@ fn main() {
         windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW(windows_sys::core::w!(""));
     }
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                EnvFilter::new("oneshim=info,oneshim_app=info,oneshim_core=info,oneshim_monitor=info,oneshim_vision=info,oneshim_storage=info,oneshim_network=info,oneshim_suggestion=info")
-            }),
-        )
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new("oneshim=info,oneshim_app=info,oneshim_core=info,oneshim_monitor=info,oneshim_vision=info,oneshim_storage=info,oneshim_network=info,oneshim_suggestion=info")
+    });
+
+    // Console layer — writes to stderr (same as previous fmt() subscriber).
+    let console_layer = tracing_subscriber::fmt::layer().with_ansi(true);
+
+    // File layer — daily rolling log files in {data_dir}/logs/.
+    // WorkerGuard MUST outlive the subscriber; we store it in Tauri state.
+    let log_dir = oneshim_core::config_manager::ConfigManager::data_dir()
+        .map(|d| d.join("logs"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("logs"));
+
+    std::fs::create_dir_all(&log_dir).ok();
+
+    // Cleanup old log files before creating new appender
+    let deleted = log_retention::cleanup_old_logs(&log_dir, log_retention::DEFAULT_MAX_AGE_DAYS);
+    if deleted > 0 {
+        // Cannot use tracing yet — subscriber not initialized.
+        eprintln!("[oneshim] startup log cleanup: deleted {deleted} old log file(s)");
+    }
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "oneshim.log");
+    let (non_blocking, worker_guard) = tracing_appender::non_blocking(file_appender);
+
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_writer(non_blocking);
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(console_layer)
+        .with(file_layer)
         .init();
+
+    info!(log_dir = %log_dir.display(), "persistent file logging initialized");
 
     // CLI pre-dispatch: handle "auth" subcommand before Tauri boot
     let args: Vec<String> = std::env::args().collect();
@@ -111,7 +152,8 @@ fn main() {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .manage(LogWorkerGuard(worker_guard));
 
     // WebDriver 서버 플러그인 — E2E 테스트용 (production 빌드에 절대 포함 금지)
     #[cfg(feature = "webdriver")]
