@@ -5087,8 +5087,10 @@ version = "0.4.0-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
+ "criterion",
  "hdbscan",
  "oneshim-core",
+ "rand 0.10.0",
  "serde",
  "serde_json",
  "tempfile",

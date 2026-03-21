@@ -27,5 +27,12 @@ hdbscan = ["dep:hdbscan"]
 hnsw = ["dep:usearch"]
 
 [dev-dependencies]
+criterion = { workspace = true }
+rand = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[[bench]]
+name = "hnsw_bench"
+harness = false
+required-features = ["hnsw"]
