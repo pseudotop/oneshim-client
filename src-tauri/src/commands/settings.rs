@@ -18,6 +18,7 @@ pub struct MetricsResponse {
 }
 
 /// 시스템 메트릭 수집 — 기존 LocalMonitor 로직
+#[deprecated(since = "0.42.0", note = "Use REST endpoint /api/metrics instead")]
 #[command]
 pub async fn get_metrics(_state: tauri::State<'_, AppState>) -> Result<MetricsResponse, String> {
     let mut sys = System::new();
@@ -87,6 +88,7 @@ pub(crate) const ALLOWED_KEYS: &[&str] = &[
 ];
 
 /// 설정 조회 — 민감 필드 마스킹 후 반환
+#[deprecated(since = "0.42.0", note = "Use REST endpoint /api/settings instead")]
 #[command]
 pub async fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
     let config = state.config_manager.get();

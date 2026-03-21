@@ -9,6 +9,10 @@ use crate::runtime_state::{AppState, SecretBackendCapabilities, SecretBackendSta
 use oneshim_web::update_control::UpdateAction;
 
 /// 업데이트 상태 조회
+#[deprecated(
+    since = "0.42.0",
+    note = "Use REST endpoint /api/update-status instead"
+)]
 #[command]
 pub async fn get_update_status(
     state: tauri::State<'_, AppState>,

@@ -83,6 +83,7 @@ use tracing_subscriber::EnvFilter;
 #[allow(dead_code)]
 pub(crate) struct LogWorkerGuard(tracing_appender::non_blocking::WorkerGuard);
 
+#[allow(deprecated)] // get_metrics, get_settings, get_update_status — superseded by REST
 fn main() {
     // Windows DLL search order hardening (Spec Section 9.2):
     // Remove CWD from DLL search path to prevent DLL hijacking.
