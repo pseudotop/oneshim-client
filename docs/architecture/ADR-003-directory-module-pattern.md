@@ -107,6 +107,9 @@ Sub-files are organized by functional responsibility, not arbitrary line counts:
 | `config.rs` | `config/{mod, enums, sections}.rs` | oneshim-core |
 | `handlers/automation.rs` | `handlers/automation/{mod, helpers, scene, execution}.rs` | oneshim-web |
 | `app.rs` | `app/{mod, message, update, view}.rs` | oneshim-ui |
+| `gui_interaction/mod.rs` tests | `gui_interaction/tests/{mod, session, highlight, confirm, execute, m5}.rs` | oneshim-automation |
+| `scheduler/loops.rs` | `scheduler/loops/{mod, helpers, monitor, system, network, intelligence, events, sync}.rs` | src-tauri |
+| `provider_adapters.rs` | `provider_adapters/{mod, types, guarded_ocr, surface, ocr_resolver, llm_resolver, helpers, tests}.rs` | src-tauri |
 
 ---
 
