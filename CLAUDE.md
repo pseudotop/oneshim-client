@@ -37,7 +37,7 @@ client-rust/
 │   ├── src/
 │   │   ├── main.rs         # Tauri app builder + DI wiring
 │   │   ├── tray.rs         # System tray menu
-│   │   ├── commands.rs     # Tauri IPC commands
+│   │   ├── commands/       # Tauri IPC commands (directory module, ADR-003)
 │   │   └── scheduler/      # 9-loop background scheduler
 │   └── tauri.conf.json     # Tauri configuration
 ├── docs/
@@ -134,8 +134,42 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `compression.rs`: `AdaptiveCompressor` — auto selection of gzip/zstd/lz4
 - `batch_uploader.rs`: `BatchUploader` — Lock-free SegQueue + dynamic batch size + retry
 - `ws_client.rs`: WebSocket client (tokio-tungstenite)
-- `ai_llm_client.rs`: `RemoteLlmProvider` — AI LLM intent interpretation (branches based on AiProviderType)
-- `ai_ocr_client.rs`: `RemoteOcrProvider` — AI OCR element extraction (branches based on AiProviderType)
+- `ai_llm_client/`: `RemoteLlmProvider` — directory module (ADR-003)
+  - `mod.rs`: `RemoteLlmProvider` struct + `LlmProvider` impl + re-exports
+  - `request.rs`: request building helpers per provider type
+  - `parsers.rs`: response parsing + extraction
+  - `tests.rs`: unit tests
+- `ai_ocr_client/`: `RemoteOcrProvider` — directory module (ADR-003)
+  - `mod.rs`: `RemoteOcrProvider` struct + `OcrProvider` impl + re-exports
+  - `ollama.rs`: Ollama-specific request/response handling
+  - `parsers.rs`: element extraction + JSON parsing
+  - `strategy.rs`: provider strategy selection
+  - `tests.rs`: unit tests
+- **Sync** (`sync/`):
+  - `lan_server/`: LAN peer discovery server — directory module (ADR-003)
+    - `mod.rs`: `LanServer` struct + public API + re-exports
+    - `handlers.rs`: request handler methods
+    - `session.rs`: session management
+    - `tls.rs`: TLS configuration
+    - `tests.rs`: unit tests
+  - `lan_transport/`: LAN transport client — directory module (ADR-003)
+    - `mod.rs`: `LanTransport` struct + `SyncTransport` impl + re-exports
+    - `auth.rs`: peer authentication
+    - `operations.rs`: sync operations (push/pull/merge)
+    - `tests.rs`: unit tests
+- **Integration** (`integration/`):
+  - `http_transport/`: HTTP remote transport — directory module (ADR-003)
+    - `mod.rs`: `HttpTransport` struct + `SyncTransport` impl + re-exports
+    - `connect.rs`: connection management
+    - `egress.rs`: outbound data egress
+    - `inbox.rs`: inbound data inbox
+    - `tests.rs`: unit tests
+  - `auth/`: Integration authentication — directory module (ADR-003)
+    - `mod.rs`: re-exports
+    - `oidc_device_flow.rs`: OIDC device authorization flow
+    - `proof_factory.rs`: request proof generation
+    - `static_auth.rs`: static token authentication
+    - `tests.rs`: unit tests
 - **gRPC Client** (`#[cfg(feature = "grpc")]`):
   - `grpc/mod.rs`: module exports + `GrpcConfig`
   - `grpc/auth_client.rs`: `GrpcAuthClient` — Login, Logout, RefreshToken, ValidateToken
@@ -181,6 +215,16 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `ocr.rs`: `OcrExtractor` — leptess(Tesseract) OCR (`#[cfg(feature = "ocr")]`), async support
 - `privacy.rs`: PII filter levels (Off/Basic/Standard/Strict cascaded inheritance), sensitive app auto-detection, phone/API key/IP/email/credit card/SSN/file path masking
 - `timeline.rs`: In-memory frame timeline + filters
+- `gui_detector/`: GUI element detection — directory module (ADR-003)
+  - `mod.rs`: `GuiDetector` struct + public API + re-exports
+  - `correlation.rs`: GUI correlation logic
+  - `inference.rs`: element inference
+  - `tests.rs`: unit tests
+- `accessibility/macos/`: macOS accessibility adapter — directory module (ADR-003)
+  - `mod.rs`: re-exports
+  - `extractor.rs`: AX tree element extraction
+  - `observer.rs`: AX notification observer
+  - `tests.rs`: unit tests
 
 ### oneshim-web (Local Web Dashboard)
 - `lib.rs`: `WebServer` — Axum 0.8 HTTP server + graceful shutdown
@@ -209,7 +253,13 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - `regime_classifier.rs`: `RegimeClassifier` — behavioral regime detection and labeling
 - `regime_manager.rs`: `RegimeManager` — regime lifecycle (create, merge, split, mark_seen)
 - `auto_tuner.rs`: `EmaStatsTracker`, `DriftDetector` — exponential moving average baselines and behavioral drift detection
-- `coaching_engine.rs`: `CoachingEngine` — proactive productivity coaching with template-first + LLM personalization
+- `coaching_engine/`: `CoachingEngine` — directory module (ADR-003)
+  - `mod.rs`: `CoachingEngine` struct + public API + re-exports
+  - `guards.rs`: coaching guard conditions and eligibility checks
+  - `triggers.rs`: coaching trigger evaluation and event matching
+- `coaching_template/`: coaching template system — directory module (ADR-003)
+  - `mod.rs`: template registry + public API + re-exports
+  - `templates.rs`: built-in coaching template definitions
 - `adaptive_search.rs`: `AdaptiveSearchCoordinator` — auto strategy selection (brute-force / IVF / IVF+binary)
 
 ### oneshim-embedding (Vector Embedding + Compression)
@@ -219,6 +269,16 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 ### oneshim-api-contracts (Shared API Type Contracts)
 - Shared request/response types between client crates
 - Ensures API contract consistency across the workspace
+- `provider_specs/`: AI provider specifications — directory module (ADR-003)
+  - `mod.rs`: re-exports + public API
+  - `enums.rs`: provider type enums
+  - `models.rs`: provider spec data models
+  - `helpers.rs`: utility functions
+  - `parsers.rs`: spec parsing logic
+  - `queries.rs`: provider query types
+  - `resolvers.rs`: provider resolution logic
+  - `validation.rs`: spec validation rules
+  - `tests.rs`: unit tests
 
 ### oneshim-app (crates/oneshim-app/) — DEPRECATED
 > **Removed from workspace.** Replaced by `src-tauri/` which is the active binary crate

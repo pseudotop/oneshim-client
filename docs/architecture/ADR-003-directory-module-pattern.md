@@ -110,6 +110,18 @@ Sub-files are organized by functional responsibility, not arbitrary line counts:
 | `gui_interaction/mod.rs` tests | `gui_interaction/tests/{mod, session, highlight, confirm, execute, m5}.rs` | oneshim-automation |
 | `scheduler/loops.rs` | `scheduler/loops/{mod, helpers, monitor, system, network, intelligence, events, sync}.rs` | src-tauri |
 | `provider_adapters.rs` | `provider_adapters/{mod, types, guarded_ocr, surface, ocr_resolver, llm_resolver, helpers, tests}.rs` | src-tauri |
+| `commands.rs` | `commands/{mod}.rs` | src-tauri |
+| `gui_detector.rs` | `gui_detector/{mod, correlation, inference, tests}.rs` | oneshim-vision |
+| `accessibility/macos.rs` | `accessibility/macos/{mod, extractor, observer, tests}.rs` | oneshim-vision |
+| `ai_llm_client.rs` | `ai_llm_client/{mod, request, parsers, tests}.rs` | oneshim-network |
+| `ai_ocr_client.rs` | `ai_ocr_client/{mod, ollama, parsers, strategy, tests}.rs` | oneshim-network |
+| `sync/lan_server.rs` | `sync/lan_server/{mod, handlers, session, tls, tests}.rs` | oneshim-network |
+| `sync/lan_transport.rs` | `sync/lan_transport/{mod, auth, operations, tests}.rs` | oneshim-network |
+| `integration/http_transport.rs` | `integration/http_transport/{mod, connect, egress, inbox, tests}.rs` | oneshim-network |
+| `integration/auth.rs` | `integration/auth/{mod, oidc_device_flow, proof_factory, static_auth, tests}.rs` | oneshim-network |
+| `provider_specs.rs` | `provider_specs/{mod, enums, models, helpers, parsers, queries, resolvers, validation, tests}.rs` | oneshim-api-contracts |
+| `coaching_engine.rs` | `coaching_engine/{mod, guards, triggers}.rs` | oneshim-analysis |
+| `coaching_template.rs` | `coaching_template/{mod, templates}.rs` | oneshim-analysis |
 
 ---
 
