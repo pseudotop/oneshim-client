@@ -1,24 +1,217 @@
-# Architecture Improvements Design Spec
+# Architecture Improvements Design Spec (v2)
 
-**Date:** 2026-03-21
-**Priority:** P1 (items 1-2), P2 (items 3-4)
+**Date:** 2026-03-21 (revised 2026-03-21 with deep research)
 **Status:** Proposed
 **MCP Server:** Deferred (security concerns + Skills trend)
+
+> **Revision note:** v2 incorporates findings from 4 parallel research agents covering
+> HNSW library landscape, Whisper STT ecosystem, SQLite tuning best practices, and
+> codebase architecture audit. Priority reordering reflects actual impact analysis.
 
 ---
 
 ## Table of Contents
 
-1. [USearch HNSW Vector Index (P1)](#1-usearch-hnsw-vector-index-p1)
-2. [Tauri IPC Optimization (P1)](#2-tauri-ipc-optimization-p1)
+1. [SQLite Performance Tuning (P1)](#1-sqlite-performance-tuning-p1)
+2. [USearch HNSW Vector Index (P1)](#2-usearch-hnsw-vector-index-p1)
 3. [Audio Capture + Whisper STT (P2)](#3-audio-capture--whisper-stt-p2)
-4. [SQLite Performance Tuning (P2)](#4-sqlite-performance-tuning-p2)
+4. [Tauri IPC Optimization (P3)](#4-tauri-ipc-optimization-p3)
+5. [Cross-Cutting Improvements](#5-cross-cutting-improvements)
 
 ---
 
-## 1. USearch HNSW Vector Index (P1)
+## 1. SQLite Performance Tuning (P1)
+
+> **Priority change:** P2 → P1. Smallest effort, immediate benefit, improves foundation
+> for all other improvements.
 
 ### 1.1 Current State
+
+**PRAGMA configuration** (from `crates/oneshim-storage/src/sqlite/mod.rs`):
+
+```sql
+PRAGMA journal_mode=WAL;
+PRAGMA synchronous=NORMAL;
+PRAGMA cache_size=8000;       -- 8000 pages = ~32MB
+PRAGMA temp_store=MEMORY;
+PRAGMA mmap_size=268435456;   -- 256MB memory-mapped I/O
+PRAGMA page_size=4096;
+```
+
+**Bundled SQLite version:** 3.51.1 (via `libsqlite3-sys 0.36.0`). All modern PRAGMAs
+including `PRAGMA optimize` with `0x10002` bitmask are available.
+
+**Connection model:** Single `Arc<Mutex<Connection>>` — all reads and writes serialized.
+
+### 1.2 Proposed Changes
+
+#### A. Add Missing PRAGMAs (at connection open)
+
+```sql
+PRAGMA journal_size_limit=67108864;  -- 64MB WAL size safety cap
+PRAGMA optimize=0x10002;             -- ANALYZE all tables at open (3.46.0+)
+```
+
+**`busy_timeout` clarification:** Under the current single-Mutex design, `busy_timeout`
+is **irrelevant** — the Rust Mutex serializes access before SQLite sees contention.
+Add `PRAGMA busy_timeout=5000;` **only when** a read-only connection is introduced
+(see §1.2.F below).
+
+#### B. Scheduled VACUUM (idle-time, not incremental)
+
+> **v1 correction:** `auto_vacuum=INCREMENTAL` **cannot be enabled on an existing
+> database** without a full `VACUUM` to convert the page format. The overhead of
+> conversion is unjustified.
+
+**Strategy:** Conditional manual `VACUUM` during idle periods.
+
+```rust
+// In scheduler idle detection callback or daily maintenance
+let freelist: u64 = conn.query_row("PRAGMA freelist_count", [], |r| r.get(0))?;
+let total: u64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+if total > 0 && freelist * 100 / total > 15 {
+    conn.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")?;
+}
+```
+
+Trigger conditions: freelist > 15% of page_count AND user has been idle > 30 minutes
+(or at app startup if last VACUUM was > 7 days ago).
+
+#### C. FTS5 Optimization
+
+**C1. Cache table existence check:**
+
+The `search_fts` table is checked via `sqlite_master` on **every FTS operation** — thousands
+of queries per day. Cache this as an `AtomicBool` set once during initialization.
+
+```rust
+pub struct SqliteStorage {
+    conn: Arc<Mutex<Connection>>,
+    retention_days: u32,
+    fts_available: AtomicBool,       // Checked once at open()
+    gui_table_available: AtomicBool, // Checked once at open()
+}
+```
+
+**C2. FTS5 `merge` (hourly) + `optimize` (daily):**
+
+```sql
+-- Hourly: gentle incremental merge
+INSERT INTO search_fts(search_fts, rank) VALUES('merge', 500);
+
+-- Daily (idle window): full segment defragmentation
+INSERT INTO search_fts(search_fts) VALUES('optimize');
+
+-- Periodic WAL reclaim
+PRAGMA wal_checkpoint(TRUNCATE);
+```
+
+**C3. Korean language support — `trigram` tokenizer:**
+
+Current `porter unicode61` handles English stemming but does nothing for Korean morphology.
+The `trigram` tokenizer handles Hangul syllable blocks well (each syllable = 1 char,
+trigrams catch 3-syllable sequences). Options:
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| Replace with `trigram` | One table, Korean+English substring matching | Loses English stemming |
+| **Add second FTS5 table** | Best of both — `search_fts` for English, `search_fts_ko` for Korean | Doubles FTS storage |
+| Keep `porter unicode61` | No change | Korean search remains poor |
+
+**Recommendation:** Add a second FTS5 table with `trigram` tokenizer for Korean content.
+Detect language via simple Hangul Unicode range check (`\uAC00-\uD7A3`).
+
+#### D. Periodic `PRAGMA optimize`
+
+```sql
+-- Hourly: let SQLite update statistics for recently-queried tables
+PRAGMA optimize;
+```
+
+SQLite 3.46.0+ automatically applies `analysis_limit` to prevent long ANALYZE runs.
+No need to set `analysis_limit` manually.
+
+#### E. `ANALYZE` After Bulk Operations
+
+Run `ANALYZE` after:
+- IVF index builds (already does `wal_checkpoint(TRUNCATE)`, add `ANALYZE`)
+- Bulk retention enforcement (large DELETEs invalidate planner statistics)
+
+#### F. Read-Only Connection (architecture evolution)
+
+For vector search (10-50ms) and FTS queries that block the scheduler's 3-second write
+cycle, a dedicated read-only connection provides parallel read/write under WAL mode.
+
+```rust
+// Open with read-only flags
+let read_conn = Connection::open_with_flags(
+    &db_path,
+    OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_WAL,
+)?;
+read_conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+```
+
+Route all SELECT-only operations (dashboard, search, stats) through the read connection.
+The write connection retains the existing Mutex pattern.
+
+> **Note:** This is a future evolution, not part of the initial SQLite tuning phase.
+
+#### G. mmap Safety on External Drives
+
+> **CRITICAL:** The working directory is on `/Volumes/ext-PCIe4-1TB/` (external PCIe drive).
+> If the drive is ejected while the app is running with mmap active, the process crashes
+> with SIGBUS.
+
+**Mitigation:** Detect external/removable media at startup. If the database resides on a
+removable volume, reduce `mmap_size` to 0 (disable) or 64MB. On internal drives, retain
+256MB.
+
+```rust
+#[cfg(target_os = "macos")]
+fn is_external_volume(path: &Path) -> bool {
+    path.starts_with("/Volumes/")
+}
+```
+
+### 1.3 Architecture Impact
+
+**No new crates. No new ports. No schema migration.**
+
+| File | Change |
+|---|---|
+| `crates/oneshim-storage/src/sqlite/mod.rs` | Add PRAGMAs, FTS cache flags, mmap detection |
+| `crates/oneshim-storage/src/sqlite/fts_search_impl.rs` | Remove per-query existence checks, use cached `AtomicBool` |
+| `crates/oneshim-storage/src/sqlite/maintenance.rs` | Add `conditional_vacuum()`, `fts_merge()`, `fts_optimize()` |
+| `src-tauri/src/scheduler/loops.rs` | Call FTS merge (hourly), VACUUM check (idle), PRAGMA optimize (hourly) |
+| `crates/oneshim-storage/src/sqlite/vector_index_impl/build.rs` | Add `ANALYZE` after IVF build |
+
+### 1.4 Effort Estimate
+
+| Task | Estimate |
+|---|---|
+| PRAGMAs (journal_size_limit, optimize, mmap safety) | 0.5 day |
+| FTS existence caching | 0.5 day |
+| Conditional VACUUM + WAL checkpoint | 0.5 day |
+| FTS5 merge/optimize scheduling | 0.5 day |
+| FTS5 trigram Korean table | 1 day |
+| ANALYZE integration | 0.25 day |
+| Tests | 0.75 day |
+| **Total** | **4 days** |
+
+### 1.5 Phased Rollout
+
+| Phase | Scope |
+|---|---|
+| **A** | PRAGMAs + FTS existence caching + mmap safety (quick wins) |
+| **B** | Conditional VACUUM + FTS merge/optimize scheduling |
+| **C** | ANALYZE after bulk ops + Korean trigram FTS table |
+| **D** | Read-only connection (future, when query latency measured) |
+
+---
+
+## 2. USearch HNSW Vector Index (P1)
+
+### 2.1 Current State
 
 The codebase implements a 3-tier adaptive vector search system managed by
 `AdaptiveSearchCoordinator` in `crates/oneshim-analysis/src/adaptive_search.rs`:
@@ -29,103 +222,105 @@ The codebase implements a 3-tier adaptive vector search system managed by
 | `IvfInt8` | 10,000 -- 100,000 | IVF k-means++ clustering with nprobe partition scan |
 | `IvfBinaryRerank` | >= 100,000 | IVF + 2-bit Hamming filter + INT8 re-rank |
 
-**Port traits involved:**
+**Port traits:** `VectorStore` (109 LOC) + `VectorIndex` (135 LOC, IVF-centric).
+**Storage:** `SqliteVectorStore` + `SqliteVectorIndex` (both directory modules).
+**IVF infrastructure:** V16 migration tables (`ivf_centroids`, `ivf_assignments`,
+`vector_binary_codes`, `vector_index_meta`).
 
-- `VectorStore` (`crates/oneshim-core/src/ports/vector_store.rs`) -- CRUD + brute-force search + quantized search (109 LOC trait)
-- `VectorIndex` (`crates/oneshim-core/src/ports/vector_index.rs`) -- IVF build/search + binary codes (135 LOC trait)
+### 2.2 Library Selection: `usearch` (confirmed via deep research)
 
-**Storage adapters:**
+| Criterion | usearch | hnswlib-rs (fallback) |
+|---|---|---|
+| Type | C++ core + Rust FFI | Pure Rust |
+| SIMD | Full: AVX2/AVX-512/NEON/SVE (via SimSIMD) | LLVM auto-vectorization only |
+| INT8 support | Native i8, f16, bf16 | f32, f16, per-vector int8 |
+| Maintenance | Monthly releases (3,950+ commits) | Active (Jan 2026) |
+| Apple Silicon | Auto-detected NEON (3-8x speedup) | No explicit NEON |
+| Concurrency | Concurrent add + search (thread ID hint) | Lock-free reads + mutation |
+| Binary size | +2-5MB (C++ static lib) | +200-500KB (pure Rust) |
+| License | Apache-2.0 | Apache-2.0 / MIT |
 
-- `SqliteVectorStore` (`crates/oneshim-storage/src/sqlite/vector_store_impl/`) -- directory module with `mod.rs`, `trait_impl.rs`, `helpers.rs`, `tests.rs`
-- `SqliteVectorIndex` (`crates/oneshim-storage/src/sqlite/vector_index_impl/`) -- directory module with `mod.rs`, `build.rs`, `search.rs`, `metadata.rs`, `tests.rs`
+**Primary:** `usearch v2.24.0`. **Fallback:** `hnswlib-rs` if C++ build dependency
+is unacceptable (CI simplicity or pure-Rust policy).
 
-**IVF index infrastructure (V16 migration):**
+**Libraries NOT recommended:** `instant-distance` (dormant ~2y), `hora` (abandoned ~4y),
+`sqlite-vec` (brute-force only, no ANN, 17x slower than hand-rolled INT8).
 
-- `ivf_centroids` table -- INT8 centroid BLOBs with scale/offset
-- `ivf_assignments` table -- vector_id -> cluster_id mapping
-- `vector_binary_codes` table -- 2-bit Hamming codes per vector
-- `vector_index_meta` table -- build timestamps, vector counts
+### 2.3 Known Issues
 
-**Key observations from code audit:**
+> **⚠️ `Send + Sync`:** USearch's Rust `Index` is not natively `Send + Sync`.
+> Workaround required. Tracked in [usearch#482](https://github.com/unum-cloud/usearch/issues/482).
+> Solution: wrap in `unsafe impl Send/Sync` with documented safety invariants, or use
+> `Mutex<Index>` for exclusive access.
 
-1. IVF builds load ALL non-stale INT8 vectors into memory, run k-means++, then persist. This is O(n) memory.
-2. Search loads rows from probed clusters, then brute-forces within. Effective for 10K-100K, degrades at scale.
-3. The centroid cache uses `tokio::sync::RwLock` and is invalidated after rebuild.
-4. Binary codes add a Hamming pre-filter but are built from full dequantized f32 vectors (memory spike).
+> **⚠️ Thread crash:** If thread count exceeds `hardware_concurrency()`, USearch may
+> crash ([usearch#389](https://github.com/unum-cloud/usearch/issues/389)). Mitigate by
+> capping parallelism to `num_cpus::get() - 1` during index build.
 
-### 1.2 Proposed Change
+### 2.4 Proposed Change
 
-**Add HNSW as a fourth strategy that COMPLEMENTS IVF rather than replaces it.**
-
-The `usearch` crate provides a C++-backed HNSW implementation with sub-millisecond recall at desktop scale. It should be integrated as an alternative in-memory index that lives alongside the existing SQLite-backed IVF pipeline.
-
-**Strategy selection update:**
+**Add HNSW as a fourth strategy complementing IVF:**
 
 | Strategy | Vector Count Range | Index Type |
 |---|---|---|
 | `BruteForceInt8` | < 5,000 | None (scan all) |
-| `HnswFloat32` | 5,000 -- 50,000 | In-memory HNSW graph |
+| `HnswInt8` | 5,000 -- 50,000 | In-memory HNSW graph (usearch) |
 | `IvfInt8` | 50,000 -- 100,000 | SQLite-persisted IVF |
 | `IvfBinaryRerank` | >= 100,000 | IVF + Hamming + re-rank |
 
-**Why HNSW complements IVF rather than replacing it:**
+**Corrected memory analysis (384-dim, INT8 vectors):**
 
-- HNSW excels at low-to-mid vector counts (5K-50K) where IVF cluster selection adds overhead without proportional benefit.
-- IVF remains better at very high counts (>100K) because the graph construction cost of HNSW becomes significant and the memory overhead of the full graph is ~40 bytes/vector vs. ~4 bytes/vector for IVF assignments.
-- On a desktop with 16GB RAM, HNSW with 50K 384-dim f32 vectors uses ~75MB (vectors) + ~30MB (graph) = ~105MB, acceptable. At 200K vectors the graph alone would exceed 240MB, which is too aggressive for a background agent.
+| Vector Count | HNSW Graph | INT8 Vectors (in USearch) | Total Overhead | IVF Memory |
+|---|---|---|---|---|
+| 5,000 | ~0.7MB | ~1.8MB | **~2.5MB** | ~8MB |
+| 10,000 | ~1.3MB | ~3.7MB | **~5MB** | ~9MB |
+| 25,000 | ~3.4MB | ~9.2MB | **~13MB** | ~12MB |
+| 50,000 | ~6.7MB | ~18.4MB | **~25MB** | ~16MB |
 
-**Desktop memory crossover analysis (384-dim embeddings):**
+> **v1 correction:** Original spec estimated ~105MB for 50K vectors. Using INT8 vectors
+> (384 bytes/vector) instead of f32 (1,536 bytes/vector) reduces overhead to ~25MB.
 
-| Vector Count | HNSW Memory | IVF Memory | Winner |
-|---|---|---|---|
-| 5,000 | ~11MB | ~8MB | IVF (marginal) |
-| 10,000 | ~21MB | ~9MB | HNSW (search quality) |
-| 25,000 | ~53MB | ~12MB | HNSW (latency) |
-| 50,000 | ~105MB | ~16MB | HNSW (latency, but memory ceiling) |
-| 100,000 | ~210MB | ~20MB | IVF (memory) |
+### 2.5 Architecture Impact
 
-**Recommendation:** HNSW becomes worthwhile at ~5,000 vectors where brute-force starts to take >5ms, and should yield to IVF at ~50,000 where its memory footprint exceeds ~100MB.
-
-### 1.3 Architecture Impact
-
-**New port trait: NO.** HNSW is an implementation detail of `AdaptiveSearchCoordinator`, not a new port. The coordinator already holds `Arc<dyn VectorStore>` + `Arc<dyn VectorIndex>`. HNSW will be an internal field.
-
-**Modified files:**
+**Port trait decision:** Add HNSW-specific methods to existing `VectorIndex` trait rather
+than creating a new trait. This keeps the hexagonal boundary clean while allowing the
+coordinator to dispatch to HNSW or IVF as an implementation detail.
 
 | File | Change |
 |---|---|
-| `crates/oneshim-analysis/src/adaptive_search.rs` | Add `HnswFloat32` variant to `SearchStrategy`, add `HnswIndex` wrapper field, populate from VectorStore on refresh |
+| `crates/oneshim-analysis/src/adaptive_search.rs` | Add `HnswInt8` variant, `HnswIndex` wrapper field |
 | `crates/oneshim-analysis/Cargo.toml` | Add `usearch = { version = "2", optional = true }` |
-| `crates/oneshim-core/src/config/sections.rs` | Add `hnsw_enabled: bool` + `hnsw_max_vectors: usize` to `SearchConfig` |
+| `crates/oneshim-core/src/config/sections.rs` | Add `hnsw_enabled`, `hnsw_max_vectors` to `SearchConfig` |
+| `crates/oneshim-core/src/ports/vector_store.rs` | **Add dimensionality validation** (see §5.1) |
 
 **New files:**
 
 | File | Purpose |
 |---|---|
-| `crates/oneshim-analysis/src/hnsw_index.rs` | `HnswIndex` wrapper -- build from VectorStore rows, search, serialize/deserialize graph |
+| `crates/oneshim-analysis/src/hnsw_index.rs` | `HnswIndex` wrapper — build, search, serialize/load, Send+Sync shim |
 
-**No new crates.** No new port traits. No schema migration. The HNSW graph lives in memory only and is rebuilt on startup from the SQLite `embedding_vectors` table.
+**No new crates. No schema migration.** Feature-gated behind `hnsw` cargo feature (default: off).
 
-### 1.4 Migration/Compatibility
+### 2.6 Migration/Compatibility
 
-- Feature-gated behind `hnsw` cargo feature. Default: off.
-- When disabled, `AdaptiveSearchCoordinator` uses the existing 3-strategy ladder (no behavior change).
-- When enabled, the coordinator lazily builds the HNSW graph on first `refresh_count()` call if vector count is in the HNSW range.
-- Existing IVF tables (`ivf_centroids`, `ivf_assignments`, `vector_binary_codes`) remain untouched.
-- `SearchConfig.forced_strategy` gains a new valid value: `"hnsw"`.
+- When `hnsw` feature disabled: existing 3-strategy ladder unchanged.
+- HNSW graph is in-memory only, rebuilt on startup from SQLite `embedding_vectors` table.
+- Optional: persist serialized graph to disk for faster restart (Phase D).
+- `SearchConfig.forced_strategy` gains `"hnsw"` value.
+- Existing IVF tables remain untouched.
 
-### 1.5 Effort Estimate
+### 2.7 Effort Estimate
 
 | Task | Estimate |
 |---|---|
-| `HnswIndex` wrapper + integration | 2 days |
+| `HnswIndex` wrapper (build/search/serialize + Send+Sync shim) | 2 days |
 | `AdaptiveSearchCoordinator` strategy update | 1 day |
-| Config section updates + feature flag | 0.5 day |
+| Config + feature flag + dimensionality validation | 0.5 day |
 | Tests (unit + integration) | 1 day |
 | Benchmarks (brute-force vs HNSW vs IVF) | 0.5 day |
 | **Total** | **5 days** |
 
-### 1.6 Phased Rollout
+### 2.8 Phased Rollout
 
 | Phase | Scope |
 |---|---|
@@ -136,451 +331,333 @@ The `usearch` crate provides a C++-backed HNSW implementation with sub-milliseco
 
 ---
 
-## 2. Tauri IPC Optimization (P1)
-
-### 2.1 Current State
-
-The Tauri IPC layer is defined in `src-tauri/src/commands/` as a directory module with 6 sub-modules:
-
-| Module | Commands | Payload Characteristics |
-|---|---|---|
-| `dashboard.rs` | `get_dashboard_day`, `get_daily_digest`, `get_weekly_digest`, `semantic_search`, `create_override`, `delete_override`, `list_overrides`, `trigger_recluster` | Daily digest JSON (timeline + statistics), override lists |
-| `coaching.rs` | `dismiss_coaching_message`, `submit_coaching_feedback`, `set_overlay_mode`, `get_overlay_state`, `toggle_overlay_interactive`, `get_coaching_history`, `get_goal_progress`, `update_regime_goals` | Coaching event rows (paginated), goal progress arrays |
-| `settings.rs` | `get_settings`, `update_setting`, `get_allowed_setting_keys`, `get_web_port` | Full AppConfig JSON (redacted), setting patches |
-| `analysis.rs` | `get_analysis_config`, `update_analysis_config`, `get_analysis_status` | AnalysisConfig structs |
-| `system.rs` | `get_metrics`, `get_update_status`, `approve_update`, `defer_update`, `get_automation_status`, `get_secret_backend_capabilities`, `get_feature_capabilities`, `probe_provider_surface_endpoint` | MetricsResponse, FeatureCapabilitySnapshot |
-| `integration.rs` | `integration_auth_status`, `integration_start_device_authorization`, `integration_poll_device_authorization`, `integration_cancel_device_authorization`, `integration_reset_auth_state`, `oauth_*` (5 commands) | OAuth flow handles, connection status |
-
-**Largest payload analysis:**
-
-1. **`get_dashboard_day`** -- Generates a full `DailyDigest` from segments on-demand. Contains `timeline_json` (array of segment timetable entries, potentially 50+ segments/day with app breakdowns), `statistics_json` (aggregate stats), `insight_json`. Estimated 10-50 KB per response.
-
-2. **`get_settings`** -- Returns the full `AppConfig` struct serialized to JSON. With 20+ config sections, this is roughly 5-15 KB. Sent on every settings page open.
-
-3. **`get_coaching_history`** -- Returns `Vec<CoachingEventRow>` with default limit=50. Each row includes personalized_message text. Estimated 5-20 KB.
-
-4. **`get_weekly_digest`** -- Contains `stats_json` with per-day breakdown, `comparison_json`, and optional `llm_narrative`. Estimated 5-30 KB.
-
-5. **Frame thumbnails are NOT sent through IPC.** They are served via the Axum REST API (`crates/oneshim-web/src/handlers/frames.rs`). The `capture_thumbnail()` method in `processor.rs` returns raw WebP bytes, served at `http://localhost:10090/api/frames/:id/thumbnail`.
-
-**Current serialization path:** All IPC commands use Tauri's default JSON serialization (`serde_json`). Every response goes through `serde_json::to_value()` or Tauri's auto-serialize. There is no binary transport, no compression, no streaming.
-
-**Coaching overlay updates** use Tauri's event system (not IPC commands). The overlay state is small (mode + visibility boolean).
-
-### 2.2 Proposed Change
-
-Three optimization tiers:
-
-**Tier 1: Incremental Updates (largest win)**
-
-Replace full `get_dashboard_day` responses with delta-based updates. The dashboard currently fetches the entire day's data on each call. Instead:
-
-- Cache the last response hash in AppState
-- Add a `get_dashboard_day_if_changed(last_hash: String)` command that returns either `null` (unchanged) or the full payload
-- For settings, add `get_settings_version()` returning a monotonic counter, and only fetch full settings when the version changes
-
-**Tier 2: Pagination Enforcement**
-
-- `get_coaching_history` already supports `limit`/`offset` -- enforce smaller default (20 instead of 50)
-- Add pagination to `list_overrides` (currently returns all overrides in a 7-day window)
-
-**Tier 3: Binary Transport for Large Payloads (optional)**
-
-- For `get_weekly_digest`, consider using Tauri's `invoke` with `ArrayBuffer` return type via `tauri::ipc::Response::body(bytes)` to avoid JSON serialization overhead
-- This requires Tauri v2's raw response API and TypeScript-side `ArrayBuffer` handling
-
-### 2.3 Architecture Impact
-
-**No new crates. No new ports.**
-
-**Modified files:**
-
-| File | Change |
-|---|---|
-| `src-tauri/src/commands/dashboard.rs` | Add `get_dashboard_day_if_changed` with hash comparison |
-| `src-tauri/src/commands/settings.rs` | Add `get_settings_version` command |
-| `src-tauri/src/runtime_state.rs` | Add `dashboard_hash: AtomicU64` and `settings_version: AtomicU64` to `AppState` |
-| Frontend `src/lib/api.ts` (or equivalent) | Conditional fetch logic based on version/hash |
-
-### 2.4 Migration/Compatibility
-
-- All existing IPC commands remain unchanged (backward compatible).
-- New `*_if_changed` commands are additive.
-- Frontend can adopt incrementally -- old pages continue using full-fetch commands.
-
-### 2.5 Effort Estimate
-
-| Task | Estimate |
-|---|---|
-| Tier 1: Delta-based dashboard + settings version | 1.5 days |
-| Tier 2: Pagination enforcement | 0.5 day |
-| Tier 3: Binary transport (optional) | 1.5 days |
-| Frontend integration | 1 day |
-| **Total (Tier 1+2)** | **3 days** |
-| **Total (all tiers)** | **4.5 days** |
-
-### 2.6 Phased Rollout
-
-| Phase | Scope |
-|---|---|
-| **A** | Tier 1 -- hash-based conditional fetch for dashboard and settings |
-| **B** | Tier 2 -- pagination defaults, override list limits |
-| **C** | Tier 3 -- binary transport for weekly digest (if profiling justifies) |
-| **D** | Measure IPC latency before/after with Tauri DevTools |
-
----
-
 ## 3. Audio Capture + Whisper STT (P2)
+
+> **Crate renamed:** `oneshim-audio` → `oneshim-stt` (reflects STT-centric scope).
 
 ### 3.1 Current State
 
-The `oneshim-monitor` crate (`crates/oneshim-monitor/src/lib.rs`) provides system monitoring through 11 modules:
+No audio event type or port traits exist. The event model defines 8 types
+(User, System, Context, Input, Process, Window, Clipboard, FileAccess).
 
-- `activity.rs` -- `ActivityTracker` (idle detection)
-- `clipboard.rs` -- `ClipboardMonitor` (clipboard change tracking)
-- `file_access.rs` -- `FileAccessMonitor` (file system events)
-- `input_activity.rs` -- `InputActivityCollector` (mouse/keyboard counters)
-- `input_detail.rs` -- detailed input analysis
-- `key_hook/` -- global key hook (macOS/Windows/Linux)
-- `process.rs` -- `ProcessTracker` (active process/window)
-- `system.rs` -- `SysInfoMonitor` (CPU/memory/disk)
-- `window_layout.rs` -- `WindowLayoutTracker` (window position changes)
-- Platform-specific: `macos.rs`, `windows.rs`, `linux.rs`
+### 3.2 STT Engine Selection (deep research)
 
-The event model (`crates/oneshim-core/src/models/event.rs`) defines 8 event types:
+| Engine | Type | Latency (M4, 30s audio) | Accuracy (meeting WER) | Recommendation |
+|---|---|---|---|---|
+| **whisper-rs** (whisper.cpp) | C FFI | ~1.2s (tiny), ~5.4s (small) | 12% (tiny), 5-7% (small) | **Primary** |
+| candle (HF) | Pure Rust | ~2x slower | Similar | Viable fallback |
+| ONNX Runtime (`ort`) | C++ FFI | Competitive | Similar | Best for Windows (DirectML) |
+| sherpa-onnx | C FFI | <100ms (streaming Zipformer) | 8-10% | **Best for real-time streaming** |
+| vosk | C FFI | Low | Higher WER | Stalled development, skip |
+
+**Primary choice:** `whisper-rs` with quantized models (Q5_1 GGML format).
+
+**Model recommendation (corrected from v1):**
+
+| Model | Disk (Q5_1) | RAM | RTF (M4) | Meeting WER | Recommendation |
+|---|---|---|---|---|---|
+| tiny.en | ~40MB | ~120MB | ~0.04 | 12-15% | Too low for meetings |
+| base.en | ~80MB | ~200MB | ~0.08 | 8-10% | Minimum for clear 1:1 calls |
+| **small.en** | **~250MB** | **~500MB** | **~0.18** | **5-7%** | **Default — best tradeoff** |
+| medium.en | ~750MB | ~1.5GB | ~0.55 | 4-5% | Optional high-accuracy |
+
+> **v1 correction:** tiny.en (75MB) is **insufficient** for meeting transcription.
+> Default should be **small.en Q5_1** (~250MB disk, ~500MB RAM, WER 5-7%).
+
+### 3.3 Audio Capture Architecture
+
+#### Platform-specific capture:
+
+| Platform | Microphone | System Audio (loopback) | Permission |
+|---|---|---|---|
+| macOS | `cpal` (CoreAudio) | **ScreenCaptureKit** (`SCStream`) | TCC `kTCCServiceMicrophone` + `kTCCServiceScreenCapture` |
+| Windows | `cpal` (WASAPI) | `cpal` WASAPI loopback (native) | Standard consent dialog |
+| Linux | `cpal` (PulseAudio) | PulseAudio monitor source | None required |
+
+> **⚠️ macOS TCC concern:** ScreenCaptureKit's permission dialog says "screen recording"
+> even when only capturing audio. This can confuse users. Mitigate with clear in-app
+> explanation before triggering the dialog.
+
+> **v1 gap:** macOS system audio capture requires **ScreenCaptureKit** (macOS 13+).
+> CoreAudio alone cannot do loopback without a virtual audio driver.
+
+#### Dual-stream capture for meetings:
+
+To capture both sides of a meeting conversation:
+1. ScreenCaptureKit / WASAPI loopback for remote audio (what you hear)
+2. `cpal` microphone for local audio (what you say)
+3. Mix both streams before feeding to STT
+
+### 3.4 Voice Activity Detection (corrected from v1)
+
+> **v1 correction:** Energy + zero-crossing is inaccurate in noisy environments.
+> Use **Silero VAD** (ONNX, 2MB model) via `ort` crate instead.
+
+| VAD Method | Accuracy | Latency | Dependency |
+|---|---|---|---|
+| Energy + zero-crossing | Low (high false positives) | Microseconds | None |
+| **Silero VAD (ONNX)** | **High** | **<1ms per 30ms frame** | **`ort` crate (2MB model)** |
+| WebRTC VAD | Medium | Fast | `webrtc-vad` crate |
+
+**Pipeline:**
 
 ```
-Event::User | Event::System | Event::Context | Event::Input
-Event::Process | Event::Window | Event::Clipboard | Event::FileAccess
+Audio Input (cpal / ScreenCaptureKit)
+    → Resampler (16kHz mono, via rubato)
+    → Ring Buffer (30s circular)
+    → Silero VAD (per 30ms frame)
+        ├─ silence → skip
+        └─ speech → accumulate → Segment Buffer
+                                    → (300ms silence) → whisper-rs inference
+                                                            → Transcript Event
 ```
 
-There is no audio event type. No audio-related port traits exist.
+### 3.5 Port Traits (corrected from v1)
 
-**Port traits relevant to capture pipelines:**
-
-- `SystemMonitor` -- CPU/memory/disk snapshots
-- `ProcessMonitor` -- active window/process info
-- `ActivityMonitor` -- idle/active state
-- `CaptureTrigger` -- visual capture importance scoring
-- `FrameProcessor` -- screen capture pipeline
-
-### 3.2 Proposed Change
-
-**Create a new `oneshim-audio` crate** rather than extending `oneshim-monitor`. Rationale:
-
-1. Audio capture has heavy native dependencies (`cpal` for cross-platform audio, `whisper-rs` for STT) that would bloat the monitor crate's compile time.
-2. The audio pipeline has a fundamentally different data flow: continuous stream -> VAD -> chunk -> transcribe -> emit event. This is unlike the polling model of system/process monitors.
-3. Feature-gating audio at the crate level is cleaner than conditional compilation within monitor.
-
-**Architecture placement:**
-
-```
-oneshim-core  <--  oneshim-audio (new)
-                     |
-                     +-- capture.rs   (cpal audio stream, ring buffer)
-                     +-- vad.rs       (Voice Activity Detection, energy + zero-crossing)
-                     +-- transcribe.rs (whisper-rs STT, beam search)
-                     +-- privacy.rs   (speaker diarization opt-out, PII masking)
-```
-
-**New port trait in oneshim-core:**
+> **v1 correction:** Single `AudioCapture` trait → **3 separate traits** for hexagonal
+> architecture compliance (single responsibility).
 
 ```rust
+/// Audio source abstraction (microphone, system audio, file)
 #[async_trait]
-pub trait AudioCapture: Send + Sync {
-    /// Start capturing audio from the default input device.
-    /// Returns a receiver for transcription events.
+pub trait AudioCaptureSource: Send + Sync {
     async fn start(&self) -> Result<(), CoreError>;
-
-    /// Stop capturing.
     async fn stop(&self) -> Result<(), CoreError>;
-
-    /// Check if audio capture is currently active.
     fn is_active(&self) -> bool;
+    fn sample_rate(&self) -> u32;
+}
+
+/// Voice Activity Detection
+pub trait VoiceActivityDetector: Send + Sync {
+    /// Returns speech probability (0.0-1.0) for an audio frame.
+    fn detect(&self, samples: &[f32]) -> f32;
+    fn frame_size_samples(&self) -> usize;
+}
+
+/// Speech-to-Text transcription
+#[async_trait]
+pub trait SpeechRecognizer: Send + Sync {
+    async fn transcribe(&self, audio: &[f32], sample_rate: u32)
+        -> Result<TranscriptionResult, CoreError>;
+    fn model_name(&self) -> &str;
 }
 ```
 
-**New event variant:**
+### 3.6 Architecture Impact
 
-```rust
-pub enum Event {
-    // ... existing variants ...
-    Audio(AudioTranscriptEvent),
-}
+**New crate:** `crates/oneshim-stt/`
 
-pub struct AudioTranscriptEvent {
-    pub timestamp: DateTime<Utc>,
-    pub duration_secs: f32,
-    pub transcript: String,
-    pub confidence: f32,
-    pub language: String,
-    pub is_meeting: bool,
-}
+```
+oneshim-core  <--  oneshim-stt (new)
+                     ├── capture/
+                     │   ├── mod.rs          (platform dispatch)
+                     │   ├── microphone.rs   (cpal input)
+                     │   ├── system_audio.rs (ScreenCaptureKit / WASAPI loopback)
+                     │   └── mixer.rs        (dual-stream mixing)
+                     ├── vad.rs              (Silero VAD via ort)
+                     ├── transcribe.rs       (whisper-rs STT)
+                     └── privacy.rs          (PII masking, consent check)
 ```
 
-**Integration with analysis pipeline:**
+**New port traits** in `crates/oneshim-core/src/ports/`:
+- `audio_capture.rs` — `AudioCaptureSource`
+- `vad.rs` — `VoiceActivityDetector`
+- `speech.rs` — `SpeechRecognizer`
 
-Transcribed text feeds into the analysis pipeline via two paths:
-
-1. **ContentTracker** (`crates/oneshim-analysis/src/content_tracker.rs`) -- audio transcripts are treated as content activities alongside OCR text and window titles. The `ContentActivity` model already has a `content_type` field; add `AudioTranscript` variant.
-
-2. **ContextAssembler** (`crates/oneshim-analysis/src/context_assembler.rs` or equivalent) -- audio context enriches the segment summary. When a segment contains audio transcripts, the LLM summary prompt includes them as supplementary context.
-
-3. **FTS indexing** -- transcribed text is indexed in the `search_fts` table via `sync_segment_enriched`, which already gathers window titles, GUI element text, and suggestion content. Audio transcripts would be a fourth source.
-
-### 3.3 Architecture Impact
-
-**New crate:** `crates/oneshim-audio/`
-
-**New port trait:** `AudioCapture` in `crates/oneshim-core/src/ports/audio.rs`
-
-**New event variant:** `Event::Audio(AudioTranscriptEvent)` in `crates/oneshim-core/src/models/event.rs`
-
-**Modified files:**
-
-| File | Change |
-|---|---|
-| `Cargo.toml` (workspace) | Add `oneshim-audio` member |
-| `crates/oneshim-core/src/ports/mod.rs` | Add `pub mod audio;` |
-| `crates/oneshim-core/src/models/event.rs` | Add `Audio(AudioTranscriptEvent)` variant |
-| `crates/oneshim-core/src/config/sections.rs` | Add `AudioConfig` section |
-| `crates/oneshim-storage/src/migration.rs` | V18: `audio_transcripts` table |
-| `crates/oneshim-storage/src/sqlite/fts_search_impl.rs` | Add `collect_audio_transcripts()` to enriched FTS sync |
-| `src-tauri/src/main.rs` | Conditional DI wiring for audio adapter |
-| `src-tauri/src/scheduler/loops.rs` | Add audio processing loop (if audio enabled) |
-
-**New dependencies (oneshim-audio):**
+**New dependencies (oneshim-stt):**
 
 | Crate | Purpose | Size Impact |
 |---|---|---|
 | `cpal` | Cross-platform audio capture | ~500KB |
-| `whisper-rs` | Whisper.cpp bindings for STT | ~5MB (with model download) |
-| `rubato` | Sample rate conversion | ~100KB |
+| `whisper-rs` | Whisper.cpp bindings for STT | ~5MB |
+| `ort` | ONNX Runtime (for Silero VAD) | ~100MB (shared lib) |
+| `rubato` | Sample rate conversion (→16kHz) | ~100KB |
 
-### 3.4 Migration/Compatibility
+> **Note:** `ort` is a large dependency. If oneshim-stt is feature-gated (default: off),
+> this only impacts builds with the `stt` feature enabled.
 
-- Feature-gated behind `audio` cargo feature. Default: off. The `oneshim-audio` crate is only compiled and linked when the feature is enabled.
-- Whisper model download is handled at first-run via the existing `updater/` infrastructure. The `tiny.en` model (75MB) is sufficient for meeting transcription. Larger models (`base.en` at 142MB) can be selected via config.
-- Privacy: audio capture is disabled by default and requires explicit user opt-in via config. GDPR consent check integrates with the existing `ConsentManager`.
-- Schema migration V18 is additive (new table). No existing data affected.
-- The `Event::Audio` variant uses `#[serde(tag = "type")]` like all existing variants; old clients that don't understand this tag will skip it via `serde(other)`.
+### 3.7 Resource Budget
 
-### 3.5 Effort Estimate
+| Component | Disk | RAM | CPU (idle) | CPU (active) |
+|---|---|---|---|---|
+| whisper-rs (small.en Q5_1) | 250MB | 500MB | 0% | 30-60% (1 core) |
+| Silero VAD (ONNX) | 2MB | 10MB | <1% | <1% |
+| Audio buffer (30s) | 0 | 2MB | <1% | <1% |
+| **Total** | **~252MB** | **~512MB** | **<2%** | **30-60%** |
+
+### 3.8 Effort Estimate
 
 | Task | Estimate |
 |---|---|
-| `oneshim-audio` crate skeleton + port trait | 1 day |
-| Audio capture with `cpal` + ring buffer | 2 days |
-| VAD (Voice Activity Detection) | 1 day |
-| Whisper STT integration | 2 days |
+| `oneshim-stt` crate skeleton + 3 port traits | 1 day |
+| Audio capture (cpal + ScreenCaptureKit FFI) | 2.5 days |
+| Silero VAD integration (ort) | 1 day |
+| Whisper STT integration (whisper-rs) | 2 days |
+| Dual-stream mixer | 1 day |
 | Privacy controls (PII masking, consent) | 1 day |
 | Analysis pipeline integration (ContentTracker, FTS) | 1 day |
-| Schema migration V18 + storage adapter | 1 day |
+| Schema V18 + storage adapter | 1 day |
 | DI wiring + scheduler loop | 0.5 day |
 | Tests (unit + integration) | 1.5 days |
-| **Total** | **11 days** |
+| **Total** | **12.5 days** |
 
-### 3.6 Phased Rollout
+### 3.9 Phased Rollout
 
 | Phase | Scope |
 |---|---|
-| **A** | Port trait + event model + config section. Crate skeleton. Feature flag. |
-| **B** | `cpal` audio capture + ring buffer + VAD. Manual testing on macOS/Windows. |
-| **C** | Whisper STT integration with `tiny.en` model. Transcription accuracy validation. |
-| **D** | Analysis pipeline integration (ContentTracker + FTS enrichment). |
-| **E** | Privacy controls, consent integration, schema migration. |
-| **F** | Meeting detection heuristics (multi-speaker, duration thresholds). |
+| **A** | Port traits + event model + config section. Crate skeleton. Feature flag. |
+| **B** | `cpal` microphone capture + ring buffer + Silero VAD. macOS/Windows testing. |
+| **C** | whisper-rs STT with small.en Q5_1. Accuracy validation. |
+| **D** | ScreenCaptureKit system audio (macOS) + WASAPI loopback (Windows). Dual-stream mixer. |
+| **E** | Analysis pipeline integration (ContentTracker + FTS enrichment). |
+| **F** | Privacy controls, consent, schema V18. Meeting detection heuristics. |
 
 ---
 
-## 4. SQLite Performance Tuning (P2)
+## 4. Tauri IPC Optimization (P3)
+
+> **Priority change:** P1 → P3. Deep analysis reveals payloads are 10-50KB (small),
+> serialization is already efficient via serde_json, and the optimization ROI is low
+> compared to SQLite tuning and HNSW.
 
 ### 4.1 Current State
 
-**PRAGMA configuration** (from `crates/oneshim-storage/src/sqlite/mod.rs` line 63-72):
+All IPC payloads are in the 5-50KB range. Frame thumbnails are served via REST (not IPC).
+Coaching overlay uses Tauri events (tiny payloads). The largest payload
+(`get_dashboard_day`) is 10-50KB depending on segment count.
 
-```sql
-PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA cache_size=8000;       -- 8000 pages = ~32MB at default 4KB page size
-PRAGMA temp_store=MEMORY;
-PRAGMA mmap_size=268435456;   -- 256MB memory-mapped I/O
-PRAGMA page_size=4096;        -- 4KB pages
-```
+### 4.2 Remaining Value
 
-**Assessment of each PRAGMA:**
+**Tier 1 (conditional fetch):** Still valid but low priority. Hash-based `if_changed`
+pattern avoids redundant re-serialization when dashboard is polled frequently.
 
-| PRAGMA | Current Value | Assessment |
-|---|---|---|
-| `journal_mode=WAL` | Correct | Optimal for concurrent read/write workload |
-| `synchronous=NORMAL` | Correct | Good balance of safety/performance for WAL mode |
-| `cache_size=8000` | Adequate | 32MB cache. Could increase to 16000 (64MB) on desktops with >8GB RAM |
-| `temp_store=MEMORY` | Correct | Avoids temp file I/O for sorts and joins |
-| `mmap_size=268435456` | Set (256MB) | Already configured -- good for large DBs |
-| `page_size=4096` | OK | 4KB is default. Note: this PRAGMA only takes effect on new databases; existing DBs ignore it |
+**Tier 2 (pagination):** `list_overrides` returns unbounded results in 7-day window.
+Add `limit`/`offset` parameters.
 
-**Missing PRAGMAs:**
+**Potential N+1 query:** `record_to_segment_summary()` in `dashboard.rs` is called
+per-segment. Investigate whether it performs additional database queries.
 
-| PRAGMA | Recommended Value | Reason |
-|---|---|---|
-| `PRAGMA wal_autocheckpoint` | `1000` (default) | Currently using default. Could tune based on write frequency |
-| `PRAGMA busy_timeout` | `5000` | Not set. Without this, concurrent writes get SQLITE_BUSY immediately |
-| `PRAGMA optimize` | Run periodically | Not currently called. SQLite's built-in query planner optimization |
-
-**VACUUM status:** There is no scheduled VACUUM in the codebase. The `maintenance.rs` file (`crates/oneshim-storage/src/sqlite/maintenance.rs`) contains backup/export operations but no VACUUM logic. Manual WAL checkpoints are performed in the IVF index build (`build.rs` line 176: `PRAGMA wal_checkpoint(TRUNCATE)`).
-
-**FTS5 indexing strategy** (from `crates/oneshim-storage/src/sqlite/fts_search_impl.rs`):
-
-```sql
-CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
-    segment_id UNINDEXED,
-    content_type,
-    searchable_text,
-    tokenize='porter unicode61'
-);
-```
-
-- Uses Porter stemming + Unicode tokenization -- good for English
-- `segment_id` is `UNINDEXED` (metadata column, not searchable) -- correct
-- Enriched indexing gathers from 4 sources: base text, window titles, GUI element text, suggestion content
-- FTS sync uses DELETE-then-INSERT (not INSERT OR REPLACE) due to FTS5's append-only architecture
-- Table existence is checked before every query (`SELECT COUNT(*) > 0 FROM sqlite_master`) -- unnecessary overhead after first check
-
-**Schema status:** V1-V17 (17 migrations). 25+ tables. Notable indexes:
-
-- V7 added composite indexes for common query patterns (events sent+timestamp, work_sessions state+started)
-- V7 added partial indexes (`WHERE resumed_at IS NULL`)
-- Embedding vectors have indexes on segment_id, timestamp, model_id, is_stale
-- IVF assignments indexed on cluster_id
-
-### 4.2 Proposed Change
-
-**A. Add missing PRAGMAs:**
-
-```sql
-PRAGMA busy_timeout=5000;     -- Wait up to 5s on lock contention
-PRAGMA optimize;              -- Run at startup after migrations
-```
-
-`busy_timeout` is critical for preventing SQLITE_BUSY errors when the scheduler's write loops and the web dashboard's read queries contend. Currently, the single-connection Mutex serializes access, but if a read-only connection is added in the future (as noted in the code comments), `busy_timeout` becomes essential.
-
-**B. Scheduled incremental VACUUM:**
-
-Add `PRAGMA incremental_vacuum(100);` to the scheduler's aggregate loop (runs every 60 seconds). This reclaims up to 100 free pages per cycle without the full-table lock of `VACUUM`.
-
-Also add a monthly full `VACUUM` triggered by checking `PRAGMA freelist_count` -- if free pages exceed 20% of total pages, run a full vacuum during idle time.
-
-**C. Optimize FTS5 operations:**
-
-1. **Cache table existence check.** The `search_fts` and `gui_interactions` tables are checked for existence on every FTS operation. Instead, check once at startup and store the result in `SqliteStorage`:
-
-```rust
-pub struct SqliteStorage {
-    conn: Arc<Mutex<Connection>>,
-    retention_days: u32,
-    fts_available: bool,        // Checked once at open()
-    gui_table_available: bool,  // Checked once at open()
-}
-```
-
-2. **Use FTS5 `optimize` command** periodically to merge b-tree segments:
-
-```sql
-INSERT INTO search_fts(search_fts) VALUES('optimize');
-```
-
-This should run during the daily aggregate cycle, not on every sync.
-
-**D. Dynamic cache_size based on available RAM:**
-
-```rust
-let available_mb = sysinfo::System::new_all().available_memory() / 1_048_576;
-let cache_pages = if available_mb > 8192 {
-    16000  // 64MB cache on machines with 8GB+ free
-} else if available_mb > 4096 {
-    12000  // 48MB cache
-} else {
-    8000   // 32MB cache (current default)
-};
-```
-
-**E. `ANALYZE` after bulk operations:**
-
-Run `ANALYZE` after IVF index builds and after bulk retention enforcement to keep the query planner's statistics current.
-
-### 4.3 Architecture Impact
-
-**No new crates. No new ports. No schema migration.**
-
-**Modified files:**
-
-| File | Change |
-|---|---|
-| `crates/oneshim-storage/src/sqlite/mod.rs` | Add `busy_timeout`, `PRAGMA optimize`, FTS availability cache |
-| `crates/oneshim-storage/src/sqlite/fts_search_impl.rs` | Remove per-query existence checks, use cached flag |
-| `crates/oneshim-storage/src/sqlite/maintenance.rs` | Add `incremental_vacuum()` and `full_vacuum_if_needed()` methods |
-| `src-tauri/src/scheduler/loops.rs` (or `crates/oneshim-app/src/scheduler/loops.rs`) | Call incremental vacuum in aggregate loop, monthly full vacuum check |
-| `crates/oneshim-storage/src/sqlite/vector_index_impl/build.rs` | Add `ANALYZE` after IVF build |
-
-### 4.4 Migration/Compatibility
-
-- All PRAGMA changes are applied at connection open time. No schema migration needed.
-- `busy_timeout` only matters if a second connection is opened in the future (currently single-connection design).
-- Incremental vacuum is a no-op if there are no free pages.
-- FTS5 `optimize` is safe to call concurrently with reads.
-- Dynamic `cache_size` is strictly better than static -- no backward compatibility concern.
-
-### 4.5 Effort Estimate
+### 4.3 Effort Estimate
 
 | Task | Estimate |
 |---|---|
-| PRAGMA additions (busy_timeout, optimize) | 0.25 day |
-| FTS existence caching | 0.5 day |
-| Incremental + conditional full VACUUM | 1 day |
-| Dynamic cache_size | 0.25 day |
-| ANALYZE integration | 0.25 day |
-| FTS5 periodic optimize | 0.25 day |
-| Tests | 0.5 day |
-| **Total** | **3 days** |
+| Tier 1: Conditional fetch (dashboard + settings) | 1.5 days |
+| Tier 2: Pagination for overrides | 0.5 day |
+| N+1 investigation + fix | 0.5 day |
+| **Total** | **2.5 days** |
 
-### 4.6 Phased Rollout
+### 4.4 Phased Rollout
 
 | Phase | Scope |
 |---|---|
-| **A** | PRAGMA additions + FTS existence caching (quick wins) |
-| **B** | Incremental vacuum in scheduler + conditional full vacuum |
-| **C** | Dynamic cache_size + ANALYZE after bulk ops |
-| **D** | FTS5 optimize scheduling + performance measurement |
+| **A** | Investigate N+1 query in `record_to_segment_summary()` |
+| **B** | Pagination for `list_overrides` |
+| **C** | Conditional fetch (if profiling shows benefit) |
+
+---
+
+## 5. Cross-Cutting Improvements
+
+These gaps were discovered during the architecture audit and apply across all improvements.
+
+### 5.1 Vector Dimensionality Validation
+
+**Gap:** `VectorStore::store()` accepts any vector length without validating dimensions.
+If the embedding model changes (e.g., 384-dim → 768-dim), stale vectors with wrong
+dimensions silently corrupt the index.
+
+**Fix:** Add dimension check in `store_quantized()`:
+
+```rust
+const EXPECTED_DIM: usize = 384;
+
+fn store_quantized(&self, vector: &QuantizedVector) -> Result<(), CoreError> {
+    if vector.int8.len() != EXPECTED_DIM {
+        return Err(CoreError::InvalidInput(format!(
+            "expected {EXPECTED_DIM}-dim vector, got {}",
+            vector.int8.len()
+        )));
+    }
+    // ... existing store logic
+}
+```
+
+### 5.2 Observability Framework
+
+**Gap:** No performance metrics collection. Cannot measure improvement impact.
+
+**Recommendation:** Add `tracing::instrument` spans around key operations:
+
+| Operation | Target Latency | Current Instrumentation |
+|---|---|---|
+| Vector brute-force search | <5ms | None |
+| IVF search | <10ms | `tracing::debug!` only |
+| FTS5 search | <50ms | None |
+| HNSW search (future) | <1ms | N/A |
+| Dashboard digest generation | <100ms | None |
+| IVF index build | <10s | `tracing::info!` |
+
+Add `#[instrument(skip(self))]` to async search/build methods before implementing
+improvements so we can measure before/after.
+
+### 5.3 GDPR `delete_all_data()` Verification
+
+**Gap flagged by audit:** The audit found potential missing tables in `delete_all_data()`.
+Previous session added 35 tables — needs verification against current V17 schema to
+confirm completeness. All 4 new V17 tables (`coaching_events`, `regime_goals`,
+`coaching_effectiveness`) were explicitly added during the 2026-03-19/20/21 session.
+
+**Action:** Run a verification query at test time:
+
+```sql
+SELECT name FROM sqlite_master WHERE type='table'
+  AND name NOT IN (/* list of tables covered by delete_all_data */)
+  AND name NOT LIKE 'sqlite_%'
+  AND name NOT LIKE 'search_fts%';
+```
 
 ---
 
 ## Summary
 
-| Improvement | Priority | Effort | New Crate | New Port | Schema Change |
-|---|---|---|---|---|---|
-| USearch HNSW Vector Index | P1 | 5 days | No | No | No |
-| Tauri IPC Optimization | P1 | 3-4.5 days | No | No | No |
-| Audio Capture + Whisper STT | P2 | 11 days | Yes (`oneshim-audio`) | Yes (`AudioCapture`) | Yes (V18) |
-| SQLite Performance Tuning | P2 | 3 days | No | No | No |
-| **Total** | | **22-23.5 days** | | | |
+| # | Improvement | Priority | Effort | New Crate | New Port | Schema |
+|---|---|---|---|---|---|---|
+| 1 | SQLite Performance Tuning | **P1** | 4 days | No | No | No |
+| 2 | USearch HNSW Vector Index | **P1** | 5 days | No | No | No |
+| 3 | Audio Capture + Whisper STT | **P2** | 12.5 days | Yes (`oneshim-stt`) | Yes (3 traits) | Yes (V18) |
+| 4 | Tauri IPC Optimization | **P3** | 2.5 days | No | No | No |
+| 5 | Cross-cutting (validation, observability) | **P1** | 1.5 days | No | No | No |
+| | **Total** | | **25.5 days** | | | |
 
 ### Dependency Graph
 
 ```
-SQLite Perf Tuning (independent, can start immediately)
-    |
-    v
-USearch HNSW (depends on stable vector store, benefits from tuned SQLite)
-    |
-    v
-Tauri IPC (independent, can parallelize with HNSW)
+Cross-cutting (§5, independent, start immediately)
 
-Audio Capture (fully independent, long lead time)
+SQLite Tuning (§1, independent, start immediately)
+    │
+    ▼
+USearch HNSW (§2, benefits from tuned SQLite)
+
+Tauri IPC (§4, independent, low priority)
+
+Audio + STT (§3, fully independent, long lead time)
 ```
 
 ### Recommended Execution Order
 
-1. **SQLite Performance Tuning** -- Quick wins, low risk, improves foundation
-2. **Tauri IPC Optimization (Tier 1+2)** -- Immediate UX improvement
-3. **USearch HNSW Vector Index** -- Search quality improvement on existing data
-4. **Audio Capture + Whisper STT** -- New capability, longest implementation
+1. **Cross-cutting** (§5) — Observability + dimensionality validation (1.5 days)
+2. **SQLite Tuning** (§1) — Quick wins, foundation improvement (4 days)
+3. **USearch HNSW** (§2) — Search quality on tuned foundation (5 days)
+4. **Audio + STT** (§3) — New capability, largest effort (12.5 days)
+5. **Tauri IPC** (§4) — Only if profiling justifies (2.5 days)
+
+### Research Sources
+
+- USearch: [GitHub](https://github.com/unum-cloud/USearch), issues [#482](https://github.com/unum-cloud/usearch/issues/482), [#389](https://github.com/unum-cloud/usearch/issues/389)
+- hnswlib-rs: [GitHub](https://github.com/jean-pierreBoth/hnswlib-rs)
+- sqlite-vec: [GitHub](https://github.com/asg017/sqlite-vec), ANN [tracking #25](https://github.com/asg017/sqlite-vec/issues/25)
+- SQLite: [PRAGMA docs](https://sqlite.org/pragma.html), [FTS5](https://www.sqlite.org/fts5.html), [WAL](https://sqlite.org/wal.html), [mmap safety](https://sqlite.org/mmap.html)
+- whisper-rs: [GitHub](https://github.com/tazz4843/whisper-rs)
+- Silero VAD: [GitHub](https://github.com/snakers4/silero-vad)
+- ScreenCaptureKit: [Apple docs](https://developer.apple.com/documentation/screencapturekit)
