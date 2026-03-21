@@ -404,6 +404,60 @@ impl FrameFileStorage {
         Ok(deleted_count)
     }
 
+    /// Delete all frame files for GDPR compliance.
+    ///
+    /// Removes every date-directory under `<base>/frames/`. This is best-effort:
+    /// individual directory removal failures are logged as warnings but do not
+    /// abort the overall operation, and the returned count reflects only the
+    /// directories that were successfully removed.
+    pub async fn delete_all_files(&self) -> Result<usize, CoreError> {
+        let frames_dir = self.base_dir.join("frames");
+        if !frames_dir.exists() {
+            return Ok(0);
+        }
+
+        let dirs = list_date_dirs(&frames_dir).await?;
+        if dirs.is_empty() {
+            return Ok(0);
+        }
+
+        let mut deleted = 0usize;
+        for chunk in dirs.chunks(PARALLEL_DELETE_LIMIT) {
+            let mut handles = Vec::with_capacity(chunk.len());
+            for dir_name in chunk {
+                let dir_path = frames_dir.join(dir_name);
+                handles.push(tokio::spawn(async move {
+                    let count = count_files_in_dir(&dir_path).await;
+                    match fs::remove_dir_all(&dir_path).await {
+                        Ok(()) => Some(count),
+                        Err(e) => {
+                            warn!(
+                                "GDPR frame file delete warning: {} — {}",
+                                dir_path.display(),
+                                e
+                            );
+                            None
+                        }
+                    }
+                }));
+            }
+            for handle in handles {
+                if let Ok(Some(count)) = handle.await {
+                    deleted += count;
+                }
+            }
+        }
+
+        if deleted > 0 {
+            info!(
+                "GDPR: deleted {deleted} frame files across {} directories",
+                dirs.len()
+            );
+        }
+
+        Ok(deleted)
+    }
+
     pub fn frames_dir(&self) -> PathBuf {
         self.base_dir.join("frames")
     }
@@ -656,5 +710,40 @@ mod tests {
 
         let buf3 = pool.acquire();
         assert!(buf3.capacity() >= 1024);
+    }
+
+    #[tokio::test]
+    async fn delete_all_files_empty_storage() {
+        let (storage, _temp) = create_test_storage().await;
+
+        let deleted = storage.delete_all_files().await.unwrap();
+        assert_eq!(deleted, 0);
+    }
+
+    #[tokio::test]
+    async fn delete_all_files_removes_frames() {
+        let (storage, _temp) = create_test_storage().await;
+
+        // Save several frames across multiple dates
+        let now = Utc::now();
+        let yesterday = now - chrono::Duration::days(1);
+        storage.save_frame(now, b"frame-today-1").await.unwrap();
+        storage.save_frame(now, b"frame-today-2").await.unwrap();
+        storage
+            .save_frame(yesterday, b"frame-yesterday")
+            .await
+            .unwrap();
+
+        // Verify frames directory has date-dirs before deletion
+        let frames_dir = storage.frames_dir();
+        let dirs_before = list_date_dirs(&frames_dir).await.unwrap();
+        assert!(!dirs_before.is_empty());
+
+        let deleted = storage.delete_all_files().await.unwrap();
+        assert_eq!(deleted, 3);
+
+        // Verify frames directory is now empty (no date dirs left)
+        let remaining = list_date_dirs(&frames_dir).await.unwrap();
+        assert!(remaining.is_empty());
     }
 }
