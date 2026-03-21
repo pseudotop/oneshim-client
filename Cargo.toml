@@ -122,6 +122,7 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "linux-
 
 # Linux AT-SPI2 accessibility (D-Bus based)
 atspi = { version = "0.29", default-features = false, features = ["tokio"] }
+atspi-common = { version = "0.13", default-features = false }
 
 # 성능 최적화 (Phase 31-33)
 lru = "0.16"

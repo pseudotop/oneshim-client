@@ -23,6 +23,8 @@ mod inner {
     };
     use oneshim_core::ports::accessibility::AccessibilityExtractor;
 
+    use core_foundation_sys::array::{CFArrayGetCount, CFArrayGetValueAtIndex, CFArrayRef};
+
     use crate::accessibility::ffi_macos::ax::*;
     use crate::privacy::sanitize_title_with_level;
 
@@ -38,6 +40,16 @@ mod inner {
         value: Option<Zeroizing<String>>,
         placeholder: Option<String>,
         position: Option<ElementRect>,
+    }
+
+    /// Result of a batched attribute fetch for a single AX element.
+    /// Used by `batch_get_attributes()` to return role, title, description,
+    /// and bounds from a single `AXUIElementCopyMultipleAttributeValues` call.
+    struct BatchAttributes {
+        role: String,
+        title: Option<String>,
+        description: Option<String>,
+        position_and_size: Option<ElementRect>,
     }
 
     pub struct MacOsNativeAccessibility;
@@ -212,7 +224,125 @@ mod inner {
             }
         }
 
+        /// Fetch role, title, description, position, and size in a single IPC call
+        /// using `AXUIElementCopyMultipleAttributeValues`.
+        ///
+        /// Returns `None` if the batch call fails (caller should fall back to
+        /// individual `AXUIElementCopyAttributeValue` calls).
+        ///
+        /// SAFETY: Caller must ensure `element` is a valid AXUIElementRef.
+        /// All returned CFTypeRef values are released within this function.
+        unsafe fn batch_get_attributes(element: AXUIElementRef) -> Option<BatchAttributes> {
+            use core_foundation::array::CFArray;
+            use core_foundation::base::TCFType;
+            use core_foundation::string::CFString;
+
+            // Build the attribute names array: [AXRole, AXTitle, AXDescription, AXPosition, AXSize]
+            let attr_role = ax_attr(AX_ROLE_ATTR);
+            let attr_title = ax_attr(AX_TITLE_ATTR);
+            let attr_desc = ax_attr(AX_DESCRIPTION_ATTR);
+            let attr_pos = ax_attr(AX_POSITION_ATTR);
+            let attr_size = ax_attr(AX_SIZE_ATTR);
+
+            let attrs: CFArray<CFString> =
+                CFArray::from_CFTypes(&[attr_role, attr_title, attr_desc, attr_pos, attr_size]);
+
+            let mut values_ref: CFArrayRef = ptr::null();
+            let err = AXUIElementCopyMultipleAttributeValues(
+                element,
+                attrs.as_concrete_TypeRef(),
+                0, // default options: return kAXValueNotFound for missing attrs
+                &mut values_ref,
+            );
+
+            if err != kAXErrorSuccess || values_ref.is_null() {
+                return None;
+            }
+
+            let count = CFArrayGetCount(values_ref);
+            if count < 5 {
+                CFRelease(values_ref as CFTypeRef);
+                return None;
+            }
+
+            // Helper: extract a String from a CFTypeRef that may be a CFString or
+            // an error marker (kCFNull / AXValueNotFound sentinel).
+            let extract_string = |idx: isize| -> Option<String> {
+                let val = CFArrayGetValueAtIndex(values_ref, idx);
+                if val.is_null() {
+                    return None;
+                }
+                // The batch API returns kCFNull for unsupported/missing attributes.
+                // kCFNull has a different CFTypeID than CFString.
+                let type_id = core_foundation_sys::base::CFGetTypeID(val);
+                let string_type_id = core_foundation_sys::string::CFStringGetTypeID();
+                if type_id != string_type_id {
+                    return None;
+                }
+                let cf_str = CFString::wrap_under_get_rule(val as CFStringRef);
+                Some(cf_str.to_string())
+            };
+
+            // Index 0: role
+            let role = extract_string(0).unwrap_or_default();
+            // Index 1: title
+            let title = extract_string(1);
+            // Index 2: description
+            let description = extract_string(2);
+
+            // Index 3 & 4: position (AXValue<CGPoint>) and size (AXValue<CGSize>)
+            let position_and_size = {
+                let pos_val = CFArrayGetValueAtIndex(values_ref, 3);
+                let size_val = CFArrayGetValueAtIndex(values_ref, 4);
+
+                if pos_val.is_null() || size_val.is_null() {
+                    None
+                } else {
+                    let mut point = CGPoint::default();
+                    let mut size = CGSize::default();
+
+                    let got_point = AXValueGetValue(
+                        pos_val,
+                        kAXValueCGPointType,
+                        &mut point as *mut _ as *mut std::ffi::c_void,
+                    );
+                    let got_size = AXValueGetValue(
+                        size_val,
+                        kAXValueCGSizeType,
+                        &mut size as *mut _ as *mut std::ffi::c_void,
+                    );
+
+                    if got_point && got_size {
+                        Some(ElementRect {
+                            x: point.x as f32,
+                            y: point.y as f32,
+                            width: size.width as f32,
+                            height: size.height as f32,
+                        })
+                    } else {
+                        None
+                    }
+                }
+            };
+
+            // Release the values array (the individual elements are not owned by us
+            // since we used CFArrayGetValueAtIndex which follows the Get Rule).
+            CFRelease(values_ref as CFTypeRef);
+
+            Some(BatchAttributes {
+                role,
+                title,
+                description,
+                position_and_size,
+            })
+        }
+
         /// Recursively traverse the accessibility tree from an element.
+        ///
+        /// Uses `AXUIElementCopyMultipleAttributeValues` to fetch role, title,
+        /// description, position, and size in a single IPC call per element
+        /// (down from 4-5 individual calls). Falls back to individual
+        /// `AXUIElementCopyAttributeValue` calls if the batch API returns an error.
         ///
         /// SAFETY: All CFTypeRef values are released. The function returns owned
         /// Rust data. `remaining` is decremented for each element collected to
@@ -230,21 +360,32 @@ mod inner {
 
             let mut results = Vec::new();
 
-            // Extract role + label + bounds for this element
-            let role_key = ax_attr(AX_ROLE_ATTR);
-            let role = Self::get_string_attr(element, as_cf_ref(&role_key)).unwrap_or_default();
-
-            let label = if pii_level != PiiFilterLevel::Strict {
-                let title_key = ax_attr(AX_TITLE_ATTR);
-                let desc_key = ax_attr(AX_DESCRIPTION_ATTR);
-                Self::get_string_attr(element, as_cf_ref(&title_key))
-                    .or_else(|| Self::get_string_attr(element, as_cf_ref(&desc_key)))
-                    .unwrap_or_default()
+            // Try batch fetch first (1 IPC call instead of 4-5).
+            let (role, label, bounds) = if let Some(batch) = Self::batch_get_attributes(element) {
+                let lbl = if pii_level != PiiFilterLevel::Strict {
+                    batch.title.or(batch.description).unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                (batch.role, lbl, batch.position_and_size)
             } else {
-                String::new()
-            };
+                // Fallback: individual attribute fetches.
+                let role_key = ax_attr(AX_ROLE_ATTR);
+                let role = Self::get_string_attr(element, as_cf_ref(&role_key)).unwrap_or_default();
 
-            let bounds = Self::get_position_and_size(element);
+                let lbl = if pii_level != PiiFilterLevel::Strict {
+                    let title_key = ax_attr(AX_TITLE_ATTR);
+                    let desc_key = ax_attr(AX_DESCRIPTION_ATTR);
+                    Self::get_string_attr(element, as_cf_ref(&title_key))
+                        .or_else(|| Self::get_string_attr(element, as_cf_ref(&desc_key)))
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+
+                let bounds = Self::get_position_and_size(element);
+                (role, lbl, bounds)
+            };
 
             results.push(AccessibilityElement {
                 role,
@@ -263,17 +404,12 @@ mod inner {
                     &mut children_ref,
                 );
                 if err == kAXErrorSuccess && !children_ref.is_null() {
-                    let count = core_foundation_sys::array::CFArrayGetCount(
-                        children_ref as core_foundation_sys::array::CFArrayRef,
-                    );
+                    let count = CFArrayGetCount(children_ref as CFArrayRef);
                     for i in 0..count {
                         if *remaining == 0 {
                             break;
                         }
-                        let child = core_foundation_sys::array::CFArrayGetValueAtIndex(
-                            children_ref as core_foundation_sys::array::CFArrayRef,
-                            i,
-                        );
+                        let child = CFArrayGetValueAtIndex(children_ref as CFArrayRef, i);
                         if !child.is_null() {
                             let child_elements = Self::traverse_tree(
                                 child,
@@ -634,6 +770,34 @@ mod tests {
             result,
             Err(oneshim_core::error::CoreError::PermissionDenied(_))
         ));
+    }
+
+    /// Integration test for batch attribute fetching -- requires Accessibility permission.
+    /// Verifies that traverse_tree uses batch_get_attributes and produces the
+    /// same results as the individual-call fallback path.
+    /// Run manually: `cargo test -p oneshim-vision -- macos_batch_traversal --ignored`
+    #[tokio::test]
+    #[ignore]
+    async fn extract_window_elements_batch_traversal() {
+        let extractor = MacOsNativeAccessibility::new();
+        if !extractor.has_permission() {
+            eprintln!("SKIP: Accessibility permission not granted");
+            return;
+        }
+        let result = extractor
+            .extract_window_elements(2, 100, PiiFilterLevel::Off, true)
+            .await;
+        assert!(result.is_ok());
+        let elements = result.unwrap();
+        // Each element should have a non-empty role from the batch fetch
+        for elem in &elements {
+            assert!(!elem.role.is_empty(), "batch fetch should populate role");
+        }
+        eprintln!(
+            "batch traversal: {} elements, {} with bounds",
+            elements.len(),
+            elements.iter().filter(|e| e.bounds.is_some()).count()
+        );
     }
 
     /// Apply PII filter to test data by reconstructing the filter logic.

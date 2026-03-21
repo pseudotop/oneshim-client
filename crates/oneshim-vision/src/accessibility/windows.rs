@@ -4,7 +4,7 @@
 //! The implementation follows the same circuit breaker and PII gating patterns
 //! used by the macOS native extractor.
 //!
-//! COM call sequence:
+//! COM call sequence (focused element):
 //!   1. `CoInitializeEx(COINIT_MULTITHREADED)` — initialize COM on the thread
 //!   2. `CoCreateInstance(CLSID_CUIAutomation)` — obtain `IUIAutomation` interface
 //!   3. `IUIAutomation::GetFocusedElement()` — get the focused `IUIAutomationElement`
@@ -14,6 +14,12 @@
 //!      - `get_CurrentBoundingRectangle()` — screen position/size
 //!      - `GetCurrentPropertyValue(UIA_ValueValuePropertyId)` — text value
 //!   5. `CoUninitialize()` — release COM on the thread
+//!
+//! Tree traversal (window elements) uses CacheRequest for bulk property
+//! fetching. Instead of 3 cross-process COM calls per element (ControlType,
+//! Name, BoundingRectangle), a CacheRequest pre-fetches all three properties
+//! in a single cross-process call per subtree level via BuildCache walker
+//! methods. Falls back to per-property fetching if CacheRequest creation fails.
 //!
 //! The actual COM FFI calls are isolated in the `com` helper module so the
 //! overall structure can be reviewed and tested on non-Windows platforms.
@@ -207,9 +213,41 @@ mod inner {
         // IUIAutomationTreeWalker vtable offsets
         // IUnknown: 0-2
         // GetFirstChildElement: index 4
+        // GetFirstChildElementBuildCache: index 5
         // GetNextSiblingElement: index 6
+        // GetNextSiblingElementBuildCache: index 7
         const ITREEWALKER_GET_FIRST_CHILD_INDEX: usize = 4;
+        const ITREEWALKER_GET_FIRST_CHILD_BUILD_CACHE_INDEX: usize = 5;
         const ITREEWALKER_GET_NEXT_SIBLING_INDEX: usize = 6;
+        const ITREEWALKER_GET_NEXT_SIBLING_BUILD_CACHE_INDEX: usize = 7;
+
+        // IUIAutomation::CreateCacheRequest vtable offset
+        const IUIAUTOMATION_CREATE_CACHE_REQUEST_INDEX: usize = 20;
+
+        // IUIAutomationCacheRequest vtable offsets
+        // IUnknown: 0-2
+        // AddProperty: index 3
+        // put_TreeScope: index 7
+        const ICACHEREQUEST_ADD_PROPERTY_INDEX: usize = 3;
+        const ICACHEREQUEST_PUT_TREE_SCOPE_INDEX: usize = 7;
+
+        // UIA property IDs for CacheRequest
+        const UIA_CONTROL_TYPE_PROPERTY_ID: i32 = 30003;
+        const UIA_NAME_PROPERTY_ID: i32 = 30005;
+        const UIA_BOUNDING_RECTANGLE_PROPERTY_ID: i32 = 30001;
+
+        // TreeScope flags
+        // TreeScope_Element = 0x1, TreeScope_Children = 0x2
+        const TREE_SCOPE_ELEMENT: i32 = 0x1;
+        const TREE_SCOPE_CHILDREN: i32 = 0x2;
+
+        // IUIAutomationElement cached property vtable offsets
+        // get_CachedControlType: index 22 (CurrentControlType is 21, Cached is next)
+        // get_CachedName: index 24 (CurrentName is 23, Cached is next)
+        // get_CachedBoundingRectangle: index 28 (CurrentBoundingRectangle is 27, Cached is next)
+        const IELEMENT_GET_CACHED_CONTROL_TYPE_INDEX: usize = 22;
+        const IELEMENT_GET_CACHED_NAME_INDEX: usize = 24;
+        const IELEMENT_GET_CACHED_BOUNDING_RECT_INDEX: usize = 28;
 
         /// UIA bounding rectangle (uses f64, not i32 like Windows RECT).
         #[repr(C)]
@@ -429,10 +467,188 @@ mod inner {
             }
         }
 
+        /// Create a CacheRequest that pre-fetches ControlType, Name, and
+        /// BoundingRectangle properties for Element + Children scope.
+        ///
+        /// Returns the cache request COM pointer, or null if creation fails.
+        /// The caller is responsible for calling `release()` on the returned
+        /// pointer when done.
+        ///
+        /// SAFETY: `automation` must be a valid IUIAutomation pointer.
+        unsafe fn create_cache_request(automation: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
+            // IUIAutomation::CreateCacheRequest(ppCacheRequest)
+            let mut cache_request: *mut std::ffi::c_void = ptr::null_mut();
+            let create_cache_req: unsafe extern "system" fn(
+                *mut std::ffi::c_void,
+                *mut *mut std::ffi::c_void,
+            ) -> i32 = std::mem::transmute(vtable_fn(
+                automation,
+                IUIAUTOMATION_CREATE_CACHE_REQUEST_INDEX,
+            ));
+            let hr = create_cache_req(automation, &mut cache_request);
+            if hr < 0 || cache_request.is_null() {
+                tracing::debug!(hresult = hr, "CreateCacheRequest failed");
+                return ptr::null_mut();
+            }
+
+            // ICacheRequest::AddProperty for each property we need
+            let add_property: unsafe extern "system" fn(*mut std::ffi::c_void, i32) -> i32 =
+                std::mem::transmute(vtable_fn(cache_request, ICACHEREQUEST_ADD_PROPERTY_INDEX));
+
+            let hr = add_property(cache_request, UIA_CONTROL_TYPE_PROPERTY_ID);
+            if hr < 0 {
+                tracing::debug!(hresult = hr, "AddProperty(ControlType) failed");
+                release(cache_request);
+                return ptr::null_mut();
+            }
+
+            let hr = add_property(cache_request, UIA_NAME_PROPERTY_ID);
+            if hr < 0 {
+                tracing::debug!(hresult = hr, "AddProperty(Name) failed");
+                release(cache_request);
+                return ptr::null_mut();
+            }
+
+            let hr = add_property(cache_request, UIA_BOUNDING_RECTANGLE_PROPERTY_ID);
+            if hr < 0 {
+                tracing::debug!(hresult = hr, "AddProperty(BoundingRectangle) failed");
+                release(cache_request);
+                return ptr::null_mut();
+            }
+
+            // ICacheRequest::put_TreeScope(Element | Children)
+            let put_tree_scope: unsafe extern "system" fn(*mut std::ffi::c_void, i32) -> i32 =
+                std::mem::transmute(vtable_fn(cache_request, ICACHEREQUEST_PUT_TREE_SCOPE_INDEX));
+            let hr = put_tree_scope(cache_request, TREE_SCOPE_ELEMENT | TREE_SCOPE_CHILDREN);
+            if hr < 0 {
+                tracing::debug!(hresult = hr, "put_TreeScope failed");
+                release(cache_request);
+                return ptr::null_mut();
+            }
+
+            cache_request
+        }
+
+        /// Extract properties from an element's cache (populated by BuildCache).
+        ///
+        /// Uses `get_CachedControlType`, `get_CachedName`, and
+        /// `get_CachedBoundingRectangle` instead of their `Current` counterparts.
+        /// This avoids cross-process COM calls since the data was pre-fetched.
+        ///
+        /// SAFETY: `element` must be a valid IUIAutomationElement with a
+        /// populated cache (obtained via a BuildCache walker method).
+        unsafe fn extract_cached_properties(
+            element: *mut std::ffi::c_void,
+        ) -> (String, Option<String>, Option<ElementRect>) {
+            // get_CachedControlType
+            let mut control_type: i32 = 0;
+            let get_ct: unsafe extern "system" fn(*mut std::ffi::c_void, *mut i32) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CACHED_CONTROL_TYPE_INDEX));
+            let hr = get_ct(element, &mut control_type);
+            let role = if hr >= 0 {
+                control_type_to_role(control_type).to_string()
+            } else {
+                "Unknown".to_string()
+            };
+
+            // get_CachedName
+            let mut name_bstr: *mut u16 = ptr::null_mut();
+            let get_name: unsafe extern "system" fn(*mut std::ffi::c_void, *mut *mut u16) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CACHED_NAME_INDEX));
+            let hr = get_name(element, &mut name_bstr);
+            let name = if hr >= 0 {
+                let s = bstr_to_string(name_bstr);
+                sys_free_string(name_bstr);
+                s.filter(|s| !s.is_empty())
+            } else {
+                None
+            };
+
+            // get_CachedBoundingRectangle
+            let mut rect = UiaRect {
+                left: 0.0,
+                top: 0.0,
+                width: 0.0,
+                height: 0.0,
+            };
+            let get_rect: unsafe extern "system" fn(*mut std::ffi::c_void, *mut UiaRect) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CACHED_BOUNDING_RECT_INDEX));
+            let hr = get_rect(element, &mut rect);
+            let position = if hr >= 0 && (rect.width > 0.0 || rect.height > 0.0) {
+                Some(ElementRect {
+                    x: rect.left as f32,
+                    y: rect.top as f32,
+                    width: rect.width as f32,
+                    height: rect.height as f32,
+                })
+            } else {
+                None
+            };
+
+            (role, name, position)
+        }
+
+        /// Extract properties from an element using per-property Current calls.
+        ///
+        /// This is the non-cached fallback path. Each property requires a
+        /// separate cross-process COM call.
+        ///
+        /// SAFETY: `element` must be a valid IUIAutomationElement.
+        unsafe fn extract_current_properties(
+            element: *mut std::ffi::c_void,
+        ) -> (String, Option<String>, Option<ElementRect>) {
+            let mut control_type: i32 = 0;
+            let get_ct: unsafe extern "system" fn(*mut std::ffi::c_void, *mut i32) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_CONTROL_TYPE_INDEX));
+            let hr = get_ct(element, &mut control_type);
+            let role = if hr >= 0 {
+                control_type_to_role(control_type).to_string()
+            } else {
+                "Unknown".to_string()
+            };
+
+            let mut name_bstr: *mut u16 = ptr::null_mut();
+            let get_name: unsafe extern "system" fn(*mut std::ffi::c_void, *mut *mut u16) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_NAME_INDEX));
+            let hr = get_name(element, &mut name_bstr);
+            let name = if hr >= 0 {
+                let s = bstr_to_string(name_bstr);
+                sys_free_string(name_bstr);
+                s.filter(|s| !s.is_empty())
+            } else {
+                None
+            };
+
+            let mut rect = UiaRect {
+                left: 0.0,
+                top: 0.0,
+                width: 0.0,
+                height: 0.0,
+            };
+            let get_rect: unsafe extern "system" fn(*mut std::ffi::c_void, *mut UiaRect) -> i32 =
+                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_BOUNDING_RECT_INDEX));
+            let hr = get_rect(element, &mut rect);
+            let position = if hr >= 0 && (rect.width > 0.0 || rect.height > 0.0) {
+                Some(ElementRect {
+                    x: rect.left as f32,
+                    y: rect.top as f32,
+                    width: rect.width as f32,
+                    height: rect.height as f32,
+                })
+            } else {
+                None
+            };
+
+            (role, name, position)
+        }
+
         /// Extract the accessibility subtree of the focused element's parent window.
         ///
         /// Uses IUIAutomation TreeWalker for breadth-first traversal with
-        /// depth and element count limits.
+        /// depth and element count limits. When possible, a CacheRequest is
+        /// used to batch-fetch ControlType, Name, and BoundingRectangle in a
+        /// single cross-process call per subtree level (3x fewer COM roundtrips).
+        /// Falls back to per-property fetching if CacheRequest creation fails.
         pub(super) fn extract_tree_via_uia(
             max_depth: u32,
             max_elements: usize,
@@ -485,23 +701,58 @@ mod inner {
                     IUIAUTOMATION_GET_RAW_VIEW_WALKER_INDEX,
                 ));
                 let hr = get_walker(automation, &mut walker);
-                release(automation);
                 if hr < 0 || walker.is_null() {
+                    release(automation);
                     release(element);
                     return Vec::new();
                 }
 
+                // Try to create a CacheRequest for bulk property fetching.
+                // Must happen before releasing automation since it's an
+                // IUIAutomation factory method.
+                let cache_request = create_cache_request(automation);
+                release(automation);
+                let use_cache = !cache_request.is_null();
+                if use_cache {
+                    tracing::debug!("UIA tree traversal: using CacheRequest (bulk property fetch)");
+                } else {
+                    tracing::debug!(
+                        "UIA tree traversal: CacheRequest unavailable, using per-property calls"
+                    );
+                }
+
                 let mut results = Vec::new();
                 let mut remaining = max_elements;
-                collect_subtree(walker, element, 0, max_depth, &mut remaining, &mut results);
+                collect_subtree(
+                    walker,
+                    element,
+                    0,
+                    max_depth,
+                    &mut remaining,
+                    &mut results,
+                    cache_request,
+                    use_cache,
+                );
 
+                if !cache_request.is_null() {
+                    release(cache_request);
+                }
                 release(walker);
                 release(element);
                 results
             }
         }
 
-        /// Recursive depth-limited subtree collection.
+        /// Recursive depth-limited subtree collection with optional CacheRequest.
+        ///
+        /// When `use_cache` is true and `cache_request` is non-null, uses
+        /// `GetFirstChildElementBuildCache` / `GetNextSiblingElementBuildCache`
+        /// to populate the element cache, then reads properties via
+        /// `get_Cached*` methods. This reduces cross-process COM calls from
+        /// 3 per element to 1 per walker step.
+        ///
+        /// When `use_cache` is false, falls back to the original per-property
+        /// `get_Current*` calls (3 cross-process calls per element).
         unsafe fn collect_subtree(
             walker: *mut std::ffi::c_void,
             element: *mut std::ffi::c_void,
@@ -509,52 +760,19 @@ mod inner {
             max_depth: u32,
             remaining: &mut usize,
             results: &mut Vec<(String, Option<String>, Option<ElementRect>)>,
+            cache_request: *mut std::ffi::c_void,
+            use_cache: bool,
         ) {
             if *remaining == 0 || depth > max_depth {
                 return;
             }
 
-            // Extract properties from current element
-            let mut control_type: i32 = 0;
-            let get_ct: unsafe extern "system" fn(*mut std::ffi::c_void, *mut i32) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_CONTROL_TYPE_INDEX));
-            let hr = get_ct(element, &mut control_type);
-            let role = if hr >= 0 {
-                control_type_to_role(control_type).to_string()
+            // Extract properties — cached path reads from pre-fetched cache,
+            // fallback path makes individual COM calls per property.
+            let (role, name, position) = if use_cache {
+                extract_cached_properties(element)
             } else {
-                "Unknown".to_string()
-            };
-
-            let mut name_bstr: *mut u16 = ptr::null_mut();
-            let get_name: unsafe extern "system" fn(*mut std::ffi::c_void, *mut *mut u16) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_NAME_INDEX));
-            let hr = get_name(element, &mut name_bstr);
-            let name = if hr >= 0 {
-                let s = bstr_to_string(name_bstr);
-                sys_free_string(name_bstr);
-                s.filter(|s| !s.is_empty())
-            } else {
-                None
-            };
-
-            let mut rect = UiaRect {
-                left: 0.0,
-                top: 0.0,
-                width: 0.0,
-                height: 0.0,
-            };
-            let get_rect: unsafe extern "system" fn(*mut std::ffi::c_void, *mut UiaRect) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_BOUNDING_RECT_INDEX));
-            let hr = get_rect(element, &mut rect);
-            let position = if hr >= 0 && (rect.width > 0.0 || rect.height > 0.0) {
-                Some(ElementRect {
-                    x: rect.left as f32,
-                    y: rect.top as f32,
-                    width: rect.width as f32,
-                    height: rect.height as f32,
-                })
-            } else {
-                None
+                extract_current_properties(element)
             };
 
             results.push((role, name, position));
@@ -562,39 +780,93 @@ mod inner {
 
             // Recurse into children
             if depth < max_depth && *remaining > 0 {
-                let get_first_child: unsafe extern "system" fn(
-                    *mut std::ffi::c_void,
-                    *mut std::ffi::c_void,
-                    *mut *mut std::ffi::c_void,
-                ) -> i32 =
-                    std::mem::transmute(vtable_fn(walker, ITREEWALKER_GET_FIRST_CHILD_INDEX));
-
                 let mut child: *mut std::ffi::c_void = ptr::null_mut();
-                let hr = get_first_child(walker, element, &mut child);
-                if hr >= 0 && !child.is_null() {
-                    collect_subtree(walker, child, depth + 1, max_depth, remaining, results);
 
-                    // Traverse siblings
-                    let get_next_sibling: unsafe extern "system" fn(
+                let hr = if use_cache {
+                    // GetFirstChildElementBuildCache(element, cacheRequest, &child)
+                    // populates the child's cache in a single cross-process call
+                    let get_first_child_cached: unsafe extern "system" fn(
+                        *mut std::ffi::c_void,
+                        *mut std::ffi::c_void,
+                        *mut std::ffi::c_void,
+                        *mut *mut std::ffi::c_void,
+                    )
+                        -> i32 = std::mem::transmute(vtable_fn(
+                        walker,
+                        ITREEWALKER_GET_FIRST_CHILD_BUILD_CACHE_INDEX,
+                    ));
+                    get_first_child_cached(walker, element, cache_request, &mut child)
+                } else {
+                    let get_first_child: unsafe extern "system" fn(
                         *mut std::ffi::c_void,
                         *mut std::ffi::c_void,
                         *mut *mut std::ffi::c_void,
                     ) -> i32 =
-                        std::mem::transmute(vtable_fn(walker, ITREEWALKER_GET_NEXT_SIBLING_INDEX));
+                        std::mem::transmute(vtable_fn(walker, ITREEWALKER_GET_FIRST_CHILD_INDEX));
+                    get_first_child(walker, element, &mut child)
+                };
 
+                if hr >= 0 && !child.is_null() {
+                    collect_subtree(
+                        walker,
+                        child,
+                        depth + 1,
+                        max_depth,
+                        remaining,
+                        results,
+                        cache_request,
+                        use_cache,
+                    );
+
+                    // Traverse siblings
                     loop {
                         if *remaining == 0 {
                             release(child);
                             break;
                         }
                         let mut sibling: *mut std::ffi::c_void = ptr::null_mut();
-                        let hr = get_next_sibling(walker, child, &mut sibling);
+
+                        let hr = if use_cache {
+                            // GetNextSiblingElementBuildCache(child, cacheRequest, &sibling)
+                            let get_next_sibling_cached: unsafe extern "system" fn(
+                                *mut std::ffi::c_void,
+                                *mut std::ffi::c_void,
+                                *mut std::ffi::c_void,
+                                *mut *mut std::ffi::c_void,
+                            )
+                                -> i32 = std::mem::transmute(vtable_fn(
+                                walker,
+                                ITREEWALKER_GET_NEXT_SIBLING_BUILD_CACHE_INDEX,
+                            ));
+                            get_next_sibling_cached(walker, child, cache_request, &mut sibling)
+                        } else {
+                            let get_next_sibling: unsafe extern "system" fn(
+                                *mut std::ffi::c_void,
+                                *mut std::ffi::c_void,
+                                *mut *mut std::ffi::c_void,
+                            )
+                                -> i32 = std::mem::transmute(vtable_fn(
+                                walker,
+                                ITREEWALKER_GET_NEXT_SIBLING_INDEX,
+                            ));
+                            get_next_sibling(walker, child, &mut sibling)
+                        };
+
                         release(child);
                         if hr < 0 || sibling.is_null() {
                             break;
                         }
                         child = sibling;
-                        collect_subtree(walker, child, depth + 1, max_depth, remaining, results);
+                        collect_subtree(
+                            walker,
+                            child,
+                            depth + 1,
+                            max_depth,
+                            remaining,
+                            results,
+                            cache_request,
+                            use_cache,
+                        );
                     }
                 }
             }

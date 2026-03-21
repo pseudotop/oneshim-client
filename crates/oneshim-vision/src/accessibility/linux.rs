@@ -6,29 +6,16 @@
 //!
 //! ## Architecture
 //!
-//! The intended implementation flow:
+//! The implementation flow:
 //!
-//! 1. Connect to the D-Bus session bus via the `atspi` crate
-//!    (`atspi::AccessibilityBus::open()`)
-//! 2. Query the accessibility registry for the currently focused application
-//!    (`atspi::Registry::get_focused_accessible()`)
-//! 3. From the focused `Accessible` object, extract:
-//!    - **Role**: `accessible.get_role()` -> map `atspi::Role` to string
-//!    - **Name**: `accessible.name()` -> accessibility label
-//!    - **Bounding rect**: `accessible.get_extents(CoordType::Screen)` via the
-//!      `Component` interface -> `ElementRect`
-//!    - **Text value**: `accessible.get_text(0, -1)` via the `Text` interface
-//!      -> filtered by PII level using `Zeroizing<String>`
-//! 4. Apply PII level gating identical to the macOS/Windows implementations
-//!
-//! ## Dependencies (not yet added)
-//!
-//! When implementing the full version, add to `Cargo.toml`:
-//! ```toml
-//! [target.'cfg(target_os = "linux")'.dependencies]
-//! atspi = "0.25"      # AT-SPI2 D-Bus bindings
-//! zbus = "5"           # D-Bus connection (used by atspi internally)
-//! ```
+//! 1. Connect to the D-Bus session bus via `atspi::AccessibilityConnection::new()`
+//! 2. Walk the accessibility registry: root → applications → frames
+//! 3. Find the active window by checking `State::Active` on frame nodes
+//! 4. For the active frame, recursively traverse children up to `max_depth`
+//!    and `max_elements`, extracting role, name, and bounding box via
+//!    `ComponentProxy::get_extents(CoordType::Screen)`
+//! 5. Apply PII-level gating: Strict suppresses labels, Standard/Basic/Off
+//!    include them.
 //!
 //! ## Permissions
 //!
@@ -38,11 +25,6 @@
 //! - The `at-spi2-core` package is installed (default on most desktop distros)
 //! - The AT-SPI2 bus is running (started by the desktop session manager)
 //! - The `ATSPI_BUS_ADDRESS` or `DBUS_SESSION_BUS_ADDRESS` env var is set
-//!
-//! ## Current Status
-//!
-//! This is a structural stub that returns `Ok(None)`. The architecture is
-//! documented above for the full implementation in a future phase.
 
 #[cfg(target_os = "linux")]
 mod inner {
@@ -55,6 +37,8 @@ mod inner {
     use oneshim_core::error::CoreError;
     #[cfg(feature = "linux-atspi")]
     use oneshim_core::models::focused_element::AccessibilityElement;
+    #[cfg(feature = "linux-atspi")]
+    use oneshim_core::models::focused_element::ElementRect;
     use oneshim_core::models::focused_element::FocusedElementInfo;
     use oneshim_core::ports::accessibility::AccessibilityExtractor;
 
@@ -67,8 +51,8 @@ mod inner {
 
     /// Linux AT-SPI2 accessibility extractor.
     ///
-    /// Currently a structural stub. When implemented, it will connect to the
-    /// AT-SPI2 D-Bus service to extract the focused UI element.
+    /// Connects to the AT-SPI2 D-Bus service and traverses the accessibility
+    /// tree for the active window to extract UI element information.
     pub struct LinuxAccessibility;
 
     impl Default for LinuxAccessibility {
@@ -123,28 +107,221 @@ mod inner {
 
         /// Extract focused element via AT-SPI2 (stub).
         ///
-        /// Full implementation outline:
-        /// ```ignore
-        /// async fn extract_atspi() -> Option<RawFocusedElement> {
-        ///     let bus = atspi::AccessibilityBus::open().await.ok()?;
-        ///     let focused = bus.get_focused_accessible().await.ok()?;
-        ///
-        ///     let role = focused.get_role().await.ok()?;
-        ///     let name = focused.name().await.ok()?;
-        ///     let extents = focused.get_extents(CoordType::Screen).await.ok()?;
-        ///
-        ///     // Text interface (if supported by the element)
-        ///     let text = if focused.supports_text() {
-        ///         focused.get_text(0, -1).await.ok()
-        ///     } else {
-        ///         None
-        ///     };
-        ///
-        ///     Some(RawFocusedElement { role, name, text, extents })
-        /// }
-        /// ```
+        /// The `extract_window_elements` method provides the full tree traversal.
+        /// This single-element extraction remains a stub pending AT-SPI focus
+        /// tracking integration.
         fn extract_raw() -> Option<FocusedElementInfo> {
-            // Stub: AT-SPI2 D-Bus calls not yet implemented
+            // Stub: single-element focus tracking not yet implemented.
+            // Use extract_window_elements() for full tree traversal.
+            None
+        }
+
+        // ── AT-SPI tree traversal helpers (linux-atspi feature) ──────
+
+        /// Recursively traverse the AT-SPI accessibility tree starting from
+        /// `proxy`, collecting elements up to `max_depth` levels deep and
+        /// `remaining` total elements.
+        ///
+        /// Each node's role, name, and bounding box (via ComponentProxy) are
+        /// extracted and converted to `AccessibilityElement`. Individual
+        /// element failures are skipped silently.
+        #[cfg(feature = "linux-atspi")]
+        async fn traverse_tree(
+            conn: &atspi::connection::AccessibilityConnection,
+            proxy: &atspi::proxy::accessible::AccessibleProxy<'_>,
+            depth: u32,
+            max_depth: u32,
+            remaining: &mut usize,
+            pii_level: PiiFilterLevel,
+        ) -> Vec<AccessibilityElement> {
+            if depth > max_depth || *remaining == 0 {
+                return Vec::new();
+            }
+
+            let mut results = Vec::new();
+
+            // Extract role as a string
+            let role_str = match proxy.get_role().await {
+                Ok(role) => format!("{role:?}"),
+                Err(_) => "Unknown".to_string(),
+            };
+
+            // Extract name/label (suppress at Strict PII level)
+            let label = if pii_level != PiiFilterLevel::Strict {
+                proxy.name().await.unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+            // Extract bounding box via ComponentProxy
+            let bounds = Self::get_element_bounds(conn, proxy).await;
+
+            results.push(AccessibilityElement {
+                role: role_str,
+                label,
+                bounds,
+            });
+            *remaining = remaining.saturating_sub(1);
+
+            // Recurse into children
+            if depth < max_depth && *remaining > 0 {
+                // get_children() returns Vec<(destination, object_path)>
+                // representing child accessible objects on the D-Bus.
+                let children = match proxy.get_children().await {
+                    Ok(c) => c,
+                    Err(_) => return results,
+                };
+
+                for child_ref in &children {
+                    if *remaining == 0 {
+                        break;
+                    }
+
+                    // Build an AccessibleProxy for the child.
+                    // child_ref has .name() (bus destination) and .path()
+                    // (D-Bus object path). Use .ok() chaining since we
+                    // are not in a Result-returning fn.
+                    let child_proxy =
+                        match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                            .destination(child_ref.name())
+                            .ok()
+                            .and_then(|b| b.path(child_ref.path()).ok())
+                        {
+                            Some(builder) => match builder.build().await {
+                                Ok(p) => p,
+                                Err(_) => continue, // Skip inaccessible children
+                            },
+                            None => continue, // Skip if dest/path invalid
+                        };
+
+                    let child_elements = Box::pin(Self::traverse_tree(
+                        conn,
+                        &child_proxy,
+                        depth + 1,
+                        max_depth,
+                        remaining,
+                        pii_level,
+                    ))
+                    .await;
+                    results.extend(child_elements);
+                }
+            }
+
+            results
+        }
+
+        /// Extract the bounding rectangle for an element via `ComponentProxy`.
+        ///
+        /// Returns `None` if the element does not support the Component
+        /// interface or if the extents query fails.
+        #[cfg(feature = "linux-atspi")]
+        async fn get_element_bounds(
+            conn: &atspi::connection::AccessibilityConnection,
+            proxy: &atspi::proxy::accessible::AccessibleProxy<'_>,
+        ) -> Option<ElementRect> {
+            use atspi_common::CoordType;
+
+            // Query the Component interface for extents.
+            // AccessibleProxy wraps a zbus Proxy; we extract its
+            // destination and path to build a ComponentProxy for the same
+            // D-Bus object.
+            let inner_proxy = proxy.inner();
+            let dest = inner_proxy.destination().to_string();
+            let path = inner_proxy.path().to_string();
+
+            let component = atspi::proxy::component::ComponentProxy::builder(conn.connection())
+                .destination(dest.as_str())
+                .ok()?
+                .path(path.as_str())
+                .ok()?
+                .build()
+                .await
+                .ok()?;
+
+            let (x, y, w, h) = component.get_extents(CoordType::Screen).await.ok()?;
+
+            // Filter out zero-sized or off-screen elements
+            if w <= 0 || h <= 0 {
+                return None;
+            }
+
+            Some(ElementRect {
+                x: x as f32,
+                y: y as f32,
+                width: w as f32,
+                height: h as f32,
+            })
+        }
+
+        /// Find the active window frame across all AT-SPI applications.
+        ///
+        /// Walks: registry root → applications → children (frames/windows),
+        /// checking each frame for `State::Active`. Returns the first active
+        /// frame's AccessibleProxy, or `None` if no active window is found.
+        #[cfg(feature = "linux-atspi")]
+        async fn find_active_window<'a>(
+            conn: &'a atspi::connection::AccessibilityConnection,
+        ) -> Option<atspi::proxy::accessible::AccessibleProxy<'a>> {
+            use atspi_common::Role;
+            use atspi_common::State;
+
+            let root = conn.root_accessible_on_registry().await.ok()?;
+            let apps = root.get_children().await.ok()?;
+
+            for app_ref in &apps {
+                // Build AccessibleProxy for the application
+                let app_proxy =
+                    atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                        .destination(app_ref.name())
+                        .ok()?
+                        .path(app_ref.path())
+                        .ok()?
+                        .build()
+                        .await
+                        .ok()?;
+
+                let children = match app_proxy.get_children().await {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+
+                for child_ref in &children {
+                    // Build AccessibleProxy for each child (potential frame)
+                    let child_proxy =
+                        match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                            .destination(child_ref.name())
+                            .ok()
+                            .and_then(|b| b.path(child_ref.path()).ok())
+                        {
+                            Some(builder) => match builder.build().await {
+                                Ok(p) => p,
+                                Err(_) => continue,
+                            },
+                            None => continue,
+                        };
+
+                    // Check if this is a frame/window with Active state
+                    let role = match child_proxy.get_role().await {
+                        Ok(r) => r,
+                        Err(_) => continue,
+                    };
+
+                    if !matches!(role, Role::Frame | Role::Window | Role::Dialog) {
+                        continue;
+                    }
+
+                    // Check the state set for Active
+                    let states = match child_proxy.get_state().await {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+
+                    if states.contains(State::Active) {
+                        return Some(child_proxy);
+                    }
+                }
+            }
+
             None
         }
     }
@@ -160,13 +337,6 @@ mod inner {
                 debug!("LinuxAccessibility: circuit breaker open");
                 return Ok(None);
             }
-
-            // Consent gating will be applied here once extract_raw is implemented:
-            // let effective_level = if pii_level == PiiFilterLevel::Off && !has_full_text_consent {
-            //     PiiFilterLevel::Standard
-            // } else {
-            //     pii_level
-            // };
 
             let result = tokio::task::spawn_blocking(Self::extract_raw)
                 .await
@@ -189,8 +359,8 @@ mod inner {
         #[cfg(feature = "linux-atspi")]
         async fn extract_window_elements(
             &self,
-            _max_depth: u32,
-            _max_elements: usize,
+            max_depth: u32,
+            max_elements: usize,
             pii_level: PiiFilterLevel,
             has_full_text_consent: bool,
         ) -> Result<Vec<AccessibilityElement>, CoreError> {
@@ -200,29 +370,51 @@ mod inner {
                 return Ok(Vec::new());
             }
 
-            let _effective_level = if pii_level == PiiFilterLevel::Off && !has_full_text_consent {
+            let effective_level = if pii_level == PiiFilterLevel::Off && !has_full_text_consent {
                 PiiFilterLevel::Standard
             } else {
                 pii_level
             };
 
             // AT-SPI is async-native, no spawn_blocking needed
-            let _conn = AccessibilityConnection::new().await.map_err(|e| {
+            let conn = AccessibilityConnection::new().await.map_err(|e| {
+                Self::record_failure();
                 CoreError::PermissionDenied(format!(
                     "AT-SPI2 D-Bus connection failed. Ensure at-spi2-core is installed: {e}"
                 ))
             })?;
 
-            // TODO: Implement full tree traversal via AT-SPI proxies.
-            // For Phase 1, return empty vec (connection validated).
-            // Full implementation will:
-            // 1. Get focused application via FocusTracker event
-            // 2. Walk children up to max_depth using AccessibleProxy::get_children()
-            // 3. Extract role, name, extents for each child
+            // Find the active window by walking registry → apps → frames
+            let active_window = match Self::find_active_window(&conn).await {
+                Some(w) => w,
+                None => {
+                    // No active window found — not an error, just nothing to traverse
+                    debug!("AT-SPI2: no active window found");
+                    Self::record_success();
+                    return Ok(Vec::new());
+                }
+            };
 
-            Self::record_success();
-            debug!("AT-SPI2 connection established; tree traversal not yet implemented");
-            Ok(Vec::new())
+            // Traverse the active window's subtree
+            let mut remaining = max_elements;
+            let elements = Self::traverse_tree(
+                &conn,
+                &active_window,
+                0,
+                max_depth,
+                &mut remaining,
+                effective_level,
+            )
+            .await;
+
+            if elements.is_empty() {
+                Self::record_failure();
+            } else {
+                Self::record_success();
+                debug!(count = elements.len(), "AT-SPI2 window tree extracted");
+            }
+
+            Ok(elements)
         }
 
         fn has_permission(&self) -> bool {
