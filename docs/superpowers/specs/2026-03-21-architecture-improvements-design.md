@@ -3,10 +3,11 @@
 **Date:** 2026-03-21 (revised 2026-03-21 with deep research)
 **Status:** Proposed
 **MCP Server:** Deferred (security concerns + Skills trend)
+**Audio/STT:** Deferred to separate spec (customer demand-driven, see `deferred/audio-stt-research.md`)
 
 > **Revision note:** v2 incorporates findings from 4 parallel research agents covering
-> HNSW library landscape, Whisper STT ecosystem, SQLite tuning best practices, and
-> codebase architecture audit. Priority reordering reflects actual impact analysis.
+> HNSW library landscape, SQLite tuning best practices, and codebase architecture audit.
+> Audio/STT removed from scope — research preserved in deferred spec for future use.
 
 ---
 
@@ -14,9 +15,8 @@
 
 1. [SQLite Performance Tuning (P1)](#1-sqlite-performance-tuning-p1)
 2. [USearch HNSW Vector Index (P1)](#2-usearch-hnsw-vector-index-p1)
-3. [Audio Capture + Whisper STT (P2)](#3-audio-capture--whisper-stt-p2)
-4. [Tauri IPC Optimization (P3)](#4-tauri-ipc-optimization-p3)
-5. [Cross-Cutting Improvements](#5-cross-cutting-improvements)
+3. [Tauri IPC Optimization (P3)](#3-tauri-ipc-optimization-p3)
+4. [Cross-Cutting Improvements](#4-cross-cutting-improvements)
 
 ---
 
@@ -331,202 +331,19 @@ coordinator to dispatch to HNSW or IVF as an implementation detail.
 
 ---
 
-## 3. Audio Capture + Whisper STT (P2)
-
-> **Crate renamed:** `oneshim-audio` → `oneshim-stt` (reflects STT-centric scope).
-
-### 3.1 Current State
-
-No audio event type or port traits exist. The event model defines 8 types
-(User, System, Context, Input, Process, Window, Clipboard, FileAccess).
-
-### 3.2 STT Engine Selection (deep research)
-
-| Engine | Type | Latency (M4, 30s audio) | Accuracy (meeting WER) | Recommendation |
-|---|---|---|---|---|
-| **whisper-rs** (whisper.cpp) | C FFI | ~1.2s (tiny), ~5.4s (small) | 12% (tiny), 5-7% (small) | **Primary** |
-| candle (HF) | Pure Rust | ~2x slower | Similar | Viable fallback |
-| ONNX Runtime (`ort`) | C++ FFI | Competitive | Similar | Best for Windows (DirectML) |
-| sherpa-onnx | C FFI | <100ms (streaming Zipformer) | 8-10% | **Best for real-time streaming** |
-| vosk | C FFI | Low | Higher WER | Stalled development, skip |
-
-**Primary choice:** `whisper-rs` with quantized models (Q5_1 GGML format).
-
-**Model recommendation (corrected from v1):**
-
-| Model | Disk (Q5_1) | RAM | RTF (M4) | Meeting WER | Recommendation |
-|---|---|---|---|---|---|
-| tiny.en | ~40MB | ~120MB | ~0.04 | 12-15% | Too low for meetings |
-| base.en | ~80MB | ~200MB | ~0.08 | 8-10% | Minimum for clear 1:1 calls |
-| **small.en** | **~250MB** | **~500MB** | **~0.18** | **5-7%** | **Default — best tradeoff** |
-| medium.en | ~750MB | ~1.5GB | ~0.55 | 4-5% | Optional high-accuracy |
-
-> **v1 correction:** tiny.en (75MB) is **insufficient** for meeting transcription.
-> Default should be **small.en Q5_1** (~250MB disk, ~500MB RAM, WER 5-7%).
-
-### 3.3 Audio Capture Architecture
-
-#### Platform-specific capture:
-
-| Platform | Microphone | System Audio (loopback) | Permission |
-|---|---|---|---|
-| macOS | `cpal` (CoreAudio) | **ScreenCaptureKit** (`SCStream`) | TCC `kTCCServiceMicrophone` + `kTCCServiceScreenCapture` |
-| Windows | `cpal` (WASAPI) | `cpal` WASAPI loopback (native) | Standard consent dialog |
-| Linux | `cpal` (PulseAudio) | PulseAudio monitor source | None required |
-
-> **⚠️ macOS TCC concern:** ScreenCaptureKit's permission dialog says "screen recording"
-> even when only capturing audio. This can confuse users. Mitigate with clear in-app
-> explanation before triggering the dialog.
-
-> **v1 gap:** macOS system audio capture requires **ScreenCaptureKit** (macOS 13+).
-> CoreAudio alone cannot do loopback without a virtual audio driver.
-
-#### Dual-stream capture for meetings:
-
-To capture both sides of a meeting conversation:
-1. ScreenCaptureKit / WASAPI loopback for remote audio (what you hear)
-2. `cpal` microphone for local audio (what you say)
-3. Mix both streams before feeding to STT
-
-### 3.4 Voice Activity Detection (corrected from v1)
-
-> **v1 correction:** Energy + zero-crossing is inaccurate in noisy environments.
-> Use **Silero VAD** (ONNX, 2MB model) via `ort` crate instead.
-
-| VAD Method | Accuracy | Latency | Dependency |
-|---|---|---|---|
-| Energy + zero-crossing | Low (high false positives) | Microseconds | None |
-| **Silero VAD (ONNX)** | **High** | **<1ms per 30ms frame** | **`ort` crate (2MB model)** |
-| WebRTC VAD | Medium | Fast | `webrtc-vad` crate |
-
-**Pipeline:**
-
-```
-Audio Input (cpal / ScreenCaptureKit)
-    → Resampler (16kHz mono, via rubato)
-    → Ring Buffer (30s circular)
-    → Silero VAD (per 30ms frame)
-        ├─ silence → skip
-        └─ speech → accumulate → Segment Buffer
-                                    → (300ms silence) → whisper-rs inference
-                                                            → Transcript Event
-```
-
-### 3.5 Port Traits (corrected from v1)
-
-> **v1 correction:** Single `AudioCapture` trait → **3 separate traits** for hexagonal
-> architecture compliance (single responsibility).
-
-```rust
-/// Audio source abstraction (microphone, system audio, file)
-#[async_trait]
-pub trait AudioCaptureSource: Send + Sync {
-    async fn start(&self) -> Result<(), CoreError>;
-    async fn stop(&self) -> Result<(), CoreError>;
-    fn is_active(&self) -> bool;
-    fn sample_rate(&self) -> u32;
-}
-
-/// Voice Activity Detection
-pub trait VoiceActivityDetector: Send + Sync {
-    /// Returns speech probability (0.0-1.0) for an audio frame.
-    fn detect(&self, samples: &[f32]) -> f32;
-    fn frame_size_samples(&self) -> usize;
-}
-
-/// Speech-to-Text transcription
-#[async_trait]
-pub trait SpeechRecognizer: Send + Sync {
-    async fn transcribe(&self, audio: &[f32], sample_rate: u32)
-        -> Result<TranscriptionResult, CoreError>;
-    fn model_name(&self) -> &str;
-}
-```
-
-### 3.6 Architecture Impact
-
-**New crate:** `crates/oneshim-stt/`
-
-```
-oneshim-core  <--  oneshim-stt (new)
-                     ├── capture/
-                     │   ├── mod.rs          (platform dispatch)
-                     │   ├── microphone.rs   (cpal input)
-                     │   ├── system_audio.rs (ScreenCaptureKit / WASAPI loopback)
-                     │   └── mixer.rs        (dual-stream mixing)
-                     ├── vad.rs              (Silero VAD via ort)
-                     ├── transcribe.rs       (whisper-rs STT)
-                     └── privacy.rs          (PII masking, consent check)
-```
-
-**New port traits** in `crates/oneshim-core/src/ports/`:
-- `audio_capture.rs` — `AudioCaptureSource`
-- `vad.rs` — `VoiceActivityDetector`
-- `speech.rs` — `SpeechRecognizer`
-
-**New dependencies (oneshim-stt):**
-
-| Crate | Purpose | Size Impact |
-|---|---|---|
-| `cpal` | Cross-platform audio capture | ~500KB |
-| `whisper-rs` | Whisper.cpp bindings for STT | ~5MB |
-| `ort` | ONNX Runtime (for Silero VAD) | ~100MB (shared lib) |
-| `rubato` | Sample rate conversion (→16kHz) | ~100KB |
-
-> **Note:** `ort` is a large dependency. If oneshim-stt is feature-gated (default: off),
-> this only impacts builds with the `stt` feature enabled.
-
-### 3.7 Resource Budget
-
-| Component | Disk | RAM | CPU (idle) | CPU (active) |
-|---|---|---|---|---|
-| whisper-rs (small.en Q5_1) | 250MB | 500MB | 0% | 30-60% (1 core) |
-| Silero VAD (ONNX) | 2MB | 10MB | <1% | <1% |
-| Audio buffer (30s) | 0 | 2MB | <1% | <1% |
-| **Total** | **~252MB** | **~512MB** | **<2%** | **30-60%** |
-
-### 3.8 Effort Estimate
-
-| Task | Estimate |
-|---|---|
-| `oneshim-stt` crate skeleton + 3 port traits | 1 day |
-| Audio capture (cpal + ScreenCaptureKit FFI) | 2.5 days |
-| Silero VAD integration (ort) | 1 day |
-| Whisper STT integration (whisper-rs) | 2 days |
-| Dual-stream mixer | 1 day |
-| Privacy controls (PII masking, consent) | 1 day |
-| Analysis pipeline integration (ContentTracker, FTS) | 1 day |
-| Schema V18 + storage adapter | 1 day |
-| DI wiring + scheduler loop | 0.5 day |
-| Tests (unit + integration) | 1.5 days |
-| **Total** | **12.5 days** |
-
-### 3.9 Phased Rollout
-
-| Phase | Scope |
-|---|---|
-| **A** | Port traits + event model + config section. Crate skeleton. Feature flag. |
-| **B** | `cpal` microphone capture + ring buffer + Silero VAD. macOS/Windows testing. |
-| **C** | whisper-rs STT with small.en Q5_1. Accuracy validation. |
-| **D** | ScreenCaptureKit system audio (macOS) + WASAPI loopback (Windows). Dual-stream mixer. |
-| **E** | Analysis pipeline integration (ContentTracker + FTS enrichment). |
-| **F** | Privacy controls, consent, schema V18. Meeting detection heuristics. |
-
----
-
-## 4. Tauri IPC Optimization (P3)
+## 3. Tauri IPC Optimization (P3)
 
 > **Priority change:** P1 → P3. Deep analysis reveals payloads are 10-50KB (small),
 > serialization is already efficient via serde_json, and the optimization ROI is low
 > compared to SQLite tuning and HNSW.
 
-### 4.1 Current State
+### 3.1 Current State
 
 All IPC payloads are in the 5-50KB range. Frame thumbnails are served via REST (not IPC).
 Coaching overlay uses Tauri events (tiny payloads). The largest payload
 (`get_dashboard_day`) is 10-50KB depending on segment count.
 
-### 4.2 Remaining Value
+### 3.2 Remaining Value
 
 **Tier 1 (conditional fetch):** Still valid but low priority. Hash-based `if_changed`
 pattern avoids redundant re-serialization when dashboard is polled frequently.
@@ -537,7 +354,7 @@ Add `limit`/`offset` parameters.
 **Potential N+1 query:** `record_to_segment_summary()` in `dashboard.rs` is called
 per-segment. Investigate whether it performs additional database queries.
 
-### 4.3 Effort Estimate
+### 3.3 Effort Estimate
 
 | Task | Estimate |
 |---|---|
@@ -546,7 +363,7 @@ per-segment. Investigate whether it performs additional database queries.
 | N+1 investigation + fix | 0.5 day |
 | **Total** | **2.5 days** |
 
-### 4.4 Phased Rollout
+### 3.4 Phased Rollout
 
 | Phase | Scope |
 |---|---|
@@ -556,11 +373,11 @@ per-segment. Investigate whether it performs additional database queries.
 
 ---
 
-## 5. Cross-Cutting Improvements
+## 4. Cross-Cutting Improvements
 
 These gaps were discovered during the architecture audit and apply across all improvements.
 
-### 5.1 Vector Dimensionality Validation
+### 4.1 Vector Dimensionality Validation
 
 **Gap:** `VectorStore::store()` accepts any vector length without validating dimensions.
 If the embedding model changes (e.g., 384-dim → 768-dim), stale vectors with wrong
@@ -582,7 +399,7 @@ fn store_quantized(&self, vector: &QuantizedVector) -> Result<(), CoreError> {
 }
 ```
 
-### 5.2 Observability Framework
+### 4.2 Observability Framework
 
 **Gap:** No performance metrics collection. Cannot measure improvement impact.
 
@@ -600,7 +417,7 @@ fn store_quantized(&self, vector: &QuantizedVector) -> Result<(), CoreError> {
 Add `#[instrument(skip(self))]` to async search/build methods before implementing
 improvements so we can measure before/after.
 
-### 5.3 GDPR `delete_all_data()` Verification
+### 4.3 GDPR `delete_all_data()` Verification
 
 **Gap flagged by audit:** The audit found potential missing tables in `delete_all_data()`.
 Previous session added 35 tables — needs verification against current V17 schema to
@@ -624,33 +441,36 @@ SELECT name FROM sqlite_master WHERE type='table'
 |---|---|---|---|---|---|---|
 | 1 | SQLite Performance Tuning | **P1** | 4 days | No | No | No |
 | 2 | USearch HNSW Vector Index | **P1** | 5 days | No | No | No |
-| 3 | Audio Capture + Whisper STT | **P2** | 12.5 days | Yes (`oneshim-stt`) | Yes (3 traits) | Yes (V18) |
-| 4 | Tauri IPC Optimization | **P3** | 2.5 days | No | No | No |
-| 5 | Cross-cutting (validation, observability) | **P1** | 1.5 days | No | No | No |
-| | **Total** | | **25.5 days** | | | |
+| 3 | Tauri IPC Optimization | **P3** | 2.5 days | No | No | No |
+| 4 | Cross-cutting (validation, observability) | **P1** | 1.5 days | No | No | No |
+| | **Total** | | **13 days** | | | |
+
+### Deferred
+
+| Item | Reason | Reference |
+|---|---|---|
+| Audio/STT (`oneshim-stt`) | 고객 요구사항 기반 착수, 프라이버시 리스크 높음, +350MB 의존성 | `deferred/audio-stt-research.md` |
+| MCP Server | 보안 우려 + Skills 트렌드 | — |
 
 ### Dependency Graph
 
 ```
-Cross-cutting (§5, independent, start immediately)
+Cross-cutting (§4, independent, start immediately)
 
 SQLite Tuning (§1, independent, start immediately)
     │
     ▼
 USearch HNSW (§2, benefits from tuned SQLite)
 
-Tauri IPC (§4, independent, low priority)
-
-Audio + STT (§3, fully independent, long lead time)
+Tauri IPC (§3, independent, low priority)
 ```
 
 ### Recommended Execution Order
 
-1. **Cross-cutting** (§5) — Observability + dimensionality validation (1.5 days)
+1. **Cross-cutting** (§4) — Observability + dimensionality validation (1.5 days)
 2. **SQLite Tuning** (§1) — Quick wins, foundation improvement (4 days)
 3. **USearch HNSW** (§2) — Search quality on tuned foundation (5 days)
-4. **Audio + STT** (§3) — New capability, largest effort (12.5 days)
-5. **Tauri IPC** (§4) — Only if profiling justifies (2.5 days)
+4. **Tauri IPC** (§3) — Only if profiling justifies (2.5 days)
 
 ### Research Sources
 
@@ -658,6 +478,3 @@ Audio + STT (§3, fully independent, long lead time)
 - hnswlib-rs: [GitHub](https://github.com/jean-pierreBoth/hnswlib-rs)
 - sqlite-vec: [GitHub](https://github.com/asg017/sqlite-vec), ANN [tracking #25](https://github.com/asg017/sqlite-vec/issues/25)
 - SQLite: [PRAGMA docs](https://sqlite.org/pragma.html), [FTS5](https://www.sqlite.org/fts5.html), [WAL](https://sqlite.org/wal.html), [mmap safety](https://sqlite.org/mmap.html)
-- whisper-rs: [GitHub](https://github.com/tazz4843/whisper-rs)
-- Silero VAD: [GitHub](https://github.com/snakers4/silero-vad)
-- ScreenCaptureKit: [Apple docs](https://developer.apple.com/documentation/screencapturekit)
