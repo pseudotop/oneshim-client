@@ -30,36 +30,9 @@ Add tower-http gzip compression to the Axum router. This is the highest-ROI sing
   ```rust
   #[tokio::test]
   async fn compression_layer_sets_content_encoding() {
-      let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
-      let (event_tx, _) = broadcast::channel(16);
-      let state = AppState {
-          storage,
-          frames_dir: None,
-          event_tx,
-          config_manager: None,
-          default_secret_backend_kind: CredentialBackendKind::Unavailable,
-          secret_store: None,
-          secret_stores: None,
-          audit_logger: None,
-          automation_controller: None,
-          ai_runtime_status: None,
-          integration_runtime_status: None,
-          integration_auth: None,
-          integration_session: None,
-          integration_outbox: None,
-          integration_inbox: None,
-          integration_inbox_store: None,
-          integration_audit: None,
-          integration_runtime_telemetry: None,
-          update_control: None,
-          vector_store: None,
-          embedding_provider: None,
-          text_search: None,
-          override_store: None,
-          recluster_requested: None,
-          coaching_engine: None,
-          pomodoro: Arc::new(std::sync::Mutex::new(None)),
-      };
+      // Use existing test helper instead of constructing AppState manually.
+      // This avoids breakage when new fields are added to AppState.
+      let state = test_state_with_config_manager(None);
       let app = WebServer::build_router(state).layer(
           MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 43000))),
       );
@@ -206,8 +179,10 @@ Remove global `refetchInterval: 10000` and set per-query overrides. This stops a
   })
 
   // Provider surfaces (rarely changes)
+  // NOTE: query key should match existing convention — check actual key in codebase
+  // (likely 'ai-provider-surfaces', not 'providerSurfaces')
   const { data: providerSurfaceCatalog } = useQuery({
-    queryKey: ['providerSurfaces'],
+    queryKey: ['ai-provider-surfaces'],
     queryFn: fetchProviderSurfaces,
     staleTime: 300_000,
   })
@@ -258,7 +233,9 @@ Mark 3 IPC commands as deprecated. They duplicate REST endpoints and are never c
   cargo check -p oneshim-app 2>&1 | head -20
   ```
 
-- [ ] **3b.** In `src-tauri/src/commands/system.rs`, add `#[deprecated]` to `get_update_status` (line 11-12) and `get_metrics` (line 21-22):
+- [ ] **3b.** **IMPORTANT:** `get_metrics` is in `src-tauri/src/commands/settings.rs`, NOT `system.rs`. Fix the file references accordingly.
+
+  In `src-tauri/src/commands/system.rs`, add `#[deprecated]` to `get_update_status`:
   ```rust
   /// 업데이트 상태 조회
   #[deprecated(since = "0.42.0", note = "Use REST GET /api/update/status instead")]
@@ -267,6 +244,8 @@ Mark 3 IPC commands as deprecated. They duplicate REST endpoints and are never c
       state: tauri::State<'_, AppState>,
   ) -> Result<serde_json::Value, String> {
   ```
+
+  In `src-tauri/src/commands/settings.rs`, add `#[deprecated]` to `get_metrics`:
   ```rust
   /// 시스템 메트릭 수집 — 기존 LocalMonitor 로직
   #[deprecated(since = "0.42.0", note = "Use REST GET /api/metrics or SSE stream instead")]
@@ -325,10 +304,13 @@ Currently `policy_events` fetches 8x entries and filters in Rust. Add `entries_b
   cargo check --workspace
   ```
 
-- [ ] **4b.** In `crates/oneshim-automation/src/audit.rs`, implement `entries_by_action_prefix` on `AuditLogger` with a direct buffer filter (more efficient than the default because it avoids the 8x over-read):
+- [ ] **4b.** **IMPORTANT:** The `AuditLogPort` trait is implemented on `AuditLogAdapter`, not `AuditLogger` directly. `AuditLogger` is the inner type with synchronous buffer access. The implementation approach is:
+
+  First, add a **sync** method to `AuditLogger` in `crates/oneshim-automation/src/audit.rs`:
   ```rust
-  async fn entries_by_action_prefix(&self, prefix: &str, limit: usize) -> Vec<AuditEntry> {
-      let buffer = self.buffer.read().await;
+  /// Filter entries by action_type prefix. Sync, buffer-only.
+  pub fn entries_by_action_prefix_sync(&self, prefix: &str, limit: usize) -> Vec<AuditEntry> {
+      let buffer = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
       buffer
           .iter()
           .rev()
@@ -336,6 +318,13 @@ Currently `policy_events` fetches 8x entries and filters in Rust. Add `entries_b
           .take(limit)
           .cloned()
           .collect()
+  }
+  ```
+
+  Then, implement `entries_by_action_prefix` on `AuditLogAdapter` as an async wrapper:
+  ```rust
+  async fn entries_by_action_prefix(&self, prefix: &str, limit: usize) -> Vec<AuditEntry> {
+      self.logger.entries_by_action_prefix_sync(prefix, limit)
   }
   ```
 
@@ -409,16 +398,22 @@ Add ETag headers for `/api/settings` and `/api/ai/provider-surfaces`, and `Cache
   cargo check -p oneshim-web
   ```
 
-- [ ] **5b.** In `crates/oneshim-web/src/handlers/settings.rs`, modify `get_settings` to include an ETag header and handle `If-None-Match`:
+- [ ] **5b.** In `crates/oneshim-web/src/handlers/settings.rs`, modify `get_settings` to include an ETag header and handle `If-None-Match`.
+
+  **IMPORTANT:** The settings handler uses `SettingsWebContext` + `SettingsQueryService`, NOT `AppState` directly. Match the existing handler signature pattern:
+
   ```rust
   use axum::http::{HeaderMap, StatusCode};
+  use axum::response::IntoResponse;
 
   pub async fn get_settings(
-      State(state): State<AppState>,
+      State(ctx): State<SettingsWebContext>,
       headers: HeaderMap,
   ) -> Result<impl IntoResponse, ApiError> {
-      let settings = state.storage.get_settings().await?;
-      let body = serde_json::to_vec(&settings)?;
+      let service = SettingsQueryService::new(&ctx);
+      let settings = service.get_settings()?;
+      let body = serde_json::to_vec(&settings)
+          .map_err(|e| ApiError::Internal(e.to_string()))?;
       let etag = crate::cache_utils::compute_etag(&body);
 
       if let Some(if_none_match) = headers.get("if-none-match") {
@@ -437,7 +432,7 @@ Add ETag headers for `/api/settings` and `/api/ai/provider-surfaces`, and `Cache
       ).into_response())
   }
   ```
-  Note: Adapt the exact handler signature to match the current handler pattern. The key point is to add ETag computation and 304 response.
+  Note: Adapt the exact handler signature to match the current handler pattern (check whether it uses `SettingsWebContext` or a more general context type). The key point is to add ETag computation and 304 response. An alternative approach is to use an Axum middleware layer for ETag computation.
 
   ```bash
   cargo test -p oneshim-web
@@ -457,24 +452,32 @@ Add ETag headers for `/api/settings` and `/api/ai/provider-surfaces`, and `Cache
   ```
 
 - [ ] **5d.** In `crates/oneshim-web/frontend/src/api/client.ts`, update `fetchSettings` (~line 239) to send `If-None-Match` when we have a cached ETag. The simplest approach is to store the last ETag in a module-level Map:
-  ```typescript
-  const etagCache = new Map<string, string>()
+  **IMPORTANT:** A 304 response has no body. The cache must store `{ etag, data }` pairs and return the cached data on 304:
 
-  async function fetchWithEtag(url: string, options?: RequestInit): Promise<Response> {
-    const cachedEtag = etagCache.get(url)
+  ```typescript
+  const etagDataCache = new Map<string, { etag: string; data: unknown }>()
+
+  async function fetchWithEtag<T>(url: string, options?: RequestInit): Promise<T> {
+    const cached = etagDataCache.get(url)
     const headers = new Headers(options?.headers)
-    if (cachedEtag) {
-      headers.set('If-None-Match', cachedEtag)
+    if (cached) {
+      headers.set('If-None-Match', cached.etag)
     }
 
     const response = await fetchWithRetry(url, { ...options, headers })
 
-    const newEtag = response.headers.get('etag')
-    if (newEtag) {
-      etagCache.set(url, newEtag)
+    // 304 Not Modified — return cached data (response body is empty)
+    if (response.status === 304 && cached) {
+      return cached.data as T
     }
 
-    return response
+    const data = await response.json()
+    const newEtag = response.headers.get('etag')
+    if (newEtag) {
+      etagDataCache.set(url, { etag: newEtag, data })
+    }
+
+    return data as T
   }
   ```
   Then use `fetchWithEtag` in `fetchSettings` and `fetchProviderSurfaces`.
@@ -591,7 +594,12 @@ Replace `String` with `Arc<str>` for `app_name` and `window_title` in `RingFrame
   cargo check -p oneshim-vision 2>&1 | head -30
   ```
 
-- [ ] **7b.** Fix all compilation errors in `oneshim-vision` by replacing `String::from("...")` / `"...".to_string()` with `Arc::from("...")` at RingFrame construction sites. Use `cargo check` iteratively:
+- [ ] **7b.** Fix all compilation errors in `oneshim-vision` by replacing `String::from("...")` / `"...".to_string()` with `Arc::from("...")` at RingFrame construction sites. This includes updating test helpers that construct `RingFrame` instances:
+  - `ring_buffer.rs` test module: update `make_test_frame()` or similar helpers
+  - `timeline.rs` test module: update any `RingFrame` construction
+  - Any mock/fixture builders that create `RingFrame`
+
+  Use `cargo check` iteratively:
   ```bash
   cargo check -p oneshim-vision
   ```
@@ -671,14 +679,15 @@ Fine-tune per-query staleTime values for queries that have specific freshness re
   })
   ```
 
-- [ ] **8d.** In `crates/oneshim-web/frontend/src/features/providerSurfaces.ts` and `featureCapabilities.ts`, add staleTime overrides:
+- [ ] **8d.** Add staleTime overrides for provider surfaces and feature capabilities. These may be configured in the `useQuery` calls within **`Settings.tsx`** (where the queries are invoked), not necessarily in the utility module files:
   ```tsx
-  // providerSurfaces.ts -- rarely changes
+  // In Settings.tsx (or wherever the useQuery call lives) -- providerSurfaces
   staleTime: 300_000,  // 5 minutes
 
-  // featureCapabilities.ts -- rarely changes
+  // In Settings.tsx (or wherever the useQuery call lives) -- featureCapabilities
   staleTime: 300_000,  // 5 minutes
   ```
+  Check `providerSurfaces.ts` and `featureCapabilities.ts` for custom hooks that may also accept staleTime configuration.
 
   ```bash
   cd crates/oneshim-web/frontend && pnpm test

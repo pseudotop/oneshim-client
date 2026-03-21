@@ -19,7 +19,7 @@
 | File | Action | Description |
 |------|--------|-------------|
 | `crates/oneshim-storage/src/sqlite/maintenance.rs` | Modify | Wrap `delete_all_data` in `Connection::transaction()`, change return type to `Result<(), CoreError>` |
-| `crates/oneshim-core/src/models/storage_records.rs` | Modify | Keep `DeletedRangeCounts` (used by `delete_data_in_range`); no removal needed |
+| `crates/oneshim-core/src/models/storage_records.rs` | No change | Keep `DeletedRangeCounts` — still used by `delete_data_in_range`; do NOT remove the type |
 | `crates/oneshim-core/src/ports/web_storage.rs` | Modify | Change `delete_all_data` return type to `Result<(), CoreError>` |
 | `crates/oneshim-storage/src/sqlite/web_storage_impl.rs` | Modify | Update `delete_all_data` impl to match new signature |
 | `crates/oneshim-web/src/services/data_web_service.rs` | Modify | Update `delete_all_data` caller to handle `Result<(), CoreError>` |
@@ -278,6 +278,8 @@ Add `delete_all_files` to `FrameFileStorage` that recursively deletes all frame 
   ```
   Verify: `cargo test -p oneshim-storage -- delete_all_files` passes.
 
+- [ ] **2c.** Wire `FrameFileStorage::delete_all_files()` into the GDPR deletion flow. In `crates/oneshim-web/src/services/data_web_service.rs`, update `delete_all_data` to use `FrameFileStorage::delete_all_files()` if a `FrameFileStorage` instance is available (instead of the manual `read_dir` + `remove_file` loop). If the data service does not have access to `FrameFileStorage`, document this as a TODO for wiring in the Tauri DI layer.
+
 ---
 
 ## Task 3: FTS5 Deletion Verification within Transaction
@@ -296,7 +298,8 @@ Add a test proving `DELETE FROM search_fts` works correctly inside a `Connection
   //! GDPR regression tests — transactional deletion, FTS5 cleanup, frame file deletion.
 
   use oneshim_core::ports::storage::StorageService;
-  use oneshim_core::ports::web_storage::WebStorage;
+  // NOTE: Do NOT import WebStorage unless it is used. The `delete_all_data` method
+  // is called directly on `SqliteStorage`, not through the `WebStorage` trait.
   use oneshim_storage::sqlite::SqliteStorage;
 
   /// Helper: create in-memory storage with V1-V17 schema.
@@ -345,6 +348,8 @@ Add a test proving `DELETE FROM search_fts` works correctly inside a `Connection
 
   #[tokio::test]
   async fn delete_all_data_fts5_search_returns_empty_after_deletion() {
+      use oneshim_core::ports::text_search::TextSearchProvider;
+
       let storage = make_storage();
 
       // Insert an event that populates the FTS5 index
@@ -360,16 +365,18 @@ Add a test proving `DELETE FROM search_fts` works correctly inside a `Connection
       });
       storage.save_event(&event).await.unwrap();
 
-      // Verify search finds something before deletion
-      let count_before = storage.count_search_events("%VSCode%").unwrap();
-      assert!(count_before > 0, "FTS should find events before deletion");
+      // Verify FTS5 MATCH query finds something before deletion.
+      // IMPORTANT: Use actual FTS5 MATCH query via TextSearchProvider::search_fts,
+      // NOT the LIKE-based count_search_events (which does not test FTS5).
+      let results_before = storage.search_fts("VSCode", 10).await.unwrap();
+      assert!(!results_before.is_empty(), "FTS5 MATCH should find events before deletion");
 
       // Delete all data
       storage.delete_all_data().unwrap();
 
-      // Verify FTS search returns empty
-      let count_after = storage.count_search_events("%VSCode%").unwrap();
-      assert_eq!(count_after, 0, "FTS search should return 0 after delete_all_data");
+      // Verify FTS5 MATCH returns empty after deletion
+      let results_after = storage.search_fts("VSCode", 10).await.unwrap();
+      assert!(results_after.is_empty(), "FTS5 search should return empty after delete_all_data");
   }
 
   #[tokio::test]
@@ -473,7 +480,10 @@ Change `cosine_similarity_int8` to return `Result<f32, CoreError>` on dimension 
   /// Compute approximate cosine similarity between two quantized vectors
   /// using INT8 dot product (avoids full dequantization).
   ///
-  /// Returns `Err(CoreError::InvalidArguments)` on dimension mismatch or empty vectors.
+  /// Returns `Err(CoreError::InvalidArguments(String))` on dimension mismatch or empty vectors.
+  ///
+  /// **IMPORTANT:** Use `CoreError::InvalidArguments(String)` consistently — NOT
+  /// `CoreError::Validation { field, message }` which has a different variant shape.
   pub fn cosine_similarity_int8(
       a: &QuantizedVector,
       b: &QuantizedVector,
@@ -531,6 +541,8 @@ Change `cosine_similarity_int8` to return `Result<f32, CoreError>` on dimension 
 ## Task 5: Migrate 7 Caller Sites to Handle `Result`
 
 Propagate the `Result<f32, CoreError>` return type from `cosine_similarity_int8` to all call sites.
+
+**NOTE:** The actual caller sites are all in `oneshim-core/src/ivf_index.rs` and `oneshim-storage/src/sqlite/vector_*` files. The spec's list of 8 sites was incorrect -- there are 7 actual call sites. Verify by running `cargo check --workspace` after each change to catch any remaining sites.
 
 ### Files
 
@@ -647,7 +659,8 @@ Add dimension validation at the two entry boundaries to catch invalid vectors be
       metadata: EmbeddingMetadata,
       skip_float32: bool,
   ) -> Result<(), CoreError> {
-      // Boundary validation: INT8 dimension must match f32 dimension
+      // Boundary validation: INT8 dimension must match f32 dimension.
+      // NOTE: Use CoreError::InvalidArguments(String), NOT CoreError::Validation.
       if !skip_float32 && vector_f32.len() != vector_int8.data.len() {
           return Err(CoreError::InvalidArguments(format!(
               "Vector dimension mismatch: f32 has {}, INT8 has {}",
@@ -761,10 +774,16 @@ Add daily file rotation via `tracing-appender`, a log file cleanup function, and
   // Clean up old log files (>7 days) at startup
   cleanup_old_logs(&log_dir, 7);
 
-  // CRITICAL: _guard must live for the entire app lifetime.
-  // Box::leak ensures it is never dropped. This is intentional —
-  // the guard flushes pending log writes on program exit.
-  Box::leak(Box::new(_guard));
+  // CRITICAL: _guard must live for the entire app lifetime to flush pending writes.
+  // Preferred approach: store in Tauri managed state so it is dropped on app exit
+  // (which triggers flush). This is cleaner than Box::leak because it allows
+  // proper cleanup on graceful shutdown.
+  //
+  // In the Tauri builder, add: app.manage(guard);
+  // If Tauri builder is not yet available at this point, store _guard in a local
+  // variable that lives until the end of main(). As a last resort, use Box::leak.
+  // For now, keep _guard alive via Tauri state:
+  let _log_guard = _guard; // Will be passed to app.manage() below
   ```
 
 - [ ] **8d.** Add the `cleanup_old_logs` function at the bottom of `src-tauri/src/main.rs`, before the `mod` declarations or after `main()`:

@@ -6,9 +6,13 @@
 
 **Architecture:** `AnnIndex` port trait (new, `oneshim-core/ports`) defines the ANN contract. `HnswAdapter` (new, `oneshim-analysis`, feature-gated `hnsw`) wraps `usearch::Index` behind the port. `AdaptiveSearchCoordinator` gains `Option<Arc<dyn AnnIndex>>` and a new `Hnsw` strategy variant. Metadata join uses batch SQL lookup by u64 keys from `embedding_vectors`. Graceful degradation falls back to IVF/brute-force on HNSW failure. Corruption recovery rebuilds from SQLite. Retention integration removes HNSW entries when vectors are pruned.
 
-**Tech Stack:** Rust, usearch 2.15+, rusqlite, tokio::spawn_blocking, criterion 0.5
+**Tech Stack:** Rust, usearch 2.15+, rusqlite, tokio::spawn_blocking, criterion (workspace version)
 
 **Spec:** `docs/superpowers/specs/2026-03-21-usearch-hnsw-vector-index-design.md`
+
+**Prerequisites:**
+- Run `cargo doc -p usearch --no-deps` to verify available Rust API surface (especially `save()`, `load()`, `add()`, `search()`, `remove()`, `len()`, `capacity()`, `reserve()`). The `save_to_buffer()` / `serialized_length()` methods may not exist in the Rust bindings -- persistence must use file-based `save(path)` + `load(path)` instead.
+- Verify `usearch::Index` is `Send + Sync` with a compile-time assertion (see Task 3).
 
 ---
 
@@ -257,18 +261,19 @@ hnsw = ["oneshim-analysis/hnsw"]
 
 ### Steps
 
-- [ ] **Step 3.1** Create `crates/oneshim-analysis/src/hnsw_adapter.rs` with the feature gate and struct:
+- [ ] **Step 3.1** Create `crates/oneshim-analysis/src/hnsw_adapter.rs` with the struct.
+
+**IMPORTANT:** Do NOT add a file-level `#![cfg(feature = "hnsw")]` attribute. The feature gate is applied at the module level in `lib.rs` (`#[cfg(feature = "hnsw")] pub mod hnsw_adapter;`), matching the existing `hdbscan` pattern. A file-level inner attribute would cause the file to be completely invisible to cargo, breaking tests and IDE support.
 
 ```rust
 //! HNSW approximate nearest neighbor adapter using usearch.
 //!
-//! Feature-gated behind `#[cfg(feature = "hnsw")]`.
+//! Feature-gated via `#[cfg(feature = "hnsw")]` in lib.rs module export.
 //! Implements the `AnnIndex` port trait from oneshim-core.
-
-#![cfg(feature = "hnsw")]
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use oneshim_core::error::CoreError;
@@ -311,12 +316,20 @@ impl Default for HnswConfig {
     }
 }
 
+// Compile-time assertion: usearch::Index must be Send + Sync for Arc<Index>.
+const _: () = {
+    fn _assert_send_sync<T: Send + Sync>() {}
+    fn _check() { _assert_send_sync::<Index>(); }
+};
+
 /// HNSW adapter wrapping usearch::Index behind the AnnIndex port.
 ///
-/// Thread-safe: usearch v2.15+ provides native Send + Sync.
-/// Persistence uses `save_to_buffer()` + atomic rename for crash safety.
+/// Thread-safe: usearch v2.15+ provides native Send + Sync (verified above).
+/// Persistence uses `save(path)` via `spawn_blocking` + atomic rename for crash safety.
+/// All blocking FFI calls (add, search, remove, save, load) are dispatched to
+/// `spawn_blocking` to avoid blocking the tokio runtime.
 pub struct HnswAdapter {
-    index: Index,
+    index: Arc<Index>,
     data_dir: PathBuf,
     dirty: AtomicBool,
 }
@@ -348,7 +361,7 @@ impl HnswAdapter {
         );
 
         Ok(Self {
-            index,
+            index: Arc::new(index),
             data_dir,
             dirty: AtomicBool::new(false),
         })
@@ -390,30 +403,45 @@ impl HnswAdapter {
 #[async_trait]
 impl AnnIndex for HnswAdapter {
     async fn add(&self, key: u64, vector: &[f32]) -> Result<(), CoreError> {
-        self.index
-            .add(key, vector)
-            .map_err(|e| CoreError::Internal(format!("HNSW add failed: {e}")))?;
+        // Blocking FFI call — dispatch to spawn_blocking
+        let idx = Arc::clone(&self.index);
+        let vec_owned = vector.to_vec();
+        tokio::task::spawn_blocking(move || {
+            idx.add(key, &vec_owned)
+                .map_err(|e| CoreError::Internal(format!("HNSW add failed: {e}")))
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("HNSW add join failed: {e}")))??;
+
         self.dirty.store(true, Ordering::Relaxed);
         self.maybe_grow()?;
         Ok(())
     }
 
     async fn search(&self, query: &[f32], k: usize) -> Result<Vec<(u64, f32)>, CoreError> {
-        let matches = self
-            .index
-            .search(query, k)
-            .map_err(|e| CoreError::Internal(format!("HNSW search failed: {e}")))?;
-        Ok(matches
-            .keys
-            .into_iter()
-            .zip(matches.distances)
-            .collect())
+        // Blocking FFI call — dispatch to spawn_blocking
+        let idx = Arc::clone(&self.index);
+        let query_owned = query.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let matches = idx
+                .search(&query_owned, k)
+                .map_err(|e| CoreError::Internal(format!("HNSW search failed: {e}")))?;
+            Ok(matches.keys.into_iter().zip(matches.distances).collect())
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("HNSW search join failed: {e}")))?
     }
 
     async fn remove(&self, key: u64) -> Result<(), CoreError> {
-        self.index
-            .remove(key)
-            .map_err(|e| CoreError::Internal(format!("HNSW remove failed: {e}")))?;
+        // Blocking FFI call — dispatch to spawn_blocking
+        let idx = Arc::clone(&self.index);
+        tokio::task::spawn_blocking(move || {
+            idx.remove(key)
+                .map_err(|e| CoreError::Internal(format!("HNSW remove failed: {e}")))
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("HNSW remove join failed: {e}")))??;
+
         self.dirty.store(true, Ordering::Relaxed);
         Ok(())
     }
@@ -427,18 +455,22 @@ impl AnnIndex for HnswAdapter {
         let tmp_path = self.index_tmp_path();
         let final_path = self.index_path();
 
-        // save_to_buffer is thread-safe (unlike save)
-        let serialized_len = self.index.serialized_length();
-        let mut buffer = vec![0u8; serialized_len];
-        self.index.save_to_buffer(&mut buffer).map_err(|e| {
-            CoreError::Internal(format!("HNSW save_to_buffer failed: {e}"))
-        })?;
+        // Blocking FFI call — use save(path) via spawn_blocking.
+        // NOTE: save_to_buffer() / serialized_length() may not exist in the
+        // Rust bindings. We use save(path) + atomic rename instead.
+        let idx = Arc::clone(&self.index);
+        let tmp_path_clone = tmp_path.clone();
+        tokio::task::spawn_blocking(move || {
+            let path_str = tmp_path_clone
+                .to_str()
+                .ok_or_else(|| CoreError::Internal("Invalid tmp path for HNSW save".into()))?;
+            idx.save(path_str)
+                .map_err(|e| CoreError::Internal(format!("HNSW save failed: {e}")))
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("HNSW save join failed: {e}")))??;
 
-        // Write to tmp file, then atomic rename
-        tokio::fs::write(&tmp_path, &buffer).await.map_err(|e| {
-            CoreError::Internal(format!("HNSW tmp file write failed: {e}"))
-        })?;
-
+        // Atomic rename (async, non-blocking)
         tokio::fs::rename(&tmp_path, &final_path)
             .await
             .map_err(|e| {
@@ -446,11 +478,7 @@ impl AnnIndex for HnswAdapter {
             })?;
 
         self.dirty.store(false, Ordering::Relaxed);
-        info!(
-            len = self.index.len(),
-            bytes = serialized_len,
-            "HNSW index saved"
-        );
+        info!(len = self.index.len(), "HNSW index saved");
         Ok(())
     }
 
@@ -466,12 +494,14 @@ impl AnnIndex for HnswAdapter {
             .ok_or_else(|| CoreError::Internal("Invalid HNSW index path".into()))?
             .to_string();
 
-        // load() is blocking — run in spawn_blocking
-        let index_ref = &self.index;
-        // Note: usearch Index::load takes &str, must run synchronously
-        index_ref.load(&path_str).map_err(|e| {
-            CoreError::Internal(format!("HNSW index load failed: {e}"))
-        })?;
+        // Blocking FFI call — dispatch to spawn_blocking
+        let idx = Arc::clone(&self.index);
+        tokio::task::spawn_blocking(move || {
+            idx.load(&path_str)
+                .map_err(|e| CoreError::Internal(format!("HNSW index load failed: {e}")))
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("HNSW load join failed: {e}")))??;
 
         self.dirty.store(false, Ordering::Relaxed);
         info!(
@@ -760,7 +790,16 @@ async fn get_metadata_by_ids(
 
 Add `EmbeddingMetadata` to the existing imports at the top of the file if not already there.
 
-- [ ] **Step 5.2** Implement `get_metadata_by_ids()` in `SqliteVectorStore` (`crates/oneshim-storage/src/sqlite/vector_store_impl/trait_impl.rs`):
+- [ ] **Step 5.2** Implement `get_metadata_by_ids()` in `SqliteVectorStore` (`crates/oneshim-storage/src/sqlite/vector_store_impl/trait_impl.rs`).
+
+First, ensure the following imports are present at the top of the file:
+```rust
+use std::collections::HashMap;
+use chrono::{DateTime, Utc};
+use oneshim_core::models::embedding::EmbeddingMetadata;
+```
+
+Implementation:
 
 ```rust
 async fn get_metadata_by_ids(
@@ -906,6 +945,11 @@ async fn join_metadata(
         }
     }
 
+    // NOTE: regime_id filtering is not applied here because HNSW results
+    // are raw (key, distance) pairs without regime context. If regime_id
+    // filtering is needed, the caller must apply it post-join or the
+    // metadata query must be extended to include regime_id.
+
     // Sort by score descending
     results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     Ok(results)
@@ -914,6 +958,8 @@ async fn join_metadata(
 
 Add required imports at the top of the file:
 ```rust
+use std::collections::HashMap;
+use chrono::{DateTime, Utc};
 use oneshim_core::models::embedding::EmbeddingMetadata;
 use oneshim_core::ports::ann_index::AnnIndex;
 ```
@@ -1115,7 +1161,7 @@ async fn get_all_vector_ids_and_floats(&self) -> Result<Vec<(u64, Vec<f32>)>, Co
     self.with_conn(move |conn| {
         let mut stmt = conn
             .prepare(
-                "SELECT id, vector FROM embedding_vectors WHERE is_stale = 0 AND vector IS NOT NULL",
+                "SELECT id, vector FROM embedding_vectors WHERE is_stale = 0 AND length(vector) > 0",
             )
             .map_err(|e| CoreError::Internal(format!("Failed to prepare rebuild query: {e}")))?;
 
@@ -1425,8 +1471,8 @@ required-features = ["hnsw"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
-criterion = { version = "0.5", features = ["html_reports"] }
-rand = "0.8"
+criterion = { workspace = true }
+rand = { workspace = true }
 tempfile = { workspace = true }
 ```
 
@@ -1436,7 +1482,8 @@ Note: `criterion` and `rand` may need to be added as workspace deps or local dev
 
 ```rust
 #![allow(clippy::redundant_closure, clippy::unit_arg)]
-#![cfg(feature = "hnsw")]
+// NOTE: No file-level #![cfg(feature = "hnsw")] — the [[bench]] section
+// has `required-features = ["hnsw"]` which handles the gating.
 
 use std::hint::black_box;
 
@@ -1447,7 +1494,8 @@ use tempfile::TempDir;
 /// Generate a random f32 vector of given dimensions.
 fn random_vector(dims: usize) -> Vec<f32> {
     use rand::Rng;
-    let mut rng = rand::thread_rng();
+    // rand 0.10 API: use rand::rng() instead of rand::thread_rng()
+    let mut rng = rand::rng();
     (0..dims).map(|_| rng.gen_range(-1.0..1.0)).collect()
 }
 
@@ -1602,8 +1650,8 @@ fn hnsw_save_load_benchmark(c: &mut Criterion) {
 
     group.bench_function("save_50k", |b| {
         b.iter(|| {
-            // Mark dirty to force save
-            adapter.add(99_999, &random_vector(384));
+            // Mark dirty to force save — must use rt.block_on() since add() is async
+            rt.block_on(adapter.add(99_999, &random_vector(384))).unwrap();
             black_box(rt.block_on(adapter.save()).unwrap());
         })
     });

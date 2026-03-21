@@ -4,7 +4,9 @@
 
 **Goal:** Improve SQLite performance and correctness by extracting shared PRAGMA configuration, adding missing PRAGMAs, caching FTS5 availability, adding WAL checkpoint/VACUUM/ANALYZE/FTS-merge to the scheduler, migrating hot-path queries to `prepare_cached()`, and adding a Korean trigram FTS table (V18 migration).
 
-**Architecture:** Changes span two crates: `oneshim-storage` (PRAGMA setup, FTS caching, `prepare_cached()`, V18 migration) and `src-tauri` (scheduler maintenance loops). All new storage methods are sync functions called from `with_conn` closures or directly from the scheduler via `spawn_blocking`. No new ports or traits are introduced.
+**Architecture:** Changes span two crates: `oneshim-storage` (PRAGMA setup, FTS caching, `prepare_cached()`, V18 migration) and `src-tauri` (scheduler maintenance loops, `SchedulerStorage` trait extension). New maintenance methods (`wal_checkpoint_passive`, `maybe_vacuum`, `fts_merge`, `fts_optimize`, `run_analyze`) are added to both `SqliteStorage` and the `SchedulerStorage` trait (since the scheduler holds `Arc<dyn SchedulerStorage>`). All new storage methods are sync functions called from `with_conn` closures or directly from the scheduler via `spawn_blocking`.
+
+**Note:** `page_size` PRAGMA is a no-op on existing databases (only takes effect on newly created DBs). mmap safety (spec item H) is explicitly deferred to a future plan.
 
 **Tech Stack:** Rust, rusqlite (`prepare_cached`, `execute_batch`, `Connection`), `std::sync::atomic::AtomicBool`, chrono, tokio (`spawn_blocking`)
 
@@ -31,7 +33,7 @@
 | `crates/oneshim-storage/src/sqlite/fts_search_impl.rs` | Migrate FTS insert/query to `prepare_cached()` |
 | `crates/oneshim-storage/src/migration/mod.rs` | Bump `CURRENT_VERSION` to 18, add V18 dispatch |
 | `crates/oneshim-storage/src/migration/v09_v17.rs` | Rename to `v09_v18.rs`; add `migrate_v18()` for Korean trigram FTS table |
-| `src-tauri/src/scheduler/config.rs` | Add `WAL_CHECKPOINT_INTERVAL_SECS`, `VACUUM_FREELIST_THRESHOLD_PERCENT` constants |
+| `src-tauri/src/scheduler/config.rs` | Add `WAL_CHECKPOINT_INTERVAL_SECS`, `VACUUM_FREELIST_THRESHOLD_PERCENT` constants; extend `SchedulerStorage` trait with maintenance methods |
 | `src-tauri/src/scheduler/loops/system.rs` | Add WAL checkpoint (5-min PASSIVE), conditional VACUUM on idle, FTS5 merge, ANALYZE after bulk ops |
 | `crates/oneshim-storage/src/sqlite/tests.rs` | Add PRAGMA parity regression test |
 | `crates/oneshim-storage/src/migration/tests.rs` | Add V18 migration test |
@@ -241,7 +243,13 @@ Add to the `#[cfg(test)] mod tests` block at the bottom of `crates/oneshim-stora
 ```rust
 #[tokio::test]
 async fn fts_available_flag_is_set_after_open() {
-    // open_in_memory runs migrations which create search_fts, so the flag should be true
+    // open_in_memory runs migrations which create search_fts, so the flag should be true.
+    //
+    // NOTE: FTS_AVAILABLE is a process-global AtomicBool. Tests that depend on
+    // its value may interact if run in parallel within the same process. This is
+    // acceptable because all test DBs run migrations that create search_fts, so
+    // the flag is always true in the test suite. If a test needs to verify the
+    // "false" state, it must be run in a separate process or use #[serial].
     let _storage = SqliteStorage::open_in_memory(30).unwrap();
     assert!(
         super::FTS_AVAILABLE.load(std::sync::atomic::Ordering::Relaxed),
@@ -357,6 +365,58 @@ In `src-tauri/src/scheduler/config.rs`, add after the `COACHING_INTERVAL_SECS` c
 pub(super) const WAL_CHECKPOINT_INTERVAL_SECS: i64 = 300; // 5 minutes
 ```
 
+- [ ] **Step 4.1b: Extend `SchedulerStorage` trait with maintenance methods**
+
+The scheduler holds `sqlite6: Arc<dyn SchedulerStorage>`. All new maintenance methods must be added to the `SchedulerStorage` trait, not just to `SqliteStorage`.
+
+In `src-tauri/src/scheduler/config.rs`, add the following methods to the `SchedulerStorage` trait:
+
+```rust
+/// WAL checkpoint (PASSIVE mode). Non-blocking.
+fn wal_checkpoint_passive(&self) -> Result<(), CoreError>;
+
+/// Conditional VACUUM if free pages exceed threshold_percent.
+/// Returns true if VACUUM was executed, false if skipped.
+fn maybe_vacuum(&self, threshold_percent: i64) -> Result<bool, CoreError>;
+
+/// FTS5 merge — lightweight b-tree segment merge.
+fn fts_merge(&self, merge_pages: u32) -> Result<(), CoreError>;
+
+/// FTS5 full optimize.
+fn fts_optimize(&self) -> Result<(), CoreError>;
+
+/// Run ANALYZE to update query planner statistics.
+fn run_analyze(&self) -> Result<(), CoreError>;
+```
+
+Then, in the `impl SchedulerStorage for SqliteStorage` block (same file or the relevant impl file), add delegation methods that call the corresponding `SqliteStorage` methods:
+
+```rust
+fn wal_checkpoint_passive(&self) -> Result<(), CoreError> {
+    SqliteStorage::wal_checkpoint_passive(self)
+}
+
+fn maybe_vacuum(&self, threshold_percent: i64) -> Result<bool, CoreError> {
+    SqliteStorage::maybe_vacuum(self, threshold_percent)
+}
+
+fn fts_merge(&self, merge_pages: u32) -> Result<(), CoreError> {
+    SqliteStorage::fts_merge(self, merge_pages)
+}
+
+fn fts_optimize(&self) -> Result<(), CoreError> {
+    SqliteStorage::fts_optimize(self)
+}
+
+fn run_analyze(&self) -> Result<(), CoreError> {
+    SqliteStorage::run_analyze(self)
+}
+```
+
+```
+cargo check --workspace
+```
+
 - [ ] **Step 4.2: Add `wal_checkpoint_passive()` method to `SqliteStorage`**
 
 In `crates/oneshim-storage/src/sqlite/mod.rs`, add a public method inside `impl SqliteStorage` (after `read_only_query`):
@@ -406,16 +466,16 @@ Then, inside the tick body (at the end, before the `debug!("completed")` line), 
 
 ```rust
 // --- WAL checkpoint (every 5 minutes, PASSIVE) ---
-{
-    let should_checkpoint = last_wal_checkpoint
-        .map(|last| (now - last).num_seconds() >= super::super::config::WAL_CHECKPOINT_INTERVAL_SECS)
-        .unwrap_or(true);
+// Declare `should_checkpoint` outside the block so it is visible to the
+// subsequent VACUUM and FTS-merge blocks that reuse this flag.
+let should_checkpoint = last_wal_checkpoint
+    .map(|last| (now - last).num_seconds() >= super::super::config::WAL_CHECKPOINT_INTERVAL_SECS)
+    .unwrap_or(true);
 
-    if should_checkpoint {
-        last_wal_checkpoint = Some(now);
-        if let Err(e) = sqlite6.wal_checkpoint_passive() {
-            warn!("WAL checkpoint failure: {e}");
-        }
+if should_checkpoint {
+    last_wal_checkpoint = Some(now);
+    if let Err(e) = sqlite6.wal_checkpoint_passive() {
+        warn!("WAL checkpoint failure: {e}");
     }
 }
 ```
@@ -674,14 +734,15 @@ cargo test -p oneshim-storage run_analyze_completes
 
 - [ ] **Step 7.3: Call `run_analyze()` after large batch inserts in `save_events_batch()`**
 
-In `crates/oneshim-storage/src/sqlite/events.rs`, in `save_events_batch()`, after the `tx.commit()` call and before the `debug!("event batch save: ...")` log, add:
+In `crates/oneshim-storage/src/sqlite/events.rs`, in `save_events_batch()`, after the `tx.commit()` call and before the `debug!("event batch save: ...")` log, add.
+
+**IMPORTANT:** `save_events_batch` already holds the `conn` MutexGuard (via `let conn = self.conn.lock()...`). Calling `self.conn.lock()` again would deadlock. Use the existing `conn` variable instead:
 
 ```rust
-// Update query planner statistics after bulk inserts (>100 rows)
+// Update query planner statistics after bulk inserts (>100 rows).
+// NOTE: `conn` MutexGuard is already held — do NOT re-lock self.conn.
 if events.len() >= 100 {
-    if let Ok(inner_conn) = self.conn.lock() {
-        let _ = inner_conn.execute_batch("ANALYZE");
-    }
+    let _ = conn.execute_batch("ANALYZE");
 }
 ```
 
@@ -714,13 +775,14 @@ conn.execute(
 )
 ```
 
-With:
+With (note: `.map_err()` is needed on **both** `prepare_cached` and `execute` calls):
 ```rust
 conn.prepare_cached(
     "INSERT OR IGNORE INTO events (event_id, event_type, timestamp, data) VALUES (?1, ?2, ?3, ?4)",
 )
 .map_err(|e| CoreError::Internal(format!("event prepare failed: {e}")))?
 .execute(rusqlite::params![event_id, event_type, timestamp, data])
+.map_err(|e| CoreError::Internal(format!("event execute failed: {e}")))?
 ```
 
 - [ ] **Step 8.2: Migrate `get_events()` to `prepare_cached()`**
@@ -744,7 +806,7 @@ conn.execute(
 )
 ```
 
-With:
+With (note: `.map_err()` is needed on **both** `prepare_cached` and `execute` calls):
 ```rust
 conn.prepare_cached(
     "INSERT INTO frames (timestamp, trigger_type, app_name, window_title, importance, resolution_w, resolution_h, has_image, file_path, ocr_text, window_x, window_y, window_width, window_height)
@@ -752,6 +814,7 @@ conn.prepare_cached(
 )
 .map_err(|e| CoreError::Internal(format!("frame prepare failed: {e}")))?
 .execute(rusqlite::params![...])
+.map_err(|e| CoreError::Internal(format!("frame execute failed: {e}")))?
 ```
 
 - [ ] **Step 8.5: Migrate `get_frames()` to `prepare_cached()`**
@@ -921,13 +984,23 @@ if current < 18 {
 }
 ```
 
-- [ ] **Step 9.6: Verify V18 migration test passes**
+- [ ] **Step 9.6: Update existing migration test assertions from V17 to V18**
+
+In `crates/oneshim-storage/src/migration/tests.rs`, find all `assert_eq!(version, 17)` assertions and update them to `assert_eq!(version, 18)`. This ensures existing migration-complete checks reflect the new schema version.
+
+```
+cargo test -p oneshim-storage migration
+```
+
+Verify the existing tests now expect version 18.
+
+- [ ] **Step 9.7: Verify V18 migration test passes**
 
 ```
 cargo test -p oneshim-storage migration_v18
 ```
 
-- [ ] **Step 9.7: Verify all tests pass**
+- [ ] **Step 9.8: Verify all tests pass**
 
 ```
 cargo test -p oneshim-storage
