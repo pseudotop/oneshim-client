@@ -6,14 +6,14 @@
 //!
 //! COM call sequence (focused element):
 //!   1. `CoInitializeEx(COINIT_MULTITHREADED)` — initialize COM on the thread
-//!   2. `CoCreateInstance(CLSID_CUIAutomation)` — obtain `IUIAutomation` interface
+//!   2. `CoCreateInstance(CUIAutomation)` — obtain `IUIAutomation` interface
 //!   3. `IUIAutomation::GetFocusedElement()` — get the focused `IUIAutomationElement`
 //!   4. Extract properties:
-//!      - `get_CurrentControlType()` — mapped to a role string
-//!      - `get_CurrentName()` — accessibility label
-//!      - `get_CurrentBoundingRectangle()` — screen position/size
+//!      - `CurrentControlType()` — mapped to a role string
+//!      - `CurrentName()` — accessibility label
+//!      - `CurrentBoundingRectangle()` — screen position/size
 //!      - `GetCurrentPropertyValue(UIA_ValueValuePropertyId)` — text value
-//!   5. `CoUninitialize()` — release COM on the thread
+//!   5. COM objects are released automatically via `Drop` (type-safe wrappers)
 //!
 //! Tree traversal (window elements) uses CacheRequest for bulk property
 //! fetching. Instead of 3 cross-process COM calls per element (ControlType,
@@ -21,8 +21,18 @@
 //! in a single cross-process call per subtree level via BuildCache walker
 //! methods. Falls back to per-property fetching if CacheRequest creation fails.
 //!
-//! The actual COM FFI calls are isolated in the `com` helper module so the
-//! overall structure can be reviewed and tested on non-Windows platforms.
+//! ## Migration Note (vtable → type-safe COM)
+//!
+//! This module was migrated from raw vtable COM calls (`windows-sys` +
+//! manual vtable index constants) to type-safe COM via the `windows` crate
+//! (0.62). The `windows` crate provides proper COM interface wrappers
+//! (`IUIAutomation`, `IUIAutomationElement`, `IUIAutomationTreeWalker`,
+//! `IUIAutomationCacheRequest`) that eliminate the need for hard-coded
+//! vtable offsets and `transmute` calls.
+//!
+//! `windows-sys` is retained for `IsDebuggerPresent` and `CoInitializeEx` /
+//! `CoUninitialize` (the `windows` crate's `CoInitializeEx` returns
+//! `HRESULT` which requires different error handling).
 
 #[cfg(target_os = "windows")]
 mod inner {
@@ -155,169 +165,84 @@ mod inner {
 
     // ── COM helper module ────────────────────────────────────────────
     //
-    // Isolates the unsafe COM FFI calls into a single function that
-    // returns `Option<RawFocusedElement>`. This makes the overall
-    // structure reviewable on non-Windows and allows the helper to be
-    // replaced with a stub for unit testing.
+    // Uses type-safe COM wrappers from the `windows` crate (0.62).
+    // COM interface methods are called directly on wrapper types
+    // (`IUIAutomation`, `IUIAutomationElement`, etc.) instead of
+    // manual vtable offset + transmute.
+    //
+    // The `windows` crate handles AddRef/Release automatically via
+    // `Drop`, so explicit `release()` calls are no longer needed.
 
     mod com {
         use super::{control_type_to_role, ElementRect, RawFocusedElement};
         use std::ptr;
         use zeroize::Zeroizing;
 
-        // COM CLSID/IID GUIDs for IUIAutomation
+        use windows::core::BSTR;
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+        use windows::Win32::System::Variant::VT_BSTR;
+        use windows::Win32::UI::Accessibility::{
+            CUIAutomation, IUIAutomation, IUIAutomationCacheRequest, IUIAutomationElement,
+            IUIAutomationTreeWalker, TreeScope, TreeScope_Children, TreeScope_Element,
+            UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_NamePropertyId,
+            UIA_ValueValuePropertyId,
+        };
+
+        // ── Legacy vtable constants (kept as documentation reference) ──
         //
-        // CLSID_CUIAutomation:
-        //   {FF48DBA4-60EF-4201-AA87-54103EEF594E}
-        const CLSID_CUIAUTOMATION: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0xFF48DBA4,
-            data2: 0x60EF,
-            data3: 0x4201,
-            data4: [0xAA, 0x87, 0x54, 0x10, 0x3E, 0xEF, 0x59, 0x4E],
-        };
-
-        // IID_IUIAutomation:
-        //   {30CBE57D-D9D0-452A-AB13-7AC5AC4825EE}
-        const IID_IUIAUTOMATION: windows_sys::core::GUID = windows_sys::core::GUID {
-            data1: 0x30CBE57D,
-            data2: 0xD9D0,
-            data3: 0x452A,
-            data4: [0xAB, 0x13, 0x7A, 0xC5, 0xAC, 0x48, 0x25, 0xEE],
-        };
-
-        /// UIA property IDs for `GetCurrentPropertyValue`.
-        const UIA_VALUE_VALUE_PROPERTY_ID: i32 = 30045;
-
-        // COM method vtable offsets for IUIAutomation
-        // IUnknown: QueryInterface(0), AddRef(1), Release(2)
-        // IUIAutomation methods:
-        //   ...various methods...
-        //   GetFocusedElement is at vtable index 8
-        const IUNKNOWN_RELEASE_INDEX: usize = 2;
-        const IUIAUTOMATION_GET_FOCUSED_ELEMENT_INDEX: usize = 8;
-
-        // IUIAutomationElement vtable offsets
-        // IUnknown: 0-2, IUIAutomationElement methods start at 3
-        //   get_CurrentControlType: index 21
-        //   get_CurrentName: index 23
-        //   get_CurrentBoundingRectangle: index 27
+        // These were the manually hard-coded vtable offsets used before
+        // the migration to the type-safe `windows` crate. Retained here
+        // as a reference for anyone debugging COM interop issues.
+        //
+        // IUIAutomation vtable:
+        //   GetFocusedElement: index 8
+        //   get_RawViewWalker: index 15
+        //   CreateCacheRequest: index 20
+        //
+        // IUIAutomationElement vtable:
         //   GetCurrentPropertyValue: index 12
-        const IELEMENT_GET_CURRENT_CONTROL_TYPE_INDEX: usize = 21;
-        const IELEMENT_GET_CURRENT_NAME_INDEX: usize = 23;
-        const IELEMENT_GET_CURRENT_BOUNDING_RECT_INDEX: usize = 27;
-        const IELEMENT_GET_CURRENT_PROPERTY_VALUE_INDEX: usize = 12;
+        //   get_CurrentControlType: index 21
+        //   get_CachedControlType: index 22
+        //   get_CurrentName: index 23
+        //   get_CachedName: index 24
+        //   get_CurrentBoundingRectangle: index 27
+        //   get_CachedBoundingRectangle: index 28
+        //
+        // IUIAutomationTreeWalker vtable:
+        //   GetFirstChildElement: index 4
+        //   GetFirstChildElementBuildCache: index 5
+        //   GetNextSiblingElement: index 6
+        //   GetNextSiblingElementBuildCache: index 7
+        //
+        // IUIAutomationCacheRequest vtable:
+        //   AddProperty: index 3
+        //   put_TreeScope: index 7
 
-        // IUIAutomation: get_RawViewWalker is at vtable index 15
-        const IUIAUTOMATION_GET_RAW_VIEW_WALKER_INDEX: usize = 15;
-
-        // IUIAutomationTreeWalker vtable offsets
-        // IUnknown: 0-2
-        // GetFirstChildElement: index 4
-        // GetFirstChildElementBuildCache: index 5
-        // GetNextSiblingElement: index 6
-        // GetNextSiblingElementBuildCache: index 7
-        const ITREEWALKER_GET_FIRST_CHILD_INDEX: usize = 4;
-        const ITREEWALKER_GET_FIRST_CHILD_BUILD_CACHE_INDEX: usize = 5;
-        const ITREEWALKER_GET_NEXT_SIBLING_INDEX: usize = 6;
-        const ITREEWALKER_GET_NEXT_SIBLING_BUILD_CACHE_INDEX: usize = 7;
-
-        // IUIAutomation::CreateCacheRequest vtable offset
-        const IUIAUTOMATION_CREATE_CACHE_REQUEST_INDEX: usize = 20;
-
-        // IUIAutomationCacheRequest vtable offsets
-        // IUnknown: 0-2
-        // AddProperty: index 3
-        // put_TreeScope: index 7
-        const ICACHEREQUEST_ADD_PROPERTY_INDEX: usize = 3;
-        const ICACHEREQUEST_PUT_TREE_SCOPE_INDEX: usize = 7;
-
-        // UIA property IDs for CacheRequest
-        const UIA_CONTROL_TYPE_PROPERTY_ID: i32 = 30003;
-        const UIA_NAME_PROPERTY_ID: i32 = 30005;
-        const UIA_BOUNDING_RECTANGLE_PROPERTY_ID: i32 = 30001;
-
-        // TreeScope flags
-        // TreeScope_Element = 0x1, TreeScope_Children = 0x2
-        const TREE_SCOPE_ELEMENT: i32 = 0x1;
-        const TREE_SCOPE_CHILDREN: i32 = 0x2;
-
-        // IUIAutomationElement cached property vtable offsets
-        // get_CachedControlType: index 22 (CurrentControlType is 21, Cached is next)
-        // get_CachedName: index 24 (CurrentName is 23, Cached is next)
-        // get_CachedBoundingRectangle: index 28 (CurrentBoundingRectangle is 27, Cached is next)
-        const IELEMENT_GET_CACHED_CONTROL_TYPE_INDEX: usize = 22;
-        const IELEMENT_GET_CACHED_NAME_INDEX: usize = 24;
-        const IELEMENT_GET_CACHED_BOUNDING_RECT_INDEX: usize = 28;
-
-        /// UIA bounding rectangle (uses f64, not i32 like Windows RECT).
-        #[repr(C)]
-        struct UiaRect {
-            left: f64,
-            top: f64,
-            width: f64,
-            height: f64,
-        }
-
-        /// VARIANT structure (simplified for BSTR/I4 extraction).
-        #[repr(C)]
-        struct Variant {
-            vt: u16,
-            _reserved1: u16,
-            _reserved2: u16,
-            _reserved3: u16,
-            data: VariantData,
-        }
-
-        /// Union portion of VARIANT (64-bit).
-        #[repr(C)]
-        union VariantData {
-            bstr_val: *mut u16,
-            int_val: i32,
-            _pad: [u8; 8],
-        }
-
-        const VT_BSTR: u16 = 8;
-
-        /// Convert a BSTR (null-terminated UTF-16 pointer) to a Rust String.
-        ///
-        /// SAFETY: `bstr` must be a valid BSTR pointer allocated by SysAllocString.
-        unsafe fn bstr_to_string(bstr: *mut u16) -> Option<String> {
-            if bstr.is_null() {
-                return None;
-            }
-            // BSTR length prefix is 4 bytes before the pointer
-            let len_ptr = (bstr as *const u8).sub(4) as *const u32;
-            let byte_len = *len_ptr as usize;
-            let char_len = byte_len / 2;
-            if char_len == 0 {
-                return Some(String::new());
-            }
-            let slice = std::slice::from_raw_parts(bstr, char_len);
-            String::from_utf16(slice).ok()
-        }
-
-        /// Free a BSTR allocated by the COM runtime.
-        unsafe fn sys_free_string(bstr: *mut u16) {
-            if !bstr.is_null() {
-                windows_sys::Win32::System::Com::SysFreeString(bstr as windows_sys::core::BSTR);
+        /// Convert an `IUIAutomationElement`'s `CurrentBoundingRectangle`
+        /// (Win32 `RECT` with left/top/right/bottom as i32) to our
+        /// `ElementRect` (x/y/width/height as f32).
+        fn rect_to_element_rect(rect: &windows::Win32::Foundation::RECT) -> Option<ElementRect> {
+            let width = rect.right - rect.left;
+            let height = rect.bottom - rect.top;
+            if width > 0 || height > 0 {
+                Some(ElementRect {
+                    x: rect.left as f32,
+                    y: rect.top as f32,
+                    width: width as f32,
+                    height: height as f32,
+                })
+            } else {
+                None
             }
         }
 
-        /// Call a method on a COM interface via its vtable.
-        ///
-        /// SAFETY: The pointer must be a valid COM interface and the index
-        /// must be correct for the interface layout.
-        unsafe fn vtable_fn(obj: *mut std::ffi::c_void, index: usize) -> *const std::ffi::c_void {
-            let vtable = *(obj as *const *const *const std::ffi::c_void);
-            *vtable.add(index)
-        }
-
-        /// Release a COM object (call IUnknown::Release).
-        unsafe fn release(obj: *mut std::ffi::c_void) {
-            if !obj.is_null() {
-                let release_fn: unsafe extern "system" fn(*mut std::ffi::c_void) -> u32 =
-                    std::mem::transmute(vtable_fn(obj, IUNKNOWN_RELEASE_INDEX));
-                release_fn(obj);
+        /// Convert a `BSTR` to an `Option<String>`, returning `None` for
+        /// null/empty strings.
+        fn bstr_to_opt_string(bstr: &BSTR) -> Option<String> {
+            if bstr.is_empty() {
+                None
+            } else {
+                Some(bstr.to_string())
             }
         }
 
@@ -327,8 +252,9 @@ mod inner {
         /// or any step in the extraction chain fails. Errors are logged at
         /// debug level to avoid noise under normal operation.
         ///
-        /// SAFETY: This function performs raw COM FFI calls. It is only called
-        /// from `spawn_blocking` to avoid blocking the tokio runtime.
+        /// SAFETY: This function performs COM calls that are `unsafe` in the
+        /// `windows` crate. It is only called from `spawn_blocking` to avoid
+        /// blocking the tokio runtime.
         pub(super) fn extract_via_uia() -> Option<RawFocusedElement> {
             unsafe {
                 // Step 1: Initialize COM (COINIT_MULTITHREADED = 0x0)
@@ -343,120 +269,60 @@ mod inner {
                 }
                 let _com_guard = ComGuard; // CoUninitialize on drop
 
-                // Step 2: Create IUIAutomation instance
-                let mut automation: *mut std::ffi::c_void = ptr::null_mut();
-                let hr = windows_sys::Win32::System::Com::CoCreateInstance(
-                    &CLSID_CUIAUTOMATION,
-                    ptr::null_mut(),
-                    windows_sys::Win32::System::Com::CLSCTX_INPROC_SERVER,
-                    &IID_IUIAUTOMATION,
-                    &mut automation,
-                );
-                if hr < 0 || automation.is_null() {
-                    tracing::debug!(hresult = hr, "CoCreateInstance(CUIAutomation) failed");
-                    return None;
-                }
+                // Step 2: Create IUIAutomation instance (type-safe)
+                let automation: IUIAutomation =
+                    match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            tracing::debug!(error = %e, "CoCreateInstance(CUIAutomation) failed");
+                            return None;
+                        }
+                    };
 
-                // Step 3: GetFocusedElement
-                let mut element: *mut std::ffi::c_void = ptr::null_mut();
-                let get_focused: unsafe extern "system" fn(
-                    *mut std::ffi::c_void,
-                    *mut *mut std::ffi::c_void,
-                ) -> i32 = std::mem::transmute(vtable_fn(
-                    automation,
-                    IUIAUTOMATION_GET_FOCUSED_ELEMENT_INDEX,
-                ));
-                let hr = get_focused(automation, &mut element);
-                release(automation);
-
-                if hr < 0 || element.is_null() {
-                    tracing::debug!(hresult = hr, "GetFocusedElement returned no element");
-                    return None;
-                }
-
-                // Step 4a: get_CurrentControlType -> role
-                let mut control_type: i32 = 0;
-                let get_control_type: unsafe extern "system" fn(
-                    *mut std::ffi::c_void,
-                    *mut i32,
-                ) -> i32 = std::mem::transmute(vtable_fn(
-                    element,
-                    IELEMENT_GET_CURRENT_CONTROL_TYPE_INDEX,
-                ));
-                let hr = get_control_type(element, &mut control_type);
-                let role = if hr >= 0 {
-                    control_type_to_role(control_type).to_string()
-                } else {
-                    "Unknown".to_string()
+                // Step 3: GetFocusedElement (type-safe — returns Result<IUIAutomationElement>)
+                let element: IUIAutomationElement = match automation.GetFocusedElement() {
+                    Ok(el) => el,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "GetFocusedElement returned no element");
+                        return None;
+                    }
                 };
 
-                // Step 4b: get_CurrentName -> label
-                let mut name_bstr: *mut u16 = ptr::null_mut();
-                let get_name: unsafe extern "system" fn(
-                    *mut std::ffi::c_void,
-                    *mut *mut u16,
-                ) -> i32 = std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_NAME_INDEX));
-                let hr = get_name(element, &mut name_bstr);
-                let name = if hr >= 0 {
-                    let s = bstr_to_string(name_bstr);
-                    sys_free_string(name_bstr);
-                    s.filter(|s| !s.is_empty()).map(Zeroizing::new)
-                } else {
-                    None
+                // Step 4a: CurrentControlType → role
+                let role = match element.CurrentControlType() {
+                    Ok(ct) => control_type_to_role(ct.0).to_string(),
+                    Err(_) => "Unknown".to_string(),
                 };
 
-                // Step 4c: get_CurrentBoundingRectangle -> position
-                let mut rect = UiaRect {
-                    left: 0.0,
-                    top: 0.0,
-                    width: 0.0,
-                    height: 0.0,
-                };
-                let get_rect: unsafe extern "system" fn(
-                    *mut std::ffi::c_void,
-                    *mut UiaRect,
-                ) -> i32 = std::mem::transmute(vtable_fn(
-                    element,
-                    IELEMENT_GET_CURRENT_BOUNDING_RECT_INDEX,
-                ));
-                let hr = get_rect(element, &mut rect);
-                let position = if hr >= 0 && (rect.width > 0.0 || rect.height > 0.0) {
-                    Some(ElementRect {
-                        x: rect.left as f32,
-                        y: rect.top as f32,
-                        width: rect.width as f32,
-                        height: rect.height as f32,
-                    })
-                } else {
-                    None
+                // Step 4b: CurrentName → label
+                let name = match element.CurrentName() {
+                    Ok(bstr) => bstr_to_opt_string(&bstr).map(Zeroizing::new),
+                    Err(_) => None,
                 };
 
-                // Step 4d: GetCurrentPropertyValue(UIA_ValueValuePropertyId) -> text value
-                let mut variant = std::mem::zeroed::<Variant>();
-                let get_property: unsafe extern "system" fn(
-                    *mut std::ffi::c_void,
-                    i32,
-                    *mut Variant,
-                ) -> i32 = std::mem::transmute(vtable_fn(
-                    element,
-                    IELEMENT_GET_CURRENT_PROPERTY_VALUE_INDEX,
-                ));
-                let hr = get_property(element, UIA_VALUE_VALUE_PROPERTY_ID, &mut variant);
-                // UIA_ValueValuePropertyId only ever returns VT_BSTR or VT_EMPTY,
-                // so freeing the BSTR (via sys_free_string) is sufficient cleanup.
-                // TODO: If we extend this to other property IDs that may return
-                // VT_I4, VT_DISPATCH, VT_UNKNOWN, etc., add a VariantClear call
-                // here to safely release any variant-owned resources.
-                let value = if hr >= 0 && variant.vt == VT_BSTR {
-                    let bstr = variant.data.bstr_val;
-                    let s = bstr_to_string(bstr);
-                    sys_free_string(bstr);
-                    s.filter(|s| !s.is_empty()).map(Zeroizing::new)
-                } else {
-                    None
+                // Step 4c: CurrentBoundingRectangle → position
+                let position = match element.CurrentBoundingRectangle() {
+                    Ok(rect) => rect_to_element_rect(&rect),
+                    Err(_) => None,
                 };
 
-                release(element);
+                // Step 4d: GetCurrentPropertyValue(UIA_ValueValuePropertyId) → text value
+                let value = match element.GetCurrentPropertyValue(UIA_ValueValuePropertyId) {
+                    Ok(variant) => {
+                        if variant.vt() == VT_BSTR {
+                            // Extract BSTR from VARIANT via TryFrom
+                            match BSTR::try_from(&variant) {
+                                Ok(bstr) => bstr_to_opt_string(&bstr).map(Zeroizing::new),
+                                Err(_) => None,
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    Err(_) => None,
+                };
+
+                // element, automation are dropped here — Release called automatically
 
                 Some(RawFocusedElement {
                     role,
@@ -470,119 +336,69 @@ mod inner {
         /// Create a CacheRequest that pre-fetches ControlType, Name, and
         /// BoundingRectangle properties for Element + Children scope.
         ///
-        /// Returns the cache request COM pointer, or null if creation fails.
-        /// The caller is responsible for calling `release()` on the returned
-        /// pointer when done.
+        /// Returns `None` if creation or configuration fails.
         ///
-        /// SAFETY: `automation` must be a valid IUIAutomation pointer.
-        unsafe fn create_cache_request(automation: *mut std::ffi::c_void) -> *mut std::ffi::c_void {
-            // IUIAutomation::CreateCacheRequest(ppCacheRequest)
-            let mut cache_request: *mut std::ffi::c_void = ptr::null_mut();
-            let create_cache_req: unsafe extern "system" fn(
-                *mut std::ffi::c_void,
-                *mut *mut std::ffi::c_void,
-            ) -> i32 = std::mem::transmute(vtable_fn(
-                automation,
-                IUIAUTOMATION_CREATE_CACHE_REQUEST_INDEX,
-            ));
-            let hr = create_cache_req(automation, &mut cache_request);
-            if hr < 0 || cache_request.is_null() {
-                tracing::debug!(hresult = hr, "CreateCacheRequest failed");
-                return ptr::null_mut();
+        /// SAFETY: Requires COM to be initialized on the current thread.
+        unsafe fn create_cache_request(
+            automation: &IUIAutomation,
+        ) -> Option<IUIAutomationCacheRequest> {
+            let cache_request = match automation.CreateCacheRequest() {
+                Ok(cr) => cr,
+                Err(e) => {
+                    tracing::debug!(error = %e, "CreateCacheRequest failed");
+                    return None;
+                }
+            };
+
+            // AddProperty for each property we need
+            if let Err(e) = cache_request.AddProperty(UIA_ControlTypePropertyId) {
+                tracing::debug!(error = %e, "AddProperty(ControlType) failed");
+                return None;
+            }
+            if let Err(e) = cache_request.AddProperty(UIA_NamePropertyId) {
+                tracing::debug!(error = %e, "AddProperty(Name) failed");
+                return None;
+            }
+            if let Err(e) = cache_request.AddProperty(UIA_BoundingRectanglePropertyId) {
+                tracing::debug!(error = %e, "AddProperty(BoundingRectangle) failed");
+                return None;
             }
 
-            // ICacheRequest::AddProperty for each property we need
-            let add_property: unsafe extern "system" fn(*mut std::ffi::c_void, i32) -> i32 =
-                std::mem::transmute(vtable_fn(cache_request, ICACHEREQUEST_ADD_PROPERTY_INDEX));
-
-            let hr = add_property(cache_request, UIA_CONTROL_TYPE_PROPERTY_ID);
-            if hr < 0 {
-                tracing::debug!(hresult = hr, "AddProperty(ControlType) failed");
-                release(cache_request);
-                return ptr::null_mut();
+            // SetTreeScope(Element | Children)
+            if let Err(e) =
+                cache_request.SetTreeScope(TreeScope(TreeScope_Element.0 | TreeScope_Children.0))
+            {
+                tracing::debug!(error = %e, "SetTreeScope failed");
+                return None;
             }
 
-            let hr = add_property(cache_request, UIA_NAME_PROPERTY_ID);
-            if hr < 0 {
-                tracing::debug!(hresult = hr, "AddProperty(Name) failed");
-                release(cache_request);
-                return ptr::null_mut();
-            }
-
-            let hr = add_property(cache_request, UIA_BOUNDING_RECTANGLE_PROPERTY_ID);
-            if hr < 0 {
-                tracing::debug!(hresult = hr, "AddProperty(BoundingRectangle) failed");
-                release(cache_request);
-                return ptr::null_mut();
-            }
-
-            // ICacheRequest::put_TreeScope(Element | Children)
-            let put_tree_scope: unsafe extern "system" fn(*mut std::ffi::c_void, i32) -> i32 =
-                std::mem::transmute(vtable_fn(cache_request, ICACHEREQUEST_PUT_TREE_SCOPE_INDEX));
-            let hr = put_tree_scope(cache_request, TREE_SCOPE_ELEMENT | TREE_SCOPE_CHILDREN);
-            if hr < 0 {
-                tracing::debug!(hresult = hr, "put_TreeScope failed");
-                release(cache_request);
-                return ptr::null_mut();
-            }
-
-            cache_request
+            Some(cache_request)
         }
 
         /// Extract properties from an element's cache (populated by BuildCache).
         ///
-        /// Uses `get_CachedControlType`, `get_CachedName`, and
-        /// `get_CachedBoundingRectangle` instead of their `Current` counterparts.
+        /// Uses `CachedControlType`, `CachedName`, and
+        /// `CachedBoundingRectangle` instead of their `Current` counterparts.
         /// This avoids cross-process COM calls since the data was pre-fetched.
         ///
         /// SAFETY: `element` must be a valid IUIAutomationElement with a
         /// populated cache (obtained via a BuildCache walker method).
         unsafe fn extract_cached_properties(
-            element: *mut std::ffi::c_void,
+            element: &IUIAutomationElement,
         ) -> (String, Option<String>, Option<ElementRect>) {
-            // get_CachedControlType
-            let mut control_type: i32 = 0;
-            let get_ct: unsafe extern "system" fn(*mut std::ffi::c_void, *mut i32) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CACHED_CONTROL_TYPE_INDEX));
-            let hr = get_ct(element, &mut control_type);
-            let role = if hr >= 0 {
-                control_type_to_role(control_type).to_string()
-            } else {
-                "Unknown".to_string()
+            let role = match element.CachedControlType() {
+                Ok(ct) => control_type_to_role(ct.0).to_string(),
+                Err(_) => "Unknown".to_string(),
             };
 
-            // get_CachedName
-            let mut name_bstr: *mut u16 = ptr::null_mut();
-            let get_name: unsafe extern "system" fn(*mut std::ffi::c_void, *mut *mut u16) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CACHED_NAME_INDEX));
-            let hr = get_name(element, &mut name_bstr);
-            let name = if hr >= 0 {
-                let s = bstr_to_string(name_bstr);
-                sys_free_string(name_bstr);
-                s.filter(|s| !s.is_empty())
-            } else {
-                None
+            let name = match element.CachedName() {
+                Ok(bstr) => bstr_to_opt_string(&bstr),
+                Err(_) => None,
             };
 
-            // get_CachedBoundingRectangle
-            let mut rect = UiaRect {
-                left: 0.0,
-                top: 0.0,
-                width: 0.0,
-                height: 0.0,
-            };
-            let get_rect: unsafe extern "system" fn(*mut std::ffi::c_void, *mut UiaRect) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CACHED_BOUNDING_RECT_INDEX));
-            let hr = get_rect(element, &mut rect);
-            let position = if hr >= 0 && (rect.width > 0.0 || rect.height > 0.0) {
-                Some(ElementRect {
-                    x: rect.left as f32,
-                    y: rect.top as f32,
-                    width: rect.width as f32,
-                    height: rect.height as f32,
-                })
-            } else {
-                None
+            let position = match element.CachedBoundingRectangle() {
+                Ok(rect) => rect_to_element_rect(&rect),
+                Err(_) => None,
             };
 
             (role, name, position)
@@ -595,48 +411,21 @@ mod inner {
         ///
         /// SAFETY: `element` must be a valid IUIAutomationElement.
         unsafe fn extract_current_properties(
-            element: *mut std::ffi::c_void,
+            element: &IUIAutomationElement,
         ) -> (String, Option<String>, Option<ElementRect>) {
-            let mut control_type: i32 = 0;
-            let get_ct: unsafe extern "system" fn(*mut std::ffi::c_void, *mut i32) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_CONTROL_TYPE_INDEX));
-            let hr = get_ct(element, &mut control_type);
-            let role = if hr >= 0 {
-                control_type_to_role(control_type).to_string()
-            } else {
-                "Unknown".to_string()
+            let role = match element.CurrentControlType() {
+                Ok(ct) => control_type_to_role(ct.0).to_string(),
+                Err(_) => "Unknown".to_string(),
             };
 
-            let mut name_bstr: *mut u16 = ptr::null_mut();
-            let get_name: unsafe extern "system" fn(*mut std::ffi::c_void, *mut *mut u16) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_NAME_INDEX));
-            let hr = get_name(element, &mut name_bstr);
-            let name = if hr >= 0 {
-                let s = bstr_to_string(name_bstr);
-                sys_free_string(name_bstr);
-                s.filter(|s| !s.is_empty())
-            } else {
-                None
+            let name = match element.CurrentName() {
+                Ok(bstr) => bstr_to_opt_string(&bstr),
+                Err(_) => None,
             };
 
-            let mut rect = UiaRect {
-                left: 0.0,
-                top: 0.0,
-                width: 0.0,
-                height: 0.0,
-            };
-            let get_rect: unsafe extern "system" fn(*mut std::ffi::c_void, *mut UiaRect) -> i32 =
-                std::mem::transmute(vtable_fn(element, IELEMENT_GET_CURRENT_BOUNDING_RECT_INDEX));
-            let hr = get_rect(element, &mut rect);
-            let position = if hr >= 0 && (rect.width > 0.0 || rect.height > 0.0) {
-                Some(ElementRect {
-                    x: rect.left as f32,
-                    y: rect.top as f32,
-                    width: rect.width as f32,
-                    height: rect.height as f32,
-                })
-            } else {
-                None
+            let position = match element.CurrentBoundingRectangle() {
+                Ok(rect) => rect_to_element_rect(&rect),
+                Err(_) => None,
             };
 
             (role, name, position)
@@ -663,56 +452,28 @@ mod inner {
                 }
                 let _com_guard = ComGuard;
 
-                // Create IUIAutomation
-                let mut automation: *mut std::ffi::c_void = ptr::null_mut();
-                let hr = windows_sys::Win32::System::Com::CoCreateInstance(
-                    &CLSID_CUIAUTOMATION,
-                    ptr::null_mut(),
-                    windows_sys::Win32::System::Com::CLSCTX_INPROC_SERVER,
-                    &IID_IUIAUTOMATION,
-                    &mut automation,
-                );
-                if hr < 0 || automation.is_null() {
-                    return Vec::new();
-                }
+                // Create IUIAutomation (type-safe)
+                let automation: IUIAutomation =
+                    match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+                        Ok(a) => a,
+                        Err(_) => return Vec::new(),
+                    };
 
-                // Get focused element
-                let mut element: *mut std::ffi::c_void = ptr::null_mut();
-                let get_focused: unsafe extern "system" fn(
-                    *mut std::ffi::c_void,
-                    *mut *mut std::ffi::c_void,
-                ) -> i32 = std::mem::transmute(vtable_fn(
-                    automation,
-                    IUIAUTOMATION_GET_FOCUSED_ELEMENT_INDEX,
-                ));
-                let hr = get_focused(automation, &mut element);
-                if hr < 0 || element.is_null() {
-                    release(automation);
-                    return Vec::new();
-                }
+                // Get focused element (type-safe)
+                let element: IUIAutomationElement = match automation.GetFocusedElement() {
+                    Ok(el) => el,
+                    Err(_) => return Vec::new(),
+                };
 
-                // Get RawViewWalker
-                let mut walker: *mut std::ffi::c_void = ptr::null_mut();
-                let get_walker: unsafe extern "system" fn(
-                    *mut std::ffi::c_void,
-                    *mut *mut std::ffi::c_void,
-                ) -> i32 = std::mem::transmute(vtable_fn(
-                    automation,
-                    IUIAUTOMATION_GET_RAW_VIEW_WALKER_INDEX,
-                ));
-                let hr = get_walker(automation, &mut walker);
-                if hr < 0 || walker.is_null() {
-                    release(automation);
-                    release(element);
-                    return Vec::new();
-                }
+                // Get RawViewWalker (type-safe)
+                let walker: IUIAutomationTreeWalker = match automation.RawViewWalker() {
+                    Ok(w) => w,
+                    Err(_) => return Vec::new(),
+                };
 
                 // Try to create a CacheRequest for bulk property fetching.
-                // Must happen before releasing automation since it's an
-                // IUIAutomation factory method.
-                let cache_request = create_cache_request(automation);
-                release(automation);
-                let use_cache = !cache_request.is_null();
+                let cache_request = create_cache_request(&automation);
+                let use_cache = cache_request.is_some();
                 if use_cache {
                     tracing::debug!("UIA tree traversal: using CacheRequest (bulk property fetch)");
                 } else {
@@ -724,43 +485,39 @@ mod inner {
                 let mut results = Vec::new();
                 let mut remaining = max_elements;
                 collect_subtree(
-                    walker,
-                    element,
+                    &walker,
+                    &element,
                     0,
                     max_depth,
                     &mut remaining,
                     &mut results,
-                    cache_request,
+                    cache_request.as_ref(),
                     use_cache,
                 );
 
-                if !cache_request.is_null() {
-                    release(cache_request);
-                }
-                release(walker);
-                release(element);
+                // walker, element, cache_request, automation dropped here — Release automatic
                 results
             }
         }
 
         /// Recursive depth-limited subtree collection with optional CacheRequest.
         ///
-        /// When `use_cache` is true and `cache_request` is non-null, uses
+        /// When `use_cache` is true and `cache_request` is `Some`, uses
         /// `GetFirstChildElementBuildCache` / `GetNextSiblingElementBuildCache`
         /// to populate the element cache, then reads properties via
-        /// `get_Cached*` methods. This reduces cross-process COM calls from
+        /// `Cached*` methods. This reduces cross-process COM calls from
         /// 3 per element to 1 per walker step.
         ///
         /// When `use_cache` is false, falls back to the original per-property
-        /// `get_Current*` calls (3 cross-process calls per element).
+        /// `Current*` calls (3 cross-process calls per element).
         unsafe fn collect_subtree(
-            walker: *mut std::ffi::c_void,
-            element: *mut std::ffi::c_void,
+            walker: &IUIAutomationTreeWalker,
+            element: &IUIAutomationElement,
             depth: u32,
             max_depth: u32,
             remaining: &mut usize,
             results: &mut Vec<(String, Option<String>, Option<ElementRect>)>,
-            cache_request: *mut std::ffi::c_void,
+            cache_request: Option<&IUIAutomationCacheRequest>,
             use_cache: bool,
         ) {
             if *remaining == 0 || depth > max_depth {
@@ -780,36 +537,20 @@ mod inner {
 
             // Recurse into children
             if depth < max_depth && *remaining > 0 {
-                let mut child: *mut std::ffi::c_void = ptr::null_mut();
-
-                let hr = if use_cache {
-                    // GetFirstChildElementBuildCache(element, cacheRequest, &child)
-                    // populates the child's cache in a single cross-process call
-                    let get_first_child_cached: unsafe extern "system" fn(
-                        *mut std::ffi::c_void,
-                        *mut std::ffi::c_void,
-                        *mut std::ffi::c_void,
-                        *mut *mut std::ffi::c_void,
-                    )
-                        -> i32 = std::mem::transmute(vtable_fn(
-                        walker,
-                        ITREEWALKER_GET_FIRST_CHILD_BUILD_CACHE_INDEX,
-                    ));
-                    get_first_child_cached(walker, element, cache_request, &mut child)
+                let first_child = if use_cache {
+                    if let Some(cr) = cache_request {
+                        walker.GetFirstChildElementBuildCache(element, cr).ok()
+                    } else {
+                        walker.GetFirstChildElement(element).ok()
+                    }
                 } else {
-                    let get_first_child: unsafe extern "system" fn(
-                        *mut std::ffi::c_void,
-                        *mut std::ffi::c_void,
-                        *mut *mut std::ffi::c_void,
-                    ) -> i32 =
-                        std::mem::transmute(vtable_fn(walker, ITREEWALKER_GET_FIRST_CHILD_INDEX));
-                    get_first_child(walker, element, &mut child)
+                    walker.GetFirstChildElement(element).ok()
                 };
 
-                if hr >= 0 && !child.is_null() {
+                if let Some(child) = first_child {
                     collect_subtree(
                         walker,
-                        child,
+                        &child,
                         depth + 1,
                         max_depth,
                         remaining,
@@ -819,54 +560,39 @@ mod inner {
                     );
 
                     // Traverse siblings
+                    let mut current = child;
                     loop {
                         if *remaining == 0 {
-                            release(child);
                             break;
                         }
-                        let mut sibling: *mut std::ffi::c_void = ptr::null_mut();
 
-                        let hr = if use_cache {
-                            // GetNextSiblingElementBuildCache(child, cacheRequest, &sibling)
-                            let get_next_sibling_cached: unsafe extern "system" fn(
-                                *mut std::ffi::c_void,
-                                *mut std::ffi::c_void,
-                                *mut std::ffi::c_void,
-                                *mut *mut std::ffi::c_void,
-                            )
-                                -> i32 = std::mem::transmute(vtable_fn(
-                                walker,
-                                ITREEWALKER_GET_NEXT_SIBLING_BUILD_CACHE_INDEX,
-                            ));
-                            get_next_sibling_cached(walker, child, cache_request, &mut sibling)
+                        let next_sibling = if use_cache {
+                            if let Some(cr) = cache_request {
+                                walker.GetNextSiblingElementBuildCache(&current, cr).ok()
+                            } else {
+                                walker.GetNextSiblingElement(&current).ok()
+                            }
                         } else {
-                            let get_next_sibling: unsafe extern "system" fn(
-                                *mut std::ffi::c_void,
-                                *mut std::ffi::c_void,
-                                *mut *mut std::ffi::c_void,
-                            )
-                                -> i32 = std::mem::transmute(vtable_fn(
-                                walker,
-                                ITREEWALKER_GET_NEXT_SIBLING_INDEX,
-                            ));
-                            get_next_sibling(walker, child, &mut sibling)
+                            walker.GetNextSiblingElement(&current).ok()
                         };
 
-                        release(child);
-                        if hr < 0 || sibling.is_null() {
-                            break;
+                        // current is dropped here when reassigned — Release automatic
+                        match next_sibling {
+                            Some(sibling) => {
+                                current = sibling;
+                                collect_subtree(
+                                    walker,
+                                    &current,
+                                    depth + 1,
+                                    max_depth,
+                                    remaining,
+                                    results,
+                                    cache_request,
+                                    use_cache,
+                                );
+                            }
+                            None => break,
                         }
-                        child = sibling;
-                        collect_subtree(
-                            walker,
-                            child,
-                            depth + 1,
-                            max_depth,
-                            remaining,
-                            results,
-                            cache_request,
-                            use_cache,
-                        );
                     }
                 }
             }

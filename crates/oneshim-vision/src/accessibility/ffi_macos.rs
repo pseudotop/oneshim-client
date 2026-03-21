@@ -98,6 +98,116 @@ pub(crate) mod ax {
     pub const kAXValueCGPointType: u32 = 1;
     pub const kAXValueCGSizeType: u32 = 2;
 
+    // ── AXObserver API ──────────────────────────────────────────────────
+    //
+    // AXObserver subscribes to accessibility notifications (e.g.
+    // kAXFocusedUIElementChangedNotification) and delivers them via a
+    // CFRunLoopSource. This enables event-driven focus change detection
+    // instead of polling.
+
+    /// Process ID type (matches libc::pid_t).
+    pub type PidT = i32;
+
+    /// Opaque AXObserver reference (same layout as CFTypeRef).
+    pub type AXObserverRef = CFTypeRef;
+
+    /// CFRunLoopSourceRef — opaque pointer to a CFRunLoopSource.
+    pub type CFRunLoopSourceRef = *const c_void;
+
+    /// CFRunLoopRef — opaque pointer to a CFRunLoop.
+    pub type CFRunLoopRef = *const c_void;
+
+    /// Callback signature for AXObserver notifications.
+    ///
+    /// Parameters:
+    /// - `observer`: The AXObserver that received the notification
+    /// - `element`: The accessibility element that triggered it
+    /// - `notification`: The notification name (CFStringRef)
+    /// - `refcon`: User-provided context pointer
+    pub type AXObserverCallback = unsafe extern "C" fn(
+        observer: AXObserverRef,
+        element: AXUIElementRef,
+        notification: CFStringRef,
+        refcon: *mut c_void,
+    );
+
+    /// Notification name for focus changes.
+    /// Corresponds to Apple's kAXFocusedUIElementChangedNotification.
+    pub const AX_FOCUSED_UI_ELEMENT_CHANGED_NOTIFICATION: &str = "AXFocusedUIElementChanged";
+
+    /// Notification name for application-level focus changes.
+    /// Corresponds to Apple's kAXFocusedWindowChangedNotification.
+    pub const AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION: &str = "AXFocusedWindowChanged";
+
+    /// Default run loop mode constant string.
+    pub const K_CF_RUN_LOOP_DEFAULT_MODE: &str = "kCFRunLoopDefaultMode";
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        /// Create an AXObserver for the given PID with a notification callback.
+        ///
+        /// Returns kAXErrorSuccess on success. The caller owns the returned
+        /// observer and must release it with CFRelease.
+        pub fn AXObserverCreate(
+            application: PidT,
+            callback: AXObserverCallback,
+            observer: *mut AXObserverRef,
+        ) -> AXError;
+
+        /// Register a notification on an element with the observer.
+        ///
+        /// `refcon` is passed through to the callback as user data.
+        pub fn AXObserverAddNotification(
+            observer: AXObserverRef,
+            element: AXUIElementRef,
+            notification: CFStringRef,
+            refcon: *mut c_void,
+        ) -> AXError;
+
+        /// Unregister a previously registered notification.
+        pub fn AXObserverRemoveNotification(
+            observer: AXObserverRef,
+            element: AXUIElementRef,
+            notification: CFStringRef,
+        ) -> AXError;
+
+        /// Get the CFRunLoopSource for the observer.
+        ///
+        /// The source must be added to a CFRunLoop for the observer to
+        /// receive notifications.
+        pub fn AXObserverGetRunLoopSource(observer: AXObserverRef) -> CFRunLoopSourceRef;
+
+        /// Create an accessibility element for a specific application PID.
+        pub fn AXUIElementCreateApplication(pid: PidT) -> AXUIElementRef;
+    }
+
+    // CFRunLoop functions from CoreFoundation.
+    //
+    // We declare these directly instead of depending on the
+    // core-foundation crate's higher-level wrappers, because we need
+    // the raw C pointers for interop with AXObserverGetRunLoopSource.
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        /// Get the CFRunLoop for the current thread.
+        pub fn CFRunLoopGetCurrent() -> CFRunLoopRef;
+
+        /// Add a CFRunLoopSource to a run loop in the given mode.
+        pub fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
+
+        /// Remove a CFRunLoopSource from a run loop.
+        pub fn CFRunLoopRemoveSource(
+            rl: CFRunLoopRef,
+            source: CFRunLoopSourceRef,
+            mode: CFStringRef,
+        );
+
+        /// Run the current thread's run loop indefinitely.
+        pub fn CFRunLoopRun();
+
+        /// Stop the current thread's run loop.
+        pub fn CFRunLoopStop(rl: CFRunLoopRef);
+    }
+
     /// CGPoint for position extraction.
     #[repr(C)]
     #[derive(Debug, Clone, Copy, Default)]

@@ -27,6 +27,9 @@ use oneshim_core::ports::accessibility::AccessibilityExtractor;
 #[cfg(target_os = "macos")]
 pub use macos::MacOsNativeAccessibility;
 
+#[cfg(target_os = "macos")]
+pub use macos::FocusObserverHandle;
+
 #[cfg(target_os = "windows")]
 pub use windows::WindowsUiaAccessibility;
 

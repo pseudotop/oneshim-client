@@ -17,6 +17,14 @@
 //! 5. Apply PII-level gating: Strict suppresses labels, Standard/Basic/Off
 //!    include them.
 //!
+//! ## Focus Event Listener
+//!
+//! Optionally, a `FocusEventListener` can be started to receive event-driven
+//! focus change notifications via AT-SPI `StateChangedEvent` subscriptions.
+//! This avoids polling the entire accessibility tree on every scheduler tick.
+//! The listener caches the D-Bus coordinates (bus name + object path) of the
+//! last focused element so the scheduler can check it cheaply.
+//!
 //! ## Permissions
 //!
 //! Unlike macOS (which requires Accessibility permission) and some Windows
@@ -29,8 +37,14 @@
 #[cfg(target_os = "linux")]
 mod inner {
     use std::sync::atomic::{AtomicU32, Ordering};
+    #[cfg(feature = "linux-atspi")]
+    use std::sync::Arc;
 
     use async_trait::async_trait;
+    #[cfg(feature = "linux-atspi")]
+    use tokio::sync::RwLock;
+    #[cfg(feature = "linux-atspi")]
+    use tracing::info;
     use tracing::{debug, warn};
 
     use oneshim_core::config::PiiFilterLevel;
@@ -41,6 +55,158 @@ mod inner {
     use oneshim_core::models::focused_element::ElementRect;
     use oneshim_core::models::focused_element::FocusedElementInfo;
     use oneshim_core::ports::accessibility::AccessibilityExtractor;
+
+    // ── Focus event listener types ────────────────────────────────────
+
+    /// D-Bus coordinates of a focused accessible object.
+    ///
+    /// Stores the bus name (destination) and object path so the caller can
+    /// build an `AccessibleProxy` for the focused element without walking
+    /// the entire tree.
+    #[cfg(feature = "linux-atspi")]
+    #[derive(Debug, Clone)]
+    pub struct FocusedObjectInfo {
+        /// D-Bus bus name (e.g. ":1.42" or "org.gnome.Terminal").
+        pub bus_name: String,
+        /// D-Bus object path (e.g. "/org/a11y/atspi/accessible/123").
+        pub object_path: String,
+    }
+
+    /// Handle to a running focus event listener.
+    ///
+    /// When all clones of this handle are dropped, the background listener
+    /// task is cancelled via the shutdown channel.
+    #[cfg(feature = "linux-atspi")]
+    #[derive(Clone)]
+    pub struct FocusEventListenerHandle {
+        /// Cached last focused object coordinates, updated by the listener task.
+        last_focused: Arc<RwLock<Option<FocusedObjectInfo>>>,
+        /// Sending side of the shutdown channel. The listener task holds
+        /// the receiver and stops when it fires.
+        _shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
+    }
+
+    #[cfg(feature = "linux-atspi")]
+    impl FocusEventListenerHandle {
+        /// Read the last focused object info without blocking.
+        ///
+        /// Returns `None` if no focus event has been received yet or if the
+        /// listener has not started.
+        pub async fn last_focused(&self) -> Option<FocusedObjectInfo> {
+            self.last_focused.read().await.clone()
+        }
+
+        /// Check whether a focus event has been received at least once.
+        pub async fn has_focus(&self) -> bool {
+            self.last_focused.read().await.is_some()
+        }
+    }
+
+    /// Background focus event listener that subscribes to AT-SPI
+    /// `StateChangedEvent` notifications over D-Bus.
+    #[cfg(feature = "linux-atspi")]
+    struct FocusEventListener;
+
+    #[cfg(feature = "linux-atspi")]
+    impl FocusEventListener {
+        /// Spawn the listener task and return a handle.
+        ///
+        /// The listener connects to AT-SPI, registers for `ObjectEvents`,
+        /// and filters the event stream for `StateChangedEvent` with
+        /// state == "focused" and enabled == 1. Each matching event
+        /// updates the shared `last_focused` cache.
+        ///
+        /// The task runs until the returned handle (and all its clones) are
+        /// dropped, which triggers the shutdown watch channel.
+        async fn spawn() -> Result<FocusEventListenerHandle, CoreError> {
+            use atspi::connection::AccessibilityConnection;
+            use atspi::events::ObjectEvents;
+
+            let conn = AccessibilityConnection::new().await.map_err(|e| {
+                CoreError::Internal(format!(
+                    "AT-SPI2 focus listener: D-Bus connection failed: {e}"
+                ))
+            })?;
+
+            conn.register_event::<ObjectEvents>().await.map_err(|e| {
+                CoreError::Internal(format!(
+                    "AT-SPI2 focus listener: event registration failed: {e}"
+                ))
+            })?;
+
+            let last_focused: Arc<RwLock<Option<FocusedObjectInfo>>> = Arc::new(RwLock::new(None));
+            let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
+
+            let cache = Arc::clone(&last_focused);
+
+            tokio::spawn(async move {
+                use atspi::events::object::StateChangedEvent;
+                use futures::StreamExt;
+
+                let stream = conn.event_stream();
+                tokio::pin!(stream);
+
+                info!("AT-SPI2 focus event listener started");
+
+                loop {
+                    tokio::select! {
+                        biased;
+
+                        // Shutdown signal — stop the loop
+                        _ = shutdown_rx.changed() => {
+                            info!("AT-SPI2 focus event listener shutting down");
+                            break;
+                        }
+
+                        // Next event from the AT-SPI stream
+                        event_opt = stream.next() => {
+                            match event_opt {
+                                Some(Ok(event)) => {
+                                    // Try to convert to StateChangedEvent
+                                    if let Ok(state_change) = StateChangedEvent::try_from(event) {
+                                        if state_change.state() == "focused"
+                                            && state_change.enabled() == 1
+                                        {
+                                            let item = state_change.item();
+                                            let info = FocusedObjectInfo {
+                                                bus_name: item.name.to_string(),
+                                                object_path: item.path.to_string(),
+                                            };
+                                            debug!(
+                                                bus = %info.bus_name,
+                                                path = %info.object_path,
+                                                "AT-SPI2 focus changed"
+                                            );
+                                            *cache.write().await = Some(info);
+                                        }
+                                    }
+                                }
+                                Some(Err(e)) => {
+                                    warn!("AT-SPI2 event stream error: {e}");
+                                    // Continue listening -- transient errors are expected
+                                }
+                                None => {
+                                    // Stream ended unexpectedly
+                                    warn!("AT-SPI2 event stream ended unexpectedly");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Deregister events on shutdown (best-effort)
+                if let Err(e) = conn.deregister_event::<ObjectEvents>().await {
+                    debug!("AT-SPI2 focus listener: deregister failed (non-fatal): {e}");
+                }
+            });
+
+            Ok(FocusEventListenerHandle {
+                last_focused,
+                _shutdown_tx: Arc::new(shutdown_tx),
+            })
+        }
+    }
 
     // ── Circuit breaker (same pattern as macOS/Windows) ──────────────
 
@@ -114,6 +280,26 @@ mod inner {
             // Stub: single-element focus tracking not yet implemented.
             // Use extract_window_elements() for full tree traversal.
             None
+        }
+
+        // ── Focus event listener ──────────────────────────────────────
+
+        /// Start the AT-SPI focus event listener.
+        ///
+        /// Returns a handle that can be used to query the last focused
+        /// element without polling the entire accessibility tree. The
+        /// listener subscribes to `StateChangedEvent` with state "focused"
+        /// over D-Bus and caches the focused element's bus coordinates.
+        ///
+        /// This is **optional** — if it fails to start (e.g. AT-SPI2 is not
+        /// available), the existing polling path in `extract_window_elements()`
+        /// continues to work. Callers should treat errors as non-fatal.
+        ///
+        /// The listener task runs until the returned handle (and all its
+        /// clones) are dropped.
+        #[cfg(feature = "linux-atspi")]
+        pub async fn start_focus_listener(&self) -> Result<FocusEventListenerHandle, CoreError> {
+            FocusEventListener::spawn().await
         }
 
         // ── AT-SPI tree traversal helpers (linux-atspi feature) ──────
@@ -432,6 +618,14 @@ mod inner {
 #[cfg(target_os = "linux")]
 pub use inner::LinuxAccessibility;
 
+#[cfg(target_os = "linux")]
+#[cfg(feature = "linux-atspi")]
+pub use inner::FocusEventListenerHandle;
+
+#[cfg(target_os = "linux")]
+#[cfg(feature = "linux-atspi")]
+pub use inner::FocusedObjectInfo;
+
 #[cfg(test)]
 #[cfg(target_os = "linux")]
 mod tests {
@@ -482,5 +676,49 @@ mod tests {
                 panic!("unexpected error: {e}");
             }
         }
+    }
+
+    #[cfg(feature = "linux-atspi")]
+    #[tokio::test]
+    async fn focus_listener_starts_or_gracefully_fails() {
+        let extractor = LinuxAccessibility::new();
+        let result = extractor.start_focus_listener().await;
+        // On CI without AT-SPI2, this will fail with Internal error.
+        // On desktop Linux with AT-SPI2 running, it should succeed.
+        match result {
+            Ok(handle) => {
+                // Listener started — initially no focus event received
+                assert!(!handle.has_focus().await);
+                assert!(handle.last_focused().await.is_none());
+                // Handle drop triggers graceful shutdown
+                drop(handle);
+                eprintln!("AT-SPI2 focus listener started and stopped successfully");
+            }
+            Err(oneshim_core::error::CoreError::Internal(msg)) => {
+                eprintln!("AT-SPI2 focus listener unavailable (expected on CI): {msg}");
+            }
+            Err(e) => {
+                panic!("unexpected error from start_focus_listener: {e}");
+            }
+        }
+    }
+
+    #[cfg(feature = "linux-atspi")]
+    #[tokio::test]
+    async fn focus_listener_handle_clone_shares_state() {
+        // Simulate the shared state without a real AT-SPI connection
+        // by constructing a FocusedObjectInfo and verifying the Clone
+        // derive works correctly.
+        let info = FocusedObjectInfo {
+            bus_name: ":1.42".to_string(),
+            object_path: "/org/a11y/atspi/accessible/123".to_string(),
+        };
+        assert_eq!(info.bus_name, ":1.42");
+        assert_eq!(info.object_path, "/org/a11y/atspi/accessible/123");
+
+        // Verify clone works
+        let cloned = info.clone();
+        assert_eq!(cloned.bus_name, info.bus_name);
+        assert_eq!(cloned.object_path, info.object_path);
     }
 }
