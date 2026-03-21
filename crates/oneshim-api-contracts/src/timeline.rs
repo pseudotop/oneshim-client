@@ -18,7 +18,9 @@ pub enum TimelineItem {
         id: String,
         timestamp: String,
         event_type: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         app_name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         window_title: Option<String>,
     },
     Frame {
