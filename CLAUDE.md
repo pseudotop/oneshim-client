@@ -70,7 +70,7 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-vision
               ←  oneshim-network
               ←  oneshim-storage
-              ←  oneshim-suggestion  ←  oneshim-network
+              ←  oneshim-suggestion
               ←  oneshim-automation
               ←  oneshim-analysis    ←  oneshim-core
               ←  oneshim-embedding   ←  oneshim-core
@@ -81,7 +81,11 @@ oneshim-core  ←  oneshim-monitor
 
 **Forbidden**: Direct dependency between adapter crates (e.g., monitor → storage). All cross-crate communication must go through `oneshim-core` traits.
 
-**Exceptions**: `suggestion → network` (SSE reception)
+**Exceptions**: None currently. All adapter crates depend only on `oneshim-core`.
+
+**Accepted deviations**:
+- `AppState.storage: Arc<SqliteStorage>` uses concrete type (not `Arc<dyn T>`) because `SqliteStorage` implements 10+ disjoint port traits (`StorageService`, `MetricsStorage`, `WebStorage`, `FocusStorage`, `VectorStore`, etc.) — a single trait object cannot represent this.
+- `FocusStorage` and `WebStorage` traits are synchronous (no `#[async_trait]`) — called via `block_in_place` from sync SQLite operations.
 
 ### Error Strategy (ADR-001 §1)
 
