@@ -4,7 +4,7 @@
 //!
 //! - `mod.rs` — orchestrator (`run_migrations`, `get_version`, version constant)
 //! - `v01_v08.rs` — foundation tables (events, frames, metrics, sessions, tags, edge intelligence)
-//! - `v09_v17.rs` — tiered memory, vectors, sync, IVF index, coaching engine
+//! - `v09_v17.rs` — tiered memory, vectors, sync, IVF index, coaching engine, trigram FTS
 
 #[cfg(test)]
 mod tests;
@@ -14,7 +14,7 @@ mod v09_v17;
 use rusqlite::Connection;
 use tracing::info;
 
-pub(crate) const CURRENT_VERSION: u32 = 17;
+pub(crate) const CURRENT_VERSION: u32 = 18;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -94,6 +94,10 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 17 {
         v09_v17::migrate_v17(conn)?;
+    }
+
+    if current < 18 {
+        v09_v17::migrate_v18(conn)?;
     }
 
     Ok(())

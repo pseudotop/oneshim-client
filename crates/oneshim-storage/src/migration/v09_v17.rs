@@ -1,4 +1,4 @@
-//! Migrations V9–V17: tiered memory, vectors, sync, IVF, coaching.
+//! Migrations V9–V18: tiered memory, vectors, sync, IVF, coaching, trigram FTS.
 //!
 //! V9:  calibration_log, trigger_params_snapshots, regimes, activity_segments
 //! V10: embedding_vectors, weekly_digests
@@ -9,9 +9,10 @@
 //! V15: lan_peer_pins (Sync 3b TOFU)
 //! V16: IVF index + 2-bit binary codes
 //! V17: coaching engine tables
+//! V18: Korean trigram FTS5 table (search_trigram)
 
 use rusqlite::Connection;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub(super) fn migrate_v9(conn: &Connection) -> Result<(), rusqlite::Error> {
     debug!("migration V9 execution: tiered memory tables (calibration, regimes, segments)");
@@ -453,5 +454,25 @@ pub(super) fn migrate_v17(conn: &Connection) -> Result<(), rusqlite::Error> {
     )?;
 
     info!("migration V17 complete: coaching engine tables created");
+    Ok(())
+}
+
+pub(super) fn migrate_v18(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V18 execution: Korean trigram FTS5 table (search_trigram)");
+
+    // Trigram tokenizer — may fail if the bundled FTS5 does not include
+    // `tokenize='trigram'` support. We log a warning and continue, mirroring
+    // the graceful degradation in V11 for the standard FTS5 table.
+    let trigram_result = conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS search_trigram
+             USING fts5(segment_id UNINDEXED, content, tokenize='trigram');",
+    );
+    if let Err(e) = trigram_result {
+        warn!("trigram FTS5 table creation skipped (tokenizer not available): {e}");
+    }
+
+    conn.execute_batch("INSERT INTO schema_version (version) VALUES (18);")?;
+
+    info!("migration V18 complete: Korean trigram FTS5 table");
     Ok(())
 }

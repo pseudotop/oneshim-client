@@ -166,7 +166,7 @@ fn migration_all_versions() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 17);
+    assert_eq!(version, 18);
 
     // V9 tables
     let count: i64 = conn
@@ -366,7 +366,7 @@ fn migration_all_versions() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 17);
+    assert_eq!(version, 18);
 
     // V17 tables
     let count: i64 = conn
@@ -406,13 +406,23 @@ fn migration_all_versions() {
         .unwrap();
     assert_eq!(count, 1);
 
+    // V18 — trigram FTS5 table
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_trigram'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1);
+
     // Final version check
     let version: u32 = conn
         .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 17);
+    assert_eq!(version, 18);
 }
 
 #[test]
@@ -425,5 +435,5 @@ fn migration_idempotent() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 17);
+    assert_eq!(version, 18);
 }
