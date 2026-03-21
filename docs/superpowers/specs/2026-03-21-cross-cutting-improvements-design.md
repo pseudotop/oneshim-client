@@ -1,160 +1,226 @@
-# Cross-Cutting Improvements Design Spec
+# Cross-Cutting Improvements — Design Spec
 
-**Date:** 2026-03-21
-**Priority:** P1
-**Effort:** 1.5 days
-**Status:** Proposed
-**Impact:** No new crates, no new ports, no schema migration
+> Created: 2026-03-21
+> Status: Proposed
+> Scope: All crates (observability, validation, GDPR compliance)
+> Reference: ADR-001 (Rust Client Architecture Patterns)
 
----
+## 1. Goal
 
-## 1. Vector Dimensionality Validation
+Address cross-cutting concerns that span multiple crates: observability instrumentation, vector validation hardening, and GDPR compliance for data deletion operations.
 
-**Gap:** `VectorStore::store()` and `store_quantized()` accept any vector length without
-dimension check. `ScalarQuantizer::quantize()` (`quantization.rs:25-65`) rejects only
-empty/NaN/Inf — not dimension mismatches.
+## 2. Current State
 
-**Code-level detail (deep dive):**
-- `quantize()` accepts any `&[f32]` length
-- `store_quantized()` in `trait_impl.rs:242-290` passes vectors through without validation
-- Model dimensions hardcoded in `oneshim-embedding/src/lib.rs:155-195`:
-  AllMiniLML6V2Q = 384, BGEBaseENV15Q = 768
-- **Risk:** Switching models silently corrupts similarity search
+### 2.1 Observability
 
-**Fix:** Add dimension check in `store_quantized()` at the storage adapter level:
+- Tracing is console-only (`tracing_subscriber::fmt()` in main.rs:65-72)
+- Only 7/500+ functions instrumented (1.4% coverage), all in gui_interaction crate
+- Pattern to follow: `#[tracing::instrument(skip_all, fields(...))]`
+- No structured logging output (JSON) for production
+- No span correlation across async task boundaries
+
+### 2.2 Vector Validation
+
+- `QuantizedVector` struct: `data: Vec<i8>`, `scale: f32`, `offset: f32` — NO dimension field
+- `cosine_similarity_int8()` returns 0.0 silently on dimension mismatch (line 86) — should return Result
+- No validation at quantization or storage boundaries
+- Dimension mismatches only caught at search time (if at all)
+
+### 2.3 GDPR Data Deletion
+
+- 12 DELETE operations use `let _ =` — silent failure risk for GDPR compliance
+- No audit trail for deletion success/failure
+- No transaction wrapping for multi-table deletions
+- Missing tests for deletion edge cases
+
+## 3. Architecture
+
+### A. Observability Improvements
+
+#### A.1 Tracing Coverage Plan
+
+Priority instrumentation targets (by crate):
+
+| Crate | Functions to Instrument | Priority |
+|-------|------------------------|----------|
+| `src-tauri/scheduler/loops` | All 13 spawn loops | P0 |
+| `oneshim-network` | HTTP/gRPC/SSE client methods | P0 |
+| `oneshim-storage` | All public query/insert methods | P1 |
+| `oneshim-analysis` | Analyzer, pipeline, retriever | P1 |
+| `oneshim-vision` | Capture, delta, processor | P2 |
+| `oneshim-monitor` | System/process/activity tracking | P2 |
+
+#### A.2 Instrumentation Pattern
 
 ```rust
-const EXPECTED_DIM: usize = 384;
+#[tracing::instrument(skip_all, fields(
+    user_id = %self.user_id,
+    operation = "upload_batch",
+    batch_size = payload.events.len(),
+))]
+async fn upload_batch(&self, payload: &BatchPayload) -> Result<(), CoreError> {
+    // ...
+}
+```
 
-fn store_quantized(&self, vector_f32: Vec<f32>, vector_int8: &QuantizedVector, ...) -> Result<(), CoreError> {
-    if vector_int8.int8.len() != EXPECTED_DIM {
-        return Err(CoreError::InvalidInput(format!(
-            "expected {EXPECTED_DIM}-dim vector, got {}", vector_int8.int8.len()
-        )));
+- `skip_all` to avoid logging sensitive data
+- `fields(...)` for structured context
+- Return types with `Display` for automatic result logging
+
+#### A.3 Production Logging
+
+- Add `tracing-subscriber` JSON formatter behind feature flag
+- Configure via `AppConfig::telemetry.log_format` (text/json)
+- File rotation: `tracing-appender` with daily rotation, 7-day retention
+
+### B. Vector Validation
+
+#### B.1 Problem
+
+`QuantizedVector` has no `dimensions` field. `cosine_similarity_int8()` silently returns 0.0 on dimension mismatch:
+
+```rust
+// Current (line 86 in embedding/lib.rs)
+if a.len() != b.len() {
+    return 0.0;  // Silent failure — should be Result
+}
+```
+
+#### B.2 Fix: Return Result
+
+```rust
+pub fn cosine_similarity_int8(a: &[i8], b: &[i8]) -> Result<f32, EmbeddingError> {
+    if a.len() != b.len() {
+        return Err(EmbeddingError::DimensionMismatch {
+            expected: a.len(),
+            actual: b.len(),
+        });
     }
-    // ... existing logic
+    // ... compute similarity
 }
 ```
 
----
+#### B.3 Validation Points
 
-## 2. Observability Framework
+Best validation points for dimension checking:
 
-**Gap confirmed (deep dive):** Zero `#[instrument]` attributes in entire `oneshim-analysis` crate.
+1. **`ScalarQuantizer::quantize()`** — validate input vector dimensions match model config
+2. **`SqliteStorage::store_quantized()`** — validate before persisting to DB
+3. **`VectorRetriever::search()`** — validate query dimensions match index dimensions
 
-**Specific gaps found:**
-- `adaptive_search.rs` — `search()`, `determine_strategy()`, `refresh_count()`: only `debug!` macro
-- `hybrid_search_service.rs` — `hybrid_search()`, `vector_search()`, `keyword_search()`: no timing, silent `unwrap_or_default()` on errors
-- `embedding_pipeline.rs` — `process_content_activities()`, `process_llm_summary()`: no timing
-- `vector_retriever.rs` — `search()`: no timing
-- All storage operations: no `#[instrument]`
-
-**Add `#[instrument(skip(self))]`** to:
-
-| Operation | File | Target |
-|---|---|---|
-| `search()` | `adaptive_search.rs:120` | <5ms (brute), <1ms (HNSW) |
-| `hybrid_search()` | `hybrid_search_service.rs:74` | <50ms |
-| `search_quantized()` | `vector_store_impl/trait_impl.rs:292` | <5ms |
-| `search_ivf()` | `vector_index_impl/search.rs` | <10ms |
-| `search_fts()` | `fts_search_impl.rs:10` | <50ms |
-| `build_ivf_index()` | `vector_index_impl/build.rs` | <10s |
-| `process_content_activities()` | `embedding_pipeline.rs:67` | <100ms |
-| `build_timeline_response()` | `timeline_service.rs:23` | <100ms |
-
-**Also fix:** Silent error swallowing in `hybrid_search_service.rs:120-125`:
-```rust
-// Current: silently returns empty on error
-let vector_results = vector_results.unwrap_or_default();
-// Should: log the error before defaulting
-let vector_results = vector_results.unwrap_or_else(|e| { warn!("vector search failed: {e}"); vec![] });
-```
-
----
-
-## 3. GDPR `delete_all_data()` — VERIFIED COMPLETE
-
-**Verification result:** Manual code review confirms `maintenance.rs:357-421` deletes
-from **34 tables** covering V1-V17. Both research agents incorrectly reported only 7
-tables (they read only the first portion of the function).
-
-**Coverage:**
-- V1-V7: events, frames, system_metrics, system_metrics_hourly, process_snapshots, idle_periods, session_stats, work_sessions, interruptions, focus_metrics, suggestions, local_suggestions, tags, frame_tags (14)
-- V8-V11: activity_segments, calibration_log, daily_digests, weekly_digests, embedding_vectors, regime_overrides, regimes, trigger_params_snapshots, search_fts (9)
-- V12-V14: vector_binary_codes, vector_index_meta, ivf_centroids, ivf_assignments, gui_interactions, device_identity, sync_peers (7)
-- V15-V16: lan_peer_pins (1)
-- V17: coaching_events, regime_goals, coaching_effectiveness (3)
-
-**Only `schema_version` excluded** (correct — schema metadata, not user data).
-
-**Action:** Add automated regression test to prevent future gaps:
+Add `dimensions: usize` field to `QuantizedVector` for self-describing vectors:
 
 ```rust
-#[test]
-fn delete_all_data_covers_all_tables() {
-    let conn = Connection::open_in_memory().unwrap();
-    run_migrations(&conn).unwrap();
-    delete_all_data(&conn).unwrap();
-    let uncovered: Vec<String> = conn
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_version'")
-        .unwrap()
-        .query_map([], |row| row.get::<_, String>(0))
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .filter(|name| {
-            let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM [{name}]"), [], |r| r.get(0)).unwrap_or(0);
-            count > 0
-        })
-        .collect();
-    assert!(uncovered.is_empty(), "Tables not cleared: {uncovered:?}");
+pub struct QuantizedVector {
+    pub data: Vec<i8>,
+    pub scale: f32,
+    pub offset: f32,
+    pub dimensions: usize,  // New: self-describing
 }
 ```
 
----
+### C. GDPR Compliance Hardening
 
-## 4. Unbounded Collection Risks (deep dive finding)
+#### C.1 Problem
 
-**Additional gap discovered:**
+12 DELETE operations use `let _ =` pattern — silent failure:
 
-| Location | Issue |
-|---|---|
-| `edge_intelligence.rs:533,607,655,700,757` | `get_work_sessions()` etc. return full result sets without LIMIT |
-| `integration_state_store.rs:55,60` | `outbox`, `audit_records` Vecs grow unbounded |
-| `frame_storage.rs:198,300` | Directory listing loads all file paths into Vec |
-| `maintenance.rs:428-432` | Export queries have no pagination |
+```rust
+// Current pattern (multiple locations)
+let _ = self.conn.execute("DELETE FROM events WHERE user_id = ?1", params![user_id]);
+// ^ If this fails, GDPR deletion is incomplete but caller doesn't know
+```
 
-**Recommendation:** Add LIMIT to all unbounded queries. Low effort, high safety.
+#### C.2 Fix: Track Success/Failure
 
----
+Recommendation: Track success/failure per table, or wrap in transaction:
 
-## 5. Modified Files
+```rust
+pub struct DeletionReport {
+    pub tables: Vec<TableDeletionResult>,
+    pub all_succeeded: bool,
+}
 
-| File | Change |
-|---|---|
-| `crates/oneshim-storage/src/sqlite/vector_store_impl/trait_impl.rs` | Dimensionality validation |
-| `crates/oneshim-analysis/src/adaptive_search.rs` | `#[instrument]` on `search()` |
-| `crates/oneshim-analysis/src/hybrid_search_service.rs` | `#[instrument]` + error logging fix |
-| `crates/oneshim-analysis/src/embedding_pipeline.rs` | `#[instrument]` |
-| `crates/oneshim-storage/src/sqlite/vector_index_impl/search.rs` | `#[instrument]` |
-| `crates/oneshim-storage/src/sqlite/vector_index_impl/build.rs` | `#[instrument]` |
-| `crates/oneshim-storage/src/sqlite/fts_search_impl.rs` | `#[instrument]` |
-| `crates/oneshim-web/src/services/timeline_service.rs` | `#[instrument]` |
-| `crates/oneshim-storage/tests/` | GDPR regression test |
+pub struct TableDeletionResult {
+    pub table_name: String,
+    pub rows_deleted: usize,
+    pub success: bool,
+    pub error: Option<String>,
+}
 
-## 6. Effort
+pub fn delete_user_data(&self, user_id: &str) -> Result<DeletionReport, StorageError> {
+    let tx = self.conn.transaction()?;
+    let mut report = DeletionReport { tables: vec![], all_succeeded: true };
 
-| Task | Estimate |
-|---|---|
-| Dimensionality validation | 0.25 day |
-| Observability instrumentation (8+ functions) | 0.5 day |
-| Error logging fix (hybrid search) | 0.25 day |
-| GDPR regression test | 0.25 day |
-| Integration tests | 0.25 day |
-| **Total** | **1.5 days** |
+    for table in ["events", "frames", "sessions", "focus_metrics", ...] {
+        match tx.execute(&format!("DELETE FROM {table} WHERE user_id = ?1"), params![user_id]) {
+            Ok(count) => report.tables.push(TableDeletionResult {
+                table_name: table.to_string(),
+                rows_deleted: count,
+                success: true,
+                error: None,
+            }),
+            Err(e) => {
+                report.all_succeeded = false;
+                report.tables.push(TableDeletionResult {
+                    table_name: table.to_string(),
+                    rows_deleted: 0,
+                    success: false,
+                    error: Some(e.to_string()),
+                });
+            }
+        }
+    }
 
-## 7. Phased Rollout
+    if report.all_succeeded {
+        tx.commit()?;
+    } else {
+        tx.rollback()?;
+    }
+    Ok(report)
+}
+```
 
-| Phase | Scope |
-|---|---|
-| **A** | Dimensionality validation + GDPR regression test |
-| **B** | Observability instrumentation + error logging fix |
+#### C.3 Test Placement
+
+Test file: `src-tauri/tests/gdpr_regression.rs`
+
+Test cases:
+- All tables cleaned for given user_id
+- Partial failure → transaction rollback → no partial deletion
+- DeletionReport correctly reports per-table results
+- Consent revocation triggers complete data removal
+- Vector embeddings deleted alongside structured data
+- Frame files on disk deleted (not just DB records)
+
+## 4. Testing Strategy
+
+### Observability
+- Verify `tracing::instrument` spans appear in test subscriber
+- Test JSON log format output structure
+- Verify no sensitive data in span fields
+
+### Vector Validation
+- Test dimension mismatch returns `Err` (not silent 0.0)
+- Test valid dimensions compute correct similarity
+- Test `QuantizedVector` with `dimensions` field round-trip through storage
+- Property test: quantize → store → load → search always preserves dimensions
+
+### GDPR
+- Test placement: `src-tauri/tests/gdpr_regression.rs`
+- Full deletion flow: create data → delete → verify empty
+- Partial failure: mock table error → verify rollback
+- Report accuracy: verify row counts and error messages
+
+## 5. Risks
+
+- Adding `dimensions` field to `QuantizedVector` requires storage migration (V18)
+- Changing `cosine_similarity_int8()` return type is a breaking change — update all callers
+- Transaction-based deletion may be slower than individual DELETEs — benchmark
+- Tracing instrumentation adds small overhead per function call (~100ns)
+
+## 6. Execution Order
+
+1. **Vector validation** — highest impact (silent bugs), smallest scope
+2. **GDPR hardening** — compliance risk, moderate scope
+3. **Observability** — largest scope, can be incremental

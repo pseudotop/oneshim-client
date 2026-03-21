@@ -1,145 +1,91 @@
-# SQLite Performance Tuning Design Spec
+# SQLite Performance Tuning — Design Spec
 
-**Date:** 2026-03-21
-**Priority:** P1
-**Effort:** 4 days
-**Status:** Proposed
-**Impact:** No new crates, no new ports, no schema migration
-
----
+> Created: 2026-03-21
+> Status: Proposed
+> Scope: oneshim-storage (sqlite.rs, migration.rs), src-tauri (scheduler)
+> Reference: ADR-003 (Directory Module Pattern for Large Source Files)
 
 ## 1. Current State
 
-**PRAGMA configuration** (`crates/oneshim-storage/src/sqlite/mod.rs:26-71`):
+### Code-Level Findings
 
-```sql
-PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA cache_size=8000;       -- 32MB
-PRAGMA temp_store=MEMORY;
-PRAGMA mmap_size=268435456;   -- 256MB
-PRAGMA page_size=4096;
-```
+| Area | Location | Finding |
+|------|----------|---------|
+| WAL mode | `sqlite.rs` PRAGMA setup | Enabled (`journal_mode=WAL`), `synchronous=NORMAL` |
+| Page cache | `sqlite.rs` PRAGMA setup | `cache_size=-8000` (8MB) |
+| Temp store | `sqlite.rs` PRAGMA setup | `temp_store=MEMORY` |
+| Busy timeout | `sqlite.rs` PRAGMA setup | `busy_timeout=5000` (5s) |
+| Batch inserts | `sqlite.rs` | Uses transactions for batch operations |
+| Compound indexes | `migration.rs` | Present on high-traffic tables |
+| WAL checkpoint | `scheduler/loops.rs` (sync/aggregate loops) | No explicit checkpoint in scheduler — only in IVF build (build.rs:176,295) |
 
-**Bundled SQLite:** 3.51.1 (via `libsqlite3-sys 0.36.0`).
+## 2. Architecture
 
-**Connection model:** Single `Arc<Mutex<Connection>>` — all reads/writes serialized.
+### A. PRAGMA Optimization
 
-**Code-level findings (deep dive 2026-03-21):**
+Review and tune existing PRAGMA settings:
+- Verify `mmap_size` is set for read-heavy workloads
+- Consider `page_size=4096` alignment with OS page size
+- Evaluate `auto_vacuum=INCREMENTAL` for long-running sessions
 
-| Finding | Location | Detail |
-|---------|----------|--------|
-| FTS existence check per-query | `fts_search_impl.rs:20-27, 117-134, 179-185` | 3x `sqlite_master` queries per enriched sync |
-| No FTS sync in scheduler | `scheduler/loops/system.rs:112-443` | FTS merge/optimize never called |
-| No ANALYZE after IVF build | `vector_index_impl/build.rs:176,295` | `wal_checkpoint(TRUNCATE)` present, ANALYZE missing |
-| mmap unconditional 256MB | `mod.rs:69` | No external drive detection |
-| GDPR `delete_all_data()` gap | `maintenance.rs:357-395` | Only 5-7 of 33 tables deleted — needs verification |
-| DB path platform-specific | `bootstrap_runtime.rs:116-121` | macOS `~/Library/Application Support/oneshim/data/` |
+### B. Index Audit
 
----
+- Identify unused indexes via `EXPLAIN QUERY PLAN`
+- Add covering indexes for frequent query patterns
+- Review partial indexes for time-bounded queries
 
-## 2. Proposed Changes
+### C. Batch Insert Optimization
 
-### A. Add Missing PRAGMAs (at connection open)
+- Use `INSERT OR REPLACE` with prepared statements
+- Batch sizes: 100-500 rows per transaction
+- Avoid individual `INSERT` in loops
 
-```sql
-PRAGMA journal_size_limit=67108864;  -- 64MB WAL size safety cap
-PRAGMA optimize=0x10002;             -- ANALYZE all tables at open (3.46.0+)
-```
+### D. Memory-Mapped I/O
 
-**`busy_timeout`:** Irrelevant for single-Mutex design. Add only when read-only connection introduced (§2.F).
+- Enable `PRAGMA mmap_size` for read-heavy tables
+- Benchmark with and without mmap on macOS/Windows/Linux
 
-### B. Scheduled VACUUM (idle-time)
+### E. Connection Pool Tuning
 
-`auto_vacuum=INCREMENTAL` cannot be enabled on existing DB without full VACUUM conversion.
+- Single writer, multiple readers (WAL mode advantage)
+- Evaluate `rusqlite::Connection` pool vs. single connection with `block_in_place`
 
-```rust
-let freelist: u64 = conn.query_row("PRAGMA freelist_count", [], |r| r.get(0))?;
-let total: u64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
-if total > 0 && freelist * 100 / total > 15 {
-    conn.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")?;
-}
-```
+### F. Vacuum Strategy
 
-Trigger: freelist > 15% AND user idle > 30 min (or startup if last VACUUM > 7 days).
+- `PRAGMA auto_vacuum=INCREMENTAL` + periodic `PRAGMA incremental_vacuum`
+- Schedule vacuum during idle periods (see Section H)
 
-### C. FTS5 Optimization
+### G. Query Plan Analysis
 
-**C1. Cache table existence:** Replace 3x per-operation `sqlite_master` queries with `AtomicBool` checked once at open.
+- Add `EXPLAIN QUERY PLAN` logging in debug builds
+- Identify full table scans on tables with >10K rows
+- Add missing indexes based on query plan analysis
 
-```rust
-pub struct SqliteStorage {
-    conn: Arc<Mutex<Connection>>,
-    retention_days: u32,
-    fts_available: AtomicBool,
-    gui_table_available: AtomicBool,
-}
-```
+### H. WAL Checkpoint in Scheduler
 
-**C2. FTS5 merge/optimize scheduling:**
+- Currently no WAL checkpoint in scheduler loops
+- Add `PRAGMA wal_checkpoint(PASSIVE)` to sync loop (every 10 seconds) — non-blocking
+- Idle callback identified: `IdleState::Active -> Idle` transition is optimal VACUUM insertion point
+- Add `wal_autocheckpoint=1000` to PRAGMA setup (default already, but make explicit)
 
-```sql
--- Hourly: gentle incremental merge
-INSERT INTO search_fts(search_fts, rank) VALUES('merge', 500);
--- Daily (idle): full defrag
-INSERT INTO search_fts(search_fts) VALUES('optimize');
-```
+## 3. Testing Strategy
 
-**C3. Korean trigram FTS:** Add second FTS5 table with `trigram` tokenizer for Korean content. Detect language via Hangul range (`\uAC00-\uD7A3`).
+- Benchmark before/after each PRAGMA change
+- Use `criterion` for micro-benchmarks on insert/query paths
+- Regression test: ensure no data loss after PRAGMA changes
+- Test WAL checkpoint under concurrent read/write load
 
-### D. Periodic `PRAGMA optimize`
+## 4. Performance Budget
 
-```sql
--- Hourly
-PRAGMA optimize;
-```
+| Operation | Current | Target |
+|-----------|---------|--------|
+| Single event insert | <1ms | <0.5ms |
+| Batch insert (100) | <10ms | <5ms |
+| Time-range query | <5ms | <2ms |
+| WAL checkpoint | N/A | <50ms (passive) |
 
-### E. `ANALYZE` After Bulk Operations
+## 5. Risks
 
-Add after IVF index builds and bulk retention enforcement.
-
-### F. Read-Only Connection (future evolution)
-
-Separate `SQLITE_OPEN_READ_ONLY | SQLITE_OPEN_WAL` connection for dashboard/search queries. Add `busy_timeout=5000` on both connections.
-
-### G. mmap Safety on External Drives
-
-Detect `/Volumes/` prefix on macOS → reduce `mmap_size` to 0 or 64MB. SIGBUS risk on drive ejection.
-
----
-
-## 3. Modified Files
-
-| File | Change |
-|---|---|
-| `crates/oneshim-storage/src/sqlite/mod.rs` | PRAGMAs, FTS cache flags, mmap detection |
-| `crates/oneshim-storage/src/sqlite/fts_search_impl.rs` | Remove per-query existence checks |
-| `crates/oneshim-storage/src/sqlite/maintenance.rs` | `conditional_vacuum()`, `fts_merge()`, `fts_optimize()` |
-| `src-tauri/src/scheduler/loops/system.rs` | FTS merge (hourly), VACUUM check (idle), optimize (hourly) |
-| `crates/oneshim-storage/src/sqlite/vector_index_impl/build.rs` | Add `ANALYZE` after IVF build |
-
-## 4. Effort
-
-| Task | Estimate |
-|---|---|
-| PRAGMAs (journal_size_limit, optimize, mmap safety) | 0.5 day |
-| FTS existence caching | 0.5 day |
-| Conditional VACUUM + WAL checkpoint | 0.5 day |
-| FTS5 merge/optimize scheduling | 0.5 day |
-| FTS5 trigram Korean table | 1 day |
-| ANALYZE integration | 0.25 day |
-| Tests | 0.75 day |
-| **Total** | **4 days** |
-
-## 5. Phased Rollout
-
-| Phase | Scope |
-|---|---|
-| **A** | PRAGMAs + FTS existence caching + mmap safety |
-| **B** | Conditional VACUUM + FTS merge/optimize scheduling |
-| **C** | ANALYZE after bulk ops + Korean trigram FTS table |
-| **D** | Read-only connection (future, when query latency measured) |
-
-## 6. Research Sources
-
-- [SQLite PRAGMA docs](https://sqlite.org/pragma.html), [FTS5](https://www.sqlite.org/fts5.html), [WAL](https://sqlite.org/wal.html), [mmap safety](https://sqlite.org/mmap.html)
+- `mmap_size` can cause issues on 32-bit systems (not applicable — 64-bit only)
+- Aggressive `cache_size` may increase memory pressure on low-end devices
+- WAL checkpoint during heavy writes could cause brief latency spikes (mitigated by PASSIVE mode)
