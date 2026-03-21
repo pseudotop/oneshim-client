@@ -128,6 +128,13 @@ impl AnnIndex for HnswAdapter {
         Ok(())
     }
 
+    /// Persist the HNSW index to disk using atomic rename (.tmp → final).
+    ///
+    /// **Thread safety note:** `usearch::Index::save()` is not documented as
+    /// safe during concurrent `search()` or `add()` calls. In practice, saves
+    /// are scheduled every 60s from the aggregation loop, making conflicts
+    /// unlikely. If `save_to_buffer()` becomes available in the usearch Rust
+    /// API, migrate to it for guaranteed thread safety.
     async fn save(&self) -> Result<(), CoreError> {
         if !self.dirty.load(Ordering::Relaxed) {
             return Ok(());

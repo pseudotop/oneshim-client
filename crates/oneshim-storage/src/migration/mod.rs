@@ -4,12 +4,12 @@
 //!
 //! - `mod.rs` — orchestrator (`run_migrations`, `get_version`, version constant)
 //! - `v01_v08.rs` — foundation tables (events, frames, metrics, sessions, tags, edge intelligence)
-//! - `v09_v17.rs` — tiered memory, vectors, sync, IVF index, coaching engine, trigram FTS
+//! - `v09_v18.rs` — tiered memory, vectors, sync, IVF index, coaching engine, trigram FTS
 
 #[cfg(test)]
 mod tests;
 mod v01_v08;
-mod v09_v17;
+mod v09_v18;
 
 use rusqlite::Connection;
 use tracing::info;
@@ -60,44 +60,44 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
 
     if current < 9 {
-        v09_v17::migrate_v9(conn)?;
+        v09_v18::migrate_v9(conn)?;
     }
 
     if current < 10 {
-        v09_v17::migrate_v10(conn)?;
+        v09_v18::migrate_v10(conn)?;
     }
 
     if current < 11 {
-        v09_v17::migrate_v11(conn)?;
+        v09_v18::migrate_v11(conn)?;
     }
 
     if current < 12 {
-        v09_v17::migrate_v12(conn)?;
+        v09_v18::migrate_v12(conn)?;
     }
 
     if current < 13 {
-        v09_v17::migrate_v13(conn)?;
+        v09_v18::migrate_v13(conn)?;
     }
 
     if current < 14 {
-        v09_v17::migrate_v14(conn)?;
+        v09_v18::migrate_v14(conn)?;
     }
 
     // V15 is reserved for Sync 3b (lan_peer_pins)
     if current < 15 {
-        v09_v17::migrate_v15(conn)?;
+        v09_v18::migrate_v15(conn)?;
     }
 
     if current < 16 {
-        v09_v17::migrate_v16(conn)?;
+        v09_v18::migrate_v16(conn)?;
     }
 
     if current < 17 {
-        v09_v17::migrate_v17(conn)?;
+        v09_v18::migrate_v17(conn)?;
     }
 
     if current < 18 {
-        v09_v17::migrate_v18(conn)?;
+        v09_v18::migrate_v18(conn)?;
     }
 
     Ok(())

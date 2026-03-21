@@ -396,6 +396,8 @@ impl SqliteStorage {
             "trigger_params_snapshots",
             // V11: FTS5 virtual table
             "search_fts",
+            // V18: Korean trigram FTS5 table
+            "search_trigram",
             // V12-V14
             "vector_binary_codes",
             "vector_index_meta",
