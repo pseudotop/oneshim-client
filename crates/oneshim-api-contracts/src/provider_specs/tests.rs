@@ -4,8 +4,6 @@ use crate::ai_providers::{ProviderModelSupportStatus, ProviderParameterProfile};
 
 use super::*;
 
-use super::*;
-
 #[test]
 fn loads_provider_surface_catalog() {
     let catalog = list_provider_surface_specs().expect("surface catalog should load");
