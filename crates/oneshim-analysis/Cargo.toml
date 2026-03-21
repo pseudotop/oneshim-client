@@ -3,6 +3,11 @@ name = "oneshim-analysis"
 description = "Standalone LLM analysis pipeline — pattern mining, context assembly, orchestration"
 edition.workspace = true
 version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
 
 [dependencies]
 oneshim-core = { path = "../oneshim-core" }

@@ -33,7 +33,7 @@ cd src-tauri && cargo tauri dev
 ```
 client-rust/
 ├── Cargo.toml              # Workspace root (resolver = "2")
-├── src-tauri/              # Tauri v2 binary entry point (main binary)
+├── src-tauri/              # Tauri v2 binary crate (active main binary, pkg "oneshim-app")
 │   ├── src/
 │   │   ├── main.rs         # Tauri app builder + DI wiring
 │   │   ├── tray.rs         # System tray menu
@@ -55,33 +55,35 @@ client-rust/
     ├── oneshim-automation/ # Automation control — policy-based command execution, audit logging
     ├── oneshim-analysis/   # LLM analysis pipeline — segment summarization, vector RAG
     ├── oneshim-embedding/  # Vector embedding + compression — INT8 quantization, similarity search
-    ├── oneshim-app/        # Legacy adapter crate (CLI entry, standalone mode)
-    └── oneshim-api-contracts/ # Shared API type contracts
+    ├── oneshim-lint/       # Workspace lint tool (language-check binary)
+    ├── oneshim-api-contracts/ # Shared API type contracts
+    └── oneshim-app/        # ⚠️ DEPRECATED — removed from workspace (replaced by src-tauri)
 ```
 
 ## Core Architecture Rules
 
 ### Hexagonal Architecture (Ports & Adapters)
 
-`oneshim-core` defines all traits (ports) and models. The other 12 crates act as adapters.
+`oneshim-core` defines all traits (ports) and models. The other crates act as adapters (except `oneshim-lint`, a standalone workspace tool).
 
 ```
 oneshim-core  ←  oneshim-monitor
               ←  oneshim-vision
               ←  oneshim-network
               ←  oneshim-storage
-              ←  oneshim-suggestion
+              ←  oneshim-suggestion  ←  oneshim-network
               ←  oneshim-automation
               ←  oneshim-analysis    ←  oneshim-core
               ←  oneshim-embedding   ←  oneshim-core
               ←  oneshim-api-contracts
-              ←  oneshim-app         ←  (all, legacy adapter crate)
               ←  src-tauri           ←  (all, Tauri v2 main binary)
+
+oneshim-lint     (standalone — no oneshim-core dependency)
 ```
 
 **Forbidden**: Direct dependency between adapter crates (e.g., monitor → storage). All cross-crate communication must go through `oneshim-core` traits.
 
-**Exceptions**: None currently. All adapter crates depend only on `oneshim-core`.
+**Exceptions**: `suggestion → network` (SSE reception).
 
 **Accepted deviations**:
 - `AppState.storage: Arc<SqliteStorage>` uses concrete type (not `Arc<dyn T>`) because `SqliteStorage` implements 10+ disjoint port traits (`StorageService`, `MetricsStorage`, `WebStorage`, `FocusStorage`, `VectorStore`, etc.) — a single trait object cannot represent this.
@@ -90,7 +92,7 @@ oneshim-core  ←  oneshim-monitor
 ### Error Strategy (ADR-001 §1)
 
 - Library crates: `thiserror` — specific error enums
-- Binary crate (`oneshim-app`): `anyhow::Result`
+- Binary crate (`src-tauri`): `anyhow::Result`
 - External crate errors are wrapped using `#[from]`
 
 ### Async Trait Pattern (ADR-001 §2)
@@ -106,7 +108,7 @@ pub trait ApiClient: Send + Sync {
 
 ### DI Pattern (ADR-001 §3)
 
-Constructor injection + `Arc<dyn T>`. No DI framework is used. Wiring is manually performed in `oneshim-app/src/main.rs`. All port implementations are wrapped directly in `Arc` — never `Arc<Mutex<Box<dyn T>>>`.
+Constructor injection + `Arc<dyn T>`. No DI framework is used. Wiring is manually performed in `src-tauri/src/main.rs`. All port implementations are wrapped directly in `Arc` — never `Arc<Mutex<Box<dyn T>>>`.
 
 ### Testing (ADR-001 §5)
 
@@ -218,25 +220,12 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - Shared request/response types between client crates
 - Ensures API contract consistency across the workspace
 
-### oneshim-app (Legacy Adapter Crate)
-- `main.rs`: tokio runtime + tracing + complete DI wiring + spawned tasks
-- `scheduler/`: 9-loop scheduler — directory module (ADR-003)
-  - `mod.rs`: `Scheduler` struct + `run()` orchestrator + re-exports
-  - `config.rs`: `SchedulerConfig`, `PlatformEgressPolicy`, constants
-  - `loops.rs`: 9 loop body functions (monitor, metrics, process, sync, heartbeat, aggregate, notification, focus, event snapshot)
-- `notification_manager.rs`: Cooldown-based notification manager (idle, long session, high usage)
-- `focus_analyzer/`: Focus analysis + local suggestion generation — directory module (ADR-003)
-  - `mod.rs`: `FocusAnalyzer` struct + public API + re-exports
-  - `models.rs`: `FocusAnalyzerConfig`, `SuggestionCooldowns`, `SessionTracker`
-  - `suggestions.rs`: suggestion generators + cooldown logic + focus score calculation
-- `lifecycle.rs`: SIGINT/SIGTERM handling, `tokio::sync::watch` shutdown channel
-- `event_bus.rs`: `tokio::broadcast` internal event routing
-- `autostart.rs`: Run at login — macOS LaunchAgent + Windows Registry
-- `updater/`: GitHub Releases based auto-updater — directory module (ADR-003)
-  - `mod.rs`: `Updater` struct + orchestrator + re-exports
-  - `github.rs`: GitHub API: fetch releases, select asset, version floor
-  - `install.rs`: download + decompress + binary replacement + signature verification
-  - `state.rs`: last check time, update interval, version persistence
+### oneshim-app (crates/oneshim-app/) — DEPRECATED
+> **Removed from workspace.** Replaced by `src-tauri/` which is the active binary crate
+> (also named `oneshim-app` as its package). Do not add new code here.
+>
+> Legacy modules (scheduler, focus_analyzer, updater, lifecycle, etc.) have been
+> migrated into `src-tauri/src/`.
 
 ## Key Dependencies
 
@@ -294,7 +283,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - Current quality metrics (test counts, pass/fail, lint/build status) are maintained in `docs/STATUS.md` as the single source of truth
 - Actual adapters connected to all ports: `SmartCaptureTrigger`, `EdgeFrameProcessor`, `DesktopNotifierImpl`
 - Windows active window detection implemented (`windows-sys` + `sysinfo`)
-- 32 cross-crate integration tests (`crates/oneshim-app/tests/`)
+- Cross-crate integration tests (`src-tauri/tests/`)
 - `cargo check/test/clippy/fmt` pass status is tracked in `docs/STATUS.md`
 - **GA Ready**: CI/CD, installers, documentation completed
 - **Web Dashboard**: Available at http://localhost:10090

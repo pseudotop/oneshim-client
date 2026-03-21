@@ -10,6 +10,7 @@ import type {
   BackupParams,
   CreateOverrideRequest,
   CreateTagRequest,
+  DailyDigestResponse,
   DailySummary,
   DeleteRangeRequest,
   DeleteResult,
@@ -23,6 +24,7 @@ import type {
   FeatureCapabilitySnapshot,
   FocusMetricsResponse,
   Frame,
+  GuiHeatmapCell,
   HeatmapResponse,
   HourlyMetrics,
   IdlePeriod,
@@ -448,11 +450,6 @@ export async function fetchHeatmap(days = 7): Promise<HeatmapResponse> {
   return res.json()
 }
 
-export interface GuiHeatmapCell {
-  hour: string
-  count: number
-}
-
 export async function fetchGuiHeatmap(start?: string, end?: string): Promise<GuiHeatmapCell[]> {
   const params = new URLSearchParams()
   if (start) params.set('start', start)
@@ -817,7 +814,7 @@ export async function fetchSceneCalibration(
 
 // ── Dashboard Day API ────────────────────────────────────────
 
-export async function fetchDailyDigest(date: string): Promise<unknown> {
+export async function fetchDailyDigest(date: string): Promise<DailyDigestResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/dashboard/day?date=${encodeURIComponent(date)}`)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Daily digest query failed' }))

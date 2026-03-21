@@ -7,7 +7,7 @@ import { RefreshCw, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchDailyDigest } from '../api/client'
-import type { CreateOverrideRequest, RegimeOverride } from '../api/contracts'
+import type { CreateOverrideRequest, DailyDigestResponse, DailyDigestSegment, RegimeOverride } from '../api/contracts'
 import DateRangePicker from '../components/DateRangePicker'
 import { Badge, Button, Card, EmptyState, Select, Skeleton, Spinner } from '../components/ui'
 import { useCreateOverride, useDeleteOverride, useOverrides, useRecluster } from '../hooks/useRecalibration'
@@ -23,21 +23,6 @@ const REGIME_OPTIONS = [
   { id: 'admin', label: 'Admin' },
 ]
 
-interface DigestSegment {
-  segment_id: string
-  start_time: string
-  end_time: string
-  duration_mins: number
-  regime_label: string
-  regime_color: string
-  regime_id?: string
-  dominant_app: string
-}
-
-interface DailyDigestResponse {
-  date: string
-  timeline: DigestSegment[]
-}
 
 function formatTime(iso: string): string {
   try {
@@ -96,7 +81,7 @@ export default function RecalibrationPage() {
     queryFn: async () => {
       // Use the date part only for the API call
       const dateStr = from ? from.split('T')[0] : new Date().toISOString().split('T')[0]
-      return fetchDailyDigest(dateStr) as Promise<DailyDigestResponse>
+      return fetchDailyDigest(dateStr)
     },
     enabled: !!from,
   })
@@ -119,7 +104,7 @@ export default function RecalibrationPage() {
 
   const segments = digestData?.timeline ?? []
 
-  const handleMarkAsPersonal = (seg: DigestSegment) => {
+  const handleMarkAsPersonal = (seg: DailyDigestSegment) => {
     const req: CreateOverrideRequest = {
       segment_id: seg.segment_id,
       original_regime_id: seg.regime_id,
@@ -128,7 +113,7 @@ export default function RecalibrationPage() {
     createOverride.mutate(req)
   }
 
-  const handleReassign = (seg: DigestSegment, targetRegimeId: string) => {
+  const handleReassign = (seg: DailyDigestSegment, targetRegimeId: string) => {
     const req: CreateOverrideRequest = {
       segment_id: seg.segment_id,
       original_regime_id: seg.regime_id,

@@ -114,5 +114,6 @@ uuid = { workspace = true }
 mockito = { workspace = true }
 tokio-test = { workspace = true }
 axum = { workspace = true }
+tower = { workspace = true }
 futures = { workspace = true }
 zeroize = { workspace = true }

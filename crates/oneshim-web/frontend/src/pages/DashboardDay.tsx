@@ -5,6 +5,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { fetchDailyDigest } from '../api/client'
+import type { DailyDigestResponse } from '../api/contracts'
 import InsightCard from '../components/InsightCard'
 import PomodoroTimer from '../components/PomodoroTimer'
 import StatisticsPanel from '../components/StatisticsPanel'
@@ -34,40 +36,6 @@ function formatDisplayDate(dateStr: string): string {
   }
 }
 
-interface DailyDigestResponse {
-  date: string
-  insight: {
-    narrative: string
-    highlights: Array<{ highlight_type: string; text: string; segment_id?: string }>
-  } | null
-  timeline: Array<{
-    segment_id: string
-    start_time: string
-    end_time: string
-    duration_mins: number
-    regime_label: string
-    regime_color: string
-    regime_id?: string
-    dominant_app: string
-    content_summary: Array<{ content: string; work_type: string; mins: number }>
-    annotation?: { highlight_type: string; text: string }
-  }>
-  statistics: {
-    deep_work_hours: number
-    communication_hours: number
-    meeting_hours: number
-    context_switches: number
-    longest_focus_mins: number
-    longest_focus_content: string
-    regime_distribution: Record<string, number>
-    comparison?: {
-      deep_work_delta: number
-      communication_delta: number
-      context_switch_delta: number
-    }
-  }
-}
-
 // Default regime options — in practice these would come from server config
 const DEFAULT_REGIME_OPTIONS = [
   { id: 'deep-work', label: 'Deep Work' },
@@ -82,11 +50,7 @@ export default function DashboardDay() {
 
   const { data, isLoading, error } = useQuery<DailyDigestResponse>({
     queryKey: ['dashboard-day', date],
-    queryFn: async () => {
-      const r = await fetch(`/api/dashboard/day?date=${date}`)
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`)
-      return r.json()
-    },
+    queryFn: () => fetchDailyDigest(date),
   })
 
   // Fetch overrides for the current date

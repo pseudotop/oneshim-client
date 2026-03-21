@@ -1222,3 +1222,65 @@ export interface GuiHeatmapPoint {
   y: number
   count: number
 }
+
+// GUI interaction hourly heatmap cell
+export interface GuiHeatmapCell {
+  hour: string
+  count: number
+}
+
+// ── Dashboard Day types ──────────────────────────────────────
+
+export interface DailyDigestHighlight {
+  highlight_type: string
+  text: string
+  segment_id?: string
+}
+
+export interface DailyDigestInsight {
+  narrative: string
+  highlights: DailyDigestHighlight[]
+}
+
+export interface DailyDigestContentSummary {
+  content: string
+  work_type: string
+  mins: number
+}
+
+export interface DailyDigestSegment {
+  segment_id: string
+  start_time: string
+  end_time: string
+  duration_mins: number
+  regime_label: string
+  regime_color: string
+  regime_id?: string
+  dominant_app: string
+  content_summary: DailyDigestContentSummary[]
+  annotation?: { highlight_type: string; text: string }
+}
+
+export interface DailyDigestComparison {
+  deep_work_delta: number
+  communication_delta: number
+  context_switch_delta: number
+}
+
+export interface DailyDigestStatistics {
+  deep_work_hours: number
+  communication_hours: number
+  meeting_hours: number
+  context_switches: number
+  longest_focus_mins: number
+  longest_focus_content: string
+  regime_distribution: Record<string, number>
+  comparison?: DailyDigestComparison
+}
+
+export interface DailyDigestResponse {
+  date: string
+  insight: DailyDigestInsight | null
+  timeline: DailyDigestSegment[]
+  statistics: DailyDigestStatistics
+}
