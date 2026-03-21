@@ -175,6 +175,9 @@ impl VectorIndex for SqliteVectorIndex {
             // WAL checkpoint
             let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
 
+            // Refresh query planner statistics after bulk index writes
+            let _ = conn.execute_batch("ANALYZE");
+
             info!(
                 "IVF index built: {} clusters, {} vectors",
                 n_clusters_result, n_vectors
@@ -293,6 +296,9 @@ impl VectorIndex for SqliteVectorIndex {
             ).map_err(|e| CoreError::Internal(format!("Failed to update binary build time: {e}")))?;
 
             let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+
+            // Refresh query planner statistics after bulk binary code writes
+            let _ = conn.execute_batch("ANALYZE");
 
             info!("Binary codes built for {} vectors", count);
             Ok(count)

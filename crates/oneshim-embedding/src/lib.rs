@@ -19,14 +19,14 @@ use oneshim_core::ports::embedding_provider::EmbeddingProvider;
 #[cfg(feature = "fastembed-local")]
 mod fastembed_impl {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     /// Local embedding provider backed by fastembed-rs (ONNX Runtime).
     ///
     /// Thread-safe (`Send + Sync`) — the inner `TextEmbedding` is wrapped
-    /// in `Arc` and accessed only through `spawn_blocking`.
+    /// in `Arc<Mutex>` and accessed only through `spawn_blocking`.
     pub struct LocalEmbeddingProvider {
-        model: Arc<fastembed::TextEmbedding>,
+        model: Arc<Mutex<fastembed::TextEmbedding>>,
         model_id: String,
         dimensions: usize,
     }
@@ -46,7 +46,7 @@ mod fastembed_impl {
                 .map_err(|e| CoreError::Internal(format!("fastembed init failed: {e}")))?;
 
             Ok(Self {
-                model: Arc::new(model),
+                model: Arc::new(Mutex::new(model)),
                 model_id: id,
                 dimensions: dims,
             })
@@ -60,7 +60,10 @@ mod fastembed_impl {
             let text = text.to_owned();
 
             tokio::task::spawn_blocking(move || {
-                let results = model
+                let mut guard = model
+                    .lock()
+                    .map_err(|e| CoreError::Internal(format!("fastembed lock poisoned: {e}")))?;
+                let results = guard
                     .embed(vec![text], None)
                     .map_err(|e| CoreError::Internal(format!("fastembed embed failed: {e}")))?;
                 results
@@ -77,7 +80,10 @@ mod fastembed_impl {
             let texts = texts.to_vec();
 
             tokio::task::spawn_blocking(move || {
-                model
+                let mut guard = model
+                    .lock()
+                    .map_err(|e| CoreError::Internal(format!("fastembed lock poisoned: {e}")))?;
+                guard
                     .embed(texts, None)
                     .map_err(|e| CoreError::Internal(format!("fastembed batch embed failed: {e}")))
             })

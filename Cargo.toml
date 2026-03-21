@@ -20,7 +20,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "0.4.0-rc.1"
+version = "0.4.0-rc.2"
 license = "Apache-2.0"
 rust-version = "1.77.1"
 repository = "https://github.com/pseudotop/oneshim-client"
@@ -44,18 +44,18 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "gzi
 eventsource-stream = "0.2"
 
 # WebSocket (native-tls로 ring 의존성 회피)
-tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.29", features = ["native-tls"] }
 
 # 시스템 모니터링
 sysinfo = "0.38"
 
 # 로컬 DB
-rusqlite = { version = "0.38", features = ["bundled", "fallible_uint"] }
+rusqlite = { version = "0.39", features = ["bundled", "fallible_uint"] }
 
 # 압축
 flate2 = "1"
 zstd = "0.13"
-lz4_flex = "0.12"
+lz4_flex = "0.13"
 
 # 이미지 처리 (Edge Processing)
 image = "0.25"

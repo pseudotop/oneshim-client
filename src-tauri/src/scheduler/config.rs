@@ -79,6 +79,29 @@ pub trait SchedulerStorage: MetricsStorage + Send + Sync {
     /// gui_interactions, suggestions, local_suggestions, focus_metrics,
     /// daily_digests, regime_overrides). Returns total rows deleted.
     fn enforce_all_retention(&self) -> Result<u64, CoreError>;
+
+    // --- SQLite maintenance methods ---
+
+    /// Execute a passive WAL checkpoint. PASSIVE mode is non-blocking and
+    /// safe to call while concurrent reads are in progress.
+    fn wal_checkpoint_passive(&self) -> Result<(), CoreError>;
+
+    /// Run VACUUM if the freelist occupies more than `threshold_percent` of
+    /// the total page count. Returns `true` if VACUUM was actually executed.
+    fn maybe_vacuum(&self, threshold_percent: u64) -> Result<bool, CoreError>;
+
+    /// Incrementally merge FTS5 b-tree segments. Call periodically (every
+    /// 5-10 minutes) to keep write-amplification low.
+    fn fts_merge(&self, pages: u32) -> Result<(), CoreError>;
+
+    /// Run a full FTS5 optimize pass (merges all segments into one). Expensive
+    /// but dramatically speeds up subsequent queries. Call once daily.
+    fn fts_optimize(&self) -> Result<(), CoreError>;
+
+    /// Run `ANALYZE` to refresh SQLite query planner statistics. Call after
+    /// bulk operations (IVF index builds, large batch inserts).
+    #[allow(dead_code)]
+    fn run_analyze(&self) -> Result<(), CoreError>;
 }
 
 impl SchedulerStorage for SqliteStorage {
@@ -163,6 +186,26 @@ impl SchedulerStorage for SqliteStorage {
     fn enforce_all_retention(&self) -> Result<u64, CoreError> {
         SqliteStorage::enforce_all_retention(self)
     }
+
+    fn wal_checkpoint_passive(&self) -> Result<(), CoreError> {
+        SqliteStorage::wal_checkpoint_passive(self)
+    }
+
+    fn maybe_vacuum(&self, threshold_percent: u64) -> Result<bool, CoreError> {
+        SqliteStorage::maybe_vacuum(self, threshold_percent)
+    }
+
+    fn fts_merge(&self, pages: u32) -> Result<(), CoreError> {
+        SqliteStorage::fts_merge(self, pages)
+    }
+
+    fn fts_optimize(&self) -> Result<(), CoreError> {
+        SqliteStorage::fts_optimize(self)
+    }
+
+    fn run_analyze(&self) -> Result<(), CoreError> {
+        SqliteStorage::run_analyze(self)
+    }
 }
 
 pub(super) fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
@@ -186,6 +229,15 @@ pub(super) const OAUTH_REFRESH_INTERVAL_SECS: u64 = 120;
 
 /// Coaching evaluation interval — 30 seconds.
 pub(super) const COACHING_INTERVAL_SECS: u64 = 30;
+
+/// SQLite WAL checkpoint + FTS merge interval — 5 minutes.
+pub(super) const SQLITE_MAINTENANCE_INTERVAL_MINS: i64 = 5;
+
+/// Freelist threshold (%) above which VACUUM is triggered.
+pub(super) const VACUUM_FREELIST_THRESHOLD_PERCENT: u64 = 20;
+
+/// Number of FTS5 b-tree pages to merge per maintenance tick.
+pub(super) const FTS_MERGE_PAGES: u32 = 64;
 
 #[derive(Clone)]
 pub(super) struct PlatformEgressPolicy {
