@@ -129,4 +129,21 @@ pub trait VectorStore: Send + Sync {
     async fn get_all_vectors_for_rebuild(&self) -> Result<Vec<(u64, Vec<f32>)>, CoreError> {
         Ok(Vec::new())
     }
+
+    /// Return row IDs of vectors that would be deleted by `enforce_retention(max_days)`.
+    ///
+    /// Used by the HNSW integration to remove corresponding entries from the
+    /// ANN index before the SQLite rows are deleted. The caller should invoke
+    /// this *before* `enforce_retention` so the IDs are still available.
+    async fn get_expired_ids(&self, _max_days: u32) -> Result<Vec<u64>, CoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Return the last-inserted row ID.
+    ///
+    /// Used by the embedding pipeline to obtain the key for a newly stored
+    /// vector so it can be inserted into the HNSW index.
+    async fn last_insert_id(&self) -> Result<u64, CoreError> {
+        Ok(0)
+    }
 }

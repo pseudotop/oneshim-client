@@ -580,4 +580,39 @@ impl VectorStore for SqliteVectorStore {
         })
         .await
     }
+
+    async fn get_expired_ids(&self, max_days: u32) -> Result<Vec<u64>, CoreError> {
+        self.with_conn(move |conn| {
+            let cutoff = (Utc::now() - Duration::days(max_days as i64)).to_rfc3339();
+            let mut stmt = conn
+                .prepare("SELECT id FROM embedding_vectors WHERE timestamp < ?1")
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to prepare get_expired_ids: {e}"))
+                })?;
+            let ids: Vec<u64> = stmt
+                .query_map(params![cutoff], |row| {
+                    let id: i64 = row.get(0)?;
+                    Ok(id as u64)
+                })
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to query expired vector ids: {e}"))
+                })?
+                .filter_map(|r| r.ok())
+                .collect();
+            Ok(ids)
+        })
+        .await
+    }
+
+    async fn last_insert_id(&self) -> Result<u64, CoreError> {
+        self.with_conn(move |conn| {
+            let id: i64 = conn
+                .query_row("SELECT last_insert_rowid()", [], |row| row.get(0))
+                .map_err(|e| {
+                    CoreError::Internal(format!("Failed to get last_insert_rowid: {e}"))
+                })?;
+            Ok(id as u64)
+        })
+        .await
+    }
 }

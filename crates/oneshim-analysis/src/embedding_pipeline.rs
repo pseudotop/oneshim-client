@@ -4,9 +4,13 @@ use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::embedding::{EmbeddingContentType, EmbeddingMetadata};
 use oneshim_core::models::tiered_memory::SegmentSummary;
+#[cfg(feature = "hnsw")]
+use oneshim_core::ports::ann_index::AnnIndex;
 use oneshim_core::ports::embedding_provider::EmbeddingProvider;
 use oneshim_core::ports::vector_store::VectorStore;
 use oneshim_core::quantization::ScalarQuantizer;
+#[cfg(feature = "hnsw")]
+use tracing::warn;
 
 use crate::PiiFilter;
 
@@ -24,6 +28,10 @@ pub struct EmbeddingPipeline {
     /// When true, skip writing the float32 BLOB on quantized inserts.
     /// Derived from `!config.quantization_float32_retention`.
     skip_float32: bool,
+    /// Optional HNSW ANN index. When present, newly stored vectors are
+    /// also inserted into the in-memory index for fast approximate search.
+    #[cfg(feature = "hnsw")]
+    ann_index: Option<Arc<dyn AnnIndex>>,
 }
 
 impl EmbeddingPipeline {
@@ -39,6 +47,8 @@ impl EmbeddingPipeline {
             vector_store: store,
             quantization_enabled,
             skip_float32: false,
+            #[cfg(feature = "hnsw")]
+            ann_index: None,
         }
     }
 
@@ -59,7 +69,17 @@ impl EmbeddingPipeline {
             vector_store: store,
             quantization_enabled,
             skip_float32,
+            #[cfg(feature = "hnsw")]
+            ann_index: None,
         }
+    }
+
+    /// Attach an HNSW ANN index so newly stored vectors are also added to the
+    /// in-memory index. Best-effort: failures are logged but do not fail the store.
+    #[cfg(feature = "hnsw")]
+    pub fn with_ann_index(mut self, ann: Arc<dyn AnnIndex>) -> Self {
+        self.ann_index = Some(ann);
+        self
     }
 
     /// Phase 1: embed content activities immediately on segment close.
@@ -99,6 +119,8 @@ impl EmbeddingPipeline {
         let count = vectors.len();
 
         for (vector, meta) in vectors.into_iter().zip(metadata) {
+            #[cfg(feature = "hnsw")]
+            let vec_for_hnsw = vector.clone();
             if self.quantization_enabled {
                 let quantized = ScalarQuantizer::quantize(&vector)?;
                 self.vector_store
@@ -107,6 +129,9 @@ impl EmbeddingPipeline {
             } else {
                 self.vector_store.store(vector, meta).await?;
             }
+            // Best-effort: add the new vector to HNSW index if present.
+            #[cfg(feature = "hnsw")]
+            self.try_add_to_hnsw(&vec_for_hnsw).await;
         }
 
         Ok(count)
@@ -131,13 +156,43 @@ impl EmbeddingPipeline {
             model_id: self.embedding_provider.model_id().to_string(),
         };
 
+        #[cfg(feature = "hnsw")]
+        let vec_for_hnsw = vector.clone();
         if self.quantization_enabled {
             let quantized = ScalarQuantizer::quantize(&vector)?;
             self.vector_store
                 .store_quantized(vector, &quantized, metadata, self.skip_float32)
-                .await
+                .await?;
         } else {
-            self.vector_store.store(vector, metadata).await
+            self.vector_store.store(vector, metadata).await?;
+        }
+
+        // Best-effort: add the new vector to HNSW index if present.
+        #[cfg(feature = "hnsw")]
+        self.try_add_to_hnsw(&vec_for_hnsw).await;
+
+        Ok(())
+    }
+
+    /// Best-effort helper: insert a vector into the HNSW index using the
+    /// last-inserted row ID from the vector store. Failures are logged
+    /// but never propagated.
+    #[cfg(feature = "hnsw")]
+    async fn try_add_to_hnsw(&self, vector: &[f32]) {
+        let ann = match self.ann_index {
+            Some(ref a) => a,
+            None => return,
+        };
+        match self.vector_store.last_insert_id().await {
+            Ok(key) if key > 0 => {
+                if let Err(e) = ann.add(key, vector).await {
+                    warn!("HNSW add failed (best-effort): {e}");
+                }
+            }
+            Ok(_) => {} // key 0 = not implemented, skip silently
+            Err(e) => {
+                warn!("last_insert_id failed for HNSW sync: {e}");
+            }
         }
     }
 }
