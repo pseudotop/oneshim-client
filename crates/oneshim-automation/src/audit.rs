@@ -151,6 +151,17 @@ impl AuditLogger {
             .collect()
     }
 
+    /// Filter entries by action_type prefix at the data level (no over-reading).
+    pub fn entries_by_action_prefix(&self, prefix: &str, limit: usize) -> Vec<AuditEntry> {
+        self.buffer
+            .iter()
+            .rev()
+            .filter(|e| e.action_type.starts_with(prefix))
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
     pub fn stats(&self) -> AuditStats {
         let mut completed = 0;
         let mut failed = 0;
@@ -272,6 +283,13 @@ impl oneshim_core::ports::audit_log::AuditLogPort for AuditLogAdapter {
 
     async fn entries_by_status(&self, status: &AuditStatus, limit: usize) -> Vec<AuditEntry> {
         self.inner.read().await.entries_by_status(status, limit)
+    }
+
+    async fn entries_by_action_prefix(&self, prefix: &str, limit: usize) -> Vec<AuditEntry> {
+        self.inner
+            .read()
+            .await
+            .entries_by_action_prefix(prefix, limit)
     }
 
     async fn stats(&self) -> AuditStats {

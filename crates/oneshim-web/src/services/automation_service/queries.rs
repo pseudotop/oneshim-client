@@ -94,13 +94,10 @@ impl AutomationQueryService {
         };
 
         let limit = query.limit.clamp(1, 500);
-        let read_limit = limit.saturating_mul(8);
         Ok(logger
-            .recent_entries(read_limit)
+            .entries_by_action_prefix("policy.", limit)
             .await
             .into_iter()
-            .filter(|entry| entry.action_type.starts_with("policy."))
-            .take(limit)
             .map(map_audit_entry)
             .collect())
     }

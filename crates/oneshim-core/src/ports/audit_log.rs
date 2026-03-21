@@ -23,6 +23,9 @@ pub trait AuditLogPort: Send + Sync {
     /// 상태 기준 필터 조회
     async fn entries_by_status(&self, status: &AuditStatus, limit: usize) -> Vec<AuditEntry>;
 
+    /// action_type 접두사 기준 필터 조회
+    async fn entries_by_action_prefix(&self, prefix: &str, limit: usize) -> Vec<AuditEntry>;
+
     /// 통계 집계
     async fn stats(&self) -> AuditStats;
 
