@@ -3,7 +3,8 @@ use axum::Json;
 #[cfg(test)]
 use oneshim_api_contracts::stats::{AppUsageEntry, HeatmapCell};
 use oneshim_api_contracts::stats::{
-    AppUsageResponse, DailySummaryResponse, DateQuery, HeatmapQuery, HeatmapResponse,
+    AppUsageResponse, DailySummaryResponse, DateQuery, GuiHeatmapCell, GuiHeatmapQuery,
+    HeatmapQuery, HeatmapResponse,
 };
 
 use crate::error::ApiError;
@@ -66,18 +67,6 @@ pub async fn get_gui_heatmap(
         .collect();
 
     Ok(Json(cells))
-}
-
-#[derive(serde::Deserialize)]
-pub struct GuiHeatmapQuery {
-    pub start: Option<String>,
-    pub end: Option<String>,
-}
-
-#[derive(serde::Serialize)]
-pub struct GuiHeatmapCell {
-    pub hour: String,
-    pub count: u32,
 }
 
 #[cfg(test)]

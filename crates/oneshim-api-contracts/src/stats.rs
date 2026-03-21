@@ -50,3 +50,15 @@ pub struct HeatmapResponse {
     pub cells: Vec<HeatmapCell>,
     pub max_value: u32,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct GuiHeatmapQuery {
+    pub start: Option<String>,
+    pub end: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GuiHeatmapCell {
+    pub hour: String,
+    pub count: u32,
+}

@@ -1918,6 +1918,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/stats/gui-heatmap":
+    get:
+      tags:
+        - stats
+      operationId: stats_get_api_stats_gui_heatmap
+      summary: "GET /api/stats/gui-heatmap"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/stats/heatmap":
     get:
       tags:

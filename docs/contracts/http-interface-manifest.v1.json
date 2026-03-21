@@ -87,6 +87,10 @@
         {
           "method": "GET",
           "path": "/api/stats/heatmap"
+        },
+        {
+          "method": "GET",
+          "path": "/api/stats/gui-heatmap"
         }
       ]
     },

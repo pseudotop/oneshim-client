@@ -252,6 +252,7 @@ end tell"#
     }
 
     #[cfg(test)]
+    #[allow(deprecated)]
     mod tests {
         use super::*;
 

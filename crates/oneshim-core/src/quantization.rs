@@ -173,11 +173,11 @@ mod tests {
         let mut a = vec![0.0; 64];
         let mut b = vec![0.0; 64];
         // Make them point in different directions
-        for i in 0..32 {
-            a[i] = 1.0;
+        for val in a.iter_mut().take(32) {
+            *val = 1.0;
         }
-        for i in 32..64 {
-            b[i] = 1.0;
+        for val in b.iter_mut().skip(32).take(32) {
+            *val = 1.0;
         }
         let qa = ScalarQuantizer::quantize(&a).unwrap();
         let qb = ScalarQuantizer::quantize(&b).unwrap();

@@ -374,9 +374,9 @@ mod tests {
             for _ in 0..per_cluster {
                 let mut v = center.clone();
                 // Add small noise
-                for d in 0..dims {
+                for val in v.iter_mut().take(dims) {
                     let noise = (rng.next_f64() as f32 - 0.5) * 0.1;
-                    v[d] += noise;
+                    *val += noise;
                 }
                 vectors.push((id, make_qv(&v)));
                 id += 1;
