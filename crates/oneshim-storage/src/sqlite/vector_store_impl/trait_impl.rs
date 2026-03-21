@@ -246,6 +246,13 @@ impl VectorStore for SqliteVectorStore {
         metadata: EmbeddingMetadata,
         skip_float32: bool,
     ) -> Result<(), CoreError> {
+        // Validate INT8 vector is non-empty before persisting.
+        if vector_int8.data.is_empty() {
+            return Err(CoreError::InvalidArguments(
+                "Cannot store empty INT8 vector".to_string(),
+            ));
+        }
+
         // When skip_float32 is true, store an empty BLOB instead of the f32 data.
         // The column has a NOT NULL constraint (pre-existing schema), so we use
         // an empty vec rather than NULL. An empty BLOB is distinguishable from
