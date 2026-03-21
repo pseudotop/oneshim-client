@@ -4,6 +4,7 @@ use oneshim_core::models::activity::{ProcessSnapshot, ProcessSnapshotEntry, Sess
 use oneshim_core::models::event::{ContextEvent, Event};
 use oneshim_core::models::system::{NetworkInfo, SystemMetrics};
 use oneshim_core::ports::storage::{MetricsStorage, StorageService};
+use std::sync::atomic::Ordering;
 
 use super::test_utils::make_user_event;
 
@@ -653,4 +654,142 @@ fn enforce_all_retention_keeps_recent_data() {
 
     let deleted = storage.enforce_all_retention().unwrap();
     assert_eq!(deleted, 0, "recent data should not be deleted");
+}
+
+// ── Subtask A: configure_connection PRAGMA parity ────────────────
+
+#[test]
+fn in_memory_applies_cache_size_pragma() {
+    let storage = SqliteStorage::open_in_memory(30).unwrap();
+    let conn = storage.conn.lock().unwrap();
+    let cache_size: i64 = conn
+        .query_row("PRAGMA cache_size", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(cache_size, 8000, "in-memory DB should have cache_size=8000");
+}
+
+#[test]
+fn in_memory_applies_temp_store_pragma() {
+    let storage = SqliteStorage::open_in_memory(30).unwrap();
+    let conn = storage.conn.lock().unwrap();
+    let temp_store: i64 = conn
+        .query_row("PRAGMA temp_store", [], |row| row.get(0))
+        .unwrap();
+    // MEMORY = 2
+    assert_eq!(
+        temp_store, 2,
+        "in-memory DB should have temp_store=MEMORY (2)"
+    );
+}
+
+#[test]
+fn disk_applies_wal_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test_wal.db");
+    let storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let conn = storage.conn.lock().unwrap();
+    let journal_mode: String = conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(journal_mode, "wal", "disk DB should use WAL journal mode");
+}
+
+#[test]
+fn disk_applies_synchronous_normal() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test_sync.db");
+    let storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let conn = storage.conn.lock().unwrap();
+    let synchronous: i64 = conn
+        .query_row("PRAGMA synchronous", [], |row| row.get(0))
+        .unwrap();
+    // NORMAL = 1
+    assert_eq!(synchronous, 1, "disk DB should have synchronous=NORMAL (1)");
+}
+
+// ── Subtask B: journal_size_limit + PRAGMA optimize ──────────────
+
+#[test]
+fn disk_applies_journal_size_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test_journal_limit.db");
+    let storage = SqliteStorage::open(&db_path, 30).unwrap();
+    let conn = storage.conn.lock().unwrap();
+    let limit: i64 = conn
+        .query_row("PRAGMA journal_size_limit", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        limit, 67_108_864,
+        "disk DB should have journal_size_limit=64MB"
+    );
+}
+
+#[test]
+fn in_memory_does_not_set_journal_size_limit() {
+    let storage = SqliteStorage::open_in_memory(30).unwrap();
+    let conn = storage.conn.lock().unwrap();
+    let limit: i64 = conn
+        .query_row("PRAGMA journal_size_limit", [], |row| row.get(0))
+        .unwrap();
+    // Default is -1 (no limit) for in-memory
+    assert_eq!(
+        limit, -1,
+        "in-memory DB should keep default journal_size_limit (-1)"
+    );
+}
+
+#[test]
+fn pragma_optimize_runs_without_error() {
+    // open_in_memory calls post_migration_setup which includes PRAGMA optimize.
+    // If it panics or errors, this test will fail.
+    let _storage = SqliteStorage::open_in_memory(30).unwrap();
+}
+
+#[test]
+fn pragma_optimize_runs_on_disk_without_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test_optimize.db");
+    let _storage = SqliteStorage::open(&db_path, 30).unwrap();
+}
+
+// ── Subtask C: FTS5 existence caching ────────────────────────────
+
+#[test]
+fn fts_available_set_after_open_in_memory() {
+    let _storage = SqliteStorage::open_in_memory(30).unwrap();
+    assert!(
+        FTS_AVAILABLE.load(Ordering::Relaxed),
+        "FTS_AVAILABLE should be true after migrations create search_fts"
+    );
+}
+
+#[test]
+fn gui_interactions_available_set_after_open_in_memory() {
+    let _storage = SqliteStorage::open_in_memory(30).unwrap();
+    assert!(
+        GUI_INTERACTIONS_AVAILABLE.load(Ordering::Relaxed),
+        "GUI_INTERACTIONS_AVAILABLE should be true after migrations create gui_interactions"
+    );
+}
+
+#[test]
+fn fts_available_set_after_disk_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test_fts_flag.db");
+    let _storage = SqliteStorage::open(&db_path, 30).unwrap();
+    assert!(
+        FTS_AVAILABLE.load(Ordering::Relaxed),
+        "FTS_AVAILABLE should be true after disk open with migrations"
+    );
+}
+
+#[test]
+fn gui_interactions_available_set_after_disk_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test_gui_flag.db");
+    let _storage = SqliteStorage::open(&db_path, 30).unwrap();
+    assert!(
+        GUI_INTERACTIONS_AVAILABLE.load(Ordering::Relaxed),
+        "GUI_INTERACTIONS_AVAILABLE should be true after disk open with migrations"
+    );
 }

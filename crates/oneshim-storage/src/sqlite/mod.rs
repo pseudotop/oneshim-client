@@ -24,10 +24,27 @@ mod tests;
 use oneshim_core::error::CoreError;
 use rusqlite::Connection;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::info;
 
 use crate::migration;
+
+/// Process-global flag indicating whether the `search_fts` FTS5 table exists.
+///
+/// Set once after migrations complete in `open()` / `open_in_memory()`.
+/// This avoids per-operation `sqlite_master` queries in the FTS hot path.
+///
+/// # Thread-safety in tests
+///
+/// Parallel test instances each run migrations, so FTS is always available
+/// and this global flag being `true` is correct for all concurrent tests.
+pub(super) static FTS_AVAILABLE: AtomicBool = AtomicBool::new(false);
+
+/// Process-global flag indicating whether the `gui_interactions` table exists (V13 migration).
+///
+/// Same rationale and thread-safety guarantees as [`FTS_AVAILABLE`].
+pub(super) static GUI_INTERACTIONS_AVAILABLE: AtomicBool = AtomicBool::new(false);
 
 /// Local SQLite storage with a single-connection, Mutex-guarded design.
 ///
@@ -60,20 +77,12 @@ impl SqliteStorage {
         let conn = Connection::open(path)
             .map_err(|e| CoreError::Internal(format!("Failed to open SQLite database: {e}")))?;
 
-        conn.execute_batch(
-            "
-            PRAGMA journal_mode=WAL;
-            PRAGMA synchronous=NORMAL;
-            PRAGMA cache_size=8000;
-            PRAGMA temp_store=MEMORY;
-            PRAGMA mmap_size=268435456;
-            PRAGMA page_size=4096;
-            ",
-        )
-        .map_err(|e| CoreError::Internal(format!("Failed to apply PRAGMA settings: {e}")))?;
+        configure_connection(&conn, true)?;
 
         migration::run_migrations(&conn)
             .map_err(|e| CoreError::Internal(format!("migration failure: {e}")))?;
+
+        post_migration_setup(&conn)?;
 
         info!("SQLite save initialize: {}", path.display());
 
@@ -88,8 +97,12 @@ impl SqliteStorage {
             CoreError::Internal(format!("Failed to create in-memory SQLite database: {e}"))
         })?;
 
+        configure_connection(&conn, false)?;
+
         migration::run_migrations(&conn)
             .map_err(|e| CoreError::Internal(format!("migration failure: {e}")))?;
+
+        post_migration_setup(&conn)?;
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -179,6 +192,71 @@ impl SqliteStorage {
         .await
         .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
     }
+}
+
+/// Apply PRAGMA settings to a freshly opened connection.
+///
+/// * `is_disk=true` — all PRAGMAs (WAL, synchronous, cache_size, temp_store,
+///   mmap_size, page_size, journal_size_limit).
+/// * `is_disk=false` — only PRAGMAs that are meaningful for in-memory databases
+///   (cache_size, temp_store). WAL, mmap_size, journal_size_limit, and page_size
+///   are skipped because they have no effect on `:memory:` connections.
+fn configure_connection(conn: &Connection, is_disk: bool) -> Result<(), CoreError> {
+    if is_disk {
+        conn.execute_batch(
+            "
+            PRAGMA journal_mode=WAL;
+            PRAGMA synchronous=NORMAL;
+            PRAGMA cache_size=8000;
+            PRAGMA temp_store=MEMORY;
+            PRAGMA mmap_size=268435456;
+            PRAGMA page_size=4096;
+            PRAGMA journal_size_limit=67108864;
+            ",
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to apply PRAGMA settings: {e}")))?;
+    } else {
+        conn.execute_batch(
+            "
+            PRAGMA cache_size=8000;
+            PRAGMA temp_store=MEMORY;
+            ",
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to apply PRAGMA settings: {e}")))?;
+    }
+    Ok(())
+}
+
+/// Post-migration one-time setup: PRAGMA optimize + table-existence caching.
+///
+/// Called after `run_migrations()` completes in both `open()` and `open_in_memory()`.
+fn post_migration_setup(conn: &Connection) -> Result<(), CoreError> {
+    // PRAGMA optimize with analysis_limit=1000 + optimize mask 0x10002:
+    // - 0x2: run ANALYZE on tables that would benefit
+    // - 0x10000: set an internal analysis_limit of 1000 rows
+    conn.execute_batch("PRAGMA optimize=0x10002;")
+        .map_err(|e| CoreError::Internal(format!("PRAGMA optimize failed: {e}")))?;
+
+    // Cache table existence flags so hot-path code avoids sqlite_master queries.
+    let fts_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='search_fts'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    FTS_AVAILABLE.store(fts_exists, Ordering::Release);
+
+    let gui_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='gui_interactions'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    GUI_INTERACTIONS_AVAILABLE.store(gui_exists, Ordering::Release);
+
+    Ok(())
 }
 
 // Record types are canonical in oneshim-core; re-exported here for backward compatibility.
