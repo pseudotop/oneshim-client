@@ -1,9 +1,7 @@
 use super::helpers::*;
 use super::SqliteVectorStore;
 use chrono::{Duration, Utc};
-use oneshim_core::models::embedding::{
-    EmbeddingContentType, EmbeddingMetadata, SearchFilters, SearchResult,
-};
+use oneshim_core::models::embedding::{EmbeddingContentType, EmbeddingMetadata, SearchFilters};
 use oneshim_core::ports::vector_store::VectorStore;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
