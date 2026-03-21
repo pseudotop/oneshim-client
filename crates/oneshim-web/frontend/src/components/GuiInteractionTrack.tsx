@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchGuiHeatmap } from '../api/client'
-import { useTranslation } from '../i18n/useTranslation'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   start?: string

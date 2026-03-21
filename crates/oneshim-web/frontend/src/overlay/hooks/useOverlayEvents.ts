@@ -12,6 +12,7 @@ type OverlayAction =
   | { type: 'upgrade-message'; payload: { message_id: string; personalized_text: string } }
   | { type: 'dismiss' }
   | { type: 'update-focus'; payload: FocusHighlightPayload }
+  | { type: 'clear-focus' }
   | { type: 'update-goals'; payload: GoalProgressItem[] }
   | { type: 'set-mode'; payload: OverlayMode }
 
@@ -38,6 +39,8 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
       return { ...state, coaching: null }
     case 'update-focus':
       return { ...state, focusHighlight: action.payload }
+    case 'clear-focus':
+      return { ...state, focusHighlight: null }
     case 'update-goals':
       return { ...state, goals: action.payload }
     case 'set-mode':
@@ -78,7 +81,11 @@ export function useOverlayEvents() {
         dispatch({ type: 'set-mode', payload: e.payload.mode })
       })
 
-      unlisten = [u1, u2, u3, u4, u5, u6]
+      const u7 = await listen('overlay:clear-focus', () => {
+        dispatch({ type: 'clear-focus' })
+      })
+
+      unlisten = [u1, u2, u3, u4, u5, u6, u7]
     }
 
     setup()

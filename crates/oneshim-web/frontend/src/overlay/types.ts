@@ -14,13 +14,19 @@ export interface UpgradePayload {
   personalized_text: string
 }
 
-export interface FocusHighlightPayload {
+export interface FocusHighlightTarget {
+  candidate_id: string
   x: number
   y: number
   width: number
   height: number
-  border_color: string
-  opacity: number
+  color: string
+  label: string | null
+}
+
+export interface FocusHighlightPayload {
+  handle_id: string
+  targets: FocusHighlightTarget[]
 }
 
 export interface GoalProgressItem {

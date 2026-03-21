@@ -48,6 +48,8 @@ pub struct ContextAnalyzer {
     /// Read by `analyze()` / `analyze_if_changed()` to enrich the LLM context with
     /// `current_segment` data (duration, regime, content summary, GUI patterns).
     segment_stats: tokio::sync::RwLock<Option<SegmentStats>>,
+    /// Current accessibility text from the focused element, updated by the monitor loop.
+    accessibility_text: tokio::sync::RwLock<Option<String>>,
 }
 
 impl ContextAnalyzer {
@@ -68,6 +70,7 @@ impl ContextAnalyzer {
             last_analysis_at: Mutex::new(None),
             last_patterns_hash: Mutex::new(0),
             segment_stats: tokio::sync::RwLock::new(None),
+            accessibility_text: tokio::sync::RwLock::new(None),
         }
     }
 
@@ -90,6 +93,7 @@ impl ContextAnalyzer {
             last_analysis_at: Mutex::new(None),
             last_patterns_hash: Mutex::new(0),
             segment_stats: tokio::sync::RwLock::new(None),
+            accessibility_text: tokio::sync::RwLock::new(None),
         }
     }
 
@@ -97,6 +101,12 @@ impl ContextAnalyzer {
     /// after each analysis tick so that `analyze()` can include segment context.
     pub async fn set_segment_stats(&self, stats: Option<SegmentStats>) {
         *self.segment_stats.write().await = stats;
+    }
+
+    /// Update the current accessibility text from the focused element.
+    /// Called by the monitor loop so that `analyze()` includes extracted text in LLM context.
+    pub async fn set_accessibility_text(&self, text: Option<String>) {
+        *self.accessibility_text.write().await = text;
     }
 
     /// Full periodic analysis: query events, mine patterns, call LLM.
@@ -121,7 +131,9 @@ impl ContextAnalyzer {
         }
 
         let patterns = self.pattern_miner.detect(&events);
-        let current = Self::build_current_activity(&events);
+        let mut current = Self::build_current_activity(&events);
+        // Inject live accessibility text from monitor loop
+        current.accessibility_text = self.accessibility_text.read().await.clone();
         let metrics = Self::build_session_metrics(&events);
 
         // Retrieve relevant history via RAG if VectorRetriever is available

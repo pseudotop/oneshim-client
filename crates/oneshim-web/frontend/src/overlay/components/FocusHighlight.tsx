@@ -5,21 +5,33 @@ interface FocusHighlightProps {
 }
 
 export default function FocusHighlight({ highlight }: FocusHighlightProps) {
-  const { x, y, width, height, border_color, opacity } = highlight
-
   return (
-    <div
-      className="pointer-events-none fixed transition-all duration-200 ease-out"
-      style={{
-        left: x,
-        top: y,
-        width,
-        height,
-        border: `2px solid ${border_color}`,
-        borderRadius: '4px',
-        opacity,
-        boxShadow: `0 0 12px ${border_color}40`,
-      }}
-    />
+    <>
+      {highlight.targets.map((target) => (
+        <div
+          key={target.candidate_id}
+          className="pointer-events-none fixed transition-all duration-200 ease-out"
+          style={{
+            left: target.x,
+            top: target.y,
+            width: target.width,
+            height: target.height,
+            border: `2px solid ${target.color}`,
+            borderRadius: '4px',
+            opacity: 0.8,
+            boxShadow: `0 0 12px ${target.color}40`,
+          }}
+        >
+          {target.label && (
+            <span
+              className="absolute -top-5 left-0 rounded bg-black/70 px-1 text-[10px] text-white"
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {target.label}
+            </span>
+          )}
+        </div>
+      ))}
+    </>
   )
 }

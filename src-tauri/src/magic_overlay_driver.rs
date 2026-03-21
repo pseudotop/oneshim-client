@@ -39,7 +39,6 @@ pub struct MagicOverlayDriver {
     app_handle: AppHandle,
 }
 
-#[allow(dead_code)] // DI wiring pending
 impl MagicOverlayDriver {
     pub fn new(app_handle: AppHandle) -> Self {
         Self { app_handle }

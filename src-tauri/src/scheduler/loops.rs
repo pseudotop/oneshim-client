@@ -522,6 +522,12 @@ impl Scheduler {
                                     let stats = build_segment_stats_snapshot(ts);
                                     analyzer.set_segment_stats(stats).await;
                                 }
+                                // Update accessibility text for LLM context enrichment
+                                if let Some(ref analyzer) = context_analyzer1 {
+                                    let a11y_text = last_focused_element.as_ref()
+                                        .and_then(|fe| fe.extracted_text.clone());
+                                    analyzer.set_accessibility_text(a11y_text).await;
+                                }
 
                                 // Consume the GUI summary after feeding it to the analysis pipeline
                                 last_gui_summary = None;
@@ -729,6 +735,16 @@ impl Scheduler {
                                                     }
                                                 }
                                             });
+                                        }
+                                    }
+                                }
+
+                                // Emit goal progress to overlay (every tick when coaching enabled)
+                                if let Some(ref coaching) = coaching_engine_ref {
+                                    if let Some(ref overlay) = overlay_ref {
+                                        let goals = coaching.all_goal_progress().await;
+                                        if !goals.is_empty() {
+                                            overlay.update_goal_progress(goals).await;
                                         }
                                     }
                                 }
