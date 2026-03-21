@@ -14,9 +14,13 @@ use tokio::runtime::Handle;
 use tokio::sync::{broadcast, watch};
 use tracing::{error, info, warn};
 
+use oneshim_core::config::SyncTransportKind;
+use oneshim_core::error::CoreError;
+
 use crate::agent_runtime_support::AgentSupportContextBuilder;
 use crate::focus_analyzer::FocusStorage;
 use crate::scheduler::{AdaptiveTriggerState, Scheduler, SchedulerStorage};
+use crate::sync_engine::SyncEngine;
 
 #[derive(Clone)]
 pub(crate) struct AgentRuntimeBundle {
@@ -25,17 +29,25 @@ pub(crate) struct AgentRuntimeBundle {
     focus_storage: Arc<dyn FocusStorage>,
     calibration_writer: Option<Arc<dyn CalibrationWriter>>,
     calibration_reader: Option<Arc<dyn CalibrationReader>>,
+    override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    /// Shared flag for on-demand re-clustering requests from Tauri/REST.
+    recluster_requested: Arc<std::sync::atomic::AtomicBool>,
     /// Pre-built VectorStore for the embedding pipeline (None if embedding disabled).
     vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
     data_dir: PathBuf,
     config: AppConfig,
     config_manager: ConfigManager,
     consent_manager: Option<Arc<ConsentManager>>,
+    /// Concrete SQLite storage for sync engine wiring.
+    sqlite_storage_concrete: Arc<oneshim_storage::sqlite::SqliteStorage>,
     offline_mode: bool,
     event_tx: Option<broadcast::Sender<RealtimeEvent>>,
     #[cfg(feature = "server")]
     oauth_coordinator: Option<Arc<TokenRefreshCoordinator>>,
     app_handle: AppHandle,
+    coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
+    coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
 }
 
 impl AgentRuntimeBundle {
@@ -154,11 +166,16 @@ impl AgentRuntimeBundle {
                 let pii_filter_embed: oneshim_analysis::PiiFilter = Box::new(move |text: &str| {
                     oneshim_vision::privacy::sanitize_title_with_level(text, pii_level)
                 });
-                let pipeline = Arc::new(oneshim_analysis::EmbeddingPipeline::new(
-                    provider.clone(),
-                    pii_filter_embed,
-                    vector_store.clone(),
-                ));
+                let skip_float32 = embedding_config.quantization_enabled
+                    && !embedding_config.quantization_float32_retention;
+                let pipeline =
+                    Arc::new(oneshim_analysis::EmbeddingPipeline::with_float32_retention(
+                        provider.clone(),
+                        pii_filter_embed,
+                        vector_store.clone(),
+                        embedding_config.quantization_enabled,
+                        skip_float32,
+                    ));
                 embedding_pipeline_arc = Some(pipeline);
 
                 // Build LlmSegmentSummarizer if LLM summary is enabled
@@ -207,6 +224,13 @@ impl AgentRuntimeBundle {
             warn!("embedding.enabled requires tiered_memory.enabled — embedding will not function");
         }
 
+        // Config validation: gui_intelligence requires tiered_memory
+        if self.config.analysis.gui_intelligence.enabled
+            && !self.config.analysis.tiered_memory.enabled
+        {
+            warn!("gui_intelligence.enabled requires tiered_memory.enabled — GUI pipeline will not function");
+        }
+
         // Wire adaptive tiered-memory pipeline when enabled + consented.
         // Gate on activity_pattern_learning consent (GDPR Tier 4).
         let consent_ok = self
@@ -245,13 +269,230 @@ impl AgentRuntimeBundle {
                     calibration_reader,
                     current_regime_id: None,
                     last_detection_time: None,
+                    ema_tracker: oneshim_analysis::auto_tuner::EmaStatsTracker::new(
+                        tm_config.auto_tuning.ema_alpha,
+                    ),
+                    drift_detector: oneshim_analysis::auto_tuner::DriftDetector::new(
+                        tm_config.auto_tuning.ema_alpha,
+                        tm_config.auto_tuning.drift_threshold,
+                    ),
+                    auto_tune_tick_count: 0,
+                    clustering_strategy: {
+                        match tm_config.clustering_algorithm {
+                            oneshim_core::config::ClusteringAlgorithm::Hdbscan => {
+                                #[cfg(feature = "hdbscan")]
+                                {
+                                    Some(Box::new(
+                                        oneshim_analysis::hdbscan_detector::HdbscanDetector::new(
+                                            5, None,
+                                        ),
+                                    ))
+                                }
+                                #[cfg(not(feature = "hdbscan"))]
+                                {
+                                    warn!("HDBSCAN requested but not compiled; falling back to k-means");
+                                    Some(Box::new(
+                                        oneshim_analysis::kmeans_adapter::KmeansDetector::new(),
+                                    ))
+                                }
+                            }
+                            oneshim_core::config::ClusteringAlgorithm::Kmeans => Some(Box::new(
+                                oneshim_analysis::kmeans_adapter::KmeansDetector::new(),
+                            )),
+                            oneshim_core::config::ClusteringAlgorithm::Gmm => {
+                                Some(Box::new(oneshim_analysis::gmm_detector::GmmDetector::new()))
+                            }
+                        }
+                    },
+                    override_store: self.override_store.clone(),
+                    recluster_requested: self.recluster_requested.clone(),
+                    last_drift_detected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     llm_summarizer: llm_summarizer_arc,
                     embedding_pipeline: embedding_pipeline_arc,
+                    gui_pipeline_state: None,
+                    gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
+                    app_registry: Arc::new(oneshim_core::app_registry::AppRegistry::new()),
+                    heatmap_aggregator: crate::scheduler::heatmap::HeatmapAggregator::new(),
                 };
                 scheduler = scheduler.with_adaptive_trigger(state);
                 info!("Adaptive tiered-memory pipeline enabled");
             } else {
                 info!("Tiered memory enabled but no calibration writer/reader — skipped");
+            }
+        }
+
+        // --- Cross-device sync engine (P3 Phase 3b) ---
+        if self.config.sync.enabled {
+            let passphrase = std::env::var("ONESHIM_SYNC_PASSPHRASE").unwrap_or_default();
+            if passphrase.is_empty() {
+                warn!("sync enabled but ONESHIM_SYNC_PASSPHRASE not set; sync disabled");
+            } else {
+                match self
+                    .sqlite_storage_concrete
+                    .ensure_device_identity(&self.config.sync.device_name)
+                {
+                    Ok((device_id, device_name)) => {
+                        let extractor =
+                            Arc::new(oneshim_storage::sync_extractor::SqliteSyncExtractor::new(
+                                self.sqlite_storage_concrete.connection_arc(),
+                                device_id.clone(),
+                                device_name.clone(),
+                                self.config.sync.clone(),
+                            ));
+                        let merger = Arc::new(oneshim_storage::sync_merger::SqliteSyncMerger::new(
+                            self.sqlite_storage_concrete.connection_arc(),
+                            device_id.clone(),
+                        ));
+
+                        let transport_result: Result<Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>, CoreError> =
+                            match self.config.sync.transport {
+                                SyncTransportKind::File => {
+                                    match &self.config.sync.sync_folder {
+                                        Some(folder) => {
+                                            oneshim_storage::file_transport::FileSyncTransport::new(
+                                                std::path::PathBuf::from(folder),
+                                                device_id.clone(),
+                                                passphrase.clone(),
+                                            ).map(|t| Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>)
+                                        }
+                                        None => {
+                                            warn!("sync transport=file but sync_folder not configured");
+                                            Err(CoreError::Internal("sync_folder required for file transport".into()))
+                                        }
+                                    }
+                                }
+                                SyncTransportKind::Remote => {
+                                    match &self.config.sync.remote_endpoint {
+                                        Some(endpoint) => {
+                                            // Retrieve auth credential from OS keychain
+                                            let credential = keyring::Entry::new("oneshim", "sync_remote_token")
+                                                .and_then(|entry| entry.get_password())
+                                                .unwrap_or_default();
+                                            if credential.is_empty() {
+                                                warn!("sync transport=remote but no credential in keychain (key: oneshim/sync_remote_token)");
+                                            }
+                                            oneshim_network::sync::RemoteSyncTransport::new(
+                                                endpoint.clone(),
+                                                device_id.clone(),
+                                                passphrase.clone(),
+                                                self.config.sync.remote_auth.clone(),
+                                                credential,
+                                            ).map(|t| Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>)
+                                        }
+                                        None => {
+                                            warn!("sync transport=remote but remote_endpoint not configured");
+                                            Err(CoreError::Internal("remote_endpoint required for remote transport".into()))
+                                        }
+                                    }
+                                }
+                                SyncTransportKind::Lan => {
+                                    #[cfg(feature = "lan-sync")]
+                                    {
+                                        let config_dir = self.data_dir.clone();
+                                        match oneshim_network::sync::lan_tls::load_or_generate_cert(
+                                            &config_dir,
+                                            &device_id,
+                                        ) {
+                                            Ok((cert_pem, key_pem, fingerprint)) => {
+                                                // Use block_on to await the async start in sync context
+                                                match tokio::runtime::Handle::current().block_on(
+                                                    oneshim_network::sync::LanSyncTransport::start(
+                                                        device_id.clone(),
+                                                        device_name.clone(),
+                                                        passphrase.clone(),
+                                                        cert_pem,
+                                                        key_pem,
+                                                        fingerprint,
+                                                        self.config.sync.lan_port,
+                                                        self.config.sync.lan_advertise,
+                                                    ),
+                                                ) {
+                                                    Ok(t) => Ok(Arc::new(t) as Arc<dyn oneshim_core::ports::sync_transport::SyncTransport>),
+                                                    Err(e) => Err(e),
+                                                }
+                                            }
+                                            Err(e) => Err(e),
+                                        }
+                                    }
+                                    #[cfg(not(feature = "lan-sync"))]
+                                    {
+                                        warn!("LAN sync requires 'lan-sync' feature; sync disabled");
+                                        Err(CoreError::Internal(
+                                            "lan-sync feature not enabled".into(),
+                                        ))
+                                    }
+                                }
+                            };
+
+                        match transport_result {
+                            Ok(transport) => {
+                                // Reuse the application-wide ConsentManager instead
+                                // of constructing a separate instance from the file
+                                // path. This ensures the SyncEngine sees the same
+                                // in-memory consent state as the rest of the runtime.
+                                let sync_engine = Arc::new(
+                                    SyncEngine::new(
+                                        extractor,
+                                        merger,
+                                        transport,
+                                        self.consent_manager.clone(),
+                                        device_id,
+                                        device_name,
+                                    )
+                                    .await,
+                                );
+                                scheduler = scheduler.with_sync_engine(sync_engine);
+                                info!(
+                                    transport = ?self.config.sync.transport,
+                                    "Cross-device sync engine initialized"
+                                );
+                            }
+                            Err(e) => {
+                                warn!("Failed to create sync transport: {e}");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to get device identity for sync: {e}");
+                    }
+                }
+            }
+        }
+
+        // --- Phase 3: Wire ConsentManager into scheduler for runtime consent checks ---
+        if let Some(ref cm) = self.consent_manager {
+            scheduler = scheduler.with_consent_manager(cm.clone());
+        }
+
+        // --- Coaching engine + storage + overlay wiring ---
+        if let Some(engine) = self.coaching_engine {
+            scheduler = scheduler.with_coaching_engine(engine);
+        }
+        if let Some(coaching_storage) = self.coaching_storage {
+            scheduler = scheduler.with_coaching_storage(coaching_storage);
+        }
+        if let Some(overlay) = self.magic_overlay {
+            scheduler = scheduler.with_magic_overlay(overlay);
+        }
+
+        // --- Phase 2: Accessibility extractor (gated by config + consent) ---
+        {
+            let text_config = self.config.analysis.text_intelligence.clone();
+            let ax_consent_ok = self
+                .consent_manager
+                .as_ref()
+                .and_then(|cm| cm.current_consent())
+                .map(|c| c.permissions.activity_pattern_learning)
+                .unwrap_or(false);
+
+            if text_config.enabled && text_config.accessibility_extraction && ax_consent_ok {
+                if let Some(extractor) = oneshim_vision::accessibility::create_extractor() {
+                    info!(
+                        name = extractor.name(),
+                        "Accessibility extractor enabled (Phase 2)"
+                    );
+                    scheduler = scheduler.with_accessibility_extractor(extractor);
+                }
             }
         }
 
@@ -268,16 +509,23 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     focus_storage: Arc<dyn FocusStorage>,
     calibration_writer: Option<Arc<dyn CalibrationWriter>>,
     calibration_reader: Option<Arc<dyn CalibrationReader>>,
+    override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    recluster_requested: Arc<std::sync::atomic::AtomicBool>,
     vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
     data_dir: &'a Path,
     config: &'a AppConfig,
     config_manager: ConfigManager,
     consent_manager: Option<Arc<ConsentManager>>,
+    /// Concrete SQLite storage for sync engine wiring.
+    sqlite_storage_concrete: Arc<oneshim_storage::sqlite::SqliteStorage>,
     offline_mode: bool,
     event_tx: Option<broadcast::Sender<RealtimeEvent>>,
     #[cfg(feature = "server")]
     oauth_coordinator: Option<Arc<TokenRefreshCoordinator>>,
     app_handle: AppHandle,
+    coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
+    coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -286,9 +534,11 @@ impl<'a> AgentRuntimeBuilder<'a> {
         storage: Arc<dyn StorageService>,
         scheduler_storage: Arc<dyn SchedulerStorage>,
         focus_storage: Arc<dyn FocusStorage>,
+        sqlite_storage_concrete: Arc<oneshim_storage::sqlite::SqliteStorage>,
         data_dir: &'a Path,
         config: &'a AppConfig,
         config_manager: ConfigManager,
+        recluster_requested: Arc<std::sync::atomic::AtomicBool>,
         app_handle: AppHandle,
     ) -> Self {
         Self {
@@ -297,7 +547,10 @@ impl<'a> AgentRuntimeBuilder<'a> {
             focus_storage,
             calibration_writer: None,
             calibration_reader: None,
+            override_store: None,
+            recluster_requested,
             vector_store: None,
+            sqlite_storage_concrete,
             data_dir,
             config,
             config_manager,
@@ -307,6 +560,9 @@ impl<'a> AgentRuntimeBuilder<'a> {
             #[cfg(feature = "server")]
             oauth_coordinator: None,
             app_handle,
+            coaching_engine: None,
+            coaching_storage: None,
+            magic_overlay: None,
         }
     }
 
@@ -317,6 +573,14 @@ impl<'a> AgentRuntimeBuilder<'a> {
 
     pub(crate) fn with_calibration_reader(mut self, reader: Arc<dyn CalibrationReader>) -> Self {
         self.calibration_reader = Some(reader);
+        self
+    }
+
+    pub(crate) fn with_override_store(
+        mut self,
+        store: Arc<dyn oneshim_core::ports::override_store::OverrideStore>,
+    ) -> Self {
+        self.override_store = Some(store);
         self
     }
 
@@ -355,6 +619,30 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_coaching_engine(
+        mut self,
+        engine: Arc<oneshim_analysis::CoachingEngine>,
+    ) -> Self {
+        self.coaching_engine = Some(engine);
+        self
+    }
+
+    pub(crate) fn with_coaching_storage(
+        mut self,
+        storage: Arc<oneshim_storage::sqlite::SqliteStorage>,
+    ) -> Self {
+        self.coaching_storage = Some(storage);
+        self
+    }
+
+    pub(crate) fn with_magic_overlay(
+        mut self,
+        overlay: crate::magic_overlay::MagicOverlayHandle,
+    ) -> Self {
+        self.magic_overlay = Some(overlay);
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -362,16 +650,22 @@ impl<'a> AgentRuntimeBuilder<'a> {
             focus_storage: self.focus_storage,
             calibration_writer: self.calibration_writer,
             calibration_reader: self.calibration_reader,
+            override_store: self.override_store,
+            recluster_requested: self.recluster_requested,
             vector_store: self.vector_store,
             data_dir: self.data_dir.to_path_buf(),
             config: self.config.clone(),
             config_manager: self.config_manager,
             consent_manager: self.consent_manager,
+            sqlite_storage_concrete: self.sqlite_storage_concrete,
             offline_mode: self.offline_mode,
             event_tx: self.event_tx,
             #[cfg(feature = "server")]
             oauth_coordinator: self.oauth_coordinator,
             app_handle: self.app_handle,
+            coaching_engine: self.coaching_engine,
+            coaching_storage: self.coaching_storage,
+            magic_overlay: self.magic_overlay,
         }
     }
 }

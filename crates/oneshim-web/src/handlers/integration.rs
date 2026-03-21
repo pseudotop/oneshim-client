@@ -607,6 +607,11 @@ mod tests {
             update_control: None,
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
+            override_store: None,
+            recluster_requested: None,
+            coaching_engine: None,
+            pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
         }
     }
 

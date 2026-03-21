@@ -183,6 +183,21 @@ impl NotificationManager {
             debug!("notification sent failure: {e}");
         }
     }
+
+    /// Send a coaching notification through the desktop notification system.
+    ///
+    /// Uses a "ONESHIM Coach" title prefix to distinguish coaching from system alerts.
+    /// Does not enforce its own cooldown — the CoachingEngine already applies per-profile cooldowns.
+    pub async fn notify_coaching(&self, body: &str) {
+        let config = self.config.read().await;
+        if !config.enabled {
+            return;
+        }
+
+        if let Err(e) = self.notifier.show_notification("ONESHIM Coach", body).await {
+            debug!("coaching notification failure: {e}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -369,6 +384,36 @@ mod tests {
         manager.reset_session().await;
         manager.notify("test", "after reset").await;
         assert_eq!(notifier.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn notify_coaching_sends_when_enabled() {
+        let config = NotificationConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let notifier = Arc::new(MockNotifier::new());
+        let manager = NotificationManager::new(config, notifier.clone());
+
+        manager
+            .notify_coaching("Deep work for 2h. Take a break.")
+            .await;
+        assert_eq!(notifier.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn notify_coaching_skips_when_disabled() {
+        let config = NotificationConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let notifier = Arc::new(MockNotifier::new());
+        let manager = NotificationManager::new(config, notifier.clone());
+
+        manager
+            .notify_coaching("Deep work for 2h. Take a break.")
+            .await;
+        assert_eq!(notifier.calls(), 0);
     }
 
     #[tokio::test]

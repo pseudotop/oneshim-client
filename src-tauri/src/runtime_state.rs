@@ -1,6 +1,7 @@
 use oneshim_automation::controller::AutomationController;
 use oneshim_core::config::{AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
 use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_storage::sqlite::SqliteStorage;
@@ -9,6 +10,8 @@ use serde::Serialize;
 use std::sync::atomic::AtomicU16;
 use std::sync::Arc;
 use tauri::{App, Manager};
+
+use crate::magic_overlay::MagicOverlayHandle;
 
 #[cfg(feature = "server")]
 pub(crate) type OAuthCoordinator =
@@ -27,6 +30,14 @@ pub struct AppState {
     pub update_action_tx: tokio::sync::mpsc::UnboundedSender<UpdateAction>,
     pub automation_controller: Option<Arc<AutomationController>>,
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
+    /// Shared flag for on-demand re-clustering requests from Tauri/REST.
+    pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
+    /// MagicOverlay handle for transparent coaching overlay window.
+    pub magic_overlay: Option<MagicOverlayHandle>,
+    /// Coaching engine for proactive coaching messages (Phase 2 IPC access).
+    /// Typed as `dyn CoachingPort` so Tauri IPC commands call through the port trait,
+    /// keeping the binary crate decoupled from the concrete `CoachingEngine` type.
+    pub coaching_engine: Option<Arc<dyn CoachingPort>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -223,6 +234,9 @@ mod tests {
             update_action_tx,
             automation_controller: None,
             shutdown_tx,
+            recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            magic_overlay: None,
+            coaching_engine: None,
         })
         .build();
 

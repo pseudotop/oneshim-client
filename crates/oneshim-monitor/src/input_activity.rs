@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
+use oneshim_core::models::app_registry::{KeyCategory, KeystrokeProfile};
 use oneshim_core::models::event::{InputActivityEvent, KeyboardActivity, MouseActivity};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tracing::error;
 
@@ -12,11 +14,29 @@ pub struct InputActivityCollector {
     scroll_count: AtomicU32,
     double_click_count: AtomicU32,
     right_click_count: AtomicU32,
+    // Last click position — atomic i32 pair (x, y). Updated on record_click_at().
+    // Defaults to i32::MIN to distinguish "never set" from (0, 0).
+    last_click_x: AtomicI32,
+    last_click_y: AtomicI32,
     move_distance: AtomicU64, // f64 save
     total_keystrokes: AtomicU32,
     typing_bursts: AtomicU32,
     shortcut_count: AtomicU32,
     correction_count: AtomicU32,
+
+    // Key-category counters for text-heavy app intelligence (Phase 1).
+    // Populated by record_categorized_keystroke(). Remain at zero until
+    // Phase 1.5 wires platform key event hooks.
+    enter_count: AtomicU32,
+    tab_count: AtomicU32,
+    arrow_count: AtomicU32,
+    backspace_count: AtomicU32,
+    special_count: AtomicU32,
+
+    /// Small ring buffer of recent shortcut key strings (e.g., "Cmd+S").
+    /// Capacity: 16. Protected by Mutex (low contention — written on shortcut,
+    /// drained on snapshot).
+    recent_shortcuts: Mutex<VecDeque<String>>,
 
     last_activity_ms: AtomicU64,
     burst_threshold_ms: u64,
@@ -31,11 +51,19 @@ impl InputActivityCollector {
             scroll_count: AtomicU32::new(0),
             double_click_count: AtomicU32::new(0),
             right_click_count: AtomicU32::new(0),
+            last_click_x: AtomicI32::new(i32::MIN),
+            last_click_y: AtomicI32::new(i32::MIN),
             move_distance: AtomicU64::new(0),
             total_keystrokes: AtomicU32::new(0),
             typing_bursts: AtomicU32::new(0),
             shortcut_count: AtomicU32::new(0),
             correction_count: AtomicU32::new(0),
+            enter_count: AtomicU32::new(0),
+            tab_count: AtomicU32::new(0),
+            arrow_count: AtomicU32::new(0),
+            backspace_count: AtomicU32::new(0),
+            special_count: AtomicU32::new(0),
+            recent_shortcuts: Mutex::new(VecDeque::with_capacity(16)),
             last_activity_ms: AtomicU64::new(0),
             burst_threshold_ms: 2000, // 2 s
         }
@@ -62,6 +90,16 @@ impl InputActivityCollector {
         self.record_activity();
     }
 
+    /// Record a left click at the given screen coordinates.
+    /// Position recording is opt-in — callers that lack consent simply call
+    /// `record_click()` (which does not update position).
+    pub fn record_click_at(&self, x: i32, y: i32) {
+        self.click_count.fetch_add(1, Ordering::Relaxed);
+        self.last_click_x.store(x, Ordering::Relaxed);
+        self.last_click_y.store(y, Ordering::Relaxed);
+        self.record_activity();
+    }
+
     pub fn record_scroll(&self) {
         self.scroll_count.fetch_add(1, Ordering::Relaxed);
         self.record_activity();
@@ -85,6 +123,74 @@ impl InputActivityCollector {
         }
 
         self.record_activity();
+    }
+
+    /// Record a keyboard shortcut with its human-readable name (e.g., "Cmd+S").
+    /// Also increments shortcut_count and total_keystrokes.
+    pub fn record_shortcut_name(&self, name: &str) {
+        self.total_keystrokes.fetch_add(1, Ordering::Relaxed);
+        self.shortcut_count.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut buf) = self.recent_shortcuts.lock() {
+            if buf.len() >= 16 {
+                buf.pop_front();
+            }
+            buf.push_back(name.to_string());
+        }
+        self.record_activity();
+    }
+
+    /// Record a keystroke with key category classification.
+    ///
+    /// The caller (platform input hook) classifies each key into one of:
+    /// Enter, Tab, Arrow, Backspace, Special, Regular.
+    /// Regular keys increment only total_keystrokes.
+    /// Category keys increment both their counter AND total_keystrokes.
+    pub fn record_categorized_keystroke(
+        &self,
+        category: KeyCategory,
+        is_shortcut: bool,
+        is_correction: bool,
+    ) {
+        self.total_keystrokes.fetch_add(1, Ordering::Relaxed);
+
+        match category {
+            KeyCategory::Enter => {
+                self.enter_count.fetch_add(1, Ordering::Relaxed);
+            }
+            KeyCategory::Tab => {
+                self.tab_count.fetch_add(1, Ordering::Relaxed);
+            }
+            KeyCategory::Arrow => {
+                self.arrow_count.fetch_add(1, Ordering::Relaxed);
+            }
+            KeyCategory::Backspace => {
+                self.backspace_count.fetch_add(1, Ordering::Relaxed);
+                self.correction_count.fetch_add(1, Ordering::Relaxed);
+            }
+            KeyCategory::Special => {
+                self.special_count.fetch_add(1, Ordering::Relaxed);
+            }
+            KeyCategory::Regular => { /* only total_keystrokes */ }
+        }
+
+        // Handle non-Backspace corrections (e.g., Ctrl+Z undo)
+        if is_correction && !matches!(category, KeyCategory::Backspace) {
+            self.correction_count.fetch_add(1, Ordering::Relaxed);
+        }
+
+        if is_shortcut {
+            self.shortcut_count.fetch_add(1, Ordering::Relaxed);
+        }
+
+        self.record_activity();
+    }
+
+    /// Drain and return all recent shortcut names since last call.
+    pub fn take_recent_shortcuts(&self) -> Vec<String> {
+        self.recent_shortcuts
+            .lock()
+            .map(|mut buf| buf.drain(..).collect())
+            .unwrap_or_default()
     }
 
     fn record_activity(&self) {
@@ -158,6 +264,27 @@ impl InputActivityCollector {
             0
         };
 
+        // Key-category counters
+        let enters = self.enter_count.swap(0, Ordering::Relaxed);
+        let tabs = self.tab_count.swap(0, Ordering::Relaxed);
+        let arrows = self.arrow_count.swap(0, Ordering::Relaxed);
+        let backspaces = self.backspace_count.swap(0, Ordering::Relaxed);
+        let specials = self.special_count.swap(0, Ordering::Relaxed);
+
+        let keystroke_profile = if enters + tabs + arrows + backspaces + specials > 0 {
+            let total = keystrokes.max(1) as f32;
+            Some(KeystrokeProfile {
+                enter_ratio: enters as f32 / total,
+                tab_ratio: tabs as f32 / total,
+                arrow_ratio: arrows as f32 / total,
+                backspace_ratio: backspaces as f32 / total,
+                special_ratio: specials as f32 / total,
+                total_keystrokes: keystrokes,
+            })
+        } else {
+            None
+        };
+
         InputActivityEvent {
             timestamp: now,
             period_secs,
@@ -165,7 +292,15 @@ impl InputActivityCollector {
                 click_count: clicks,
                 move_distance: move_dist,
                 scroll_count: scrolls,
-                last_position: None, // privacy-safe by default
+                last_position: {
+                    let lx = self.last_click_x.swap(i32::MIN, Ordering::Relaxed);
+                    let ly = self.last_click_y.swap(i32::MIN, Ordering::Relaxed);
+                    if lx != i32::MIN && ly != i32::MIN {
+                        Some((lx as f32, ly as f32))
+                    } else {
+                        None
+                    }
+                },
                 double_click_count: double_clicks,
                 right_click_count: right_clicks,
             },
@@ -177,6 +312,7 @@ impl InputActivityCollector {
                 correction_count: corrections,
             },
             app_name,
+            keystroke_profile,
         }
     }
 }
@@ -277,5 +413,124 @@ mod tests {
 
         let snapshot = collector.take_snapshot();
         assert!(snapshot.keyboard.total_keystrokes > 0);
+    }
+
+    #[test]
+    fn record_click_at_sets_position() {
+        let collector = InputActivityCollector::new();
+        collector.record_click_at(150, 300);
+
+        let snapshot = collector.take_snapshot();
+        assert_eq!(snapshot.mouse.click_count, 1);
+        assert_eq!(snapshot.mouse.last_position, Some((150.0, 300.0)));
+    }
+
+    #[test]
+    fn position_resets_after_snapshot() {
+        let collector = InputActivityCollector::new();
+        collector.record_click_at(100, 200);
+        let _ = collector.take_snapshot();
+
+        let second = collector.take_snapshot();
+        assert_eq!(second.mouse.last_position, None);
+    }
+
+    #[test]
+    fn records_shortcut_names() {
+        let collector = InputActivityCollector::new();
+        collector.record_shortcut_name("Cmd+S");
+        collector.record_shortcut_name("Cmd+Z");
+
+        let shortcuts = collector.take_recent_shortcuts();
+        assert_eq!(shortcuts, vec!["Cmd+S", "Cmd+Z"]);
+
+        let snapshot = collector.take_snapshot();
+        assert_eq!(snapshot.keyboard.shortcut_count, 2);
+        assert_eq!(snapshot.keyboard.total_keystrokes, 2);
+    }
+
+    #[test]
+    fn shortcut_ring_buffer_caps_at_16() {
+        let collector = InputActivityCollector::new();
+        for i in 0..20 {
+            collector.record_shortcut_name(&format!("Key+{i}"));
+        }
+
+        let shortcuts = collector.take_recent_shortcuts();
+        assert_eq!(shortcuts.len(), 16);
+        // Oldest 4 evicted, first remaining is "Key+4"
+        assert_eq!(shortcuts[0], "Key+4");
+    }
+
+    #[test]
+    fn record_categorized_enter() {
+        let collector = InputActivityCollector::new();
+        collector.record_categorized_keystroke(KeyCategory::Enter, false, false);
+        collector.record_categorized_keystroke(KeyCategory::Enter, false, false);
+        collector.record_categorized_keystroke(KeyCategory::Regular, false, false);
+
+        let snapshot = collector.take_snapshot();
+        assert_eq!(snapshot.keyboard.total_keystrokes, 3);
+        let profile = snapshot.keystroke_profile.unwrap();
+        assert!((profile.enter_ratio - 2.0 / 3.0).abs() < 0.01);
+        assert!((profile.tab_ratio).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn record_categorized_backspace_also_counts_correction() {
+        let collector = InputActivityCollector::new();
+        collector.record_categorized_keystroke(KeyCategory::Backspace, false, false);
+
+        let snapshot = collector.take_snapshot();
+        assert_eq!(snapshot.keyboard.correction_count, 1);
+        assert_eq!(snapshot.keyboard.total_keystrokes, 1);
+        let profile = snapshot.keystroke_profile.unwrap();
+        assert!((profile.backspace_ratio - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn categorized_counters_reset_on_snapshot() {
+        let collector = InputActivityCollector::new();
+        collector.record_categorized_keystroke(KeyCategory::Tab, false, false);
+        let _ = collector.take_snapshot();
+
+        let second = collector.take_snapshot();
+        assert!(second.keystroke_profile.is_none());
+    }
+
+    #[test]
+    fn no_category_keys_yields_none_profile() {
+        let collector = InputActivityCollector::new();
+        // Only regular keystrokes via the old API
+        collector.record_keystroke(false, false);
+        collector.record_keystroke(false, false);
+
+        let snapshot = collector.take_snapshot();
+        assert!(snapshot.keystroke_profile.is_none());
+    }
+
+    #[test]
+    fn mixed_categories_produce_correct_ratios() {
+        let collector = InputActivityCollector::new();
+        // 10 enters, 5 tabs, 5 arrows, 5 regular = 25 total
+        for _ in 0..10 {
+            collector.record_categorized_keystroke(KeyCategory::Enter, false, false);
+        }
+        for _ in 0..5 {
+            collector.record_categorized_keystroke(KeyCategory::Tab, false, false);
+        }
+        for _ in 0..5 {
+            collector.record_categorized_keystroke(KeyCategory::Arrow, false, false);
+        }
+        for _ in 0..5 {
+            collector.record_categorized_keystroke(KeyCategory::Regular, false, false);
+        }
+
+        let snapshot = collector.take_snapshot();
+        let profile = snapshot.keystroke_profile.unwrap();
+        assert_eq!(profile.total_keystrokes, 25);
+        assert!((profile.enter_ratio - 0.4).abs() < 0.01);
+        assert!((profile.tab_ratio - 0.2).abs() < 0.01);
+        assert!((profile.arrow_ratio - 0.2).abs() < 0.01);
     }
 }

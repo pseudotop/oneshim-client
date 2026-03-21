@@ -1,0 +1,37 @@
+import type { FocusHighlightPayload } from '../types'
+
+interface FocusHighlightProps {
+  highlight: FocusHighlightPayload
+}
+
+export default function FocusHighlight({ highlight }: FocusHighlightProps) {
+  return (
+    <>
+      {highlight.targets.map((target) => (
+        <div
+          key={target.candidate_id}
+          className="pointer-events-none fixed transition-all duration-200 ease-out"
+          style={{
+            left: target.x,
+            top: target.y,
+            width: target.width,
+            height: target.height,
+            border: `2px solid ${target.color}`,
+            borderRadius: '4px',
+            opacity: 0.8,
+            boxShadow: `0 0 12px ${target.color}40`,
+          }}
+        >
+          {target.label && (
+            <span
+              className="absolute -top-5 left-0 rounded bg-black/70 px-1 text-[10px] text-white"
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {target.label}
+            </span>
+          )}
+        </div>
+      ))}
+    </>
+  )
+}

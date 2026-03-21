@@ -29,7 +29,10 @@
     "privacy": "Privacidad",
     "search": "Buscar",
     "automation": "Automatización",
-    "mainNavLabel": "Navegación principal"
+    "mainNavLabel": "Navegación principal",
+    "coaching": "Coaching",
+    "recalibration": "Recalibración",
+    "dashboardDay": "Vista diaria"
   },
   "dashboard": {
     "title": "Resumen de actividad",
@@ -57,7 +60,12 @@
     "cpu": "CPU",
     "memory": "Memoria",
     "usedMemory": "Memoria usada",
-    "collectedData": "Datos recopilados"
+    "collectedData": "Datos recopilados",
+    "dailyTimetable": "Horario diario",
+    "today": "Hoy",
+    "previousDay": "Día anterior",
+    "nextDay": "Día siguiente",
+    "loadError": "No se pudo cargar el resumen diario. Inténtelo de nuevo más tarde."
   },
   "updates": {
     "title": "Actualizaciones",
@@ -140,7 +148,8 @@
       "privacy": "Privacidad",
       "monitoring": "Monitoreo",
       "aiAutomation": "IA y Automatización",
-      "dataStorage": "Datos y Almacenamiento"
+      "dataStorage": "Datos y Almacenamiento",
+      "coaching": "Objetivos de coaching"
     },
     "dataCollection": "Recopilación de datos",
     "enableCapture": "Habilitar captura de pantalla",
@@ -280,7 +289,15 @@
     "saveSettings": "Guardar configuración",
     "savedFull": "Configuración guardada. Algunas opciones requieren reiniciar la aplicación.",
     "exportDone": "Datos exportados.",
-    "days": { "Mon": "Lun", "Tue": "Mar", "Wed": "Mié", "Thu": "Jue", "Fri": "Vie", "Sat": "Sáb", "Sun": "Dom" }
+    "days": {
+      "Mon": "Lun",
+      "Tue": "Mar",
+      "Wed": "Mié",
+      "Thu": "Jue",
+      "Fri": "Vie",
+      "Sat": "Sáb",
+      "Sun": "Dom"
+    }
   },
   "privacy": {
     "title": "Gestión de privacidad",
@@ -379,7 +396,15 @@
     "low": "Bajo",
     "high": "Alto",
     "loadError": "Error al cargar los datos",
-    "days": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+    "days": [
+      "Lun",
+      "Mar",
+      "Mié",
+      "Jue",
+      "Vie",
+      "Sáb",
+      "Dom"
+    ],
     "activity": "Actividad"
   },
   "dateRange": {
@@ -646,7 +671,72 @@
     "loadModels": "Cargar modelos",
     "modelDiscoveryNoModels": "No se encontraron modelos para esta configuración de proveedor.",
     "modelDiscoveryMissingConfig": "Configure primero el endpoint remoto, el proveedor y la clave API.",
-    "modelDiscoveryMissingKey": "Ingrese la clave API completa para descubrir modelos."
+    "modelDiscoveryMissingKey": "Ingrese la clave API completa para descubrir modelos.",
+    "sandboxProfilePermissive": "Permisivo",
+    "sandboxProfileStandard": "Estándar",
+    "sandboxProfileStrict": "Estricto",
+    "accessModeLabel": "Ruta de acceso",
+    "accessModeApiKeyLabel": "Endpoints directos",
+    "accessModeApiKeyDescription": "Usar endpoints HTTP directos para servicios alojados por el proveedor o autoalojados. Las claves API solo se requieren cuando la superficie seleccionada las espera.",
+    "accessModeCliLabel": "CLI del proveedor instalado",
+    "accessModeCliDescription": "Preferido para productos con suscripción. ONESHIM guiará a los usuarios a través de los flujos de CLI del proveedor instalado.",
+    "accessModeOAuthLabel": "OAuth directo (experimental)",
+    "accessModeOAuthDescription": "Ruta OAuth gestionada experimental para superficies de proveedores compatibles. Prefiera los CLIs del proveedor instalados cuando estén disponibles.",
+    "pathSummaryTitle": "Ruta operativa",
+    "pathSummarySurface": "Superficie seleccionada: {{surface}}",
+    "pathExecutionLabel": "Ruta de ejecución",
+    "pathPlacementLabel": "Ruta de alojamiento",
+    "pathRequirementsLabel": "Requisitos",
+    "pathRequirementsNone": "Sin requisitos adicionales",
+    "pathNextStepLabel": "Estado de preparación",
+    "requirementOsSecretStore": "Almacén de secretos del SO",
+    "requirementLocalServer": "Servidor local de {{service}}",
+    "requirementCli": "{{tool}} CLI",
+    "requirementLocalService": "Servicio local de {{service}}",
+    "requirementEndpoint": "Endpoint de {{target}}",
+    "preferredCliTitle": "Ruta preferida respaldada por producto",
+    "preferredCliDescription": "Use {{surface}} cuando desee que la autenticación y los derechos de suscripción permanezcan con el CLI instalado.",
+    "switchToPreferredCli": "Usar ruta CLI preferida",
+    "executionKindDirectHttp": "API HTTP directa del proveedor",
+    "executionKindManagedHttp": "OAuth gestionado",
+    "executionKindSubprocessCli": "CLI del proveedor instalado",
+    "placementProviderHosted": "Alojado por el proveedor",
+    "placementSelfHosted": "Autoalojado",
+    "placementInstalledCli": "CLI instalado",
+    "placementCustomHosted": "Alojamiento personalizado",
+    "placementDescriptionProviderHosted": "Las solicitudes se envían al servicio alojado del proveedor.",
+    "placementDescriptionSelfHosted": "Usted opera este endpoint, como un servidor Ollama local.",
+    "placementDescriptionInstalledCli": "La ejecución pasa por un CLI del proveedor instalado en esta máquina.",
+    "placementDescriptionCustomHosted": "Las solicitudes se envían a un endpoint compatible con OpenAI que usted gestiona o conecta como proxy.",
+    "providerLocal": "Local",
+    "providerRemote": "Remoto",
+    "cliModeProviderSummary": "El modo CLI del proveedor mantiene los proveedores de OCR y LLM en ejecución local. Los flujos de trabajo de LLM compatibles usarán los CLIs del proveedor instalados a través de la superficie seleccionada.",
+    "oauthLlmProviderPinned": "El OAuth gestionado requiere actualmente que el proveedor de LLM permanezca en Remoto.",
+    "activeRoutingTitle": "Enrutamiento activo actual",
+    "activeRoutingDescription": "Estas son las rutas efectivas de OCR y LLM que el runtime usará ahora mismo.",
+    "activePathLocal": "Ejecución local",
+    "activePathRemote": "Ejecución remota",
+    "activePathRemoteSurface": "Remoto vía {{surface}}",
+    "dataPolicyStrict": "Filtro PII estricto",
+    "dataPolicyStandard": "Filtro PII estándar",
+    "dataPolicyAllowFiltered": "Permitir filtrados",
+    "noAuthSurfaceDescription": "Esta superficie no requiere una clave API. Deje el campo de credenciales vacío y conéctese directamente al endpoint local o autoalojado.",
+    "modelSelectionUnsupportedSurface": "Esta superficie no admite la selección explícita de modelos. ONESHIM usará la ruta predeterminada de OCR o del proveedor.",
+    "ocrModelUnsupported": "No se ha confirmado que el modelo seleccionado sea compatible con OCR basado en imágenes en esta superficie. Elija un modelo multimodal compatible.",
+    "ocrModelCompatibilityUnknown": "ONESHIM no pudo confirmar la compatibilidad de OCR para {{model}} en esta superficie. Use un modelo multimodal conocido o verifique con el descubrimiento de modelos antes de guardar.",
+    "ocrModelCompatibilityUnknownRejected": "ONESHIM requiere un modelo compatible con OCR conocido para esta superficie. {{model}} aún no está catalogado; elija un modelo multimodal conocido antes de guardar.",
+    "llmModelUnsupported": "No se ha confirmado que el modelo seleccionado sea compatible con esta superficie LLM. Elija un modelo compatible para la ruta de ejecución seleccionada.",
+    "llmModelCompatibilityUnknown": "ONESHIM no pudo confirmar la compatibilidad LLM para {{model}} en esta superficie. Verifique el modelo o cargue el catálogo antes de guardar.",
+    "llmModelCompatibilityUnknownRejected": "ONESHIM requiere un modelo LLM compatible conocido para esta superficie. {{model}} aún no está catalogado; elija un modelo compatible conocido antes de guardar.",
+    "selfHostedCustomEndpointStatus": "Esta superficie autoalojada utiliza un endpoint personalizado. No se probó el estado de preparación para ese endpoint; verifique el servidor local manualmente.",
+    "providerSurfaceLabel": "Superficie del proveedor",
+    "noCompatibleProviderSurface": "No hay una superficie de proveedor compatible disponible para este modo.",
+    "ocrStrategyMultimodal": "Esta superficie OCR funciona a través de un modelo multimodal. Prefiera modelos con capacidad de imagen y verifique la compatibilidad antes de guardar IDs de modelos personalizados.",
+    "ocrStrategyVisionApi": "Esta superficie OCR funciona a través de una API de visión dedicada. La selección de modelos puede estar limitada según el endpoint.",
+    "managedOAuthSurfaceDescription": "Esta superficie utiliza OAuth gestionado por el proveedor. ONESHIM no solicita una clave API ni un endpoint editable aquí.",
+    "subprocessSurfaceDescription": "Esta superficie se ejecuta a través de un CLI del proveedor instalado. La autenticación y los derechos de suscripción permanecen con el CLI del proveedor.",
+    "subprocessExecutableHint": "Candidatos de ejecutables detectados: {{executables}}",
+    "modelDiscoveryUnsupportedSurface": "El descubrimiento de modelos no está disponible para la superficie del proveedor seleccionada."
   },
   "focus": {
     "title": "Concentración",
@@ -768,6 +858,164 @@
     "consent": "Consentimiento",
     "dataExport": "Exportar datos",
     "recentSearches": "Búsquedas recientes",
-    "browseTags": "Explorar etiquetas"
+    "browseTags": "Explorar etiquetas",
+    "segments": "Segmentos",
+    "overrideHistory": "Historial de anulaciones",
+    "coachingGoals": "Objetivos",
+    "coachingEvents": "Eventos"
+  },
+  "settingsOAuth": {
+    "title": "Conexión",
+    "experimental": "Experimental",
+    "loading": "Verificando estado de conexión…",
+    "desktopOnly": "La conexión OAuth solo está disponible en la aplicación de escritorio.",
+    "disconnectedDescription": "Conecte su cuenta para habilitar el acceso basado en OAuth. No se requiere clave API.",
+    "connect": "Conectar",
+    "connecting": "Esperando autorización en su navegador…",
+    "openBrowser": "Abrir página de autorización",
+    "openBrowserHint": "Si la página no se abrió automáticamente, use este botón para continuar en su navegador.",
+    "openBrowserFailed": "No pudimos abrir la página de autorización. Inténtelo de nuevo o reinicie el flujo.",
+    "cancel": "Cancelar",
+    "connected": "Conectado",
+    "expiresAt": "Expira",
+    "disconnect": "Desconectar",
+    "retry": "Reintentar",
+    "disclaimer": "Los tokens se almacenan en el llavero del SO y nunca salen de este dispositivo.",
+    "portConflict": "No se pudo iniciar el servidor de autorización: el puerto de devolución de llamada ya está en uso. Cierre otras instancias e inténtelo de nuevo.",
+    "timeout": "La autorización expiró antes de recibir la devolución de llamada. Reinicie el flujo e inténtelo de nuevo.",
+    "unavailable": "OAuth no está disponible en este dispositivo en este momento. Verifique el acceso al llavero del escritorio y la compatibilidad de funciones.",
+    "genericError": "La solicitud OAuth falló. Inténtelo de nuevo.",
+    "statusExpiringSoon": "Token próximo a expirar",
+    "statusExpired": "Token expirado",
+    "noRefreshToken": "Sin token de actualización: se requerirá reautenticación manual cuando el token expire",
+    "reauthRequired": "Reautenticación requerida",
+    "reauthDescription": "Su sesión OAuth ha expirado. Por favor, reconéctese.",
+    "switchToCli": "Usar {{surface}} en su lugar"
+  },
+  "featureCapability": {
+    "preferredPath": "Ruta preferida",
+    "setupTitle": "Configuración requerida",
+    "setupEnvVars": "Variables de entorno",
+    "openSetupDocs": "Abrir documentación de configuración",
+    "availability": {
+      "available": "Disponible",
+      "unavailable": "No disponible",
+      "partially_available": "Parcialmente disponible"
+    },
+    "maturity": {
+      "stable": "Estable",
+      "beta": "Beta",
+      "experimental": "Experimental",
+      "deprecated": "Obsoleto"
+    },
+    "surface": {
+      "provider_surface": {
+        "openai": {
+          "managed_oauth": {
+            "available": "Esta ruta OAuth gestionada experimental está disponible en este dispositivo. No es la ruta de configuración preferida.",
+            "unavailable": "OAuth directo no está disponible en este dispositivo. Se requiere soporte de llavero de escritorio."
+          },
+          "subprocess_cli": {
+            "available": "Codex CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+            "auth_required": "Codex CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
+            "partially_available": "Se detectó Codex CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+            "unavailable": "Codex CLI no está instalado o no está disponible en PATH."
+          }
+        },
+        "anthropic": {
+          "subprocess_cli": {
+            "available": "Claude Code CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+            "auth_required": "Claude Code CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
+            "partially_available": "Se detectó Claude Code CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+            "unavailable": "Claude Code CLI no está instalado o no está disponible en PATH."
+          }
+        },
+        "google": {
+          "managed_oauth": {
+            "available": "Google OAuth está disponible en este dispositivo. Configure un ID de cliente OAuth de escritorio para conectar Vision OCR sin almacenar una clave API.",
+            "unavailable": "Google OAuth no está disponible en este dispositivo. Se requiere soporte de llavero de escritorio y un ID de cliente Google OAuth configurado.",
+            "setup": "Cree o proporcione un ID de cliente Google Desktop OAuth para ONESHIM, luego reinicie la aplicación antes de iniciar el flujo de inicio de sesión de Vision OCR."
+          },
+          "subprocess_cli": {
+            "available": "Gemini CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+            "auth_required": "Gemini CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
+            "partially_available": "Se detectó Gemini CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+            "unavailable": "Gemini CLI no está instalado o no está disponible en PATH."
+          }
+        },
+        "ollama": {
+          "local_http": {
+            "available": "Ollama parece accesible en el puerto HTTP local configurado. ONESHIM puede llamar directamente al endpoint autoalojado.",
+            "partially_available": "ONESHIM no pudo completar la prueba de preparación local para Ollama. Verifique el servidor local y la configuración del endpoint.",
+            "unavailable": "Ollama no fue accesible en el puerto HTTP local configurado. Inicie el servidor local antes de usar esta superficie autoalojada."
+          }
+        }
+      }
+    },
+    "providerSurface": {
+      "openaiManagedOAuth": {
+        "available": "Esta ruta OAuth gestionada experimental está disponible en este dispositivo. No es la ruta de configuración preferida.",
+        "unavailable": "OAuth directo no está disponible en este dispositivo. Se requiere soporte de llavero de escritorio."
+      },
+      "openaiSubprocessCli": {
+        "available": "Codex CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+        "authRequired": "Codex CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
+        "partiallyAvailable": "Se detectó Codex CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+        "unavailable": "Codex CLI no está instalado o no está disponible en PATH."
+      },
+      "anthropicSubprocessCli": {
+        "available": "Claude Code CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+        "authRequired": "Claude Code CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
+        "partiallyAvailable": "Se detectó Claude Code CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+        "unavailable": "Claude Code CLI no está instalado o no está disponible en PATH."
+      },
+      "googleSubprocessCli": {
+        "available": "Gemini CLI está instalado y autenticado. ONESHIM puede usar la ruta CLI del proveedor para flujos de trabajo compatibles.",
+        "authRequired": "Gemini CLI está instalado pero aún no autenticado. Ejecute primero el flujo de inicio de sesión del CLI.",
+        "partiallyAvailable": "Se detectó Gemini CLI. ONESHIM puede preferir la ruta CLI del proveedor cuando el CLI esté autenticado.",
+        "unavailable": "Gemini CLI no está instalado o no está disponible en PATH."
+      }
+    }
+  },
+  "recalibration": {
+    "title": "Recalibración",
+    "markAsPersonalTime": "Marcar como tiempo personal",
+    "changeRegimeTo": "Cambiar régimen a...",
+    "triggerRecluster": "Ejecutar reagrupamiento",
+    "reclustering": "Reagrupando...",
+    "reclusterSuccess": "Reagrupamiento completado",
+    "reclusterError": "Reagrupamiento fallido",
+    "overrideCreated": "Anulación creada",
+    "overrideDeleted": "Anulación eliminada",
+    "markRangePersonal": "Marcar rango como tiempo personal",
+    "overrideHistory": "Historial de anulaciones",
+    "undo": "Deshacer",
+    "noOverrides": "No hay anulaciones en este rango",
+    "noSegments": "No se encontraron segmentos para este rango de fechas",
+    "overridden": "Anulado",
+    "personalTime": "Tiempo personal"
+  },
+  "coaching": {
+    "title": "Historial de coaching",
+    "goalsTitle": "Objetivos de hoy",
+    "noGoals": "No hay objetivos configurados.",
+    "recentEvents": "Eventos recientes",
+    "noEvents": "Aún no hay eventos de coaching.",
+    "goalAdded": "Objetivo añadido",
+    "goalRemoved": "Objetivo eliminado",
+    "goalsUpdated": "Objetivos actualizados",
+    "settingsTitle": "Objetivos de coaching",
+    "regimeLabel": "Etiqueta de régimen",
+    "targetMinutes": "Objetivo (min)",
+    "addGoal": "Añadir objetivo",
+    "remove": "Eliminar",
+    "perDay": "min/día",
+    "profiles": {
+      "FocusGuard": "Guardia de enfoque",
+      "TimeAware": "Conciencia temporal",
+      "DeepWorkCoach": "Coach de trabajo profundo",
+      "ContextRestore": "Restauración de contexto",
+      "GoalTracker": "Seguimiento de objetivos"
+    }
   }
 }

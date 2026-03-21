@@ -1,3 +1,7 @@
+//! Desktop notification port — defines the contract for displaying
+//! OS-native notifications (suggestions, alerts, errors).
+//! Implemented by `DesktopNotifierImpl` in platform-specific adapters.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

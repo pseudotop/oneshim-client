@@ -12,6 +12,7 @@ authors.workspace = true
 [features]
 default = []
 ocr = ["leptess"]
+linux-atspi = ["atspi", "atspi-common", "futures"]
 
 [dependencies]
 oneshim-core = { workspace = true }
@@ -28,10 +29,25 @@ uuid = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
+rstar = { workspace = true }
 thiserror = { workspace = true }
 lru = { workspace = true }
 parking_lot = { workspace = true }
 once_cell = { workspace = true }
+zeroize = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = { workspace = true }
+core-foundation-sys = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { workspace = true }
+windows = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+atspi = { workspace = true, optional = true }
+atspi-common = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

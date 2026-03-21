@@ -210,12 +210,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn circuit_breaker_threshold_is_reasonable() {
+    const _: () = {
         assert!(CIRCUIT_BREAKER_THRESHOLD >= 2);
         assert!(CIRCUIT_BREAKER_THRESHOLD <= 10);
         assert!(CIRCUIT_BREAKER_RETRY_INTERVAL >= 10);
-    }
+    };
 
     #[tokio::test]
     async fn circuit_breaker_skips_when_tripped() {

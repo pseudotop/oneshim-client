@@ -29,6 +29,9 @@
     "privacy": "Privacy",
     "search": "Search",
     "automation": "Automation",
+    "coaching": "Coaching",
+    "recalibration": "Recalibration",
+    "dashboardDay": "Day View",
     "mainNavLabel": "Main Navigation"
   },
   "dashboard": {
@@ -57,7 +60,12 @@
     "cpu": "CPU",
     "memory": "Memory",
     "usedMemory": "Used Memory",
-    "collectedData": "Collected Data"
+    "collectedData": "Collected Data",
+    "dailyTimetable": "Daily Timetable",
+    "today": "Today",
+    "previousDay": "Previous day",
+    "nextDay": "Next day",
+    "loadError": "Failed to load daily digest. Please try again later."
   },
   "updates": {
     "title": "Updates",
@@ -140,7 +148,8 @@
       "privacy": "Privacy",
       "monitoring": "Monitoring",
       "aiAutomation": "AI & Automation",
-      "dataStorage": "Data & Storage"
+      "dataStorage": "Data & Storage",
+      "coaching": "Coaching Goals"
     },
     "dataCollection": "Data Collection",
     "enableCapture": "Enable Screenshot Capture",
@@ -280,7 +289,15 @@
     "saveSettings": "Save Settings",
     "savedFull": "Settings saved. Some settings require app restart.",
     "exportDone": "Data exported.",
-    "days": { "Mon": "Mon", "Tue": "Tue", "Wed": "Wed", "Thu": "Thu", "Fri": "Fri", "Sat": "Sat", "Sun": "Sun" }
+    "days": {
+      "Mon": "Mon",
+      "Tue": "Tue",
+      "Wed": "Wed",
+      "Thu": "Thu",
+      "Fri": "Fri",
+      "Sat": "Sat",
+      "Sun": "Sun"
+    }
   },
   "privacy": {
     "title": "Privacy Management",
@@ -379,7 +396,15 @@
     "low": "Low",
     "high": "High",
     "loadError": "Failed to load data",
-    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "days": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "activity": "Activity"
   },
   "dateRange": {
@@ -910,6 +935,24 @@
     "agentCheck": "Check that the ONESHIM agent is running",
     "unknownFetchError": "Unknown error fetching metrics"
   },
+  "recalibration": {
+    "title": "Recalibration",
+    "markAsPersonalTime": "Mark as personal time",
+    "changeRegimeTo": "Change regime to...",
+    "triggerRecluster": "Trigger re-clustering",
+    "reclustering": "Re-clustering...",
+    "reclusterSuccess": "Re-clustering completed",
+    "reclusterError": "Re-clustering failed",
+    "overrideCreated": "Override created",
+    "overrideDeleted": "Override removed",
+    "markRangePersonal": "Mark range as personal time",
+    "overrideHistory": "Override History",
+    "undo": "Undo",
+    "noOverrides": "No overrides in this range",
+    "noSegments": "No segments found for this date range",
+    "overridden": "Overridden",
+    "personalTime": "Personal time"
+  },
   "sidebar": {
     "overview": "Overview",
     "systemMetrics": "System Metrics",
@@ -946,6 +989,33 @@
     "consent": "Consent",
     "dataExport": "Data Export",
     "recentSearches": "Recent Searches",
-    "browseTags": "Browse Tags"
+    "browseTags": "Browse Tags",
+    "segments": "Segments",
+    "overrideHistory": "Override History",
+    "coachingGoals": "Goals",
+    "coachingEvents": "Events"
+  },
+  "coaching": {
+    "title": "Coaching History",
+    "goalsTitle": "Today's Goals",
+    "noGoals": "No goals configured.",
+    "recentEvents": "Recent Events",
+    "noEvents": "No coaching events yet.",
+    "goalAdded": "Goal added",
+    "goalRemoved": "Goal removed",
+    "goalsUpdated": "Goals updated",
+    "settingsTitle": "Coaching Goals",
+    "regimeLabel": "Regime Label",
+    "targetMinutes": "Target (min)",
+    "addGoal": "Add Goal",
+    "remove": "Remove",
+    "perDay": "min/day",
+    "profiles": {
+      "FocusGuard": "Focus Guard",
+      "TimeAware": "Time Aware",
+      "DeepWorkCoach": "Deep Work Coach",
+      "ContextRestore": "Context Restore",
+      "GoalTracker": "Goal Tracker"
+    }
   }
 }

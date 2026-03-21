@@ -1,3 +1,4 @@
+import { resolveApiUrl } from '../utils/api-base'
 import type {
   AppSettings,
   AppUsage,
@@ -5,16 +6,15 @@ import type {
   AutomationContracts,
   AutomationStats,
   AutomationStatus,
-  OAuthConnectionStatus,
-  OAuthFlowHandle,
-  OAuthFlowStatus,
-  SecretBackendCapabilities,
   BackupArchive,
   BackupParams,
+  CreateOverrideRequest,
   CreateTagRequest,
+  DailyDigestResponse,
   DailySummary,
   DeleteRangeRequest,
   DeleteResult,
+  DiagnosticsBundleResponse,
   Event,
   ExecuteIntentHintRequest,
   ExecuteIntentHintResponse,
@@ -25,11 +25,20 @@ import type {
   FeatureCapabilitySnapshot,
   FocusMetricsResponse,
   Frame,
+  GuiConfirmRequest,
+  GuiConfirmResponse,
+  GuiCreateSessionRequest,
+  GuiCreateSessionResponse,
+  GuiExecuteResponse,
+  GuiExecutionRequest,
+  GuiHeatmapCell,
+  GuiHighlightRequest,
+  GuiSessionResponse,
   HeatmapResponse,
   HourlyMetrics,
   IdlePeriod,
-  IntegrationAuthStatus,
   IntegrationAuditLogResponse,
+  IntegrationAuthStatus,
   IntegrationDeviceAuthorizationCommandResult,
   IntegrationDeviceAuthorizationFlowRequest,
   IntegrationInboxActionResponse,
@@ -38,21 +47,31 @@ import type {
   IntegrationInboxResponse,
   IntegrationStatus,
   Interruption,
+  ListOverridesQuery,
   LocalSuggestion,
+  OAuthConnectionStatus,
+  OAuthFlowHandle,
+  OAuthFlowStatus,
+  OnboardingQuickstartResponse,
   PaginatedResponse,
   PoliciesInfo,
-  ProviderEndpointProbeResult,
+  PomodoroSession,
   PresetRunResult,
   ProcessSnapshot,
+  ProviderEndpointProbeResult,
   ProviderModelsRequest,
   ProviderModelsResponse,
   ProviderSurfaceCatalog,
+  RegimeOverride,
   ReportParams,
   ReportResponse,
   RestoreResult,
   SceneCalibrationReport,
   SearchParams,
   SearchResponse,
+  SecretBackendCapabilities,
+  SemanticSearchResult,
+  StartPomodoroRequest,
   Session,
   StorageStats,
   SuggestionFeedbackAction,
@@ -65,10 +84,10 @@ import type {
   UpdateActionResponse,
   UpdateStatus,
   UpdateTagRequest,
+  WeeklyDigest,
   WorkflowPreset,
   WorkSession,
 } from './contracts'
-import { resolveApiUrl } from '../utils/api-base'
 import { handleStandaloneRequest, isStandaloneModeEnabled } from './standalone'
 
 export type * from './contracts'
@@ -287,9 +306,7 @@ export async function refreshIntegrationInbox(): Promise<IntegrationInboxRefresh
   return res.json()
 }
 
-export async function acknowledgeIntegrationPrompt(
-  promptId: string,
-): Promise<IntegrationInboxActionResponse> {
+export async function acknowledgeIntegrationPrompt(promptId: string): Promise<IntegrationInboxActionResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/ack`, {
     method: 'POST',
   })
@@ -301,14 +318,11 @@ export async function dismissIntegrationPrompt(
   promptId: string,
   request: IntegrationInboxDismissRequest = {},
 ): Promise<IntegrationInboxActionResponse> {
-  const res = await fetchWithRetry(
-    `${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/dismiss`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-    },
-  )
+  const res = await fetchWithRetry(`${BASE_URL}/integration/inbox/${encodeURIComponent(promptId)}/dismiss`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
   if (!res.ok) throw new Error('Integration prompt dismiss failed')
   return res.json()
 }
@@ -445,6 +459,15 @@ export async function search(
 export async function fetchHeatmap(days = 7): Promise<HeatmapResponse> {
   const res = await fetchWithRetry(`${BASE_URL}/stats/heatmap?days=${days}`)
   if (!res.ok) throw new Error('Heatmap query failed')
+  return res.json()
+}
+
+export async function fetchGuiHeatmap(start?: string, end?: string): Promise<GuiHeatmapCell[]> {
+  const params = new URLSearchParams()
+  if (start) params.set('start', start)
+  if (end) params.set('end', end)
+  const res = await fetchWithRetry(`${BASE_URL}/stats/gui-heatmap?${params}`)
+  if (!res.ok) throw new Error('GUI heatmap query failed')
   return res.json()
 }
 
@@ -801,6 +824,65 @@ export async function fetchSceneCalibration(
   return res.json()
 }
 
+// ── Dashboard Day API ────────────────────────────────────────
+
+export async function fetchDailyDigest(date: string): Promise<DailyDigestResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/dashboard/day?date=${encodeURIComponent(date)}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Daily digest query failed' }))
+    throw new Error(err.error || 'Daily digest query failed')
+  }
+  return res.json()
+}
+
+// ── Recalibration API ────────────────────────────────────────
+
+export async function createOverride(req: CreateOverrideRequest): Promise<{ ok: boolean; override_id: string }> {
+  const res = await fetchWithRetry(`${BASE_URL}/recalibration/override`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create override' }))
+    throw new Error(err.error || 'Failed to create override')
+  }
+  return res.json()
+}
+
+export async function deleteOverride(id: string): Promise<void> {
+  const res = await fetchWithRetry(`${BASE_URL}/recalibration/override/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to delete override' }))
+    throw new Error(err.error || 'Failed to delete override')
+  }
+}
+
+export async function listOverrides(query: ListOverridesQuery = {}): Promise<RegimeOverride[]> {
+  const params = new URLSearchParams()
+  if (query.from) params.set('from', query.from)
+  if (query.to) params.set('to', query.to)
+  const res = await fetchWithRetry(`${BASE_URL}/recalibration/overrides?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to list overrides' }))
+    throw new Error(err.error || 'Failed to list overrides')
+  }
+  return res.json()
+}
+
+export async function triggerRecluster(): Promise<{ ok: boolean; message: string }> {
+  const res = await fetchWithRetry(`${BASE_URL}/recalibration/recluster`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Re-clustering failed' }))
+    throw new Error(err.error || 'Re-clustering failed')
+  }
+  return res.json()
+}
+
 // ── OAuth IPC (Tauri invoke) ─────────────────────────────────
 
 async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -846,4 +928,210 @@ export async function probeProviderSurfaceEndpoint(args: {
     endpointKind: args.endpoint_kind,
     endpoint: args.endpoint,
   })
+}
+
+// ── Pomodoro Timer ─────────────────────────────────────────────
+
+export async function startPomodoro(req?: StartPomodoroRequest): Promise<PomodoroSession> {
+  const res = await fetchWithRetry(`${BASE_URL}/pomodoro/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req ?? {}),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || `Start pomodoro failed (${res.status})`)
+  }
+  return res.json()
+}
+
+export async function fetchCurrentPomodoro(): Promise<PomodoroSession | null> {
+  const res = await fetchWithRetry(`${BASE_URL}/pomodoro/current`)
+  if (!res.ok) throw new Error('Failed to fetch current pomodoro')
+  return res.json()
+}
+
+export async function cancelPomodoro(): Promise<PomodoroSession> {
+  const res = await fetchWithRetry(`${BASE_URL}/pomodoro/cancel`, { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || `Cancel pomodoro failed (${res.status})`)
+  }
+  return res.json()
+}
+
+export async function completePomodoro(): Promise<PomodoroSession> {
+  const res = await fetchWithRetry(`${BASE_URL}/pomodoro/complete`, { method: 'POST' })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error || `Complete pomodoro failed (${res.status})`)
+  }
+  return res.json()
+}
+
+// ── GUI V2 Session API ──────────────────────────────────────────
+
+const GUI_SESSION_HEADER = 'X-Gui-Session-Token'
+
+export async function createGuiSession(req: GuiCreateSessionRequest): Promise<GuiCreateSessionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create GUI session' }))
+    throw new Error(err.error || 'Failed to create GUI session')
+  }
+  return res.json()
+}
+
+export async function getGuiSession(id: string, token: string): Promise<GuiSessionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}`, {
+    headers: { [GUI_SESSION_HEADER]: token },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to get GUI session' }))
+    throw new Error(err.error || 'Failed to get GUI session')
+  }
+  return res.json()
+}
+
+export async function highlightGuiSession(
+  id: string,
+  token: string,
+  req: GuiHighlightRequest,
+): Promise<GuiSessionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}/highlight`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [GUI_SESSION_HEADER]: token,
+    },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to highlight GUI session' }))
+    throw new Error(err.error || 'Failed to highlight GUI session')
+  }
+  return res.json()
+}
+
+export async function confirmGuiSession(
+  id: string,
+  token: string,
+  req: GuiConfirmRequest,
+): Promise<GuiConfirmResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [GUI_SESSION_HEADER]: token,
+    },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to confirm GUI session' }))
+    throw new Error(err.error || 'Failed to confirm GUI session')
+  }
+  return res.json()
+}
+
+export async function executeGuiSession(
+  id: string,
+  token: string,
+  req: GuiExecutionRequest,
+): Promise<GuiExecuteResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}/execute`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [GUI_SESSION_HEADER]: token,
+    },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to execute GUI session' }))
+    throw new Error(err.error || 'Failed to execute GUI session')
+  }
+  return res.json()
+}
+
+export async function deleteGuiSession(id: string, token: string): Promise<GuiSessionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { [GUI_SESSION_HEADER]: token },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to delete GUI session' }))
+    throw new Error(err.error || 'Failed to delete GUI session')
+  }
+  return res.json()
+}
+
+export function guiSessionEventsUrl(id: string, token: string): string {
+  return `${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}/events?token=${encodeURIComponent(token)}`
+}
+
+// ── Semantic Search API ─────────────────────────────────────────
+
+export async function fetchSemanticSearch(
+  query: string,
+  limit = 10,
+  mode?: 'hybrid' | 'semantic' | 'keyword',
+): Promise<SemanticSearchResult[]> {
+  const params = new URLSearchParams()
+  params.set('q', query)
+  if (limit) params.set('limit', String(limit))
+  if (mode) params.set('mode', mode)
+  const res = await fetchWithRetry(`${BASE_URL}/semantic-search?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Semantic search failed' }))
+    throw new Error(err.error || 'Semantic search failed')
+  }
+  return res.json()
+}
+
+// ── Digests API ─────────────────────────────────────────────────
+
+export async function fetchDigests(limit?: number): Promise<WeeklyDigest[]> {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  const res = await fetchWithRetry(`${BASE_URL}/digests?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Digests query failed' }))
+    throw new Error(err.error || 'Digests query failed')
+  }
+  return res.json()
+}
+
+export async function fetchCurrentDigest(): Promise<WeeklyDigest | null> {
+  const res = await fetchWithRetry(`${BASE_URL}/digests/current`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Current digest query failed' }))
+    throw new Error(err.error || 'Current digest query failed')
+  }
+  return res.json()
+}
+
+// ── Onboarding API ──────────────────────────────────────────────
+
+export async function fetchOnboardingQuickstart(): Promise<OnboardingQuickstartResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/onboarding/quickstart`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Onboarding quickstart query failed' }))
+    throw new Error(err.error || 'Onboarding quickstart query failed')
+  }
+  return res.json()
+}
+
+// ── Support API ─────────────────────────────────────────────────
+
+export async function fetchSupportDiagnostics(): Promise<DiagnosticsBundleResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/support/diagnostics`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Diagnostics query failed' }))
+    throw new Error(err.error || 'Diagnostics query failed')
+  }
+  return res.json()
 }

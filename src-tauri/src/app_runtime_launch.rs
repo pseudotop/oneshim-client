@@ -7,6 +7,7 @@ use tracing::info;
 use crate::agent_runtime::AgentRuntimeBuilder;
 use crate::bootstrap_runtime::BootstrapRuntimeBundle;
 use crate::launch_resources::LaunchCoreResourcesBuilder;
+use crate::magic_overlay::MagicOverlayHandle;
 use crate::runtime_state::{AppState, ManagedStateBuilder};
 #[cfg(feature = "server")]
 use crate::server_runtime_context::ServerLaunchContext;
@@ -66,18 +67,33 @@ impl AppRuntimeLaunchBuilder {
         let event_tx = core_resources.background_runtime.event_tx();
         let shutdown_tx = core_resources.background_runtime.shutdown_tx();
 
+        // Shared flag for on-demand re-clustering: scheduler, web server, and Tauri IPC
+        // all reference the same AtomicBool so any endpoint can trigger re-clustering.
+        let recluster_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
         #[cfg(feature = "server")]
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
+
+        // Create shared CoachingEngine for scheduler, web server, and Tauri IPC
+        let coaching_engine = Arc::new(oneshim_analysis::CoachingEngine::new(
+            config.coaching.clone(),
+        ));
+
+        // Create MagicOverlay handle (window is lazily created on first coaching message)
+        let magic_overlay =
+            MagicOverlayHandle::new(self.app_handle.clone(), config.coaching.overlay_mode);
 
         let agent_runtime = {
             let builder = AgentRuntimeBuilder::new(
                 sqlite_storage.clone(),
                 sqlite_storage.clone(),
                 sqlite_storage.clone(),
+                sqlite_storage.clone(),
                 &data_dir_path,
                 &config,
                 config_manager.clone(),
+                recluster_requested.clone(),
                 self.app_handle.clone(),
             )
             .with_vector_store(Arc::new(
@@ -93,9 +109,13 @@ impl AppRuntimeLaunchBuilder {
             )
             .with_calibration_writer(sqlite_storage.clone())
             .with_calibration_reader(sqlite_storage.clone())
+            .with_override_store(sqlite_storage.clone())
             .with_consent_manager(Arc::new(ConsentManager::new(
                 data_dir_path.join("consent.json"),
-            )));
+            )))
+            .with_coaching_engine(coaching_engine.clone())
+            .with_coaching_storage(sqlite_storage.clone())
+            .with_magic_overlay(magic_overlay.clone());
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()
@@ -110,13 +130,19 @@ impl AppRuntimeLaunchBuilder {
                 config_manager.clone(),
                 update_control.clone(),
                 integration_runtime_status,
-            );
+            )
+            .with_app_handle(self.app_handle.clone());
             let builder = WebServerRuntimeBuilder::new(
                 sqlite_storage.clone(),
                 &config,
                 &data_dir_path,
                 launch_context,
                 support_context,
+            )
+            .with_override_store(sqlite_storage.clone())
+            .with_recluster_requested(recluster_requested.clone())
+            .with_coaching_engine(
+                coaching_engine.clone() as Arc<dyn oneshim_core::ports::coaching::CoachingPort>
             );
             #[cfg(feature = "server")]
             let builder = server_context.configure_web_server_builder(builder);
@@ -138,6 +164,11 @@ impl AppRuntimeLaunchBuilder {
             update_action_tx,
             automation_controller,
             shutdown_tx,
+            recluster_requested: recluster_requested.clone(),
+            magic_overlay: Some(magic_overlay),
+            coaching_engine: Some(
+                coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
+            ),
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

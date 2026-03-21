@@ -22,6 +22,21 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
       { id: 'updates', labelKey: 'sidebar.updateStatus' },
     ],
   },
+  '/dashboard/day': {
+    titleKey: 'nav.dashboardDay',
+    nodes: [
+      { id: 'insight', labelKey: 'sidebar.insight' },
+      { id: 'timeline', labelKey: 'sidebar.timeline' },
+      { id: 'statistics', labelKey: 'sidebar.statistics' },
+    ],
+  },
+  '/recalibration': {
+    titleKey: 'nav.recalibration',
+    nodes: [
+      { id: 'segments', labelKey: 'sidebar.segments' },
+      { id: 'overrides', labelKey: 'sidebar.overrideHistory' },
+    ],
+  },
   '/timeline': {
     titleKey: 'nav.timeline',
     nodes: [
@@ -43,6 +58,13 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
       { id: 'activity', labelKey: 'sidebar.activityReport' },
       { id: 'focus', labelKey: 'sidebar.focusReport' },
       { id: 'export', labelKey: 'sidebar.exportData' },
+    ],
+  },
+  '/coaching': {
+    titleKey: 'nav.coaching',
+    nodes: [
+      { id: 'goals', labelKey: 'sidebar.coachingGoals' },
+      { id: 'events', labelKey: 'sidebar.coachingEvents' },
     ],
   },
   '/focus': {
@@ -84,6 +106,7 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
       { id: 'monitoring', labelKey: 'settings.tabs.monitoring' },
       { id: 'ai-automation', labelKey: 'settings.tabs.aiAutomation' },
       { id: 'data', labelKey: 'settings.tabs.dataStorage' },
+      { id: 'coaching', labelKey: 'settings.tabs.coaching' },
     ],
   },
   '/privacy': {

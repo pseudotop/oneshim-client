@@ -95,24 +95,52 @@ mod fastembed_impl {
     }
 
     /// Resolve a human-readable model name to fastembed enum + metadata.
+    ///
+    /// The default model is `AllMiniLML6V2Q` — the quantized (INT8) variant of
+    /// all-MiniLM-L6-v2.  It provides ~3x faster CPU inference with less than
+    /// 1% accuracy degradation compared to the full-precision (FP32) version.
+    /// Users who need maximum accuracy can override `local_model` in config to
+    /// `"AllMiniLML6V2"` (or any other supported variant) to switch back.
     fn resolve_model(name: Option<&str>) -> (fastembed::EmbeddingModel, String, usize) {
         match name {
-            Some("AllMiniLML6V2") | None => (
+            // Quantized variants (INT8 ONNX — ~3x faster, ~1% accuracy loss)
+            Some("AllMiniLML6V2Q") | Some("all-MiniLM-L6-v2-Q") | None => (
+                fastembed::EmbeddingModel::AllMiniLML6V2Q,
+                "all-MiniLM-L6-v2-Q".to_owned(),
+                384,
+            ),
+            Some("AllMiniLML12V2Q") | Some("all-MiniLM-L12-v2-Q") => (
+                fastembed::EmbeddingModel::AllMiniLML12V2Q,
+                "all-MiniLM-L12-v2-Q".to_owned(),
+                384,
+            ),
+            Some("BGESmallENV15Q") | Some("bge-small-en-v1.5-Q") => (
+                fastembed::EmbeddingModel::BGESmallENV15Q,
+                "bge-small-en-v1.5-Q".to_owned(),
+                384,
+            ),
+            Some("BGEBaseENV15Q") | Some("bge-base-en-v1.5-Q") => (
+                fastembed::EmbeddingModel::BGEBaseENV15Q,
+                "bge-base-en-v1.5-Q".to_owned(),
+                768,
+            ),
+            // Full-precision variants (FP32 ONNX — higher accuracy, slower)
+            Some("AllMiniLML6V2") | Some("all-MiniLM-L6-v2") => (
                 fastembed::EmbeddingModel::AllMiniLML6V2,
                 "all-MiniLM-L6-v2".to_owned(),
                 384,
             ),
-            Some("AllMiniLML12V2") => (
+            Some("AllMiniLML12V2") | Some("all-MiniLM-L12-v2") => (
                 fastembed::EmbeddingModel::AllMiniLML12V2,
                 "all-MiniLM-L12-v2".to_owned(),
                 384,
             ),
-            Some("BGESmallENV15") => (
+            Some("BGESmallENV15") | Some("bge-small-en-v1.5") => (
                 fastembed::EmbeddingModel::BGESmallENV15,
                 "bge-small-en-v1.5".to_owned(),
                 384,
             ),
-            Some("BGEBaseENV15") => (
+            Some("BGEBaseENV15") | Some("bge-base-en-v1.5") => (
                 fastembed::EmbeddingModel::BGEBaseENV15,
                 "bge-base-en-v1.5".to_owned(),
                 768,
@@ -120,11 +148,11 @@ mod fastembed_impl {
             Some(other) => {
                 tracing::warn!(
                     model = other,
-                    "Unknown embedding model, falling back to AllMiniLML6V2"
+                    "Unknown embedding model, falling back to AllMiniLML6V2Q"
                 );
                 (
-                    fastembed::EmbeddingModel::AllMiniLML6V2,
-                    "all-MiniLM-L6-v2".to_owned(),
+                    fastembed::EmbeddingModel::AllMiniLML6V2Q,
+                    "all-MiniLM-L6-v2-Q".to_owned(),
                     384,
                 )
             }

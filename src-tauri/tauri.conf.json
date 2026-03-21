@@ -9,6 +9,7 @@
     "beforeBuildCommand": "cd ../crates/oneshim-web/frontend && pnpm build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "withGlobalTauri": false,
     "windows": [
       {
@@ -43,8 +44,42 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "license": "Apache-2.0",
+    "licenseFile": "../LICENSE",
+    "copyright": "Copyright 2024-2026 ONESHIM Contributors",
+    "shortDescription": "AI-powered autonomous office work support agent",
+    "longDescription": "ONESHIM monitors your work context through a desktop agent and provides intelligent productivity insights. All data stays on your device by default.",
     "macOS": {
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": null,
+      "hardenedRuntime": true,
+      "entitlements": "assets/oneshim.entitlements",
+      "infoPlist": "assets/Info.plist",
+      "dmg": {
+        "background": "dmg-background.png",
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        },
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        }
+      }
+    },
+    "windows": {
+      "nsis": {
+        "headerImage": "nsis/header.bmp",
+        "sidebarImage": "nsis/sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "languages": ["English", "Korean"]
+      }
     },
     "linux": {
       "deb": {

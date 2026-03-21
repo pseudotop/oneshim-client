@@ -21,6 +21,7 @@ pub fn api_routes() -> Router<AppState> {
         .route("/stats/summary", get(handlers::stats::get_summary))
         .route("/stats/apps", get(handlers::stats::get_app_usage))
         .route("/stats/heatmap", get(handlers::stats::get_heatmap))
+        .route("/stats/gui-heatmap", get(handlers::stats::get_gui_heatmap))
         .route("/reports", get(handlers::reports::generate_report))
         .route("/settings", get(handlers::settings::get_settings))
         .route("/settings", post(handlers::settings::update_settings))
@@ -78,6 +79,8 @@ pub fn api_routes() -> Router<AppState> {
         .route("/export/metrics", get(handlers::export::export_metrics))
         .route("/export/events", get(handlers::export::export_events))
         .route("/export/frames", get(handlers::export::export_frames))
+        .route("/export/ical", get(handlers::export::export_ical))
+        .route("/export/toggl", get(handlers::export::export_toggl))
         .route("/backup", get(handlers::backup::create_backup))
         .route("/backup/restore", post(handlers::backup::restore_backup))
         .route("/tags", get(handlers::tags::list_tags))
@@ -216,6 +219,59 @@ pub fn api_routes() -> Router<AppState> {
         )
         .route("/digests", get(handlers::digests::list_digests))
         .route("/digests/current", get(handlers::digests::current_digest))
+        .route(
+            "/digests/daily",
+            get(handlers::daily_digest::get_daily_digest),
+        )
+        .route(
+            "/digests/daily/today",
+            get(handlers::daily_digest::get_daily_digest_today),
+        )
+        .route(
+            "/dashboard/day",
+            get(handlers::dashboard::get_dashboard_day),
+        )
+        // Recalibration endpoints
+        .route(
+            "/recalibration/override",
+            post(handlers::recalibration::create_override),
+        )
+        .route(
+            "/recalibration/override/{id}",
+            delete(handlers::recalibration::delete_override),
+        )
+        .route(
+            "/recalibration/overrides",
+            get(handlers::recalibration::list_overrides),
+        )
+        .route(
+            "/recalibration/recluster",
+            post(handlers::recalibration::trigger_recluster),
+        )
+        // Pomodoro timer
+        // Coaching endpoints
+        .route(
+            "/coaching/history",
+            get(handlers::coaching::get_coaching_history),
+        )
+        .route(
+            "/coaching/goals",
+            get(handlers::coaching::get_goals).put(handlers::coaching::update_goals),
+        )
+        // Pomodoro timer
+        .route("/pomodoro/start", post(handlers::pomodoro::start_pomodoro))
+        .route(
+            "/pomodoro/current",
+            get(handlers::pomodoro::get_current_pomodoro),
+        )
+        .route(
+            "/pomodoro/cancel",
+            post(handlers::pomodoro::cancel_pomodoro),
+        )
+        .route(
+            "/pomodoro/complete",
+            post(handlers::pomodoro::complete_pomodoro),
+        )
 }
 
 pub fn integration_routes() -> Router<AppState> {
@@ -237,7 +293,7 @@ mod tests {
     use super::*;
     use crate::AppState;
     use oneshim_storage::sqlite::SqliteStorage;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use tokio::sync::broadcast;
 
     #[test]
@@ -266,6 +322,11 @@ mod tests {
             update_control: None,
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
+            override_store: None,
+            recluster_requested: None,
+            coaching_engine: None,
+            pomodoro: Arc::new(Mutex::new(None)),
         };
         let _app: Router<()> = api_routes().with_state(state);
     }
@@ -296,6 +357,11 @@ mod tests {
             update_control: None,
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
+            override_store: None,
+            recluster_requested: None,
+            coaching_engine: None,
+            pomodoro: Arc::new(Mutex::new(None)),
         };
         let _app: Router<()> = integration_routes().with_state(state);
     }

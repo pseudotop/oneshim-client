@@ -5,8 +5,8 @@ info:
   description: |
     Auto-generated from docs/contracts/http-interface-manifest.v1.json.
     This snapshot is transport-level and contract-focused.
-  x-oneshim-document-version: 1
-  x-oneshim-updated-at: "2026-03-18"
+  x-oneshim-document-version: 3
+  x-oneshim-updated-at: "2026-03-20"
   x-oneshim-routes-file: "crates/oneshim-web/src/routes.rs"
   x-oneshim-contracts-crate: "crates/oneshim-api-contracts"
 servers:
@@ -635,6 +635,87 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/coaching/goals":
+    get:
+      tags:
+        - coaching
+      operationId: coaching_get_api_coaching_goals
+      summary: "GET /api/coaching/goals"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - coaching
+      operationId: coaching_put_api_coaching_goals
+      summary: "PUT /api/coaching/goals"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/coaching/history":
+    get:
+      tags:
+        - coaching
+      operationId: coaching_get_api_coaching_history
+      summary: "GET /api/coaching/history"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/dashboard/day":
+    get:
+      tags:
+        - dashboard
+      operationId: dashboard_get_api_dashboard_day
+      summary: "GET /api/dashboard/day"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/data/all":
     delete:
       tags:
@@ -723,6 +804,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/digests/daily":
+    get:
+      tags:
+        - daily_digest
+      operationId: daily_digest_get_api_digests_daily
+      summary: "GET /api/digests/daily"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/digests/daily/today":
+    get:
+      tags:
+        - daily_digest
+      operationId: daily_digest_get_api_digests_daily_today
+      summary: "GET /api/digests/daily/today"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/events":
     get:
       tags:
@@ -780,12 +899,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/export/ical":
+    get:
+      tags:
+        - export
+      operationId: export_get_api_export_ical
+      summary: "GET /api/export/ical"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/export/metrics":
     get:
       tags:
         - export
       operationId: export_get_api_export_metrics
       summary: "GET /api/export/metrics"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/export/toggl":
+    get:
+      tags:
+        - export
+      operationId: export_get_api_export_toggl
+      summary: "GET /api/export/toggl"
       responses:
         "200":
           description: Success
@@ -1385,12 +1542,206 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  "/api/pomodoro/cancel":
+    post:
+      tags:
+        - pomodoro
+      operationId: pomodoro_post_api_pomodoro_cancel
+      summary: "POST /api/pomodoro/cancel"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/pomodoro/complete":
+    post:
+      tags:
+        - pomodoro
+      operationId: pomodoro_post_api_pomodoro_complete
+      summary: "POST /api/pomodoro/complete"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/pomodoro/current":
+    get:
+      tags:
+        - pomodoro
+      operationId: pomodoro_get_api_pomodoro_current
+      summary: "GET /api/pomodoro/current"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/pomodoro/start":
+    post:
+      tags:
+        - pomodoro
+      operationId: pomodoro_post_api_pomodoro_start
+      summary: "POST /api/pomodoro/start"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   "/api/processes":
     get:
       tags:
         - processes
       operationId: processes_get_api_processes
       summary: "GET /api/processes"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/recalibration/override":
+    post:
+      tags:
+        - recalibration
+      operationId: recalibration_post_api_recalibration_override
+      summary: "POST /api/recalibration/override"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/recalibration/override/{id}":
+    delete:
+      tags:
+        - recalibration
+      operationId: recalibration_delete_api_recalibration_override_id
+      summary: "DELETE /api/recalibration/override/{id}"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/recalibration/overrides":
+    get:
+      tags:
+        - recalibration
+      operationId: recalibration_get_api_recalibration_overrides
+      summary: "GET /api/recalibration/overrides"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/recalibration/recluster":
+    post:
+      tags:
+        - recalibration
+      operationId: recalibration_post_api_recalibration_recluster
+      summary: "POST /api/recalibration/recluster"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericObject'
       responses:
         "200":
           description: Success
@@ -1554,6 +1905,25 @@ paths:
         - stats
       operationId: stats_get_api_stats_apps
       summary: "GET /api/stats/apps"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObject'
+        "default":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  "/api/stats/gui-heatmap":
+    get:
+      tags:
+        - stats
+      operationId: stats_get_api_stats_gui_heatmap
+      summary: "GET /api/stats/gui-heatmap"
       responses:
         "200":
           description: Success

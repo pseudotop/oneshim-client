@@ -42,6 +42,7 @@ use oneshim_core::config::{CredentialBackendKind, WebConfig};
 use oneshim_core::config_manager::ConfigManager;
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
+use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::integration::{
     IntegrationAuditPort, IntegrationAuthPort, IntegrationInboxPort, IntegrationInboxStorePort,
     IntegrationOutboxPort, IntegrationRuntimeTelemetryPort, IntegrationSessionPort,
@@ -91,6 +92,11 @@ pub struct AppState {
     pub vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
     pub embedding_provider:
         Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
+    pub text_search: Option<Arc<dyn oneshim_core::ports::text_search::TextSearchProvider>>,
+    pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
+    pub coaching_engine: Option<Arc<dyn CoachingPort>>,
+    pub pomodoro: Arc<std::sync::Mutex<Option<oneshim_core::models::pomodoro::PomodoroSession>>>,
 }
 
 #[derive(Clone, Default)]
@@ -113,6 +119,9 @@ pub struct WebServerRuntimeBindings {
     pub integration_audit: Option<Arc<dyn IntegrationAuditPort>>,
     pub integration_runtime_telemetry: Option<Arc<dyn IntegrationRuntimeTelemetryPort>>,
     pub update_control: Option<update_control::UpdateControl>,
+    pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    pub recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
+    pub coaching_engine: Option<Arc<dyn CoachingPort>>,
 }
 
 pub struct WebServer {
@@ -149,6 +158,11 @@ impl WebServer {
                 update_control: None,
                 vector_store: None,
                 embedding_provider: None,
+                text_search: None,
+                override_store: None,
+                recluster_requested: None,
+                coaching_engine: None,
+                pomodoro: Arc::new(std::sync::Mutex::new(None)),
             },
             bound_port_state: None,
             bound_port_notifier: None,
@@ -317,6 +331,15 @@ impl WebServer {
         }
         if let Some(update_control) = bindings.update_control {
             self.state.update_control = Some(update_control);
+        }
+        if let Some(override_store) = bindings.override_store {
+            self.state.override_store = Some(override_store);
+        }
+        if let Some(recluster_requested) = bindings.recluster_requested {
+            self.state.recluster_requested = Some(recluster_requested);
+        }
+        if let Some(coaching_engine) = bindings.coaching_engine {
+            self.state.coaching_engine = Some(coaching_engine);
         }
         self
     }
@@ -722,6 +745,11 @@ mod tests {
             update_control: None,
             vector_store: None,
             embedding_provider: None,
+            text_search: None,
+            override_store: None,
+            recluster_requested: None,
+            coaching_engine: None,
+            pomodoro: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 

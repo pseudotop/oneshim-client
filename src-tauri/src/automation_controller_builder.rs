@@ -31,6 +31,7 @@ pub(crate) struct AutomationControllerBuilder<'a> {
     _runtime_handle: &'a Handle,
     audit_logger: Arc<RwLock<AuditLogger>>,
     frame_storage: Option<Arc<FrameFileStorage>>,
+    app_handle: Option<tauri::AppHandle>,
     #[cfg(feature = "server")]
     provider_secret_stores: Option<SecretStoreSet>,
     #[cfg(feature = "server")]
@@ -51,6 +52,7 @@ impl<'a> AutomationControllerBuilder<'a> {
             _runtime_handle: runtime_handle,
             audit_logger,
             frame_storage,
+            app_handle: None,
             #[cfg(feature = "server")]
             provider_secret_stores: None,
             #[cfg(feature = "server")]
@@ -61,6 +63,11 @@ impl<'a> AutomationControllerBuilder<'a> {
     #[cfg(feature = "server")]
     pub(crate) fn with_provider_secret_stores(mut self, secret_stores: SecretStoreSet) -> Self {
         self.provider_secret_stores = Some(secret_stores);
+        self
+    }
+
+    pub(crate) fn with_app_handle(mut self, handle: tauri::AppHandle) -> Self {
+        self.app_handle = Some(handle);
         self
     }
 
@@ -130,6 +137,7 @@ impl<'a> AutomationControllerBuilder<'a> {
                     self.audit_logger,
                     process_monitor,
                     runtime,
+                    self.app_handle,
                 ))),
             },
             Err(err) => {
@@ -187,6 +195,7 @@ fn build_controller_from_runtime(
     audit_logger: Arc<RwLock<AuditLogger>>,
     process_monitor: Arc<ProcessTracker>,
     runtime: crate::automation_runtime::AutomationRuntime,
+    app_handle: Option<tauri::AppHandle>,
 ) -> AutomationController {
     info!(
         access_mode = ?runtime.access_mode,
@@ -210,7 +219,18 @@ fn build_controller_from_runtime(
     let focus_probe: Arc<dyn oneshim_core::ports::focus_probe::FocusProbe> = Arc::new(
         crate::focus_probe_adapter::ProcessMonitorFocusProbe::new(process_monitor),
     );
-    let overlay_driver = crate::platform_overlay::create_platform_overlay_driver();
+
+    // Use MagicOverlayDriver (Tauri WebView) when AppHandle is available,
+    // fall back to PlatformOverlayDriver (script-based) otherwise.
+    let overlay_driver: Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver> =
+        if let Some(handle) = app_handle {
+            info!("GUI overlay: using MagicOverlayDriver (Tauri WebView)");
+            Arc::new(crate::magic_overlay_driver::MagicOverlayDriver::new(handle))
+        } else {
+            info!("GUI overlay: using PlatformOverlayDriver (script-based fallback)");
+            crate::platform_overlay::create_platform_overlay_driver()
+        };
+
     let hmac_secret = std::env::var("ONESHIM_GUI_TICKET_HMAC_SECRET").ok();
     if let Err(error) =
         controller.configure_gui_interaction(focus_probe, overlay_driver, hmac_secret)

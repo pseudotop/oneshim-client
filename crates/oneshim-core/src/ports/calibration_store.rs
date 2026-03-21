@@ -34,4 +34,18 @@ pub trait CalibrationReader: Send + Sync {
     /// Delete entries older than `max_days` or exceeding `max_rows`, whichever
     /// removes more. Returns the number of rows deleted.
     async fn enforce_retention(&self, max_days: u32, max_rows: u64) -> Result<u64, CoreError>;
+
+    /// List segment IDs with their start/end times for the given range.
+    ///
+    /// Used by the constrained re-clustering pipeline to map override
+    /// `segment_id` values back to feature vector indices.
+    async fn list_segment_time_ranges(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<(String, DateTime<Utc>, DateTime<Utc>)>, CoreError> {
+        // Default: empty — implementations that have segment storage override this.
+        let _ = (from, to);
+        Ok(vec![])
+    }
 }

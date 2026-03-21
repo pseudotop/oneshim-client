@@ -1,6 +1,6 @@
 # CLAUDE.md — client-rust
 
-ONESHIM Rust desktop client. 10-crate Cargo workspace, Hexagonal Architecture.
+ONESHIM Rust desktop client. 13-crate Cargo workspace, Hexagonal Architecture.
 
 ## Essential Commands
 
@@ -33,7 +33,7 @@ cd src-tauri && cargo tauri dev
 ```
 client-rust/
 ├── Cargo.toml              # Workspace root (resolver = "2")
-├── src-tauri/              # Tauri v2 binary entry point (main binary)
+├── src-tauri/              # Tauri v2 binary crate (active main binary, pkg "oneshim-app")
 │   ├── src/
 │   │   ├── main.rs         # Tauri app builder + DI wiring
 │   │   ├── tray.rs         # System tray menu
@@ -53,15 +53,18 @@ client-rust/
     ├── oneshim-vision/     # Screen capture, delta encoding, WebP, thumbnail, PII filter
     ├── oneshim-web/        # Local web dashboard — Axum REST API + React frontend
     ├── oneshim-automation/ # Automation control — policy-based command execution, audit logging
-    ├── oneshim-app/        # Legacy adapter crate (CLI entry, standalone mode)
-    └── oneshim-api-contracts/ # Shared API type contracts
+    ├── oneshim-analysis/   # LLM analysis pipeline — segment summarization, vector RAG
+    ├── oneshim-embedding/  # Vector embedding + compression — INT8 quantization, similarity search
+    ├── oneshim-lint/       # Workspace lint tool (language-check binary)
+    ├── oneshim-api-contracts/ # Shared API type contracts
+    └── oneshim-app/        # ⚠️ DEPRECATED — removed from workspace (replaced by src-tauri)
 ```
 
 ## Core Architecture Rules
 
 ### Hexagonal Architecture (Ports & Adapters)
 
-`oneshim-core` defines all traits (ports) and models. The other 9 crates act as adapters.
+`oneshim-core` defines all traits (ports) and models. The other crates act as adapters (except `oneshim-lint`, a standalone workspace tool).
 
 ```
 oneshim-core  ←  oneshim-monitor
@@ -70,18 +73,26 @@ oneshim-core  ←  oneshim-monitor
               ←  oneshim-storage
               ←  oneshim-suggestion  ←  oneshim-network
               ←  oneshim-automation
-              ←  oneshim-app         ←  (all)
+              ←  oneshim-analysis    ←  oneshim-core
+              ←  oneshim-embedding   ←  oneshim-core
+              ←  oneshim-api-contracts
               ←  src-tauri           ←  (all, Tauri v2 main binary)
+
+oneshim-lint     (standalone — no oneshim-core dependency)
 ```
 
 **Forbidden**: Direct dependency between adapter crates (e.g., monitor → storage). All cross-crate communication must go through `oneshim-core` traits.
 
-**Exceptions**: `suggestion → network` (SSE reception)
+**Exceptions**: `suggestion → network` (SSE reception).
+
+**Accepted deviations**:
+- `AppState.storage: Arc<SqliteStorage>` uses concrete type (not `Arc<dyn T>`) because `SqliteStorage` implements 10+ disjoint port traits (`StorageService`, `MetricsStorage`, `WebStorage`, `FocusStorage`, `VectorStore`, etc.) — a single trait object cannot represent this.
+- `FocusStorage` and `WebStorage` traits are synchronous (no `#[async_trait]`) — called via `block_in_place` from sync SQLite operations.
 
 ### Error Strategy (ADR-001 §1)
 
 - Library crates: `thiserror` — specific error enums
-- Binary crate (`oneshim-app`): `anyhow::Result`
+- Binary crate (`src-tauri`): `anyhow::Result`
 - External crate errors are wrapped using `#[from]`
 
 ### Async Trait Pattern (ADR-001 §2)
@@ -97,7 +108,7 @@ pub trait ApiClient: Send + Sync {
 
 ### DI Pattern (ADR-001 §3)
 
-Constructor injection + `Arc<dyn T>`. No DI framework is used. Wiring is manually performed in `oneshim-app/src/main.rs`. All port implementations are wrapped directly in `Arc` — never `Arc<Mutex<Box<dyn T>>>`.
+Constructor injection + `Arc<dyn T>`. No DI framework is used. Wiring is manually performed in `src-tauri/src/main.rs`. All port implementations are wrapped directly in `Arc` — never `Arc<Mutex<Box<dyn T>>>`.
 
 ### Testing (ADR-001 §5)
 
@@ -141,7 +152,7 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ### oneshim-storage (Local Storage)
 - `sqlite.rs`: `SqliteStorage` (impl StorageService) — WAL mode + PRAGMA optimizations
-- `migration.rs`: schema V1-V7 (events, frames, work_sessions, interruptions, focus_metrics, local_suggestions)
+- `migration.rs`: schema V1-V17 (events, frames, work_sessions, interruptions, focus_metrics, local_suggestions, activity_segments, embedding_vectors, regimes, FTS5, gui_interactions, sync, IVF index, coaching)
 - `frame_storage.rs`: Frame image file storage + retention policy + buffer pool + parallel I/O
 - Retention Policy: 30 days, 500MB
 - Performance optimization: compound indexes, batch inserts, memory cache, ArrayQueue buffer pool
@@ -191,25 +202,30 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
   - `token.rs`: token generation, parsing, signature verification
 - `audit.rs`: `AuditLogger` — local VecDeque buffer + batched audit logs transmission, buffer overflow management
 
-### oneshim-app (Orchestrator, Binary)
-- `main.rs`: tokio runtime + tracing + complete DI wiring + spawned tasks
-- `scheduler/`: 9-loop scheduler — directory module (ADR-003)
-  - `mod.rs`: `Scheduler` struct + `run()` orchestrator + re-exports
-  - `config.rs`: `SchedulerConfig`, `PlatformEgressPolicy`, constants
-  - `loops.rs`: 9 loop body functions (monitor, metrics, process, sync, heartbeat, aggregate, notification, focus, event snapshot)
-- `notification_manager.rs`: Cooldown-based notification manager (idle, long session, high usage)
-- `focus_analyzer/`: Focus analysis + local suggestion generation — directory module (ADR-003)
-  - `mod.rs`: `FocusAnalyzer` struct + public API + re-exports
-  - `models.rs`: `FocusAnalyzerConfig`, `SuggestionCooldowns`, `SessionTracker`
-  - `suggestions.rs`: suggestion generators + cooldown logic + focus score calculation
-- `lifecycle.rs`: SIGINT/SIGTERM handling, `tokio::sync::watch` shutdown channel
-- `event_bus.rs`: `tokio::broadcast` internal event routing
-- `autostart.rs`: Run at login — macOS LaunchAgent + Windows Registry
-- `updater/`: GitHub Releases based auto-updater — directory module (ADR-003)
-  - `mod.rs`: `Updater` struct + orchestrator + re-exports
-  - `github.rs`: GitHub API: fetch releases, select asset, version floor
-  - `install.rs`: download + decompress + binary replacement + signature verification
-  - `state.rs`: last check time, update interval, version persistence
+### oneshim-analysis (LLM Analysis Pipeline)
+- `analyzer.rs`: `ContextAnalyzer` — segment summarization via LLM, regime classification
+- `embedding_pipeline.rs`: `EmbeddingPipeline` — content activity + LLM summary embedding with optional INT8 quantization
+- `vector_retriever.rs`: `VectorRetriever` — vector similarity search with quantized + adaptive strategy support
+- `regime_classifier.rs`: `RegimeClassifier` — behavioral regime detection and labeling
+- `regime_manager.rs`: `RegimeManager` — regime lifecycle (create, merge, split, mark_seen)
+- `auto_tuner.rs`: `EmaStatsTracker`, `DriftDetector` — exponential moving average baselines and behavioral drift detection
+- `coaching_engine.rs`: `CoachingEngine` — proactive productivity coaching with template-first + LLM personalization
+- `adaptive_search.rs`: `AdaptiveSearchCoordinator` — auto strategy selection (brute-force / IVF / IVF+binary)
+
+### oneshim-embedding (Vector Embedding + Compression)
+- `lib.rs`: `EmbeddingService` — vector embedding generation, INT8 scalar quantization, similarity search
+- Compression: 4x storage reduction via INT8 quantization with configurable float32 retention
+
+### oneshim-api-contracts (Shared API Type Contracts)
+- Shared request/response types between client crates
+- Ensures API contract consistency across the workspace
+
+### oneshim-app (crates/oneshim-app/) — DEPRECATED
+> **Removed from workspace.** Replaced by `src-tauri/` which is the active binary crate
+> (also named `oneshim-app` as its package). Do not add new code here.
+>
+> Legacy modules (scheduler, focus_analyzer, updater, lifecycle, etc.) have been
+> migrated into `src-tauri/src/`.
 
 ## Key Dependencies
 
@@ -263,11 +279,11 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 
 ## Current Status
 
-- Phase 0-35 + Privacy & Permission Control System implementation completed (10 crates)
+- Phase 0-35 + Privacy & Permission Control System + Superpowers-era features completed (13 crates)
 - Current quality metrics (test counts, pass/fail, lint/build status) are maintained in `docs/STATUS.md` as the single source of truth
 - Actual adapters connected to all ports: `SmartCaptureTrigger`, `EdgeFrameProcessor`, `DesktopNotifierImpl`
 - Windows active window detection implemented (`windows-sys` + `sysinfo`)
-- 32 cross-crate integration tests (`crates/oneshim-app/tests/`)
+- Cross-crate integration tests (`src-tauri/tests/`)
 - `cargo check/test/clippy/fmt` pass status is tracked in `docs/STATUS.md`
 - **GA Ready**: CI/CD, installers, documentation completed
 - **Web Dashboard**: Available at http://localhost:10090
@@ -288,3 +304,5 @@ Key capabilities by phase:
 - **Edge Intelligence** (P28, P30-33): Focus analyzer, SQLite perf, LRU cache, lock-free queue
 - **Server Integration** (P34-37): HTTP retry, gRPC client, REST standardization, port fallback
 - **Privacy** (Tier 1-3): Telemetry control, PII filter, GDPR consent, automation crate
+- **Superpowers** (S1-S5): GUI Intelligence (accessibility + text extraction), Text Intelligence (LLM analysis pipeline + regime classification), Vector Compression (INT8/2-bit quantization + IVF index), Cross-Device Sync (device identity + LAN peer discovery), Coaching Engine (proactive productivity coaching + MagicOverlay)
+- **ADR-002 M3** (Native Adapters): macOS AX tree traversal (batch), Windows UIA CacheRequest, Linux AT-SPI (atspi 0.29), MagicOverlayDriver (Tauri WebView bridge), dashcam accessibility tagging, permission gating, R-tree spatial index (rstar), app-specific element type overrides, ContextAssembler GUI section, 13 failure scenario tests, 6 E2E smoke tests, ops docs (runbook + contract examples + security review + audit logger)

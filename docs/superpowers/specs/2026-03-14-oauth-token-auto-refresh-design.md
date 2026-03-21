@@ -1,5 +1,7 @@
 # OAuth Token Auto-Refresh Design
 
+> Status: Implemented
+
 ## Goal
 
 Add proactive background token refresh for OAuth-managed credentials (OpenAI Codex) with concurrent refresh protection, failure taxonomy, retry/backoff, and UI notifications for re-authentication.

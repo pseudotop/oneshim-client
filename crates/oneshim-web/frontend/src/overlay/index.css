@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Overlay-specific: transparent background, no scrollbars */
+.overlay-body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  /*
+   * Click-through is NOT managed via CSS pointer-events.
+   * Tauri v2 does not support per-element click-through forwarding.
+   * Instead, the Rust backend calls set_ignore_cursor_events(true/false)
+   * on the entire window. The global shortcut Cmd+Shift+O toggles
+   * the window between click-through and interactive modes.
+   */
+}

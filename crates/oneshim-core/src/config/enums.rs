@@ -91,3 +91,39 @@ pub enum ExternalDataPolicy {
     PiiFilterStandard,
     AllowFiltered,
 }
+
+/// Message tone style for coaching messages.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CoachingTone {
+    /// Short, actionable statements.
+    Direct,
+    /// Softer, encouraging language.
+    #[default]
+    Gentle,
+    /// Statistics-focused with numbers and comparisons.
+    DataDriven,
+}
+
+/// Historical comparison window for coaching baselines.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DataLookback {
+    /// Compare against today's data only.
+    #[default]
+    Today,
+    /// Rolling 7-day comparison.
+    Week,
+    /// Rolling 30-day comparison.
+    Month,
+}
+
+/// Overlay display mode (Phase 2 — MagicOverlay). Stored in config for forward compatibility.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OverlayMode {
+    /// Focus area border + coaching popup only.
+    #[default]
+    Minimal,
+    /// + bottom progress bar + attention heatmap ghost.
+    Rich,
+    /// Auto-switches based on regime (deep work -> Minimal, transition -> Rich).
+    Adaptive,
+}

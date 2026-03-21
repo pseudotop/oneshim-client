@@ -60,9 +60,23 @@ pub(super) fn require_config_manager(state: &AppState) -> Result<&ConfigManager,
 }
 ```
 
-### 4. Keep tests in `mod.rs`
+### 4. Keep tests in `mod.rs` (with large-test exception)
 
-All `#[cfg(test)] mod tests` blocks remain in `mod.rs`. Tests naturally exercise the module's public interface and serve as documentation of expected behavior at the module boundary.
+All `#[cfg(test)] mod tests` blocks remain in `mod.rs` when they are under 1,000 lines. Tests naturally exercise the module's public interface and serve as documentation of expected behavior at the module boundary.
+
+**Exception — tests exceeding 1,000 lines**: When the test block alone exceeds 1,000 lines, extract tests into a `tests/` sub-directory within the module directory:
+
+```
+foo/
+├── mod.rs           # Production code + #[cfg(test)] mod tests { mod tests; }
+├── service.rs
+└── tests/
+    ├── mod.rs       # Shared mocks, fixtures, helpers
+    ├── feature_a.rs # Tests grouped by feature/concern
+    └── feature_b.rs
+```
+
+The `tests/mod.rs` file contains shared test infrastructure (mocks, fixture builders, constants). Individual test files are organized by functional area. This keeps `mod.rs` focused on production code while maintaining test discoverability through the module hierarchy.
 
 ### 5. Split by responsibility, not by size
 
@@ -93,6 +107,9 @@ Sub-files are organized by functional responsibility, not arbitrary line counts:
 | `config.rs` | `config/{mod, enums, sections}.rs` | oneshim-core |
 | `handlers/automation.rs` | `handlers/automation/{mod, helpers, scene, execution}.rs` | oneshim-web |
 | `app.rs` | `app/{mod, message, update, view}.rs` | oneshim-ui |
+| `gui_interaction/mod.rs` tests | `gui_interaction/tests/{mod, session, highlight, confirm, execute, m5}.rs` | oneshim-automation |
+| `scheduler/loops.rs` | `scheduler/loops/{mod, helpers, monitor, system, network, intelligence, events, sync}.rs` | src-tauri |
+| `provider_adapters.rs` | `provider_adapters/{mod, types, guarded_ocr, surface, ocr_resolver, llm_resolver, helpers, tests}.rs` | src-tauri |
 
 ---
 

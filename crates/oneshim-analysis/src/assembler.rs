@@ -26,6 +26,8 @@ pub struct SegmentStats {
     pub context_switches: u32,
     pub dominant_category: String,
     pub content_summary: Vec<ContentSummaryEntry>,
+    /// Aggregated GUI patterns across all content activities in this segment.
+    pub gui_patterns: Vec<String>,
 }
 
 /// A single content activity summary within a segment.
@@ -35,6 +37,11 @@ pub struct ContentSummaryEntry {
     pub content_type: String,
     pub work_type: String,
     pub mins: u32,
+    /// GUI activity summary line (e.g., "15 clicks, 3 saves, 2 test runs").
+    /// When present, this enriches the content field in the LLM context.
+    pub gui_summary_line: Option<String>,
+    /// GUI behavioral patterns detected from this content activity (e.g. "TestDrivenDevelopment").
+    pub gui_patterns: Vec<String>,
 }
 
 /// Current desktop activity snapshot.
@@ -45,6 +52,10 @@ pub struct CurrentActivity {
     pub ocr_hint: Option<String>,
     pub focus_score: f32,
     pub deep_work_mins: u32,
+    /// Accessibility-extracted text from the focused element.
+    /// Only present at Basic/Off PII levels. PII-filtered before
+    /// reaching this struct (filtered by AccessibilityExtractor).
+    pub accessibility_text: Option<String>,
 }
 
 impl Default for CurrentActivity {
@@ -55,6 +66,7 @@ impl Default for CurrentActivity {
             ocr_hint: None,
             focus_score: 0.0,
             deep_work_mins: 0,
+            accessibility_text: None,
         }
     }
 }
@@ -109,6 +121,26 @@ struct ContextPayload {
     current_segment: Option<SegmentSnapshot>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     relevant_history: Vec<HistoryEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gui: Option<GuiSection>,
+}
+
+#[derive(Serialize)]
+struct GuiSection {
+    patterns: Vec<String>,
+    actions: GuiActionCounts,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    top_elements: Vec<(String, String, u32)>,
+}
+
+#[derive(Serialize, Default)]
+struct GuiActionCounts {
+    saves: u32,
+    test_runs: u32,
+    searches: u32,
+    builds: u32,
+    undo_redos: u32,
+    copy_pastes: u32,
 }
 
 #[derive(Serialize)]
@@ -145,6 +177,8 @@ struct CurrentSnapshot {
     ocr_hint: Option<String>,
     focus_score: f32,
     deep_work_mins: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accessibility_text: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -230,11 +264,19 @@ impl ContextAssembler {
             content_summary: stats
                 .content_summary
                 .iter()
-                .map(|e| ContentSummaryItem {
-                    content: e.content.clone(),
-                    content_type: e.content_type.clone(),
-                    work_type: e.work_type.clone(),
-                    mins: e.mins,
+                .map(|e| {
+                    // When GUI summary line is present, enrich the content field
+                    let content = if let Some(ref gui_line) = e.gui_summary_line {
+                        format!("{} ({})", e.content, gui_line)
+                    } else {
+                        e.content.clone()
+                    };
+                    ContentSummaryItem {
+                        content,
+                        content_type: e.content_type.clone(),
+                        work_type: e.work_type.clone(),
+                        mins: e.mins,
+                    }
                 })
                 .collect(),
         });
@@ -248,6 +290,33 @@ impl ContextAssembler {
             })
             .collect();
 
+        let gui = segment_stats.and_then(|stats| {
+            let has_patterns = !stats.gui_patterns.is_empty();
+            let has_gui_lines = stats
+                .content_summary
+                .iter()
+                .any(|e| e.gui_summary_line.is_some());
+            if !has_patterns && !has_gui_lines {
+                return None;
+            }
+
+            let mut actions = GuiActionCounts::default();
+            let all_top: Vec<(String, String, u32)> = Vec::new();
+
+            // Parse action counts from gui_summary_line strings
+            for entry in &stats.content_summary {
+                if let Some(ref line) = entry.gui_summary_line {
+                    Self::parse_gui_action_counts(line, &mut actions);
+                }
+            }
+
+            Some(GuiSection {
+                patterns: stats.gui_patterns.clone(),
+                actions,
+                top_elements: all_top,
+            })
+        });
+
         let payload = ContextPayload {
             current: CurrentSnapshot {
                 app: current.app_name.clone(),
@@ -255,6 +324,10 @@ impl ContextAssembler {
                 ocr_hint: current.ocr_hint.as_ref().map(|t| self.filter_pii(t)),
                 focus_score: current.focus_score,
                 deep_work_mins: current.deep_work_mins,
+                accessibility_text: current
+                    .accessibility_text
+                    .as_ref()
+                    .map(|t| self.filter_pii(t)),
             },
             recent_activity,
             patterns: pattern_entries,
@@ -265,6 +338,7 @@ impl ContextAssembler {
             },
             current_segment,
             relevant_history: history_entries,
+            gui,
         };
 
         let user_context_json =
@@ -304,6 +378,35 @@ impl ContextAssembler {
         }
 
         result
+    }
+
+    /// Parse action counts from a gui_summary_line like "5 clicks, 3 saves, 2 test runs".
+    fn parse_gui_action_counts(line: &str, counts: &mut GuiActionCounts) {
+        let lower = line.to_lowercase();
+        for part in lower.split(',') {
+            let part = part.trim();
+            if let Some(n) = Self::extract_leading_number(part) {
+                if part.contains("save") {
+                    counts.saves += n;
+                } else if part.contains("test") {
+                    counts.test_runs += n;
+                } else if part.contains("search") || part.contains("find") {
+                    counts.searches += n;
+                } else if part.contains("build") {
+                    counts.builds += n;
+                } else if part.contains("undo") || part.contains("redo") {
+                    counts.undo_redos += n;
+                } else if part.contains("copy") || part.contains("paste") {
+                    counts.copy_pastes += n;
+                }
+            }
+        }
+    }
+
+    fn extract_leading_number(s: &str) -> Option<u32> {
+        s.split_whitespace()
+            .next()
+            .and_then(|tok| tok.parse::<u32>().ok())
     }
 
     fn filter_pii(&self, text: &str) -> String {
@@ -362,6 +465,7 @@ mod tests {
             ocr_hint: Some("fn analyze()".to_string()),
             focus_score: 0.82,
             deep_work_mins: 45,
+            accessibility_text: None,
         }
     }
 
@@ -410,6 +514,7 @@ mod tests {
             ocr_hint: None,
             focus_score: 0.5,
             deep_work_mins: 10,
+            accessibility_text: None,
         };
         let ctx = assembler.build(&current, &[], &[], &make_metrics());
         assert!(ctx.user_context_json.contains("[EMAIL]"));
@@ -441,6 +546,7 @@ mod tests {
             ocr_hint: None,
             focus_score: 0.3,
             deep_work_mins: 5,
+            accessibility_text: None,
         };
         let ctx = assembler.build(&current, &[], &[], &make_metrics());
         assert!(ctx.user_context_json.contains("[REDACTED]"));
@@ -458,6 +564,7 @@ mod tests {
             ocr_hint: None,
             focus_score: 0.5,
             deep_work_mins: 10,
+            accessibility_text: None,
         };
         let ctx = assembler.build(&current, &[], &[], &make_metrics());
         assert!(ctx.user_context_json.contains("user@example.com"));
@@ -559,7 +666,10 @@ mod tests {
                 content_type: "File".to_string(),
                 work_type: "ActiveCoding".to_string(),
                 mins: 10,
+                gui_summary_line: None,
+                gui_patterns: vec![],
             }],
+            gui_patterns: vec![],
         };
         let ctx =
             assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));
@@ -572,5 +682,133 @@ mod tests {
         assert_eq!(seg["dominant_category"], "Development");
         assert_eq!(seg["content_summary"][0]["content"], "main.rs");
         assert_eq!(seg["content_summary"][0]["mins"], 10);
+    }
+
+    #[test]
+    fn build_with_segment_enriches_gui_summary_line() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let stats = SegmentStats {
+            duration_mins: 15,
+            regime_label: None,
+            event_count: 30,
+            context_switches: 2,
+            dominant_category: "Development".to_string(),
+            content_summary: vec![ContentSummaryEntry {
+                content: "auth.rs".to_string(),
+                content_type: "File".to_string(),
+                work_type: "ActiveCoding".to_string(),
+                mins: 15,
+                gui_summary_line: Some("3 saves, 2 test runs".to_string()),
+                gui_patterns: vec![],
+            }],
+            gui_patterns: vec![],
+        };
+        let ctx =
+            assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));
+        let parsed: serde_json::Value = serde_json::from_str(&ctx.user_context_json).unwrap();
+        let content = parsed["current_segment"]["content_summary"][0]["content"]
+            .as_str()
+            .unwrap();
+        assert_eq!(content, "auth.rs (3 saves, 2 test runs)");
+    }
+
+    #[test]
+    fn build_with_accessibility_text_included() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let current = CurrentActivity {
+            app_name: "Terminal".to_string(),
+            window_title: "iTerm2".to_string(),
+            ocr_hint: None,
+            focus_score: 0.6,
+            deep_work_mins: 10,
+            accessibility_text: Some("$ cargo test --workspace".to_string()),
+        };
+        let ctx = assembler.build(&current, &[], &[], &make_metrics());
+        let parsed: serde_json::Value = serde_json::from_str(&ctx.user_context_json).unwrap();
+        assert_eq!(
+            parsed["current"]["accessibility_text"],
+            "$ cargo test --workspace"
+        );
+    }
+
+    #[test]
+    fn build_without_accessibility_text_omits_key() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let ctx = assembler.build(&make_current(), &[], &[], &make_metrics());
+        let parsed: serde_json::Value = serde_json::from_str(&ctx.user_context_json).unwrap();
+        assert!(parsed["current"].get("accessibility_text").is_none());
+    }
+
+    #[test]
+    fn accessibility_text_pii_filtered() {
+        let assembler = ContextAssembler::new(test_pii_filter());
+        let current = CurrentActivity {
+            app_name: "Terminal".to_string(),
+            window_title: "iTerm2".to_string(),
+            ocr_hint: None,
+            focus_score: 0.6,
+            deep_work_mins: 10,
+            accessibility_text: Some("ssh user@example.com".to_string()),
+        };
+        let ctx = assembler.build(&current, &[], &[], &make_metrics());
+        assert!(ctx.user_context_json.contains("[EMAIL]"));
+        assert!(!ctx.user_context_json.contains("user@example.com"));
+    }
+
+    #[test]
+    fn gui_section_included_when_patterns_present() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let stats = SegmentStats {
+            duration_mins: 10,
+            regime_label: None,
+            event_count: 20,
+            context_switches: 1,
+            dominant_category: "Development".to_string(),
+            content_summary: vec![ContentSummaryEntry {
+                content: "main.rs".to_string(),
+                content_type: "File".to_string(),
+                work_type: "ActiveCoding".to_string(),
+                mins: 10,
+                gui_summary_line: Some("3 saves, 1 test runs".to_string()),
+                gui_patterns: vec!["TestDrivenDevelopment".to_string()],
+            }],
+            gui_patterns: vec!["TestDrivenDevelopment".to_string()],
+        };
+        let ctx =
+            assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));
+        assert!(
+            ctx.user_context_json.contains("\"gui\""),
+            "gui section should be present"
+        );
+        assert!(ctx.user_context_json.contains("TestDrivenDevelopment"));
+        assert!(ctx.user_context_json.contains("\"saves\":3"));
+        assert!(ctx.user_context_json.contains("\"test_runs\":1"));
+    }
+
+    #[test]
+    fn gui_section_omitted_when_no_gui_data() {
+        let assembler = ContextAssembler::new(noop_filter());
+        let stats = SegmentStats {
+            duration_mins: 5,
+            regime_label: None,
+            event_count: 10,
+            context_switches: 0,
+            dominant_category: "Development".to_string(),
+            content_summary: vec![ContentSummaryEntry {
+                content: "readme.md".to_string(),
+                content_type: "File".to_string(),
+                work_type: "Reading".to_string(),
+                mins: 5,
+                gui_summary_line: None,
+                gui_patterns: vec![],
+            }],
+            gui_patterns: vec![],
+        };
+        let ctx =
+            assembler.build_with_segment(&make_current(), &[], &[], &make_metrics(), Some(&stats));
+        assert!(
+            !ctx.user_context_json.contains("\"gui\""),
+            "gui section should be absent when no gui data"
+        );
     }
 }

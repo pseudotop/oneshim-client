@@ -519,6 +519,183 @@ pub async fn get_weekly_digest(
     }
 }
 
+// ── Dashboard & daily digest IPC commands ─────────────────────
+
+/// Get dashboard data for a given day (timetable + statistics).
+/// Returns the daily digest from cache, or generates on-demand from segments.
+#[command]
+pub async fn get_dashboard_day(
+    state: tauri::State<'_, AppState>,
+    date: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let date_str = date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+
+    // Validate date format
+    let naive_date = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| format!("Invalid date format: {e}"))?;
+
+    // Check cache first
+    if let Some(cached) = state
+        .storage
+        .get_daily_digest(&date_str)
+        .map_err(|e| e.to_string())?
+    {
+        return serde_json::to_value(&cached).map_err(|e| e.to_string());
+    }
+
+    // Not cached — generate from segments on-demand
+    let segment_records = state
+        .storage
+        .get_segments_for_date(&date_str)
+        .map_err(|e| e.to_string())?;
+
+    if segment_records.is_empty() {
+        return Ok(serde_json::json!(null));
+    }
+
+    // Convert SegmentSummaryRecords to SegmentSummary for DailyDigestGenerator
+    let segments: Vec<oneshim_core::models::tiered_memory::SegmentSummary> = segment_records
+        .iter()
+        .filter_map(crate::scheduler::record_to_segment_summary)
+        .collect();
+
+    // Load previous day for comparison
+    let prev_date = naive_date
+        .pred_opt()
+        .unwrap_or(naive_date)
+        .format("%Y-%m-%d")
+        .to_string();
+    let prev_digest = state.storage.get_daily_digest(&prev_date).ok().flatten();
+
+    let digest = oneshim_analysis::DailyDigestGenerator::generate(
+        &segments,
+        naive_date,
+        prev_digest.as_ref(),
+    );
+
+    // Cache the result
+    if let Err(e) = state.storage.save_daily_digest(&digest) {
+        tracing::warn!("Failed to cache daily digest: {e}");
+    }
+
+    serde_json::to_value(&digest).map_err(|e| e.to_string())
+}
+
+/// Get the daily digest for a given date. If not cached, returns null.
+#[command]
+pub async fn get_daily_digest(
+    state: tauri::State<'_, AppState>,
+    date: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let date_str = date.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+
+    // Validate date format
+    chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+        .map_err(|e| format!("Invalid date format: {e}"))?;
+
+    if let Some(digest) = state
+        .storage
+        .get_daily_digest(&date_str)
+        .map_err(|e| e.to_string())?
+    {
+        serde_json::to_value(&digest).map_err(|e| e.to_string())
+    } else {
+        Ok(serde_json::json!(null))
+    }
+}
+
+// ── Recalibration IPC commands ─────────────────────────────────
+
+/// Create a regime override for a segment.
+#[command]
+pub async fn create_override(
+    state: tauri::State<'_, AppState>,
+    segment_id: String,
+    original_regime_id: Option<String>,
+    action: oneshim_core::models::recalibration::UserOverrideAction,
+) -> Result<serde_json::Value, String> {
+    let entry = oneshim_core::models::recalibration::RegimeOverride {
+        override_id: uuid::Uuid::new_v4().to_string(),
+        segment_id,
+        original_regime_id,
+        user_action: action,
+        created_at: chrono::Utc::now(),
+    };
+
+    let override_id = entry.override_id.clone();
+
+    use oneshim_core::ports::override_store::OverrideStore;
+    state
+        .storage
+        .save_override(&entry)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "override_id": override_id,
+    }))
+}
+
+/// Delete a regime override by ID.
+#[command]
+pub async fn delete_override(
+    state: tauri::State<'_, AppState>,
+    override_id: String,
+) -> Result<serde_json::Value, String> {
+    use oneshim_core::ports::override_store::OverrideStore;
+    state
+        .storage
+        .delete_override(&override_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "deleted_id": override_id,
+    }))
+}
+
+/// List regime overrides within an optional time range.
+#[command]
+pub async fn list_overrides(
+    state: tauri::State<'_, AppState>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<Vec<oneshim_core::models::recalibration::RegimeOverride>, String> {
+    let from_dt: chrono::DateTime<chrono::Utc> = from
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
+
+    let to_dt: chrono::DateTime<chrono::Utc> = to
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(chrono::Utc::now);
+
+    use oneshim_core::ports::override_store::OverrideStore;
+    state
+        .storage
+        .list_overrides(from_dt, to_dt)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Request on-demand re-clustering. The scheduler picks up the flag.
+#[command]
+pub async fn trigger_recluster(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    state.recluster_requested.store(true, Ordering::Relaxed);
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "message": "Re-clustering requested. It will run on the next scheduler cycle.",
+    }))
+}
+
 // ── Analysis config IPC commands ───────────────────────────────
 
 /// 분석 설정 조회
@@ -620,6 +797,181 @@ pub async fn get_analysis_status(
         min_confidence: config.analysis.min_confidence,
         max_suggestions: config.analysis.max_suggestions,
     })
+}
+
+// ── Coaching IPC commands ──────────────────────────────────────
+
+/// Dismiss a coaching overlay message with the given action.
+/// If "later", snoozes the profile for 15 minutes.
+#[command]
+pub async fn dismiss_coaching_message(
+    state: tauri::State<'_, AppState>,
+    message_id: String,
+    action: String,
+    profile: String,
+) -> Result<(), String> {
+    use oneshim_core::models::coaching::DismissAction;
+
+    let dismiss_action = match action.as_str() {
+        "ok" => DismissAction::Ok,
+        "later" => DismissAction::Later,
+        "timeout" => DismissAction::Timeout,
+        _ => return Err(format!("Invalid dismiss action: {action}")),
+    };
+
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.dismiss(&message_id, dismiss_action).await;
+    }
+
+    // Persist dismiss feedback to SQLite
+    let action_str = match dismiss_action {
+        DismissAction::Ok => "ok",
+        DismissAction::Later => "later",
+        DismissAction::Timeout => "timeout",
+    };
+    let dismissed_at = chrono::Utc::now().to_rfc3339();
+    if let Err(e) = state.storage.update_coaching_event_feedback(
+        &message_id,
+        Some(action_str),
+        Some(&dismissed_at),
+        None,
+        None,
+    ) {
+        tracing::warn!("coaching dismiss persist failure: {e}");
+    }
+
+    // If "Later", snooze the profile for 15 minutes via CoachingPort
+    if dismiss_action == DismissAction::Later {
+        if let Some(ref engine) = state.coaching_engine {
+            engine.snooze_profile(&profile, 900).await;
+        }
+    }
+
+    // Return overlay to click-through mode after dismissal
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_interactive(false).await;
+    }
+
+    Ok(())
+}
+
+/// Record explicit feedback (thumbs-up/down) for a coaching message.
+#[command]
+pub async fn submit_coaching_feedback(
+    state: tauri::State<'_, AppState>,
+    message_id: String,
+    positive: bool,
+) -> Result<(), String> {
+    if let Some(ref engine) = state.coaching_engine {
+        engine.record_feedback(&message_id, positive).await;
+    }
+    Ok(())
+}
+
+/// Set the overlay display mode (minimal/rich/adaptive).
+#[command]
+pub async fn set_overlay_mode(
+    state: tauri::State<'_, AppState>,
+    mode: String,
+) -> Result<(), String> {
+    use oneshim_core::config::OverlayMode;
+
+    let overlay_mode = match mode.as_str() {
+        "minimal" => OverlayMode::Minimal,
+        "rich" => OverlayMode::Rich,
+        "adaptive" => OverlayMode::Adaptive,
+        _ => return Err(format!("Invalid overlay mode: {mode}")),
+    };
+
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_mode(overlay_mode).await;
+    }
+    Ok(())
+}
+
+/// Get current overlay state (mode and visibility).
+#[command]
+pub async fn get_overlay_state(
+    state: tauri::State<'_, AppState>,
+) -> Result<OverlayStateResponse, String> {
+    use oneshim_core::config::OverlayMode;
+
+    let (mode, visible) = if let Some(ref overlay) = state.magic_overlay {
+        (overlay.get_mode().await, overlay.is_visible().await)
+    } else {
+        (OverlayMode::Minimal, false)
+    };
+
+    Ok(OverlayStateResponse {
+        mode: format!("{:?}", mode).to_lowercase(),
+        visible,
+    })
+}
+
+/// Overlay state response for IPC.
+#[derive(Serialize)]
+pub struct OverlayStateResponse {
+    pub mode: String,
+    pub visible: bool,
+}
+
+/// Toggle overlay between click-through and interactive modes.
+#[command]
+pub async fn toggle_overlay_interactive(
+    state: tauri::State<'_, AppState>,
+    interactive: bool,
+) -> Result<(), String> {
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.set_interactive(interactive).await;
+    }
+    Ok(())
+}
+
+/// Get coaching event history with pagination.
+#[command]
+pub async fn get_coaching_history(
+    state: tauri::State<'_, AppState>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, String> {
+    state
+        .storage
+        .query_coaching_events(limit.unwrap_or(50), offset.unwrap_or(0))
+        .map_err(|e| e.to_string())
+}
+
+/// Get goal progress for all configured regimes.
+#[command]
+pub async fn get_goal_progress(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<oneshim_core::models::coaching::GoalProgressView>, String> {
+    if let Some(ref engine) = state.coaching_engine {
+        Ok(engine.all_goal_progress().await)
+    } else {
+        Ok(vec![])
+    }
+}
+
+/// Update regime goal targets and persist to config.
+#[command]
+pub async fn update_regime_goals(
+    state: tauri::State<'_, AppState>,
+    goals: std::collections::HashMap<String, u32>,
+) -> Result<(), String> {
+    if let Some(ref engine) = state.coaching_engine {
+        engine.update_regime_goals(&goals).await;
+    }
+
+    // Persist to config file
+    state
+        .config_manager
+        .update_with(|config| {
+            config.coaching.regime_goals = goals.clone();
+            Ok(())
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[cfg(test)]

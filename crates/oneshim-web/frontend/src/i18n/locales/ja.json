@@ -29,7 +29,10 @@
     "privacy": "プライバシー",
     "search": "検索",
     "automation": "オートメーション",
-    "mainNavLabel": "メインナビゲーション"
+    "dashboardDay": "日別ビュー",
+    "mainNavLabel": "メインナビゲーション",
+    "coaching": "コーチング",
+    "recalibration": "再キャリブレーション"
   },
   "dashboard": {
     "title": "アクティビティサマリー",
@@ -57,7 +60,12 @@
     "cpu": "CPU",
     "memory": "メモリ",
     "usedMemory": "使用メモリ",
-    "collectedData": "収集データ"
+    "collectedData": "収集データ",
+    "dailyTimetable": "デイリータイムテーブル",
+    "today": "今日",
+    "previousDay": "前日",
+    "nextDay": "翌日",
+    "loadError": "デイリーダイジェストの読み込みに失敗しました。後でもう一度お試しください。"
   },
   "updates": {
     "title": "アップデート",
@@ -140,7 +148,8 @@
       "privacy": "プライバシー",
       "monitoring": "モニタリング",
       "aiAutomation": "AI & 自動化",
-      "dataStorage": "データ & ストレージ"
+      "dataStorage": "データ & ストレージ",
+      "coaching": "コーチング目標"
     },
     "dataCollection": "データ収集",
     "enableCapture": "スクリーンショットキャプチャを有効化",
@@ -280,7 +289,15 @@
     "saveSettings": "設定を保存",
     "savedFull": "設定を保存しました。一部の設定はアプリの再起動後に反映されます。",
     "exportDone": "データをエクスポートしました。",
-    "days": { "Mon": "月", "Tue": "火", "Wed": "水", "Thu": "木", "Fri": "金", "Sat": "土", "Sun": "日" }
+    "days": {
+      "Mon": "月",
+      "Tue": "火",
+      "Wed": "水",
+      "Thu": "木",
+      "Fri": "金",
+      "Sat": "土",
+      "Sun": "日"
+    }
   },
   "privacy": {
     "title": "プライバシー管理",
@@ -379,7 +396,15 @@
     "low": "低",
     "high": "高",
     "loadError": "データの読み込みに失敗しました",
-    "days": ["月", "火", "水", "木", "金", "土", "日"],
+    "days": [
+      "月",
+      "火",
+      "水",
+      "木",
+      "金",
+      "土",
+      "日"
+    ],
     "activity": "アクティビティ"
   },
   "dateRange": {
@@ -646,7 +671,72 @@
     "loadModels": "モデルを読み込む",
     "modelDiscoveryNoModels": "このプロバイダー設定ではモデルが返されませんでした。",
     "modelDiscoveryMissingConfig": "リモートエンドポイント、プロバイダー、APIキーを先に設定してください。",
-    "modelDiscoveryMissingKey": "モデルを検索するには完全なAPIキーを入力してください。"
+    "modelDiscoveryMissingKey": "モデルを検索するには完全なAPIキーを入力してください。",
+    "sandboxProfilePermissive": "許容的",
+    "sandboxProfileStandard": "標準",
+    "sandboxProfileStrict": "厳格",
+    "accessModeLabel": "アクセス経路",
+    "accessModeApiKeyLabel": "ダイレクトエンドポイント",
+    "accessModeApiKeyDescription": "プロバイダーホスティングまたはセルフホスティングのHTTPエンドポイントを直接使用します。APIキーは選択したサーフェスが要求する場合のみ必要です。",
+    "accessModeCliLabel": "インストール済みプロバイダーCLI",
+    "accessModeCliDescription": "サブスクリプション製品に推奨。ONESHIMはインストール済みプロバイダーCLIフローを案内します。",
+    "accessModeOAuthLabel": "ダイレクトOAuth（実験的）",
+    "accessModeOAuthDescription": "対応プロバイダーサーフェス向けの実験的マネージドOAuthパス。利用可能な場合はインストール済みCLIを優先してください。",
+    "pathSummaryTitle": "運用パス",
+    "pathSummarySurface": "選択されたサーフェス: {{surface}}",
+    "pathExecutionLabel": "実行パス",
+    "pathPlacementLabel": "ホスティングパス",
+    "pathRequirementsLabel": "要件",
+    "pathRequirementsNone": "追加要件なし",
+    "pathNextStepLabel": "準備状態",
+    "requirementOsSecretStore": "OSシークレットストア",
+    "requirementLocalServer": "{{service}} ローカルサーバー",
+    "requirementCli": "{{tool}} CLI",
+    "requirementLocalService": "{{service}} ローカルサービス",
+    "requirementEndpoint": "{{target}} エンドポイント",
+    "preferredCliTitle": "推奨製品バックドパス",
+    "preferredCliDescription": "認証とサブスクリプション権限をインストール済みCLIに維持する場合は{{surface}}を使用してください。",
+    "switchToPreferredCli": "推奨CLIパスを使用",
+    "executionKindDirectHttp": "プロバイダーダイレクトHTTP API",
+    "executionKindManagedHttp": "マネージドOAuth",
+    "executionKindSubprocessCli": "インストール済みプロバイダーCLI",
+    "placementProviderHosted": "プロバイダーホスティング",
+    "placementSelfHosted": "セルフホスティング",
+    "placementInstalledCli": "インストール済みCLI",
+    "placementCustomHosted": "カスタムホスティング",
+    "placementDescriptionProviderHosted": "リクエストはプロバイダーのホスティングサービスに送信されます。",
+    "placementDescriptionSelfHosted": "ローカルOllamaサーバーなど、自分で運用するエンドポイントです。",
+    "placementDescriptionInstalledCli": "このマシンにインストールされたプロバイダーCLIを通じて実行されます。",
+    "placementDescriptionCustomHosted": "ユーザーが管理またはプロキシするOpenAI互換エンドポイントにリクエストを送信します。",
+    "providerLocal": "ローカル",
+    "providerRemote": "リモート",
+    "cliModeProviderSummary": "プロバイダーCLIモードではOCRとLLMプロバイダーをローカル実行に維持します。サポートされるLLMワークフローは選択されたサーフェスを通じてインストール済みCLIが担当します。",
+    "oauthLlmProviderPinned": "マネージドOAuthでは現在LLMプロバイダーがリモートに固定されます。",
+    "activeRoutingTitle": "現在のアクティブルーティング",
+    "activeRoutingDescription": "ランタイムが現在実際に使用するOCR/LLMパスです。",
+    "activePathLocal": "ローカル実行",
+    "activePathRemote": "リモート実行",
+    "activePathRemoteSurface": "{{surface}} 経由リモート実行",
+    "dataPolicyStrict": "PII厳格フィルター",
+    "dataPolicyStandard": "PII標準フィルター",
+    "dataPolicyAllowFiltered": "フィルター後許可",
+    "noAuthSurfaceDescription": "このサーフェスはAPIキーを必要としません。資格情報フィールドを空のまま、ローカルまたはセルフホスティングエンドポイントに直接接続してください。",
+    "modelSelectionUnsupportedSurface": "このサーフェスはモデルの明示的な選択をサポートしていません。",
+    "ocrModelUnsupported": "選択したモデルはこのサーフェスでの画像ベースOCRをサポートすることが確認されていません。互換性のあるマルチモーダルモデルを選択してください。",
+    "ocrModelCompatibilityUnknown": "ONESHIMはこのサーフェスで{{model}}のOCR互換性を確認できませんでした。保存前に既知のマルチモーダルモデルを使用するかモデル探索で確認してください。",
+    "ocrModelCompatibilityUnknownRejected": "ONESHIMはこのサーフェスで既知のOCR互換モデルを必要とします。{{model}}はまだカタログにありません。保存前に既知のマルチモーダルモデルを選択してください。",
+    "llmModelUnsupported": "選択したモデルはこのLLMサーフェスとの互換性が確認されていません。選択した実行パスに対応したモデルを選んでください。",
+    "llmModelCompatibilityUnknown": "ONESHIMはこのサーフェスで{{model}}のLLM互換性を確認できませんでした。保存前にモデルまたはカタログを確認してください。",
+    "llmModelCompatibilityUnknownRejected": "ONESHIMはこのサーフェスで既知の互換 LLMモデルを必要とします。{{model}}はまだカタログにありません。既知のサポートモデルを選択してください。",
+    "selfHostedCustomEndpointStatus": "このセルフホスティングサーフェスはカスタムエンドポイントを使用中です。ローカルサーバーを手動で確認してください。",
+    "providerSurfaceLabel": "プロバイダーサーフェス",
+    "noCompatibleProviderSurface": "このモードで使用可能なプロバイダーサーフェスがありません。",
+    "ocrStrategyMultimodal": "このOCRサーフェスはマルチモーダルモデルを通じて実行されます。カスタムモデルIDを保存する前に画像対応モデルを優先し、互換性を確認してください。",
+    "ocrStrategyVisionApi": "このOCRサーフェスは専用ビジョンAPIを使用します。エンドポイントによりモデル選択が制限される場合があります。",
+    "managedOAuthSurfaceDescription": "このサーフェスはプロバイダーマネージドOAuthを使用します。APIキーや編集可能なエンドポイントはここでは求めません。",
+    "subprocessSurfaceDescription": "このサーフェスはインストール済みプロバイダーCLIを通じて実行されます。認証とサブスクリプション権限はプロバイダーCLIが管理します。",
+    "subprocessExecutableHint": "検出可能な実行ファイル候補: {{executables}}",
+    "modelDiscoveryUnsupportedSurface": "選択したプロバイダーサーフェスではモデル探索をサポートしていません。"
   },
   "focus": {
     "title": "集中度",
@@ -768,6 +858,164 @@
     "consent": "同意",
     "dataExport": "データエクスポート",
     "recentSearches": "最近の検索",
-    "browseTags": "タグを閲覧"
+    "browseTags": "タグを閲覧",
+    "segments": "セグメント",
+    "overrideHistory": "オーバーライド履歴",
+    "coachingGoals": "目標",
+    "coachingEvents": "イベント"
+  },
+  "settingsOAuth": {
+    "title": "接続",
+    "experimental": "実験的",
+    "loading": "接続状態を確認中…",
+    "desktopOnly": "OAuth接続はデスクトップアプリでのみ利用可能です。",
+    "disconnectedDescription": "OAuthベースのアクセスを有効にするにはアカウントを接続してください。APIキーは不要です。",
+    "connect": "接続",
+    "connecting": "ブラウザで認証待機中…",
+    "openBrowser": "認証ページを開く",
+    "openBrowserHint": "ページが自動で開かない場合は、このボタンでブラウザから続行してください。",
+    "openBrowserFailed": "認証ページを開けませんでした。もう一度試すかフローを再開してください。",
+    "cancel": "キャンセル",
+    "connected": "接続済み",
+    "expiresAt": "有効期限",
+    "disconnect": "切断",
+    "retry": "再試行",
+    "disclaimer": "トークンはOSキーチェーンに保存され、このデバイスから出ることはありません。",
+    "portConflict": "認証サーバーを開始できません—コールバックポートが既に使用中です。他のインスタンスを閉じて再試行してください。",
+    "timeout": "コールバック受信前に認証がタイムアウトしました。フローを再開してください。",
+    "unavailable": "現在このデバイスではOAuthを利用できません。デスクトップキーチェーンへのアクセスと機能サポートを確認してください。",
+    "genericError": "OAuthリクエストが失敗しました。もう一度お試しください。",
+    "statusExpiringSoon": "トークンの有効期限が迫っています",
+    "statusExpired": "トークンが期限切れです",
+    "noRefreshToken": "リフレッシュトークンなし—トークン期限切れ時に手動で再認証が必要です",
+    "reauthRequired": "再認証が必要です",
+    "reauthDescription": "OAuthセッションが期限切れです。再接続してください。",
+    "switchToCli": "代わりに{{surface}}を使用"
+  },
+  "featureCapability": {
+    "preferredPath": "推奨パス",
+    "setupTitle": "セットアップが必要です",
+    "setupEnvVars": "環境変数",
+    "openSetupDocs": "セットアップドキュメントを開く",
+    "availability": {
+      "available": "利用可能",
+      "unavailable": "利用不可",
+      "partially_available": "部分的に利用可能"
+    },
+    "maturity": {
+      "stable": "安定",
+      "beta": "ベータ",
+      "experimental": "実験的",
+      "deprecated": "非推奨"
+    },
+    "surface": {
+      "provider_surface": {
+        "openai": {
+          "managed_oauth": {
+            "available": "この実験的マネージドOAuthパスはこのデバイスで利用可能です。推奨のセットアップパスではありません。",
+            "unavailable": "このデバイスではダイレクトOAuthを利用できません。デスクトップキーチェーンのサポートが必要です。"
+          },
+          "subprocess_cli": {
+            "available": "Codex CLIがインストール済みで認証も完了しています。サポートされるワークフローにプロバイダーCLIパスを使用できます。",
+            "auth_required": "Codex CLIはインストール済みですがまだ認証されていません。まずCLIログインフローを完了してください。",
+            "partially_available": "Codex CLIが検出されました。CLIが認証されワークフローがサポートされればプロバイダーCLIパスを優先できます。",
+            "unavailable": "Codex CLIがインストールされていないか、PATHで見つかりません。"
+          }
+        },
+        "anthropic": {
+          "subprocess_cli": {
+            "available": "Claude Code CLIがインストール済みで認証も完了しています。サポートされるワークフローにプロバイダーCLIパスを使用できます。",
+            "auth_required": "Claude Code CLIはインストール済みですがまだ認証されていません。まずCLIログインフローを完了してください。",
+            "partially_available": "Claude Code CLIが検出されました。CLIが認証されワークフローがサポートされればプロバイダーCLIパスを優先できます。",
+            "unavailable": "Claude Code CLIがインストールされていないか、PATHで見つかりません。"
+          }
+        },
+        "google": {
+          "managed_oauth": {
+            "available": "このデバイスでGoogle OAuthが利用可能です。デスクトップOAuthクライアントIDを設定するとAPIキーなしでVision OCRを接続できます。",
+            "unavailable": "このデバイスではGoogle OAuthを利用できません。デスクトップキーチェーンとGoogle OAuthクライアントIDの設定が必要です。",
+            "setup": "ONESHIM用のGoogle Desktop OAuthクライアントIDを準備し、アプリを再起動してからVision OCRログインフローを開始してください。"
+          },
+          "subprocess_cli": {
+            "available": "Gemini CLIがインストール済みで認証も完了しています。サポートされるワークフローにプロバイダーCLIパスを使用できます。",
+            "auth_required": "Gemini CLIはインストール済みですがまだ認証されていません。まずCLIログインフローを完了してください。",
+            "partially_available": "Gemini CLIが検出されました。CLIが認証されワークフローがサポートされればプロバイダーCLIパスを優先できます。",
+            "unavailable": "Gemini CLIがインストールされていないか、PATHで見つかりません。"
+          }
+        },
+        "ollama": {
+          "local_http": {
+            "available": "設定されたローカルHTTPポートでOllamaにアクセスできるようです。ONESHIMはセルフホスティングエンドポイントを直接呼び出せます。",
+            "partially_available": "Ollamaのローカル準備状態チェックを完了できませんでした。ローカルサーバーとエンドポイント設定を確認してください。",
+            "unavailable": "設定されたローカルHTTPポートでOllamaにアクセスできませんでした。このセルフホスティングサーフェスを使用する前にローカルサーバーを開始してください。"
+          }
+        }
+      }
+    },
+    "providerSurface": {
+      "openaiManagedOAuth": {
+        "available": "この実験的マネージドOAuthパスはこのデバイスで利用可能です。推奨のセットアップパスではありません。",
+        "unavailable": "このデバイスではダイレクトOAuthを利用できません。デスクトップキーチェーンのサポートが必要です。"
+      },
+      "openaiSubprocessCli": {
+        "available": "Codex CLIがインストール済みで認証も完了しています。",
+        "authRequired": "Codex CLIはインストール済みですがまだ認証されていません。",
+        "partiallyAvailable": "Codex CLIが検出されました。認証後にプロバイダーCLIパスを優先できます。",
+        "unavailable": "Codex CLIがインストールされていないか、PATHで見つかりません。"
+      },
+      "anthropicSubprocessCli": {
+        "available": "Claude Code CLIがインストール済みで認証も完了しています。",
+        "authRequired": "Claude Code CLIはインストール済みですがまだ認証されていません。",
+        "partiallyAvailable": "Claude Code CLIが検出されました。認証後にプロバイダーCLIパスを優先できます。",
+        "unavailable": "Claude Code CLIがインストールされていないか、PATHで見つかりません。"
+      },
+      "googleSubprocessCli": {
+        "available": "Gemini CLIがインストール済みで認証も完了しています。",
+        "authRequired": "Gemini CLIはインストール済みですがまだ認証されていません。",
+        "partiallyAvailable": "Gemini CLIが検出されました。認証後にプロバイダーCLIパスを優先できます。",
+        "unavailable": "Gemini CLIがインストールされていないか、PATHで見つかりません。"
+      }
+    }
+  },
+  "recalibration": {
+    "title": "再キャリブレーション",
+    "markAsPersonalTime": "個人時間としてマーク",
+    "changeRegimeTo": "レジームを変更...",
+    "triggerRecluster": "再クラスタリングを実行",
+    "reclustering": "再クラスタリング中...",
+    "reclusterSuccess": "再クラスタリング完了",
+    "reclusterError": "再クラスタリング失敗",
+    "overrideCreated": "オーバーライド作成済み",
+    "overrideDeleted": "オーバーライド削除済み",
+    "markRangePersonal": "範囲を個人時間としてマーク",
+    "overrideHistory": "オーバーライド履歴",
+    "undo": "元に戻す",
+    "noOverrides": "この範囲にオーバーライドはありません",
+    "noSegments": "この日付範囲にセグメントが見つかりません",
+    "overridden": "オーバーライド済み",
+    "personalTime": "個人時間"
+  },
+  "coaching": {
+    "title": "コーチング履歴",
+    "goalsTitle": "今日の目標",
+    "noGoals": "設定された目標がありません。",
+    "recentEvents": "最近のイベント",
+    "noEvents": "コーチングイベントはまだありません。",
+    "goalAdded": "目標を追加しました",
+    "goalRemoved": "目標を削除しました",
+    "goalsUpdated": "目標を更新しました",
+    "settingsTitle": "コーチング目標",
+    "regimeLabel": "レジームラベル",
+    "targetMinutes": "目標（分）",
+    "addGoal": "目標を追加",
+    "remove": "削除",
+    "perDay": "分/日",
+    "profiles": {
+      "FocusGuard": "集中ガード",
+      "TimeAware": "時間認識",
+      "DeepWorkCoach": "ディープワークコーチ",
+      "ContextRestore": "コンテキスト復元",
+      "GoalTracker": "目標トラッカー"
+    }
   }
 }

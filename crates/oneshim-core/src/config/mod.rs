@@ -52,6 +52,10 @@ pub struct AppConfig {
     pub tls: TlsConfig,
     #[serde(default)]
     pub analysis: AnalysisConfig,
+    #[serde(default)]
+    pub sync: SyncConfig,
+    #[serde(default)]
+    pub coaching: CoachingConfig,
 }
 
 // AppConfig impl
@@ -101,6 +105,8 @@ impl AppConfig {
             integration: IntegrationConfig::default(),
             tls: TlsConfig::default(),
             analysis: AnalysisConfig::default(),
+            sync: SyncConfig::default(),
+            coaching: CoachingConfig::default(),
         }
     }
 
@@ -591,12 +597,17 @@ mod tests {
         let restored: AppConfig =
             serde_json::from_str(&json_str).expect("serialized default config must deserialize");
 
-        // Compare via re-serialisation (AppConfig does not derive PartialEq)
+        // Compare via serde_json::Value to tolerate HashMap key ordering
+        // differences (e.g., coaching.profiles HashMap).
+        let val_original: serde_json::Value =
+            serde_json::from_str(&json_str).expect("parse original");
         let json_restored =
             serde_json::to_string_pretty(&restored).expect("restored config must re-serialize");
+        let val_restored: serde_json::Value =
+            serde_json::from_str(&json_restored).expect("parse restored");
         assert_eq!(
-            json_str, json_restored,
-            "JSON output must be identical after a serialize→deserialize→serialize round-trip"
+            val_original, val_restored,
+            "JSON values must be identical after a serialize→deserialize→serialize round-trip"
         );
     }
 

@@ -1,12 +1,17 @@
 mod calibration_store_impl;
+mod coaching_storage;
 pub(crate) mod edge_intelligence;
 mod events;
 mod focus_storage_impl;
 mod frames;
+mod fts_search_impl;
 mod integration_query_impl;
+mod lan_pin_store;
 mod maintenance;
 mod metrics;
+mod override_store_impl;
 mod tags;
+pub mod vector_index_impl;
 pub mod vector_store_impl;
 mod web_storage_impl;
 
@@ -18,6 +23,27 @@ use tracing::info;
 
 use crate::migration;
 
+/// Local SQLite storage with a single-connection, Mutex-guarded design.
+///
+/// # Connection design
+///
+/// This store uses a single `Connection` behind a `Mutex` rather than a
+/// connection pool. The rationale:
+///
+/// 1. **WAL mode** (`PRAGMA journal_mode=WAL`) allows concurrent readers
+///    from the OS level, but rusqlite's `Connection` is not `Sync`, so we
+///    still need a Mutex for Rust's thread-safety requirements.
+/// 2. All blocking SQLite operations are offloaded to `spawn_blocking`,
+///    which prevents the Mutex from starving the async runtime.
+/// 3. A full read/write pool (e.g. r2d2 + separate read-only connections)
+///    adds complexity without measurable benefit for our workload profile:
+///    the scheduler ticks at 1-10 Hz and queries complete in <1ms.
+///
+/// If profiling reveals lock contention, the next step would be opening a
+/// second read-only connection (`SQLITE_OPEN_READ_ONLY`) and routing
+/// SELECT-only queries through it. The [`read_only_query`](Self::read_only_query)
+/// helper already enforces the "acquire lock, clone data out, release lock"
+/// pattern to minimise the critical section.
 pub struct SqliteStorage {
     pub(super) conn: Arc<Mutex<Connection>>,
     pub(super) retention_days: u32,
@@ -106,6 +132,107 @@ impl SqliteStorage {
         })
         .await
         .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+    }
+
+    /// Execute a read-only query with a short-lived lock scope.
+    ///
+    /// The closure `f` receives a `&Connection` and must clone/copy the
+    /// data it needs into a fully-owned `T`. The Mutex is released as soon
+    /// as `f` returns, before the `spawn_blocking` future completes, so
+    /// writers are not blocked while the caller processes the result.
+    ///
+    /// This is the recommended pattern for pure SELECT queries that return
+    /// small to medium result sets (e.g., config lookups, aggregate stats).
+    /// For large result sets, consider streaming via `with_conn` with
+    /// incremental fetching.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let count: i64 = storage.read_only_query(|conn| {
+    ///     conn.query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))
+    ///         .map_err(|e| CoreError::Internal(e.to_string()))
+    /// }).await?;
+    /// ```
+    pub async fn read_only_query<F, T>(&self, f: F) -> Result<T, CoreError>
+    where
+        F: FnOnce(&Connection) -> Result<T, CoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            // Acquire lock, execute query, release lock -- all within the
+            // blocking thread. The result `T` is owned so the lock is not
+            // held while the async runtime schedules the continuation.
+            let guard = conn
+                .lock()
+                .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+            f(&guard)
+            // guard drops here, releasing the Mutex
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
+    }
+
+    /// Ensure a device identity row exists in the `device_identity` table.
+    ///
+    /// On first call (empty table), generates a UUID v4 device_id and inserts
+    /// it with the given device_name. On subsequent calls, returns the existing
+    /// identity. The table enforces `id = 1` (singleton row).
+    ///
+    /// Returns `(device_id, device_name)`.
+    pub fn ensure_device_identity(&self, device_name: &str) -> Result<(String, String), CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        // Try to read existing identity first.
+        let existing: Option<(String, String)> = conn
+            .query_row(
+                "SELECT device_id, device_name FROM device_identity WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+
+        if let Some(identity) = existing {
+            return Ok(identity);
+        }
+
+        // First launch -- generate a new UUID v4 device_id.
+        let device_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO device_identity (id, device_id, device_name) VALUES (1, ?1, ?2)",
+            rusqlite::params![device_id, device_name],
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to insert device identity: {e}")))?;
+
+        info!(
+            device_id = %device_id,
+            device_name = %device_name,
+            "device identity generated (first launch)"
+        );
+
+        Ok((device_id, device_name.to_string()))
+    }
+
+    /// Reset the device identity by deleting the existing row and generating
+    /// a new one. This allows users to disassociate from their sync history.
+    ///
+    /// Returns the new `(device_id, device_name)`.
+    pub fn reset_device_identity(&self, device_name: &str) -> Result<(String, String), CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        conn.execute("DELETE FROM device_identity WHERE id = 1", [])
+            .map_err(|e| CoreError::Internal(format!("Failed to delete device identity: {e}")))?;
+
+        drop(conn); // Release lock before calling ensure_device_identity
+
+        self.ensure_device_identity(device_name)
     }
 }
 
@@ -648,6 +775,121 @@ mod tests {
     }
 
     #[test]
+    fn daily_digest_save_and_get_roundtrip() {
+        use oneshim_core::models::daily_digest::{
+            DailyDigest, DailyInsight, DailyStatistics, DigestHighlight, HighlightType,
+        };
+        use oneshim_core::ports::web_storage::WebStorage;
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let today = Utc::now().date_naive();
+
+        let digest = DailyDigest {
+            date: today,
+            insight: Some(DailyInsight {
+                narrative: "Great focus day!".to_string(),
+                highlights: vec![DigestHighlight {
+                    highlight_type: HighlightType::Achievement,
+                    text: "2h deep work".to_string(),
+                    segment_id: Some("seg-001".to_string()),
+                }],
+            }),
+            timeline: vec![],
+            statistics: DailyStatistics {
+                deep_work_hours: 4.2,
+                ..DailyStatistics::default()
+            },
+            generated_at: Utc::now(),
+        };
+
+        storage.save_daily_digest(&digest).unwrap();
+
+        let loaded = storage.get_daily_digest(&today.to_string()).unwrap();
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.date, today);
+        assert!(loaded.insight.is_some());
+        let insight = loaded.insight.unwrap();
+        assert_eq!(insight.narrative, "Great focus day!");
+        assert_eq!(insight.highlights.len(), 1);
+        assert!((loaded.statistics.deep_work_hours - 4.2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn daily_digest_list_ordering() {
+        use chrono::Days;
+        use oneshim_core::models::daily_digest::{DailyDigest, DailyStatistics};
+        use oneshim_core::ports::web_storage::WebStorage;
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let today = Utc::now().date_naive();
+
+        for offset in 0..3 {
+            let date = today - Days::new(offset);
+            let digest = DailyDigest {
+                date,
+                insight: None,
+                timeline: vec![],
+                statistics: DailyStatistics::default(),
+                generated_at: Utc::now(),
+            };
+            storage.save_daily_digest(&digest).unwrap();
+        }
+
+        let digests = storage.list_daily_digests(10).unwrap();
+        assert_eq!(digests.len(), 3);
+        // Newest first
+        assert_eq!(digests[0].date, today);
+        assert_eq!(digests[1].date, today - Days::new(1));
+    }
+
+    #[test]
+    fn daily_digest_get_nonexistent_returns_none() {
+        use oneshim_core::ports::web_storage::WebStorage;
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let result = storage.get_daily_digest("2020-01-01").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn segments_for_date_query() {
+        use oneshim_core::ports::web_storage::WebStorage;
+
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // Insert a test segment
+        {
+            let conn = storage.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO activity_segments (id, start_time, end_time, duration_secs, trigger_reason, dominant_category, event_count, avg_importance)
+                 VALUES ('seg-001', '2026-03-19T09:00:00Z', '2026-03-19T10:00:00Z', 3600, 'SCORE_HIGH', 'Development', 50, 0.8)",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO activity_segments (id, start_time, end_time, duration_secs, trigger_reason, dominant_category, event_count, avg_importance)
+                 VALUES ('seg-002', '2026-03-20T09:00:00Z', '2026-03-20T10:00:00Z', 3600, 'SCORE_HIGH', 'Communication', 30, 0.5)",
+                [],
+            ).unwrap();
+        }
+
+        let segments = storage.get_segments_for_date("2026-03-19").unwrap();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].segment_id, "seg-001");
+        assert_eq!(segments[0].dominant_category, "Development");
+        assert_eq!(segments[0].duration_secs, 3600);
+
+        // Different date returns different segment
+        let segments2 = storage.get_segments_for_date("2026-03-20").unwrap();
+        assert_eq!(segments2.len(), 1);
+        assert_eq!(segments2[0].segment_id, "seg-002");
+
+        // Non-existent date returns empty
+        let empty = storage.get_segments_for_date("2020-01-01").unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
     fn app_category_parsing() {
         assert_eq!(
             SqliteStorage::parse_app_category("Communication"),
@@ -661,5 +903,161 @@ mod tests {
             SqliteStorage::parse_app_category("Unknown"),
             AppCategory::Other
         );
+    }
+
+    #[test]
+    fn ensure_device_identity_generates_uuid_on_first_call() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let (device_id, device_name) = storage.ensure_device_identity("Test Machine").unwrap();
+
+        assert!(!device_id.is_empty());
+        // Validate UUID v4 format (8-4-4-4-12 hex chars)
+        assert_eq!(device_id.len(), 36);
+        assert_eq!(device_name, "Test Machine");
+    }
+
+    #[test]
+    fn ensure_device_identity_returns_same_id_on_second_call() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+        let (id1, _) = storage.ensure_device_identity("Machine A").unwrap();
+        let (id2, name2) = storage.ensure_device_identity("Machine B").unwrap();
+
+        // Second call must return the FIRST identity, not generate a new one.
+        assert_eq!(id1, id2);
+        assert_eq!(name2, "Machine A"); // Original name preserved
+    }
+
+    #[test]
+    fn ensure_device_identity_persists_across_reopens() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+
+        let id1 = {
+            let storage = SqliteStorage::open(&db_path, 30).unwrap();
+            let (id, _) = storage.ensure_device_identity("Laptop").unwrap();
+            id
+        };
+
+        // Reopen the database
+        let id2 = {
+            let storage = SqliteStorage::open(&db_path, 30).unwrap();
+            let (id, name) = storage.ensure_device_identity("Different Name").unwrap();
+            assert_eq!(name, "Laptop"); // Original name preserved
+            id
+        };
+
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn reset_device_identity_generates_new_uuid() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        let (id1, name1) = storage.ensure_device_identity("Original").unwrap();
+        assert_eq!(name1, "Original");
+
+        let (id2, name2) = storage.reset_device_identity("Reset Device").unwrap();
+        assert_eq!(name2, "Reset Device");
+
+        // After reset, device_id must be different
+        assert_ne!(id1, id2, "reset must generate a new device_id");
+        assert_eq!(id2.len(), 36, "new id must be valid UUID format");
+    }
+
+    #[test]
+    fn reset_device_identity_allows_re_ensure() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        let (id1, _) = storage.ensure_device_identity("First").unwrap();
+        let (id2, _) = storage.reset_device_identity("Second").unwrap();
+        assert_ne!(id1, id2);
+
+        // After reset, ensure_device_identity returns the new identity
+        let (id3, name3) = storage.ensure_device_identity("Third").unwrap();
+        assert_eq!(
+            id2, id3,
+            "ensure after reset must return the reset identity"
+        );
+        assert_eq!(name3, "Second"); // Name from reset is preserved
+    }
+
+    #[test]
+    fn enforce_all_retention_runs_without_error() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        // Insert test data into tables covered by enforce_all_retention
+        {
+            let conn = storage.conn.lock().unwrap();
+
+            // work_sessions — old closed session (schema: primary_app, category, started_at, ended_at)
+            conn.execute(
+                "INSERT INTO work_sessions (primary_app, category, started_at, ended_at)
+                 VALUES ('Code', 'Development', datetime('now', '-100 days'), datetime('now', '-100 days', '+1 hour'))",
+                [],
+            ).unwrap();
+
+            // interruptions — old record (schema: interrupted_at, from_app, from_category, to_app, to_category)
+            conn.execute(
+                "INSERT INTO interruptions (interrupted_at, from_app, from_category, to_app, to_category)
+                 VALUES (datetime('now', '-100 days'), 'Code', 'Development', 'Slack', 'Communication')",
+                [],
+            ).unwrap();
+
+            // suggestions — old record
+            conn.execute(
+                "INSERT INTO suggestions (suggestion_id, suggestion_type, content, priority, source, created_at)
+                 VALUES ('sugg-001', 'general', 'Take a break', 'Low', 'server', datetime('now', '-100 days'))",
+                [],
+            ).unwrap();
+
+            // local_suggestions — old record
+            conn.execute(
+                "INSERT INTO local_suggestions (suggestion_type, payload, created_at)
+                 VALUES ('TakeBreak', '{}', datetime('now', '-100 days'))",
+                [],
+            )
+            .unwrap();
+
+            // focus_metrics — old record
+            conn.execute(
+                "INSERT INTO focus_metrics (date, total_active_secs)
+                 VALUES (date('now', '-400 days'), 0)",
+                [],
+            )
+            .unwrap();
+        }
+
+        // enforce_all_retention should delete the old rows
+        let deleted = storage.enforce_all_retention().unwrap();
+        assert!(
+            deleted >= 5,
+            "expected at least 5 rows deleted, got {deleted}"
+        );
+    }
+
+    #[test]
+    fn enforce_all_retention_keeps_recent_data() {
+        let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+        {
+            let conn = storage.conn.lock().unwrap();
+
+            // Recent work_session (should NOT be deleted)
+            conn.execute(
+                "INSERT INTO work_sessions (primary_app, category, started_at, ended_at)
+                 VALUES ('Code', 'Development', datetime('now', '-1 day'), datetime('now', '-1 day', '+1 hour'))",
+                [],
+            ).unwrap();
+
+            // Recent interruption (should NOT be deleted)
+            conn.execute(
+                "INSERT INTO interruptions (interrupted_at, from_app, from_category, to_app, to_category)
+                 VALUES (datetime('now', '-1 day'), 'Code', 'Development', 'Slack', 'Communication')",
+                [],
+            ).unwrap();
+        }
+
+        let deleted = storage.enforce_all_retention().unwrap();
+        assert_eq!(deleted, 0, "recent data should not be deleted");
     }
 }

@@ -99,6 +99,7 @@ impl GuiInteractionService {
         Ok(self.subscribe())
     }
 
+    #[tracing::instrument(skip_all, fields(min_confidence = req.min_confidence))]
     pub async fn create_session(
         &self,
         req: GuiCreateSessionRequest,
@@ -214,6 +215,7 @@ impl GuiInteractionService {
         Ok(stored.session.clone())
     }
 
+    #[tracing::instrument(skip_all, fields(session_id = %session_id))]
     pub async fn highlight_session(
         &self,
         session_id: &str,
@@ -315,6 +317,7 @@ impl GuiInteractionService {
         Ok(updated)
     }
 
+    #[tracing::instrument(skip_all, fields(session_id = %session_id))]
     pub async fn confirm_candidate(
         &self,
         session_id: &str,
@@ -433,6 +436,7 @@ impl GuiInteractionService {
         Ok(signed_ticket)
     }
 
+    #[tracing::instrument(skip_all, fields(session_id = %session_id))]
     pub async fn prepare_execution(
         &self,
         session_id: &str,

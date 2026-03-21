@@ -2,11 +2,13 @@ use chrono::{DateTime, Utc};
 
 use crate::error::CoreError;
 use crate::models::activity::SessionStats;
+use crate::models::daily_digest::DailyDigest;
 use crate::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
-    FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
-    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord,
-    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
+    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord, HourlyMetricsRecord,
+    LocalSuggestionRecord, MetricExportRecord, NewGuiInteraction, SearchEventRow, SearchFrameRow,
+    SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord,
+    TagRecord,
 };
 use crate::models::work_session::FocusMetrics;
 use crate::ports::storage::{MetricsStorage, StorageService};
@@ -188,5 +190,64 @@ pub trait WebStorage: StorageService + MetricsStorage + Send + Sync {
         _segment_ids: &[String],
     ) -> Result<std::collections::HashMap<String, SegmentDetailRecord>, CoreError> {
         Ok(std::collections::HashMap::new())
+    }
+
+    /// Save a daily digest. Upserts by date.
+    fn save_daily_digest(&self, _digest: &DailyDigest) -> Result<(), CoreError> {
+        Ok(()) // No-op default — storage adapters override
+    }
+
+    /// Get the daily digest for a specific date (YYYY-MM-DD).
+    fn get_daily_digest(&self, _date: &str) -> Result<Option<DailyDigest>, CoreError> {
+        Ok(None)
+    }
+
+    /// List recent daily digests, newest first.
+    fn list_daily_digests(&self, _limit: usize) -> Result<Vec<DailyDigest>, CoreError> {
+        Ok(vec![])
+    }
+
+    /// Get activity segment summaries for a given date (YYYY-MM-DD).
+    /// Used as input for daily digest generation.
+    fn get_segments_for_date(&self, _date: &str) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
+        Ok(vec![])
+    }
+
+    /// Save a GUI interaction event to the gui_interactions table (V13).
+    ///
+    /// **Privacy contract**: Callers MUST apply PII filtering to `element_text`
+    /// before calling this method. The storage adapter applies a basic email/phone
+    /// scrub as defense-in-depth, but upstream filtering via `sanitize_title_with_level()`
+    /// is the primary safeguard.
+    fn save_gui_interaction(&self, _input: &NewGuiInteraction<'_>) -> Result<(), CoreError> {
+        Ok(()) // No-op default — storage adapters override
+    }
+
+    /// List GUI interaction events for a given segment.
+    fn list_gui_interactions_for_segment(
+        &self,
+        _segment_id: &str,
+    ) -> Result<Vec<GuiInteractionRecord>, CoreError> {
+        Ok(vec![])
+    }
+
+    /// Count GUI interactions per hour within a date range.
+    /// Returns `(hour_string, count)` pairs sorted chronologically.
+    fn query_gui_interaction_density(
+        &self,
+        _start: &str,
+        _end: &str,
+    ) -> Result<Vec<(String, u32)>, CoreError> {
+        Ok(vec![])
+    }
+
+    /// Query coaching events, newest first, with pagination.
+    /// Default returns empty — storage adapters that support coaching tables override.
+    fn query_coaching_events(
+        &self,
+        _limit: u32,
+        _offset: u32,
+    ) -> Result<Vec<crate::models::coaching::CoachingEventRow>, CoreError> {
+        Ok(vec![])
     }
 }

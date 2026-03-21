@@ -12,20 +12,24 @@
 mod ai;
 mod ai_validation;
 mod analysis;
+mod coaching;
 mod integration;
 mod monitoring;
 mod network;
 mod privacy;
 mod storage;
+mod sync;
 
 pub use ai::*;
 pub use ai_validation::*;
 pub use analysis::*;
+pub use coaching::*;
 pub use integration::*;
 pub use monitoring::*;
 pub use network::*;
 pub use privacy::*;
 pub use storage::*;
+pub use sync::*;
 
 // ── pub(super) 재노출 — config/mod.rs 의 AppConfig::default_config() 에서 직접 사용 ──
 // sub-file 에서 pub(crate) 로 선언된 함수들을 config/ 레벨로 re-export

@@ -106,6 +106,7 @@ pub(crate) struct WebServerSupportContext {
     config_manager: ConfigManager,
     update_control: UpdateControl,
     integration_runtime_status: IntegrationOutboundRuntimeStatus,
+    app_handle: Option<tauri::AppHandle>,
     #[cfg(feature = "server")]
     server: Option<WebServerServerSupport>,
 }
@@ -120,9 +121,15 @@ impl WebServerSupportContext {
             config_manager,
             update_control,
             integration_runtime_status,
+            app_handle: None,
             #[cfg(feature = "server")]
             server: None,
         }
+    }
+
+    pub(crate) fn with_app_handle(mut self, handle: tauri::AppHandle) -> Self {
+        self.app_handle = Some(handle);
+        self
     }
 
     #[cfg(feature = "server")]
@@ -135,6 +142,12 @@ impl WebServerSupportContext {
         &self,
         builder: AutomationControllerBuilder<'a>,
     ) -> AutomationControllerBuilder<'a> {
+        let builder = if let Some(ref handle) = self.app_handle {
+            builder.with_app_handle(handle.clone())
+        } else {
+            builder
+        };
+
         #[cfg(feature = "server")]
         {
             if let Some(server) = self.server.as_ref() {
@@ -197,6 +210,9 @@ pub(crate) struct WebServerRuntimeBuilder<'a> {
     data_dir: &'a Path,
     launch_context: WebServerLaunchContext<'a>,
     support_context: WebServerSupportContext,
+    override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
+    coaching_engine: Option<Arc<dyn oneshim_core::ports::coaching::CoachingPort>>,
 }
 
 impl<'a> WebServerRuntimeBuilder<'a> {
@@ -213,12 +229,39 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             data_dir,
             launch_context,
             support_context,
+            override_store: None,
+            recluster_requested: None,
+            coaching_engine: None,
         }
     }
 
     #[cfg(feature = "server")]
     pub(crate) fn with_server_support(mut self, server: WebServerServerSupport) -> Self {
         self.support_context = self.support_context.with_server_support(server);
+        self
+    }
+
+    pub(crate) fn with_override_store(
+        mut self,
+        store: Arc<dyn oneshim_core::ports::override_store::OverrideStore>,
+    ) -> Self {
+        self.override_store = Some(store);
+        self
+    }
+
+    pub(crate) fn with_recluster_requested(
+        mut self,
+        flag: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.recluster_requested = Some(flag);
+        self
+    }
+
+    pub(crate) fn with_coaching_engine(
+        mut self,
+        engine: Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
+    ) -> Self {
+        self.coaching_engine = Some(engine);
         self
     }
 
@@ -257,12 +300,21 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         let ai_runtime_status = automation_build.ai_runtime_status.clone();
         let automation_controller = automation_build.controller;
         let automation_controller_for_state = automation_controller.clone();
+        let gui_audit_logger = web_audit_logger.clone();
         let mut runtime_bindings = self.support_context.build_runtime_bindings(
             self.launch_context.event_tx.clone(),
             self.data_dir,
             Arc::new(AuditLogAdapter::new(web_audit_logger)),
             ai_runtime_status,
         );
+        runtime_bindings.override_store = self.override_store;
+        runtime_bindings.recluster_requested = self.recluster_requested;
+        runtime_bindings.coaching_engine = self.coaching_engine;
+
+        // Spawn GUI audit forwarder if the automation controller has a GUI service
+        if let Some(ref controller) = automation_controller {
+            spawn_gui_audit_forwarder(controller, gui_audit_logger);
+        }
 
         let web_storage = self.storage.clone();
         let web_config = self.config.web.clone();
@@ -293,4 +345,37 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             automation_controller: automation_controller_for_state,
         }
     }
+}
+
+/// Subscribes to GUI session events and forwards them to the audit logger.
+fn spawn_gui_audit_forwarder(
+    automation_controller: &Arc<AutomationController>,
+    audit_logger: Arc<tokio::sync::RwLock<AuditLogger>>,
+) {
+    let Some(gui_service) = automation_controller.gui_service() else {
+        tracing::debug!("GUI service not configured; skipping audit forwarder");
+        return;
+    };
+
+    let mut rx = gui_service.subscribe();
+
+    tokio::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let action_type = format!("gui.session.{}", event.event_type);
+                    let details = event.message.unwrap_or_default();
+                    let mut logger = audit_logger.write().await;
+                    logger.log_event(&action_type, &event.session_id, &details);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("GUI audit forwarder lagged by {n} events");
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    tracing::debug!("GUI event channel closed; audit forwarder exiting");
+                    break;
+                }
+            }
+        }
+    });
 }

@@ -40,6 +40,14 @@ impl LlmSegmentSummarizer {
         }
     }
 
+    /// Returns a shared reference to the underlying `AnalysisProvider`.
+    ///
+    /// Used by `DailyInsightGenerator` to reuse the same LLM connection
+    /// for daily narrative generation.
+    pub fn analysis_provider(&self) -> Arc<dyn AnalysisProvider> {
+        self.analysis_provider.clone()
+    }
+
     /// Generate an LLM summary for a closed segment.
     /// Returns `None` if disabled, segment too short, or LLM call fails.
     pub async fn summarize(&self, summary: &SegmentSummary) -> Option<String> {

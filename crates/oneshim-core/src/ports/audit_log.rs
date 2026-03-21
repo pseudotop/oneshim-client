@@ -1,3 +1,7 @@
+//! Audit logging port — defines the contract for recording, querying,
+//! and batch-flushing automation audit entries.
+//! Implemented by `AuditLogger` in `oneshim-automation`.
+
 use async_trait::async_trait;
 
 use crate::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};

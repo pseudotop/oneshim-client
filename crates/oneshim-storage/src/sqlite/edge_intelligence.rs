@@ -1196,6 +1196,101 @@ impl SqliteStorage {
         Ok(deleted)
     }
 
+    /// Enforce retention for all auxiliary tables that would otherwise grow
+    /// unbounded. Each table has its own retention window. Tables that may
+    /// not exist in older schema versions are handled gracefully (errors
+    /// from `conn.execute` are silently ignored via `let _ = …`).
+    ///
+    /// Returns the total number of rows deleted across all tables.
+    pub fn enforce_all_retention(&self) -> Result<u64, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        let mut total: u64 = 0;
+
+        // work_sessions: 90 days (only closed sessions with ended_at set)
+        let n = conn
+            .execute(
+                "DELETE FROM work_sessions WHERE ended_at < datetime('now', '-90 days')",
+                [],
+            )
+            .unwrap_or(0) as u64;
+        total += n;
+
+        // interruptions: 90 days
+        let n = conn
+            .execute(
+                "DELETE FROM interruptions WHERE interrupted_at < datetime('now', '-90 days')",
+                [],
+            )
+            .unwrap_or(0) as u64;
+        total += n;
+
+        // gui_interactions: 30 days
+        let n = conn
+            .execute(
+                "DELETE FROM gui_interactions WHERE timestamp < datetime('now', '-30 days')",
+                [],
+            )
+            .unwrap_or(0) as u64;
+        total += n;
+
+        // suggestions: 90 days
+        let n = conn
+            .execute(
+                "DELETE FROM suggestions WHERE created_at < datetime('now', '-90 days')",
+                [],
+            )
+            .unwrap_or(0) as u64;
+        total += n;
+
+        // local_suggestions: 90 days
+        let n = conn
+            .execute(
+                "DELETE FROM local_suggestions WHERE created_at < datetime('now', '-90 days')",
+                [],
+            )
+            .unwrap_or(0) as u64;
+        total += n;
+
+        // focus_metrics: 365 days
+        let n = conn
+            .execute(
+                "DELETE FROM focus_metrics WHERE date < date('now', '-365 days')",
+                [],
+            )
+            .unwrap_or(0) as u64;
+        total += n;
+
+        // daily_digests: 365 days
+        let n = conn
+            .execute(
+                "DELETE FROM daily_digests WHERE date < date('now', '-365 days')",
+                [],
+            )
+            .unwrap_or(0) as u64;
+        total += n;
+
+        // regime_overrides: 180 days
+        let n = conn
+            .execute(
+                "DELETE FROM regime_overrides WHERE created_at < datetime('now', '-180 days')",
+                [],
+            )
+            .unwrap_or(0) as u64;
+        total += n;
+
+        if total > 0 {
+            tracing::info!(
+                "Enforced table retention: deleted {total} rows across auxiliary tables"
+            );
+        }
+
+        Ok(total)
+    }
+
     // --------------------------------------------------------
     // --------------------------------------------------------
 

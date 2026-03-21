@@ -14,7 +14,8 @@ use oneshim_core::ports::analysis_provider::AnalysisProvider;
 use oneshim_core::ports::storage::StorageService;
 
 use crate::assembler::{
-    humanize_time_ago, ContextAssembler, CurrentActivity, RelevantHistoryEntry, SessionMetrics,
+    humanize_time_ago, ContextAssembler, CurrentActivity, RelevantHistoryEntry, SegmentStats,
+    SessionMetrics,
 };
 use crate::pattern_miner::{is_communication_app, PatternMiner};
 use crate::vector_retriever::VectorRetriever;
@@ -43,6 +44,12 @@ pub struct ContextAnalyzer {
     config: AnalysisConfig,
     last_analysis_at: Mutex<Option<chrono::DateTime<Utc>>>,
     last_patterns_hash: Mutex<u64>,
+    /// Current segment stats snapshot, updated by the monitor loop via `set_segment_stats()`.
+    /// Read by `analyze()` / `analyze_if_changed()` to enrich the LLM context with
+    /// `current_segment` data (duration, regime, content summary, GUI patterns).
+    segment_stats: tokio::sync::RwLock<Option<SegmentStats>>,
+    /// Current accessibility text from the focused element, updated by the monitor loop.
+    accessibility_text: tokio::sync::RwLock<Option<String>>,
 }
 
 impl ContextAnalyzer {
@@ -62,6 +69,8 @@ impl ContextAnalyzer {
             config,
             last_analysis_at: Mutex::new(None),
             last_patterns_hash: Mutex::new(0),
+            segment_stats: tokio::sync::RwLock::new(None),
+            accessibility_text: tokio::sync::RwLock::new(None),
         }
     }
 
@@ -83,7 +92,21 @@ impl ContextAnalyzer {
             config,
             last_analysis_at: Mutex::new(None),
             last_patterns_hash: Mutex::new(0),
+            segment_stats: tokio::sync::RwLock::new(None),
+            accessibility_text: tokio::sync::RwLock::new(None),
         }
+    }
+
+    /// Update the current segment stats snapshot. Called by the monitor loop
+    /// after each analysis tick so that `analyze()` can include segment context.
+    pub async fn set_segment_stats(&self, stats: Option<SegmentStats>) {
+        *self.segment_stats.write().await = stats;
+    }
+
+    /// Update the current accessibility text from the focused element.
+    /// Called by the monitor loop so that `analyze()` includes extracted text in LLM context.
+    pub async fn set_accessibility_text(&self, text: Option<String>) {
+        *self.accessibility_text.write().await = text;
     }
 
     /// Full periodic analysis: query events, mine patterns, call LLM.
@@ -108,7 +131,9 @@ impl ContextAnalyzer {
         }
 
         let patterns = self.pattern_miner.detect(&events);
-        let current = Self::build_current_activity(&events);
+        let mut current = Self::build_current_activity(&events);
+        // Inject live accessibility text from monitor loop
+        current.accessibility_text = self.accessibility_text.read().await.clone();
         let metrics = Self::build_session_metrics(&events);
 
         // Retrieve relevant history via RAG if VectorRetriever is available
@@ -138,12 +163,13 @@ impl ContextAnalyzer {
             vec![]
         };
 
+        let seg_stats = self.segment_stats.read().await;
         let ctx = self.context_assembler.build_with_history(
             &current,
             &events,
             &patterns,
             &metrics,
-            None,
+            seg_stats.as_ref(),
             &relevant_history,
         );
 
@@ -231,11 +257,17 @@ impl ContextAnalyzer {
             ocr_hint: ocr_text.map(String::from),
             focus_score: SIGNIFICANT_EVENT_FOCUS_SCORE,
             deep_work_mins: 0,
+            accessibility_text: None,
         };
 
-        let ctx = self
-            .context_assembler
-            .build(&current, &events, &patterns, &metrics);
+        let seg_stats = self.segment_stats.read().await;
+        let ctx = self.context_assembler.build_with_segment(
+            &current,
+            &events,
+            &patterns,
+            &metrics,
+            seg_stats.as_ref(),
+        );
 
         let suggestions = self
             .analysis_provider
@@ -299,6 +331,7 @@ impl ContextAnalyzer {
                 ocr_hint: None,
                 focus_score: DEFAULT_FOCUS_SCORE,
                 deep_work_mins: 0,
+                accessibility_text: None,
             },
             None => CurrentActivity {
                 app_name: "Unknown".to_string(),
@@ -306,6 +339,7 @@ impl ContextAnalyzer {
                 ocr_hint: None,
                 focus_score: 0.0,
                 deep_work_mins: 0,
+                accessibility_text: None,
             },
         }
     }

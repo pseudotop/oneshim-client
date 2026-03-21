@@ -1,3 +1,7 @@
+//! Overlay driver port — defines the contract for rendering transparent
+//! highlight overlays on screen elements (MagicOverlay, heatmap ghosts).
+//! Implemented by Tauri WebView overlay in `src-tauri`.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

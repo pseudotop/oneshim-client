@@ -1,3 +1,8 @@
+//! System and process monitoring ports — defines contracts for collecting
+//! CPU/memory metrics, active window info, and user activity context.
+//! Implemented by `SysInfoMonitor`, `ProcessTracker`, and `ActivityTracker`
+//! in `oneshim-monitor`.
+
 use async_trait::async_trait;
 
 use crate::error::CoreError;

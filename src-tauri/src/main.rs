@@ -40,6 +40,8 @@ mod launch_resources;
 mod lifecycle;
 #[cfg(target_os = "macos")]
 mod macos_integration;
+mod magic_overlay;
+mod magic_overlay_driver;
 mod memory_profiler;
 mod notification_manager;
 mod oauth_provider_registry;
@@ -57,6 +59,7 @@ mod setup;
 mod skill_loader;
 mod storage_runtime;
 mod subprocess_provider;
+mod sync_engine;
 mod tray;
 mod update_coordinator;
 mod update_runtime;
@@ -69,6 +72,13 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 fn main() {
+    // Windows DLL search order hardening (Spec Section 9.2):
+    // Remove CWD from DLL search path to prevent DLL hijacking.
+    #[cfg(target_os = "windows")]
+    unsafe {
+        windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW(windows_sys::core::w!(""));
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -99,7 +109,9 @@ fn main() {
     }
 
     #[allow(unused_mut)]
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
 
     // WebDriver 서버 플러그인 — E2E 테스트용 (production 빌드에 절대 포함 금지)
     #[cfg(feature = "webdriver")]
@@ -149,6 +161,20 @@ fn main() {
             commands::get_analysis_status,
             commands::semantic_search,
             commands::get_weekly_digest,
+            commands::get_dashboard_day,
+            commands::get_daily_digest,
+            commands::create_override,
+            commands::delete_override,
+            commands::list_overrides,
+            commands::trigger_recluster,
+            commands::dismiss_coaching_message,
+            commands::submit_coaching_feedback,
+            commands::set_overlay_mode,
+            commands::get_overlay_state,
+            commands::toggle_overlay_interactive,
+            commands::get_coaching_history,
+            commands::get_goal_progress,
+            commands::update_regime_goals,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

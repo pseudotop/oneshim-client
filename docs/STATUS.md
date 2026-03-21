@@ -30,24 +30,25 @@ cargo fmt --check
 
 ## Current Snapshot
 
-### Rust Tests (2026-03-09)
+### Rust Tests (2026-03-21)
 
 | Crate | Tests | Status |
 |-------|------:|--------|
-| oneshim-core | 106 | pass |
-| oneshim-network | 91 + 3 | pass |
+| oneshim-core | 344 | pass |
+| oneshim-network | 258 + 28 | pass |
 | oneshim-suggestion | 17 | pass |
-| oneshim-storage | 42 | pass |
-| oneshim-monitor | 39 | pass |
-| oneshim-vision | 85 | pass |
-| oneshim-ui | 37 | pass |
-| oneshim-web | 129 | pass |
-| oneshim-automation | 203 | pass |
-| oneshim-app (unit) | 99 | pass |
-| oneshim-app (integration) | 32 | pass (4 ignored) |
-| oneshim-api-contracts | 8 | pass |
+| oneshim-storage | 188 | pass (3 ignored) |
+| oneshim-monitor | 78 | pass |
+| oneshim-vision | 158 | pass (5 ignored) |
+| oneshim-web | 227 | pass |
+| oneshim-automation | 211 + 1 | pass |
+| oneshim-analysis | 488 | pass |
+| oneshim-embedding | 1 | pass (2 ignored) |
+| oneshim-api-contracts | 42 | pass |
+| oneshim-app (unit) | 215 | pass |
+| oneshim-app (integration) | 61 | pass (3 ignored) |
 | language-check | 4 | pass |
-| **Total** | **882** | **0 failed** |
+| **Total** | **2,323** | **0 failed** |
 
 ### Build & Lint
 
@@ -80,6 +81,24 @@ cargo fmt --check
 | M2-P3 | Execution Reliability Tracing | done (`933bfba`) |
 | M3 | SSE Event Stream Integration | done (10 tests, `b700804`) |
 | M4 | End-to-End Workflow Tests | done (10 tests, `0b0880e`) |
+| M5 | Failure Scenario Tests (403/409/422/503/TTL/nonce/SSE) | done (13 tests, `64027af`) |
+| M6 | Native Platform Adapters (AX/UIA/AT-SPI tree traversal) | done (8 tests, `a00450e`) |
+| M7 | E2E Smoke Tests + QA Template + Performance Instrumentation | done (6 tests, `c8056e3`) |
+| M8 | Operations Docs (runbook, contract examples, security review, audit) | done (`64027af`) |
+
+### GUI V2 Performance Baselines
+
+| Operation | Target | Instrumented |
+|-----------|--------|-------------|
+| `create_session` (scene analysis + candidate ranking) | <50ms | `#[tracing::instrument]` |
+| `highlight_session` (overlay render) | <16ms | `#[tracing::instrument]` |
+| `confirm_candidate` (focus validation + ticket signing) | <10ms | `#[tracing::instrument]` |
+| `prepare_execution` (focus revalidation + ticket verify) | <10ms | `#[tracing::instrument]` |
+| `build_candidates` (200 elements) | <5ms | `#[tracing::instrument]` |
+| `sign_ticket` / `verify_ticket` (HMAC-SHA256) | <1ms | `#[tracing::instrument]` |
+| Accessibility tree query (depth 3) | <30ms | per-platform impl |
+
+Baselines measured via `RUST_LOG=oneshim_automation=debug` tracing spans. QA template: `docs/qa/runs/TEMPLATE-adr-002-gui-smoke-matrix.md`.
 
 ## Notes
 

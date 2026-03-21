@@ -1,3 +1,8 @@
+//! OCR provider port — defines the contract for extracting text elements
+//! and their bounding boxes from screen capture images.
+//! Implemented by `RemoteOcrProvider` in `oneshim-network` and
+//! `OcrExtractor` (Tesseract) in `oneshim-vision`.
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 

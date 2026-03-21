@@ -1,13 +1,18 @@
 //! # oneshim-core
 
 pub mod ai_model_lifecycle_policy;
+pub mod app_registry;
+pub mod binary_quantizer;
 pub mod config;
 pub mod config_manager;
 pub mod consent;
 pub mod error;
+pub mod ivf_index;
 pub mod models;
 pub mod ports;
 pub mod provider_surface;
+pub mod quantization;
+pub mod sync;
 
 #[cfg(test)]
 mod tests {

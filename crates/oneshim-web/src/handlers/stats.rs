@@ -3,7 +3,8 @@ use axum::Json;
 #[cfg(test)]
 use oneshim_api_contracts::stats::{AppUsageEntry, HeatmapCell};
 use oneshim_api_contracts::stats::{
-    AppUsageResponse, DailySummaryResponse, DateQuery, HeatmapQuery, HeatmapResponse,
+    AppUsageResponse, DailySummaryResponse, DateQuery, GuiHeatmapCell, GuiHeatmapQuery,
+    HeatmapQuery, HeatmapResponse,
 };
 
 use crate::error::ApiError;
@@ -42,6 +43,30 @@ pub async fn get_heatmap(
             .get_heatmap(params.days)
             .await?,
     ))
+}
+
+/// GET /api/stats/gui-heatmap?start=...&end=...
+pub async fn get_gui_heatmap(
+    State(context): State<StorageWebContext>,
+    Query(params): Query<GuiHeatmapQuery>,
+) -> Result<Json<Vec<GuiHeatmapCell>>, ApiError> {
+    let now = chrono::Utc::now();
+    let start = params
+        .start
+        .unwrap_or_else(|| now.format("%Y-%m-%dT00:00:00Z").to_string());
+    let end = params.end.unwrap_or_else(|| now.to_rfc3339());
+
+    let density = context
+        .storage
+        .query_gui_interaction_density(&start, &end)
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let cells: Vec<GuiHeatmapCell> = density
+        .into_iter()
+        .map(|(hour, count)| GuiHeatmapCell { hour, count })
+        .collect();
+
+    Ok(Json(cells))
 }
 
 #[cfg(test)]

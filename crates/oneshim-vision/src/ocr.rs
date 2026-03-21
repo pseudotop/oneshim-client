@@ -1,7 +1,8 @@
+use oneshim_core::models::frame::{BoundingBox, OcrRegion};
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use thiserror::Error;
-use tracing::debug;
+use tracing::{debug, warn};
 
 #[derive(Debug, Error)]
 pub enum OcrError {
@@ -26,6 +27,9 @@ static TESSDATA_PATH: OnceLock<Option<String>> = OnceLock::new();
 pub struct OcrExtractor {
     tessdata_path: Option<PathBuf>,
     max_chars: usize,
+    /// Cached LepTess instance for reuse across extract calls.
+    /// Avoids re-initialization overhead (~10-50ms per call).
+    cached_leptess: Mutex<Option<leptess::LepTess>>,
 }
 
 impl OcrExtractor {
@@ -38,6 +42,7 @@ impl OcrExtractor {
         Self {
             tessdata_path,
             max_chars: 0,
+            cached_leptess: Mutex::new(None),
         }
     }
 
@@ -54,15 +59,40 @@ impl OcrExtractor {
             return Err(OcrError::EmptyImage);
         }
 
-        let tessdata = self
-            .tessdata_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
+        // Try to reuse cached LepTess instance; fall back to creating new one
+        let mut cached_guard = self.cached_leptess.lock().ok();
 
-        let tessdata_ref = tessdata.as_deref();
+        let create_new = || -> Result<leptess::LepTess, OcrError> {
+            let tessdata = self
+                .tessdata_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string());
+            leptess::LepTess::new(tessdata.as_deref(), "eng")
+                .map_err(|e| OcrError::Init(format!("{e}")))
+        };
 
-        let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
-            .map_err(|e| OcrError::Init(format!("{e}")))?;
+        let lt = if let Some(ref mut guard) = cached_guard {
+            if guard.is_none() {
+                **guard = Some(create_new()?);
+            }
+            guard.as_mut().expect("LepTess instance initialized above")
+        } else {
+            // Lock failed — create a temporary instance
+            let mut lt = create_new()?;
+            lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+
+            let text = lt
+                .get_utf8_text()
+                .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+
+            let result = text.trim().to_string();
+            return if self.max_chars > 0 && result.len() > self.max_chars {
+                Ok(result.chars().take(self.max_chars).collect())
+            } else {
+                Ok(result)
+            };
+        };
 
         lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
             .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
@@ -203,10 +233,21 @@ impl OcrExtractor {
                 .map_err(|e| OcrError::Extraction(format!("{e}")))?;
             let words: Vec<&str> = full_text.split_whitespace().collect();
 
+            let box_count = boxes.len();
+            if words.len() != box_count {
+                warn!(
+                    "OCR word/box count mismatch: {} words vs {} boxes — truncating to shorter",
+                    words.len(),
+                    box_count
+                );
+            }
+            let count = words.len().min(box_count);
+
             let mut result = Vec::new();
-            for (i, b) in boxes.iter().enumerate() {
+            for i in 0..count {
+                let Some(b) = boxes.get(i) else { continue };
                 let geom = b.get_geometry();
-                let word_text = words.get(i).unwrap_or(&"").to_string();
+                let word_text = words[i].to_string();
                 if !word_text.is_empty() {
                     result.push(OcrWordBox {
                         text: word_text,
@@ -219,6 +260,133 @@ impl OcrExtractor {
             }
 
             Ok(result)
+        })
+        .await
+        .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?
+    }
+}
+
+/// Build OCR regions from a prepared LepTess instance.
+///
+/// Extracts word-level component boxes, reads full text, and pairs each word
+/// with its bounding box. When word and box counts diverge (an unreliable
+/// assumption in Tesseract), truncates to the shorter list and logs a warning.
+/// Confidence is derived from `mean_text_conf()`.
+fn build_regions_from_leptess(lt: &mut leptess::LepTess) -> Result<Vec<OcrRegion>, OcrError> {
+    let boxes = lt
+        .get_component_boxes(leptess::capi::TessPageIteratorLevel_RIL_WORD, true)
+        .ok_or_else(|| OcrError::Extraction("Failed to extract word boxes".to_string()))?;
+
+    let full_text = lt
+        .get_utf8_text()
+        .map_err(|e| OcrError::Extraction(format!("{e}")))?;
+    let words: Vec<&str> = full_text.split_whitespace().collect();
+
+    let box_count = boxes.len();
+    if words.len() != box_count {
+        warn!(
+            "OCR word/box count mismatch: {} words vs {} boxes — truncating to shorter",
+            words.len(),
+            box_count
+        );
+    }
+    let count = words.len().min(box_count);
+    let mean_conf = (lt.mean_text_conf() as f32 / 100.0).clamp(0.0, 1.0);
+
+    let mut regions = Vec::with_capacity(count);
+    for i in 0..count {
+        let Some(b) = boxes.get(i) else { continue };
+        let geom = b.get_geometry();
+        let word_text = words[i].to_string();
+        if !word_text.is_empty() {
+            regions.push(OcrRegion {
+                text: word_text,
+                bbox: BoundingBox {
+                    x: geom.x.max(0) as u32,
+                    y: geom.y.max(0) as u32,
+                    width: geom.w.max(0) as u32,
+                    height: geom.h.max(0) as u32,
+                },
+                confidence: mean_conf,
+            });
+        }
+    }
+
+    Ok(regions)
+}
+
+impl OcrExtractor {
+    /// Extract text with bounding box positions as `OcrRegion` values.
+    ///
+    /// Uses Tesseract word-level component images to obtain spatial coordinates.
+    /// Each word that matches a component box is returned as a separate region.
+    /// Reuses cached LepTess instance when available.
+    pub fn extract_regions(&self, image: &image::DynamicImage) -> Result<Vec<OcrRegion>, OcrError> {
+        let rgba = image.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+
+        if w == 0 || h == 0 {
+            return Err(OcrError::EmptyImage);
+        }
+
+        let create_new = || -> Result<leptess::LepTess, OcrError> {
+            let tessdata = self
+                .tessdata_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string());
+            leptess::LepTess::new(tessdata.as_deref(), "eng")
+                .map_err(|e| OcrError::Init(format!("{e}")))
+        };
+
+        let mut cached_guard = self.cached_leptess.lock().ok();
+
+        let lt = if let Some(ref mut guard) = cached_guard {
+            if guard.is_none() {
+                **guard = Some(create_new()?);
+            }
+            guard.as_mut().expect("LepTess instance initialized above")
+        } else {
+            // Lock failed — create a temporary instance
+            let mut lt = create_new()?;
+            lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+            return build_regions_from_leptess(&mut lt);
+        };
+
+        lt.set_image_from_mem(rgba.as_raw(), w as i32, h as i32, 4, (w * 4) as i32)
+            .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+
+        build_regions_from_leptess(lt)
+    }
+
+    /// Async version of `extract_regions`.
+    pub async fn extract_regions_async(
+        &self,
+        image: &image::DynamicImage,
+    ) -> Result<Vec<OcrRegion>, OcrError> {
+        let rgba = image.to_rgba8();
+        let (w, h) = (rgba.width(), rgba.height());
+
+        if w == 0 || h == 0 {
+            return Err(OcrError::EmptyImage);
+        }
+
+        let tessdata = self
+            .tessdata_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        let raw_data = rgba.into_raw();
+
+        tokio::task::spawn_blocking(move || {
+            let tessdata_ref = tessdata.as_deref();
+
+            let mut lt = leptess::LepTess::new(tessdata_ref, "eng")
+                .map_err(|e| OcrError::Init(format!("{e}")))?;
+
+            lt.set_image_from_mem(&raw_data, w as i32, h as i32, 4, (w * 4) as i32)
+                .map_err(|_| OcrError::ImageSetup("Image memory setup failed".to_string()))?;
+
+            build_regions_from_leptess(&mut lt)
         })
         .await
         .map_err(|e| OcrError::Async(format!("Task join failed: {e}")))?
@@ -323,5 +491,41 @@ mod tests {
 
         let result = extractor.extract_roi_async(&img, 0.5).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_regions_empty_image_returns_error() {
+        let extractor = OcrExtractor::new(None);
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
+        let result = extractor.extract_regions(&img);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+    }
+
+    #[tokio::test]
+    async fn extract_regions_async_empty_image_returns_error() {
+        let extractor = OcrExtractor::new(None);
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(0, 0));
+        let result = extractor.extract_regions_async(&img).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OcrError::EmptyImage));
+    }
+
+    #[test]
+    fn ocr_region_has_valid_bbox_fields() {
+        use oneshim_core::models::frame::{BoundingBox, OcrRegion};
+        let region = OcrRegion {
+            text: "test".to_string(),
+            bbox: BoundingBox {
+                x: 10,
+                y: 20,
+                width: 50,
+                height: 15,
+            },
+            confidence: 0.5,
+        };
+        assert_eq!(region.text, "test");
+        assert!(region.bbox.contains_point(30, 25));
+        assert!(!region.bbox.contains_point(100, 100));
     }
 }

@@ -1,20 +1,29 @@
 mod analysis_pipeline;
 mod config;
+/// GUI Activity Intelligence pipeline — wired into the monitor loop.
+/// Called after `run_analysis_tick()` each cycle when `gui_intelligence.enabled`.
+pub(crate) mod gui_pipeline;
+pub(crate) mod heatmap;
 mod loops;
 
 // ── Public re-exports (external API) ────────────────────────────────
 pub use config::{SchedulerConfig, SchedulerStorage};
+pub(crate) use loops::record_to_segment_summary;
 
 use chrono::{Datelike, Timelike};
+use oneshim_core::app_registry::AppRegistry;
 use oneshim_core::config::{AppConfig, Weekday};
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::consent::ConsentManager;
 use oneshim_core::models::activity::SessionStats;
 use oneshim_core::models::tiered_memory::ResolvedParams;
+use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::api_client::ApiClient;
 use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
 use oneshim_core::ports::storage::StorageService;
+use oneshim_core::ports::vector_index::VectorIndex;
 use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
 #[cfg(feature = "server")]
 use oneshim_network::oauth::refresh_coordinator::TokenRefreshCoordinator;
@@ -31,6 +40,7 @@ use crate::notification_manager::NotificationManager;
 /// Kept as owned (non-Arc) so the monitor loop can mutate the components
 /// without interior-mutability overhead.
 pub(crate) struct AdaptiveTriggerState {
+    // --- Base analysis pipeline ---
     pub trigger: oneshim_analysis::AdaptiveTrigger,
     pub segment_buffer: oneshim_analysis::SegmentBuffer,
     pub calibration_buffer: oneshim_analysis::CalibrationBuffer,
@@ -40,7 +50,8 @@ pub(crate) struct AdaptiveTriggerState {
     pub segment_summarizer: oneshim_analysis::SegmentSummarizer,
     pub params: ResolvedParams,
     pub calibration_writer: Arc<dyn CalibrationWriter>,
-    // --- Phase 1b Batch 2: regime-aware pipeline ---
+
+    // --- Regime-aware pipeline ---
     pub regime_classifier: oneshim_analysis::RegimeClassifier,
     pub regime_manager: oneshim_analysis::RegimeManager,
     pub regime_detector: oneshim_analysis::RegimeDetector,
@@ -50,9 +61,41 @@ pub(crate) struct AdaptiveTriggerState {
     pub current_regime_id: Option<String>,
     /// Last time regime detection (k-means) was run.
     pub last_detection_time: Option<chrono::DateTime<chrono::Utc>>,
-    // --- Layer 2: LLM summary + embedding pipeline ---
+
+    // --- Auto-tuning ---
+    /// Per-category EMA statistics tracker for auto-tuning trigger params.
+    pub ema_tracker: oneshim_analysis::auto_tuner::EmaStatsTracker,
+    /// EWMA-based drift detector for regime shift detection.
+    pub drift_detector: oneshim_analysis::auto_tuner::DriftDetector,
+    /// Tick counter for periodic auto-tune override generation.
+    pub auto_tune_tick_count: u64,
+    /// Clustering strategy (HDBSCAN or k-means) for constrained re-clustering.
+    pub clustering_strategy:
+        Option<Box<dyn oneshim_analysis::clustering_strategy::ClusteringStrategy>>,
+    /// Override store for loading user overrides during re-clustering.
+    pub override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
+    /// Flag set by REST/Tauri to request on-demand re-clustering.
+    pub recluster_requested: Arc<std::sync::atomic::AtomicBool>,
+    /// Flag: last drift observation result. Set by analysis pipeline,
+    /// read-and-cleared by coaching evaluation in the monitor loop.
+    pub last_drift_detected: Arc<std::sync::atomic::AtomicBool>,
+
+    // --- LLM/embedding pipeline ---
     pub(crate) llm_summarizer: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>>,
     pub(crate) embedding_pipeline: Option<Arc<oneshim_analysis::EmbeddingPipeline>>,
+
+    // --- GUI Activity Intelligence ---
+    pub(crate) gui_pipeline_state: Option<gui_pipeline::GuiPipelineState>,
+    pub(crate) gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
+
+    // --- Application classification ---
+    /// Centralized app registry for subcategory classification.
+    /// Replaces the hardcoded `infer_subcategory()` fallback.
+    pub(crate) app_registry: Arc<AppRegistry>,
+
+    // --- Heatmap ---
+    /// Mouse interaction heatmap aggregator for overlay visualization.
+    pub(crate) heatmap_aggregator: heatmap::HeatmapAggregator,
 }
 
 pub struct Scheduler {
@@ -77,9 +120,33 @@ pub struct Scheduler {
     pub(super) vector_store: Option<Arc<dyn oneshim_core::ports::vector_store::VectorStore>>,
     pub(super) embedding_provider:
         Option<Arc<dyn oneshim_core::ports::embedding_provider::EmbeddingProvider>>,
+    pub(super) vector_index: Option<Arc<dyn VectorIndex>>,
+    pub(super) search_coordinator: Option<Arc<oneshim_analysis::AdaptiveSearchCoordinator>>,
     /// Wrapped in Mutex so `run_scheduler_loops(&self)` can take ownership
     /// and move it into the monitor loop's async block.
     pub(super) adaptive_trigger: Mutex<Option<AdaptiveTriggerState>>,
+    /// Cross-device sync engine (P3 Phase 3a-2). Optional — only present
+    /// when sync is enabled AND configured (folder + passphrase).
+    pub(super) sync_engine: Option<Arc<crate::sync_engine::SyncEngine>>,
+    /// Accessibility API extractor for focused element context (Phase 2).
+    /// `None` when `text_intelligence.accessibility_extraction` is disabled
+    /// or platform does not support it.
+    pub(super) accessibility_extractor: Option<Arc<dyn AccessibilityExtractor>>,
+    /// ConsentManager for runtime consent checks (e.g., full_text_extraction).
+    /// Wrapped in Arc for shared access across async blocks.
+    pub(super) consent_manager: Option<Arc<ConsentManager>>,
+    /// Coaching engine for proactive coaching messages (Phase 1).
+    /// `None` when coaching is not configured. The engine checks `enabled`
+    /// internally and returns `None` from `evaluate()` when disabled.
+    pub(super) coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
+    /// MagicOverlay handle for coaching message delivery (Phase 2).
+    pub(super) magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    /// Analysis provider for LLM personalization of coaching messages (Phase 2).
+    pub(super) analysis_provider:
+        Option<Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>>,
+    /// Concrete SQLite storage for coaching event persistence (Phase 2).
+    /// The coaching storage methods are on `SqliteStorage` directly, not via a trait.
+    pub(super) coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
 }
 
 impl Scheduler {
@@ -118,7 +185,16 @@ impl Scheduler {
             config_manager: None,
             vector_store: None,
             embedding_provider: None,
+            vector_index: None,
+            search_coordinator: None,
             adaptive_trigger: Mutex::new(None),
+            sync_engine: None,
+            accessibility_extractor: None,
+            consent_manager: None,
+            coaching_engine: None,
+            magic_overlay: None,
+            analysis_provider: None,
+            coaching_storage: None,
         }
     }
 
@@ -172,8 +248,70 @@ impl Scheduler {
         self
     }
 
+    #[allow(dead_code)]
+    pub fn with_vector_index(mut self, index: Arc<dyn VectorIndex>) -> Self {
+        self.vector_index = Some(index);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_search_coordinator(
+        mut self,
+        coordinator: Arc<oneshim_analysis::AdaptiveSearchCoordinator>,
+    ) -> Self {
+        self.search_coordinator = Some(coordinator);
+        self
+    }
+
     pub fn with_adaptive_trigger(self, state: AdaptiveTriggerState) -> Self {
         *self.adaptive_trigger.lock().expect("adaptive trigger lock") = Some(state);
+        self
+    }
+
+    pub fn with_sync_engine(mut self, engine: Arc<crate::sync_engine::SyncEngine>) -> Self {
+        self.sync_engine = Some(engine);
+        self
+    }
+
+    pub fn with_accessibility_extractor(
+        mut self,
+        extractor: Arc<dyn AccessibilityExtractor>,
+    ) -> Self {
+        self.accessibility_extractor = Some(extractor);
+        self
+    }
+
+    pub fn with_consent_manager(mut self, consent_manager: Arc<ConsentManager>) -> Self {
+        self.consent_manager = Some(consent_manager);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_coaching_engine(mut self, engine: Arc<oneshim_analysis::CoachingEngine>) -> Self {
+        self.coaching_engine = Some(engine);
+        self
+    }
+
+    pub fn with_magic_overlay(mut self, overlay: crate::magic_overlay::MagicOverlayHandle) -> Self {
+        self.magic_overlay = Some(overlay);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_analysis_provider(
+        mut self,
+        provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>,
+    ) -> Self {
+        self.analysis_provider = Some(provider);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_coaching_storage(
+        mut self,
+        storage: Arc<oneshim_storage::sqlite::SqliteStorage>,
+    ) -> Self {
+        self.coaching_storage = Some(storage);
         self
     }
 

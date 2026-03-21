@@ -1,16 +1,62 @@
 use chrono::{DateTime, Utc};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::activity::SessionStats;
+use oneshim_core::models::daily_digest::DailyDigest;
 use oneshim_core::models::storage_records::{
     DeletedRangeCounts, EventExportRecord, FocusInterruptionRecord, FocusWorkSessionRecord,
-    FrameExportRecord, FrameRecord, FrameTagLinkRecord, HourlyMetricsRecord, LocalSuggestionRecord,
-    MetricExportRecord, SearchEventRow, SearchFrameRow, SegmentDetailRecord,
-    StorageStatsSummaryRecord, SuggestionRecord, TagRecord,
+    FrameExportRecord, FrameRecord, FrameTagLinkRecord, GuiInteractionRecord, HourlyMetricsRecord,
+    LocalSuggestionRecord, MetricExportRecord, NewGuiInteraction, SearchEventRow, SearchFrameRow,
+    SegmentDetailRecord, SegmentSummaryRecord, StorageStatsSummaryRecord, SuggestionRecord,
+    TagRecord,
 };
 use oneshim_core::models::work_session::FocusMetrics;
 use oneshim_core::ports::web_storage::WebStorage;
 
 use super::SqliteStorage;
+
+/// Defense-in-depth PII scrub for text stored in gui_interactions.
+/// Replaces strings containing '@' (likely emails) with "[FILTERED]".
+/// This is a lightweight fallback — primary filtering is the caller's responsibility.
+fn scrub_basic_pii(text: &str) -> String {
+    // If text contains an '@' sign, it likely contains an email address
+    if text.contains('@') {
+        return "[FILTERED]".to_string();
+    }
+    text.to_string()
+}
+
+impl SqliteStorage {
+    /// Parse a daily digest row from its constituent JSON columns.
+    fn parse_daily_digest_row(
+        date_str: &str,
+        insight_json: Option<&str>,
+        timeline_json: &str,
+        statistics_json: &str,
+        generated_at_str: &str,
+    ) -> Result<DailyDigest, CoreError> {
+        let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+            .map_err(|e| CoreError::Internal(format!("Invalid date in daily_digests: {e}")))?;
+        let insight = insight_json
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|e| CoreError::Internal(format!("Failed to deserialize insight: {e}")))?;
+        let timeline = serde_json::from_str(timeline_json)
+            .map_err(|e| CoreError::Internal(format!("Failed to deserialize timeline: {e}")))?;
+        let statistics = serde_json::from_str(statistics_json)
+            .map_err(|e| CoreError::Internal(format!("Failed to deserialize statistics: {e}")))?;
+        let generated_at = chrono::DateTime::parse_from_rfc3339(generated_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        Ok(DailyDigest {
+            date,
+            insight,
+            timeline,
+            statistics,
+            generated_at,
+        })
+    }
+}
 
 impl WebStorage for SqliteStorage {
     fn count_events_in_range(&self, from: &str, to: &str) -> Result<u64, CoreError> {
@@ -437,5 +483,396 @@ impl WebStorage for SqliteStorage {
             }
         }
         Ok(map)
+    }
+
+    fn save_daily_digest(&self, digest: &DailyDigest) -> Result<(), CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        let date_str = digest.date.to_string(); // YYYY-MM-DD
+        let insight_json = digest
+            .insight
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| CoreError::Internal(format!("Failed to serialize insight: {e}")))?;
+        let timeline_json = serde_json::to_string(&digest.timeline)
+            .map_err(|e| CoreError::Internal(format!("Failed to serialize timeline: {e}")))?;
+        let statistics_json = serde_json::to_string(&digest.statistics)
+            .map_err(|e| CoreError::Internal(format!("Failed to serialize statistics: {e}")))?;
+        let generated_at = digest.generated_at.to_rfc3339();
+
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_digests (date, insight_json, timeline_json, statistics_json, generated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![date_str, insight_json, timeline_json, statistics_json, generated_at],
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to save daily digest: {e}")))?;
+
+        Ok(())
+    }
+
+    fn get_daily_digest(&self, date: &str) -> Result<Option<DailyDigest>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        let result = conn.query_row(
+            "SELECT date, insight_json, timeline_json, statistics_json, generated_at
+             FROM daily_digests WHERE date = ?1",
+            rusqlite::params![date],
+            |row| {
+                let date_str: String = row.get(0)?;
+                let insight_json: Option<String> = row.get(1)?;
+                let timeline_json: String = row.get(2)?;
+                let statistics_json: String = row.get(3)?;
+                let generated_at_str: String = row.get(4)?;
+                Ok((
+                    date_str,
+                    insight_json,
+                    timeline_json,
+                    statistics_json,
+                    generated_at_str,
+                ))
+            },
+        );
+
+        match result {
+            Ok((date_str, insight_json, timeline_json, statistics_json, generated_at_str)) => {
+                let digest = Self::parse_daily_digest_row(
+                    &date_str,
+                    insight_json.as_deref(),
+                    &timeline_json,
+                    &statistics_json,
+                    &generated_at_str,
+                )?;
+                Ok(Some(digest))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(CoreError::Internal(format!(
+                "Failed to get daily digest: {e}"
+            ))),
+        }
+    }
+
+    fn list_daily_digests(&self, limit: usize) -> Result<Vec<DailyDigest>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT date, insight_json, timeline_json, statistics_json, generated_at
+                 FROM daily_digests ORDER BY date DESC LIMIT ?1",
+            )
+            .map_err(|e| {
+                CoreError::Internal(format!("Failed to prepare daily_digests query: {e}"))
+            })?;
+
+        let digests: Vec<DailyDigest> = stmt
+            .query_map(rusqlite::params![limit as i64], |row| {
+                let date_str: String = row.get(0)?;
+                let insight_json: Option<String> = row.get(1)?;
+                let timeline_json: String = row.get(2)?;
+                let statistics_json: String = row.get(3)?;
+                let generated_at_str: String = row.get(4)?;
+                Ok((
+                    date_str,
+                    insight_json,
+                    timeline_json,
+                    statistics_json,
+                    generated_at_str,
+                ))
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query daily_digests: {e}")))?
+            .filter_map(|r| r.ok())
+            .filter_map(
+                |(date_str, insight_json, timeline_json, statistics_json, generated_at_str)| {
+                    Self::parse_daily_digest_row(
+                        &date_str,
+                        insight_json.as_deref(),
+                        &timeline_json,
+                        &statistics_json,
+                        &generated_at_str,
+                    )
+                    .ok()
+                },
+            )
+            .collect();
+
+        Ok(digests)
+    }
+
+    fn get_segments_for_date(&self, date: &str) -> Result<Vec<SegmentSummaryRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+
+        // Check if the activity_segments table exists
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='activity_segments'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !table_exists {
+            return Ok(vec![]);
+        }
+
+        // date is YYYY-MM-DD; select segments whose start_time falls on that day
+        let from = format!("{date}T00:00:00");
+        let to = format!("{date}T23:59:59");
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, start_time, end_time, duration_secs, dominant_category,
+                        regime_id, app_breakdown, content_activities_json,
+                        context_switch_count, llm_summary
+                 FROM activity_segments
+                 WHERE start_time >= ?1 AND start_time <= ?2
+                 ORDER BY start_time ASC",
+            )
+            .map_err(|e| CoreError::Internal(format!("Failed to prepare segments query: {e}")))?;
+
+        let records: Vec<SegmentSummaryRecord> = stmt
+            .query_map(rusqlite::params![from, to], |row| {
+                Ok(SegmentSummaryRecord {
+                    segment_id: row.get(0)?,
+                    start_time: row.get(1)?,
+                    end_time: row.get(2)?,
+                    duration_secs: row.get::<_, i64>(3)? as u64,
+                    dominant_category: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                    regime_id: row.get(5)?,
+                    app_breakdown: row
+                        .get::<_, Option<String>>(6)?
+                        .unwrap_or_else(|| "{}".to_string()),
+                    content_activities_json: row
+                        .get::<_, Option<String>>(7)?
+                        .unwrap_or_else(|| "[]".to_string()),
+                    context_switch_count: row.get::<_, Option<i64>>(8)?.unwrap_or(0) as u32,
+                    llm_summary: row.get(9)?,
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query segments: {e}")))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
+
+    fn save_gui_interaction(&self, input: &NewGuiInteraction<'_>) -> Result<(), CoreError> {
+        // Defense-in-depth: basic PII scrub on element_text at storage boundary.
+        // Primary filtering is the caller's responsibility (see port doc comment).
+        let scrubbed_text = input.element_text.map(scrub_basic_pii);
+        let scrubbed_ref = scrubbed_text.as_deref();
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        conn.execute(
+            "INSERT INTO gui_interactions (event_id, segment_id, timestamp, element_text, element_type, interaction_type, bbox_json, app_name)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                input.event_id,
+                input.segment_id,
+                input.timestamp,
+                scrubbed_ref,
+                input.element_type,
+                input.interaction_type,
+                input.bbox_json,
+                input.app_name,
+            ],
+        )
+        .map_err(|e| CoreError::Internal(format!("Failed to save GUI interaction: {e}")))?;
+        Ok(())
+    }
+
+    fn list_gui_interactions_for_segment(
+        &self,
+        segment_id: &str,
+    ) -> Result<Vec<GuiInteractionRecord>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, event_id, segment_id, timestamp, element_text, element_type,
+                        interaction_type, bbox_json, app_name, created_at
+                 FROM gui_interactions
+                 WHERE segment_id = ?1
+                 ORDER BY timestamp ASC",
+            )
+            .map_err(|e| {
+                CoreError::Internal(format!("Failed to prepare GUI interaction query: {e}"))
+            })?;
+
+        let records: Vec<GuiInteractionRecord> = stmt
+            .query_map(rusqlite::params![segment_id], |row| {
+                Ok(GuiInteractionRecord {
+                    id: row.get(0)?,
+                    event_id: row.get(1)?,
+                    segment_id: row.get(2)?,
+                    timestamp: row.get(3)?,
+                    element_text: row.get(4)?,
+                    element_type: row.get(5)?,
+                    interaction_type: row.get(6)?,
+                    bbox_json: row.get(7)?,
+                    app_name: row.get(8)?,
+                    created_at: row.get(9)?,
+                })
+            })
+            .map_err(|e| CoreError::Internal(format!("Failed to query GUI interactions: {e}")))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(records)
+    }
+
+    fn query_gui_interaction_density(
+        &self,
+        start: &str,
+        end: &str,
+    ) -> Result<Vec<(String, u32)>, CoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| CoreError::Internal(format!("SQLite lock poisoned: {e}")))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT strftime('%Y-%m-%dT%H:00:00Z', timestamp) AS hour, COUNT(*) AS cnt
+                 FROM gui_interactions
+                 WHERE timestamp >= ?1 AND timestamp < ?2
+                 GROUP BY hour
+                 ORDER BY hour",
+            )
+            .map_err(|e| {
+                CoreError::Internal(format!(
+                    "Failed to prepare GUI interaction density query: {e}"
+                ))
+            })?;
+
+        let rows: Vec<(String, u32)> = stmt
+            .query_map(rusqlite::params![start, end], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+            })
+            .map_err(|e| CoreError::Internal(format!("GUI interaction density query failed: {e}")))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(rows)
+    }
+
+    fn query_coaching_events(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<oneshim_core::models::coaching::CoachingEventRow>, CoreError> {
+        // Delegate to the coaching_storage impl on SqliteStorage
+        self.query_coaching_events(limit, offset)
+    }
+}
+
+/// Parse the centroid (center x, center y) from a bbox JSON string.
+///
+/// Accepts:
+/// - `{"x":100,"y":200,"w":50,"h":30}` → centroid (125, 215)
+/// - `{"x":100,"y":200}` → (100, 200)
+/// - `[100, 200, 150, 230]` (x, y, x2, y2) → centroid (125, 215)
+#[cfg(test)]
+fn parse_bbox_centroid(json: &str) -> Option<(u32, u32)> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    if let Some(obj) = v.as_object() {
+        let x = obj.get("x").and_then(|v| v.as_f64())? as u32;
+        let y = obj.get("y").and_then(|v| v.as_f64())? as u32;
+        let w = obj.get("w").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32;
+        let h = obj.get("h").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32;
+        Some((x + w / 2, y + h / 2))
+    } else if let Some(arr) = v.as_array() {
+        if arr.len() >= 4 {
+            let x1 = arr[0].as_f64()? as u32;
+            let y1 = arr[1].as_f64()? as u32;
+            let x2 = arr[2].as_f64()? as u32;
+            let y2 = arr[3].as_f64()? as u32;
+            Some(((x1 + x2) / 2, (y1 + y2) / 2))
+        } else if arr.len() >= 2 {
+            let x = arr[0].as_f64()? as u32;
+            let y = arr[1].as_f64()? as u32;
+            Some((x, y))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_bbox_centroid;
+
+    #[test]
+    fn object_with_xywh_returns_centroid() {
+        // x=100, y=200, w=50, h=30 → centroid = (125, 215)
+        let json = r#"{"x":100,"y":200,"w":50,"h":30}"#;
+        assert_eq!(parse_bbox_centroid(json), Some((125, 215)));
+    }
+
+    #[test]
+    fn object_with_xy_only_returns_point() {
+        let json = r#"{"x":300,"y":400}"#;
+        assert_eq!(parse_bbox_centroid(json), Some((300, 400)));
+    }
+
+    #[test]
+    fn array_four_elements_returns_centroid() {
+        // [x1, y1, x2, y2] = [100, 200, 150, 230] → centroid = (125, 215)
+        let json = "[100, 200, 150, 230]";
+        assert_eq!(parse_bbox_centroid(json), Some((125, 215)));
+    }
+
+    #[test]
+    fn array_two_elements_returns_point() {
+        let json = "[50, 75]";
+        assert_eq!(parse_bbox_centroid(json), Some((50, 75)));
+    }
+
+    #[test]
+    fn short_array_returns_none() {
+        let json = "[42]";
+        assert_eq!(parse_bbox_centroid(json), None);
+
+        let json_empty = "[]";
+        assert_eq!(parse_bbox_centroid(json_empty), None);
+    }
+
+    #[test]
+    fn malformed_json_returns_none() {
+        assert_eq!(parse_bbox_centroid("not json"), None);
+        assert_eq!(parse_bbox_centroid("{broken"), None);
+        assert_eq!(parse_bbox_centroid(""), None);
+    }
+
+    #[test]
+    fn negative_coordinates_saturate_to_zero() {
+        // f64 → u32 cast: negative values saturate to 0 in Rust.
+        // x=-10 → 0u32, y=-20 → 0u32; w and h default to 0 when absent.
+        let json = r#"{"x":-10,"y":-20}"#;
+        let result = parse_bbox_centroid(json);
+        assert_eq!(result, Some((0, 0)));
+
+        // Negative coordinates in array form
+        let arr_json = "[-5, -15, -1, -3]";
+        let (cx, cy) = parse_bbox_centroid(arr_json).unwrap();
+        assert_eq!(cx, 0);
+        assert_eq!(cy, 0);
     }
 }

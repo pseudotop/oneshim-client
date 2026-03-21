@@ -63,9 +63,9 @@ import { useToast } from '../hooks/useToast'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { IS_TAURI } from '../utils/platform'
-import { AiAutomationTab, DataStorageTab, GeneralTab, MonitoringTab, PrivacyTab } from './settingSections'
+import { AiAutomationTab, CoachingGoalsTab, DataStorageTab, GeneralTab, MonitoringTab, PrivacyTab } from './settingSections'
 
-type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'data'
+type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'data' | 'coaching'
 
 function isSettingsTabId(value: string | null): value is SettingsTabId {
   return (
@@ -73,7 +73,8 @@ function isSettingsTabId(value: string | null): value is SettingsTabId {
     value === 'privacy' ||
     value === 'monitoring' ||
     value === 'ai-automation' ||
-    value === 'data'
+    value === 'data' ||
+    value === 'coaching'
   )
 }
 
@@ -1315,6 +1316,7 @@ export default function Settings() {
     { id: 'monitoring', label: t('settings.tabs.monitoring') },
     { id: 'ai-automation', label: t('settings.tabs.aiAutomation') },
     { id: 'data', label: t('settings.tabs.dataStorage') },
+    { id: 'coaching', label: t('settings.tabs.coaching', 'Coaching Goals') },
   ]
 
   const serializedFormData = formData ? JSON.stringify(formData) : null
@@ -1523,6 +1525,18 @@ export default function Settings() {
               onRootChange={(field, value) => handleRootChange(field as keyof AppSettings, value)}
               onTelemetryChange={handleTelemetryChange}
             />
+          </fieldset>
+        </div>
+
+        <div
+          id="settings-panel-coaching"
+          role="tabpanel"
+          aria-labelledby="settings-tab-coaching"
+          hidden={activeTab !== 'coaching'}
+          aria-hidden={activeTab !== 'coaching'}
+        >
+          <fieldset disabled={activeTab !== 'coaching'} className="m-0 min-w-0 border-0 p-0">
+            <CoachingGoalsTab />
           </fieldset>
         </div>
 

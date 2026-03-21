@@ -49,6 +49,36 @@ pub trait SchedulerStorage: MetricsStorage + Send + Sync {
 
     /// Delete weekly digests older than `max_weeks`. Returns the count of deleted rows.
     fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError>;
+
+    /// Get a cached daily digest by date (YYYY-MM-DD).
+    fn get_daily_digest(
+        &self,
+        date: &str,
+    ) -> Result<Option<oneshim_core::models::daily_digest::DailyDigest>, CoreError>;
+
+    /// Save a daily digest. Upserts by date.
+    fn save_daily_digest(
+        &self,
+        digest: &oneshim_core::models::daily_digest::DailyDigest,
+    ) -> Result<(), CoreError>;
+
+    /// Get activity segment summary records for a given date (YYYY-MM-DD).
+    fn get_segments_for_date(
+        &self,
+        date: &str,
+    ) -> Result<Vec<oneshim_core::models::storage_records::SegmentSummaryRecord>, CoreError>;
+
+    /// Save a GUI interaction event (delegates to WebStorage V13 table).
+    #[allow(dead_code)]
+    fn save_gui_interaction(
+        &self,
+        input: &oneshim_core::models::storage_records::NewGuiInteraction<'_>,
+    ) -> Result<(), CoreError>;
+
+    /// Enforce retention for all auxiliary tables (work_sessions, interruptions,
+    /// gui_interactions, suggestions, local_suggestions, focus_metrics,
+    /// daily_digests, regime_overrides). Returns total rows deleted.
+    fn enforce_all_retention(&self) -> Result<u64, CoreError>;
 }
 
 impl SchedulerStorage for SqliteStorage {
@@ -97,6 +127,42 @@ impl SchedulerStorage for SqliteStorage {
     fn enforce_digest_retention(&self, max_weeks: u32) -> Result<usize, CoreError> {
         SqliteStorage::enforce_digest_retention(self, max_weeks)
     }
+
+    fn get_daily_digest(
+        &self,
+        date: &str,
+    ) -> Result<Option<oneshim_core::models::daily_digest::DailyDigest>, CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::get_daily_digest(self, date)
+    }
+
+    fn save_daily_digest(
+        &self,
+        digest: &oneshim_core::models::daily_digest::DailyDigest,
+    ) -> Result<(), CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::save_daily_digest(self, digest)
+    }
+
+    fn get_segments_for_date(
+        &self,
+        date: &str,
+    ) -> Result<Vec<oneshim_core::models::storage_records::SegmentSummaryRecord>, CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::get_segments_for_date(self, date)
+    }
+
+    fn save_gui_interaction(
+        &self,
+        input: &oneshim_core::models::storage_records::NewGuiInteraction<'_>,
+    ) -> Result<(), CoreError> {
+        use oneshim_core::ports::web_storage::WebStorage;
+        WebStorage::save_gui_interaction(self, input)
+    }
+
+    fn enforce_all_retention(&self) -> Result<u64, CoreError> {
+        SqliteStorage::enforce_all_retention(self)
+    }
 }
 
 pub(super) fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
@@ -117,6 +183,9 @@ pub(super) const IDLE_PERIOD_RETENTION_DAYS: i64 = 30;
 /// OAuth token refresh check interval (seconds).
 #[cfg(feature = "server")]
 pub(super) const OAUTH_REFRESH_INTERVAL_SECS: u64 = 120;
+
+/// Coaching evaluation interval — 30 seconds.
+pub(super) const COACHING_INTERVAL_SECS: u64 = 30;
 
 #[derive(Clone)]
 pub(super) struct PlatformEgressPolicy {
@@ -213,6 +282,8 @@ pub struct SchedulerConfig {
     pub idle_threshold_secs: u64,
     pub upload_enabled: bool,
     pub analysis_config: AnalysisConfig,
+    /// Interval for cross-device sync loop (P3 Phase 3a-2).
+    pub cross_device_sync_interval: Duration,
 }
 
 impl Default for SchedulerConfig {
@@ -232,6 +303,7 @@ impl Default for SchedulerConfig {
             idle_threshold_secs: 300, // 5 min
             upload_enabled: false,
             analysis_config: AnalysisConfig::default(),
+            cross_device_sync_interval: Duration::from_secs(300), // 5 min default
         }
     }
 }

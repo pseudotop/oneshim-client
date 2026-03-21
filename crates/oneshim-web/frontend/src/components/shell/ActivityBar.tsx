@@ -1,4 +1,4 @@
-import { BarChart3, Clock, FileText, Image, Info, LayoutDashboard, Monitor, Settings, Tag, Zap } from 'lucide-react'
+import { BarChart3, Calendar, Clock, FileText, Image, Info, LayoutDashboard, MessageCircle, Monitor, RefreshCw, Settings, Tag, Zap } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -18,9 +18,12 @@ const TOOLTIP_ID = 'activity-bar-tooltip'
 
 const navItems: NavItem[] = [
   { id: 'dashboard', to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard', group: 'monitor' },
+  { id: 'dashboard-day', to: '/dashboard/day', icon: Calendar, labelKey: 'nav.dashboardDay', group: 'monitor' },
   { id: 'timeline', to: '/timeline', icon: Clock, labelKey: 'nav.timeline', group: 'monitor' },
   { id: 'replay', to: '/replay', icon: Zap, labelKey: 'nav.replay', group: 'monitor' },
   { id: 'automation', to: '/automation', icon: Monitor, labelKey: 'nav.automation', group: 'monitor' },
+  { id: 'recalibration', to: '/recalibration', icon: RefreshCw, labelKey: 'nav.recalibration', group: 'data' },
+  { id: 'coaching', to: '/coaching', icon: MessageCircle, labelKey: 'nav.coaching', group: 'data' },
   { id: 'focus', to: '/focus', icon: Image, labelKey: 'nav.focus', group: 'data' },
   { id: 'reports', to: '/reports', icon: BarChart3, labelKey: 'nav.reports', group: 'data' },
   { id: 'search', to: '/search', icon: Tag, labelKey: 'nav.search', group: 'data' },

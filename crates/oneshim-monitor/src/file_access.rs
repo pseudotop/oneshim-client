@@ -1,7 +1,9 @@
 use oneshim_core::config::FileAccessConfig;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 // Event types are canonical in oneshim-core; re-exported here.
 pub use oneshim_core::models::event::{FileAccessEvent, FileEventType};
@@ -93,6 +95,143 @@ impl FileAccessFilter {
     }
 }
 
+/// Polling-based file access watcher.
+///
+/// Scans monitored directories for modification time changes each poll cycle.
+/// Tracks files that were created, modified, or deleted since the last scan.
+/// Thread-safe — designed to be wrapped in `Arc` and called from an async loop.
+///
+/// # Design notes
+///
+/// This uses polling (stat-based) detection rather than OS-native file watching
+/// (e.g., `notify` crate / inotify / FSEvents) because:
+/// 1. The `notify` crate is not in the workspace dependency set.
+/// 2. Polling at the scheduler cadence (30-60s) is sufficient for our
+///    use case (activity tracking, not real-time sync).
+/// 3. Simpler error handling — no watcher thread management.
+///
+/// When `notify` is added to the workspace, replace `poll_changes()` with an
+/// event-driven receiver.
+pub struct FileAccessWatcher {
+    filter: FileAccessFilter,
+    /// Last-seen modification times for files in monitored directories.
+    file_mtimes: Mutex<HashMap<PathBuf, SystemTime>>,
+    /// Cumulative count of file changes since last `take_modified_count()`.
+    modified_count: AtomicU32,
+}
+
+impl FileAccessWatcher {
+    pub fn new(config: FileAccessConfig) -> Self {
+        Self {
+            filter: FileAccessFilter::new(config),
+            file_mtimes: Mutex::new(HashMap::new()),
+            modified_count: AtomicU32::new(0),
+        }
+    }
+
+    /// Scan monitored directories and detect file changes since the last poll.
+    ///
+    /// Returns a list of `FileAccessEvent` for created and modified files.
+    /// Deleted files are also detected (present in previous scan, absent now).
+    ///
+    /// Only scans top-level files in each monitored folder (non-recursive) to
+    /// keep the scan lightweight. Deep scanning can be enabled by walking
+    /// subdirectories if needed.
+    pub fn poll_changes(&self) -> Vec<FileAccessEvent> {
+        let mut events = Vec::new();
+
+        let mut mtimes = match self.file_mtimes.lock() {
+            Ok(m) => m,
+            Err(_) => return events,
+        };
+
+        let monitored_folders: Vec<PathBuf> = self.filter.config.monitored_folders.clone();
+
+        if monitored_folders.is_empty() || !self.filter.config.enabled {
+            return events;
+        }
+
+        let mut current_files: HashMap<PathBuf, SystemTime> = HashMap::new();
+
+        for folder in &monitored_folders {
+            let entries = match std::fs::read_dir(folder) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+
+                let mtime = match entry.metadata().and_then(|m| m.modified()) {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+
+                if !self.filter.should_collect(&path) {
+                    continue;
+                }
+
+                current_files.insert(path.clone(), mtime);
+
+                match mtimes.get(&path) {
+                    None => {
+                        // New file — created since last scan
+                        if let Some(event) = self.filter.create_event(&path, FileEventType::Created)
+                        {
+                            events.push(event);
+                            self.modified_count.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    Some(prev_mtime) if *prev_mtime != mtime => {
+                        // Existing file with changed mtime — modified
+                        if let Some(event) =
+                            self.filter.create_event(&path, FileEventType::Modified)
+                        {
+                            events.push(event);
+                            self.modified_count.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    _ => {
+                        // No change
+                    }
+                }
+            }
+        }
+
+        // Detect deleted files (in previous scan but not in current)
+        for old_path in mtimes.keys() {
+            if !current_files.contains_key(old_path) {
+                if let Some(event) = self.filter.create_event(old_path, FileEventType::Deleted) {
+                    events.push(event);
+                    self.modified_count.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        }
+
+        // Replace the stored mtimes with the current scan
+        *mtimes = current_files;
+
+        // Reset rate limiter for next minute
+        self.filter.reset_minute_counter();
+
+        events
+    }
+
+    /// Return the number of file modifications since the last call and reset
+    /// the counter to zero. Designed for periodic snapshot collection.
+    pub fn take_modified_count(&self) -> u32 {
+        self.modified_count.swap(0, Ordering::Relaxed)
+    }
+
+    /// Access the underlying filter for manual event creation.
+    pub fn filter(&self) -> &FileAccessFilter {
+        &self.filter
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +307,119 @@ mod tests {
         let evt = event.unwrap();
         assert_eq!(evt.event_type, FileEventType::Modified);
         assert_eq!(evt.extension, Some("rs".to_string()));
+    }
+
+    #[test]
+    fn watcher_disabled_returns_empty() {
+        let mut config = test_config();
+        config.enabled = false;
+        let watcher = FileAccessWatcher::new(config);
+        assert!(watcher.poll_changes().is_empty());
+    }
+
+    #[test]
+    fn watcher_empty_folders_returns_empty() {
+        let mut config = test_config();
+        config.monitored_folders.clear();
+        let watcher = FileAccessWatcher::new(config);
+        assert!(watcher.poll_changes().is_empty());
+    }
+
+    #[test]
+    fn watcher_detects_new_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = FileAccessConfig {
+            enabled: true,
+            monitored_folders: vec![tmp.path().to_path_buf()],
+            excluded_extensions: vec![],
+            max_events_per_minute: 100,
+        };
+        let watcher = FileAccessWatcher::new(config);
+
+        // First poll — empty directory
+        let events = watcher.poll_changes();
+        assert!(events.is_empty());
+
+        // Create a file
+        std::fs::write(tmp.path().join("new_file.rs"), "fn main() {}").unwrap();
+
+        // Second poll — should detect the new file as Created
+        let events = watcher.poll_changes();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, FileEventType::Created);
+        assert_eq!(watcher.take_modified_count(), 1);
+    }
+
+    #[test]
+    fn watcher_detects_modification() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("file.rs");
+        std::fs::write(&file_path, "v1").unwrap();
+
+        let config = FileAccessConfig {
+            enabled: true,
+            monitored_folders: vec![tmp.path().to_path_buf()],
+            excluded_extensions: vec![],
+            max_events_per_minute: 100,
+        };
+        let watcher = FileAccessWatcher::new(config);
+
+        // First poll — establishes baseline
+        let events = watcher.poll_changes();
+        assert_eq!(events.len(), 1); // Created (first time seen)
+
+        // Modify the file — force a different mtime by sleeping briefly
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::fs::write(&file_path, "v2").unwrap();
+
+        // Second poll — should detect modification
+        let events = watcher.poll_changes();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, FileEventType::Modified);
+    }
+
+    #[test]
+    fn watcher_detects_deletion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("doomed.rs");
+        std::fs::write(&file_path, "bye").unwrap();
+
+        let config = FileAccessConfig {
+            enabled: true,
+            monitored_folders: vec![tmp.path().to_path_buf()],
+            excluded_extensions: vec![],
+            max_events_per_minute: 100,
+        };
+        let watcher = FileAccessWatcher::new(config);
+
+        // First poll — baseline
+        watcher.poll_changes();
+
+        // Delete the file
+        std::fs::remove_file(&file_path).unwrap();
+
+        // Second poll — should detect deletion
+        let events = watcher.poll_changes();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, FileEventType::Deleted);
+    }
+
+    #[test]
+    fn watcher_respects_extension_filter() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("good.rs"), "code").unwrap();
+        std::fs::write(tmp.path().join("bad.tmp"), "temp").unwrap();
+
+        let config = FileAccessConfig {
+            enabled: true,
+            monitored_folders: vec![tmp.path().to_path_buf()],
+            excluded_extensions: vec![".tmp".to_string()],
+            max_events_per_minute: 100,
+        };
+        let watcher = FileAccessWatcher::new(config);
+
+        let events = watcher.poll_changes();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].extension, Some("rs".to_string()));
     }
 }

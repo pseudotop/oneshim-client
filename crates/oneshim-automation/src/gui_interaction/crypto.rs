@@ -9,6 +9,7 @@ use crate::controller::AutomationAction;
 
 pub(super) type HmacSha256 = Hmac<Sha256>;
 
+#[tracing::instrument(skip_all)]
 pub(super) fn sign_ticket(
     secret: &[u8],
     ticket: &GuiExecutionTicket,
@@ -20,6 +21,7 @@ pub(super) fn sign_ticket(
     Ok(encode_hex(signature.as_slice()))
 }
 
+#[tracing::instrument(skip_all)]
 pub(super) fn verify_ticket(
     secret: &[u8],
     ticket: &GuiExecutionTicket,

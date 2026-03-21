@@ -1,4 +1,5 @@
 export { default as AiAutomationTab } from './AiAutomationTab'
+export { default as CoachingGoalsTab } from './CoachingGoalsTab'
 export { default as DataStorageTab } from './DataStorageTab'
 export { default as GeneralTab } from './GeneralTab'
 export { default as MonitoringTab } from './MonitoringTab'

@@ -18,6 +18,7 @@ tauri-build = { workspace = true, features = [] }
 
 [dependencies]
 tauri = { workspace = true }
+tauri-plugin-global-shortcut = { workspace = true }
 tauri-plugin-notification = { workspace = true }
 tauri-plugin-webdriver = { workspace = true, optional = true }
 
@@ -60,6 +61,7 @@ zip = { workspace = true }
 flate2 = { workspace = true }
 base64 = { workspace = true }
 thiserror = { workspace = true }
+keyring = { workspace = true }
 
 [features]
 default = ["custom-protocol", "analysis"]
@@ -68,6 +70,7 @@ analysis = ["dep:oneshim-network"]
 server = ["analysis"]
 grpc = ["server", "oneshim-network/grpc"]
 embedding = ["dep:oneshim-embedding"]
+lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -111,4 +114,6 @@ uuid = { workspace = true }
 mockito = { workspace = true }
 tokio-test = { workspace = true }
 axum = { workspace = true }
+tower = { workspace = true }
 futures = { workspace = true }
+zeroize = { workspace = true }

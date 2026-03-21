@@ -1,3 +1,5 @@
+> **Status: OBSOLETE** — Referenced companion documents were completed and merged in a prior session.
+
 # Provider Surface Single-PR Review Checklist
 
 Date: 2026-03-16

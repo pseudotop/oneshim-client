@@ -4,8 +4,11 @@ use oneshim_core::error::CoreError;
 use oneshim_core::models::embedding::{SearchFilters, SearchResult};
 use oneshim_core::ports::embedding_provider::EmbeddingProvider;
 use oneshim_core::ports::vector_store::VectorStore;
+use oneshim_core::quantization::ScalarQuantizer;
 
+use crate::adaptive_search::AdaptiveSearchCoordinator;
 use crate::assembler::PiiFilter;
+use crate::query_expander::{ActivityContext, QueryExpander};
 
 /// Retrieves relevant historical context via vector similarity search.
 ///
@@ -17,6 +20,8 @@ pub struct VectorRetriever {
     pii_filter: PiiFilter,
     max_results: usize,
     time_decay_hours: f32,
+    quantization_enabled: bool,
+    search_coordinator: Option<Arc<AdaptiveSearchCoordinator>>,
 }
 
 impl VectorRetriever {
@@ -26,6 +31,7 @@ impl VectorRetriever {
         pii_filter: PiiFilter,
         max_results: usize,
         time_decay_hours: f32,
+        quantization_enabled: bool,
     ) -> Self {
         Self {
             embedding_provider,
@@ -33,6 +39,31 @@ impl VectorRetriever {
             pii_filter,
             max_results,
             time_decay_hours,
+            quantization_enabled,
+            search_coordinator: None,
+        }
+    }
+
+    /// Create a VectorRetriever with an adaptive search coordinator.
+    /// When the coordinator is present, search delegates to it instead of
+    /// using the direct brute-force or quantized paths.
+    pub fn with_coordinator(
+        embedding_provider: Arc<dyn EmbeddingProvider>,
+        vector_store: Arc<dyn VectorStore>,
+        pii_filter: PiiFilter,
+        max_results: usize,
+        time_decay_hours: f32,
+        quantization_enabled: bool,
+        coordinator: Arc<AdaptiveSearchCoordinator>,
+    ) -> Self {
+        Self {
+            embedding_provider,
+            vector_store,
+            pii_filter,
+            max_results,
+            time_decay_hours,
+            quantization_enabled,
+            search_coordinator: Some(coordinator),
         }
     }
 
@@ -57,22 +88,87 @@ impl VectorRetriever {
 
         let query_vector = self.embedding_provider.embed(&query_text).await?;
 
-        self.vector_store
-            .search(&query_vector, self.max_results, self.time_decay_hours)
-            .await
+        // Delegate to adaptive search coordinator if available
+        if let Some(ref coordinator) = self.search_coordinator {
+            return coordinator
+                .search(
+                    &query_vector,
+                    self.max_results,
+                    self.time_decay_hours,
+                    &SearchFilters::default(),
+                )
+                .await;
+        }
+
+        if self.quantization_enabled {
+            let quantized = ScalarQuantizer::quantize(&query_vector)?;
+            self.vector_store
+                .search_quantized(
+                    &quantized,
+                    self.max_results,
+                    self.time_decay_hours,
+                    &SearchFilters::default(),
+                )
+                .await
+        } else {
+            self.vector_store
+                .search(&query_vector, self.max_results, self.time_decay_hours)
+                .await
+        }
     }
 
     /// Natural language search (user/dashboard queries).
     ///
     /// Embeds the raw query text and searches with optional metadata filters.
+    /// When `activity_context` is provided, short queries (<3 words) are
+    /// expanded with contextual keywords before embedding.
     pub async fn search_natural_language(
         &self,
         query: &str,
         filters: Option<SearchFilters>,
     ) -> Result<Vec<SearchResult>, CoreError> {
-        let query_vector = self.embedding_provider.embed(query).await?;
+        self.search_natural_language_with_context(query, filters, None)
+            .await
+    }
 
-        if let Some(filters) = filters {
+    /// Natural language search with optional activity context for query expansion.
+    ///
+    /// When `activity_context` is provided, short queries are expanded with
+    /// app name, work type, and content labels before embedding.
+    pub async fn search_natural_language_with_context(
+        &self,
+        query: &str,
+        filters: Option<SearchFilters>,
+        activity_context: Option<&ActivityContext>,
+    ) -> Result<Vec<SearchResult>, CoreError> {
+        let expanded = QueryExpander::expand(query, activity_context);
+        let query_vector = self.embedding_provider.embed(&expanded).await?;
+
+        // Delegate to adaptive search coordinator if available
+        if let Some(ref coordinator) = self.search_coordinator {
+            let filters = filters.unwrap_or_default();
+            return coordinator
+                .search(
+                    &query_vector,
+                    self.max_results,
+                    self.time_decay_hours,
+                    &filters,
+                )
+                .await;
+        }
+
+        if self.quantization_enabled {
+            let quantized = ScalarQuantizer::quantize(&query_vector)?;
+            let filters = filters.unwrap_or_default();
+            self.vector_store
+                .search_quantized(
+                    &quantized,
+                    self.max_results,
+                    self.time_decay_hours,
+                    &filters,
+                )
+                .await
+        } else if let Some(filters) = filters {
             self.vector_store
                 .search_filtered(
                     &query_vector,
@@ -95,6 +191,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use oneshim_core::models::embedding::{EmbeddingContentType, EmbeddingMetadata};
+    use oneshim_core::models::tiered_memory::WorkType;
 
     // ── Mock EmbeddingProvider ─────────────────────────────────────
 
@@ -119,15 +216,27 @@ mod tests {
 
     struct MockVectorStore {
         results: Vec<SearchResult>,
+        quantized_search_called: std::sync::atomic::AtomicBool,
     }
 
     impl MockVectorStore {
         fn new(results: Vec<SearchResult>) -> Self {
-            Self { results }
+            Self {
+                results,
+                quantized_search_called: std::sync::atomic::AtomicBool::new(false),
+            }
         }
 
         fn empty() -> Self {
-            Self { results: vec![] }
+            Self {
+                results: vec![],
+                quantized_search_called: std::sync::atomic::AtomicBool::new(false),
+            }
+        }
+
+        fn was_quantized_search_called(&self) -> bool {
+            self.quantized_search_called
+                .load(std::sync::atomic::Ordering::Relaxed)
         }
     }
 
@@ -185,6 +294,18 @@ mod tests {
         ) -> Result<(), CoreError> {
             Ok(())
         }
+
+        async fn search_quantized(
+            &self,
+            _query_vector: &oneshim_core::quantization::QuantizedVector,
+            _limit: usize,
+            _time_decay_hours: f32,
+            _filters: &SearchFilters,
+        ) -> Result<Vec<SearchResult>, CoreError> {
+            self.quantized_search_called
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(self.results.clone())
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────
@@ -217,6 +338,7 @@ mod tests {
             pii_filter,
             5,
             168.0,
+            false,
         )
     }
 
@@ -279,6 +401,7 @@ mod tests {
             noop_filter(),
             5,
             168.0,
+            false,
         );
 
         let found = retriever
@@ -317,5 +440,159 @@ mod tests {
             .unwrap();
 
         assert_eq!(found.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn quantization_enabled_uses_search_quantized() {
+        let results = vec![make_search_result("Quantized result", 0.9)];
+        let store = Arc::new(MockVectorStore::new(results));
+        let retriever = VectorRetriever::new(
+            Arc::new(MockEmbeddingProvider),
+            store.clone(),
+            noop_filter(),
+            5,
+            168.0,
+            true,
+        );
+
+        let found = retriever
+            .retrieve_for_context("VSCode", "main.rs", None)
+            .await
+            .unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert!(store.was_quantized_search_called());
+    }
+
+    #[tokio::test]
+    async fn quantization_enabled_natural_language_uses_search_quantized() {
+        let results = vec![make_search_result("NL quantized", 0.85)];
+        let store = Arc::new(MockVectorStore::new(results));
+        let retriever = VectorRetriever::new(
+            Arc::new(MockEmbeddingProvider),
+            store.clone(),
+            noop_filter(),
+            5,
+            168.0,
+            true,
+        );
+
+        let found = retriever
+            .search_natural_language("what did I work on", None)
+            .await
+            .unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert!(store.was_quantized_search_called());
+    }
+
+    // ── Capturing Mock (for query expansion verification) ────────
+
+    struct CapturingEmbeddingProvider {
+        captured: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl CapturingEmbeddingProvider {
+        fn new() -> Self {
+            Self {
+                captured: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn last_query(&self) -> Option<String> {
+            self.captured.lock().unwrap().last().cloned()
+        }
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for CapturingEmbeddingProvider {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>, CoreError> {
+            self.captured.lock().unwrap().push(text.to_string());
+            Ok(vec![0.1, 0.2, 0.3])
+        }
+        fn dimensions(&self) -> usize {
+            3
+        }
+        fn model_id(&self) -> &str {
+            "mock-model"
+        }
+    }
+
+    // ── Query expansion tests ────────────────────────────────────
+
+    #[tokio::test]
+    async fn search_with_context_expands_short_query() {
+        let embed_provider = Arc::new(CapturingEmbeddingProvider::new());
+        let retriever = VectorRetriever::new(
+            embed_provider.clone(),
+            Arc::new(MockVectorStore::empty()),
+            noop_filter(),
+            5,
+            168.0,
+            false,
+        );
+
+        let ctx = ActivityContext {
+            app_name: "VSCode".to_string(),
+            content_labels: vec!["auth.rs".to_string()],
+            work_type: Some(WorkType::ActiveCoding),
+        };
+
+        let _ = retriever
+            .search_natural_language_with_context("auth", None, Some(&ctx))
+            .await;
+
+        let embedded = embed_provider.last_query().unwrap();
+        assert!(embedded.contains("VSCode"), "should contain app name");
+        assert!(
+            embedded.contains("coding"),
+            "should contain work type keyword"
+        );
+    }
+
+    #[tokio::test]
+    async fn search_with_context_passes_through_long_query() {
+        let embed_provider = Arc::new(CapturingEmbeddingProvider::new());
+        let retriever = VectorRetriever::new(
+            embed_provider.clone(),
+            Arc::new(MockVectorStore::empty()),
+            noop_filter(),
+            5,
+            168.0,
+            false,
+        );
+
+        let ctx = ActivityContext {
+            app_name: "VSCode".to_string(),
+            content_labels: vec!["main.rs".to_string()],
+            work_type: Some(WorkType::ActiveCoding),
+        };
+
+        let _ = retriever
+            .search_natural_language_with_context("what did I work on yesterday", None, Some(&ctx))
+            .await;
+
+        let embedded = embed_provider.last_query().unwrap();
+        assert_eq!(embedded, "what did I work on yesterday");
+    }
+
+    #[tokio::test]
+    async fn search_without_context_no_expansion() {
+        let embed_provider = Arc::new(CapturingEmbeddingProvider::new());
+        let retriever = VectorRetriever::new(
+            embed_provider.clone(),
+            Arc::new(MockVectorStore::empty()),
+            noop_filter(),
+            5,
+            168.0,
+            false,
+        );
+
+        let _ = retriever
+            .search_natural_language_with_context("auth", None, None)
+            .await;
+
+        let embedded = embed_provider.last_query().unwrap();
+        assert_eq!(embedded, "auth");
     }
 }

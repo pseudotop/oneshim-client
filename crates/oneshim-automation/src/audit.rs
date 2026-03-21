@@ -561,4 +561,58 @@ mod tests {
         let batch = logger.drain_batch();
         assert!(batch.is_empty());
     }
+
+    #[test]
+    fn gui_state_transitions_emit_audit_entries() {
+        let mut logger = AuditLogger::new(100, 50);
+        let session_id = "gui-sess-001";
+
+        // State transitions (forwarded from GuiSessionEvent broadcast)
+        logger.log_event("gui.session.proposed", session_id, "Session created");
+        logger.log_event(
+            "gui.session.highlighted",
+            session_id,
+            "3 candidates highlighted",
+        );
+        logger.log_event(
+            "gui.session.confirmed",
+            session_id,
+            "Element elem-001 confirmed",
+        );
+        logger.log_event(
+            "gui.session.executing",
+            session_id,
+            "Executing click on elem-001",
+        );
+        logger.log_event(
+            "gui.session.executed",
+            session_id,
+            "Action completed successfully",
+        );
+
+        // Denied paths
+        logger.log_denied("gui-deny-001", session_id, "gui.accessibility_denied");
+
+        // Ticket operations
+        logger.log_event("gui.ticket.signed", session_id, "Ticket ticket-001 issued");
+        logger.log_event(
+            "gui.ticket.verified",
+            session_id,
+            "Ticket ticket-001 verified",
+        );
+        logger.log_denied("gui-deny-002", session_id, "gui.ticket.replay_rejected");
+
+        assert_eq!(logger.pending_count(), 9);
+
+        let completed = logger.entries_by_status(&AuditStatus::Completed, 20);
+        assert_eq!(completed.len(), 7); // 5 state transitions + 2 ticket ops
+
+        let denied = logger.entries_by_status(&AuditStatus::Denied, 20);
+        assert_eq!(denied.len(), 2); // accessibility + replay
+
+        let stats = logger.stats();
+        assert_eq!(stats.completed, 7);
+        assert_eq!(stats.denied, 2);
+        assert_eq!(stats.total, 9);
+    }
 }

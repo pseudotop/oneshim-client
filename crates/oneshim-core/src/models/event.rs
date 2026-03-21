@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+use super::app_registry::KeystrokeProfile;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Event {
@@ -107,6 +109,10 @@ pub struct InputActivityEvent {
     pub mouse: MouseActivity,
     pub keyboard: KeyboardActivity,
     pub app_name: String,
+    /// Keystroke profile with key-category ratios.
+    /// Present only when `input_pattern_detail` is enabled in config.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keystroke_profile: Option<KeystrokeProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -178,4 +184,22 @@ pub struct WindowInfo {
     pub screen_ratio: f32,
     pub is_fullscreen: bool,
     pub z_order: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn input_event_without_keystroke_profile_deserializes() {
+        let json = r#"{
+            "timestamp": "2026-03-19T00:00:00Z",
+            "period_secs": 30,
+            "mouse": {"click_count":0,"move_distance":0.0,"scroll_count":0,"last_position":null,"double_click_count":0,"right_click_count":0},
+            "keyboard": {"keystrokes_per_min":0,"total_keystrokes":0,"typing_bursts":0,"shortcut_count":0,"correction_count":0},
+            "app_name": "Code"
+        }"#;
+        let event: InputActivityEvent = serde_json::from_str(json).unwrap();
+        assert!(event.keystroke_profile.is_none());
+    }
 }

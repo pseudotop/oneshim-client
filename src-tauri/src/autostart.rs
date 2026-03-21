@@ -176,6 +176,10 @@ mod windows {
         let subkey_wide = to_wide(SUBKEY);
         let value_wide = to_wide(VALUE_NAME);
 
+        // SAFETY: RegOpenKeyExW opens HKCU\...\Run with KEY_WRITE.
+        // subkey_wide and value_wide are null-terminated UTF-16 vecs alive for the block.
+        // hkey is written by RegOpenKeyExW and closed via RegCloseKey before return.
+        // exe_wide cast to *const u8 is valid for REG_SZ byte data. No aliasing issues.
         unsafe {
             let mut hkey: HKEY = std::ptr::null_mut();
             let result = RegOpenKeyExW(
@@ -212,6 +216,9 @@ mod windows {
         let subkey_wide = to_wide(SUBKEY);
         let value_wide = to_wide(VALUE_NAME);
 
+        // SAFETY: RegOpenKeyExW opens HKCU\...\Run with KEY_WRITE.
+        // subkey_wide and value_wide are null-terminated UTF-16 vecs alive for the block.
+        // hkey is closed via RegCloseKey before return. RegDeleteValueW failure is ignored.
         unsafe {
             let mut hkey: HKEY = std::ptr::null_mut();
             let result = RegOpenKeyExW(
@@ -236,6 +243,9 @@ mod windows {
         let subkey_wide = to_wide(SUBKEY);
         let value_wide = to_wide(VALUE_NAME);
 
+        // SAFETY: RegOpenKeyExW opens HKCU\...\Run with KEY_READ.
+        // RegQueryValueExW is called with null output pointers (existence check only).
+        // hkey is closed via RegCloseKey before return. No data written.
         unsafe {
             let mut hkey: HKEY = std::ptr::null_mut();
             let result = RegOpenKeyExW(

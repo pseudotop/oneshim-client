@@ -174,6 +174,21 @@ pub struct SuggestionRecord {
     pub expires_at: Option<String>,
 }
 
+/// Summary of an activity segment for daily digest generation.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SegmentSummaryRecord {
+    pub segment_id: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_secs: u64,
+    pub dominant_category: String,
+    pub regime_id: Option<String>,
+    pub app_breakdown: String,
+    pub content_activities_json: String,
+    pub context_switch_count: u32,
+    pub llm_summary: Option<String>,
+}
+
 /// Minimal segment detail for enriching vector search results.
 #[derive(Debug, Clone)]
 pub struct SegmentDetailRecord {
@@ -184,4 +199,32 @@ pub struct SegmentDetailRecord {
     pub llm_summary: Option<String>,
     pub dominant_category: String,
     pub regime_label: Option<String>,
+}
+
+/// Input DTO for inserting a GUI interaction event (V13).
+#[derive(Debug, Clone)]
+pub struct NewGuiInteraction<'a> {
+    pub event_id: &'a str,
+    pub segment_id: Option<&'a str>,
+    pub timestamp: &'a str,
+    pub element_text: Option<&'a str>,
+    pub element_type: Option<&'a str>,
+    pub interaction_type: &'a str,
+    pub bbox_json: Option<&'a str>,
+    pub app_name: &'a str,
+}
+
+/// A GUI interaction event record from the V13 gui_interactions table.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GuiInteractionRecord {
+    pub id: i64,
+    pub event_id: String,
+    pub segment_id: Option<String>,
+    pub timestamp: String,
+    pub element_text: Option<String>,
+    pub element_type: Option<String>,
+    pub interaction_type: String,
+    pub bbox_json: Option<String>,
+    pub app_name: String,
+    pub created_at: String,
 }

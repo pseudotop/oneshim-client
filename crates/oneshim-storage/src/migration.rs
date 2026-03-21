@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use tracing::{debug, info};
 
-const CURRENT_VERSION: u32 = 10;
+const CURRENT_VERSION: u32 = 17;
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -52,6 +52,35 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 
     if current < 10 {
         migrate_v10(conn)?;
+    }
+
+    if current < 11 {
+        migrate_v11(conn)?;
+    }
+
+    if current < 12 {
+        migrate_v12(conn)?;
+    }
+
+    if current < 13 {
+        migrate_v13(conn)?;
+    }
+
+    if current < 14 {
+        migrate_v14(conn)?;
+    }
+
+    // V15 is reserved for Sync 3b (lan_peer_pins)
+    if current < 15 {
+        migrate_v15(conn)?;
+    }
+
+    if current < 16 {
+        migrate_v16(conn)?;
+    }
+
+    if current < 17 {
+        migrate_v17(conn)?;
     }
 
     Ok(())
@@ -558,6 +587,311 @@ fn migrate_v10(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn migrate_v11(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V11 execution: FTS5 search index + daily digests table");
+
+    // FTS5 virtual table — may fail if the fts5 extension is not compiled in.
+    // We log a warning and continue; the TextSearchProvider can return empty results.
+    let fts5_result = conn.execute_batch(
+        "
+        -- FTS5 full-text search index
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+            segment_id UNINDEXED,
+            content_type,
+            searchable_text,
+            tokenize='porter unicode61'
+        );
+
+        -- Backfill existing segments
+        INSERT OR IGNORE INTO search_fts (segment_id, content_type, searchable_text)
+        SELECT id, 'segment', COALESCE(llm_summary, '') || ' ' || COALESCE(dominant_category, '')
+        FROM activity_segments;
+        ",
+    );
+    if let Err(e) = fts5_result {
+        tracing::warn!("FTS5 table creation skipped (extension not available): {e}");
+    }
+
+    conn.execute_batch(
+        "
+        -- Daily digests
+        CREATE TABLE IF NOT EXISTS daily_digests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL UNIQUE,
+            insight_json TEXT,
+            timeline_json TEXT NOT NULL,
+            statistics_json TEXT NOT NULL,
+            generated_at TEXT NOT NULL
+        );
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (11);
+        ",
+    )?;
+
+    info!("migration V11 completed");
+    Ok(())
+}
+
+fn migrate_v12(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V12 execution: regime_overrides table for recalibration");
+
+    conn.execute_batch(
+        "
+        -- User regime overrides for constraint-based re-clustering
+        CREATE TABLE IF NOT EXISTS regime_overrides (
+            override_id TEXT PRIMARY KEY,
+            segment_id TEXT NOT NULL,
+            original_regime_id TEXT,
+            action_type TEXT NOT NULL,
+            action_data TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_override_segment ON regime_overrides(segment_id);
+        CREATE INDEX IF NOT EXISTS idx_override_created ON regime_overrides(created_at);
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (12);
+        ",
+    )?;
+
+    info!("migration V12 completed");
+    Ok(())
+}
+
+fn migrate_v13(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V13 execution: gui_interactions table for GUI Activity Intelligence");
+
+    conn.execute_batch(
+        "
+        -- GUI interaction events for Phase 2 GUI Activity Intelligence
+        CREATE TABLE IF NOT EXISTS gui_interactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL,
+            segment_id TEXT,
+            timestamp TEXT NOT NULL,
+            element_text TEXT,
+            element_type TEXT,
+            interaction_type TEXT NOT NULL,
+            bbox_json TEXT,
+            app_name TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_gui_segment ON gui_interactions(segment_id);
+        CREATE INDEX IF NOT EXISTS idx_gui_timestamp ON gui_interactions(timestamp);
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (13);
+        ",
+    )?;
+
+    info!("migration V13 completed");
+    Ok(())
+}
+
+fn migrate_v14(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V14 execution: INT8 quantization columns + cross-device sync metadata");
+
+    conn.execute_batch(
+        "
+        -- === P3 Vector Compression: INT8 quantized vector columns ===
+        ALTER TABLE embedding_vectors ADD COLUMN vector_int8 BLOB;
+        ALTER TABLE embedding_vectors ADD COLUMN quant_scale REAL;
+        ALTER TABLE embedding_vectors ADD COLUMN quant_offset REAL;
+
+        -- === P3 Cross-Device Sync: HLC columns on syncable tables ===
+        ALTER TABLE activity_segments ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE activity_segments ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE activity_segments ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE regimes ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regimes ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regimes ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE regime_overrides ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regime_overrides ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regime_overrides ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE embedding_vectors ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE embedding_vectors ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE embedding_vectors ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE suggestions ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE suggestions ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE suggestions ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        ALTER TABLE trigger_params_snapshots ADD COLUMN hlc_wall_ms INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE trigger_params_snapshots ADD COLUMN hlc_counter INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE trigger_params_snapshots ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT '';
+
+        -- Tombstone columns for LWW-managed tables only
+        ALTER TABLE regimes ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE regimes ADD COLUMN deleted_at TEXT;
+
+        ALTER TABLE suggestions ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE suggestions ADD COLUMN deleted_at TEXT;
+
+        ALTER TABLE embedding_vectors ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE embedding_vectors ADD COLUMN deleted_at TEXT;
+
+        -- Sync infrastructure tables
+        CREATE TABLE IF NOT EXISTS sync_peers (
+            device_id TEXT PRIMARY KEY,
+            device_name TEXT NOT NULL,
+            last_sync_at TEXT NOT NULL,
+            watermark_wall_ms INTEGER NOT NULL DEFAULT 0,
+            watermark_counter INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS device_identity (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            device_id TEXT NOT NULL UNIQUE,
+            device_name TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (14);
+        ",
+    )?;
+
+    info!("migration V14 completed");
+    Ok(())
+}
+
+fn migrate_v15(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V15 execution: LAN sync peer TOFU pins table");
+
+    conn.execute_batch(
+        "
+        -- LAN peer TOFU (Trust On First Use) certificate pins
+        CREATE TABLE IF NOT EXISTS lan_peer_pins (
+            device_id TEXT PRIMARY KEY,
+            cert_fingerprint TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+            trust_revoked INTEGER NOT NULL DEFAULT 0
+        );
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (15);
+        ",
+    )?;
+
+    info!("migration V15 completed");
+    Ok(())
+}
+
+fn migrate_v16(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V16 execution: IVF index + 2-bit binary codes for vector search");
+
+    conn.execute_batch(
+        "
+        -- 2-bit binary codes for Hamming distance filtering
+        CREATE TABLE IF NOT EXISTS vector_binary_codes (
+            vector_id INTEGER PRIMARY KEY,
+            binary_code BLOB NOT NULL,
+            FOREIGN KEY (vector_id) REFERENCES embedding_vectors(id) ON DELETE CASCADE
+        );
+
+        -- IVF cluster centroids (INT8 format)
+        CREATE TABLE IF NOT EXISTS ivf_centroids (
+            id INTEGER PRIMARY KEY,
+            centroid_int8 BLOB NOT NULL,
+            centroid_scale REAL NOT NULL,
+            centroid_offset REAL NOT NULL,
+            vector_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- IVF cluster memberships
+        CREATE TABLE IF NOT EXISTS ivf_assignments (
+            vector_id INTEGER PRIMARY KEY,
+            cluster_id INTEGER NOT NULL,
+            FOREIGN KEY (vector_id) REFERENCES embedding_vectors(id) ON DELETE CASCADE,
+            FOREIGN KEY (cluster_id) REFERENCES ivf_centroids(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ivf_assign_cluster ON ivf_assignments(cluster_id);
+
+        -- Index build metadata (key-value store)
+        CREATE TABLE IF NOT EXISTS vector_index_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- version record
+        INSERT INTO schema_version (version) VALUES (16);
+        ",
+    )?;
+
+    info!("migration V16 completed");
+    Ok(())
+}
+
+fn migrate_v17(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V17 execution: coaching engine tables");
+
+    conn.execute_batch(
+        "
+        -- Coaching event log: every coaching message shown
+        CREATE TABLE IF NOT EXISTS coaching_events (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id              TEXT NOT NULL UNIQUE,
+            trigger_type          TEXT NOT NULL,
+            profile_name          TEXT NOT NULL,
+            regime_id             TEXT,
+            message_template      TEXT NOT NULL,
+            personalized_message  TEXT,
+            shown_at              TEXT NOT NULL,
+            dismissed_at          TEXT,
+            dismiss_action        TEXT,
+            feedback_type         TEXT,
+            feedback_score        REAL,
+            behavior_change_detected INTEGER DEFAULT 0,
+            created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_coaching_events_profile
+            ON coaching_events(profile_name, shown_at);
+        CREATE INDEX IF NOT EXISTS idx_coaching_events_regime
+            ON coaching_events(regime_id, shown_at);
+
+        -- Per-regime daily time goals (user-configured)
+        CREATE TABLE IF NOT EXISTS regime_goals (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            regime_label       TEXT NOT NULL UNIQUE,
+            daily_target_minutes INTEGER NOT NULL,
+            created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Aggregated coaching effectiveness scores
+        CREATE TABLE IF NOT EXISTS coaching_effectiveness (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_name        TEXT NOT NULL,
+            trigger_type        TEXT NOT NULL,
+            total_shown         INTEGER NOT NULL DEFAULT 0,
+            positive_feedback   REAL NOT NULL DEFAULT 0.0,
+            negative_feedback   REAL NOT NULL DEFAULT 0.0,
+            neutral_count       INTEGER NOT NULL DEFAULT 0,
+            behavior_change_count INTEGER NOT NULL DEFAULT 0,
+            updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(profile_name, trigger_type)
+        );
+
+        INSERT INTO schema_version (version) VALUES (17);
+        ",
+    )?;
+
+    info!("migration V17 complete: coaching engine tables created");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -725,7 +1059,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 17);
 
         // V9 tables
         let count: i64 = conn
@@ -782,6 +1116,196 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+
+        // V11 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='daily_digests'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // FTS5 virtual table
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='search_fts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V12 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='regime_overrides'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V13 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='gui_interactions'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V14 — INT8 quantization column exists
+        let has_int8: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('embedding_vectors') WHERE name='vector_int8'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_int8, 1);
+
+        // V14 — sync tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_peers'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='device_identity'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V14 — HLC column on activity_segments
+        let has_hlc: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('activity_segments') WHERE name='hlc_wall_ms'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_hlc, 1);
+
+        // V15 — lan_peer_pins table
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='lan_peer_pins'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V16 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vector_binary_codes'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ivf_centroids'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ivf_assignments'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vector_index_meta'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V16 — idx_ivf_assign_cluster index
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ivf_assign_cluster'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Final version check
+        let version: u32 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 17);
+
+        // V17 tables
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='coaching_events'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='regime_goals'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='coaching_effectiveness'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // V17 indexes
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_coaching_events_profile'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Final version check
+        let version: u32 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 17);
     }
 
     #[test]
@@ -794,6 +1318,6 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 17);
     }
 }

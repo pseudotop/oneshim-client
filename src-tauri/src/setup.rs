@@ -18,11 +18,42 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
     state_builder.build().register_on(app);
 
+    // Register global overlay toggle shortcut (Cmd+Shift+O / Ctrl+Shift+O)
+    register_overlay_shortcut(app);
+
     // 12. Desktop shell startup
     DesktopStartupCoordinator::apply(app, frontend_web_port)?;
 
     info!("Tauri setup complete");
     Ok(())
+}
+
+/// Register Cmd+Shift+O (macOS) / Ctrl+Shift+O (Windows/Linux) to toggle
+/// the MagicOverlay into interactive mode so users can click coaching popup buttons.
+/// The overlay reverts to click-through automatically on dismiss or auto-dismiss timeout.
+fn register_overlay_shortcut(app: &App) {
+    use tauri::Manager;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    let result =
+        app.global_shortcut()
+            .on_shortcut("CmdOrCtrl+Shift+O", |app_handle, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let handle = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let state: tauri::State<'_, crate::runtime_state::AppState> =
+                            handle.state();
+                        if let Some(ref overlay) = state.magic_overlay {
+                            overlay.set_interactive(true).await;
+                        }
+                    });
+                }
+            });
+
+    match result {
+        Ok(()) => info!("Global shortcut registered: CmdOrCtrl+Shift+O (overlay toggle)"),
+        Err(e) => tracing::warn!("Failed to register overlay shortcut: {e}"),
+    }
 }
 
 #[cfg(test)]

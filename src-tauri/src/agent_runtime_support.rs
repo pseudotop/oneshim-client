@@ -168,6 +168,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             idle_threshold_secs: 300,
             upload_enabled: self.config.monitor.upload_enabled,
             analysis_config: self.config.analysis.clone(),
+            cross_device_sync_interval: Duration::from_secs(300), // 5 min default
         };
 
         Ok(AgentSupportContext {

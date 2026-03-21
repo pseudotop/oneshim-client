@@ -116,6 +116,24 @@ impl AppCategory {
         Self::Other
     }
 
+    /// Parse a category name string (case-insensitive) into an `AppCategory`.
+    ///
+    /// This is the inverse of the serde `rename_all = "snake_case"` names
+    /// and the `label_ko()` labels. Falls back to `Other` for unknown values.
+    pub fn from_category_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "communication" => Self::Communication,
+            "development" => Self::Development,
+            "documentation" => Self::Documentation,
+            "browser" => Self::Browser,
+            "design" => Self::Design,
+            "media" => Self::Media,
+            "system" => Self::System,
+            "other" => Self::Other,
+            _ => Self::Other,
+        }
+    }
+
     pub fn is_communication(&self) -> bool {
         matches!(self, Self::Communication)
     }

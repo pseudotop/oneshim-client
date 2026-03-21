@@ -210,6 +210,62 @@ impl CalibrationReader for SqliteStorage {
         })
         .await
     }
+
+    async fn list_segment_time_ranges(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<(String, DateTime<Utc>, DateTime<Utc>)>, CoreError> {
+        let from_str = from.to_rfc3339();
+        let to_str = to.to_rfc3339();
+
+        self.with_conn(move |conn| {
+            // Check table existence (may not have run V9 migration yet)
+            let table_exists: bool = conn
+                .query_row(
+                    "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='activity_segments'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if !table_exists {
+                return Ok(vec![]);
+            }
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, start_time, end_time FROM activity_segments \
+                     WHERE start_time >= ?1 AND end_time <= ?2 \
+                     ORDER BY start_time ASC",
+                )
+                .map_err(|e| CoreError::Internal(format!("prepare segment ranges: {e}")))?;
+
+            let rows = stmt
+                .query_map(params![from_str, to_str], |row| {
+                    let id: String = row.get(0)?;
+                    let start_str: String = row.get(1)?;
+                    let end_str: String = row.get(2)?;
+                    Ok((id, start_str, end_str))
+                })
+                .map_err(|e| CoreError::Internal(format!("query segment ranges: {e}")))?;
+
+            let mut result = Vec::new();
+            for row_result in rows {
+                let (id, start_str, end_str) =
+                    row_result.map_err(|e| CoreError::Internal(format!("read segment row: {e}")))?;
+                let start = DateTime::parse_from_rfc3339(&start_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| CoreError::Internal(format!("invalid segment start: {e}")))?;
+                let end = DateTime::parse_from_rfc3339(&end_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| CoreError::Internal(format!("invalid segment end: {e}")))?;
+                result.push((id, start, end));
+            }
+            Ok(result)
+        })
+        .await
+    }
 }
 
 // ---------------------------------------------------------------------------
