@@ -14,6 +14,7 @@ import type {
   DailySummary,
   DeleteRangeRequest,
   DeleteResult,
+  DiagnosticsBundleResponse,
   Event,
   ExecuteIntentHintRequest,
   ExecuteIntentHintResponse,
@@ -24,7 +25,15 @@ import type {
   FeatureCapabilitySnapshot,
   FocusMetricsResponse,
   Frame,
+  GuiConfirmRequest,
+  GuiConfirmResponse,
+  GuiCreateSessionRequest,
+  GuiCreateSessionResponse,
+  GuiExecuteResponse,
+  GuiExecutionRequest,
   GuiHeatmapCell,
+  GuiHighlightRequest,
+  GuiSessionResponse,
   HeatmapResponse,
   HourlyMetrics,
   IdlePeriod,
@@ -43,6 +52,7 @@ import type {
   OAuthConnectionStatus,
   OAuthFlowHandle,
   OAuthFlowStatus,
+  OnboardingQuickstartResponse,
   PaginatedResponse,
   PoliciesInfo,
   PomodoroSession,
@@ -60,6 +70,7 @@ import type {
   SearchParams,
   SearchResponse,
   SecretBackendCapabilities,
+  SemanticSearchResult,
   StartPomodoroRequest,
   Session,
   StorageStats,
@@ -73,6 +84,7 @@ import type {
   UpdateActionResponse,
   UpdateStatus,
   UpdateTagRequest,
+  WeeklyDigest,
   WorkflowPreset,
   WorkSession,
 } from './contracts'
@@ -953,6 +965,173 @@ export async function completePomodoro(): Promise<PomodoroSession> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error || `Complete pomodoro failed (${res.status})`)
+  }
+  return res.json()
+}
+
+// ── GUI V2 Session API ──────────────────────────────────────────
+
+const GUI_SESSION_HEADER = 'X-Gui-Session-Token'
+
+export async function createGuiSession(req: GuiCreateSessionRequest): Promise<GuiCreateSessionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to create GUI session' }))
+    throw new Error(err.error || 'Failed to create GUI session')
+  }
+  return res.json()
+}
+
+export async function getGuiSession(id: string, token: string): Promise<GuiSessionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}`, {
+    headers: { [GUI_SESSION_HEADER]: token },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to get GUI session' }))
+    throw new Error(err.error || 'Failed to get GUI session')
+  }
+  return res.json()
+}
+
+export async function highlightGuiSession(
+  id: string,
+  token: string,
+  req: GuiHighlightRequest,
+): Promise<GuiSessionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}/highlight`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [GUI_SESSION_HEADER]: token,
+    },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to highlight GUI session' }))
+    throw new Error(err.error || 'Failed to highlight GUI session')
+  }
+  return res.json()
+}
+
+export async function confirmGuiSession(
+  id: string,
+  token: string,
+  req: GuiConfirmRequest,
+): Promise<GuiConfirmResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [GUI_SESSION_HEADER]: token,
+    },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to confirm GUI session' }))
+    throw new Error(err.error || 'Failed to confirm GUI session')
+  }
+  return res.json()
+}
+
+export async function executeGuiSession(
+  id: string,
+  token: string,
+  req: GuiExecutionRequest,
+): Promise<GuiExecuteResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}/execute`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [GUI_SESSION_HEADER]: token,
+    },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to execute GUI session' }))
+    throw new Error(err.error || 'Failed to execute GUI session')
+  }
+  return res.json()
+}
+
+export async function deleteGuiSession(id: string, token: string): Promise<GuiSessionResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { [GUI_SESSION_HEADER]: token },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to delete GUI session' }))
+    throw new Error(err.error || 'Failed to delete GUI session')
+  }
+  return res.json()
+}
+
+export function guiSessionEventsUrl(id: string, token: string): string {
+  return `${BASE_URL}/automation/gui/sessions/${encodeURIComponent(id)}/events?token=${encodeURIComponent(token)}`
+}
+
+// ── Semantic Search API ─────────────────────────────────────────
+
+export async function fetchSemanticSearch(
+  query: string,
+  limit = 10,
+  mode?: 'hybrid' | 'semantic' | 'keyword',
+): Promise<SemanticSearchResult[]> {
+  const params = new URLSearchParams()
+  params.set('q', query)
+  if (limit) params.set('limit', String(limit))
+  if (mode) params.set('mode', mode)
+  const res = await fetchWithRetry(`${BASE_URL}/semantic-search?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Semantic search failed' }))
+    throw new Error(err.error || 'Semantic search failed')
+  }
+  return res.json()
+}
+
+// ── Digests API ─────────────────────────────────────────────────
+
+export async function fetchDigests(limit?: number): Promise<WeeklyDigest[]> {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  const res = await fetchWithRetry(`${BASE_URL}/digests?${params}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Digests query failed' }))
+    throw new Error(err.error || 'Digests query failed')
+  }
+  return res.json()
+}
+
+export async function fetchCurrentDigest(): Promise<WeeklyDigest | null> {
+  const res = await fetchWithRetry(`${BASE_URL}/digests/current`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Current digest query failed' }))
+    throw new Error(err.error || 'Current digest query failed')
+  }
+  return res.json()
+}
+
+// ── Onboarding API ──────────────────────────────────────────────
+
+export async function fetchOnboardingQuickstart(): Promise<OnboardingQuickstartResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/onboarding/quickstart`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Onboarding quickstart query failed' }))
+    throw new Error(err.error || 'Onboarding quickstart query failed')
+  }
+  return res.json()
+}
+
+// ── Support API ─────────────────────────────────────────────────
+
+export async function fetchSupportDiagnostics(): Promise<DiagnosticsBundleResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/support/diagnostics`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Diagnostics query failed' }))
+    throw new Error(err.error || 'Diagnostics query failed')
   }
   return res.json()
 }

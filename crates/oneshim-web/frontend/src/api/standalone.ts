@@ -943,6 +943,99 @@ export async function handleStandaloneRequest(
     })
   }
 
+  // ── Coaching endpoints ────────────────────────────────────────
+  if (path === '/api/coaching/history' && method === 'GET') {
+    return jsonResponse([])
+  }
+  if (path === '/api/coaching/goals' && method === 'GET') {
+    return jsonResponse([])
+  }
+  if (path === '/api/coaching/goals' && method === 'PUT') {
+    return jsonResponse({ ok: true })
+  }
+
+  // ── Recalibration overrides ─────────────────────────────────
+  if (path === '/api/recalibration/overrides' && method === 'GET') {
+    return jsonResponse([])
+  }
+
+  // ── Pomodoro status ─────────────────────────────────────────
+  if (path === '/api/pomodoro/current' && method === 'GET') {
+    return jsonResponse(null)
+  }
+
+  // ── Dashboard Day ───────────────────────────────────────────
+  if (path === '/api/dashboard/day' && method === 'GET') {
+    return jsonResponse({
+      date: todayIsoDate(),
+      insight: null,
+      timeline: [],
+      statistics: {
+        deep_work_hours: 0,
+        communication_hours: 0,
+        meeting_hours: 0,
+        context_switches: 0,
+        longest_focus_mins: 0,
+        longest_focus_content: '',
+        regime_distribution: {},
+        comparison: null,
+      },
+    })
+  }
+
+  // ── GUI Heatmap ─────────────────────────────────────────────
+  if (path === '/api/stats/gui-heatmap' && method === 'GET') {
+    return jsonResponse([])
+  }
+
+  // ── Digests ─────────────────────────────────────────────────
+  if (path === '/api/digests' && method === 'GET') {
+    return jsonResponse([])
+  }
+  if (path === '/api/digests/current' && method === 'GET') {
+    return jsonResponse(null)
+  }
+
+  // ── Semantic Search ─────────────────────────────────────────
+  if (path === '/api/semantic-search' && method === 'GET') {
+    return jsonResponse({ results: [] })
+  }
+
+  // ── Onboarding ──────────────────────────────────────────────
+  if (path === '/api/onboarding/quickstart' && method === 'GET') {
+    return jsonResponse({
+      schema_version: 'onboarding.quickstart.v1',
+      generated_at: new Date().toISOString(),
+      target_mode: 'standalone',
+      dashboard_url: '/',
+      checklist: [],
+      recommended_presets: [],
+      verification_commands: [],
+    })
+  }
+
+  // ── Support Diagnostics ─────────────────────────────────────
+  if (path === '/api/support/diagnostics' && method === 'GET') {
+    return jsonResponse({
+      schema_version: 'support.diagnostics.v1',
+      generated_at: new Date().toISOString(),
+      health: {
+        storage_ok: true,
+        storage_error: null,
+        frames_dir_configured: false,
+        frames_dir_path: null,
+        frames_dir_exists: null,
+        config_manager_configured: false,
+        automation_controller_configured: false,
+        update_control_configured: false,
+      },
+      settings_snapshot: makeDefaultSettings(),
+      storage_stats: makeDefaultStorageStats(),
+      recent_audit_entries: [],
+      recent_policy_events: [],
+    })
+  }
+
   // Unknown /api route fallback: avoid hard failures in standalone mode.
   return jsonResponse({ ok: true })
 }

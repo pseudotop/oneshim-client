@@ -1,4 +1,4 @@
-import { BarChart3, Clock, FileText, Image, Info, LayoutDashboard, MessageCircle, Monitor, RefreshCw, Settings, Tag, Zap } from 'lucide-react'
+import { BarChart3, Calendar, Clock, FileText, Image, Info, LayoutDashboard, MessageCircle, Monitor, RefreshCw, Settings, Tag, Zap } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -18,6 +18,7 @@ const TOOLTIP_ID = 'activity-bar-tooltip'
 
 const navItems: NavItem[] = [
   { id: 'dashboard', to: '/', icon: LayoutDashboard, labelKey: 'nav.dashboard', group: 'monitor' },
+  { id: 'dashboard-day', to: '/dashboard/day', icon: Calendar, labelKey: 'nav.dashboardDay', group: 'monitor' },
   { id: 'timeline', to: '/timeline', icon: Clock, labelKey: 'nav.timeline', group: 'monitor' },
   { id: 'replay', to: '/replay', icon: Zap, labelKey: 'nav.replay', group: 'monitor' },
   { id: 'automation', to: '/automation', icon: Monitor, labelKey: 'nav.automation', group: 'monitor' },

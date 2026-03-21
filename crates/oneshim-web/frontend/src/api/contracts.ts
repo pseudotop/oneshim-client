@@ -1284,3 +1284,197 @@ export interface DailyDigestResponse {
   timeline: DailyDigestSegment[]
   statistics: DailyDigestStatistics
 }
+
+// ── GUI V2 Session types ─────────────────────────────────────────
+
+export interface GuiCreateSessionRequest {
+  app_name?: string
+  screen_id?: string
+  min_confidence?: number
+  max_candidates?: number
+  session_ttl_secs?: number
+}
+
+export interface GuiHighlightRequest {
+  candidate_ids?: string[]
+}
+
+export interface GuiActionRequest {
+  action_type: 'click' | 'type_text'
+  text?: string
+}
+
+export interface GuiConfirmRequest {
+  candidate_id: string
+  action: GuiActionRequest
+  ticket_ttl_secs?: number
+}
+
+export interface GuiExecutionTicket {
+  ticket_id: string
+  session_id: string
+  candidate_id: string
+  action: GuiActionRequest
+  issued_at: string
+  expires_at: string
+}
+
+export interface GuiExecutionRequest {
+  ticket: GuiExecutionTicket
+}
+
+export interface GuiInteractionSession {
+  session_id: string
+  state: string
+  scene: UiScene
+  focus: GuiFocusInfo
+  candidates: GuiCandidate[]
+  created_at: string
+  updated_at: string
+  expires_at: string
+}
+
+export interface GuiFocusInfo {
+  app_name: string
+  window_title: string
+  pid: number
+  captured_at: string
+  focus_hash: string
+}
+
+export interface GuiCandidate {
+  candidate_id: string
+  element: UiSceneElement
+  highlighted: boolean
+}
+
+export interface GuiCreateSessionResponse {
+  schema_version: string
+  session: GuiInteractionSession
+  capability_token: string
+}
+
+export interface GuiSessionResponse {
+  schema_version: string
+  session: GuiInteractionSession
+}
+
+export interface GuiConfirmResponse {
+  schema_version: string
+  ticket: GuiExecutionTicket
+}
+
+export interface GuiExecutionOutcome {
+  session: GuiInteractionSession
+  succeeded: boolean
+  detail: string | null
+  steps_completed: number
+  total_steps: number
+}
+
+export interface IntentResult {
+  success: boolean
+  element: unknown | null
+  verification: unknown | null
+  retry_count: number
+  elapsed_ms: number
+  error: string | null
+}
+
+export interface GuiExecuteResponse {
+  schema_version: string
+  command_id: string
+  ticket: GuiExecutionTicket
+  result: IntentResult
+  outcome: GuiExecutionOutcome
+}
+
+// ── Semantic Search types ────────────────────────────────────────
+
+export interface SemanticSearchResult {
+  segment_id: string
+  content_type: string
+  content_label: string | null
+  original_text: string
+  score: number
+  similarity: number
+  time_decay: number
+  timestamp: string
+  segment_start: string | null
+  segment_end: string | null
+  duration_secs: number | null
+  llm_summary: string | null
+  dominant_category: string | null
+  regime_label: string | null
+}
+
+// ── Weekly Digest types ──────────────────────────────────────────
+
+export interface ContentRanking {
+  content_label: string
+  total_minutes: number
+  category: string
+}
+
+export interface WeekComparison {
+  deep_work_delta: number
+  communication_delta: number
+  context_switch_delta: number
+}
+
+export interface WeeklyDigest {
+  week_start: string
+  week_end: string
+  total_tracked_hours: number
+  regime_breakdown: Record<string, number>
+  category_breakdown: Record<string, number>
+  top_content: ContentRanking[]
+  deep_work_hours: number
+  communication_hours: number
+  context_switches_total: number
+  longest_deep_work_segment_mins: number
+  comparison: WeekComparison | null
+  llm_narrative: string | null
+}
+
+// ── Onboarding types ─────────────────────────────────────────────
+
+export interface QuickstartStep {
+  order: number
+  title: string
+  action: string
+  expected_outcome: string
+}
+
+export interface OnboardingQuickstartResponse {
+  schema_version: string
+  generated_at: string
+  target_mode: string
+  dashboard_url: string
+  checklist: QuickstartStep[]
+  recommended_presets: WorkflowPreset[]
+  verification_commands: string[]
+}
+
+// ── Support Diagnostics types ────────────────────────────────────
+
+export interface DiagnosticsHealth {
+  storage_ok: boolean
+  storage_error: string | null
+  frames_dir_configured: boolean
+  frames_dir_path: string | null
+  frames_dir_exists: boolean | null
+  config_manager_configured: boolean
+  automation_controller_configured: boolean
+  update_control_configured: boolean
+}
+
+export interface DiagnosticsBundleResponse {
+  schema_version: string
+  generated_at: string
+  health: DiagnosticsHealth
+  settings_snapshot: AppSettings
+  storage_stats: StorageStats | null
+  recent_audit_entries: AuditEntry[]
+  recent_policy_events: AuditEntry[]
+}

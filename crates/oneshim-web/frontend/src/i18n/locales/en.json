@@ -31,6 +31,7 @@
     "automation": "Automation",
     "coaching": "Coaching",
     "recalibration": "Recalibration",
+    "dashboardDay": "Day View",
     "mainNavLabel": "Main Navigation"
   },
   "dashboard": {
@@ -59,7 +60,12 @@
     "cpu": "CPU",
     "memory": "Memory",
     "usedMemory": "Used Memory",
-    "collectedData": "Collected Data"
+    "collectedData": "Collected Data",
+    "dailyTimetable": "Daily Timetable",
+    "today": "Today",
+    "previousDay": "Previous day",
+    "nextDay": "Next day",
+    "loadError": "Failed to load daily digest. Please try again later."
   },
   "updates": {
     "title": "Updates",
@@ -283,7 +289,15 @@
     "saveSettings": "Save Settings",
     "savedFull": "Settings saved. Some settings require app restart.",
     "exportDone": "Data exported.",
-    "days": { "Mon": "Mon", "Tue": "Tue", "Wed": "Wed", "Thu": "Thu", "Fri": "Fri", "Sat": "Sat", "Sun": "Sun" }
+    "days": {
+      "Mon": "Mon",
+      "Tue": "Tue",
+      "Wed": "Wed",
+      "Thu": "Thu",
+      "Fri": "Fri",
+      "Sat": "Sat",
+      "Sun": "Sun"
+    }
   },
   "privacy": {
     "title": "Privacy Management",
@@ -382,7 +396,15 @@
     "low": "Low",
     "high": "High",
     "loadError": "Failed to load data",
-    "days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "days": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "activity": "Activity"
   },
   "dateRange": {

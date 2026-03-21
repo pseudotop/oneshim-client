@@ -5,6 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { fetchDailyDigest } from '../api/client'
 import type { DailyDigestResponse } from '../api/contracts'
 import InsightCard from '../components/InsightCard'
@@ -46,6 +47,7 @@ const DEFAULT_REGIME_OPTIONS = [
 ]
 
 export default function DashboardDay() {
+  const { t } = useTranslation()
   const [date, setDate] = useState(todayStr)
 
   const { data, isLoading, error } = useQuery<DailyDigestResponse>({
@@ -80,14 +82,14 @@ export default function DashboardDay() {
     <div className="min-h-full p-6">
       {/* Date navigation */}
       <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <h1 className={cn(typography.h1, colors.text.pageTitle)}>Daily Timetable</h1>
+        <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('dashboard.dailyTimetable')}</h1>
 
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
             size="sm"
             onClick={() => setDate((d) => shiftDate(d, -1))}
-            aria-label="Previous day"
+            aria-label={t('dashboard.previousDay')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -108,14 +110,14 @@ export default function DashboardDay() {
             size="sm"
             onClick={() => setDate((d) => shiftDate(d, 1))}
             disabled={isToday}
-            aria-label="Next day"
+            aria-label={t('dashboard.nextDay')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
 
           {!isToday && (
             <Button variant="ghost" size="sm" onClick={() => setDate(todayStr())}>
-              Today
+              {t('dashboard.today')}
             </Button>
           )}
         </div>
@@ -145,7 +147,7 @@ export default function DashboardDay() {
           {/* Error state */}
           {error && (
             <Card variant="danger" padding="md">
-              <p className="text-red-400">Failed to load daily digest. Please try again later.</p>
+              <p className="text-red-400">{t('dashboard.loadError')}</p>
             </Card>
           )}
 

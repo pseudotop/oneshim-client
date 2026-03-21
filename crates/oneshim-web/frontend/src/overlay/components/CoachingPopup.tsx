@@ -1,3 +1,5 @@
+// i18n: This overlay runs in a separate Tauri window without i18n initialization.
+// Hardcoded labels ("OK", "Later") are intentional and acceptable here.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAutoDismiss } from '../hooks/useAutoDismiss'
 import type { CoachingPayload, DismissAction } from '../types'
