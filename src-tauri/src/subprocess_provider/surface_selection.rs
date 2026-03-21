@@ -157,7 +157,7 @@ fn surface_for_provider_surface_id(raw: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{runtime::runtime_supported_for_surface, SubprocessCliAuthStatus};
+    use super::super::SubprocessCliAuthStatus;
     use super::*;
     use oneshim_core::config::AiProviderType;
     use std::path::PathBuf;

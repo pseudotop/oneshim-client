@@ -354,7 +354,6 @@ mod tests {
     use oneshim_core::models::embedding::{EmbeddingMetadata, SearchResult};
     use oneshim_core::ports::vector_index::IndexMeta;
     use oneshim_core::quantization::QuantizedVector;
-    use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
 
     // ── Mock VectorStore ───────────────────────────────────────────
