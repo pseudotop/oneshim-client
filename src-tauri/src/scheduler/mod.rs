@@ -8,7 +8,7 @@ mod loops;
 
 // ── Public re-exports (external API) ────────────────────────────────
 pub use config::{SchedulerConfig, SchedulerStorage};
-pub use loops::record_to_segment_summary;
+pub(crate) use loops::record_to_segment_summary;
 
 use chrono::{Datelike, Timelike};
 use oneshim_core::app_registry::AppRegistry;
