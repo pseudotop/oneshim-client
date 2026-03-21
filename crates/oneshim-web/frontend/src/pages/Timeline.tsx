@@ -76,6 +76,7 @@ export default function Timeline() {
   const { data: response, isLoading } = useQuery({
     queryKey: ['frames', page, dateRange.from, dateRange.to],
     queryFn: () => fetchFrames(dateRange.from, dateRange.to, pageSize, page * pageSize),
+    staleTime: 10_000, // frame data — 10s stale time
   })
 
   const frames = response?.data ?? []

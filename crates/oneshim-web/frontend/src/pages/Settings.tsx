@@ -167,11 +167,13 @@ export default function Settings() {
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['settings'],
     queryFn: fetchSettings,
+    staleTime: Number.POSITIVE_INFINITY, // only changes on user save
   })
 
   const { data: storageStats, isLoading: storageLoading } = useQuery({
     queryKey: ['storage-stats'],
     queryFn: fetchStorageStats,
+    staleTime: 60_000, // storage stats change slowly
   })
 
   const { data: updateStatus } = useQuery<UpdateStatus>({
@@ -184,12 +186,14 @@ export default function Settings() {
   const { data: providerSurfaceCatalog } = useQuery({
     queryKey: ['ai-provider-surfaces'],
     queryFn: fetchProviderSurfaces,
+    staleTime: 300_000, // 5 min — surface catalog rarely changes
     retry: 1,
   })
 
   const { data: featureCapabilities } = useQuery<FeatureCapabilitySnapshot>({
     queryKey: ['feature-capabilities'],
     queryFn: fetchFeatureCapabilities,
+    staleTime: 300_000, // 5 min — capabilities rarely change
     enabled: canQueryDesktopCapabilities,
     retry: 1,
   })
@@ -197,6 +201,7 @@ export default function Settings() {
   const { data: secretBackendCapabilities } = useQuery({
     queryKey: ['secret-backend-capabilities'],
     queryFn: fetchSecretBackendCapabilities,
+    staleTime: 300_000, // 5 min — backend capabilities rarely change
     enabled: canQueryDesktopCapabilities,
     retry: 1,
   })
