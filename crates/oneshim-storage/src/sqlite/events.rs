@@ -372,7 +372,7 @@ mod tests {
     use super::*;
     use chrono::{Duration, Utc};
 
-    use super::super::tests::make_user_event;
+    use super::super::test_utils::make_user_event;
 
     #[test]
     fn count_events_in_range_empty() {
