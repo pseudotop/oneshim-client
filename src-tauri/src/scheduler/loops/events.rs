@@ -9,6 +9,7 @@ use super::super::config::PlatformEgressPolicy;
 use super::super::Scheduler;
 
 impl Scheduler {
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_event_snapshot_loop(
         &self,
         detailed_process_interval: Duration,
@@ -145,6 +146,7 @@ impl Scheduler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_notification_loop(
         &self,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,

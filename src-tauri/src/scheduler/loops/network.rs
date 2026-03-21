@@ -7,6 +7,7 @@ use super::super::config::PlatformEgressPolicy;
 use super::super::Scheduler;
 
 impl Scheduler {
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_sync_loop(
         &self,
         sync_interval: Duration,
@@ -64,6 +65,7 @@ impl Scheduler {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_heartbeat_loop(
         &self,
         heartbeat_interval: Duration,

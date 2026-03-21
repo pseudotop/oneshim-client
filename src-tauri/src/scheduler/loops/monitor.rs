@@ -19,6 +19,7 @@ use super::helpers::{
 };
 
 impl Scheduler {
+    #[tracing::instrument(skip_all)]
     #[allow(clippy::too_many_arguments)]
     pub(in crate::scheduler) fn spawn_monitor_loop(
         &self,
