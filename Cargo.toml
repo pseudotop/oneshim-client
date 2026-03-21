@@ -44,7 +44,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "gzi
 eventsource-stream = "0.2"
 
 # WebSocket (native-tls로 ring 의존성 회피)
-tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.29", features = ["native-tls"] }
 
 # 시스템 모니터링
 sysinfo = "0.38"
