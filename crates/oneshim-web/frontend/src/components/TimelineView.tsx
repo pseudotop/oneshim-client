@@ -7,7 +7,7 @@ import { Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CreateOverrideRequest, RegimeOverride } from '../api/contracts'
-import { colors, typography } from '../styles/tokens'
+import { colors, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import SegmentContextMenu from './SegmentContextMenu'
 import { Badge, Card, Spinner } from './ui'
@@ -160,7 +160,7 @@ export default function TimelineView({
                 <button
                   type="button"
                   className={cn(
-                    'w-full rounded-lg border-l-4 px-3 py-2 text-left transition-colors hover:opacity-90',
+                    `w-full rounded-lg border-l-4 px-3 py-2 text-left ${motion.colors} hover:opacity-90`,
                     isExpanded ? 'ring-2 ring-brand-signal/50' : '',
                     isOverridden ? 'opacity-80' : '',
                   )}
@@ -221,7 +221,7 @@ export default function TimelineView({
                   <button
                     type="button"
                     className={cn(
-                      'absolute top-2 right-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100',
+                      `absolute top-2 right-2 rounded p-1 opacity-0 ${motion.opacity} group-hover:opacity-100`,
                       'hover:bg-surface-muted',
                       isMenuOpen ? 'opacity-100' : '',
                     )}

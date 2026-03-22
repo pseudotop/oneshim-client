@@ -2,6 +2,7 @@ import { Moon, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AppSegment, TimelineItem } from '../api/client'
+import { motion } from '../styles/tokens'
 import { formatTime } from '../utils/formatters'
 import { Select } from './ui'
 
@@ -101,7 +102,7 @@ export default function TimelineScrubber({
             type="button"
             data-testid="replay-start"
             onClick={onSkipToStart}
-            className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-hover"
+            className={`rounded-lg p-2 text-content-secondary ${motion.colors} hover:bg-hover`}
             title={t('replay.skipToStart', '처음으로')}
           >
             <SkipBack className="h-5 w-5" />
@@ -112,7 +113,7 @@ export default function TimelineScrubber({
             type="button"
             data-testid="replay-play"
             onClick={onPlayPause}
-            className="rounded-lg bg-teal-500 p-2 text-white transition-colors hover:bg-teal-600"
+            className={`rounded-lg bg-brand p-2 text-content-inverse ${motion.colors} hover:bg-brand-hover`}
             title={isPlaying ? t('replay.pause', '일시정지') : t('replay.play', '재생')}
           >
             {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
@@ -123,7 +124,7 @@ export default function TimelineScrubber({
             type="button"
             data-testid="replay-end"
             onClick={onSkipToEnd}
-            className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-hover"
+            className={`rounded-lg p-2 text-content-secondary ${motion.colors} hover:bg-hover`}
             title={t('replay.skipToEnd', '끝으로')}
           >
             <SkipForward className="h-5 w-5" />
@@ -206,11 +207,11 @@ export default function TimelineScrubber({
 
         {/* UI note */}
         <div
-          className="absolute top-0 z-10 h-full w-0.5 bg-red-500 shadow-lg"
+          className="absolute top-0 z-10 h-full w-0.5 bg-semantic-error shadow-lg"
           style={{ left: `${currentPosition * 100}%` }}
         >
           {/* UI note */}
-          <div className="absolute -top-1 -left-1.5 h-4 w-4 rounded-full bg-red-500 shadow-lg" />
+          <div className="absolute -top-1 -left-1.5 h-4 w-4 rounded-full bg-semantic-error shadow-lg" />
         </div>
 
         {/* UI note */}

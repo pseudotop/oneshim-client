@@ -2,7 +2,7 @@
  *
  */
 import { useTranslation } from 'react-i18next'
-import { interaction } from '../styles/tokens'
+import { interaction, motion } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 interface TagBadgeProps {
@@ -25,7 +25,7 @@ export function TagBadge({ name, color, onRemove, onClick, selected = false, siz
   }
 
   const sharedClassName = cn(
-    'inline-flex items-center gap-1 rounded-full border font-medium transition-all',
+    `inline-flex items-center gap-1 rounded-full border font-medium ${motion.all}`,
     sizeClasses[size],
     onClick && 'cursor-pointer hover:opacity-80',
     selected && 'ring-2 ring-offset-1',

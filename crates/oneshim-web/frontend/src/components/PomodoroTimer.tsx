@@ -93,7 +93,7 @@ function TimerRing({
         strokeDasharray={circumference}
         strokeDashoffset={offset}
         transform="rotate(-90 60 60)"
-        className={`transition-all ${motion.slow}`}
+        className={motion.all}
       />
       {/* Time text */}
       <text

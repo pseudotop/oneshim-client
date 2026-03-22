@@ -1,6 +1,9 @@
 /**
  * Dev-only debug toolbar. Only rendered when import.meta.env.DEV is true.
  * Provides quick toggles for common dev tasks without needing Console access.
+ *
+ * NOTE: This component intentionally uses raw Tailwind colors (not design tokens).
+ * It is dev-only and not part of the shipped UI.
  */
 import { useState } from 'react'
 
@@ -34,6 +37,7 @@ export function DevToolbar() {
 
   if (!open) {
     return (
+      // biome-ignore lint/design-tokens: DEV-ONLY component — raw colors intentional
       <button
         onClick={() => setOpen(true)}
         className="fixed bottom-12 right-4 z-[9999] bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded-full shadow-lg opacity-60 hover:opacity-100"
@@ -45,10 +49,11 @@ export function DevToolbar() {
   }
 
   return (
+    // biome-ignore lint/design-tokens: DEV-ONLY component — raw colors intentional
     <div className="fixed bottom-12 right-4 z-[9999] bg-gray-900 text-white text-xs rounded-lg shadow-2xl p-3 w-72 border border-yellow-500/50">
       <div className="flex justify-between items-center mb-2">
         <span className="font-bold text-yellow-400">Dev Toolbar</span>
-        <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">✕</button>
+        <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">&#x2715;</button>
       </div>
 
       <div className="space-y-2">

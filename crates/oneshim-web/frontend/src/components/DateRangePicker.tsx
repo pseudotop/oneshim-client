@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { interaction } from '../styles/tokens'
+import { interaction, motion } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 interface DateRangePickerProps {
@@ -97,36 +97,40 @@ export default function DateRangePicker({
         <button
           type="button"
           onClick={() => handlePresetClick('today')}
-          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-            preset === 'today' ? 'bg-teal-600 text-white' : 'bg-hover text-content-strong hover:bg-active'
-          }`}
+          className={cn(
+            `rounded-lg px-3 py-1.5 text-sm ${motion.colors}`,
+            preset === 'today' ? 'bg-brand text-content-inverse' : 'bg-hover text-content-strong hover:bg-active',
+          )}
         >
           {t('dateRange.today')}
         </button>
         <button
           type="button"
           onClick={() => handlePresetClick('7days')}
-          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-            preset === '7days' ? 'bg-teal-600 text-white' : 'bg-hover text-content-strong hover:bg-active'
-          }`}
+          className={cn(
+            `rounded-lg px-3 py-1.5 text-sm ${motion.colors}`,
+            preset === '7days' ? 'bg-brand text-content-inverse' : 'bg-hover text-content-strong hover:bg-active',
+          )}
         >
           {t('dateRange.week')}
         </button>
         <button
           type="button"
           onClick={() => handlePresetClick('30days')}
-          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-            preset === '30days' ? 'bg-teal-600 text-white' : 'bg-hover text-content-strong hover:bg-active'
-          }`}
+          className={cn(
+            `rounded-lg px-3 py-1.5 text-sm ${motion.colors}`,
+            preset === '30days' ? 'bg-brand text-content-inverse' : 'bg-hover text-content-strong hover:bg-active',
+          )}
         >
           {t('dateRange.month')}
         </button>
         <button
           type="button"
           onClick={() => handlePresetClick('custom')}
-          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-            preset === 'custom' ? 'bg-teal-600 text-white' : 'bg-hover text-content-strong hover:bg-active'
-          }`}
+          className={cn(
+            `rounded-lg px-3 py-1.5 text-sm ${motion.colors}`,
+            preset === 'custom' ? 'bg-brand text-content-inverse' : 'bg-hover text-content-strong hover:bg-active',
+          )}
         >
           {t('dateRange.custom')}
         </button>

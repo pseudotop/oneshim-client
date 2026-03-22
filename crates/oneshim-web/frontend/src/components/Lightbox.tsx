@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react'
-import { iconSize } from '../styles/tokens'
+import { iconSize, motion } from '../styles/tokens'
 
 interface LightboxProps {
   imageUrl: string
@@ -56,12 +56,12 @@ export default function Lightbox({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay — keyboard Escape handled via global keydown listener
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handling via global keydown listener (Escape, ArrowLeft, ArrowRight)
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay/90" onClick={onClose}>
       {/* UI note */}
       <button
         type="button"
         onClick={onClose}
-        className="absolute top-4 right-4 z-10 p-2 text-white/70 transition-colors hover:text-white"
+        className={`absolute top-4 right-4 z-10 p-2 text-content-inverse/70 ${motion.colors} hover:text-content-inverse`}
         aria-label="닫기"
       >
         <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -77,7 +77,7 @@ export default function Lightbox({
             e.stopPropagation()
             onPrev()
           }}
-          className="absolute top-1/2 left-4 z-10 -translate-y-1/2 rounded-full bg-black/30 p-3 text-white/70 transition-all hover:bg-black/50 hover:text-white"
+          className={`absolute top-1/2 left-4 z-10 -translate-y-1/2 rounded-full bg-surface-overlay/30 p-3 text-content-inverse/70 ${motion.all} hover:bg-surface-overlay/50 hover:text-content-inverse`}
           aria-label="이전"
         >
           <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -103,7 +103,7 @@ export default function Lightbox({
             e.stopPropagation()
             onNext()
           }}
-          className="absolute top-1/2 right-4 z-10 -translate-y-1/2 rounded-full bg-black/30 p-3 text-white/70 transition-all hover:bg-black/50 hover:text-white"
+          className={`absolute top-1/2 right-4 z-10 -translate-y-1/2 rounded-full bg-surface-overlay/30 p-3 text-content-inverse/70 ${motion.all} hover:bg-surface-overlay/50 hover:text-content-inverse`}
           aria-label="next"
         >
           <svg className={iconSize.hero} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -113,7 +113,7 @@ export default function Lightbox({
       )}
 
       {/* UI note */}
-      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-4 text-sm text-white/50">
+      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-4 text-sm text-content-inverse/50">
         <span>ESC 닫기</span>
         {(hasPrev || hasNext) && <span>← → 이동</span>}
       </div>
