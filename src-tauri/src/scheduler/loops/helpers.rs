@@ -113,7 +113,6 @@ pub(super) async fn handle_frame_capture(
     frame_storage: &Option<Arc<FrameFileStorage>>,
     sqlite: &Arc<dyn SchedulerStorage>,
     session_id: &str,
-    window_bounds: Option<&oneshim_core::models::context::WindowBounds>,
 ) -> (Option<String>, Vec<OcrRegion>) {
     match processor.capture_and_process(capture_req).await {
         Ok(frame) => {
@@ -158,7 +157,7 @@ pub(super) async fn handle_frame_capture(
                 &frame.metadata,
                 file_path.as_deref(),
                 ocr_text.as_deref(),
-                window_bounds,
+                capture_req.window_bounds.as_ref(),
             ) {
                 warn!("frame data save failure: {e}");
             }

@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 
 use crate::error::CoreError;
+use crate::models::context::WindowBounds;
 use crate::models::event::ContextEvent;
 use crate::models::frame::ProcessedFrame;
 
@@ -19,6 +20,10 @@ pub struct CaptureRequest {
     pub importance: f32,
     pub app_name: String,
     pub window_title: String,
+    /// Active window bounds for multi-monitor capture targeting.
+    /// When set, the frame processor captures the monitor containing
+    /// the window instead of always using the primary monitor.
+    pub window_bounds: Option<WindowBounds>,
 }
 
 #[async_trait]

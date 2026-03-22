@@ -252,7 +252,11 @@ impl Scheduler {
                                     // Force capture during post-event window (dashcam "after" frames)
                                     let force_post = ring_buffer.should_force_post_capture();
 
-                                    if let Some(capture_req) = capture_req {
+                                    if let Some(mut capture_req) = capture_req {
+                                        // Inject active window bounds so the frame processor
+                                        // captures the correct monitor in multi-monitor setups.
+                                        capture_req.window_bounds = window_bounds;
+
                                         // --- Ring buffer: flush pre-event frames on significant capture ---
                                         if let Some(ref fs) = frame_storage1 {
                                             let flush_frame = RingFrame {
@@ -286,7 +290,6 @@ impl Scheduler {
                                             &frame_storage1,
                                             &sqlite1,
                                             &session1,
-                                            window_bounds.as_ref(),
                                         ).await;
                                         focus_ocr_hint = ocr_hint;
                                         if !regions.is_empty() {
