@@ -2,10 +2,10 @@
  * StatisticsPanel — KPI cards, regime distribution bar, and longest focus highlight.
  */
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Card, CardTitle } from './ui'
-import { cn } from '../utils/cn'
-import { chartPalette, colors, typography } from '../styles/tokens'
 import { useTheme } from '../contexts/ThemeContext'
+import { chartPalette, colors, iconSize, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
+import { Card, CardTitle } from './ui'
 
 interface DailyStatistics {
   deep_work_hours: number
@@ -83,39 +83,25 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card padding="md">
           <p className={cn(typography.body, colors.text.secondary)}>Deep Work</p>
-          <p className={cn(typography.stat.large, colors.text.primary)}>
-            {statistics.deep_work_hours.toFixed(1)}h
-          </p>
-          {statistics.comparison && (
-            <DeltaArrow delta={statistics.comparison.deep_work_delta} />
-          )}
+          <p className={cn(typography.stat.large, colors.text.primary)}>{statistics.deep_work_hours.toFixed(1)}h</p>
+          {statistics.comparison && <DeltaArrow delta={statistics.comparison.deep_work_delta} />}
         </Card>
 
         <Card padding="md">
           <p className={cn(typography.body, colors.text.secondary)}>Communication</p>
-          <p className={cn(typography.stat.large, colors.text.primary)}>
-            {statistics.communication_hours.toFixed(1)}h
-          </p>
-          {statistics.comparison && (
-            <DeltaArrow delta={statistics.comparison.communication_delta} invertPositive />
-          )}
+          <p className={cn(typography.stat.large, colors.text.primary)}>{statistics.communication_hours.toFixed(1)}h</p>
+          {statistics.comparison && <DeltaArrow delta={statistics.comparison.communication_delta} invertPositive />}
         </Card>
 
         <Card padding="md">
           <p className={cn(typography.body, colors.text.secondary)}>Meetings</p>
-          <p className={cn(typography.stat.large, colors.text.primary)}>
-            {statistics.meeting_hours.toFixed(1)}h
-          </p>
+          <p className={cn(typography.stat.large, colors.text.primary)}>{statistics.meeting_hours.toFixed(1)}h</p>
         </Card>
 
         <Card padding="md">
           <p className={cn(typography.body, colors.text.secondary)}>Context Switches</p>
-          <p className={cn(typography.stat.large, colors.text.primary)}>
-            {statistics.context_switches}
-          </p>
-          {statistics.comparison && (
-            <ContextSwitchDelta delta={statistics.comparison.context_switch_delta} />
-          )}
+          <p className={cn(typography.stat.large, colors.text.primary)}>{statistics.context_switches}</p>
+          {statistics.comparison && <ContextSwitchDelta delta={statistics.comparison.context_switch_delta} />}
         </Card>
       </div>
 
@@ -127,12 +113,7 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={regimeData} layout="vertical" barCategoryGap="20%">
                 <XAxis type="number" domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 12 }} unit="%" />
-                <YAxis
-                  type="category"
-                  dataKey="label"
-                  width={120}
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                />
+                <YAxis type="category" dataKey="label" width={120} tick={{ fill: '#94a3b8', fontSize: 12 }} />
                 <Tooltip
                   contentStyle={tooltipStyle}
                   formatter={(value: number) => [`${Math.round(value)}%`, 'Share']}
@@ -149,7 +130,7 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
           <div className={cn('mt-2 flex flex-wrap justify-center gap-4', typography.caption)}>
             {regimeData.map((entry) => (
               <div key={entry.label} className="flex items-center gap-1.5">
-                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: entry.fill }} />
+                <div className={`${iconSize.xs} rounded-full`} style={{ backgroundColor: entry.fill }} />
                 <span className={colors.text.secondary}>{entry.label}</span>
               </div>
             ))}
@@ -162,15 +143,15 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
         <Card padding="md" className="border-l-4 border-brand-signal">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-brand-signal/10 p-2">
-              <span className="text-xl" aria-hidden="true">{'\u{1F3AF}'}</span>
+              <span className="text-xl" aria-hidden="true">
+                {'\u{1F3AF}'}
+              </span>
             </div>
             <div>
               <p className={cn(typography.label, colors.text.primary)}>
                 Longest Focus: {statistics.longest_focus_mins} min
               </p>
-              <p className={cn(typography.body, colors.text.secondary)}>
-                {statistics.longest_focus_content}
-              </p>
+              <p className={cn(typography.body, colors.text.secondary)}>{statistics.longest_focus_content}</p>
             </div>
           </div>
         </Card>

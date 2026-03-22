@@ -120,7 +120,9 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
       )}
 
       {status?.pending && (
-        <div className={cn('mt-3 space-y-1 rounded-lg border border-muted p-3 text-content-secondary', typography.caption)}>
+        <div
+          className={cn('mt-3 space-y-1 rounded-lg border border-muted p-3 text-content-secondary', typography.caption)}
+        >
           <div>
             {t('updates.currentVersion')}: {status.pending.current_version}
           </div>
@@ -176,7 +178,9 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
       </div>
 
       {actionMutation.isError && (
-        <div className={cn('mt-3 text-semantic-error', typography.caption)}>{(actionMutation.error as Error).message}</div>
+        <div className={cn('mt-3 text-semantic-error', typography.caption)}>
+          {(actionMutation.error as Error).message}
+        </div>
       )}
     </Card>
   )

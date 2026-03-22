@@ -2,7 +2,7 @@ import { Moon, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
 import { useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AppSegment, TimelineItem } from '../api/client'
-import { motion } from '../styles/tokens'
+import { iconSize, motion, typography } from '../styles/tokens'
 import { formatTime } from '../utils/formatters'
 import { Select } from './ui'
 
@@ -105,7 +105,7 @@ export default function TimelineScrubber({
             className={`rounded-lg p-2 text-content-secondary ${motion.colors} hover:bg-hover`}
             title={t('replay.skipToStart', '처음으로')}
           >
-            <SkipBack className="h-5 w-5" />
+            <SkipBack className={iconSize.md} />
           </button>
 
           {/* UI note */}
@@ -116,7 +116,7 @@ export default function TimelineScrubber({
             className={`rounded-lg bg-brand p-2 text-content-inverse ${motion.colors} hover:bg-brand-hover`}
             title={isPlaying ? t('replay.pause', '일시정지') : t('replay.play', '재생')}
           >
-            {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+            {isPlaying ? <Pause className={iconSize.md} /> : <Play className={iconSize.md} />}
           </button>
 
           {/* UI note */}
@@ -127,11 +127,13 @@ export default function TimelineScrubber({
             className={`rounded-lg p-2 text-content-secondary ${motion.colors} hover:bg-hover`}
             title={t('replay.skipToEnd', '끝으로')}
           >
-            <SkipForward className="h-5 w-5" />
+            <SkipForward className={iconSize.md} />
           </button>
 
           {/* UI note */}
-          <span className="ml-3 font-mono text-content-strong text-sm">{formatTime(currentTime.toISOString())}</span>
+          <span className={`ml-3 ${typography.family.mono} text-content-strong text-sm`}>
+            {formatTime(currentTime.toISOString())}
+          </span>
         </div>
 
         {/* UI note */}
@@ -172,7 +174,7 @@ export default function TimelineScrubber({
           return (
             <div
               key={`segment-${segment.app_name}-${segment.start}`}
-              className="absolute top-0 h-full transition-opacity hover:opacity-80"
+              className={`absolute top-0 h-full ${motion.opacity} hover:opacity-80`}
               style={{
                 left: `${left}%`,
                 width: `${Math.max(width, 0.5)}%`,
@@ -200,7 +202,7 @@ export default function TimelineScrubber({
               }}
               title={t('replay.idle', 'idle')}
             >
-              {width > 3 && <Moon className="h-3 w-3 text-content-secondary opacity-70" />}
+              {width > 3 && <Moon className={`${iconSize.xs} text-content-secondary opacity-70`} />}
             </div>
           )
         })}
@@ -211,7 +213,7 @@ export default function TimelineScrubber({
           style={{ left: `${currentPosition * 100}%` }}
         >
           {/* UI note */}
-          <div className="absolute -top-1 -left-1.5 h-4 w-4 rounded-full bg-semantic-error shadow-lg" />
+          <div className={`absolute -top-1 -left-1.5 ${iconSize.base} rounded-full bg-semantic-error shadow-lg`} />
         </div>
 
         {/* UI note */}
@@ -233,7 +235,10 @@ export default function TimelineScrubber({
               const segment = segments.find((s) => s.app_name === appName)
               return (
                 <div key={appName} className="flex items-center space-x-1">
-                  <div className="h-3 w-3 rounded-sm" style={{ backgroundColor: segment?.color || '#6B7280' }} />
+                  <div
+                    className={`${iconSize.xs} rounded-sm`}
+                    style={{ backgroundColor: segment?.color || '#6B7280' }}
+                  />
                   <span className="max-w-[80px] truncate text-content-secondary text-xs">{appName}</span>
                 </div>
               )
@@ -242,7 +247,7 @@ export default function TimelineScrubber({
           {idlePeriods.length > 0 && (
             <div className="flex items-center space-x-1">
               <div
-                className="h-3 w-3 rounded-sm"
+                className={`${iconSize.xs} rounded-sm`}
                 style={{
                   background:
                     'repeating-linear-gradient(45deg, rgba(100,116,139,0.5), rgba(100,116,139,0.5) 1px, transparent 1px, transparent 2px)',

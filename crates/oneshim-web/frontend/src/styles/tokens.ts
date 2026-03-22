@@ -91,6 +91,15 @@ export const typography = {
     large: 'text-2xl font-bold',
     normal: 'text-lg font-medium',
   },
+  /* Atomic weight/family tokens for composing ad-hoc styles */
+  weight: {
+    medium: 'font-medium',
+    semibold: 'font-semibold',
+    bold: 'font-bold',
+  },
+  family: {
+    mono: 'font-mono',
+  },
 } as const
 
 export const radius = {
@@ -197,6 +206,7 @@ export const layout = {
     separator: 'w-px bg-brand-signal/50 mx-1 h-3.5',
   },
   commandPalette: {
+    position: 'pt-[15vh]',
     overlay: 'bg-black/50',
     bg: 'bg-surface-overlay',
     border: 'border border-muted',

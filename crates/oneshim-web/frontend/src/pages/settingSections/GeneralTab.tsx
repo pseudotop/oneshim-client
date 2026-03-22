@@ -9,7 +9,7 @@ import type {
 import LanguageSelector from '../../components/LanguageSelector'
 import { Button, Card, CardTitle, Input } from '../../components/ui'
 import { DEFAULT_WEB_PORT } from '../../constants'
-import { form } from '../../styles/tokens'
+import { form, typography } from '../../styles/tokens'
 import NotificationSettings from './NotificationSettings'
 import ScheduleSettings from './ScheduleSettings'
 import ToggleRow from './ToggleRow'
@@ -75,9 +75,7 @@ export default function GeneralTab({
                   <p className="text-content-secondary text-xs">{t('settings.allowExternalDesc')}</p>
                 </div>
               </label>
-              <p className={`${form.helper} mt-2`}>
-                {t('settings.allowExternalIntegrationOnly')}
-              </p>
+              <p className={`${form.helper} mt-2`}>{t('settings.allowExternalIntegrationOnly')}</p>
             </div>
           </div>
         </div>
@@ -139,7 +137,9 @@ export default function GeneralTab({
           </div>
 
           <div className="mt-2 rounded-lg border border-muted bg-surface-inset p-4">
-            <div className="font-medium text-content text-sm">{t('settings.updateRuntimeStatus')}</div>
+            <div className={`${typography.weight.medium} text-content text-sm`}>
+              {t('settings.updateRuntimeStatus')}
+            </div>
             <div className="mt-1 text-content-strong text-sm">
               {updateStatus?.message ?? t('settings.updateStatusUnavailable')}
             </div>

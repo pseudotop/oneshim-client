@@ -123,7 +123,7 @@ export default function SuggestionBanner() {
         suggestionConfig.bgColor,
         'border-l-4',
         suggestionConfig.borderColor,
-        'mb-4 flex items-center gap-4 rounded-r-lg px-4 py-3'
+        'mb-4 flex items-center gap-4 rounded-r-lg px-4 py-3',
       )}
     >
       {/* UI note */}

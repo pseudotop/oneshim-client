@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '../../components/ui'
 import { useGoalProgress, useUpdateGoals } from '../../hooks/useCoaching'
+import { typography } from '../../styles/tokens'
 
 export default function CoachingGoalsTab() {
   const { t } = useTranslation()
@@ -47,7 +48,7 @@ export default function CoachingGoalsTab() {
             <div className="mb-4 space-y-2">
               {goals.map((g) => (
                 <div key={g.regime_label} className="flex items-center gap-3">
-                  <span className="w-32 truncate text-sm font-medium">{g.regime_label}</span>
+                  <span className={`w-32 truncate text-sm ${typography.weight.medium}`}>{g.regime_label}</span>
                   <span className="text-sm text-content-secondary">
                     {g.target_minutes} {t('coaching.perDay', 'min/day')}
                   </span>

@@ -1,3 +1,4 @@
+import { motion } from '../../styles/tokens'
 import type { GoalProgressItem } from '../types'
 
 interface GoalProgressBarProps {
@@ -16,7 +17,7 @@ export default function GoalProgressBar({ goals }: GoalProgressBarProps) {
               <span className="w-20 truncate text-xs text-content-secondary">{goal.regime_label}</span>
               <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-content-inverse/10">
                 <div
-                  className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                  className={`absolute inset-y-0 left-0 rounded-full ${motion.all}`}
                   style={{
                     width: `${Math.min(goal.percentage, 100)}%`,
                     backgroundColor: goal.display_color,

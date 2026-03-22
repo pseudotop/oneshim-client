@@ -1,4 +1,18 @@
-import { BarChart3, Calendar, Clock, FileText, Image, Info, LayoutDashboard, MessageCircle, Monitor, RefreshCw, Settings, Tag, Zap } from 'lucide-react'
+import {
+  BarChart3,
+  Calendar,
+  Clock,
+  FileText,
+  Image,
+  Info,
+  LayoutDashboard,
+  MessageCircle,
+  Monitor,
+  RefreshCw,
+  Settings,
+  Tag,
+  Zap,
+} from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'

@@ -303,7 +303,7 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
           )}
         </div>
 
-        <div className="truncate font-medium text-content">
+        <div className={`truncate ${typography.weight.medium} text-content`}>
           {result.app_name && highlightText(result.app_name, query)}
           {result.app_name && result.window_title && ' - '}
           {result.window_title && highlightText(result.window_title, query)}

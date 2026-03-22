@@ -250,7 +250,11 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop overlay — Escape handled in input onKeyDown
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled via input onKeyDown handler
     <div
-      className={cn('fixed inset-0 z-50 flex items-start justify-center pt-[15vh]', layout.commandPalette.overlay)}
+      className={cn(
+        'fixed inset-0 z-50 flex items-start justify-center',
+        layout.commandPalette.position,
+        layout.commandPalette.overlay,
+      )}
       onClick={onClose}
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: onClick only prevents bubble to backdrop, not interactive */}

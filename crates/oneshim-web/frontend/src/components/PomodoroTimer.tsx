@@ -8,11 +8,11 @@ import {
   cancelPomodoro,
   completePomodoro,
   fetchCurrentPomodoro,
-  startPomodoro,
   type PomodoroSession,
   type PomodoroStatus,
+  startPomodoro,
 } from '../api/client'
-import { colors, dataViz, motion, typography } from '../styles/tokens'
+import { colors, dataViz, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { Button, Card, CardContent, CardHeader, CardTitle } from './ui'
 
@@ -72,15 +72,7 @@ function TimerRing({
   return (
     <svg width={120} height={120} viewBox="0 0 120 120" aria-hidden="true">
       {/* Background track */}
-      <circle
-        cx="60"
-        cy="60"
-        r={r}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="6"
-        className="text-surface-muted"
-      />
+      <circle cx="60" cy="60" r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-surface-muted" />
       {/* Progress arc */}
       <circle
         cx="60"
@@ -101,18 +93,12 @@ function TimerRing({
         y="55"
         textAnchor="middle"
         dominantBaseline="middle"
-        className="fill-content text-lg font-bold"
+        className={`fill-content text-lg ${typography.weight.bold}`}
       >
         {timeText}
       </text>
       {/* Status label */}
-      <text
-        x="60"
-        y="75"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        className="fill-content-secondary text-[11px]"
-      >
+      <text x="60" y="75" textAnchor="middle" dominantBaseline="middle" className="fill-content-secondary text-[11px]">
         {label}
       </text>
     </svg>
@@ -123,8 +109,7 @@ function notifyCompletion(phase: 'work' | 'break') {
   if (!('Notification' in window)) return
   if (Notification.permission === 'granted') {
     const title = phase === 'work' ? 'Focus session complete!' : 'Break is over!'
-    const body =
-      phase === 'work' ? 'Time for a break.' : 'Ready to focus again?'
+    const body = phase === 'work' ? 'Time for a break.' : 'Ready to focus again?'
     new Notification(title, { body, icon: '/favicon.ico' })
   } else if (Notification.permission !== 'denied') {
     Notification.requestPermission()
@@ -142,9 +127,7 @@ export default function PomodoroTimer() {
 
   // Derive effective status + remaining from the session snapshot and local clock
   const computeLocal = useCallback((s: PomodoroSession) => {
-    const elapsed = Math.floor(
-      (Date.now() - new Date(s.started_at).getTime()) / 1000,
-    )
+    const elapsed = Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000)
     const workSecs = s.duration_minutes * 60
     const breakSecs = s.break_minutes * 60
 
@@ -183,15 +166,9 @@ export default function PomodoroTimer() {
       setRemaining(loc.remaining)
 
       // Detect transitions
-      if (
-        prevStatusRef.current === 'running' &&
-        loc.status === 'on_break'
-      ) {
+      if (prevStatusRef.current === 'running' && loc.status === 'on_break') {
         notifyCompletion('work')
-      } else if (
-        prevStatusRef.current === 'on_break' &&
-        loc.status === 'completed'
-      ) {
+      } else if (prevStatusRef.current === 'on_break' && loc.status === 'completed') {
         notifyCompletion('break')
         // Auto-complete on server
         completePomodoro().catch(() => {})
@@ -259,11 +236,7 @@ export default function PomodoroTimer() {
   const progress = (() => {
     if (!session) return 0
     const totalSecs =
-      status === 'running'
-        ? session.duration_minutes * 60
-        : status === 'on_break'
-          ? session.break_minutes * 60
-          : 1
+      status === 'running' ? session.duration_minutes * 60 : status === 'on_break' ? session.break_minutes * 60 : 1
     const elapsed = totalSecs - remaining
     return totalSecs > 0 ? elapsed / totalSecs : 1
   })()
@@ -272,7 +245,7 @@ export default function PomodoroTimer() {
     <Card variant="interactive" padding="sm">
       <CardHeader>
         <CardTitle>
-          <Timer className="mr-2 inline h-5 w-5" />
+          <Timer className={`mr-2 inline ${iconSize.md}`} />
           Pomodoro
         </CardTitle>
       </CardHeader>
@@ -288,21 +261,11 @@ export default function PomodoroTimer() {
           {/* Controls */}
           <div className="flex gap-2">
             {!isActive ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleStart}
-                disabled={loading}
-              >
+              <Button variant="primary" size="sm" onClick={handleStart} disabled={loading}>
                 Start {DEFAULT_WORK_MINS}m
               </Button>
             ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleCancel}
-                disabled={loading}
-              >
+              <Button variant="secondary" size="sm" onClick={handleCancel} disabled={loading}>
                 <X className="mr-1 h-3.5 w-3.5" />
                 Cancel
               </Button>
@@ -310,15 +273,11 @@ export default function PomodoroTimer() {
           </div>
 
           {/* Error feedback */}
-          {error && (
-            <p className={cn('text-xs', colors.semantic.error)}>{error}</p>
-          )}
+          {error && <p className={cn('text-xs', colors.semantic.error)}>{error}</p>}
 
           {/* Session info for completed */}
           {session && status === 'completed' && (
-            <p className={cn(typography.small, colors.text.tertiary)}>
-              Session completed
-            </p>
+            <p className={cn(typography.small, colors.text.tertiary)}>Session completed</p>
           )}
         </div>
       </CardContent>

@@ -1,9 +1,10 @@
 /**
  * InsightCard — displays AI-generated daily narrative and highlight chips.
  */
-import { Card } from './ui'
-import { cn } from '../utils/cn'
+
 import { colors, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
+import { Card } from './ui'
 
 interface DailyInsight {
   narrative: string
@@ -43,7 +44,13 @@ export default function InsightCard({ insight }: InsightCardProps) {
             return (
               <span
                 key={`${highlight.highlight_type}-${idx}`}
-                className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1', typography.caption, typography.label, config.bg, config.text)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1',
+                  typography.caption,
+                  typography.label,
+                  config.bg,
+                  config.text,
+                )}
               >
                 <span aria-hidden="true">{config.icon}</span>
                 {highlight.text}

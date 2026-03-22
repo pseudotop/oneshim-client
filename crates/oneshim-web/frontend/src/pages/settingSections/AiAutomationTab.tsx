@@ -29,7 +29,7 @@ import {
   surfaceOcrExecutionStrategy,
   surfaceSupportsModelSelection,
 } from '../../features/providerSurfaces'
-import { form } from '../../styles/tokens'
+import { form, typography } from '../../styles/tokens'
 import OAuthConnectionPanel from './OAuthConnectionPanel'
 import { isProviderOAuthAccessMode } from './oauth-panel-support'
 import ToggleRow from './ToggleRow'
@@ -635,7 +635,9 @@ export default function AiAutomationTab({
           <div className="space-y-3 rounded-lg border border-muted p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
-                <p className="font-medium text-content-strong text-sm">{t('settingsAutomation.savedProfilesTitle')}</p>
+                <p className={`${typography.weight.medium} text-content-strong text-sm`}>
+                  {t('settingsAutomation.savedProfilesTitle')}
+                </p>
                 <p className="text-content-secondary text-sm">{t('settingsAutomation.savedProfilesDescription')}</p>
               </div>
               {activeSavedProfile ? (
@@ -710,7 +712,7 @@ export default function AiAutomationTab({
           {showOcrRemoteSection && currentOcrSurface && (
             <div className="space-y-3 rounded-lg border border-muted bg-surface-muted/80 p-4">
               <div className="space-y-1">
-                <p className="font-medium text-content-strong text-sm">
+                <p className={`${typography.weight.medium} text-content-strong text-sm`}>
                   OCR {t('settingsAutomation.providerSurfaceLabel')}
                 </p>
                 <p className="text-content-secondary text-sm">
@@ -758,7 +760,7 @@ export default function AiAutomationTab({
             <div className="space-y-3 rounded-lg border border-muted bg-surface-muted/80 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="font-medium text-content-strong text-sm">
+                  <p className={`${typography.weight.medium} text-content-strong text-sm`}>
                     LLM {t('settingsAutomation.providerSurfaceLabel')}
                   </p>
                   <p className="text-content-secondary text-sm">
@@ -848,7 +850,7 @@ export default function AiAutomationTab({
               {currentLlmPreferredCli?.showPreferredCliCta && currentLlmPreferredCli.preferredCliSurface && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-muted bg-surface-elevated/70 p-3">
                   <div className="space-y-1">
-                    <p className="font-medium text-content-strong text-sm">
+                    <p className={`${typography.weight.medium} text-content-strong text-sm`}>
                       {t('settingsAutomation.preferredCliTitle')}
                     </p>
                     <p className="text-content-secondary text-sm">
@@ -877,13 +879,17 @@ export default function AiAutomationTab({
 
           <div className="space-y-3 rounded-lg border border-muted bg-surface-muted/80 p-4">
             <div className="space-y-1">
-              <p className="font-medium text-content-strong text-sm">{t('settingsAutomation.activeRoutingTitle')}</p>
+              <p className={`${typography.weight.medium} text-content-strong text-sm`}>
+                {t('settingsAutomation.activeRoutingTitle')}
+              </p>
               <p className="text-content-secondary text-sm">{t('settingsAutomation.activeRoutingDescription')}</p>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-2 rounded-md border border-muted/70 bg-surface-elevated/70 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-content text-sm">{t('settingsAutomation.ocrProvider')}</span>
+                  <span className={`${typography.weight.medium} text-content text-sm`}>
+                    {t('settingsAutomation.ocrProvider')}
+                  </span>
                   <Badge color={formData.ai_provider.ocr_provider === 'Remote' ? 'info' : 'default'} size="sm">
                     {formData.ai_provider.ocr_provider === 'Remote'
                       ? t('settingsAutomation.providerRemote')
@@ -895,7 +901,9 @@ export default function AiAutomationTab({
               <div className="space-y-2 rounded-md border border-muted/70 bg-surface-elevated/70 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-content text-sm">{t('settingsAutomation.llmProvider')}</span>
+                    <span className={`${typography.weight.medium} text-content text-sm`}>
+                      {t('settingsAutomation.llmProvider')}
+                    </span>
                     {llmProviderLocked && (
                       <Badge color="warning" size="sm">
                         {t('settingsAutomation.providerSelectionLockedBadge')}
@@ -984,7 +992,7 @@ export default function AiAutomationTab({
           />
 
           <div className="space-y-3 rounded-lg border border-muted p-4">
-            <h4 className="font-medium text-content-strong text-sm">
+            <h4 className={`${typography.weight.medium} text-content-strong text-sm`}>
               {t('settingsAutomation.sceneActionOverrideTitle')}
             </h4>
             <ToggleRow
@@ -1038,7 +1046,7 @@ export default function AiAutomationTab({
           </div>
 
           <div className="space-y-3 rounded-lg border border-muted p-4">
-            <h4 className="font-medium text-content-strong text-sm">
+            <h4 className={`${typography.weight.medium} text-content-strong text-sm`}>
               {t('settingsAutomation.sceneIntelligenceTitle', 'Scene Intelligence')}
             </h4>
             <ToggleRow
@@ -1154,7 +1162,9 @@ export default function AiAutomationTab({
           </div>
 
           <div className="space-y-3 rounded-lg border border-muted p-4">
-            <h4 className="font-medium text-content-strong text-sm">{t('settingsAutomation.ocrValidationTitle')}</h4>
+            <h4 className={`${typography.weight.medium} text-content-strong text-sm`}>
+              {t('settingsAutomation.ocrValidationTitle')}
+            </h4>
             <ToggleRow
               label={t('settingsAutomation.ocrValidationEnabled')}
               description={t('settingsAutomation.ocrValidationEnabledDescription')}
@@ -1224,7 +1234,9 @@ export default function AiAutomationTab({
 
           {showOcrRemoteSection && (
             <div className="space-y-3 rounded-lg border border-muted p-4">
-              <h4 className="font-medium text-content-strong text-sm">OCR {t('settingsAutomation.externalApi')}</h4>
+              <h4 className={`${typography.weight.medium} text-content-strong text-sm`}>
+                OCR {t('settingsAutomation.externalApi')}
+              </h4>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="flex items-end">
                   <Button
@@ -1351,7 +1363,9 @@ export default function AiAutomationTab({
 
           {showLlmSurfaceSection && (
             <div className="space-y-3 rounded-lg border border-muted p-4">
-              <h4 className="font-medium text-content-strong text-sm">LLM {t('settingsAutomation.externalApi')}</h4>
+              <h4 className={`${typography.weight.medium} text-content-strong text-sm`}>
+                LLM {t('settingsAutomation.externalApi')}
+              </h4>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {showDirectApiFields(currentLlmSurface) && (
                   <>

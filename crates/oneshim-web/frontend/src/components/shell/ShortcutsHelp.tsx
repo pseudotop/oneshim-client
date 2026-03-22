@@ -94,7 +94,12 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
           {shortcuts.map(({ key, descriptionKey }) => (
             <div key={key} className="flex items-center justify-between py-1">
               <span className="text-content-secondary">{t(descriptionKey)}</span>
-              <kbd className={cn('rounded border border-DEFAULT bg-surface-elevated px-2 py-1 text-content', typography.mono)}>
+              <kbd
+                className={cn(
+                  'rounded border border-DEFAULT bg-surface-elevated px-2 py-1 text-content',
+                  typography.mono,
+                )}
+              >
                 {key}
               </kbd>
             </div>

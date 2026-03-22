@@ -4,11 +4,7 @@ import { useCallback, useEffect, useRef } from 'react'
  * Auto-dismiss timer. Calls `onDismiss` after `seconds` unless reset or cancelled.
  * Returns a `reset()` function to restart the timer (e.g., when LLM upgrade arrives).
  */
-export function useAutoDismiss(
-  active: boolean,
-  seconds: number,
-  onDismiss: () => void,
-): { reset: () => void } {
+export function useAutoDismiss(active: boolean, seconds: number, onDismiss: () => void): { reset: () => void } {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onDismissRef = useRef(onDismiss)
   onDismissRef.current = onDismiss

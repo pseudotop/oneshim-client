@@ -8,14 +8,14 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchDailyDigest } from '../api/client'
 import type { DailyDigestResponse } from '../api/contracts'
+import GuiInteractionTrack from '../components/GuiInteractionTrack'
 import InsightCard from '../components/InsightCard'
 import PomodoroTimer from '../components/PomodoroTimer'
 import StatisticsPanel from '../components/StatisticsPanel'
-import GuiInteractionTrack from '../components/GuiInteractionTrack'
 import TimelineView from '../components/TimelineView'
 import { Button, Card, Skeleton } from '../components/ui'
 import { useCreateOverride, useOverrides } from '../hooks/useRecalibration'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 function todayStr(): string {
@@ -91,11 +91,11 @@ export default function DashboardDay() {
             onClick={() => setDate((d) => shiftDate(d, -1))}
             aria-label={t('dashboard.previousDay')}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className={`${iconSize.base}`} />
           </Button>
 
           <div className="flex items-center gap-2 rounded-lg bg-surface-elevated px-3 py-1.5">
-            <Calendar className={cn('h-4 w-4', colors.text.secondary)} />
+            <Calendar className={cn(iconSize.base, colors.text.secondary)} />
             <input
               type="date"
               value={date}
@@ -112,7 +112,7 @@ export default function DashboardDay() {
             disabled={isToday}
             aria-label={t('dashboard.nextDay')}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className={`${iconSize.base}`} />
           </Button>
 
           {!isToday && (
@@ -162,10 +162,7 @@ export default function DashboardDay() {
                 onCreateOverride={(req) => createOverrideMutation.mutate(req)}
                 isMutating={createOverrideMutation.isPending}
               />
-              <GuiInteractionTrack
-                start={`${date}T00:00:00Z`}
-                end={`${date}T23:59:59Z`}
-              />
+              <GuiInteractionTrack start={`${date}T00:00:00Z`} end={`${date}T23:59:59Z`} />
               <StatisticsPanel statistics={data.statistics} />
             </>
           )}

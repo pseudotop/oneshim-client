@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { withTranslation, type WithTranslation } from 'react-i18next'
+import { type WithTranslation, withTranslation } from 'react-i18next'
+import { typography } from '../styles/tokens'
 
 // ErrorBoundary Props: children + optional fallback + i18next HOC props
 interface OwnProps {
@@ -19,9 +20,7 @@ function isNetworkError(error: Error | null): boolean {
   if (!error) return false
   if (error instanceof TypeError && error.message.toLowerCase().includes('fetch')) return true
   const msg = error.message.toLowerCase()
-  return ['failed to fetch', 'offline', 'econnrefused', 'timeout', 'network error'].some(
-    (kw) => msg.includes(kw)
-  )
+  return ['failed to fetch', 'offline', 'econnrefused', 'timeout', 'network error'].some((kw) => msg.includes(kw))
 }
 
 // 클래스 컴포넌트는 React Error Boundary 필수 조건이므로 withTranslation HOC로 i18n 연동
@@ -52,7 +51,7 @@ class ErrorBoundaryBase extends Component<Props, State> {
           <div className="p-8 text-center" role="alert">
             {offline ? (
               <>
-                <h1 className="mb-4 text-2xl font-bold text-semantic-warning">{t('errors.serverOffline')}</h1>
+                <h1 className={`mb-4 ${typography.h1} text-semantic-warning`}>{t('errors.serverOffline')}</h1>
                 <p className="mb-4 text-content-secondary">{t('errors.serverOfflineDesc')}</p>
                 <button
                   type="button"
@@ -64,7 +63,7 @@ class ErrorBoundaryBase extends Component<Props, State> {
               </>
             ) : (
               <>
-                <h1 className="mb-4 text-2xl font-bold text-semantic-error">{t('errors.boundaryTitle')}</h1>
+                <h1 className={`mb-4 ${typography.h1} text-semantic-error`}>{t('errors.boundaryTitle')}</h1>
                 <p className="mb-4 text-content-secondary">{this.state.error?.message}</p>
                 <button
                   type="button"

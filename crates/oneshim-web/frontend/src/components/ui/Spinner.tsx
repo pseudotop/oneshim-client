@@ -1,5 +1,6 @@
 /**
  */
+import { iconSize } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 export interface SpinnerProps {
@@ -8,9 +9,9 @@ export interface SpinnerProps {
 }
 
 const sizeClasses = {
-  sm: 'h-4 w-4',
-  md: 'h-6 w-6',
-  lg: 'h-8 w-8',
+  sm: iconSize.base,
+  md: iconSize.lg,
+  lg: iconSize.hero,
 }
 
 export function Spinner({ className, size = 'md' }: SpinnerProps) {

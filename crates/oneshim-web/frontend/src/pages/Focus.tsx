@@ -77,7 +77,13 @@ function CircularGauge({ value, size = 120 }: { value: number; size?: number }) 
         transform="rotate(-90 50 50)"
         className={motion.all}
       />
-      <text x="50" y="45" textAnchor="middle" dominantBaseline="middle" className="fill-content font-bold text-2xl">
+      <text
+        x="50"
+        y="45"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        className={`fill-content ${typography.weight.bold} text-2xl`}
+      >
         {Math.round(value)}
       </text>
       <text x="50" y="62" textAnchor="middle" className="fill-content-secondary text-xs">
@@ -182,11 +188,13 @@ export default function Focus() {
           <CircularGauge value={today.focus_score} />
           <div className="mt-2 flex items-center gap-1">
             {trend >= 0 ? (
-              <TrendingUp className="h-4 w-4 text-semantic-success" />
+              <TrendingUp className={`${iconSize.base} text-semantic-success`} />
             ) : (
-              <TrendingDown className="h-4 w-4 text-semantic-error" />
+              <TrendingDown className={`${iconSize.base} text-semantic-error`} />
             )}
-            <span className={`font-medium text-sm ${trend >= 0 ? 'text-semantic-success' : 'text-semantic-error'}`}>
+            <span
+              className={`${typography.weight.medium} text-sm ${trend >= 0 ? 'text-semantic-success' : 'text-semantic-error'}`}
+            >
               {trend >= 0 ? '+' : ''}
               {trend.toFixed(1)}
             </span>
@@ -196,19 +204,19 @@ export default function Focus() {
         <StatCard
           title={t('focus.deepWork')}
           value={formatDuration(today.deep_work_secs, true)}
-          icon={<Clock className="h-5 w-5 text-brand-text" />}
+          icon={<Clock className={`${iconSize.md} text-brand-text`} />}
         />
 
         <StatCard
           title={t('focus.communication')}
           value={formatDuration(today.communication_secs, true)}
-          icon={<MessageSquare className="h-5 w-5 text-brand-text" />}
+          icon={<MessageSquare className={`${iconSize.md} text-brand-text`} />}
         />
 
         <StatCard
           title={t('focus.interruptions')}
           value={`${today.interruption_count}${t('focus.times')}`}
-          icon={<Zap className="h-5 w-5 text-brand-text" />}
+          icon={<Zap className={`${iconSize.md} text-brand-text`} />}
         />
       </div>
 
@@ -258,7 +266,7 @@ export default function Focus() {
         <Card id="section-sessions">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Laptop className="h-5 w-5" />
+              <Laptop className={`${iconSize.md}`} />
               {t('focus.sessions')}
             </CardTitle>
           </CardHeader>
@@ -269,15 +277,17 @@ export default function Focus() {
                   <div key={session.id} className="flex items-center justify-between rounded-lg bg-surface-inset p-3">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`h-3 w-3 rounded-full ${CATEGORY_COLORS[session.category] || CATEGORY_COLORS.Other}`}
+                        className={`${iconSize.xs} rounded-full ${CATEGORY_COLORS[session.category] || CATEGORY_COLORS.Other}`}
                       />
                       <div>
-                        <p className="font-medium text-content text-sm">{session.primary_app}</p>
+                        <p className={`${typography.weight.medium} text-content text-sm`}>{session.primary_app}</p>
                         <p className="text-content-tertiary text-xs">{session.category}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-content text-sm">{formatDuration(session.duration_secs, true)}</p>
+                      <p className={`${typography.weight.medium} text-content text-sm`}>
+                        {formatDuration(session.duration_secs, true)}
+                      </p>
                       <Badge color={session.state === 'active' ? 'success' : 'default'} size="sm">
                         {session.state === 'active' ? t('focus.active') : t('focus.completed')}
                       </Badge>
@@ -288,7 +298,7 @@ export default function Focus() {
                   <button
                     type="button"
                     onClick={() => setSessionLimit((limit) => limit + 10)}
-                    className="mt-2 w-full rounded-lg py-2 font-medium text-content-secondary text-sm transition-colors hover:bg-surface-muted"
+                    className={`mt-2 w-full rounded-lg py-2 ${typography.weight.medium} text-content-secondary text-sm ${motion.colors} hover:bg-surface-muted`}
                   >
                     {t('focus.loadMoreRemaining', { count: sessions.length - sessionLimit })}
                   </button>
@@ -304,7 +314,7 @@ export default function Focus() {
         <Card id="section-interruptions">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ArrowRightLeft className="h-5 w-5" />
+              <ArrowRightLeft className={`${iconSize.md}`} />
               {t('focus.interruptionList')}
             </CardTitle>
           </CardHeader>
@@ -314,9 +324,13 @@ export default function Focus() {
                 {interruptions.slice(0, interruptionLimit).map((int) => (
                   <div key={int.id} className="flex items-center justify-between rounded-lg bg-surface-inset p-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="max-w-[80px] truncate font-medium text-content">{int.from_app}</span>
-                      <ArrowRightLeft className="h-4 w-4 text-content-muted" />
-                      <span className="max-w-[80px] truncate font-medium text-content">{int.to_app}</span>
+                      <span className={`max-w-[80px] truncate ${typography.weight.medium} text-content`}>
+                        {int.from_app}
+                      </span>
+                      <ArrowRightLeft className={`${iconSize.base} text-content-muted`} />
+                      <span className={`max-w-[80px] truncate ${typography.weight.medium} text-content`}>
+                        {int.to_app}
+                      </span>
                     </div>
                     <div className="text-right">
                       <p className="text-content-tertiary text-xs">
@@ -335,7 +349,7 @@ export default function Focus() {
                   <button
                     type="button"
                     onClick={() => setInterruptionLimit((limit) => limit + 10)}
-                    className="mt-2 w-full rounded-lg py-2 font-medium text-content-secondary text-sm transition-colors hover:bg-surface-muted"
+                    className={`mt-2 w-full rounded-lg py-2 ${typography.weight.medium} text-content-secondary text-sm ${motion.colors} hover:bg-surface-muted`}
                   >
                     {t('focus.loadMoreRemaining', { count: interruptions.length - interruptionLimit })}
                   </button>

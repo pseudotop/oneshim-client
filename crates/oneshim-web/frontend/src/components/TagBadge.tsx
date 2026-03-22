@@ -2,7 +2,7 @@
  *
  */
 import { useTranslation } from 'react-i18next'
-import { interaction, motion } from '../styles/tokens'
+import { iconSize, interaction, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 interface TagBadgeProps {
@@ -25,7 +25,7 @@ export function TagBadge({ name, color, onRemove, onClick, selected = false, siz
   }
 
   const sharedClassName = cn(
-    `inline-flex items-center gap-1 rounded-full border font-medium ${motion.all}`,
+    `inline-flex items-center gap-1 rounded-full border ${typography.weight.medium} ${motion.all}`,
     sizeClasses[size],
     onClick && 'cursor-pointer hover:opacity-80',
     selected && 'ring-2 ring-offset-1',
@@ -52,7 +52,7 @@ export function TagBadge({ name, color, onRemove, onClick, selected = false, siz
           }}
           aria-label={t('timeline.removeTag', { name, defaultValue: 'Remove {{name}} tag' })}
         >
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <svg className={iconSize.xs} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { ExportDataType, ExportFormat, StorageStats, TelemetrySettings } from '../../api/client'
 import { Card, CardTitle, Input, Spinner } from '../../components/ui'
-import { colors, form } from '../../styles/tokens'
+import { colors, form, iconSize, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { formatBytes, formatNumber } from '../../utils/formatters'
 import ToggleRow from './ToggleRow'
@@ -17,7 +17,7 @@ function StorageCard({ label, value, subValue }: StorageCardProps) {
   return (
     <Card variant="elevated" padding="md">
       <div className={cn('text-sm', colors.text.secondary)}>{label}</div>
-      <div className={cn('mt-1 font-bold text-2xl', colors.text.primary)}>{value}</div>
+      <div className={cn(`mt-1 ${typography.weight.bold} text-2xl`, colors.text.primary)}>{value}</div>
       <div className={cn('mt-1 text-xs', colors.text.tertiary)}>{subValue}</div>
     </Card>
   )
@@ -36,11 +36,11 @@ function ExportButton({ label, description, onClick, loading }: ExportButtonProp
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="flex flex-col items-start rounded-lg border border-DEFAULT bg-surface-muted p-4 transition-colors hover:border-brand-signal hover:bg-active disabled:cursor-not-allowed disabled:opacity-50"
+      className={`flex flex-col items-start rounded-lg border border-DEFAULT bg-surface-muted p-4 ${motion.colors} hover:border-brand-signal hover:bg-active disabled:cursor-not-allowed disabled:opacity-50`.trim()}
     >
       <div className="flex items-center gap-2">
         <svg
-          className={cn('h-5 w-5', colors.primary.text)}
+          className={cn(iconSize.md, colors.primary.text)}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -53,7 +53,7 @@ function ExportButton({ label, description, onClick, loading }: ExportButtonProp
             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
           />
         </svg>
-        <span className={cn('font-medium', colors.text.primary)}>{label}</span>
+        <span className={cn(`${typography.weight.medium}`, colors.text.primary)}>{label}</span>
         {loading && <Spinner size="sm" className={colors.primary.text} />}
       </div>
       <span className={cn('mt-1 text-xs', colors.text.tertiary)}>{description}</span>

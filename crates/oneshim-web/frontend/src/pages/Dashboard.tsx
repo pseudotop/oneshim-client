@@ -17,7 +17,7 @@ import StatCard from '../components/StatCard'
 import UpdatePanel from '../components/UpdatePanel'
 import { Badge, Card, CardTitle, ChartSkeleton, EmptyState, Skeleton, StatCardsSkeleton } from '../components/ui'
 import { type ConnectionStatus, useSSE } from '../hooks/useSSE'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
@@ -126,7 +126,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <span className={cn('h-2 w-2 animate-pulse rounded-full', colors.primary.signal)} />
-              <span className={cn('font-medium text-sm', colors.primary.text)}>
+              <span className={cn(`${typography.weight.medium} text-sm`, colors.primary.text)}>
                 {t('dashboard.realtimeMonitoring')}
               </span>
               {idleState?.is_idle && (
@@ -142,7 +142,9 @@ export default function Dashboard() {
           </div>
           <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
             <div>
-              <div className={cn(typography.stat.large, colors.primary.text)}>{latestMetrics.cpu_usage.toFixed(1)}%</div>
+              <div className={cn(typography.stat.large, colors.primary.text)}>
+                {latestMetrics.cpu_usage.toFixed(1)}%
+              </div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.cpu')}</div>
             </div>
             <div>
@@ -180,25 +182,25 @@ export default function Dashboard() {
           data-testid="metric-card-active-time"
           title={t('dashboard.activeTime')}
           value={formatDuration(summary?.total_active_secs ?? 0)}
-          icon={<Clock className="h-5 w-5" />}
+          icon={<Clock className={`${iconSize.md}`} />}
         />
         <StatCard
           data-testid="metric-card-idle-time"
           title={t('dashboard.idleTime')}
           value={formatDuration(summary?.total_idle_secs ?? 0)}
-          icon={<Moon className="h-5 w-5" />}
+          icon={<Moon className={`${iconSize.md}`} />}
         />
         <StatCard
           data-testid="metric-card-captures"
           title={t('dashboard.captures')}
           value={summary?.frames_captured?.toLocaleString() ?? '0'}
-          icon={<Camera className="h-5 w-5" />}
+          icon={<Camera className={`${iconSize.md}`} />}
         />
         <StatCard
           data-testid="metric-card-events"
           title={t('dashboard.events')}
           value={summary?.events_logged?.toLocaleString() ?? '0'}
-          icon={<BarChart3 className="h-5 w-5" />}
+          icon={<BarChart3 className={`${iconSize.md}`} />}
         />
       </div>
 

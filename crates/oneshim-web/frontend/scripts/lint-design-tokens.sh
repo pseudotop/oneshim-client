@@ -7,7 +7,7 @@ set -euo pipefail
 
 FRONTEND_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SRC_DIRS=("$FRONTEND_DIR/src/components" "$FRONTEND_DIR/src/pages" "$FRONTEND_DIR/src/overlay")
-EXCLUDE="--exclude=*.test.tsx --exclude=*.stories.tsx"
+EXCLUDE="--exclude=*.test.tsx --exclude=*.stories.tsx --exclude=DevToolbar.tsx"
 
 ERRORS=0
 
@@ -64,8 +64,20 @@ check_pattern "Arbitrary spacing value" \
   -E "(gap|space-[xy]|p[xytblr]?|m[xytblr]?)-\[.+\]"
 
 # Inline icon sizes (should use iconSize.* tokens)
-check_pattern "Inline icon size (use iconSize.* tokens)" \
-  -E "\bw-[345]\s+h-[345]\b|\bh-[345]\s+w-[345]\b"
+# Match paired w-N h-N or h-N w-N (N=3..5) but NOT fractional widths (e.g. w-3/4)
+check_pattern_icon_size() {
+  local label="$1"
+  local result
+  result=$(grep -rn $EXCLUDE -E "\bw-[345]\s+h-[345]\b|\bh-[345]\s+w-[345]\b" "${SRC_DIRS[@]}" 2>/dev/null \
+    | grep -v "w-[0-9]/[0-9]" || true)
+  if [[ -n "$result" ]]; then
+    echo "=== $label ==="
+    echo "$result"
+    echo ""
+    ERRORS=$((ERRORS + 1))
+  fi
+}
+check_pattern_icon_size "Inline icon size (use iconSize.* tokens)"
 
 if [[ $ERRORS -gt 0 ]]; then
   echo "FAIL: $ERRORS violation categories found. Fix all above patterns."

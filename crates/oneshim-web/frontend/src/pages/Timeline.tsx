@@ -15,8 +15,8 @@ import { TagInput } from '../components/TagInput'
 import { Badge, Button, Card, CardTitle, EmptyState, Select, Skeleton } from '../components/ui'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { addToast } from '../hooks/useToast'
+import { colors, iconSize, interaction, motion, typography } from '../styles/tokens'
 import { resolveImageUrl } from '../utils/api-base'
-import { colors, interaction, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDate, formatTime } from '../utils/formatters'
 
@@ -37,15 +37,21 @@ export default function Timeline() {
   const [selectedIndex, setSelectedIndex] = useState<number>(-1)
   const [searchParams, setSearchParams] = useSearchParams()
   const page = Number(searchParams.get('page') || '0')
-  const setPage = useCallback((updater: number | ((prev: number) => number)) => {
-    const next = typeof updater === 'function' ? updater(page) : updater
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev)
-      if (next === 0) p.delete('page')
-      else p.set('page', String(next))
-      return p
-    }, { replace: true })
-  }, [page, setSearchParams])
+  const setPage = useCallback(
+    (updater: number | ((prev: number) => number)) => {
+      const next = typeof updater === 'function' ? updater(page) : updater
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev)
+          if (next === 0) p.delete('page')
+          else p.set('page', String(next))
+          return p
+        },
+        { replace: true },
+      )
+    },
+    [page, setSearchParams],
+  )
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({})
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
@@ -84,7 +90,7 @@ export default function Timeline() {
     },
   })
 
-  const { data: response, isLoading, isPlaceholderData } = useQuery({
+  const { data: response, isLoading } = useQuery({
     queryKey: ['frames', page, dateRange.from, dateRange.to],
     queryFn: () => fetchFrames(dateRange.from, dateRange.to, pageSize, page * pageSize),
     staleTime: 120_000, // 2 min stale time — manual refresh for new captures
@@ -290,7 +296,13 @@ export default function Timeline() {
               onClick={() => setViewMode('grid')}
               title={t('timeline.gridView')}
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <svg
+                className={`${iconSize.md}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -306,7 +318,13 @@ export default function Timeline() {
               onClick={() => setViewMode('list')}
               title={t('timeline.listView')}
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <svg
+                className={`${iconSize.md}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </Button>
@@ -338,7 +356,7 @@ export default function Timeline() {
                   if (frame.image_url) setLightboxOpen(true)
                 }}
                 className={cn(
-                  'aspect-video overflow-hidden rounded border-2 bg-hover transition-all hover:scale-105',
+                  `aspect-video overflow-hidden rounded border-2 bg-hover ${motion.all} hover:scale-105`,
                   interaction.focusRing,
                   selectedFrame?.id === frame.id
                     ? 'border-brand-signal ring-2 ring-brand-signal/50'
@@ -385,7 +403,7 @@ export default function Timeline() {
                     if (frame.image_url) setLightboxOpen(true)
                   }}
                   className={cn(
-                    'flex w-full items-center gap-4 p-3 text-left transition-colors',
+                    `flex w-full items-center gap-4 p-3 text-left ${motion.colors}`,
                     interaction.focusRing,
                     selectedFrame?.id === frame.id ? 'bg-brand-signal/10' : 'hover:bg-hover/50',
                   )}
@@ -409,7 +427,9 @@ export default function Timeline() {
                   {/* UI note */}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-medium text-content text-sm">{frame.app_name}</span>
+                      <span className={`truncate ${typography.weight.medium} text-content text-sm`}>
+                        {frame.app_name}
+                      </span>
                       <Badge color={badge.color} size="sm">
                         {badge.label}
                       </Badge>
@@ -466,7 +486,9 @@ export default function Timeline() {
                     alt={selectedFrame.window_title}
                     className="h-full w-full object-contain"
                   />
-                  <div className={`absolute inset-0 flex items-center justify-center bg-surface-overlay/0 ${motion.colors} group-hover:bg-surface-overlay/30`}>
+                  <div
+                    className={`absolute inset-0 flex items-center justify-center bg-surface-overlay/0 ${motion.colors} group-hover:bg-surface-overlay/30`}
+                  >
                     <svg
                       className={`h-12 w-12 text-content-inverse opacity-0 ${motion.opacity} group-hover:opacity-100`}
                       fill="none"
@@ -535,7 +557,9 @@ export default function Timeline() {
 
               {/* UI note */}
               <div>
-                <h4 className="mb-2 font-medium text-content-secondary text-sm">{t('timeline.tags')}</h4>
+                <h4 className={`mb-2 ${typography.weight.medium} text-content-secondary text-sm`}>
+                  {t('timeline.tags')}
+                </h4>
                 <div className="space-y-2">
                   {/* UI note */}
                   {selectedFrameTags.length > 0 && (
@@ -577,7 +601,9 @@ export default function Timeline() {
               {selectedFrame.ocr_text && (
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <h4 className="font-medium text-content-secondary text-sm">{t('timeline.ocrText')}</h4>
+                    <h4 className={`${typography.weight.medium} text-content-secondary text-sm`}>
+                      {t('timeline.ocrText')}
+                    </h4>
                     <Button
                       type="button"
                       variant="secondary"
@@ -589,7 +615,9 @@ export default function Timeline() {
                       {t('timeline.copyOcr')}
                     </Button>
                   </div>
-                  <pre className="max-h-48 select-all overflow-y-auto whitespace-pre-wrap break-words rounded bg-surface-muted p-3 font-mono text-content-strong text-xs">
+                  <pre
+                    className={`max-h-48 select-all overflow-y-auto whitespace-pre-wrap break-words rounded bg-surface-muted p-3 ${typography.family.mono} text-content-strong text-xs`}
+                  >
                     {selectedFrame.ocr_text}
                   </pre>
                 </div>
@@ -599,7 +627,7 @@ export default function Timeline() {
               <div className="flex items-center justify-between border-muted border-t pt-4">
                 <Button variant="secondary" onClick={goToPrev} disabled={selectedIndex <= 0}>
                   <svg
-                    className="mr-2 h-4 w-4"
+                    className={`mr-2 ${iconSize.base}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -615,7 +643,7 @@ export default function Timeline() {
                 <Button variant="secondary" onClick={goToNext} disabled={selectedIndex >= filteredFrames.length - 1}>
                   {t('common.next')}
                   <svg
-                    className="ml-2 h-4 w-4"
+                    className={`ml-2 ${iconSize.base}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

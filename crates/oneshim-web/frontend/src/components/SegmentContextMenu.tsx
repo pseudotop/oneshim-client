@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { colors, motion } from '../styles/tokens'
+import { colors, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 interface RegimeOption {
@@ -113,7 +113,9 @@ export default function SegmentContextMenu({
         {/* Change regime sub-items */}
         {filteredRegimes.length > 0 && (
           <div className="px-3 py-1">
-            <span className={cn('font-medium text-xs', colors.text.tertiary)}>{t('recalibration.changeRegimeTo')}</span>
+            <span className={cn(typography.weight.medium, 'text-xs', colors.text.tertiary)}>
+              {t('recalibration.changeRegimeTo')}
+            </span>
           </div>
         )}
         {filteredRegimes.map((regime) => (

@@ -95,7 +95,8 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
       <div className="border-muted border-b px-4 py-3">
         <h3 className={cn(typography.label, 'text-content')}>{t('replay.eventLog', 'Event Log')}</h3>
         <p className={cn('mt-0.5 text-content-secondary', typography.caption)}>
-          {items.length}{t('replay.items', ' items')}
+          {items.length}
+          {t('replay.items', ' items')}
         </p>
       </div>
 
@@ -129,7 +130,7 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                     motion.colors,
                     isActive
                       ? 'border-brand-signal border-l-2 bg-brand-signal/5'
-                      : 'border-transparent border-l-2 hover:bg-hover'
+                      : 'border-transparent border-l-2 hover:bg-hover',
                   )}
                   onClick={() => onItemClick(itemTime)}
                 >
@@ -141,7 +142,9 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                     <div className="min-w-0 flex-1">
                       {/* UI note */}
                       <div className="flex items-center justify-between">
-                        <span className={cn(typography.mono, 'text-content-secondary', typography.caption)}>{timeStr}</span>
+                        <span className={cn(typography.mono, 'text-content-secondary', typography.caption)}>
+                          {timeStr}
+                        </span>
                         <span
                           className={cn(
                             'rounded px-1.5 py-0.5',
@@ -150,7 +153,7 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                               ? 'bg-brand-signal/10 text-brand-text'
                               : item.type === 'IdlePeriod'
                                 ? 'bg-surface-elevated text-content-secondary'
-                                : 'bg-semantic-info/10 text-semantic-info'
+                                : 'bg-semantic-info/10 text-semantic-info',
                           )}
                         >
                           {getEventLabel(item, captureLabel, idleLabel, minLabel)}
@@ -163,14 +166,18 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                           {item.type === 'Frame' ? (
                             <>
                               <p className={cn('truncate text-content', typography.label)}>{item.app_name}</p>
-                              <p className={cn('truncate text-content-secondary', typography.caption)}>{item.window_title}</p>
+                              <p className={cn('truncate text-content-secondary', typography.caption)}>
+                                {item.window_title}
+                              </p>
                             </>
                           ) : (
                             item.app_name && (
                               <>
                                 <p className={cn('truncate text-content', typography.label)}>{item.app_name}</p>
                                 {item.window_title && (
-                                  <p className={cn('truncate text-content-secondary', typography.caption)}>{item.window_title}</p>
+                                  <p className={cn('truncate text-content-secondary', typography.caption)}>
+                                    {item.window_title}
+                                  </p>
                                 )}
                               </>
                             )
@@ -189,12 +196,14 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                                   ? 'bg-semantic-success'
                                   : item.importance >= 0.4
                                     ? 'bg-semantic-warning'
-                                    : 'bg-surface-muted'
+                                    : 'bg-surface-muted',
                               )}
                               style={{ width: `${item.importance * 100}%` }}
                             />
                           </div>
-                          <span className={cn('text-content-secondary', typography.caption)}>{Math.round(item.importance * 100)}%</span>
+                          <span className={cn('text-content-secondary', typography.caption)}>
+                            {Math.round(item.importance * 100)}%
+                          </span>
                         </div>
                       )}
                     </div>

@@ -139,7 +139,10 @@ export default function FocusWidget() {
             <Focus className={cn('mr-2 inline', iconSize.md)} />
             {t('focus.title')}
           </CardTitle>
-          <NavLink to="/focus" className={cn('flex items-center gap-1 hover:underline', typography.body, colors.primary.text)}>
+          <NavLink
+            to="/focus"
+            className={cn('flex items-center gap-1 hover:underline', typography.body, colors.primary.text)}
+          >
             {t('common.more')}
             <ArrowRight className={iconSize.base} />
           </NavLink>
@@ -168,9 +171,7 @@ export default function FocusWidget() {
             <div className="flex items-center gap-2">
               <MessageSquare className={cn(iconSize.base, 'text-brand-text')} />
               <div>
-                <p className={cn(colors.text.primary, typography.label)}>
-                  {formatDuration(today.communication_secs)}
-                </p>
+                <p className={cn(colors.text.primary, typography.label)}>{formatDuration(today.communication_secs)}</p>
                 <p className={cn(typography.caption, colors.text.tertiary)}>{t('focus.communication')}</p>
               </div>
             </div>

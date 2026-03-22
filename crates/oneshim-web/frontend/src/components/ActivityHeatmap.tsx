@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchHeatmap, type HeatmapResponse } from '../api/client'
-import { motion, typography } from '../styles/tokens'
+import { iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 interface ActivityHeatmapProps {
@@ -84,14 +84,20 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
         {grid.map((row, dayIndex) => (
           <div key={dayLabels[dayIndex]} className="flex items-center gap-0.5">
             {/* UI note */}
-            <div className={cn('w-8 pr-2 text-right text-content-secondary', typography.caption)}>{dayLabels[dayIndex]}</div>
+            <div className={cn('w-8 pr-2 text-right text-content-secondary', typography.caption)}>
+              {dayLabels[dayIndex]}
+            </div>
             {/* UI note */}
             {row.map((value, hourIndex) => {
               const ratio = value / maxValue
               return (
                 <div
                   key={HOUR_LABELS[hourIndex]}
-                  className={cn('h-4 flex-1 rounded-sm cursor-pointer hover:ring-2 hover:ring-brand-signal', motion.colors, getColor(ratio))}
+                  className={cn(
+                    'h-4 flex-1 rounded-sm cursor-pointer hover:ring-2 hover:ring-brand-signal',
+                    motion.colors,
+                    getColor(ratio),
+                  )}
                   title={`${dayLabels[dayIndex]} ${HOUR_LABELS[hourIndex]}:00 - ${t('heatmap.activity')}: ${value}`}
                 />
               )
@@ -104,12 +110,12 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
       <div className="mt-4 flex items-center justify-end gap-2">
         <span className={cn('text-content-secondary', typography.caption)}>{t('heatmap.low')}</span>
         <div className="flex gap-0.5">
-          <div className="h-3 w-3 rounded-sm bg-hover" />
-          <div className="h-3 w-3 rounded-sm bg-brand-signal/10" />
-          <div className="h-3 w-3 rounded-sm bg-brand-signal/25" />
-          <div className="h-3 w-3 rounded-sm bg-brand-signal/40" />
-          <div className="h-3 w-3 rounded-sm bg-brand-signal/60" />
-          <div className="h-3 w-3 rounded-sm bg-brand-signal/80" />
+          <div className={`${iconSize.xs} rounded-sm bg-hover`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/10`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/25`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/40`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/60`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/80`} />
         </div>
         <span className={cn('text-content-secondary', typography.caption)}>{t('heatmap.high')}</span>
       </div>

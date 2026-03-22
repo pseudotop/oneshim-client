@@ -53,7 +53,9 @@ export function DevToolbar() {
     <div className="fixed bottom-12 right-4 z-[9999] bg-gray-900 text-white text-xs rounded-lg shadow-2xl p-3 w-72 border border-yellow-500/50">
       <div className="flex justify-between items-center mb-2">
         <span className="font-bold text-yellow-400">Dev Toolbar</span>
-        <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">&#x2715;</button>
+        <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">
+          &#x2715;
+        </button>
       </div>
 
       <div className="space-y-2">
@@ -61,9 +63,7 @@ export function DevToolbar() {
           <span>Standalone Mock</span>
           <button
             onClick={toggleStandalone}
-            className={`px-2 py-0.5 rounded text-xs font-bold ${
-              standalone ? 'bg-red-600' : 'bg-green-600'
-            }`}
+            className={`px-2 py-0.5 rounded text-xs font-bold ${standalone ? 'bg-red-600' : 'bg-green-600'}`}
           >
             {standalone ? 'ON (mock)' : 'OFF (real API)'}
           </button>
@@ -76,9 +76,7 @@ export function DevToolbar() {
 
         <div className="flex justify-between items-center">
           <span>Tauri</span>
-          <span className="text-gray-400">
-            {'__TAURI_INTERNALS__' in window ? 'Yes' : 'No'}
-          </span>
+          <span className="text-gray-400">{'__TAURI_INTERNALS__' in window ? 'Yes' : 'No'}</span>
         </div>
 
         <div className="flex justify-between items-center">
@@ -89,10 +87,7 @@ export function DevToolbar() {
         <hr className="border-gray-700" />
 
         <div className="flex gap-2">
-          <button
-            onClick={clearStorage}
-            className="flex-1 bg-red-800 hover:bg-red-700 px-2 py-1 rounded text-xs"
-          >
+          <button onClick={clearStorage} className="flex-1 bg-red-800 hover:bg-red-700 px-2 py-1 rounded text-xs">
             Clear Storage
           </button>
           <button

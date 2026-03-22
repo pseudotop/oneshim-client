@@ -2,7 +2,7 @@ import { MessageCircle, Target, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardContent, Skeleton } from '../components/ui'
 import { useCoachingHistory, useGoalProgress } from '../hooks/useCoaching'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 export default function Coaching() {
@@ -12,15 +12,11 @@ export default function Coaching() {
 
   return (
     <div className="min-h-full p-6">
-      <h1 className={cn(typography.h1, colors.text.pageTitle, 'mb-6')}>
-        {t('coaching.title', 'Coaching History')}
-      </h1>
+      <h1 className={cn(typography.h1, colors.text.pageTitle, 'mb-6')}>{t('coaching.title', 'Coaching History')}</h1>
 
       {/* Goal progress summary */}
       <section className="mb-6">
-        <h2 className={cn(typography.h3, 'mb-3')}>
-          {t('coaching.goalsTitle', "Today's Goals")}
-        </h2>
+        <h2 className={cn(typography.h3, 'mb-3')}>{t('coaching.goalsTitle', "Today's Goals")}</h2>
         {goalsLoading ? (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
@@ -33,18 +29,18 @@ export default function Coaching() {
               <Card key={g.regime_label} variant="default" padding="sm">
                 <CardContent>
                   <div className="flex items-center gap-2">
-                    <Target className="h-4 w-4" style={{ color: g.display_color }} />
-                    <span className="text-sm font-medium">{g.regime_label}</span>
+                    <Target className={`${iconSize.base}`} style={{ color: g.display_color }} />
+                    <span className={`text-sm ${typography.weight.medium}`}>{g.regime_label}</span>
                   </div>
                   <div className="mt-2 flex items-baseline gap-1">
-                    <span className="text-2xl font-bold">{g.percentage}%</span>
+                    <span className={`text-2xl ${typography.weight.bold}`}>{g.percentage}%</span>
                     <span className="text-xs text-content-secondary">
                       {g.current_minutes}/{g.target_minutes}m
                     </span>
                   </div>
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-muted">
                     <div
-                      className="h-full rounded-full transition-all duration-500"
+                      className={`h-full rounded-full ${motion.all} `.trim()}
                       style={{
                         width: `${Math.min(g.percentage, 100)}%`,
                         backgroundColor: g.display_color,
@@ -61,7 +57,7 @@ export default function Coaching() {
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-surface-elevated">
                 <Target className="h-6 w-6 text-content-muted" />
               </div>
-              <p className={cn('text-sm font-medium', colors.text.primary)}>
+              <p className={cn(`text-sm ${typography.weight.medium}`, colors.text.primary)}>
                 {t('coaching.noGoals', 'No goals configured.')}
               </p>
               <p className={cn('mt-1 text-xs', colors.text.secondary)}>
@@ -74,9 +70,7 @@ export default function Coaching() {
 
       {/* Coaching event timeline */}
       <section>
-        <h2 className={cn(typography.h3, 'mb-3')}>
-          {t('coaching.recentEvents', 'Recent Events')}
-        </h2>
+        <h2 className={cn(typography.h3, 'mb-3')}>{t('coaching.recentEvents', 'Recent Events')}</h2>
         {histLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
@@ -90,8 +84,10 @@ export default function Coaching() {
                 <CardContent>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
-                      <MessageCircle className="h-4 w-4 text-brand-text" />
-                      <span className="rounded-md bg-surface-elevated px-2 py-0.5 text-xs font-medium">
+                      <MessageCircle className={`${iconSize.base} text-brand-text`} />
+                      <span
+                        className={`rounded-md bg-surface-elevated px-2 py-0.5 text-xs ${typography.weight.medium}`}
+                      >
                         {evt.profile_name}
                       </span>
                       <span className="text-xs text-content-secondary">{evt.trigger_type}</span>
@@ -100,12 +96,10 @@ export default function Coaching() {
                       {new Date(evt.shown_at).toLocaleTimeString()}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-content">
-                    {evt.personalized_message || evt.message_template}
-                  </p>
+                  <p className="mt-1 text-sm text-content">{evt.personalized_message || evt.message_template}</p>
                   {evt.feedback_type && (
                     <div className="mt-1 flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3" />
+                      <TrendingUp className={`${iconSize.xs}`} />
                       <span className="text-xs text-content-secondary">{evt.feedback_type}</span>
                     </div>
                   )}
@@ -119,7 +113,7 @@ export default function Coaching() {
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-surface-elevated">
                 <MessageCircle className="h-6 w-6 text-content-muted" />
               </div>
-              <p className={cn('text-sm font-medium', colors.text.primary)}>
+              <p className={cn(`text-sm ${typography.weight.medium}`, colors.text.primary)}>
                 {t('coaching.noEvents', 'No coaching events yet.')}
               </p>
               <p className={cn('mt-1 text-xs', colors.text.secondary)}>

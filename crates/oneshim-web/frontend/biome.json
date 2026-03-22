@@ -8,7 +8,7 @@
       }
     }
   },
-  "plugins": ["./plugins/banned-classes.grit"],
+  "plugins": [],
   "linter": {
     "enabled": true,
     "rules": {

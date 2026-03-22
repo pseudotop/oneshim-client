@@ -152,7 +152,9 @@ export default function TimelineView({
             <div key={entry.segment_id} className="flex gap-3">
               {/* Time label column */}
               <div className="flex w-14 flex-shrink-0 flex-col items-end pt-2">
-                <span className={cn('font-medium text-xs', colors.text.secondary)}>{formatTime(entry.start_time)}</span>
+                <span className={cn(typography.weight.medium, 'text-xs', colors.text.secondary)}>
+                  {formatTime(entry.start_time)}
+                </span>
               </div>
 
               {/* Colored block column */}
@@ -175,7 +177,12 @@ export default function TimelineView({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span
-                      className={cn('font-semibold text-xs', colors.text.primary, isOverridden ? 'line-through' : '')}
+                      className={cn(
+                        typography.weight.semibold,
+                        'text-xs',
+                        colors.text.primary,
+                        isOverridden ? 'line-through' : '',
+                      )}
                     >
                       {entry.regime_label}
                     </span>

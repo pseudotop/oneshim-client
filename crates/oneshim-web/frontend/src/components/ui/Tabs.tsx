@@ -114,7 +114,7 @@ export function Tabs({ tabs, activeTab, onTabChange, className, ariaLabel, idBas
               handleKeyDown(event, index)
             }}
             className={cn(
-              'inline-flex items-center gap-2 px-3 py-2 font-medium',
+              `inline-flex items-center gap-2 px-3 py-2 ${typography.weight.medium}`,
               radius.md,
               typography.body,
               interaction.interactive,

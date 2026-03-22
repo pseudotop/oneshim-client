@@ -6,9 +6,7 @@ import { iconSize, interaction, layout, motion, typography } from '../../styles/
 import { cn } from '../../utils/cn'
 import { MOD_KEY } from '../../utils/platform'
 
-const IS_MAC =
-  typeof navigator !== 'undefined' &&
-  (/mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent))
+const IS_MAC = typeof navigator !== 'undefined' && (/mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent))
 
 const pageTitleKeys: Record<string, string> = {
   '/': 'nav.dashboard',
@@ -81,9 +79,7 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
 
       {/* Page title — centered */}
       <div className="flex flex-1 items-center justify-center" data-tauri-drag-region>
-        <span className={cn(layout.titleBar.brand, 'text-content-secondary text-xs tracking-wider')}>
-          {pageTitle}
-        </span>
+        <span className={cn(layout.titleBar.brand, 'text-content-secondary text-xs tracking-wider')}>{pageTitle}</span>
       </div>
 
       {/* Search trigger */}

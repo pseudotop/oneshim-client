@@ -21,7 +21,7 @@ import {
 } from '../api/client'
 import { Button, Card, CardTitle, Input, Spinner } from '../components/ui'
 import { addToast } from '../hooks/useToast'
-import { colors, elevation, typography } from '../styles/tokens'
+import { colors, elevation, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatBytes, formatNumber } from '../utils/formatters'
 
@@ -285,7 +285,7 @@ export default function Privacy() {
       {/* UI note */}
       {deleteResult && (
         <div className="rounded-lg border border-status-connected bg-semantic-success/20 p-4 text-semantic-success">
-          <div className="font-medium">{deleteResult.message}</div>
+          <div className={`${typography.weight.medium}`}>{deleteResult.message}</div>
           <div className="mt-2 space-y-1 text-sm">
             {deleteResult.events_deleted > 0 && (
               <div>{t('privacy.deleteResult.events', { count: deleteResult.events_deleted })}</div>
@@ -324,27 +324,27 @@ export default function Privacy() {
               <DataCard
                 label={t('privacy.eventsLabel')}
                 value={formatNumber(storageStats.event_count)}
-                icon={<FileText className="h-4 w-4" />}
+                icon={<FileText className={`${iconSize.base}`} />}
               />
               <DataCard
                 label={t('privacy.screenshotsLabel')}
                 value={formatNumber(storageStats.frame_count)}
-                icon={<Camera className="h-4 w-4" />}
+                icon={<Camera className={`${iconSize.base}`} />}
               />
               <DataCard
                 label={t('privacy.metricsLabel')}
                 value={formatNumber(storageStats.metric_count)}
-                icon={<BarChart3 className="h-4 w-4" />}
+                icon={<BarChart3 className={`${iconSize.base}`} />}
               />
               <DataCard
                 label={t('privacy.storageSizeLabel')}
                 value={formatBytes(storageStats.total_size_bytes)}
-                icon={<HardDrive className="h-4 w-4" />}
+                icon={<HardDrive className={`${iconSize.base}`} />}
               />
               <DataCard
                 label={t('privacy.dataRangeLabel')}
                 value={getDateRangeText()}
-                icon={<Calendar className="h-4 w-4" />}
+                icon={<Calendar className={`${iconSize.base}`} />}
                 small
               />
             </div>
@@ -363,13 +363,19 @@ export default function Privacy() {
 
         <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label htmlFor="privacy-start-date" className="mb-2 block font-medium text-content-strong text-sm">
+            <label
+              htmlFor="privacy-start-date"
+              className={`mb-2 block ${typography.weight.medium} text-content-strong text-sm`}
+            >
               {t('privacy.startDate')}
             </label>
             <Input id="privacy-start-date" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           </div>
           <div>
-            <label htmlFor="privacy-end-date" className="mb-2 block font-medium text-content-strong text-sm">
+            <label
+              htmlFor="privacy-end-date"
+              className={`mb-2 block ${typography.weight.medium} text-content-strong text-sm`}
+            >
               {t('privacy.endDate')}
             </label>
             <Input id="privacy-end-date" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
@@ -377,7 +383,9 @@ export default function Privacy() {
         </div>
 
         <div className="mb-4">
-          <span className="mb-2 block font-medium text-content-strong text-sm">{t('privacy.dataTypesHint')}</span>
+          <span className={`mb-2 block ${typography.weight.medium} text-content-strong text-sm`}>
+            {t('privacy.dataTypesHint')}
+          </span>
           <div className="flex flex-wrap gap-2">
             {(Object.entries(DATA_TYPE_LABELS) as [DataType, string][]).map(([type, label]) => (
               <Button
@@ -428,7 +436,7 @@ export default function Privacy() {
             role="alert"
             className="mb-4 rounded-lg border border-status-error bg-semantic-error/20 p-4 text-semantic-error"
           >
-            <div className="font-medium">{restoreError}</div>
+            <div className={`${typography.weight.medium}`}>{restoreError}</div>
             <button type="button" className="mt-2 text-sm underline" onClick={() => setRestoreError(null)}>
               {t('common.dismiss', 'Dismiss')}
             </button>
@@ -443,7 +451,7 @@ export default function Privacy() {
                 : 'border border-status-error bg-semantic-error/20 text-semantic-error'
             }`}
           >
-            <div className="font-medium">
+            <div className={`${typography.weight.medium}`}>
               {restoreResult.success ? t('backup.restoreSuccess') : t('backup.restoreFailed')}
             </div>
             <div className="mt-2 space-y-1 text-sm">
@@ -463,7 +471,7 @@ export default function Privacy() {
             </div>
             {restoreResult.errors.length > 0 && (
               <div className="mt-2 text-sm">
-                <div className="font-medium">{t('backup.errors')}:</div>
+                <div className={`${typography.weight.medium}`}>{t('backup.errors')}:</div>
                 <ul className="list-inside list-disc">
                   {restoreResult.errors.slice(0, 5).map((err) => (
                     <li key={err}>{err}</li>
@@ -486,7 +494,9 @@ export default function Privacy() {
 
         {/* UI note */}
         <div className="mb-4">
-          <span className="mb-2 block font-medium text-content-strong text-sm">{t('backup.includeData')}</span>
+          <span className={`mb-2 block ${typography.weight.medium} text-content-strong text-sm`}>
+            {t('backup.includeData')}
+          </span>
           <div className="flex flex-wrap gap-2">
             <Button
               variant={backupOptions.include_settings ? 'primary' : 'secondary'}
@@ -627,7 +637,7 @@ function DataCard({ label, value, icon, small }: DataCardProps) {
         {icon}
         <span>{label}</span>
       </div>
-      <div className={`mt-1 font-bold text-content ${small ? 'text-sm' : 'text-xl'}`}>{value}</div>
+      <div className={`mt-1 ${typography.weight.bold} text-content ${small ? 'text-sm' : 'text-xl'}`}>{value}</div>
     </Card>
   )
 }

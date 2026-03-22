@@ -1,11 +1,5 @@
 import { useEffect, useReducer } from 'react'
-import type {
-  CoachingPayload,
-  FocusHighlightPayload,
-  GoalProgressItem,
-  OverlayMode,
-  OverlayState,
-} from '../types'
+import type { CoachingPayload, FocusHighlightPayload, GoalProgressItem, OverlayMode, OverlayState } from '../types'
 
 type OverlayAction =
   | { type: 'show-coaching'; payload: CoachingPayload }
@@ -62,12 +56,9 @@ export function useOverlayEvents() {
       const u1 = await listen<CoachingPayload>('overlay:show-coaching', (e) => {
         dispatch({ type: 'show-coaching', payload: e.payload })
       })
-      const u2 = await listen<{ message_id: string; personalized_text: string }>(
-        'overlay:upgrade-message',
-        (e) => {
-          dispatch({ type: 'upgrade-message', payload: e.payload })
-        },
-      )
+      const u2 = await listen<{ message_id: string; personalized_text: string }>('overlay:upgrade-message', (e) => {
+        dispatch({ type: 'upgrade-message', payload: e.payload })
+      })
       const u3 = await listen('overlay:dismiss', () => {
         dispatch({ type: 'dismiss' })
       })
