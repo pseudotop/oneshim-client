@@ -37,7 +37,7 @@ function DeltaArrow({ delta, invertPositive = false }: { delta: number; invertPo
   const isGood = invertPositive ? !isPositive : isPositive
 
   return (
-    <span className={isGood ? 'text-accent-green' : 'text-accent-red'}>
+    <span className={isGood ? 'text-semantic-success' : 'text-semantic-error'}>
       {isPositive ? '\u2191' : '\u2193'} {Math.abs(delta).toFixed(1)}h
     </span>
   )
@@ -53,7 +53,7 @@ function ContextSwitchDelta({ delta }: { delta: number }) {
   const isGood = !isPositive
 
   return (
-    <span className={isGood ? 'text-accent-green' : 'text-accent-red'}>
+    <span className={isGood ? 'text-semantic-success' : 'text-semantic-error'}>
       {isPositive ? '\u2191' : '\u2193'} {Math.abs(delta)}
     </span>
   )
@@ -82,7 +82,7 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card padding="md">
-          <p className={cn('text-sm', colors.text.secondary)}>Deep Work</p>
+          <p className={cn(typography.body, colors.text.secondary)}>Deep Work</p>
           <p className={cn(typography.stat.large, colors.text.primary)}>
             {statistics.deep_work_hours.toFixed(1)}h
           </p>
@@ -92,7 +92,7 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
         </Card>
 
         <Card padding="md">
-          <p className={cn('text-sm', colors.text.secondary)}>Communication</p>
+          <p className={cn(typography.body, colors.text.secondary)}>Communication</p>
           <p className={cn(typography.stat.large, colors.text.primary)}>
             {statistics.communication_hours.toFixed(1)}h
           </p>
@@ -102,14 +102,14 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
         </Card>
 
         <Card padding="md">
-          <p className={cn('text-sm', colors.text.secondary)}>Meetings</p>
+          <p className={cn(typography.body, colors.text.secondary)}>Meetings</p>
           <p className={cn(typography.stat.large, colors.text.primary)}>
             {statistics.meeting_hours.toFixed(1)}h
           </p>
         </Card>
 
         <Card padding="md">
-          <p className={cn('text-sm', colors.text.secondary)}>Context Switches</p>
+          <p className={cn(typography.body, colors.text.secondary)}>Context Switches</p>
           <p className={cn(typography.stat.large, colors.text.primary)}>
             {statistics.context_switches}
           </p>
@@ -146,7 +146,7 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
             </ResponsiveContainer>
           </div>
           {/* Color legend */}
-          <div className="mt-2 flex flex-wrap justify-center gap-4 text-xs">
+          <div className={cn('mt-2 flex flex-wrap justify-center gap-4', typography.caption)}>
             {regimeData.map((entry) => (
               <div key={entry.label} className="flex items-center gap-1.5">
                 <div className="h-3 w-3 rounded-full" style={{ backgroundColor: entry.fill }} />
@@ -159,16 +159,16 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
 
       {/* Longest focus highlight */}
       {statistics.longest_focus_mins > 0 && (
-        <Card padding="md" className="border-l-4 border-l-emerald-500">
+        <Card padding="md" className="border-l-4 border-brand-signal">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-accent-green/10 p-2">
+            <div className="rounded-lg bg-brand-signal/10 p-2">
               <span className="text-xl" aria-hidden="true">{'\u{1F3AF}'}</span>
             </div>
             <div>
-              <p className={cn('font-semibold', colors.text.primary)}>
+              <p className={cn(typography.label, colors.text.primary)}>
                 Longest Focus: {statistics.longest_focus_mins} min
               </p>
-              <p className={cn('text-sm', colors.text.secondary)}>
+              <p className={cn(typography.body, colors.text.secondary)}>
                 {statistics.longest_focus_content}
               </p>
             </div>

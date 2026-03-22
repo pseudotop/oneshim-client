@@ -196,22 +196,19 @@ export default function Focus() {
         <StatCard
           title={t('focus.deepWork')}
           value={formatDuration(today.deep_work_secs, true)}
-          icon={<Clock className="h-5 w-5 text-blue-500" />}
-          color="blue"
+          icon={<Clock className="h-5 w-5 text-brand-text" />}
         />
 
         <StatCard
           title={t('focus.communication')}
           value={formatDuration(today.communication_secs, true)}
-          icon={<MessageSquare className="h-5 w-5 text-purple-500" />}
-          color="purple"
+          icon={<MessageSquare className="h-5 w-5 text-brand-text" />}
         />
 
         <StatCard
           title={t('focus.interruptions')}
           value={`${today.interruption_count}${t('focus.times')}`}
-          icon={<Zap className="h-5 w-5 text-amber-500" />}
-          color="teal"
+          icon={<Zap className="h-5 w-5 text-brand-text" />}
         />
       </div>
 

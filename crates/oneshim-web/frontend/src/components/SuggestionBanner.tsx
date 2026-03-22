@@ -2,39 +2,40 @@ import { Brain, Coffee, Focus, MessageSquare, Play, RotateCcw, X } from 'lucide-
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchLocalSuggestions, type LocalSuggestion, submitSuggestionFeedback } from '../api/client'
-import { iconSize } from '../styles/tokens'
+import { iconSize, motion, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 import { Button } from './ui/Button'
 
 const SUGGESTION_ICONS: Record<string, { icon: typeof Focus; color: string; bgColor: string; borderColor: string }> = {
   NeedFocusTime: {
     icon: Focus,
-    color: 'text-accent-blue',
-    bgColor: 'bg-blue-100 dark:bg-blue-900/30',
-    borderColor: 'border-blue-600 dark:border-blue-400',
+    color: 'text-semantic-info',
+    bgColor: 'bg-semantic-info/20',
+    borderColor: 'border-semantic-info',
   },
   TakeBreak: {
     icon: Coffee,
-    color: 'text-accent-amber',
-    bgColor: 'bg-amber-100 dark:bg-amber-900/30',
-    borderColor: 'border-amber-600 dark:border-amber-400',
+    color: 'text-semantic-warning',
+    bgColor: 'bg-semantic-warning/20',
+    borderColor: 'border-semantic-warning',
   },
   RestoreContext: {
     icon: RotateCcw,
-    color: 'text-accent-purple',
-    bgColor: 'bg-purple-100 dark:bg-purple-900/30',
-    borderColor: 'border-purple-600 dark:border-purple-400',
+    color: 'text-semantic-info',
+    bgColor: 'bg-semantic-info/20',
+    borderColor: 'border-semantic-info',
   },
   PatternDetected: {
     icon: Brain,
-    color: 'text-accent-green',
-    bgColor: 'bg-green-100 dark:bg-green-900/30',
-    borderColor: 'border-green-600 dark:border-green-400',
+    color: 'text-semantic-success',
+    bgColor: 'bg-semantic-success/20',
+    borderColor: 'border-semantic-success',
   },
   ExcessiveCommunication: {
     icon: MessageSquare,
-    color: 'text-accent-red',
-    bgColor: 'bg-red-100 dark:bg-red-900/30',
-    borderColor: 'border-red-600 dark:border-red-400',
+    color: 'text-semantic-warning',
+    bgColor: 'bg-semantic-warning/20',
+    borderColor: 'border-semantic-warning',
   },
 }
 
@@ -118,18 +119,23 @@ export default function SuggestionBanner() {
 
   return (
     <div
-      className={`${suggestionConfig.bgColor} border-l-4 ${suggestionConfig.borderColor} mb-4 flex items-center gap-4 rounded-r-lg px-4 py-3`}
+      className={cn(
+        suggestionConfig.bgColor,
+        'border-l-4',
+        suggestionConfig.borderColor,
+        'mb-4 flex items-center gap-4 rounded-r-lg px-4 py-3'
+      )}
     >
       {/* UI note */}
-      <div className={`flex-shrink-0 ${suggestionConfig.color}`}>
+      <div className={cn('flex-shrink-0', suggestionConfig.color)}>
         <Icon className={iconSize.lg} />
       </div>
 
       {/* UI note */}
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-content text-sm">{getSuggestionMessage(currentSuggestion, t)}</p>
+        <p className={cn('truncate text-content', typography.label)}>{getSuggestionMessage(currentSuggestion, t)}</p>
         {pendingSuggestions.length > 1 && (
-          <p className="mt-0.5 text-content-secondary text-xs">
+          <p className={cn('mt-0.5 text-content-secondary', typography.caption)}>
             {currentIndex + 1} / {pendingSuggestions.length}
           </p>
         )}
@@ -139,7 +145,7 @@ export default function SuggestionBanner() {
       <div className="flex flex-shrink-0 items-center gap-2">
         {/* UI note */}
         <Button variant="primary" size="sm" onClick={handleAct} className="flex items-center gap-1">
-          <Play className="h-3 w-3" />
+          <Play className={iconSize.xs} />
           {t('focus.suggestions.act')}
         </Button>
 
@@ -154,10 +160,10 @@ export default function SuggestionBanner() {
         <button
           type="button"
           onClick={handleDismiss}
-          className="rounded-md p-1 text-content-secondary transition-colors hover:bg-hover"
+          className={cn('rounded-md p-1 text-content-secondary hover:bg-hover', motion.colors)}
           title={t('common.close')}
         >
-          <X className="h-4 w-4" />
+          <X className={iconSize.base} />
         </button>
       </div>
     </div>

@@ -52,24 +52,24 @@ class ErrorBoundaryBase extends Component<Props, State> {
           <div className="p-8 text-center" role="alert">
             {offline ? (
               <>
-                <h1 className="mb-4 font-bold text-2xl text-amber-600">{t('errors.serverOffline')}</h1>
+                <h1 className="mb-4 text-2xl font-bold text-semantic-warning">{t('errors.serverOffline')}</h1>
                 <p className="mb-4 text-content-secondary">{t('errors.serverOfflineDesc')}</p>
                 <button
                   type="button"
                   onClick={() => this.setState({ hasError: false, error: null })}
-                  className="rounded bg-amber-600 px-4 py-2 text-white hover:bg-amber-700"
+                  className="rounded bg-semantic-warning px-4 py-2 text-content-inverse hover:opacity-90"
                 >
                   {t('errors.retryConnection')}
                 </button>
               </>
             ) : (
               <>
-                <h1 className="mb-4 font-bold text-2xl text-red-600">{t('errors.boundaryTitle')}</h1>
+                <h1 className="mb-4 text-2xl font-bold text-semantic-error">{t('errors.boundaryTitle')}</h1>
                 <p className="mb-4 text-content-secondary">{this.state.error?.message}</p>
                 <button
                   type="button"
                   onClick={() => this.setState({ hasError: false, error: null })}
-                  className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                  className="rounded bg-brand px-4 py-2 text-content-inverse hover:bg-brand-hover"
                 >
                   {t('errors.boundaryRetry')}
                 </button>

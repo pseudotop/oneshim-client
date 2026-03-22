@@ -19,22 +19,22 @@ interface InsightCardProps {
 }
 
 const highlightConfig: Record<string, { icon: string; bg: string; text: string }> = {
-  ACHIEVEMENT: { icon: '\u{1F3C6}', bg: 'bg-accent-green/10', text: 'text-accent-green' },
+  ACHIEVEMENT: { icon: '\u{1F3C6}', bg: 'bg-semantic-success/10', text: 'text-semantic-success' },
   WARNING: { icon: '\u{26A0}\u{FE0F}', bg: 'bg-semantic-warning/10', text: 'text-semantic-warning' },
-  SUGGESTION: { icon: '\u{1F4A1}', bg: 'bg-accent-blue/10', text: 'text-accent-blue' },
+  SUGGESTION: { icon: '\u{1F4A1}', bg: 'bg-brand-signal/10', text: 'text-brand-text' },
 }
 
 export default function InsightCard({ insight }: InsightCardProps) {
   if (!insight) {
     return (
-      <Card padding="md" className="border-l-4 border-l-blue-500">
+      <Card padding="md" className="border-l-4 border-brand-signal">
         <p className={cn(typography.body, colors.text.secondary)}>No insight available for today</p>
       </Card>
     )
   }
 
   return (
-    <Card padding="md" className="border-l-4 border-l-blue-500">
+    <Card padding="md" className="border-l-4 border-brand-signal">
       <p className={cn('mb-3 leading-relaxed', typography.body, colors.text.primary)}>{insight.narrative}</p>
       {insight.highlights.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -43,7 +43,7 @@ export default function InsightCard({ insight }: InsightCardProps) {
             return (
               <span
                 key={`${highlight.highlight_type}-${idx}`}
-                className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium', config.bg, config.text)}
+                className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1', typography.caption, typography.label, config.bg, config.text)}
               >
                 <span aria-hidden="true">{config.icon}</span>
                 {highlight.text}

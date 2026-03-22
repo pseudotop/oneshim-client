@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router-dom'
 import { type FocusMetricsResponse, fetchFocusMetrics } from '../api/client'
-import { colors, dataViz, motion } from '../styles/tokens'
+import { colors, dataViz, iconSize, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card'
@@ -61,10 +61,10 @@ function CircularGauge({ value, max = 100, size = 80 }: { value: number; max?: n
         strokeDasharray={circumference}
         strokeDashoffset={strokeDashoffset}
         transform="rotate(-90 40 40)"
-        className={`transition-all ${motion.slow}`}
+        className={motion.all}
       />
       {/* UI note */}
-      <text x="40" y="40" textAnchor="middle" dominantBaseline="middle" className="fill-content font-bold text-lg">
+      <text x="40" y="40" textAnchor="middle" dominantBaseline="middle" className={cn('fill-content', typography.h3)}>
         {Math.round(value)}
       </text>
     </svg>
@@ -97,7 +97,7 @@ export default function FocusWidget() {
       <Card>
         <CardHeader>
           <CardTitle>
-            <Focus className="mr-2 inline h-5 w-5" />
+            <Focus className={cn('mr-2 inline', iconSize.md)} />
             {t('focus.title')}
           </CardTitle>
         </CardHeader>
@@ -115,7 +115,7 @@ export default function FocusWidget() {
       <Card variant="danger">
         <CardHeader>
           <CardTitle>
-            <Focus className="mr-2 inline h-5 w-5" />
+            <Focus className={cn('mr-2 inline', iconSize.md)} />
             {t('focus.title')}
           </CardTitle>
         </CardHeader>
@@ -136,12 +136,12 @@ export default function FocusWidget() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>
-            <Focus className="mr-2 inline h-5 w-5" />
+            <Focus className={cn('mr-2 inline', iconSize.md)} />
             {t('focus.title')}
           </CardTitle>
-          <NavLink to="/focus" className={cn('flex items-center gap-1 text-sm hover:underline', colors.primary.text)}>
+          <NavLink to="/focus" className={cn('flex items-center gap-1 hover:underline', typography.body, colors.primary.text)}>
             {t('common.more')}
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className={iconSize.base} />
           </NavLink>
         </div>
       </CardHeader>
@@ -150,56 +150,56 @@ export default function FocusWidget() {
           {/* UI note */}
           <div className="flex flex-col items-center">
             <CircularGauge value={today.focus_score} />
-            <span className={cn('mt-1 text-xs', colors.text.tertiary)}>{t('focus.score')}</span>
+            <span className={cn('mt-1', typography.caption, colors.text.tertiary)}>{t('focus.score')}</span>
           </div>
 
           {/* UI note */}
           <div className="grid flex-1 grid-cols-2 gap-3">
             {/* UI note */}
             <div className="flex items-center gap-2">
-              <Clock className={cn('h-4 w-4', colors.accent.blue)} />
+              <Clock className={cn(iconSize.base, 'text-brand-text')} />
               <div>
-                <p className={cn('font-medium text-sm', colors.text.primary)}>{formatDuration(today.deep_work_secs)}</p>
-                <p className={cn('text-xs', colors.text.tertiary)}>{t('focus.deepWork')}</p>
+                <p className={cn(colors.text.primary, typography.label)}>{formatDuration(today.deep_work_secs)}</p>
+                <p className={cn(typography.caption, colors.text.tertiary)}>{t('focus.deepWork')}</p>
               </div>
             </div>
 
             {/* UI note */}
             <div className="flex items-center gap-2">
-              <MessageSquare className={cn('h-4 w-4', colors.accent.purple)} />
+              <MessageSquare className={cn(iconSize.base, 'text-brand-text')} />
               <div>
-                <p className={cn('font-medium text-sm', colors.text.primary)}>
+                <p className={cn(colors.text.primary, typography.label)}>
                   {formatDuration(today.communication_secs)}
                 </p>
-                <p className={cn('text-xs', colors.text.tertiary)}>{t('focus.communication')}</p>
+                <p className={cn(typography.caption, colors.text.tertiary)}>{t('focus.communication')}</p>
               </div>
             </div>
 
             {/* UI note */}
             <div className="flex items-center gap-2">
-              <Zap className={cn('h-4 w-4', colors.accent.amber)} />
+              <Zap className={cn(iconSize.base, 'text-brand-text')} />
               <div>
-                <p className={cn('font-medium text-sm', colors.text.primary)}>
+                <p className={cn(colors.text.primary, typography.label)}>
                   {today.interruption_count}
                   {t('focus.times')}
                 </p>
-                <p className={cn('text-xs', colors.text.tertiary)}>{t('focus.interruptions')}</p>
+                <p className={cn(typography.caption, colors.text.tertiary)}>{t('focus.interruptions')}</p>
               </div>
             </div>
 
             {/* UI note */}
             <div className="flex items-center gap-2">
               {trend >= 0 ? (
-                <TrendingUp className={cn('h-4 w-4', colors.accent.green)} />
+                <TrendingUp className={cn(iconSize.base, 'text-semantic-success')} />
               ) : (
-                <TrendingDown className={cn('h-4 w-4', colors.accent.red)} />
+                <TrendingDown className={cn(iconSize.base, 'text-semantic-error')} />
               )}
               <div>
-                <p className={cn('font-medium text-sm', trend >= 0 ? colors.accent.green : colors.accent.red)}>
+                <p className={cn(typography.label, trend >= 0 ? 'text-semantic-success' : 'text-semantic-error')}>
                   {trend >= 0 ? '+' : ''}
                   {trend.toFixed(1)}
                 </p>
-                <p className={cn('text-xs', colors.text.tertiary)}>{t('focus.trend')}</p>
+                <p className={cn(typography.caption, colors.text.tertiary)}>{t('focus.trend')}</p>
               </div>
             </div>
           </div>
@@ -210,7 +210,7 @@ export default function FocusWidget() {
               data={[...historyScores].reverse()}
               color={trend >= 0 ? dataViz.stroke.good : dataViz.stroke.critical}
             />
-            <span className={cn('mt-1 text-xs', colors.text.tertiary)}>{t('focus.weeklyTrend')}</span>
+            <span className={cn('mt-1', typography.caption, colors.text.tertiary)}>{t('focus.weeklyTrend')}</span>
           </div>
         </div>
       </CardContent>
