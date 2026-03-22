@@ -426,6 +426,58 @@ fn migration_all_versions() {
 }
 
 #[test]
+fn backup_created_when_migration_needed() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+
+    // Create DB at version 0 (just the schema_version table)
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+    )
+    .unwrap();
+    conn.close().unwrap();
+
+    // Now run migrations — should create backup since version 0 < CURRENT_VERSION
+    let conn = Connection::open(&db_path).unwrap();
+    run_migrations(&conn).unwrap();
+    conn.close().unwrap();
+
+    let backup_files: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains("backup"))
+        .collect();
+    assert!(
+        !backup_files.is_empty(),
+        "backup file should be created when migration runs"
+    );
+}
+
+#[test]
+fn backup_skipped_for_in_memory_db() {
+    let conn = Connection::open_in_memory().unwrap();
+    let result = backup_if_needed(&conn, 0);
+    assert!(result.is_none(), "in-memory DB should not produce backup");
+}
+
+#[test]
+fn backup_skipped_when_already_current() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("current.db");
+    let conn = Connection::open(&db_path).unwrap();
+    let result = backup_if_needed(&conn, CURRENT_VERSION);
+    assert!(
+        result.is_none(),
+        "no backup needed when already at current version"
+    );
+    conn.close().unwrap();
+}
+
+#[test]
 fn migration_idempotent() {
     let conn = Connection::open_in_memory().unwrap();
     run_migrations(&conn).unwrap();

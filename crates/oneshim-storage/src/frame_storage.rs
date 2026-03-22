@@ -75,9 +75,10 @@ impl FrameFileStorage {
         })
     }
 
-    /// # Arguments
+    /// Save a frame image to disk.
     ///
-    /// # Returns
+    /// Note: No pre-flight disk space check is performed. If the disk is full,
+    /// the write will fail and the error is propagated to the caller.
     pub async fn save_frame(
         &self,
         timestamp: DateTime<Utc>,

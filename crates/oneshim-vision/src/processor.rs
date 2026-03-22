@@ -54,7 +54,7 @@ fn extract_ocr_text(frame: &DynamicImage, processor: &EdgeFrameProcessor) -> Opt
         }
         Ok(_) => None,
         Err(e) => {
-            tracing::warn!("OCR failure (): {e}");
+            tracing::warn!("OCR extraction failed: {e}");
             None
         }
     }

@@ -132,6 +132,10 @@ impl Scheduler {
             .map(|d| d.join("logs"))
             .ok();
 
+        // Config file mtime tracker — shared into the spawned task.
+        let config_mtime: Arc<parking_lot::Mutex<Option<std::time::SystemTime>>> =
+            Arc::new(parking_lot::Mutex::new(None));
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(aggregation_interval);
             let mut last_reindex_check: Option<chrono::DateTime<Utc>> = None;
@@ -536,6 +540,11 @@ impl Scheduler {
                             }
                         }
 
+                        // --- Config file change detection ---
+                        if let Some(ref cm) = config_manager {
+                            check_config_file_changed(cm, &config_mtime);
+                        }
+
                         debug!("completed");
                     }
                     _ = shutdown_rx.changed() => {
@@ -545,5 +554,37 @@ impl Scheduler {
                 }
             }
         })
+    }
+}
+
+/// Check if the config file has been modified on disk.
+///
+/// This is a free function (not a method) because the scheduler loops run
+/// inside `tokio::spawn` blocks which clone individual fields — they do not
+/// have access to `&self` (the Scheduler instance).
+fn check_config_file_changed(
+    config_manager: &oneshim_core::config_manager::ConfigManager,
+    last_mtime: &parking_lot::Mutex<Option<std::time::SystemTime>>,
+) -> bool {
+    let path = config_manager.config_path();
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    let Ok(modified) = metadata.modified() else {
+        return false;
+    };
+
+    let mut prev = last_mtime.lock();
+    match *prev {
+        Some(prev_time) if modified > prev_time => {
+            *prev = Some(modified);
+            info!("config file changed — restart the application to apply new settings");
+            true
+        }
+        None => {
+            *prev = Some(modified);
+            false
+        }
+        _ => false,
     }
 }

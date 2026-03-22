@@ -28,6 +28,8 @@ pub struct BatchUploader {
     pressure_warned: AtomicBool,
     /// Total number of batches that exhausted all retries and were requeued.
     failed_batches: AtomicUsize,
+    /// Cumulative count of events dropped due to queue capacity overflow.
+    total_dropped: AtomicUsize,
 }
 
 impl BatchUploader {
@@ -48,6 +50,7 @@ impl BatchUploader {
             max_queue_size: MAX_UPLOAD_QUEUE_SIZE,
             pressure_warned: AtomicBool::new(false),
             failed_batches: AtomicUsize::new(0),
+            total_dropped: AtomicUsize::new(0),
         }
     }
 
@@ -62,6 +65,12 @@ impl BatchUploader {
         self
     }
 
+    /// Enqueue an event for batch upload.
+    ///
+    /// Note: Under heavy concurrent enqueue pressure, the queue may briefly
+    /// exceed `max_queue_size` due to a benign TOCTOU race between the size
+    /// check and the push. This is acceptable because the SegQueue is unbounded
+    /// and the overshoot is limited to the number of concurrent callers.
     pub fn enqueue(&self, event: Event) {
         let size = self.queue_size.load(Ordering::Relaxed);
 
@@ -113,9 +122,12 @@ impl BatchUploader {
         }
         if dropped > 0 {
             self.queue_size.fetch_sub(dropped, Ordering::Relaxed);
+            self.total_dropped.fetch_add(dropped, Ordering::Relaxed);
             warn!(
-                "upload queue at capacity ({max}), dropped {dropped} oldest event(s)",
+                dropped,
+                total_dropped = self.total_dropped.load(Ordering::Relaxed),
                 max = self.max_queue_size,
+                "upload queue at capacity, dropped oldest event(s)",
             );
         }
     }
@@ -263,6 +275,11 @@ impl BatchUploader {
         self.failed_batches.load(Ordering::Relaxed)
     }
 
+    /// Cumulative number of events dropped because the queue was at capacity.
+    pub fn total_dropped(&self) -> usize {
+        self.total_dropped.load(Ordering::Relaxed)
+    }
+
     pub fn stats(&self) -> BatchStats {
         BatchStats {
             queue_size: self.queue_size(),
@@ -270,6 +287,7 @@ impl BatchUploader {
             max_queue_size: self.max_queue_size,
             dynamic_batch_enabled: self.dynamic_batch,
             failed_batches: self.failed_batches(),
+            total_dropped: self.total_dropped(),
         }
     }
 }
@@ -283,6 +301,9 @@ pub struct BatchStats {
     /// Number of batches that exhausted all retries and had their events
     /// requeued. Monotonically increasing; never resets.
     pub failed_batches: usize,
+    /// Cumulative number of events dropped due to queue capacity overflow.
+    /// Monotonically increasing; never resets.
+    pub total_dropped: usize,
 }
 
 #[cfg(test)]
@@ -639,6 +660,22 @@ mod tests {
             make_test_event(),
         ]);
         assert_eq!(uploader.queue_size(), 5);
+    }
+
+    #[test]
+    fn tracks_total_dropped_events() {
+        let client = Arc::new(MockApiClient { should_fail: false });
+        let uploader =
+            BatchUploader::new(client, "sess_drop".to_string(), 100, 3).with_max_queue_size(5);
+
+        for _ in 0..10 {
+            uploader.enqueue(make_test_event());
+        }
+        // Queue capped at 5; the other 5 were dropped one-by-one on each
+        // enqueue that found the queue at capacity.
+        assert_eq!(uploader.queue_size(), 5);
+        assert_eq!(uploader.total_dropped(), 5);
+        assert_eq!(uploader.stats().total_dropped, 5);
     }
 
     #[tokio::test]

@@ -68,6 +68,7 @@ impl AgentRuntimeBundle {
             self.focus_storage.clone(),
         )
         .with_storage(self.storage.clone())
+        .with_app_handle(self.app_handle.clone())
         .build()
         .await?;
 
