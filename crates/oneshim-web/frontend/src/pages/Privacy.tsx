@@ -95,10 +95,10 @@ function ConfirmModal({ isOpen, title, message, confirmText, isDangerous, onConf
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay/50">
       <div ref={dialogRef} role="alertdialog" aria-modal="true" aria-describedby={descriptionId}>
         <Card variant="default" padding="lg" className={cn('mx-4 w-full max-w-md', elevation.dialog)}>
-          <CardTitle className={`mb-2 ${isDangerous ? 'text-red-400' : ''}`}>{title}</CardTitle>
+          <CardTitle className={`mb-2 ${isDangerous ? 'text-semantic-error' : ''}`}>{title}</CardTitle>
           <p id={descriptionId} className="mb-6 whitespace-pre-line text-content-secondary">
             {message}
           </p>
@@ -268,7 +268,7 @@ export default function Privacy() {
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <Spinner size="lg" className="text-accent-teal" />
+        <Spinner size="lg" className="text-brand-text" />
         <span className="ml-3 text-content-secondary">{t('common.loading')}</span>
       </div>
     )
@@ -405,7 +405,7 @@ export default function Privacy() {
 
       {/* UI note */}
       <Card id="section-consent" variant="danger" padding="lg">
-        <CardTitle className="mb-2 text-accent-red">{t('privacy.deleteAllTitle')}</CardTitle>
+        <CardTitle className="mb-2 text-semantic-error">{t('privacy.deleteAllTitle')}</CardTitle>
         <p className="mb-4 text-content-secondary text-sm">{t('privacy.deleteAllDesc')}</p>
         <Button
           data-testid="delete-all"
@@ -545,12 +545,12 @@ export default function Privacy() {
 
         {/* UI note */}
         {backupMutation.isError && (
-          <div className="mt-3 text-accent-red text-sm">
+          <div className="mt-3 text-semantic-error text-sm">
             {t('backup.downloadFailed')}: {(backupMutation.error as Error).message}
           </div>
         )}
         {restoreMutation.isError && (
-          <div className="mt-3 text-accent-red text-sm">
+          <div className="mt-3 text-semantic-error text-sm">
             {t('backup.restoreFailed')}: {(restoreMutation.error as Error).message}
           </div>
         )}
@@ -561,19 +561,19 @@ export default function Privacy() {
         <CardTitle className="mb-4">{t('privacy.dataInfoTitle')}</CardTitle>
         <div className="space-y-3 text-content-strong text-sm">
           <div className="flex items-start space-x-2">
-            <span className="text-accent-teal">✓</span>
+            <span className="text-brand-text">✓</span>
             <span>{t('privacy.dataInfo1')}</span>
           </div>
           <div className="flex items-start space-x-2">
-            <span className="text-accent-teal">✓</span>
+            <span className="text-brand-text">✓</span>
             <span>{t('privacy.dataInfo2')}</span>
           </div>
           <div className="flex items-start space-x-2">
-            <span className="text-accent-teal">✓</span>
+            <span className="text-brand-text">✓</span>
             <span>{t('privacy.dataInfo3')}</span>
           </div>
           <div className="flex items-start space-x-2">
-            <span className="text-accent-teal">✓</span>
+            <span className="text-brand-text">✓</span>
             <span>{t('privacy.dataInfo4')}</span>
           </div>
         </div>

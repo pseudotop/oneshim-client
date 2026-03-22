@@ -24,7 +24,7 @@ import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { addToast } from '../hooks/useToast'
-import { colors, interaction, typography } from '../styles/tokens'
+import { colors, interaction, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 type PresetTab = 'Productivity' | 'AppManagement' | 'Workflow' | 'Custom'
@@ -375,9 +375,9 @@ function Automation() {
                 aria-controls={`tabpanel-${tab.toLowerCase()}`}
                 onClick={() => setPresetTab(tab)}
                 className={cn(
-                  'rounded-md px-3 py-1.5 font-medium text-sm transition-colors',
+                  `rounded-md px-3 py-1.5 font-medium text-sm ${motion.colors}`,
                   interaction.focusRing,
-                  presetTab === tab ? 'bg-accent-teal/10 text-accent-teal' : 'text-content-secondary hover:bg-hover',
+                  presetTab === tab ? 'bg-brand-signal/10 text-brand-text' : 'text-content-secondary hover:bg-hover',
                 )}
               >
                 {t(`automation.category.${tab}`)}
@@ -397,7 +397,7 @@ function Automation() {
               return (
                 <div
                   key={preset.id}
-                  className={`flex flex-col rounded-lg border p-4 transition-colors ${
+                  className={`flex flex-col rounded-lg border p-4 ${motion.colors} ${
                     feedback
                       ? feedback.result.success
                         ? 'border-status-connected bg-semantic-success/10'
@@ -429,7 +429,7 @@ function Automation() {
                     type="button"
                     onClick={() => setExpandedPreset(isExpanded ? null : preset.id)}
                     className={cn(
-                      'mt-2 flex items-center text-content-muted text-xs transition-colors hover:text-content-strong',
+                      `mt-2 flex items-center text-content-muted text-xs ${motion.colors} hover:text-content-strong`,
                       interaction.focusRing,
                     )}
                   >
@@ -520,7 +520,7 @@ function Automation() {
                           <button
                             type="button"
                             onClick={() => navigate('/settings?tab=ai-automation')}
-                            className={cn('text-accent-teal underline-offset-2 hover:underline', interaction.focusRing)}
+                            className={cn('text-brand-text underline-offset-2 hover:underline', interaction.focusRing)}
                           >
                             {t('automation.manageAiProfiles')}
                           </button>
@@ -577,15 +577,15 @@ function Automation() {
               <div className="text-content-secondary text-xs">{t('automation.totalExecutions')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-teal">{stats?.successful ?? 0}</div>
+              <div className="font-bold text-2xl text-semantic-success">{stats?.successful ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.successful')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-red">{stats?.failed ?? 0}</div>
+              <div className="font-bold text-2xl text-semantic-error">{stats?.failed ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.failed')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-orange">{stats?.denied ?? 0}</div>
+              <div className="font-bold text-2xl text-semantic-warning">{stats?.denied ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.denied')}</div>
             </div>
             <div className="text-center">
@@ -593,13 +593,13 @@ function Automation() {
               <div className="text-content-secondary text-xs">{t('automation.timeout')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-emerald">
+              <div className="font-bold text-2xl text-semantic-success">
                 {((stats?.success_rate ?? 0) * 100).toFixed(1)}%
               </div>
               <div className="text-content-secondary text-xs">{t('automation.successRate')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-orange">
+              <div className="font-bold text-2xl text-semantic-warning">
                 {((stats?.blocked_rate ?? 0) * 100).toFixed(1)}%
               </div>
               <div className="text-content-secondary text-xs">{t('automation.blockedRate')}</div>

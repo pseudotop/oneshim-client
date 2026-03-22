@@ -24,7 +24,7 @@ export default function FocusHighlight({ highlight }: FocusHighlightProps) {
         >
           {target.label && (
             <span
-              className="absolute -top-5 left-0 rounded bg-black/70 px-1 text-[10px] text-white"
+              className="absolute -top-5 left-0 rounded bg-surface-overlay/70 px-1 text-[10px] text-content-inverse"
               style={{ whiteSpace: 'nowrap' }}
             >
               {target.label}

@@ -147,7 +147,7 @@ export default function DashboardDay() {
           {/* Error state */}
           {error && (
             <Card variant="danger" padding="md">
-              <p className="text-red-400">{t('dashboard.loadError')}</p>
+              <p className="text-semantic-error">{t('dashboard.loadError')}</p>
             </Card>
           )}
 

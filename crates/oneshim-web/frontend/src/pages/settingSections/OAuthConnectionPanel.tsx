@@ -35,10 +35,10 @@ function getExpiryLevel(expiresAt: string | null | undefined): ExpiryLevel {
 }
 
 const EXPIRY_BADGE_STYLES: Record<ExpiryLevel, string> = {
-  ok: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  warning: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  critical: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  none: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  ok: 'bg-semantic-success/20 text-semantic-success',
+  warning: 'bg-semantic-warning/20 text-semantic-warning',
+  critical: 'bg-semantic-error/20 text-semantic-error',
+  none: 'bg-surface-muted text-content-tertiary',
 };
 
 type PanelState =
@@ -372,7 +372,7 @@ export default function OAuthConnectionPanel({
             );
           })()}
           {state.status.has_refresh_token === false && (
-            <p className="flex items-center gap-1.5 rounded bg-amber-50 px-2 py-1.5 text-amber-800 text-xs dark:bg-amber-900/20 dark:text-amber-300">
+            <p className="flex items-center gap-1.5 rounded bg-semantic-warning/20 px-2 py-1.5 text-semantic-warning text-xs">
               <span aria-hidden="true">⚠</span>
               {t('settingsOAuth.noRefreshToken')}
             </p>
@@ -385,7 +385,7 @@ export default function OAuthConnectionPanel({
 
       {state.phase === 'error' && (
         <div className="space-y-2">
-          <p className="text-red-600 text-sm dark:text-red-400">{state.message}</p>
+          <p className="text-semantic-error text-sm">{state.message}</p>
           {state.detail && <p className="text-content-muted text-xs">{state.detail}</p>}
           <Button type="button" variant="secondary" size="sm" onClick={refreshStatus}>
             {t('settingsOAuth.retry')}

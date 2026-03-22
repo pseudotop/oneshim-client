@@ -39,7 +39,7 @@ export default function Updates() {
 
             return (
               <div key={key} className="flex items-start gap-3 rounded-lg bg-surface-muted p-3">
-                <div className="mt-0.5 shrink-0 text-accent-teal">
+                <div className="mt-0.5 shrink-0 text-brand-text">
                   <Icon size={18} aria-hidden="true" />
                 </div>
                 <span className="text-content-strong text-sm">{t(key)}</span>

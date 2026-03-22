@@ -16,7 +16,7 @@ import { Badge, Button, Card, CardTitle, EmptyState, Select, Skeleton } from '..
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { addToast } from '../hooks/useToast'
 import { resolveImageUrl } from '../utils/api-base'
-import { colors, interaction, typography } from '../styles/tokens'
+import { colors, interaction, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDate, formatTime } from '../utils/formatters'
 
@@ -387,7 +387,7 @@ export default function Timeline() {
                   className={cn(
                     'flex w-full items-center gap-4 p-3 text-left transition-colors',
                     interaction.focusRing,
-                    selectedFrame?.id === frame.id ? 'bg-teal-500/10' : 'hover:bg-hover/50',
+                    selectedFrame?.id === frame.id ? 'bg-brand-signal/10' : 'hover:bg-hover/50',
                   )}
                 >
                   {/* UI note */}
@@ -466,9 +466,9 @@ export default function Timeline() {
                     alt={selectedFrame.window_title}
                     className="h-full w-full object-contain"
                   />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
+                  <div className={`absolute inset-0 flex items-center justify-center bg-surface-overlay/0 ${motion.colors} group-hover:bg-surface-overlay/30`}>
                     <svg
-                      className="h-12 w-12 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      className={`h-12 w-12 text-content-inverse opacity-0 ${motion.opacity} group-hover:opacity-100`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"

@@ -26,13 +26,13 @@ import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Development: 'bg-blue-500',
-  Communication: 'bg-purple-500',
-  Documentation: 'bg-green-500',
-  Browser: 'bg-amber-500',
-  Design: 'bg-pink-500',
-  Media: 'bg-red-500',
-  System: 'bg-accent-slate',
+  Development: 'bg-brand-signal/80',
+  Communication: 'bg-brand-signal/60',
+  Documentation: 'bg-brand-signal/40',
+  Browser: 'bg-brand-signal/70',
+  Design: 'bg-brand-signal/50',
+  Media: 'bg-brand-signal/30',
+  System: 'bg-surface-muted',
   Other: 'bg-status-disconnected',
 }
 
@@ -75,7 +75,7 @@ function CircularGauge({ value, size = 120 }: { value: number; size?: number }) 
         strokeDasharray={circumference}
         strokeDashoffset={strokeDashoffset}
         transform="rotate(-90 50 50)"
-        className={`transition-all ${motion.slow}`}
+        className={motion.all}
       />
       <text x="50" y="45" textAnchor="middle" dominantBaseline="middle" className="fill-content font-bold text-2xl">
         {Math.round(value)}
@@ -127,7 +127,7 @@ export default function Focus() {
     return (
       <Card variant="danger">
         <CardContent>
-          <p className="text-red-500">{error || t('common.error')}</p>
+          <p className="text-semantic-error">{error || t('common.error')}</p>
         </CardContent>
       </Card>
     )
@@ -182,11 +182,11 @@ export default function Focus() {
           <CircularGauge value={today.focus_score} />
           <div className="mt-2 flex items-center gap-1">
             {trend >= 0 ? (
-              <TrendingUp className="h-4 w-4 text-green-500" />
+              <TrendingUp className="h-4 w-4 text-semantic-success" />
             ) : (
-              <TrendingDown className="h-4 w-4 text-red-500" />
+              <TrendingDown className="h-4 w-4 text-semantic-error" />
             )}
-            <span className={`font-medium text-sm ${trend >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
+            <span className={`font-medium text-sm ${trend >= 0 ? 'text-semantic-success' : 'text-semantic-error'}`}>
               {trend >= 0 ? '+' : ''}
               {trend.toFixed(1)}
             </span>

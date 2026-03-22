@@ -19,7 +19,7 @@ import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
-import { colors, typography } from '../styles/tokens'
+import { colors, motion, typography } from '../styles/tokens'
 import { resolveImageUrl } from '../utils/api-base'
 import { cn } from '../utils/cn'
 
@@ -356,7 +356,7 @@ export default function SessionReplay() {
 
       {/* UI note */}
       {error && (
-        <div className="flex items-center space-x-2 rounded-lg bg-accent-red/10 p-3 text-accent-red">
+        <div className="flex items-center space-x-2 rounded-lg bg-semantic-error/10 p-3 text-semantic-error">
           <AlertCircle className="h-5 w-5" />
           <span>{error}</span>
         </div>
@@ -440,10 +440,10 @@ export default function SessionReplay() {
                             <button
                               type="button"
                               key={element.element_id}
-                              className={`absolute transition-colors ${
+                              className={`absolute ${motion.colors} ${
                                 selectedSceneElementId === element.element_id
-                                  ? 'border-2 border-amber-400 bg-amber-400/20'
-                                  : 'border border-teal-500/90 bg-teal-500/10 hover:bg-teal-500/20'
+                                  ? 'border-2 border-semantic-warning bg-semantic-warning/20'
+                                  : 'border border-brand-signal/90 bg-brand-signal/10 hover:bg-brand-signal/20'
                               }`}
                               style={{
                                 left: `${element.left}px`,
@@ -457,7 +457,7 @@ export default function SessionReplay() {
                                 setSceneActionFeedback(null)
                               }}
                             >
-                              <span className="pointer-events-none absolute -top-5 left-0 max-w-[12rem] truncate rounded bg-teal-600 px-1.5 py-0.5 text-[10px] text-white shadow">
+                              <span className="pointer-events-none absolute -top-5 left-0 max-w-[12rem] truncate rounded bg-brand px-1.5 py-0.5 text-[10px] text-content-inverse shadow">
                                 {element.title}
                               </span>
                             </button>
@@ -503,7 +503,7 @@ export default function SessionReplay() {
                           {currentFrameTags.map((tag) => (
                             <span
                               key={tag.id}
-                              className="rounded-full px-2 py-0.5 text-white text-xs"
+                              className="rounded-full px-2 py-0.5 text-content-inverse text-xs"
                               style={{ backgroundColor: tag.color }}
                             >
                               {tag.name}
@@ -522,7 +522,7 @@ export default function SessionReplay() {
                           {!sceneError && sceneCalibration && (
                             <span
                               className={`ml-2 ${
-                                sceneCalibrationPassed ? 'text-accent-emerald' : 'text-semantic-warning'
+                                sceneCalibrationPassed ? 'text-semantic-success' : 'text-semantic-warning'
                               }`}
                             >
                               {sceneCalibrationPassed

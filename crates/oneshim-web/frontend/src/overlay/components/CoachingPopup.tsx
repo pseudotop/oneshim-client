@@ -66,10 +66,10 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
     <div
       className="fixed right-4 top-4 z-50"
     >
-      <div className="w-80 rounded-xl border border-white/10 bg-gray-900/90 p-4 shadow-2xl backdrop-blur-md">
+      <div className="w-80 rounded-xl border border-content-inverse/10 bg-surface-sunken/90 p-4 shadow-2xl backdrop-blur-md">
         {/* Message text with transition */}
         <p
-          className={`mb-3 text-sm leading-relaxed text-gray-100 transition-opacity duration-300 ${
+          className={`mb-3 text-sm leading-relaxed text-content transition-opacity duration-300 ${
             transitioning ? 'opacity-0' : 'opacity-100'
           }`}
         >
@@ -82,14 +82,14 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             <button
               type="button"
               onClick={() => void dismiss('ok')}
-              className="rounded-md bg-white/10 px-3 py-1 text-xs font-medium text-gray-200 transition-colors hover:bg-white/20"
+              className="rounded-md bg-content-inverse/10 px-3 py-1 text-xs font-medium text-content-secondary transition-colors hover:bg-content-inverse/20"
             >
               OK
             </button>
             <button
               type="button"
               onClick={() => void dismiss('later')}
-              className="rounded-md bg-white/5 px-3 py-1 text-xs font-medium text-gray-400 transition-colors hover:bg-white/10"
+              className="rounded-md bg-content-inverse/5 px-3 py-1 text-xs font-medium text-content-tertiary transition-colors hover:bg-content-inverse/10"
             >
               Later
             </button>
@@ -100,7 +100,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             <button
               type="button"
               onClick={() => void feedback(true)}
-              className="rounded p-1 text-gray-500 opacity-30 transition-opacity hover:text-green-400 hover:opacity-100"
+              className="rounded p-1 text-content-muted opacity-30 transition-opacity hover:text-semantic-success hover:opacity-100"
               aria-label="Helpful"
             >
               <ThumbsUpIcon />
@@ -108,7 +108,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             <button
               type="button"
               onClick={() => void feedback(false)}
-              className="rounded p-1 text-gray-500 opacity-30 transition-opacity hover:text-red-400 hover:opacity-100"
+              className="rounded p-1 text-content-muted opacity-30 transition-opacity hover:text-semantic-error hover:opacity-100"
               aria-label="Not helpful"
             >
               <ThumbsDownIcon />

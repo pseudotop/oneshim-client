@@ -39,18 +39,18 @@ import { formatDuration } from '../utils/formatters'
 const COLORS = ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899']
 
 function getScoreColor(score: number): string {
-  if (score >= 80) return 'text-accent-green'
-  if (score >= 60) return 'text-accent-teal'
+  if (score >= 80) return 'text-semantic-success'
+  if (score >= 60) return 'text-brand-text'
   if (score >= 40) return 'text-semantic-warning'
-  return 'text-accent-red'
+  return 'text-semantic-error'
 }
 
 function TrendIndicator({ trend }: { trend: number }) {
   if (trend > 5) {
-    return <span className="text-accent-green">↑ {trend.toFixed(1)}%</span>
+    return <span className="text-semantic-success">↑ {trend.toFixed(1)}%</span>
   }
   if (trend < -5) {
-    return <span className="text-accent-red">↓ {Math.abs(trend).toFixed(1)}%</span>
+    return <span className="text-semantic-error">↓ {Math.abs(trend).toFixed(1)}%</span>
   }
   return <span className="text-content-tertiary">→ {trend.toFixed(1)}%</span>
 }
@@ -171,7 +171,7 @@ export default function Reports() {
 
       {error && (
         <Card variant="danger" padding="md">
-          <p className="text-red-400">{t('reports.error')}</p>
+          <p className="text-semantic-error">{t('reports.error')}</p>
         </Card>
       )}
 

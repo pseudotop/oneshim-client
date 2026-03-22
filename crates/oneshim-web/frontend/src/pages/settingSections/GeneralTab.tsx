@@ -155,7 +155,7 @@ export default function GeneralTab({
                   href={updateStatus.pending.release_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-accent-teal underline"
+                  className="text-brand-text underline"
                 >
                   {t('settings.updateReleaseNote')}
                 </a>
