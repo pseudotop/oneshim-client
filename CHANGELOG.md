@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-22
+
+### Added
+
+- **GUI Intelligence Phase 3** — ContextAssembler GUI section, app-specific element overrides (IDE/browser/chat), R-tree spatial index (rstar), dashboard interaction heatmap
+- **MagicOverlay** — Global Hotkey (Cmd+Shift+O), HeatmapGhost canvas renderer
+- **Native Platform Adapters (ADR-002 M3)** — macOS AX tree batch traversal, Windows UIA CacheRequest, Linux AT-SPI (atspi 0.29), MagicOverlayDriver, permission gating
+- **Coaching Engine** — Proactive productivity coaching with template-first + LLM personalization (62 tests)
+- **USearch HNSW Vector Index** — Feature-gated (`hnsw`), AnnIndex port trait, AdaptiveSearchCoordinator 4th strategy, corruption recovery
+- **DashboardDay** — Daily digest page with timetable layout, TimelineView, StatisticsPanel, InsightCard, LLM narrative
+- **DailyDigest Pipeline** — DailyDigestGenerator, DailyInsightGenerator, midnight auto-generation
+- **Hybrid Search** — HybridSearchService with Reciprocal Rank Fusion (vector + FTS5 keyword), 3 search modes
+- **FTS5 TextSearchProvider** — Full-text search on SQLite, V11 migration, Korean trigram FTS5 (V18)
+- **Analysis Pipeline** — KmeansDetector, HdbscanDetector, ClusteringStrategy trait, AutoTuner (EMA baselines + drift detection)
+- **Recalibration** — RegimeOverride models, OverrideStore port, ConstraintBuilder, V12 migration, constrained re-clustering
+- **Vision** — InputOcrCorrelator for GUI element detection, OCR bounding box extraction, smart capture improvements
+- **OAuth** — Token auto-refresh with failure taxonomy, OpenAI Codex preset, OS keychain credential store, connection panel UI
+- **Installers** — Professional DMG background, PKG welcome/license/conclusion, NSIS branding
+- **Codex** — SKILL.md loader + Responses API support
+- **Observability** — tracing-appender daily rotation (7-day retention), `#[instrument(skip_all)]` on 16 scheduler loops
+- **Ops Docs** — Troubleshooting runbook, API contract examples (7 endpoints), security review, audit logger integration
+
+### Changed
+
+- **ADR-003 File Splits** — 21 files (28,301 lines) split into 79 directory module files across 7 crates
+- **SQLite Performance** — `prepare_cached()` for 10 hot-path queries, FTS5 existence caching, WAL checkpoint scheduling, conditional VACUUM, `journal_size_limit=64MB`, `PRAGMA optimize=0x10002`
+- **GDPR Hardening** — Transactional deletion wrapping 35 tables, frame file cleanup, vector dimension validation
+- **IPC Optimization** — CompressionLayer (gzip, 60-80% reduction), removed global refetchInterval
+- **Frontend** — Dead code cleanup, type safety improvements, i18n 895 keys × 5 locales synced, GUI session API client
+- **Dependencies** — fastembed 4.9→5.13, rusqlite 0.38→0.39, tokio-tungstenite 0.28→0.29, lz4_flex 0.12→0.13
+
+### Fixed
+
+- Recording pipeline P0 fixes
+- OAuth scope OCR version header, callback timeout, deduplication
+- Resolve CI issues — contract boundary, clippy warnings, manifest sync
+- macOS osascript circuit breaker + double Ctrl+C termination
+- Installer entitlements, TCC Info.plist, DMG icon positions
+- Focus highlight, accessibility text, goals, dead code cleanup
+- GDPR transactional deletion atomicity
+- Various cross-cutting hardening (15 fixes across 7 crates)
+
 ## [0.4.0-rc.5] - 2026-03-22
 
 ### Added
