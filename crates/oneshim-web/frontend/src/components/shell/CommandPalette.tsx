@@ -278,6 +278,10 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
           <input
             ref={inputRef}
             type="text"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             data-testid="command-palette-input"
             role="combobox"
             aria-expanded={true}
