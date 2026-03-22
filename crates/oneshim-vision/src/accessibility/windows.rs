@@ -260,7 +260,7 @@ mod inner {
                 // Step 1: Initialize COM (COINIT_MULTITHREADED = 0x0)
                 let hr = windows_sys::Win32::System::Com::CoInitializeEx(
                     ptr::null(),
-                    windows_sys::Win32::System::Com::COINIT_MULTITHREADED,
+                    windows_sys::Win32::System::Com::COINIT_MULTITHREADED as u32,
                 );
                 // S_OK (0) or S_FALSE (1, already initialized) are both acceptable.
                 if hr < 0 {
@@ -310,10 +310,17 @@ mod inner {
                 let value = match element.GetCurrentPropertyValue(UIA_ValueValuePropertyId) {
                     Ok(variant) => {
                         if variant.vt() == VT_BSTR {
-                            // Extract BSTR from VARIANT via TryFrom
-                            match BSTR::try_from(&variant) {
-                                Ok(bstr) => bstr_to_opt_string(&bstr).map(Zeroizing::new),
-                                Err(_) => None,
+                            // SAFETY: vt() confirmed VT_BSTR, so bstrVal is valid.
+                            let bstr_ptr = unsafe { variant.Anonymous.Anonymous.Anonymous.bstrVal };
+                            if bstr_ptr.is_null() {
+                                None
+                            } else {
+                                // SAFETY: bstrVal is a valid BSTR pointer (confirmed by VT_BSTR check).
+                                let bstr = unsafe { BSTR::from_raw(bstr_ptr) };
+                                let result = bstr_to_opt_string(&bstr).map(Zeroizing::new);
+                                // Prevent double-free: VARIANT owns the BSTR, so leak our copy.
+                                std::mem::forget(bstr);
+                                result
                             }
                         } else {
                             None
@@ -445,7 +452,7 @@ mod inner {
             unsafe {
                 let hr = windows_sys::Win32::System::Com::CoInitializeEx(
                     ptr::null(),
-                    windows_sys::Win32::System::Com::COINIT_MULTITHREADED,
+                    windows_sys::Win32::System::Com::COINIT_MULTITHREADED as u32,
                 );
                 if hr < 0 {
                     return Vec::new();
