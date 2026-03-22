@@ -1,10 +1,62 @@
 language js;
 
+// === Hardcoded color classes ===
 `<$_ className=$value $$$/>` where {
-  $value <: contains r"(bg|text|border)-(slate|gray)-\d",
+  $value <: or {
+    contains r"(bg|text|border)-(teal|blue|purple|green|amber|red|orange|pink|indigo|emerald|violet|neutral)-\d",
+    contains r"(bg|text|border)-(slate|gray)-\d",
+    contains r"\b(text-white|bg-black)\b",
+    contains r"(from|to)-(teal|blue|purple|green|amber|red|orange)-\d"
+  },
   register_diagnostic(
     span = $value,
-    message = "Hardcoded color class detected. Use semantic tokens from styles/tokens.ts instead (e.g., bg-surface-muted, text-content-secondary).",
+    message = "Use design tokens (colors.primary, colors.semantic, colors.surface) instead of hardcoded Tailwind colors. See styles/tokens.ts.",
+    severity = "error"
+  )
+}
+
+// === Hardcoded font weights ===
+`<$_ className=$value $$$/>` where {
+  $value <: or {
+    contains "font-bold",
+    contains "font-semibold",
+    contains "font-medium",
+    contains "font-mono"
+  },
+  register_diagnostic(
+    span = $value,
+    message = "Use typography tokens (typography.h1-h4, typography.label, typography.mono) instead of hardcoded font classes. See styles/tokens.ts.",
+    severity = "error"
+  )
+}
+
+// === Bare transition classes ===
+`<$_ className=$value $$$/>` where {
+  $value <: or {
+    contains "transition-colors",
+    contains "transition-all",
+    contains "transition-opacity",
+    contains "transition-transform"
+  },
+  register_diagnostic(
+    span = $value,
+    message = "Use motion tokens (motion.colors, motion.all, motion.opacity, motion.transform) instead of bare transition classes. See styles/tokens.ts.",
+    severity = "error"
+  )
+}
+
+// === dark: prefix (CSS vars handle switching) ===
+`<$_ className=$value $$$/>` where {
+  $value <: or {
+    contains r"dark:bg-",
+    contains r"dark:text-",
+    contains r"dark:border-",
+    contains r"dark:from-",
+    contains r"dark:to-"
+  },
+  register_diagnostic(
+    span = $value,
+    message = "Do not use dark: prefix. Dark mode is handled by CSS custom properties in index.css.",
     severity = "error"
   )
 }
