@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-23
+
+### Changed
+
+- **Design System Consistency** — Full token adoption across 50+ frontend files
+  - 3-layer color architecture: brand (teal) + semantic (success/warning/error/info) + chart
+  - Removed 7 accent colors; single brand color for all non-semantic UI
+  - Typography tokens: added `label`, `caption`, `mono`, `overline`, atomic `weight.*`
+  - Motion tokens: 4 composite transitions (`colors`/`transform`/`opacity`/`all`)
+  - Spacing scale enforcement: approved steps {0,1,2,3,4,6,8,12} only
+  - Icon size tokens: `iconSize.*` for all Lucide icons
+  - Dark mode: zero `dark:` prefixes — CSS custom properties handle switching
+  - Lint enforcement: shell script CI gate (12 violation categories)
+
+### Fixed
+
+- **Timeline pagination** — total count now reflects importance-filtered frames
+- **DMG installer** — updated background with menu bar hint, correct arrow direction
+- **UI/UX overhaul** — 15+ fixes across all dashboard pages
+  - Dashboard metrics: unified brand color (removed rainbow accent per metric)
+  - EmptyState: fixed invisible text on light cards (was using dark-bg-only token)
+  - RecalibrationPage: fixed double text rendering (duplicate i18n key)
+  - Timeline/SessionReplay: `resolveImageUrl()` for Tauri image loading
+  - Reports: pie chart top 5 + Other, label overlap fix
+  - UpdatePanel: hide Approve/Defer when on latest version
+  - Settings: breadcrumb title (Settings > Monitoring)
+  - Timeline: server-side `min_importance=0.3` filtering, `staleTime` 120s
+  - First launch: show main window automatically
+  - DevToolbar: floating dev-only debug panel (standalone toggle, API info)
+
 ## [0.4.0] - 2026-03-22
 
 ### Added
