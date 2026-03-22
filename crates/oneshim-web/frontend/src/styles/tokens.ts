@@ -67,24 +67,10 @@ export const colors = {
     disconnected: 'bg-status-disconnected',
     error: 'bg-status-error',
   },
-  accent: {
-    teal: 'text-accent-teal',
-    blue: 'text-accent-blue',
-    purple: 'text-accent-purple',
-    green: 'text-accent-green',
-    amber: 'text-accent-amber',
-    red: 'text-accent-red',
-    slate: 'text-accent-slate',
-  },
 } as const
 
 export const spacing = {
-  none: '',
-  xs: 'p-2',
-  sm: 'p-3',
-  md: 'p-4',
-  lg: 'p-6',
-  xl: 'p-8',
+  scale: [0, 1, 2, 3, 4, 6, 8, 12] as const,
 } as const
 
 export const typography = {
@@ -93,9 +79,13 @@ export const typography = {
   h3: 'text-lg font-semibold',
   h4: 'text-base font-medium',
   body: 'text-sm',
+  label: 'text-sm font-medium',
+  caption: 'text-xs',
   small: 'text-xs',
   micro: 'text-[11px]',
   nano: 'text-[10px]',
+  mono: 'font-mono text-sm',
+  overline: 'text-[11px] font-semibold uppercase tracking-wider',
   stat: {
     hero: 'text-3xl font-bold',
     large: 'text-2xl font-bold',
@@ -112,16 +102,23 @@ export const radius = {
 } as const
 
 export const interaction = {
-  interactive: 'transition-colors',
+  interactive: 'transition-colors duration-150 ease-out',
   focusRing:
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-signal focus-visible:border-transparent',
   disabled: 'disabled:opacity-50 disabled:cursor-not-allowed',
 } as const
 
 export const motion = {
-  fast: 'duration-150 ease-out',
-  normal: 'duration-300 ease-out',
-  slow: 'duration-500 ease-out',
+  colors: 'transition-colors duration-150 ease-out',
+  transform: 'transition-transform duration-300 ease-out',
+  opacity: 'transition-opacity duration-200 ease-out',
+  all: 'transition-all duration-300 ease-out',
+  none: 'transition-none',
+  duration: {
+    fast: 'duration-150',
+    normal: 'duration-300',
+    slow: 'duration-500',
+  },
 } as const
 
 export const elevation = {
