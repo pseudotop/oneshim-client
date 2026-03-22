@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GDPR transactional deletion atomicity
 - Various cross-cutting hardening (15 fixes across 7 crates)
 
-## [0.4.0-rc.5] - 2026-03-22
+## [0.4.0-rc.6] - 2026-03-22
 
 ### Added
 
