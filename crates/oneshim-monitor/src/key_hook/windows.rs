@@ -173,7 +173,7 @@ pub fn run_raw_input_hook(collector: Arc<InputActivityCollector>, running: Arc<A
             usUsagePage: 0x01,
             usUsage: 0x06,
             dwFlags: RIDEV_REMOVE,
-            hwndTarget: 0,
+            hwndTarget: std::ptr::null_mut(),
         };
         RegisterRawInputDevices(
             &rid_remove as *const RAWINPUTDEVICE,
