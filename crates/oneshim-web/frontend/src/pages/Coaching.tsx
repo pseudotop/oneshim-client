@@ -56,9 +56,19 @@ export default function Coaching() {
             ))}
           </div>
         ) : (
-          <p className={cn('text-sm', colors.text.secondary)}>
-            {t('coaching.noGoals', 'No goals configured.')}
-          </p>
+          <Card variant="default" padding="md">
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-surface-elevated">
+                <Target className="h-6 w-6 text-content-muted" />
+              </div>
+              <p className={cn('text-sm font-medium', colors.text.primary)}>
+                {t('coaching.noGoals', 'No goals configured.')}
+              </p>
+              <p className={cn('mt-1 text-xs', colors.text.secondary)}>
+                {t('coaching.noGoalsHint', 'Goals will appear here once regime tracking is active.')}
+              </p>
+            </div>
+          </Card>
         )}
       </section>
 
@@ -104,9 +114,19 @@ export default function Coaching() {
             ))}
           </div>
         ) : (
-          <p className={cn('text-sm', colors.text.secondary)}>
-            {t('coaching.noEvents', 'No coaching events yet.')}
-          </p>
+          <Card variant="default" padding="md">
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-surface-elevated">
+                <MessageCircle className="h-6 w-6 text-content-muted" />
+              </div>
+              <p className={cn('text-sm font-medium', colors.text.primary)}>
+                {t('coaching.noEvents', 'No coaching events yet.')}
+              </p>
+              <p className={cn('mt-1 text-xs', colors.text.secondary)}>
+                {t('coaching.noEventsHint', 'Coaching nudges will appear here as you work.')}
+              </p>
+            </div>
+          </Card>
         )}
       </section>
     </div>

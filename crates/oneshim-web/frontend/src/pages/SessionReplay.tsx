@@ -20,6 +20,7 @@ import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { colors, typography } from '../styles/tokens'
+import { resolveImageUrl } from '../utils/api-base'
 import { cn } from '../utils/cn'
 
 export default function SessionReplay() {
@@ -420,7 +421,7 @@ export default function SessionReplay() {
                       >
                         {!imageLoadFailed ? (
                           <img
-                            src={currentFrame.image_url}
+                            src={resolveImageUrl(currentFrame.image_url) ?? undefined}
                             alt={`Screenshot at ${currentFrame.timestamp}`}
                             className="h-full w-full object-contain"
                             onError={() => setImageLoadFailed(true)}

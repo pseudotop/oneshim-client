@@ -147,26 +147,30 @@ export default function UpdatePanel({ compact = false }: UpdatePanelProps) {
         >
           {t('updates.checkNow')}
         </Button>
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          isLoading={actionMutation.isPending}
-          onClick={() => actionMutation.mutate('Approve')}
-          disabled={!canApproveOrDefer}
-        >
-          {t('updates.approve')}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          isLoading={actionMutation.isPending}
-          onClick={() => actionMutation.mutate('Defer')}
-          disabled={!canApproveOrDefer}
-        >
-          {t('updates.defer')}
-        </Button>
+        {status?.phase === 'PendingApproval' && (
+          <>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              isLoading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('Approve')}
+              disabled={!canApproveOrDefer}
+            >
+              {t('updates.approve')}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              isLoading={actionMutation.isPending}
+              onClick={() => actionMutation.mutate('Defer')}
+              disabled={!canApproveOrDefer}
+            >
+              {t('updates.defer')}
+            </Button>
+          </>
+        )}
       </div>
 
       {actionMutation.isError && (

@@ -195,6 +195,25 @@ interface ReportContentProps {
   theme: string
 }
 
+const MAX_PIE_SLICES = 5
+
+function consolidateAppStats(
+  stats: ReportResponse['app_stats'],
+): ReportResponse['app_stats'] {
+  if (stats.length <= MAX_PIE_SLICES) return stats
+
+  const top = stats.slice(0, MAX_PIE_SLICES)
+  const rest = stats.slice(MAX_PIE_SLICES)
+  const otherDuration = rest.reduce((sum, s) => sum + s.duration_secs, 0)
+  const otherPercentage = rest.reduce((sum, s) => sum + s.percentage, 0)
+  const otherEvents = rest.reduce((sum, s) => sum + s.events, 0)
+  const otherCaptures = rest.reduce((sum, s) => sum + s.captures, 0)
+  return [
+    ...top,
+    { name: 'Other', duration_secs: otherDuration, percentage: otherPercentage, events: otherEvents, captures: otherCaptures },
+  ]
+}
+
 function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
   return (
     <>
@@ -335,25 +354,42 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
           <CardTitle>{t('reports.appDistribution')}</CardTitle>
           <div className="mt-4 h-64">
             {report.app_stats.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={report.app_stats}
-                    dataKey="duration_secs"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label={({ name, percentage }) => `${name.slice(0, 10)} (${percentage.toFixed(0)}%)`}
-                    labelLine={false}
-                  >
-                    {report.app_stats.map((stat, index) => (
-                      <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatDuration(value)} />
-                </PieChart>
-              </ResponsiveContainer>
+              (() => {
+                const pieData = consolidateAppStats(report.app_stats)
+                return (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        dataKey="duration_secs"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        label={({ name, percentage }) =>
+                          percentage >= 5 ? `${name.length > 8 ? `${name.slice(0, 8)}..` : name} ${percentage.toFixed(0)}%` : ''
+                        }
+                        labelLine={false}
+                        style={{ fontSize: 11 }}
+                      >
+                        {pieData.map((stat, index) => (
+                          <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(value: number, _name: string, props: { payload?: { percentage?: number } }) => {
+                          const pct = props.payload?.percentage
+                          return [
+                            `${formatDuration(value)}${pct != null ? ` (${pct.toFixed(1)}%)` : ''}`,
+                            '',
+                          ]
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )
+              })()
             ) : (
               <div className="flex h-full items-center justify-center text-content-secondary">{t('common.noData')}</div>
             )}

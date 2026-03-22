@@ -182,7 +182,7 @@ export default function RecalibrationPage() {
           <EmptyState
             icon={<RefreshCw className="h-8 w-8" />}
             title={t('recalibration.noSegments')}
-            description={t('recalibration.noSegments')}
+            description={t('recalibration.noSegmentsDescription', 'Try selecting a different date range to find activity segments.')}
           />
         )}
 

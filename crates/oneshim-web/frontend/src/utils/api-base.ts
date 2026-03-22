@@ -76,6 +76,17 @@ export async function resolveApiUrl(url: string): Promise<string> {
   return `http://127.0.0.1:${port}${url}`
 }
 
+/**
+ * Synchronous image URL resolver for <img src> attributes.
+ * In Tauri mode, converts relative /api/* paths to absolute URLs using
+ * the already-resolved port. In browser mode, returns the path as-is.
+ */
+export function resolveImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (!IS_TAURI || !url.startsWith('/api')) return url
+  return `http://127.0.0.1:${resolvedPort}${url}`
+}
+
 if (IS_TAURI) {
   void resolveWebPort().catch(() => {
     /* fallback to eval-injected or default port */

@@ -15,6 +15,7 @@ import { TagInput } from '../components/TagInput'
 import { Badge, Button, Card, CardTitle, EmptyState, Select, Skeleton } from '../components/ui'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { addToast } from '../hooks/useToast'
+import { resolveImageUrl } from '../utils/api-base'
 import { colors, interaction, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDate, formatTime } from '../utils/formatters'
@@ -332,7 +333,7 @@ export default function Timeline() {
               >
                 {frame.image_url ? (
                   <img
-                    src={frame.image_url}
+                    src={resolveImageUrl(frame.image_url) ?? undefined}
                     alt={frame.window_title}
                     className="h-full w-full object-cover"
                     loading="lazy"
@@ -379,7 +380,7 @@ export default function Timeline() {
                   <div className="h-14 w-24 flex-shrink-0 overflow-hidden rounded bg-hover">
                     {frame.image_url ? (
                       <img
-                        src={frame.image_url}
+                        src={resolveImageUrl(frame.image_url) ?? undefined}
                         alt={frame.window_title}
                         className="h-full w-full object-cover"
                         loading="lazy"
@@ -447,7 +448,7 @@ export default function Timeline() {
               {selectedFrame.image_url ? (
                 <>
                   <img
-                    src={selectedFrame.image_url}
+                    src={resolveImageUrl(selectedFrame.image_url) ?? undefined}
                     alt={selectedFrame.window_title}
                     className="h-full w-full object-contain"
                   />
@@ -618,7 +619,7 @@ export default function Timeline() {
       {/* UI note */}
       {lightboxOpen && selectedFrame?.image_url && (
         <Lightbox
-          imageUrl={selectedFrame.image_url}
+          imageUrl={resolveImageUrl(selectedFrame.image_url) ?? selectedFrame.image_url}
           alt={selectedFrame.window_title}
           onClose={() => setLightboxOpen(false)}
           onPrev={selectedIndex > 0 ? goToPrev : undefined}
