@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { ProcessSnapshot } from '../api/client'
+import { typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 import { formatBytes } from '../utils/formatters'
 
 interface ProcessListProps {
@@ -19,20 +21,20 @@ export default function ProcessList({ snapshot }: ProcessListProps) {
       {processes.map((proc, index) => (
         <div key={proc.pid} className="flex items-center justify-between rounded-lg bg-surface-muted p-3">
           <div className="flex items-center space-x-3">
-            <span className="w-6 text-content-tertiary text-sm">{index + 1}</span>
+            <span className={cn('w-6 text-content-tertiary', typography.body)}>{index + 1}</span>
             <div>
-              <div className="font-medium text-content">{proc.name}</div>
-              <div className="text-content-tertiary text-xs">PID: {proc.pid}</div>
+              <div className={cn('text-content', typography.label)}>{proc.name}</div>
+              <div className={cn('text-content-tertiary', typography.caption)}>PID: {proc.pid}</div>
             </div>
           </div>
           <div className="flex items-center space-x-4 text-right">
             <div>
-              <div className="font-medium text-sm text-teal-400">{proc.cpu_usage.toFixed(1)}%</div>
-              <div className="text-content-tertiary text-xs">CPU</div>
+              <div className={cn('text-brand-text', typography.label)}>{proc.cpu_usage.toFixed(1)}%</div>
+              <div className={cn('text-content-tertiary', typography.caption)}>CPU</div>
             </div>
             <div>
-              <div className="font-medium text-blue-400 text-sm">{formatBytes(proc.memory_bytes)}</div>
-              <div className="text-content-tertiary text-xs">Memory</div>
+              <div className={cn('text-brand-text', typography.label)}>{formatBytes(proc.memory_bytes)}</div>
+              <div className={cn('text-content-tertiary', typography.caption)}>Memory</div>
             </div>
           </div>
         </div>

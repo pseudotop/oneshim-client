@@ -11,7 +11,7 @@ import type { CreateOverrideRequest, DailyDigestResponse, DailyDigestSegment, Re
 import DateRangePicker from '../components/DateRangePicker'
 import { Badge, Button, Card, EmptyState, Select, Skeleton, Spinner } from '../components/ui'
 import { useCreateOverride, useDeleteOverride, useOverrides, useRecluster } from '../hooks/useRecalibration'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 // Default regime options
@@ -22,7 +22,6 @@ const REGIME_OPTIONS = [
   { id: 'break', label: 'Break' },
   { id: 'admin', label: 'Admin' },
 ]
-
 
 function formatTime(iso: string): string {
   try {
@@ -144,7 +143,7 @@ export default function RecalibrationPage() {
             </>
           ) : (
             <>
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw className={`mr-2 ${iconSize.base}`} />
               {t('recalibration.triggerRecluster')}
             </>
           )}
@@ -182,7 +181,10 @@ export default function RecalibrationPage() {
           <EmptyState
             icon={<RefreshCw className="h-8 w-8" />}
             title={t('recalibration.noSegments')}
-            description={t('recalibration.noSegments')}
+            description={t(
+              'recalibration.noSegmentsDescription',
+              'Try selecting a different date range to find activity segments.',
+            )}
           />
         )}
 
@@ -191,11 +193,11 @@ export default function RecalibrationPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className={cn('border-DEFAULT border-b', colors.text.tertiary)}>
-                  <th className="pr-4 pb-2 font-medium">Time</th>
-                  <th className="pr-4 pb-2 font-medium">Duration</th>
-                  <th className="pr-4 pb-2 font-medium">Regime</th>
-                  <th className="pr-4 pb-2 font-medium">App</th>
-                  <th className="pb-2 font-medium">Actions</th>
+                  <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Time</th>
+                  <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Duration</th>
+                  <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Regime</th>
+                  <th className={`pr-4 pb-2 ${typography.weight.medium}`}>App</th>
+                  <th className={`pb-2 ${typography.weight.medium}`}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -287,17 +289,17 @@ export default function RecalibrationPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className={cn('border-DEFAULT border-b', colors.text.tertiary)}>
-                  <th className="pr-4 pb-2 font-medium">Segment</th>
-                  <th className="pr-4 pb-2 font-medium">Original</th>
-                  <th className="pr-4 pb-2 font-medium">Action</th>
-                  <th className="pr-4 pb-2 font-medium">Created</th>
-                  <th className="pb-2 font-medium" />
+                  <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Segment</th>
+                  <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Original</th>
+                  <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Action</th>
+                  <th className={`pr-4 pb-2 ${typography.weight.medium}`}>Created</th>
+                  <th className={`pb-2 ${typography.weight.medium}`} />
                 </tr>
               </thead>
               <tbody>
                 {overrides.map((override) => (
                   <tr key={override.override_id} className="border-DEFAULT border-b last:border-b-0">
-                    <td className={cn('py-2 pr-4 font-mono text-xs', colors.text.secondary)}>
+                    <td className={cn(`py-2 pr-4 ${typography.family.mono} text-xs`, colors.text.secondary)}>
                       {override.segment_id.slice(0, 8)}...
                     </td>
                     <td className={cn('py-2 pr-4 text-xs', colors.text.secondary)}>

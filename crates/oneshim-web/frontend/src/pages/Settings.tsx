@@ -63,7 +63,14 @@ import { useToast } from '../hooks/useToast'
 import { colors, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { IS_TAURI } from '../utils/platform'
-import { AiAutomationTab, CoachingGoalsTab, DataStorageTab, GeneralTab, MonitoringTab, PrivacyTab } from './settingSections'
+import {
+  AiAutomationTab,
+  CoachingGoalsTab,
+  DataStorageTab,
+  GeneralTab,
+  MonitoringTab,
+  PrivacyTab,
+} from './settingSections'
 
 type SettingsTabId = 'general' | 'privacy' | 'monitoring' | 'ai-automation' | 'data' | 'coaching'
 
@@ -1367,7 +1374,14 @@ export default function Settings() {
   return (
     <div className="min-h-full space-y-6 p-6 pb-28">
       <div className="flex items-center justify-between">
-        <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('settings.title')}</h1>
+        <h1 className={cn(typography.h1, colors.text.pageTitle)}>
+          {t('settings.title')}
+          {activeTab !== 'general' && (
+            <span className="text-base font-normal text-content-tertiary ml-2">
+              {'›'} {tabs.find((tab) => tab.id === activeTab)?.label}
+            </span>
+          )}
+        </h1>
       </div>
 
       {sidebarCollapsed && (
@@ -1384,7 +1398,9 @@ export default function Settings() {
         <div className="pointer-events-none fixed right-6 bottom-10 z-30 flex justify-end">
           <div className="pointer-events-auto flex items-center gap-4 rounded-xl border border-muted bg-surface-overlay px-4 py-3 shadow-2xl">
             <div className="min-w-0">
-              <p className={cn('font-semibold text-sm', colors.text.primary)}>{t('settings.unsavedChanges')}</p>
+              <p className={cn(`${typography.weight.semibold} text-sm`, colors.text.primary)}>
+                {t('settings.unsavedChanges')}
+              </p>
               <p className={cn('text-xs', colors.text.secondary)}>{t('settings.unsavedChangesHint')}</p>
             </div>
             <Button

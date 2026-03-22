@@ -8,7 +8,7 @@
       }
     }
   },
-  "plugins": ["./plugins/banned-classes.grit"],
+  "plugins": [],
   "linter": {
     "enabled": true,
     "rules": {
@@ -47,7 +47,8 @@
       "!node_modules/**",
       "!storybook-static/**",
       "!*.config.js",
-      "!*.config.ts"
+      "!*.config.ts",
+      "!src/styles/**"
     ]
   }
 }

@@ -24,11 +24,7 @@ const pageSidebarConfig: Record<string, SidebarConfig> = {
   },
   '/dashboard/day': {
     titleKey: 'nav.dashboardDay',
-    nodes: [
-      { id: 'insight', labelKey: 'sidebar.insight' },
-      { id: 'timeline', labelKey: 'sidebar.timeline' },
-      { id: 'statistics', labelKey: 'sidebar.statistics' },
-    ],
+    nodes: [],
   },
   '/recalibration': {
     titleKey: 'nav.recalibration',
@@ -161,33 +157,36 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
   const effectiveSelectedNodeId = path === '/settings' ? (searchParams.get('tab') ?? 'general') : selectedNodeId
   const translatedNodes = useMemo(() => translateNodes(config.nodes, t), [config.nodes, t])
 
-  const handleNodeSelect = useCallback((id: string) => {
-    if (path === '/settings') {
-      const nextParams = new URLSearchParams(searchParams)
-      nextParams.set('tab', id)
-      setSearchParams(nextParams, { replace: true })
-      return
-    }
+  const handleNodeSelect = useCallback(
+    (id: string) => {
+      if (path === '/settings') {
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.set('tab', id)
+        setSearchParams(nextParams, { replace: true })
+        return
+      }
 
-    setSelectedNodeId(id)
-    const el = document.getElementById(`section-${id}`)
-    if (!el) return
+      setSelectedNodeId(id)
+      const el = document.getElementById(`section-${id}`)
+      if (!el) return
 
-    // Find the actual scroll container: <main id="main-content"> or nearest scrollable ancestor
-    const scrollContainer = document.getElementById('main-content')
-    if (scrollContainer) {
-      const containerRect = scrollContainer.getBoundingClientRect()
-      const elRect = el.getBoundingClientRect()
-      const scrollTop = scrollContainer.scrollTop + (elRect.top - containerRect.top) - 16
-      scrollContainer.scrollTo({ top: scrollTop, behavior: 'smooth' })
-    } else {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
+      // Find the actual scroll container: <main id="main-content"> or nearest scrollable ancestor
+      const scrollContainer = document.getElementById('main-content')
+      if (scrollContainer) {
+        const containerRect = scrollContainer.getBoundingClientRect()
+        const elRect = el.getBoundingClientRect()
+        const scrollTop = scrollContainer.scrollTop + (elRect.top - containerRect.top) - 16
+        scrollContainer.scrollTo({ top: scrollTop, behavior: 'smooth' })
+      } else {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
 
-    // Brief highlight animation on the target section
-    el.classList.add('section-highlight')
-    setTimeout(() => el.classList.remove('section-highlight'), 1500)
-  }, [path, searchParams, setSearchParams])
+      // Brief highlight animation on the target section
+      el.classList.add('section-highlight')
+      setTimeout(() => el.classList.remove('section-highlight'), 1500)
+    },
+    [path, searchParams, setSearchParams],
+  )
 
   const handleResizeKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -213,7 +212,12 @@ export default function SidePanel({ collapsed, width, onResizeStart, onResizeByK
         </div>
 
         <div className="flex-1 overflow-y-auto px-1 py-1">
-          <TreeView key={path} nodes={translatedNodes} selectedId={effectiveSelectedNodeId} onSelect={handleNodeSelect} />
+          <TreeView
+            key={path}
+            nodes={translatedNodes}
+            selectedId={effectiveSelectedNodeId}
+            onSelect={handleNodeSelect}
+          />
         </div>
       </div>
 

@@ -1,8 +1,22 @@
-import { BarChart3, Calendar, Clock, FileText, Image, Info, LayoutDashboard, MessageCircle, Monitor, RefreshCw, Settings, Tag, Zap } from 'lucide-react'
+import {
+  BarChart3,
+  Calendar,
+  Clock,
+  FileText,
+  Image,
+  Info,
+  LayoutDashboard,
+  MessageCircle,
+  Monitor,
+  RefreshCw,
+  Settings,
+  Tag,
+  Zap,
+} from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { interaction, layout } from '../../styles/tokens'
+import { interaction, layout, motion } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 interface NavItem {
@@ -99,7 +113,8 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
         }}
         onBlur={() => setTooltip(null)}
         className={cn(
-          'relative flex h-11 w-full items-center justify-center transition-colors',
+          'relative flex h-11 w-full items-center justify-center',
+          motion.colors,
           active ? layout.activityBar.iconActive : layout.activityBar.iconDefault,
           !active && 'hover:text-content-strong',
           interaction.focusRing,

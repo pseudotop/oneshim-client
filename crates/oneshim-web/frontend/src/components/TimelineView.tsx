@@ -7,7 +7,7 @@ import { Settings2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CreateOverrideRequest, RegimeOverride } from '../api/contracts'
-import { colors, typography } from '../styles/tokens'
+import { colors, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import SegmentContextMenu from './SegmentContextMenu'
 import { Badge, Card, Spinner } from './ui'
@@ -152,7 +152,9 @@ export default function TimelineView({
             <div key={entry.segment_id} className="flex gap-3">
               {/* Time label column */}
               <div className="flex w-14 flex-shrink-0 flex-col items-end pt-2">
-                <span className={cn('font-medium text-xs', colors.text.secondary)}>{formatTime(entry.start_time)}</span>
+                <span className={cn(typography.weight.medium, 'text-xs', colors.text.secondary)}>
+                  {formatTime(entry.start_time)}
+                </span>
               </div>
 
               {/* Colored block column */}
@@ -160,7 +162,7 @@ export default function TimelineView({
                 <button
                   type="button"
                   className={cn(
-                    'w-full rounded-lg border-l-4 px-3 py-2 text-left transition-colors hover:opacity-90',
+                    `w-full rounded-lg border-l-4 px-3 py-2 text-left ${motion.colors} hover:opacity-90`,
                     isExpanded ? 'ring-2 ring-brand-signal/50' : '',
                     isOverridden ? 'opacity-80' : '',
                   )}
@@ -175,7 +177,12 @@ export default function TimelineView({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span
-                      className={cn('font-semibold text-xs', colors.text.primary, isOverridden ? 'line-through' : '')}
+                      className={cn(
+                        typography.weight.semibold,
+                        'text-xs',
+                        colors.text.primary,
+                        isOverridden ? 'line-through' : '',
+                      )}
                     >
                       {entry.regime_label}
                     </span>
@@ -221,7 +228,7 @@ export default function TimelineView({
                   <button
                     type="button"
                     className={cn(
-                      'absolute top-2 right-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100',
+                      `absolute top-2 right-2 rounded p-1 opacity-0 ${motion.opacity} group-hover:opacity-100`,
                       'hover:bg-surface-muted',
                       isMenuOpen ? 'opacity-100' : '',
                     )}

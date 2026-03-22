@@ -32,25 +32,25 @@ import {
   StatCardsSkeleton,
 } from '../components/ui'
 import { useTheme } from '../contexts/ThemeContext'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
 const COLORS = ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899']
 
 function getScoreColor(score: number): string {
-  if (score >= 80) return 'text-accent-green'
-  if (score >= 60) return 'text-accent-teal'
+  if (score >= 80) return 'text-semantic-success'
+  if (score >= 60) return 'text-brand-text'
   if (score >= 40) return 'text-semantic-warning'
-  return 'text-accent-red'
+  return 'text-semantic-error'
 }
 
 function TrendIndicator({ trend }: { trend: number }) {
   if (trend > 5) {
-    return <span className="text-accent-green">↑ {trend.toFixed(1)}%</span>
+    return <span className="text-semantic-success">↑ {trend.toFixed(1)}%</span>
   }
   if (trend < -5) {
-    return <span className="text-accent-red">↓ {Math.abs(trend).toFixed(1)}%</span>
+    return <span className="text-semantic-error">↓ {Math.abs(trend).toFixed(1)}%</span>
   }
   return <span className="text-content-tertiary">→ {trend.toFixed(1)}%</span>
 }
@@ -171,7 +171,7 @@ export default function Reports() {
 
       {error && (
         <Card variant="danger" padding="md">
-          <p className="text-red-400">{t('reports.error')}</p>
+          <p className="text-semantic-error">{t('reports.error')}</p>
         </Card>
       )}
 
@@ -195,6 +195,29 @@ interface ReportContentProps {
   theme: string
 }
 
+const MAX_PIE_SLICES = 5
+
+function consolidateAppStats(stats: ReportResponse['app_stats']): ReportResponse['app_stats'] {
+  if (stats.length <= MAX_PIE_SLICES) return stats
+
+  const top = stats.slice(0, MAX_PIE_SLICES)
+  const rest = stats.slice(MAX_PIE_SLICES)
+  const otherDuration = rest.reduce((sum, s) => sum + s.duration_secs, 0)
+  const otherPercentage = rest.reduce((sum, s) => sum + s.percentage, 0)
+  const otherEvents = rest.reduce((sum, s) => sum + s.events, 0)
+  const otherCaptures = rest.reduce((sum, s) => sum + s.captures, 0)
+  return [
+    ...top,
+    {
+      name: 'Other',
+      duration_secs: otherDuration,
+      percentage: otherPercentage,
+      events: otherEvents,
+      captures: otherCaptures,
+    },
+  ]
+}
+
 function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
   return (
     <>
@@ -202,7 +225,7 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
       <Card padding="md">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <h2 className="font-bold text-content text-xl">{report.title}</h2>
+            <h2 className={`${typography.weight.bold} text-content text-xl`}>{report.title}</h2>
             <p className="text-content-secondary text-sm">
               {report.from_date} ~ {report.to_date} ({report.days} {t('reports.days')})
             </p>
@@ -210,14 +233,14 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
           <div className="flex items-center gap-4">
             {/* UI note */}
             <div className="text-center">
-              <p className={`font-bold text-4xl ${getScoreColor(report.productivity.score)}`}>
+              <p className={`${typography.weight.bold} text-4xl ${getScoreColor(report.productivity.score)}`}>
                 {report.productivity.score.toFixed(0)}
               </p>
               <p className="text-content-secondary text-xs">{t('reports.productivityScore')}</p>
             </div>
             {/* UI note */}
             <div className="text-center">
-              <p className="font-semibold text-xl">
+              <p className={`${typography.weight.semibold} text-xl`}>
                 <TrendIndicator trend={report.productivity.trend} />
               </p>
               <p className="text-content-secondary text-xs">{t('reports.trend')}</p>
@@ -230,19 +253,21 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card padding="md">
           <p className="text-content-secondary text-sm">{t('reports.activeTime')}</p>
-          <p className="font-bold text-2xl text-content">{formatDuration(report.total_active_secs)}</p>
+          <p className={`${typography.weight.bold} text-2xl text-content`}>
+            {formatDuration(report.total_active_secs)}
+          </p>
         </Card>
         <Card padding="md">
           <p className="text-content-secondary text-sm">{t('reports.idleTime')}</p>
-          <p className="font-bold text-2xl text-content">{formatDuration(report.total_idle_secs)}</p>
+          <p className={`${typography.weight.bold} text-2xl text-content`}>{formatDuration(report.total_idle_secs)}</p>
         </Card>
         <Card padding="md">
           <p className="text-content-secondary text-sm">{t('reports.captures')}</p>
-          <p className="font-bold text-2xl text-content">{report.total_captures.toLocaleString()}</p>
+          <p className={`${typography.weight.bold} text-2xl text-content`}>{report.total_captures.toLocaleString()}</p>
         </Card>
         <Card padding="md">
           <p className="text-content-secondary text-sm">{t('reports.events')}</p>
-          <p className="font-bold text-2xl text-content">{report.total_events.toLocaleString()}</p>
+          <p className={`${typography.weight.bold} text-2xl text-content`}>{report.total_events.toLocaleString()}</p>
         </Card>
       </div>
 
@@ -252,19 +277,23 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
             <p className="text-content-secondary text-sm">{t('reports.activeRatio')}</p>
-            <p className="font-semibold text-content text-xl">{report.productivity.active_ratio.toFixed(1)}%</p>
+            <p className={`${typography.weight.semibold} text-content text-xl`}>
+              {report.productivity.active_ratio.toFixed(1)}%
+            </p>
           </div>
           <div>
             <p className="text-content-secondary text-sm">{t('reports.peakHour')}</p>
-            <p className="font-semibold text-content text-xl">{report.productivity.peak_hour}:00</p>
+            <p className={`${typography.weight.semibold} text-content text-xl`}>{report.productivity.peak_hour}:00</p>
           </div>
           <div>
             <p className="text-content-secondary text-sm">{t('reports.topApp')}</p>
-            <p className="truncate font-semibold text-content text-xl">{report.productivity.top_app || '-'}</p>
+            <p className={`truncate ${typography.weight.semibold} text-content text-xl`}>
+              {report.productivity.top_app || '-'}
+            </p>
           </div>
           <div>
             <p className="text-content-secondary text-sm">{t('reports.avgCpu')}</p>
-            <p className="font-semibold text-content text-xl">{report.avg_cpu.toFixed(1)}%</p>
+            <p className={`${typography.weight.semibold} text-content text-xl`}>{report.avg_cpu.toFixed(1)}%</p>
           </div>
         </div>
       </Card>
@@ -313,8 +342,11 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
             {report.app_stats.map((app, idx) => (
               <div key={app.name} className="flex items-center justify-between rounded bg-hover/50 p-2">
                 <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
-                  <span className="max-w-[150px] truncate font-medium text-content">{app.name}</span>
+                  <div
+                    className={`${iconSize.xs} rounded-full`}
+                    style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                  />
+                  <span className={`max-w-[150px] truncate ${typography.weight.medium} text-content`}>{app.name}</span>
                 </div>
                 <div className="flex items-center gap-4 text-sm">
                   <span className="text-content-secondary">{formatDuration(app.duration_secs)}</span>
@@ -335,25 +367,41 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
           <CardTitle>{t('reports.appDistribution')}</CardTitle>
           <div className="mt-4 h-64">
             {report.app_stats.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={report.app_stats}
-                    dataKey="duration_secs"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label={({ name, percentage }) => `${name.slice(0, 10)} (${percentage.toFixed(0)}%)`}
-                    labelLine={false}
-                  >
-                    {report.app_stats.map((stat, index) => (
-                      <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatDuration(value)} />
-                </PieChart>
-              </ResponsiveContainer>
+              (() => {
+                const pieData = consolidateAppStats(report.app_stats)
+                return (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        dataKey="duration_secs"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        label={({ name, percentage }) =>
+                          percentage >= 5
+                            ? `${name.length > 8 ? `${name.slice(0, 8)}..` : name} ${percentage.toFixed(0)}%`
+                            : ''
+                        }
+                        labelLine={false}
+                        style={{ fontSize: 11 }}
+                      >
+                        {pieData.map((stat, index) => (
+                          <Cell key={stat.name} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(value: number, _name: string, props: { payload?: { percentage?: number } }) => {
+                          const pct = props.payload?.percentage
+                          return [`${formatDuration(value)}${pct != null ? ` (${pct.toFixed(1)}%)` : ''}`, '']
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )
+              })()
             ) : (
               <div className="flex h-full items-center justify-center text-content-secondary">{t('common.noData')}</div>
             )}
@@ -388,11 +436,11 @@ function ReportContent({ report, t, tooltipStyle, theme }: ReportContentProps) {
         </div>
         <div className="mt-2 flex justify-center gap-6 text-sm">
           <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-amber-500" />
+            <div className={`${iconSize.xs} rounded-full bg-semantic-warning`} />
             <span className="text-content-secondary">CPU</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-violet-500" />
+            <div className={`${iconSize.xs} rounded-full bg-brand-signal`} />
             <span className="text-content-secondary">{t('reports.memory')}</span>
           </div>
         </div>

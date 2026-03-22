@@ -47,6 +47,7 @@ mod tests {
             to: None,
             limit: None,
             offset: None,
+            min_importance: None,
         };
 
         let now = Utc::now();
@@ -63,6 +64,7 @@ mod tests {
             to: Some("2024-01-02T00:00:00Z".to_string()),
             limit: Some(50),
             offset: Some(10),
+            min_importance: None,
         };
 
         assert_eq!(query.limit_or_default(), 50);

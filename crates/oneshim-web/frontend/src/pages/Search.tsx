@@ -178,14 +178,14 @@ export default function Search() {
       {/* UI note */}
       {isLoading && (
         <div className="flex h-32 items-center justify-center">
-          <Spinner size="lg" className="text-accent-teal" />
+          <Spinner size="lg" className="text-brand-text" />
           <span className="ml-3 text-content-secondary">{t('common.loading')}</span>
         </div>
       )}
 
       {error && (
         <Card variant="danger" padding="md">
-          <p className="text-accent-red">{t('search.searchError')}</p>
+          <p className="text-semantic-error">{t('search.searchError')}</p>
         </Card>
       )}
 
@@ -198,7 +198,7 @@ export default function Search() {
                 "<span className="text-content">{response.query}</span>"{' '}
               </>
             )}
-            {t('search.results')}: <span className="text-accent-teal">{response.total}</span>
+            {t('search.results')}: <span className="text-brand-text">{response.total}</span>
             {t('search.resultCount')}
           </div>
 
@@ -303,7 +303,7 @@ function SearchResultCard({ result, query, onTagClick, selectedTagIds }: SearchR
           )}
         </div>
 
-        <div className="truncate font-medium text-content">
+        <div className={`truncate ${typography.weight.medium} text-content`}>
           {result.app_name && highlightText(result.app_name, query)}
           {result.app_name && result.window_title && ' - '}
           {result.window_title && highlightText(result.window_title, query)}

@@ -7,6 +7,7 @@ pub struct TimeRangeQuery {
     pub to: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    pub min_importance: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]

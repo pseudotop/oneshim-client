@@ -862,7 +862,9 @@
     "segments": "段",
     "overrideHistory": "覆盖历史",
     "coachingGoals": "目标",
-    "coachingEvents": "事件"
+    "coachingEvents": "事件",
+    "insight": "洞察",
+    "statistics": "统计"
   },
   "settingsOAuth": {
     "title": "连接",

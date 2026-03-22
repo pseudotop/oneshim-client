@@ -17,7 +17,7 @@ import StatCard from '../components/StatCard'
 import UpdatePanel from '../components/UpdatePanel'
 import { Badge, Card, CardTitle, ChartSkeleton, EmptyState, Skeleton, StatCardsSkeleton } from '../components/ui'
 import { type ConnectionStatus, useSSE } from '../hooks/useSSE'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { formatDuration } from '../utils/formatters'
 
@@ -122,11 +122,11 @@ export default function Dashboard() {
 
       {/* UI note */}
       {latestMetrics && (
-        <Card variant="highlight" padding="md">
+        <Card variant="default" padding="md">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <span className={cn('h-2 w-2 animate-pulse rounded-full', colors.primary.signal)} />
-              <span className={cn('font-medium text-sm', colors.primary.text)}>
+              <span className={cn(`${typography.weight.medium} text-sm`, colors.primary.text)}>
                 {t('dashboard.realtimeMonitoring')}
               </span>
               {idleState?.is_idle && (
@@ -142,23 +142,25 @@ export default function Dashboard() {
           </div>
           <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
             <div>
-              <div className={cn(typography.stat.large, colors.accent.teal)}>{latestMetrics.cpu_usage.toFixed(1)}%</div>
+              <div className={cn(typography.stat.large, colors.primary.text)}>
+                {latestMetrics.cpu_usage.toFixed(1)}%
+              </div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.cpu')}</div>
             </div>
             <div>
-              <div className={cn(typography.stat.large, colors.accent.blue)}>
+              <div className={cn(typography.stat.large, colors.primary.text)}>
                 {latestMetrics.memory_percent.toFixed(1)}%
               </div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.memory')}</div>
             </div>
             <div>
-              <div className={cn(typography.stat.large, colors.accent.purple)}>
+              <div className={cn(typography.stat.large, colors.primary.text)}>
                 {(latestMetrics.memory_used / 1024 / 1024 / 1024).toFixed(1)} GB
               </div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.usedMemory')}</div>
             </div>
             <div>
-              <div className={cn(typography.stat.large, colors.accent.slate)}>{metricsHistory.length}</div>
+              <div className={cn(typography.stat.large, colors.primary.text)}>{metricsHistory.length}</div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.collectedData')}</div>
             </div>
           </div>
@@ -180,29 +182,25 @@ export default function Dashboard() {
           data-testid="metric-card-active-time"
           title={t('dashboard.activeTime')}
           value={formatDuration(summary?.total_active_secs ?? 0)}
-          icon={<Clock className="h-5 w-5" />}
-          color="teal"
+          icon={<Clock className={`${iconSize.md}`} />}
         />
         <StatCard
           data-testid="metric-card-idle-time"
           title={t('dashboard.idleTime')}
           value={formatDuration(summary?.total_idle_secs ?? 0)}
-          icon={<Moon className="h-5 w-5" />}
-          color="slate"
+          icon={<Moon className={`${iconSize.md}`} />}
         />
         <StatCard
           data-testid="metric-card-captures"
           title={t('dashboard.captures')}
           value={summary?.frames_captured?.toLocaleString() ?? '0'}
-          icon={<Camera className="h-5 w-5" />}
-          color="blue"
+          icon={<Camera className={`${iconSize.md}`} />}
         />
         <StatCard
           data-testid="metric-card-events"
           title={t('dashboard.events')}
           value={summary?.events_logged?.toLocaleString() ?? '0'}
-          icon={<BarChart3 className="h-5 w-5" />}
-          color="purple"
+          icon={<BarChart3 className={`${iconSize.md}`} />}
         />
       </div>
 
@@ -241,21 +239,21 @@ export default function Dashboard() {
         <CardTitle className="mb-4">{t('dashboard.systemStatus')}</CardTitle>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div className="text-center">
-            <div className={cn(typography.stat.hero, colors.accent.teal)}>{summary?.cpu_avg?.toFixed(1) ?? '0'}%</div>
+            <div className={cn(typography.stat.hero, colors.primary.text)}>{summary?.cpu_avg?.toFixed(1) ?? '0'}%</div>
             <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.avgCpu')}</div>
           </div>
           <div className="text-center">
-            <div className={cn(typography.stat.hero, colors.accent.blue)}>
+            <div className={cn(typography.stat.hero, colors.primary.text)}>
               {summary?.memory_avg_percent?.toFixed(1) ?? '0'}%
             </div>
             <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.avgMemory')}</div>
           </div>
           <div className="text-center">
-            <div className={cn(typography.stat.hero, colors.accent.purple)}>{summary?.top_apps?.length ?? 0}</div>
+            <div className={cn(typography.stat.hero, colors.primary.text)}>{summary?.top_apps?.length ?? 0}</div>
             <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.appsUsed')}</div>
           </div>
           <div className="text-center">
-            <div className={cn(typography.stat.hero, colors.accent.green)}>
+            <div className={cn(typography.stat.hero, colors.primary.text)}>
               {(
                 ((summary?.total_active_secs ?? 0) /
                   ((summary?.total_active_secs ?? 0) + (summary?.total_idle_secs ?? 1))) *

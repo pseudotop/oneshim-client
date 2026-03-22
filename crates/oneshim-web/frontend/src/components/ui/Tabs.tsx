@@ -114,12 +114,12 @@ export function Tabs({ tabs, activeTab, onTabChange, className, ariaLabel, idBas
               handleKeyDown(event, index)
             }}
             className={cn(
-              'inline-flex items-center gap-2 px-3 py-2 font-medium',
+              `inline-flex items-center gap-2 px-3 py-2 ${typography.weight.medium}`,
               radius.md,
               typography.body,
               interaction.interactive,
               interaction.focusRing,
-              motion.fast,
+              motion.colors,
               isActive
                 ? 'bg-surface-elevated text-content shadow-[0_1px_2px_rgba(15,23,42,0.1)]'
                 : 'text-content-secondary hover:bg-surface-elevated/70 hover:text-content',

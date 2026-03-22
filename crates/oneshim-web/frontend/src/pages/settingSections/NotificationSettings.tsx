@@ -4,7 +4,7 @@
 import { useTranslation } from 'react-i18next'
 import type { NotificationSettings as NotificationSettingsType } from '../../api/client'
 import { Card, CardTitle, Input } from '../../components/ui'
-import { colors, form } from '../../styles/tokens'
+import { colors, form, typography } from '../../styles/tokens'
 
 interface NotificationSettingsProps {
   notification: NotificationSettingsType
@@ -21,7 +21,7 @@ export default function NotificationSettings({ notification, onChange }: Notific
       {/* UI note */}
       <label className={`mb-6 flex cursor-pointer items-center justify-between border-b pb-4 ${form.sectionDivider}`}>
         <div>
-          <span className={`${colors.text.secondary} font-medium`}>{t('settings.notifEnabled')}</span>
+          <span className={`${colors.text.secondary} ${typography.weight.medium}`}>{t('settings.notifEnabled')}</span>
           <p className={colors.text.tertiary}>{t('settings.notifEnabledDesc')}</p>
         </div>
         <input

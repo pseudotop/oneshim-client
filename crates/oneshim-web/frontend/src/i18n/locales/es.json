@@ -862,7 +862,9 @@
     "segments": "Segmentos",
     "overrideHistory": "Historial de anulaciones",
     "coachingGoals": "Objetivos",
-    "coachingEvents": "Eventos"
+    "coachingEvents": "Eventos",
+    "insight": "Información",
+    "statistics": "Estadísticas"
   },
   "settingsOAuth": {
     "title": "Conexión",

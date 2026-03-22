@@ -19,7 +19,8 @@ import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
-import { colors, typography } from '../styles/tokens'
+import { colors, iconSize, motion, typography } from '../styles/tokens'
+import { resolveImageUrl } from '../utils/api-base'
 import { cn } from '../utils/cn'
 
 export default function SessionReplay() {
@@ -355,8 +356,8 @@ export default function SessionReplay() {
 
       {/* UI note */}
       {error && (
-        <div className="flex items-center space-x-2 rounded-lg bg-accent-red/10 p-3 text-accent-red">
-          <AlertCircle className="h-5 w-5" />
+        <div className="flex items-center space-x-2 rounded-lg bg-semantic-error/10 p-3 text-semantic-error">
+          <AlertCircle className={`${iconSize.md}`} />
           <span>{error}</span>
         </div>
       )}
@@ -382,20 +383,20 @@ export default function SessionReplay() {
         <>
           {/* UI note */}
           <div id="section-timeline">
-          <TimelineScrubber
-            startTime={startTime}
-            endTime={endTime}
-            currentTime={currentTime}
-            isPlaying={isPlaying}
-            playbackSpeed={playbackSpeed}
-            segments={timeline.segments}
-            items={timeline.items}
-            onTimeChange={handleTimeChange}
-            onPlayPause={handlePlayPause}
-            onSpeedChange={handleSpeedChange}
-            onSkipToStart={handleSkipToStart}
-            onSkipToEnd={handleSkipToEnd}
-          />
+            <TimelineScrubber
+              startTime={startTime}
+              endTime={endTime}
+              currentTime={currentTime}
+              isPlaying={isPlaying}
+              playbackSpeed={playbackSpeed}
+              segments={timeline.segments}
+              items={timeline.items}
+              onTimeChange={handleTimeChange}
+              onPlayPause={handlePlayPause}
+              onSpeedChange={handleSpeedChange}
+              onSkipToStart={handleSkipToStart}
+              onSkipToEnd={handleSkipToEnd}
+            />
           </div>
 
           {/* UI note */}
@@ -420,7 +421,7 @@ export default function SessionReplay() {
                       >
                         {!imageLoadFailed ? (
                           <img
-                            src={currentFrame.image_url}
+                            src={resolveImageUrl(currentFrame.image_url) ?? undefined}
                             alt={`Screenshot at ${currentFrame.timestamp}`}
                             className="h-full w-full object-contain"
                             onError={() => setImageLoadFailed(true)}
@@ -439,10 +440,10 @@ export default function SessionReplay() {
                             <button
                               type="button"
                               key={element.element_id}
-                              className={`absolute transition-colors ${
+                              className={`absolute ${motion.colors} ${
                                 selectedSceneElementId === element.element_id
-                                  ? 'border-2 border-amber-400 bg-amber-400/20'
-                                  : 'border border-teal-500/90 bg-teal-500/10 hover:bg-teal-500/20'
+                                  ? 'border-2 border-semantic-warning bg-semantic-warning/20'
+                                  : 'border border-brand-signal/90 bg-brand-signal/10 hover:bg-brand-signal/20'
                               }`}
                               style={{
                                 left: `${element.left}px`,
@@ -456,7 +457,7 @@ export default function SessionReplay() {
                                 setSceneActionFeedback(null)
                               }}
                             >
-                              <span className="pointer-events-none absolute -top-5 left-0 max-w-[12rem] truncate rounded bg-teal-600 px-1.5 py-0.5 text-[10px] text-white shadow">
+                              <span className="pointer-events-none absolute -top-5 left-0 max-w-[12rem] truncate rounded bg-brand px-1.5 py-0.5 text-[10px] text-content-inverse shadow">
                                 {element.title}
                               </span>
                             </button>
@@ -466,15 +467,15 @@ export default function SessionReplay() {
                       {/* UI note */}
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         <div className="flex items-center space-x-2 text-sm">
-                          <AppWindow className="h-4 w-4 text-content-muted" />
+                          <AppWindow className={`${iconSize.base} text-content-muted`} />
                           <span className="text-content-secondary">{currentFrame.app_name}</span>
                         </div>
                         <div className="flex items-center space-x-2 text-sm">
-                          <Monitor className="h-4 w-4 text-content-muted" />
+                          <Monitor className={`${iconSize.base} text-content-muted`} />
                           <span className="truncate text-content-secondary">{currentFrame.window_title}</span>
                         </div>
                         <div className="flex items-center space-x-2 text-sm">
-                          <Clock className="h-4 w-4 text-content-muted" />
+                          <Clock className={`${iconSize.base} text-content-muted`} />
                           <span className="text-content-secondary">
                             {formatDetailTime(new Date(currentFrame.timestamp))}
                           </span>
@@ -498,11 +499,11 @@ export default function SessionReplay() {
                       {/* UI note */}
                       {currentFrameTags.length > 0 && (
                         <div className="flex flex-wrap items-center gap-2">
-                          <TagIcon className="h-4 w-4 text-content-muted" />
+                          <TagIcon className={`${iconSize.base} text-content-muted`} />
                           {currentFrameTags.map((tag) => (
                             <span
                               key={tag.id}
-                              className="rounded-full px-2 py-0.5 text-white text-xs"
+                              className="rounded-full px-2 py-0.5 text-content-inverse text-xs"
                               style={{ backgroundColor: tag.color }}
                             >
                               {tag.name}
@@ -521,7 +522,7 @@ export default function SessionReplay() {
                           {!sceneError && sceneCalibration && (
                             <span
                               className={`ml-2 ${
-                                sceneCalibrationPassed ? 'text-accent-emerald' : 'text-semantic-warning'
+                                sceneCalibrationPassed ? 'text-semantic-success' : 'text-semantic-warning'
                               }`}
                             >
                               {sceneCalibrationPassed
@@ -542,12 +543,12 @@ export default function SessionReplay() {
                         >
                           {showSceneOverlay ? (
                             <>
-                              <EyeOff className="mr-1 h-4 w-4" />
+                              <EyeOff className={`mr-1 ${iconSize.base}`} />
                               {t('replay.hideOverlay')}
                             </>
                           ) : (
                             <>
-                              <Eye className="mr-1 h-4 w-4" />
+                              <Eye className={`mr-1 ${iconSize.base}`} />
                               {t('replay.showOverlay')}
                             </>
                           )}
@@ -577,7 +578,9 @@ export default function SessionReplay() {
                   {selectedSceneElement ? (
                     <>
                       <div className="space-y-2 rounded-lg border border-muted p-3">
-                        <div className="truncate font-semibold text-content text-sm">{selectedSceneElement.label}</div>
+                        <div className={`truncate ${typography.weight.semibold} text-content text-sm`}>
+                          {selectedSceneElement.label}
+                        </div>
                         <div className="grid grid-cols-2 gap-2 text-content-secondary text-xs">
                           <div>
                             {t('replay.role', 'Role')}: {selectedSceneElement.role ?? t('replay.unknown', 'Unknown')}
@@ -593,7 +596,9 @@ export default function SessionReplay() {
                       </div>
 
                       <div className="break-words rounded-lg bg-surface-elevated px-3 py-2 text-content-strong text-xs">
-                        <span className="font-medium">{t('replay.suggestedAction', 'Suggested action')}: </span>
+                        <span className={`${typography.weight.medium}`}>
+                          {t('replay.suggestedAction', 'Suggested action')}:{' '}
+                        </span>
                         {suggestedActionText}
                       </div>
 
@@ -713,29 +718,33 @@ export default function SessionReplay() {
               <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-5">
                 <div>
                   <p className="text-content-secondary text-xs">{t('replay.duration', 'session 시간')}</p>
-                  <p className="font-semibold text-content text-lg">
+                  <p className={`${typography.weight.semibold} text-content text-lg`}>
                     {Math.round(timeline.session.duration_secs / 60)}
                     {t('dashboard.minutes', '분')}
                   </p>
                 </div>
                 <div>
                   <p className="text-content-secondary text-xs">{t('replay.totalEvents', '총 event')}</p>
-                  <p className="font-semibold text-content text-lg">{timeline.session.total_events}</p>
+                  <p className={`${typography.weight.semibold} text-content text-lg`}>
+                    {timeline.session.total_events}
+                  </p>
                 </div>
                 <div>
                   <p className="text-content-secondary text-xs">{t('replay.totalFrames', '총 frame')}</p>
-                  <p className="font-semibold text-content text-lg">{timeline.session.total_frames}</p>
+                  <p className={`${typography.weight.semibold} text-content text-lg`}>
+                    {timeline.session.total_frames}
+                  </p>
                 </div>
                 <div>
                   <p className="text-content-secondary text-xs">{t('replay.totalIdle', '총 idle')}</p>
-                  <p className="font-semibold text-content text-lg">
+                  <p className={`${typography.weight.semibold} text-content text-lg`}>
                     {Math.round(timeline.session.total_idle_secs / 60)}
                     {t('dashboard.minutes', '분')}
                   </p>
                 </div>
                 <div>
                   <p className="text-content-secondary text-xs">{t('replay.apps', '앱 수')}</p>
-                  <p className="font-semibold text-content text-lg">
+                  <p className={`${typography.weight.semibold} text-content text-lg`}>
                     {new Set(timeline.segments.map((s) => s.app_name)).size}
                   </p>
                 </div>

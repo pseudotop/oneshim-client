@@ -180,12 +180,14 @@ export async function fetchFrames(
   to?: string,
   limit = 50,
   offset = 0,
+  minImportance = 0.3,
 ): Promise<PaginatedResponse<Frame>> {
   const params = new URLSearchParams()
   if (from) params.set('from', from)
   if (to) params.set('to', to)
   params.set('limit', String(limit))
   params.set('offset', String(offset))
+  if (minImportance > 0) params.set('min_importance', String(minImportance))
   const res = await fetchWithRetry(`${BASE_URL}/frames?${params}`)
   if (!res.ok) throw new Error('frame query failure')
   return res.json()

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getShortcutsList } from '../../hooks/useKeyboardShortcuts'
-import { elevation, interaction, layout } from '../../styles/tokens'
+import { elevation, iconSize, interaction, layout, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 interface ShortcutsHelpProps {
@@ -75,7 +75,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-muted border-b p-4">
-          <h2 id="shortcuts-help-title" className="font-semibold text-content text-lg">
+          <h2 id="shortcuts-help-title" className={cn(typography.h3, 'text-content')}>
             {t('shortcuts.title')}
           </h2>
           <button
@@ -84,7 +84,7 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
             className={cn('rounded p-1 text-content-muted hover:text-content', interaction.focusRing)}
             aria-label={t('common.close', 'Close')}
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <svg className={iconSize.md} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -94,7 +94,12 @@ export default function ShortcutsHelp({ onClose }: ShortcutsHelpProps) {
           {shortcuts.map(({ key, descriptionKey }) => (
             <div key={key} className="flex items-center justify-between py-1">
               <span className="text-content-secondary">{t(descriptionKey)}</span>
-              <kbd className="rounded border border-DEFAULT bg-surface-elevated px-2 py-1 font-mono text-content text-sm">
+              <kbd
+                className={cn(
+                  'rounded border border-DEFAULT bg-surface-elevated px-2 py-1 text-content',
+                  typography.mono,
+                )}
+              >
                 {key}
               </kbd>
             </div>

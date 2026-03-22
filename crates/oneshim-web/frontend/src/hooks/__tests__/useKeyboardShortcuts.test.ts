@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { getShortcutsList } from '../useKeyboardShortcuts'
 
 describe('getShortcutsList', () => {
-  it('returns 10 shortcut entries', () => {
+  it('returns 11 shortcut entries', () => {
     const list = getShortcutsList()
-    expect(list).toHaveLength(10)
+    expect(list).toHaveLength(11)
   })
 
   it('each entry has key and descriptionKey', () => {

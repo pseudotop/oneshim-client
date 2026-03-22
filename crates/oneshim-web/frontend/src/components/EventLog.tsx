@@ -2,6 +2,8 @@ import { AppWindow, ArrowRightLeft, Camera, Monitor, Moon } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TimelineItem } from '../api/client'
+import { iconSize, motion, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 import { formatTime } from '../utils/formatters'
 
 interface EventLogProps {
@@ -12,19 +14,19 @@ interface EventLogProps {
 
 function getEventIcon(item: TimelineItem) {
   if (item.type === 'Frame') {
-    return <Camera className="h-4 w-4 text-teal-500" />
+    return <Camera className={cn(iconSize.base, 'text-brand-text')} />
   }
   if (item.type === 'IdlePeriod') {
-    return <Moon className="h-4 w-4 text-content-muted" />
+    return <Moon className={cn(iconSize.base, 'text-content-muted')} />
   }
   const eventType = item.event_type.toLowerCase()
   if (eventType.includes('appswitch') || eventType.includes('context')) {
-    return <ArrowRightLeft className="h-4 w-4 text-blue-500" />
+    return <ArrowRightLeft className={cn(iconSize.base, 'text-semantic-info')} />
   }
   if (eventType.includes('window')) {
-    return <AppWindow className="h-4 w-4 text-purple-500" />
+    return <AppWindow className={cn(iconSize.base, 'text-brand-text')} />
   }
-  return <Monitor className="h-4 w-4 text-amber-500" />
+  return <Monitor className={cn(iconSize.base, 'text-semantic-warning')} />
 }
 
 function getEventLabel(item: TimelineItem, captureLabel: string, idleLabel: string, minLabel: string) {
@@ -91,16 +93,17 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
     <div className="flex h-full flex-col rounded-lg border border-muted bg-surface-overlay shadow">
       {/* UI note */}
       <div className="border-muted border-b px-4 py-3">
-        <h3 className="font-semibold text-content text-sm">{t('replay.eventLog', 'Event Log')}</h3>
-        <p className="mt-0.5 text-content-secondary text-xs">
-          {items.length}{t('replay.items', ' items')}
+        <h3 className={cn(typography.label, 'text-content')}>{t('replay.eventLog', 'Event Log')}</h3>
+        <p className={cn('mt-0.5 text-content-secondary', typography.caption)}>
+          {items.length}
+          {t('replay.items', ' items')}
         </p>
       </div>
 
       {/* event list */}
       <div ref={listRef} className="flex-1 overflow-y-auto">
         {items.length === 0 ? (
-          <div className="flex h-32 items-center justify-center text-content-secondary text-sm">
+          <div className={cn('flex h-32 items-center justify-center text-content-secondary', typography.body)}>
             {t('common.noData', 'No data')}
           </div>
         ) : (
@@ -122,11 +125,13 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                   type="button"
                   key={itemKey}
                   ref={isActive ? activeItemRef : undefined}
-                  className={`w-full cursor-pointer px-4 py-2 text-left transition-colors ${
+                  className={cn(
+                    'w-full cursor-pointer px-4 py-2 text-left',
+                    motion.colors,
                     isActive
-                      ? 'border-teal-500 border-l-2 bg-teal-50 dark:bg-teal-900/30'
-                      : 'border-transparent border-l-2 hover:bg-hover'
-                  }`}
+                      ? 'border-brand-signal border-l-2 bg-brand-signal/5'
+                      : 'border-transparent border-l-2 hover:bg-hover',
+                  )}
                   onClick={() => onItemClick(itemTime)}
                 >
                   <div className="flex items-start space-x-3">
@@ -137,15 +142,19 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                     <div className="min-w-0 flex-1">
                       {/* UI note */}
                       <div className="flex items-center justify-between">
-                        <span className="font-mono text-content-secondary text-xs">{timeStr}</span>
+                        <span className={cn(typography.mono, 'text-content-secondary', typography.caption)}>
+                          {timeStr}
+                        </span>
                         <span
-                          className={`rounded px-1.5 py-0.5 text-xs ${
+                          className={cn(
+                            'rounded px-1.5 py-0.5',
+                            typography.caption,
                             item.type === 'Frame'
-                              ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300'
+                              ? 'bg-brand-signal/10 text-brand-text'
                               : item.type === 'IdlePeriod'
                                 ? 'bg-surface-elevated text-content-secondary'
-                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
-                          }`}
+                                : 'bg-semantic-info/10 text-semantic-info',
+                          )}
                         >
                           {getEventLabel(item, captureLabel, idleLabel, minLabel)}
                         </span>
@@ -156,15 +165,19 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                         <div className="mt-1">
                           {item.type === 'Frame' ? (
                             <>
-                              <p className="truncate font-medium text-content text-sm">{item.app_name}</p>
-                              <p className="truncate text-content-secondary text-xs">{item.window_title}</p>
+                              <p className={cn('truncate text-content', typography.label)}>{item.app_name}</p>
+                              <p className={cn('truncate text-content-secondary', typography.caption)}>
+                                {item.window_title}
+                              </p>
                             </>
                           ) : (
                             item.app_name && (
                               <>
-                                <p className="truncate font-medium text-content text-sm">{item.app_name}</p>
+                                <p className={cn('truncate text-content', typography.label)}>{item.app_name}</p>
                                 {item.window_title && (
-                                  <p className="truncate text-content-secondary text-xs">{item.window_title}</p>
+                                  <p className={cn('truncate text-content-secondary', typography.caption)}>
+                                    {item.window_title}
+                                  </p>
                                 )}
                               </>
                             )
@@ -177,17 +190,20 @@ export default function EventLog({ items, currentTime, onItemClick }: EventLogPr
                         <div className="mt-1 flex items-center space-x-2">
                           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-muted">
                             <div
-                              className={`h-full ${
+                              className={cn(
+                                'h-full',
                                 item.importance >= 0.7
-                                  ? 'bg-green-500'
+                                  ? 'bg-semantic-success'
                                   : item.importance >= 0.4
-                                    ? 'bg-amber-500'
-                                    : 'bg-accent-slate'
-                              }`}
+                                    ? 'bg-semantic-warning'
+                                    : 'bg-surface-muted',
+                              )}
                               style={{ width: `${item.importance * 100}%` }}
                             />
                           </div>
-                          <span className="text-content-secondary text-xs">{Math.round(item.importance * 100)}%</span>
+                          <span className={cn('text-content-secondary', typography.caption)}>
+                            {Math.round(item.importance * 100)}%
+                          </span>
                         </div>
                       )}
                     </div>

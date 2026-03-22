@@ -1,3 +1,4 @@
+import { motion } from '../../styles/tokens'
 import type { FocusHighlightPayload } from '../types'
 
 interface FocusHighlightProps {
@@ -10,7 +11,7 @@ export default function FocusHighlight({ highlight }: FocusHighlightProps) {
       {highlight.targets.map((target) => (
         <div
           key={target.candidate_id}
-          className="pointer-events-none fixed transition-all duration-200 ease-out"
+          className={`pointer-events-none fixed ${motion.all}`}
           style={{
             left: target.x,
             top: target.y,
@@ -24,7 +25,7 @@ export default function FocusHighlight({ highlight }: FocusHighlightProps) {
         >
           {target.label && (
             <span
-              className="absolute -top-5 left-0 rounded bg-black/70 px-1 text-[10px] text-white"
+              className="absolute -top-5 left-0 rounded bg-surface-overlay/70 px-1 text-[10px] text-content-inverse"
               style={{ whiteSpace: 'nowrap' }}
             >
               {target.label}

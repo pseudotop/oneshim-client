@@ -24,7 +24,7 @@ import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { addToast } from '../hooks/useToast'
-import { colors, interaction, typography } from '../styles/tokens'
+import { colors, iconSize, interaction, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 type PresetTab = 'Productivity' | 'AppManagement' | 'Workflow' | 'Custom'
@@ -282,13 +282,17 @@ function Automation() {
         <Card>
           <CardContent>
             <div className="text-content-secondary text-sm">{t('automation.sandbox')}</div>
-            <div className="mt-1 font-semibold text-content text-lg">{status?.sandbox_profile ?? '-'}</div>
+            <div className={`mt-1 ${typography.weight.semibold} text-content text-lg`}>
+              {status?.sandbox_profile ?? '-'}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent>
             <div className="text-content-secondary text-sm">{t('automation.ocrProvider')}</div>
-            <div className="mt-1 font-semibold text-content text-lg">{status?.ocr_provider ?? '-'}</div>
+            <div className={`mt-1 ${typography.weight.semibold} text-content text-lg`}>
+              {status?.ocr_provider ?? '-'}
+            </div>
             <div className="mt-2 flex items-center gap-2">
               <span className="text-content-secondary text-xs">{t('automation.providerSource')}</span>
               <Badge color={sourceBadgeColor(status?.ocr_source)} size="sm">
@@ -300,7 +304,9 @@ function Automation() {
         <Card>
           <CardContent>
             <div className="text-content-secondary text-sm">{t('automation.llmProvider')}</div>
-            <div className="mt-1 font-semibold text-content text-lg">{status?.llm_provider ?? '-'}</div>
+            <div className={`mt-1 ${typography.weight.semibold} text-content text-lg`}>
+              {status?.llm_provider ?? '-'}
+            </div>
             <div className="mt-2 flex items-center gap-2">
               <span className="text-content-secondary text-xs">{t('automation.providerSource')}</span>
               <Badge color={sourceBadgeColor(status?.llm_source)} size="sm">
@@ -312,7 +318,9 @@ function Automation() {
         <Card>
           <CardContent>
             <div className="text-content-secondary text-sm">{t('automation.pendingAudit')}</div>
-            <div className="mt-1 font-semibold text-content text-lg">{status?.pending_audit_entries ?? 0}</div>
+            <div className={`mt-1 ${typography.weight.semibold} text-content text-lg`}>
+              {status?.pending_audit_entries ?? 0}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -327,7 +335,7 @@ function Automation() {
               {ocrFallbackActive && (
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-content">{t('automation.ocrProvider')}</span>
+                    <span className={`${typography.weight.medium} text-content`}>{t('automation.ocrProvider')}</span>
                     <Badge color={sourceBadgeColor(status?.ocr_source)} size="sm">
                       {sourceLabel(status?.ocr_source)}
                     </Badge>
@@ -341,7 +349,7 @@ function Automation() {
               {llmFallbackActive && (
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-content">{t('automation.llmProvider')}</span>
+                    <span className={`${typography.weight.medium} text-content`}>{t('automation.llmProvider')}</span>
                     <Badge color={sourceBadgeColor(status?.llm_source)} size="sm">
                       {sourceLabel(status?.llm_source)}
                     </Badge>
@@ -375,9 +383,9 @@ function Automation() {
                 aria-controls={`tabpanel-${tab.toLowerCase()}`}
                 onClick={() => setPresetTab(tab)}
                 className={cn(
-                  'rounded-md px-3 py-1.5 font-medium text-sm transition-colors',
+                  `rounded-md px-3 py-1.5 ${typography.weight.medium} text-sm ${motion.colors}`,
                   interaction.focusRing,
-                  presetTab === tab ? 'bg-accent-teal/10 text-accent-teal' : 'text-content-secondary hover:bg-hover',
+                  presetTab === tab ? 'bg-brand-signal/10 text-brand-text' : 'text-content-secondary hover:bg-hover',
                 )}
               >
                 {t(`automation.category.${tab}`)}
@@ -397,7 +405,7 @@ function Automation() {
               return (
                 <div
                   key={preset.id}
-                  className={`flex flex-col rounded-lg border p-4 transition-colors ${
+                  className={`flex flex-col rounded-lg border p-4 ${motion.colors} ${
                     feedback
                       ? feedback.result.success
                         ? 'border-status-connected bg-semantic-success/10'
@@ -407,7 +415,7 @@ function Automation() {
                 >
                   <div className="flex items-start justify-between">
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-medium text-content">{preset.name}</h3>
+                      <h3 className={`${typography.weight.medium} text-content`}>{preset.name}</h3>
                       <p className="mt-1 text-content-secondary text-sm">{preset.description}</p>
                     </div>
                     <div className="ml-2 flex shrink-0 items-center space-x-1">
@@ -429,7 +437,7 @@ function Automation() {
                     type="button"
                     onClick={() => setExpandedPreset(isExpanded ? null : preset.id)}
                     className={cn(
-                      'mt-2 flex items-center text-content-muted text-xs transition-colors hover:text-content-strong',
+                      `mt-2 flex items-center text-content-muted text-xs ${motion.colors} hover:text-content-strong`,
                       interaction.focusRing,
                     )}
                   >
@@ -437,7 +445,11 @@ function Automation() {
                       {preset.steps.length} {t('automation.steps')}
                     </span>
                     {preset.steps.length > 0 &&
-                      (isExpanded ? <ChevronUp className="ml-1 h-3 w-3" /> : <ChevronDown className="ml-1 h-3 w-3" />)}
+                      (isExpanded ? (
+                        <ChevronUp className={`ml-1 ${iconSize.xs}`} />
+                      ) : (
+                        <ChevronDown className={`ml-1 ${iconSize.xs}`} />
+                      ))}
                   </button>
 
                   {/* UI note */}
@@ -445,7 +457,9 @@ function Automation() {
                     <div className="mt-2 space-y-1">
                       {preset.steps.map((step, idx) => (
                         <div key={step.name} className="flex items-center text-content-secondary text-xs">
-                          <span className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-hover font-medium text-[10px]">
+                          <span
+                            className={`mr-2 flex ${iconSize.base} shrink-0 items-center justify-center rounded-full bg-hover ${typography.weight.medium} text-[10px]`}
+                          >
                             {idx + 1}
                           </span>
                           <span className="truncate">{step.name}</span>
@@ -472,10 +486,10 @@ function Automation() {
                         ) : (
                           <XCircle className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                         )}
-                        <span className="truncate font-medium">{feedback.result.message}</span>
+                        <span className={`truncate ${typography.weight.medium}`}>{feedback.result.message}</span>
                       </div>
                       {(feedback.result.steps_executed != null || feedback.result.total_elapsed_ms != null) && (
-                        <div className="mt-1 ml-5 flex items-center space-x-3 text-[11px] opacity-80">
+                        <div className="mt-1 ml-6 flex items-center space-x-3 text-[11px] opacity-80">
                           {feedback.result.steps_executed != null && feedback.result.total_steps != null && (
                             <span>
                               {feedback.result.steps_executed}/{feedback.result.total_steps} {t('automation.steps')}
@@ -483,7 +497,7 @@ function Automation() {
                           )}
                           {feedback.result.total_elapsed_ms != null && (
                             <span className="flex items-center">
-                              <Clock className="mr-0.5 h-3 w-3" />
+                              <Clock className={`mr-0.5 ${iconSize.xs}`} />
                               {feedback.result.total_elapsed_ms}ms
                             </span>
                           )}
@@ -520,7 +534,7 @@ function Automation() {
                           <button
                             type="button"
                             onClick={() => navigate('/settings?tab=ai-automation')}
-                            className={cn('text-accent-teal underline-offset-2 hover:underline', interaction.focusRing)}
+                            className={cn('text-brand-text underline-offset-2 hover:underline', interaction.focusRing)}
                           >
                             {t('automation.manageAiProfiles')}
                           </button>
@@ -573,47 +587,47 @@ function Automation() {
         <CardContent>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             <div className="text-center">
-              <div className="font-bold text-2xl text-content">{stats?.total_executions ?? 0}</div>
+              <div className={`${typography.stat.large} text-content`}>{stats?.total_executions ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.totalExecutions')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-teal">{stats?.successful ?? 0}</div>
+              <div className={`${typography.stat.large} text-semantic-success`}>{stats?.successful ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.successful')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-red">{stats?.failed ?? 0}</div>
+              <div className={`${typography.stat.large} text-semantic-error`}>{stats?.failed ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.failed')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-orange">{stats?.denied ?? 0}</div>
+              <div className={`${typography.stat.large} text-semantic-warning`}>{stats?.denied ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.denied')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-semantic-warning">{stats?.timeout ?? 0}</div>
+              <div className={`${typography.stat.large} text-semantic-warning`}>{stats?.timeout ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.timeout')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-emerald">
+              <div className={`${typography.stat.large} text-semantic-success`}>
                 {((stats?.success_rate ?? 0) * 100).toFixed(1)}%
               </div>
               <div className="text-content-secondary text-xs">{t('automation.successRate')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-accent-orange">
+              <div className={`${typography.stat.large} text-semantic-warning`}>
                 {((stats?.blocked_rate ?? 0) * 100).toFixed(1)}%
               </div>
               <div className="text-content-secondary text-xs">{t('automation.blockedRate')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-content">{(stats?.avg_elapsed_ms ?? 0).toFixed(0)}ms</div>
+              <div className={`${typography.stat.large} text-content`}>{(stats?.avg_elapsed_ms ?? 0).toFixed(0)}ms</div>
               <div className="text-content-secondary text-xs">{t('automation.avgElapsed')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-content">{(stats?.p95_elapsed_ms ?? 0).toFixed(0)}ms</div>
+              <div className={`${typography.stat.large} text-content`}>{(stats?.p95_elapsed_ms ?? 0).toFixed(0)}ms</div>
               <div className="text-content-secondary text-xs">{t('automation.p95Elapsed')}</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-2xl text-content">{stats?.timing_samples ?? 0}</div>
+              <div className={`${typography.stat.large} text-content`}>{stats?.timing_samples ?? 0}</div>
               <div className="text-content-secondary text-xs">{t('automation.timingSamples')}</div>
             </div>
           </div>
@@ -647,17 +661,19 @@ function Automation() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-muted border-b">
-                    <th className="px-2 py-2 text-left font-medium text-content-secondary">{t('automation.time')}</th>
-                    <th className="px-2 py-2 text-left font-medium text-content-secondary">
+                    <th className={`px-2 py-2 text-left ${typography.weight.medium} text-content-secondary`}>
+                      {t('automation.time')}
+                    </th>
+                    <th className={`px-2 py-2 text-left ${typography.weight.medium} text-content-secondary`}>
                       {t('automation.commandId')}
                     </th>
-                    <th className="px-2 py-2 text-left font-medium text-content-secondary">
+                    <th className={`px-2 py-2 text-left ${typography.weight.medium} text-content-secondary`}>
                       {t('automation.actionType')}
                     </th>
-                    <th className="px-2 py-2 text-left font-medium text-content-secondary">
+                    <th className={`px-2 py-2 text-left ${typography.weight.medium} text-content-secondary`}>
                       {t('automation.statusLabel')}
                     </th>
-                    <th className="px-2 py-2 text-right font-medium text-content-secondary">
+                    <th className={`px-2 py-2 text-right ${typography.weight.medium} text-content-secondary`}>
                       {t('automation.elapsed')}
                     </th>
                   </tr>
@@ -668,7 +684,9 @@ function Automation() {
                       <td className="whitespace-nowrap px-2 py-2 text-content-strong">
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </td>
-                      <td className="px-2 py-2 font-mono text-content-strong text-xs">{entry.command_id}</td>
+                      <td className={`px-2 py-2 ${typography.family.mono} text-content-strong text-xs`}>
+                        {entry.command_id}
+                      </td>
                       <td className="px-2 py-2 text-content-strong">{entry.action_type}</td>
                       <td className="px-2 py-2">{statusBadge(entry.status)}</td>
                       <td className="px-2 py-2 text-right text-content-strong">
@@ -692,33 +710,35 @@ function Automation() {
           <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2 lg:grid-cols-3">
             <div>
               <div className="text-content-secondary">{t('automation.automationEnabled')}</div>
-              <div className="mt-1 font-medium text-content">
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
                 {policies?.automation_enabled ? t('automation.enabled') : t('automation.disabled')}
               </div>
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.sandboxProfile')}</div>
-              <div className="mt-1 font-medium text-content">{policies?.sandbox_profile ?? '-'}</div>
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>{policies?.sandbox_profile ?? '-'}</div>
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.sandboxEnabled')}</div>
-              <div className="mt-1 font-medium text-content">
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
                 {policies?.sandbox_enabled ? t('automation.enabled') : t('automation.disabled')}
               </div>
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.allowNetwork')}</div>
-              <div className="mt-1 font-medium text-content">
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
                 {policies?.allow_network ? t('automation.enabled') : t('automation.disabled')}
               </div>
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.dataPolicy')}</div>
-              <div className="mt-1 font-medium text-content">{policies?.external_data_policy ?? '-'}</div>
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
+                {policies?.external_data_policy ?? '-'}
+              </div>
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.sceneOverride')}</div>
-              <div className="mt-1 font-medium text-content">
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
                 {policies?.scene_action_override_active
                   ? t('automation.active')
                   : policies?.scene_action_override_enabled
@@ -728,7 +748,7 @@ function Automation() {
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.sceneOverrideExpires')}</div>
-              <div className="mt-1 font-medium text-content">
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
                 {policies?.scene_action_override_expires_at
                   ? new Date(policies.scene_action_override_expires_at).toLocaleString()
                   : '-'}
@@ -736,19 +756,27 @@ function Automation() {
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.sceneOverrideIssue')}</div>
-              <div className="mt-1 font-medium text-content">{policies?.scene_action_override_issue || '-'}</div>
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
+                {policies?.scene_action_override_issue || '-'}
+              </div>
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.sceneSchemaVersion')}</div>
-              <div className="mt-1 font-medium text-content">{contracts?.scene_schema_version ?? '-'}</div>
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
+                {contracts?.scene_schema_version ?? '-'}
+              </div>
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.auditSchemaVersion')}</div>
-              <div className="mt-1 font-medium text-content">{contracts?.audit_schema_version ?? '-'}</div>
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
+                {contracts?.audit_schema_version ?? '-'}
+              </div>
             </div>
             <div>
               <div className="text-content-secondary">{t('automation.sceneActionSchemaVersion')}</div>
-              <div className="mt-1 font-medium text-content">{contracts?.scene_action_schema_version ?? '-'}</div>
+              <div className={`mt-1 ${typography.weight.medium} text-content`}>
+                {contracts?.scene_action_schema_version ?? '-'}
+              </div>
             </div>
           </div>
         </CardContent>

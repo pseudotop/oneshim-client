@@ -109,11 +109,11 @@ function DesignTokensPage() {
         </div>
       </TokenSection>
 
-      <TokenSection title="Accent Colors">
-        <div className="grid grid-cols-3 gap-2">
-          {Object.entries(colors.accent).map(([key, value]) => (
-            <TextSample key={key} label={`accent.${key}`} className={`font-medium ${value}`} />
-          ))}
+      <TokenSection title="Brand Colors">
+        <div className="grid grid-cols-2 gap-2">
+          <Swatch label="primary.DEFAULT" className={colors.primary.DEFAULT} />
+          <TextSample label="primary.text" className={colors.primary.text} />
+          <Swatch label="primary.signal" className={colors.primary.signal} />
         </div>
       </TokenSection>
 

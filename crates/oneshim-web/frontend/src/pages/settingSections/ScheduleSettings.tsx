@@ -4,7 +4,7 @@
 import { useTranslation } from 'react-i18next'
 import type { ScheduleSettings as ScheduleSettingsType } from '../../api/client'
 import { Card, CardTitle, Input } from '../../components/ui'
-import { colors, form } from '../../styles/tokens'
+import { colors, form, motion, typography } from '../../styles/tokens'
 import ToggleRow from './ToggleRow'
 
 interface ScheduleSettingsProps {
@@ -80,7 +80,7 @@ export default function ScheduleSettings({ schedule, onChange }: ScheduleSetting
                         : [...schedule.active_days, day]
                       onChange('active_days', newDays)
                     }}
-                    className={`rounded-full px-3 py-1 font-medium text-sm transition-colors ${
+                    className={`rounded-full px-3 py-1 ${typography.weight.medium} text-sm ${motion.colors} ${
                       isActive
                         ? `${colors.primary.DEFAULT} ${colors.text.inverse}`
                         : 'bg-hover text-content-secondary hover:bg-active'

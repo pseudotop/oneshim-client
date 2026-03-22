@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createTag, fetchTags, type Tag } from '../api/client'
-import { elevation } from '../styles/tokens'
+import { elevation, iconSize, motion } from '../styles/tokens'
 import { cn } from '../utils/cn'
 import { getRandomTagColor, TAG_COLORS, TagBadge } from './TagBadge'
 import { Input } from './ui'
@@ -144,11 +144,11 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
                     type="button"
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left',
-                      'transition-colors hover:bg-hover',
+                      `${motion.colors} hover:bg-hover`,
                     )}
                     onClick={() => handleSelectTag(tag)}
                   >
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: tag.color }} />
+                    <span className={`${iconSize.xs} rounded-full`} style={{ backgroundColor: tag.color }} />
                     <span className="text-content text-sm">{tag.name}</span>
                   </button>
                 ))}
@@ -168,7 +168,7 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
                           key={color}
                           type="button"
                           className={cn(
-                            'h-5 w-5 rounded-full transition-transform',
+                            `${iconSize.md} rounded-full ${motion.transform}`,
                             selectedColor === color && 'scale-110 ring-2 ring-slate-400 ring-offset-1',
                           )}
                           style={{ backgroundColor: color }}
@@ -182,13 +182,13 @@ export function TagInput({ selectedTags, onAddTag, onRemoveTag, placeholder }: T
                     type="button"
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left',
-                      'bg-teal-500/10 transition-colors hover:bg-teal-500/20',
+                      `bg-brand-signal/10 ${motion.colors} hover:bg-brand-signal/20`,
                     )}
                     onClick={handleCreateTag}
                     disabled={createTagMutation.isPending}
                   >
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: selectedColor }} />
-                    <span className="text-accent-teal text-sm">
+                    <span className={`${iconSize.xs} rounded-full`} style={{ backgroundColor: selectedColor }} />
+                    <span className="text-brand-text text-sm">
                       "{inputValue}" {t('timeline.createTag')}
                     </span>
                     {createTagMutation.isPending && (

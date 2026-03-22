@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { fetchHeatmap, type HeatmapResponse } from '../api/client'
+import { iconSize, motion, typography } from '../styles/tokens'
+import { cn } from '../utils/cn'
 
 interface ActivityHeatmapProps {
   days?: number
@@ -10,11 +12,11 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2
 
 function getColor(ratio: number): string {
   if (ratio === 0) return 'bg-hover'
-  if (ratio < 0.2) return 'bg-green-100 dark:bg-green-900'
-  if (ratio < 0.4) return 'bg-green-200 dark:bg-green-800'
-  if (ratio < 0.6) return 'bg-green-300 dark:bg-green-700'
-  if (ratio < 0.8) return 'bg-green-400 dark:bg-green-600'
-  return 'bg-green-500 dark:bg-green-500'
+  if (ratio < 0.2) return 'bg-brand-signal/10'
+  if (ratio < 0.4) return 'bg-brand-signal/25'
+  if (ratio < 0.6) return 'bg-brand-signal/40'
+  if (ratio < 0.8) return 'bg-brand-signal/60'
+  return 'bg-brand-signal/80'
 }
 
 export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapProps) {
@@ -28,10 +30,10 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
 
   if (isLoading) {
     return (
-      <div className={`rounded-lg p-4 transition-colors ${className}`}>
-        <h3 className="mb-4 font-semibold text-content text-lg">{t('heatmap.title')}</h3>
+      <div className={cn('rounded-lg p-4', motion.colors, className)}>
+        <h3 className={cn('mb-4 text-content', typography.h3)}>{t('heatmap.title')}</h3>
         <div className="flex h-48 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-teal-500 border-b-2"></div>
+          <div className="h-8 w-8 animate-spin rounded-full border-brand-signal border-b-2" />
         </div>
       </div>
     )
@@ -39,9 +41,9 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
 
   if (error || !data) {
     return (
-      <div className={`rounded-lg p-4 transition-colors ${className}`}>
-        <h3 className="mb-4 font-semibold text-content text-lg">{t('heatmap.title')}</h3>
-        <div className="py-8 text-center text-red-500">{t('heatmap.loadError')}</div>
+      <div className={cn('rounded-lg p-4', motion.colors, className)}>
+        <h3 className={cn('mb-4 text-content', typography.h3)}>{t('heatmap.title')}</h3>
+        <div className="py-8 text-center text-semantic-error">{t('heatmap.loadError')}</div>
       </div>
     )
   }
@@ -56,10 +58,10 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
   const maxValue = data.max_value || 1
 
   return (
-    <div className={`rounded-lg p-6 transition-colors ${className}`}>
+    <div className={cn('rounded-lg p-6', motion.colors, className)}>
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-semibold text-content text-lg">{t('heatmap.title')}</h3>
-        <span className="text-accent-blue text-sm">
+        <h3 className={cn('text-content', typography.h3)}>{t('heatmap.title')}</h3>
+        <span className={cn('text-brand-text', typography.body)}>
           {data.from_date} ~ {data.to_date}
         </span>
       </div>
@@ -69,7 +71,7 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
         {HOUR_LABELS.map((hour, i) => (
           <div
             key={hour}
-            className="flex-1 text-center text-content-tertiary text-xs"
+            className={cn('flex-1 text-center text-content-tertiary', typography.caption)}
             style={{ visibility: i % 3 === 0 ? 'visible' : 'hidden' }}
           >
             {hour}
@@ -82,14 +84,20 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
         {grid.map((row, dayIndex) => (
           <div key={dayLabels[dayIndex]} className="flex items-center gap-0.5">
             {/* UI note */}
-            <div className="w-8 pr-2 text-right text-content-secondary text-xs">{dayLabels[dayIndex]}</div>
+            <div className={cn('w-8 pr-2 text-right text-content-secondary', typography.caption)}>
+              {dayLabels[dayIndex]}
+            </div>
             {/* UI note */}
             {row.map((value, hourIndex) => {
               const ratio = value / maxValue
               return (
                 <div
                   key={HOUR_LABELS[hourIndex]}
-                  className={`h-4 flex-1 rounded-sm ${getColor(ratio)} cursor-pointer transition-colors hover:ring-2 hover:ring-brand-signal`}
+                  className={cn(
+                    'h-4 flex-1 rounded-sm cursor-pointer hover:ring-2 hover:ring-brand-signal',
+                    motion.colors,
+                    getColor(ratio),
+                  )}
                   title={`${dayLabels[dayIndex]} ${HOUR_LABELS[hourIndex]}:00 - ${t('heatmap.activity')}: ${value}`}
                 />
               )
@@ -100,16 +108,16 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
 
       {/* UI note */}
       <div className="mt-4 flex items-center justify-end gap-2">
-        <span className="text-content-secondary text-xs">{t('heatmap.low')}</span>
+        <span className={cn('text-content-secondary', typography.caption)}>{t('heatmap.low')}</span>
         <div className="flex gap-0.5">
-          <div className="h-3 w-3 rounded-sm bg-hover" />
-          <div className="h-3 w-3 rounded-sm bg-green-100 dark:bg-green-900" />
-          <div className="h-3 w-3 rounded-sm bg-green-200 dark:bg-green-800" />
-          <div className="h-3 w-3 rounded-sm bg-green-300 dark:bg-green-700" />
-          <div className="h-3 w-3 rounded-sm bg-green-400 dark:bg-green-600" />
-          <div className="h-3 w-3 rounded-sm bg-green-500 dark:bg-green-500" />
+          <div className={`${iconSize.xs} rounded-sm bg-hover`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/10`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/25`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/40`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/60`} />
+          <div className={`${iconSize.xs} rounded-sm bg-brand-signal/80`} />
         </div>
-        <span className="text-content-secondary text-xs">{t('heatmap.high')}</span>
+        <span className={cn('text-content-secondary', typography.caption)}>{t('heatmap.high')}</span>
       </div>
     </div>
   )

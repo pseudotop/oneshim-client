@@ -862,7 +862,9 @@
     "segments": "セグメント",
     "overrideHistory": "オーバーライド履歴",
     "coachingGoals": "目標",
-    "coachingEvents": "イベント"
+    "coachingEvents": "イベント",
+    "insight": "インサイト",
+    "statistics": "統計"
   },
   "settingsOAuth": {
     "title": "接続",

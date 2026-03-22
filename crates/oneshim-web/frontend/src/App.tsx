@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { DevToolbar } from './components/DevToolbar'
 import ErrorBoundary from './components/ErrorBoundary'
 import { ActivityBar, CommandPalette, ShortcutsHelp, SidePanel, StatusBar, TitleBar } from './components/shell'
 import { Spinner, ToastContainer } from './components/ui'
@@ -106,6 +107,7 @@ function App() {
         <CommandPalette isOpen={isPaletteOpen} onClose={closePalette} onToggleSidebar={toggleSidebar} />
         {isHelpOpen && <ShortcutsHelp onClose={closeHelp} />}
         <ToastContainer />
+        <DevToolbar />
       </div>
     </ShellLayoutProvider>
   )

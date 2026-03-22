@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { colors } from '../styles/tokens'
+import { colors, motion, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 interface RegimeOption {
@@ -96,7 +96,7 @@ export default function SegmentContextMenu({
           role="menuitem"
           tabIndex={-1}
           className={cn(
-            'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-muted',
+            `flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${motion.colors} hover:bg-surface-muted`,
             colors.text.primary,
           )}
           onClick={() => {
@@ -113,7 +113,9 @@ export default function SegmentContextMenu({
         {/* Change regime sub-items */}
         {filteredRegimes.length > 0 && (
           <div className="px-3 py-1">
-            <span className={cn('font-medium text-xs', colors.text.tertiary)}>{t('recalibration.changeRegimeTo')}</span>
+            <span className={cn(typography.weight.medium, 'text-xs', colors.text.tertiary)}>
+              {t('recalibration.changeRegimeTo')}
+            </span>
           </div>
         )}
         {filteredRegimes.map((regime) => (
@@ -123,7 +125,7 @@ export default function SegmentContextMenu({
             role="menuitem"
             tabIndex={-1}
             className={cn(
-              'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-muted',
+              `flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${motion.colors} hover:bg-surface-muted`,
               colors.text.primary,
             )}
             onClick={() => {

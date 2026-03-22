@@ -2,7 +2,7 @@
  *
  */
 
-import { radius } from '../../styles/tokens'
+import { radius, typography } from '../../styles/tokens'
 import { badgeVariants } from '../../styles/variants'
 import { cn } from '../../utils/cn'
 
@@ -15,7 +15,8 @@ export function Badge({ className, color = 'default', size = 'md', ...props }: B
   return (
     <span
       className={cn(
-        'inline-flex items-center font-medium',
+        'inline-flex items-center',
+        typography.weight.medium,
         radius.full,
         badgeVariants.color[color],
         badgeVariants.size[size],

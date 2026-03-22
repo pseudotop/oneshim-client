@@ -7,13 +7,7 @@ import type {
   ProviderSurfaceSpec,
   SecretBackendCapabilities,
 } from '../../api/client'
-import {
-  oauthCancelFlow,
-  oauthConnectionStatus,
-  oauthFlowStatus,
-  oauthRevoke,
-  oauthStartFlow,
-} from '../../api/client'
+import { oauthCancelFlow, oauthConnectionStatus, oauthFlowStatus, oauthRevoke, oauthStartFlow } from '../../api/client'
 import { Badge, Button, Card } from '../../components/ui'
 import {
   findFeatureCapability,
@@ -21,25 +15,26 @@ import {
   providerSurfaceMaturity,
   providerSurfaceStatusCopyKey,
 } from '../../features/featureCapabilities'
+import { iconSize, typography } from '../../styles/tokens'
 import { isOAuthPanelAvailable } from './oauth-panel-support'
 
-type ExpiryLevel = 'ok' | 'warning' | 'critical' | 'none';
+type ExpiryLevel = 'ok' | 'warning' | 'critical' | 'none'
 
 function getExpiryLevel(expiresAt: string | null | undefined): ExpiryLevel {
-  if (!expiresAt) return 'none';
-  const remaining = new Date(expiresAt).getTime() - Date.now();
-  const minutes = remaining / 60_000;
-  if (minutes < 1) return 'critical';
-  if (minutes <= 5) return 'warning';
-  return 'ok';
+  if (!expiresAt) return 'none'
+  const remaining = new Date(expiresAt).getTime() - Date.now()
+  const minutes = remaining / 60_000
+  if (minutes < 1) return 'critical'
+  if (minutes <= 5) return 'warning'
+  return 'ok'
 }
 
 const EXPIRY_BADGE_STYLES: Record<ExpiryLevel, string> = {
-  ok: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  warning: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  critical: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  none: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-};
+  ok: 'bg-semantic-success/20 text-semantic-success',
+  warning: 'bg-semantic-warning/20 text-semantic-warning',
+  critical: 'bg-semantic-error/20 text-semantic-error',
+  none: 'bg-surface-muted text-content-tertiary',
+}
 
 type PanelState =
   | { phase: 'unavailable' }
@@ -153,9 +148,7 @@ export default function OAuthConnectionPanel({
   const preferredCliFeature = preferredCliSurface
     ? findFeatureCapability(featureSnapshot, preferredCliSurface.surface_id)
     : null
-  const maturityLabel = t(
-    `featureCapability.maturity.${providerSurfaceMaturity(oauthSurface, featureSnapshot)}`,
-  )
+  const maturityLabel = t(`featureCapability.maturity.${providerSurfaceMaturity(oauthSurface, featureSnapshot)}`)
   const preferredCliMessage =
     preferredCliFeature?.status_copy_key != null ? t(preferredCliFeature.status_copy_key) : null
   const setupMessage = oauthFeature?.setup_copy_key ? t(oauthFeature.setup_copy_key) : null
@@ -167,10 +160,10 @@ export default function OAuthConnectionPanel({
 
   // Auto-refresh status every 60s to update expiry badge
   useEffect(() => {
-    if (state.phase !== 'connected') return;
-    const timer = setInterval(() => refreshStatus(), 60_000);
-    return () => clearInterval(timer);
-  }, [state.phase, refreshStatus]);
+    if (state.phase !== 'connected') return
+    const timer = setInterval(() => refreshStatus(), 60_000)
+    return () => clearInterval(timer)
+  }, [state.phase, refreshStatus])
 
   const handleConnect = useCallback(async () => {
     try {
@@ -238,7 +231,7 @@ export default function OAuthConnectionPanel({
   return (
     <Card variant="default" padding="md" className="space-y-3">
       <div className="flex items-center gap-2">
-        <h4 className="font-medium text-content-strong text-sm">
+        <h4 className={`${typography.weight.medium} text-content-strong text-sm`}>
           {providerName} {t('settingsOAuth.title')}
         </h4>
         <Badge color={oauthFeature ? maturityBadgeColor(oauthFeature.maturity) : 'warning'} size="sm">
@@ -331,7 +324,7 @@ export default function OAuthConnectionPanel({
       {state.phase === 'connecting' && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+            <div className={`${iconSize.base} animate-spin rounded-full border-2 border-accent border-t-transparent`} />
             <p className="text-content-secondary text-sm">{t('settingsOAuth.connecting')}</p>
           </div>
           <p className="text-content-muted text-xs">{t('settingsOAuth.openBrowserHint')}</p>
@@ -349,7 +342,7 @@ export default function OAuthConnectionPanel({
       {state.phase === 'connected' && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="h-2 w-2 rounded-full bg-status-connected" />
             <p className="text-content-secondary text-sm">{t('settingsOAuth.connected')}</p>
           </div>
           {state.status.expires_at && (
@@ -357,22 +350,24 @@ export default function OAuthConnectionPanel({
               {t('settingsOAuth.expiresAt')}: {new Date(state.status.expires_at).toLocaleString()}
             </p>
           )}
-          {state.status.expires_at && (() => {
-            const level = getExpiryLevel(state.status.expires_at);
-            // When no refresh token, treat warning-level expiry as critical
-            const effectiveLevel = (!state.status.has_refresh_token && level === 'warning') ? 'critical' : level;
-            if (effectiveLevel === 'ok') return null;
-            const label = effectiveLevel === 'critical'
-              ? t('settingsOAuth.statusExpired')
-              : t('settingsOAuth.statusExpiringSoon');
-            return (
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${EXPIRY_BADGE_STYLES[effectiveLevel]}`}>
-                {label}
-              </span>
-            );
-          })()}
+          {state.status.expires_at &&
+            (() => {
+              const level = getExpiryLevel(state.status.expires_at)
+              // When no refresh token, treat warning-level expiry as critical
+              const effectiveLevel = !state.status.has_refresh_token && level === 'warning' ? 'critical' : level
+              if (effectiveLevel === 'ok') return null
+              const label =
+                effectiveLevel === 'critical' ? t('settingsOAuth.statusExpired') : t('settingsOAuth.statusExpiringSoon')
+              return (
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${typography.weight.medium} ${EXPIRY_BADGE_STYLES[effectiveLevel]}`}
+                >
+                  {label}
+                </span>
+              )
+            })()}
           {state.status.has_refresh_token === false && (
-            <p className="flex items-center gap-1.5 rounded bg-amber-50 px-2 py-1.5 text-amber-800 text-xs dark:bg-amber-900/20 dark:text-amber-300">
+            <p className="flex items-center gap-1.5 rounded bg-semantic-warning/20 px-2 py-1.5 text-semantic-warning text-xs">
               <span aria-hidden="true">⚠</span>
               {t('settingsOAuth.noRefreshToken')}
             </p>
@@ -385,7 +380,7 @@ export default function OAuthConnectionPanel({
 
       {state.phase === 'error' && (
         <div className="space-y-2">
-          <p className="text-red-600 text-sm dark:text-red-400">{state.message}</p>
+          <p className="text-semantic-error text-sm">{state.message}</p>
           {state.detail && <p className="text-content-muted text-xs">{state.detail}</p>}
           <Button type="button" variant="secondary" size="sm" onClick={refreshStatus}>
             {t('settingsOAuth.retry')}

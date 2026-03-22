@@ -745,29 +745,27 @@ jobs:
             dist/ONESHIM.app
           codesign --verify --deep --strict --verbose=2 dist/ONESHIM.app
 
+      - name: Install create-dmg
+        run: brew install create-dmg
+
       - name: Create DMG installer
         shell: bash
         run: |
-          APP_SIZE_MB="$(du -sm dist/ONESHIM.app | awk '{print $1}')"
-          DMG_SIZE_MB=$((APP_SIZE_MB + 1024))
-          echo "ONESHIM.app size: ${APP_SIZE_MB}MB"
-          echo "Requested DMG workspace size: ${DMG_SIZE_MB}MB"
-          df -h .
-
-          # Free transient build artifacts before hdiutil creates a writable image.
+          # Free transient build artifacts before DMG creation.
           rm -rf artifacts binaries
 
-          mkdir -p dmg-staging
-          cp -R dist/ONESHIM.app dmg-staging/
-          ln -s /Applications dmg-staging/Applications
-          hdiutil create \
-            -volname "ONESHIM" \
-            -srcfolder dmg-staging \
-            -size "${DMG_SIZE_MB}m" \
-            -ov \
-            -format UDZO \
-            dist/oneshim-macos-universal.dmg
-          rm -rf dmg-staging
+          create-dmg \
+            --volname "ONESHIM" \
+            --volicon "src-tauri/icons/icon.icns" \
+            --background "src-tauri/dmg-background.png" \
+            --window-pos 200 120 \
+            --window-size 660 400 \
+            --icon-size 80 \
+            --icon "ONESHIM.app" 180 170 \
+            --app-drop-link 480 170 \
+            --no-internet-enable \
+            dist/oneshim-macos-universal.dmg \
+            dist/ONESHIM.app
 
       - name: Create and sign PKG installer
         run: |
