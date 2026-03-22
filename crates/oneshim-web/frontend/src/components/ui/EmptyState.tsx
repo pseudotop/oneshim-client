@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { colors } from '../../styles/tokens'
+import { typography } from '../../styles/tokens'
+import { cn } from '../../utils/cn'
 import { Button } from './Button'
 
 export interface EmptyStateProps {
@@ -18,8 +19,8 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-content-muted">
         {icon}
       </div>
-      <h3 className="mb-2 font-semibold text-lg text-gray-800 dark:text-gray-200">{title}</h3>
-      <p className="mb-4 max-w-md text-center text-sm text-gray-500 dark:text-gray-400">{description}</p>
+      <h3 className={cn('mb-2 text-content', typography.h3)}>{title}</h3>
+      <p className={cn('mb-4 max-w-md text-center text-content-secondary', typography.body)}>{description}</p>
       {action && (
         <Button type="button" variant="primary" size="md" onClick={action.onClick}>
           {action.label}

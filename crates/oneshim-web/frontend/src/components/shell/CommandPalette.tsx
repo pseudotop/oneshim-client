@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../contexts/ThemeContext'
-import { layout } from '../../styles/tokens'
+import { iconSize, layout, motion } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 interface PaletteItem {
@@ -54,7 +54,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'dashboard',
         labelKey: 'nav.dashboard',
         labelFallback: 'Dashboard',
-        icon: <LayoutDashboard className="h-4 w-4" aria-hidden="true" />,
+        icon: <LayoutDashboard className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/'),
       },
@@ -62,7 +62,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'timeline',
         labelKey: 'nav.timeline',
         labelFallback: 'Timeline',
-        icon: <Clock className="h-4 w-4" aria-hidden="true" />,
+        icon: <Clock className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/timeline'),
       },
@@ -70,7 +70,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'reports',
         labelKey: 'nav.reports',
         labelFallback: 'Reports',
-        icon: <BarChart3 className="h-4 w-4" aria-hidden="true" />,
+        icon: <BarChart3 className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/reports'),
       },
@@ -78,7 +78,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'focus',
         labelKey: 'nav.focus',
         labelFallback: 'Focus',
-        icon: <Image className="h-4 w-4" aria-hidden="true" />,
+        icon: <Image className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/focus'),
       },
@@ -86,7 +86,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'replay',
         labelKey: 'nav.replay',
         labelFallback: 'Session Replay',
-        icon: <Zap className="h-4 w-4" aria-hidden="true" />,
+        icon: <Zap className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/replay'),
       },
@@ -94,7 +94,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'automation',
         labelKey: 'nav.automation',
         labelFallback: 'Automation',
-        icon: <Monitor className="h-4 w-4" aria-hidden="true" />,
+        icon: <Monitor className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/automation'),
       },
@@ -102,7 +102,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'updates',
         labelKey: 'nav.updates',
         labelFallback: 'Updates',
-        icon: <FileText className="h-4 w-4" aria-hidden="true" />,
+        icon: <FileText className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/updates'),
       },
@@ -110,7 +110,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'settings',
         labelKey: 'nav.settings',
         labelFallback: 'Settings',
-        icon: <Settings className="h-4 w-4" aria-hidden="true" />,
+        icon: <Settings className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/settings'),
       },
@@ -118,7 +118,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'privacy',
         labelKey: 'nav.privacy',
         labelFallback: 'Privacy',
-        icon: <Info className="h-4 w-4" aria-hidden="true" />,
+        icon: <Info className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/privacy'),
       },
@@ -126,7 +126,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'search',
         labelKey: 'nav.search',
         labelFallback: 'Search',
-        icon: <Search className="h-4 w-4" aria-hidden="true" />,
+        icon: <Search className={iconSize.base} aria-hidden="true" />,
         type: 'page',
         action: () => navigateRef.current('/search'),
       },
@@ -136,9 +136,9 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         labelFallback: theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode',
         icon:
           theme === 'dark' ? (
-            <Sun className="h-4 w-4" aria-hidden="true" />
+            <Sun className={iconSize.base} aria-hidden="true" />
           ) : (
-            <Moon className="h-4 w-4" aria-hidden="true" />
+            <Moon className={iconSize.base} aria-hidden="true" />
           ),
         type: 'action',
         action: toggleTheme,
@@ -147,7 +147,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         id: 'sidebar',
         labelKey: 'shell.toggleSidebar',
         labelFallback: 'Toggle Sidebar',
-        icon: <PanelLeft className="h-4 w-4" aria-hidden="true" />,
+        icon: <PanelLeft className={iconSize.base} aria-hidden="true" />,
         type: 'action',
         action: onToggleSidebar,
       },
@@ -270,7 +270,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center border-muted border-b px-4 py-3">
-          <Search className="mr-3 h-4 w-4 flex-shrink-0 text-content-muted" aria-hidden="true" />
+          <Search className={cn('mr-3 flex-shrink-0 text-content-muted', iconSize.base)} aria-hidden="true" />
           <input
             ref={inputRef}
             type="text"
@@ -309,7 +309,8 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
                 onClick={() => executeItem(item)}
                 onMouseEnter={() => setSelectedIndex(index)}
                 className={cn(
-                  'flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left transition-colors',
+                  'flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left',
+                  motion.colors,
                   layout.commandPalette.itemText,
                   index === selectedIndex && layout.commandPalette.itemActive,
                   layout.commandPalette.itemBg,

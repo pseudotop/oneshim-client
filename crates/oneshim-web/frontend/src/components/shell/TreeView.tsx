@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
-import { interaction, layout } from '../../styles/tokens'
+import { iconSize, interaction, layout, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 export interface TreeNode {
@@ -145,7 +145,8 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
                 onSelect?.(node.id)
               }}
               className={cn(
-                'flex w-full items-center gap-1.5 rounded-sm px-2 py-1 transition-colors',
+                'flex w-full items-center gap-1.5 rounded-sm px-2 py-1',
+                motion.colors,
                 isSelected ? layout.sidePanel.itemActive : layout.sidePanel.itemBg,
                 layout.sidePanel.itemText,
                 interaction.focusRing,
@@ -154,17 +155,17 @@ export default function TreeView({ nodes, selectedId, onSelect, depth = 0 }: Tre
             >
               {hasChildren ? (
                 isExpanded ? (
-                  <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-content-muted" aria-hidden="true" />
+                  <ChevronDown className={cn(iconSize.sm, 'flex-shrink-0 text-content-muted')} aria-hidden="true" />
                 ) : (
-                  <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-content-muted" aria-hidden="true" />
+                  <ChevronRight className={cn(iconSize.sm, 'flex-shrink-0 text-content-muted')} aria-hidden="true" />
                 )
               ) : (
-                <span className="w-3.5 flex-shrink-0" />
+                <span className={cn(iconSize.sm, 'flex-shrink-0')} />
               )}
               {node.icon && <span className="flex-shrink-0">{node.icon}</span>}
               <span className="flex-1 truncate text-left">{node.label}</span>
               {node.count !== undefined && (
-                <span className="text-[10px] text-content-muted tabular-nums">{node.count}</span>
+                <span className={cn(typography.nano, 'text-content-muted tabular-nums')}>{node.count}</span>
               )}
             </button>
             {hasChildren && isExpanded && (

@@ -2,7 +2,7 @@ import { Cpu, HardDrive, Wifi, WifiOff, Zap, ZapOff } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSSE } from '../../hooks/useSSE'
-import { layout } from '../../styles/tokens'
+import { iconSize, layout } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 declare const __APP_VERSION__: string
@@ -53,12 +53,12 @@ export default function StatusBar() {
         <span className="flex items-center gap-1 px-1.5" aria-live="polite" aria-atomic="true">
           {connected ? (
             <>
-              <Wifi className="h-3 w-3" aria-hidden="true" />
+              <Wifi className={iconSize.xs} aria-hidden="true" />
               <span>{t('shell.connected', 'Connected')}</span>
             </>
           ) : (
             <>
-              <WifiOff className="h-3 w-3 opacity-60" aria-hidden="true" />
+              <WifiOff className={cn(iconSize.xs, 'opacity-60')} aria-hidden="true" />
               <span>{t('shell.offline', 'Offline')}</span>
             </>
           )}
@@ -69,12 +69,12 @@ export default function StatusBar() {
         <output className="flex items-center gap-1 px-1.5" aria-live="polite" aria-atomic="true">
           {automationOn ? (
             <>
-              <Zap className="h-3 w-3" aria-hidden="true" />
+              <Zap className={iconSize.xs} aria-hidden="true" />
               <span>{t('shell.automationOn', 'Auto: ON')}</span>
             </>
           ) : (
             <>
-              <ZapOff className="h-3 w-3 opacity-60" aria-hidden="true" />
+              <ZapOff className={cn(iconSize.xs, 'opacity-60')} aria-hidden="true" />
               <span>{t('shell.automationOff', 'Auto: OFF')}</span>
             </>
           )}
@@ -83,14 +83,14 @@ export default function StatusBar() {
 
       <div className="flex items-center">
         <span className="flex items-center gap-1 px-1.5">
-          <Cpu className="h-3 w-3" aria-hidden="true" />
+          <Cpu className={iconSize.xs} aria-hidden="true" />
           <span>{cpuText}</span>
         </span>
 
         <div className={layout.statusBar.separator} />
 
         <span className="flex items-center gap-1 px-1.5">
-          <HardDrive className="h-3 w-3" aria-hidden="true" />
+          <HardDrive className={iconSize.xs} aria-hidden="true" />
           <span>{ramMb}</span>
         </span>
 

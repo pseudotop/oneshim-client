@@ -2,7 +2,7 @@ import { Search } from 'lucide-react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
-import { interaction, layout } from '../../styles/tokens'
+import { iconSize, interaction, layout, motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import { MOD_KEY } from '../../utils/platform'
 
@@ -95,13 +95,14 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
         className={cn(
           'flex items-center gap-1.5 rounded px-2 py-1 text-xs',
           'text-content-muted hover:text-content-strong',
-          'transition-colors hover:bg-hover/50',
+          motion.colors,
+          'hover:bg-hover/50',
           interaction.focusRing,
           'mr-2',
         )}
       >
-        <Search className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="hidden text-[11px] text-content-muted sm:inline">{MOD_KEY}K</span>
+        <Search className={iconSize.sm} aria-hidden="true" />
+        <span className={cn('hidden text-content-muted sm:inline', typography.micro)}>{MOD_KEY}K</span>
       </button>
 
       {/* Window controls — Windows/Linux only (macOS uses native traffic lights) */}
@@ -111,7 +112,7 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
             type="button"
             data-testid="titlebar-minimize"
             onClick={handleMinimize}
-            className={cn('h-full px-3 text-content-secondary transition-colors hover:bg-hover', interaction.focusRing)}
+            className={cn('h-full px-3 text-content-secondary hover:bg-hover', motion.colors, interaction.focusRing)}
             aria-label={t('shell.minimize', 'Minimize')}
           >
             <svg width="10" height="1" viewBox="0 0 10 1" aria-hidden="true">
@@ -122,7 +123,7 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
             type="button"
             data-testid="titlebar-maximize"
             onClick={handleMaximize}
-            className={cn('h-full px-3 text-content-secondary transition-colors hover:bg-hover', interaction.focusRing)}
+            className={cn('h-full px-3 text-content-secondary hover:bg-hover', motion.colors, interaction.focusRing)}
             aria-label={t('shell.maximize', 'Maximize')}
           >
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
@@ -134,7 +135,8 @@ export default function TitleBar({ onSearchOpen }: TitleBarProps) {
             data-testid="titlebar-close"
             onClick={handleClose}
             className={cn(
-              'h-full px-3 text-content-secondary transition-colors hover:bg-red-500 hover:text-white',
+              'h-full px-3 text-content-secondary hover:bg-semantic-error hover:text-content-inverse',
+              motion.colors,
               interaction.focusRing,
             )}
             aria-label={t('shell.closeToTray', 'Close to tray')}

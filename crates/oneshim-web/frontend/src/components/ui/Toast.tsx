@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { removeToast, type Toast as ToastRecord, type ToastType, useToast } from '../../hooks/useToast'
-import { interaction, radius, typography } from '../../styles/tokens'
+import { iconSize, interaction, radius, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 
 const iconByType: Record<ToastType, typeof CheckCircle2> = {
@@ -36,7 +36,7 @@ function ToastItem({ toast }: { toast: ToastRecord }) {
           iconToneByType[toast.type],
         )}
       >
-        <Icon className="h-4 w-4" aria-hidden="true" />
+        <Icon className={iconSize.base} aria-hidden="true" />
       </div>
 
       <div className="min-w-0 flex-1">
@@ -53,7 +53,7 @@ function ToastItem({ toast }: { toast: ToastRecord }) {
         )}
         aria-label={t('common.close')}
       >
-        <X className="h-4 w-4" aria-hidden="true" />
+        <X className={iconSize.base} aria-hidden="true" />
       </button>
     </div>
   )

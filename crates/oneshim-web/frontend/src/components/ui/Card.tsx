@@ -2,7 +2,7 @@
  *
  */
 import { forwardRef } from 'react'
-import { colors, radius, typography } from '../../styles/tokens'
+import { colors, motion, radius, typography } from '../../styles/tokens'
 import { cardVariants } from '../../styles/variants'
 import { cn } from '../../utils/cn'
 
@@ -18,7 +18,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
         ref={ref}
         className={cn(
           radius.md,
-          'transition-colors',
+          motion.colors,
           cardVariants.variant[variant],
           cardVariants.padding[padding],
           className,
