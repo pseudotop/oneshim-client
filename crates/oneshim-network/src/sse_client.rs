@@ -5,6 +5,7 @@ use oneshim_core::config::TlsConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::suggestion::Suggestion;
 use oneshim_core::ports::api_client::{SseClient, SseEvent};
+use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -18,6 +19,8 @@ pub struct SseStreamClient {
     token_manager: Arc<TokenManager>,
     max_retry_secs: u64,
     http_client: reqwest::Client,
+    /// Tracks the last SSE event ID for automatic resume on reconnect (RFC 9110 §9.3.4)
+    last_event_id: Mutex<Option<String>>,
 }
 
 impl SseStreamClient {
@@ -28,6 +31,7 @@ impl SseStreamClient {
             token_manager,
             max_retry_secs,
             http_client: reqwest::Client::new(),
+            last_event_id: Mutex::new(None),
         }
     }
 
@@ -49,7 +53,13 @@ impl SseStreamClient {
             token_manager,
             max_retry_secs,
             http_client,
+            last_event_id: Mutex::new(None),
         })
+    }
+
+    /// Returns the last received SSE event ID, if any.
+    pub fn last_event_id(&self) -> Option<String> {
+        self.last_event_id.lock().clone()
     }
 
     fn parse_event(event_type: &str, data: &str) -> Option<SseEvent> {
@@ -112,10 +122,15 @@ impl SseClient for SseStreamClient {
         loop {
             let token = self.token_manager.get_token().await?;
 
-            let request = self
+            let mut request = self
                 .http_client
                 .get(&url)
                 .header("Authorization", format!("Bearer {token}"));
+
+            if let Some(ref id) = *self.last_event_id.lock() {
+                request = request.header("Last-Event-ID", id.as_str());
+                debug!(last_event_id = %id, "SSE reconnecting with Last-Event-ID");
+            }
 
             let response = match request.send().await {
                 Ok(response) => response,
@@ -157,6 +172,10 @@ impl SseClient for SseStreamClient {
             loop {
                 match stream.next().await {
                     Some(Ok(msg)) => {
+                        if !msg.id.is_empty() {
+                            *self.last_event_id.lock() = Some(msg.id.clone());
+                        }
+
                         let event_type = if msg.event.is_empty() {
                             "message"
                         } else {
@@ -257,5 +276,12 @@ mod tests {
     fn parse_message_event_non_json() {
         let event = SseStreamClient::parse_event("message", "plain text");
         assert!(event.is_none());
+    }
+
+    #[test]
+    fn last_event_id_initially_none() {
+        let tm = TokenManager::new("http://localhost");
+        let client = SseStreamClient::new("http://localhost", Arc::new(tm), 30);
+        assert!(client.last_event_id().is_none());
     }
 }

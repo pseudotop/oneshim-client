@@ -270,7 +270,12 @@ impl Scheduler {
                                                     .collect();
                                                 if !batch.is_empty() {
                                                     debug!("ring buffer: saving {} pre-event frames", batch.len());
-                                                    let _ = fs.save_frames_batch(batch).await;
+                                                    let results = fs.save_frames_batch(batch).await;
+                                                    for result in &results {
+                                                        if let Err(e) = result {
+                                                            warn!("frame batch write failed (possible disk full): {e}");
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -292,7 +297,9 @@ impl Scheduler {
                                         if let Some(ref fs) = frame_storage1 {
                                             if let Ok(thumb_data) = processor.capture_thumbnail().await {
                                                 debug!("ring buffer: post-event forced capture");
-                                                let _ = fs.save_frame(Utc::now(), &thumb_data).await;
+                                                if let Err(e) = fs.save_frame(Utc::now(), &thumb_data).await {
+                                                    warn!("frame write failed (possible disk full): {e}");
+                                                }
                                             }
                                         }
                                     }

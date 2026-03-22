@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, Utc};
 use oneshim_analysis::focus_shared::make_rule_suggestion;
 use oneshim_core::models::suggestion::{Priority, SuggestionType};
 use oneshim_core::models::work_session::FocusMetrics;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::workflow_intelligence::PlaybookSignal;
 
@@ -63,7 +63,9 @@ impl FocusAnalyzer {
         if let Err(e) = self.notifier.show_notification(title, &body).await {
             warn!("notification failure: {e}");
         } else {
-            let _ = self.storage.mark_suggestion_shown_by_id(&suggestion_id);
+            if let Err(e) = self.storage.mark_suggestion_shown_by_id(&suggestion_id) {
+                debug!("mark_suggestion_shown_by_id (break) failed: {e}");
+            }
             info!("suggestion sent: {}min consecutive", continuous_mins);
         }
 
@@ -112,7 +114,9 @@ impl FocusAnalyzer {
         if let Err(e) = self.notifier.show_notification(title, &body).await {
             warn!("in progress hour notification failure: {e}");
         } else {
-            let _ = self.storage.mark_suggestion_shown_by_id(&suggestion_id);
+            if let Err(e) = self.storage.mark_suggestion_shown_by_id(&suggestion_id) {
+                debug!("mark_suggestion_shown_by_id (focus_time) failed: {e}");
+            }
             info!(
                 "in progress hour suggestion sent: {:.1}%",
                 comm_ratio * 100.0
@@ -165,7 +169,9 @@ impl FocusAnalyzer {
         if let Err(e) = self.notifier.show_notification(title, &body).await {
             warn!("context restore notification failure: {e}");
         } else {
-            let _ = self.storage.mark_suggestion_shown_by_id(&suggestion_id);
+            if let Err(e) = self.storage.mark_suggestion_shown_by_id(&suggestion_id) {
+                debug!("mark_suggestion_shown_by_id (restore_context) failed: {e}");
+            }
             info!(
                 "context 복원 suggestion 발송: {} ({}분 전 중단)",
                 app, duration_mins
@@ -211,7 +217,9 @@ impl FocusAnalyzer {
             return;
         }
 
-        let _ = self.storage.mark_suggestion_shown_by_id(&suggestion_id);
+        if let Err(e) = self.storage.mark_suggestion_shown_by_id(&suggestion_id) {
+            debug!("mark_suggestion_shown_by_id (pattern_detected) failed: {e}");
+        }
         info!(
             confidence = signal.confidence,
             description = %signal.description,

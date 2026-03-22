@@ -130,11 +130,18 @@ impl FocusAnalyzer {
                             tracker.pending_interruption_id = Some(id);
 
                             if let Some(session_id) = tracker.active_session_id {
-                                let _ =
-                                    self.storage.increment_work_session_interruption(session_id);
+                                if let Err(e) =
+                                    self.storage.increment_work_session_interruption(session_id)
+                                {
+                                    debug!("increment_work_session_interruption failed: {e}");
+                                }
                             }
 
-                            let _ = self.storage.increment_focus_metrics(&today, 0, 0, 0, 0, 1);
+                            if let Err(e) =
+                                self.storage.increment_focus_metrics(&today, 0, 0, 0, 0, 1)
+                            {
+                                debug!("increment_focus_metrics (interruption) failed: {e}");
+                            }
                         }
                         Err(e) => warn!("record failure: {e}"),
                     }
@@ -142,7 +149,9 @@ impl FocusAnalyzer {
 
                 if prev_cat.is_communication() && new_category.is_deep_work() {
                     if let Some(int_id) = tracker.pending_interruption_id.take() {
-                        let _ = self.storage.record_interruption_resume(int_id, new_app);
+                        if let Err(e) = self.storage.record_interruption_resume(int_id, new_app) {
+                            debug!("record_interruption_resume failed: {e}");
+                        }
                         debug!(": id={}", int_id);
                         should_suggest_restore = true;
                     }
@@ -151,7 +160,9 @@ impl FocusAnalyzer {
 
             if new_category.is_communication() {
                 if let Some(session_id) = tracker.active_session_id.take() {
-                    let _ = self.storage.end_work_session(session_id);
+                    if let Err(e) = self.storage.end_work_session(session_id) {
+                        debug!("end_work_session failed: {e}");
+                    }
                     tracker.continuous_deep_work_secs = 0;
                     debug!("session ended ( switch): id={}", session_id);
                 }
@@ -221,7 +232,9 @@ impl FocusAnalyzer {
         if (focus_score - metrics.focus_score).abs() > 0.01 {
             let mut updated = metrics.clone();
             updated.focus_score = focus_score;
-            let _ = self.storage.update_focus_metrics(&today, &updated);
+            if let Err(e) = self.storage.update_focus_metrics(&today, &updated) {
+                debug!("update_focus_metrics failed: {e}");
+            }
         }
 
         self.maybe_suggest_break().await;
@@ -260,7 +273,9 @@ impl FocusAnalyzer {
         let mut tracker = self.tracker.write().await;
 
         if let Some(session_id) = tracker.active_session_id.take() {
-            let _ = self.storage.end_work_session(session_id);
+            if let Err(e) = self.storage.end_work_session(session_id) {
+                debug!("end_work_session (idle resume) failed: {e}");
+            }
         }
 
         tracker.continuous_deep_work_secs = 0;

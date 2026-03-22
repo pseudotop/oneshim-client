@@ -4,6 +4,7 @@ use oneshim_core::error::CoreError;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::{debug, info, warn};
@@ -41,14 +42,23 @@ impl WsClient {
             .base_url
             .replace("http://", "ws://")
             .replace("https://", "wss://");
-        let url = format!("{ws_url}{path}?token={token}");
+        let url = format!("{ws_url}{path}");
 
-        info!(
-            "WebSocket connection: {}",
-            url.split('?').next().unwrap_or(&url)
+        info!("WebSocket connection: {url}");
+
+        // Pass token via Authorization header instead of query string
+        // to prevent credential leakage in server logs and browser history.
+        let mut request = url
+            .into_client_request()
+            .map_err(|e| CoreError::Internal(format!("WebSocket request build failure: {e}")))?;
+        request.headers_mut().insert(
+            "Authorization",
+            format!("Bearer {token}").parse().map_err(|e| {
+                CoreError::Internal(format!("invalid Authorization header value: {e}"))
+            })?,
         );
 
-        let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        let (ws_stream, _) = tokio_tungstenite::connect_async(request)
             .await
             .map_err(|e| CoreError::Internal(format!("WebSocket connection failure: {e}")))?;
 

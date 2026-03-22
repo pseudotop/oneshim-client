@@ -43,6 +43,7 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
     config: &'a AppConfig,
     focus_storage: Arc<dyn FocusStorage>,
     storage: Option<Arc<dyn oneshim_core::ports::storage::StorageService>>,
+    app_handle: Option<tauri::AppHandle>,
 }
 
 impl<'a> AgentSupportContextBuilder<'a> {
@@ -56,6 +57,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             config,
             focus_storage,
             storage: None,
+            app_handle: None,
         }
     }
 
@@ -64,6 +66,11 @@ impl<'a> AgentSupportContextBuilder<'a> {
         storage: Arc<dyn oneshim_core::ports::storage::StorageService>,
     ) -> Self {
         self.storage = Some(storage);
+        self
+    }
+
+    pub(crate) fn with_app_handle(mut self, handle: tauri::AppHandle) -> Self {
+        self.app_handle = Some(handle);
         self
     }
 
@@ -141,7 +148,11 @@ impl<'a> AgentSupportContextBuilder<'a> {
         let (batch_sink_opt, api_client_opt) = build_server_transports(self.config, &session_id)?;
 
         let notifier: Arc<dyn oneshim_core::ports::notifier::DesktopNotifier> =
-            Arc::new(NoOpNotifier);
+            if let Some(handle) = self.app_handle.clone() {
+                Arc::new(TauriNotifier::new(handle))
+            } else {
+                Arc::new(LogOnlyNotifier)
+            };
         let notification_manager = Arc::new(NotificationManager::new(
             self.config.notification.clone(),
             notifier.clone(),
@@ -229,15 +240,38 @@ pub(crate) fn generate_session_id() -> String {
     format!("sess_{ts}_{rand_part:08x}")
 }
 
-struct NoOpNotifier;
+/// Notifier that bridges to Tauri's native notification plugin.
+pub(crate) struct TauriNotifier {
+    app_handle: tauri::AppHandle,
+}
+
+impl TauriNotifier {
+    pub fn new(app_handle: tauri::AppHandle) -> Self {
+        Self { app_handle }
+    }
+}
 
 #[async_trait::async_trait]
-impl oneshim_core::ports::notifier::DesktopNotifier for NoOpNotifier {
+impl oneshim_core::ports::notifier::DesktopNotifier for TauriNotifier {
     async fn show_suggestion(
         &self,
         suggestion: &oneshim_core::models::suggestion::Suggestion,
     ) -> Result<(), oneshim_core::error::CoreError> {
-        tracing::debug!(id = %suggestion.suggestion_id, "suggestion notification suppressed (Tauri handles notifications)");
+        let title = match suggestion.priority {
+            oneshim_core::models::suggestion::Priority::Critical => "ONESHIM \u{2014} Urgent",
+            oneshim_core::models::suggestion::Priority::High => "ONESHIM \u{2014} Important",
+            oneshim_core::models::suggestion::Priority::Medium => "ONESHIM",
+            oneshim_core::models::suggestion::Priority::Low => "ONESHIM \u{2014} Info",
+        };
+        let body = suggestion.content.chars().take(200).collect::<String>();
+        if let Err(e) = tauri_plugin_notification::NotificationExt::notification(&self.app_handle)
+            .builder()
+            .title(title)
+            .body(&body)
+            .show()
+        {
+            tracing::warn!("native notification failed, suppressing: {e}");
+        }
         Ok(())
     }
 
@@ -246,31 +280,73 @@ impl oneshim_core::ports::notifier::DesktopNotifier for NoOpNotifier {
         title: &str,
         body: &str,
     ) -> Result<(), oneshim_core::error::CoreError> {
-        tracing::debug!(
-            title,
-            body,
-            "notification suppressed (Tauri handles notifications)"
-        );
+        if let Err(e) = tauri_plugin_notification::NotificationExt::notification(&self.app_handle)
+            .builder()
+            .title(title)
+            .body(body)
+            .show()
+        {
+            tracing::warn!("native notification failed, suppressing: {e}");
+        }
         Ok(())
     }
 
     async fn show_error(&self, message: &str) -> Result<(), oneshim_core::error::CoreError> {
-        tracing::debug!(
-            message,
-            "error notification suppressed (Tauri handles notifications)"
-        );
+        if let Err(e) = tauri_plugin_notification::NotificationExt::notification(&self.app_handle)
+            .builder()
+            .title("ONESHIM \u{2014} Error")
+            .body(message)
+            .show()
+        {
+            tracing::warn!("native error notification failed, suppressing: {e}");
+        }
+        Ok(())
+    }
+}
+
+/// Fallback notifier for headless/test mode.
+struct LogOnlyNotifier;
+
+#[async_trait::async_trait]
+impl oneshim_core::ports::notifier::DesktopNotifier for LogOnlyNotifier {
+    async fn show_suggestion(
+        &self,
+        suggestion: &oneshim_core::models::suggestion::Suggestion,
+    ) -> Result<(), oneshim_core::error::CoreError> {
+        tracing::debug!(id = %suggestion.suggestion_id, "suggestion notification (headless mode)");
+        Ok(())
+    }
+
+    async fn show_notification(
+        &self,
+        title: &str,
+        body: &str,
+    ) -> Result<(), oneshim_core::error::CoreError> {
+        tracing::debug!(title, body, "notification (headless mode)");
+        Ok(())
+    }
+
+    async fn show_error(&self, message: &str) -> Result<(), oneshim_core::error::CoreError> {
+        tracing::debug!(message, "error notification (headless mode)");
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::generate_session_id;
+    use super::*;
 
     #[test]
     fn generate_session_id_format() {
         let id = generate_session_id();
         assert!(id.starts_with("sess_"));
         assert!(id.len() > 20);
+    }
+
+    #[test]
+    fn tauri_notifier_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<TauriNotifier>();
+        assert_send_sync::<LogOnlyNotifier>();
     }
 }

@@ -57,6 +57,23 @@ impl Scheduler {
                         }
                     }
                     _ = shutdown_rx.changed() => {
+                        // Flush remaining events before shutdown
+                        if let Some(ref sink) = uploader4 {
+                            if egress4.is_enabled() {
+                                loop {
+                                    match sink.flush().await {
+                                        Ok(0) => break,
+                                        Ok(count) => {
+                                            info!("shutdown flush: {count} events sent");
+                                        }
+                                        Err(e) => {
+                                            warn!("shutdown flush failed: {e}");
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         info!("ended");
                         break;
                     }

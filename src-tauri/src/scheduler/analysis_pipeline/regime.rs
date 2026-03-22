@@ -125,7 +125,10 @@ async fn run_constrained_clustering(
     use oneshim_analysis::constraint_builder;
 
     // Temporarily take the strategy out to avoid borrow conflict
-    let strategy = ts.clustering_strategy.take().unwrap();
+    let Some(strategy) = ts.clustering_strategy.take() else {
+        tracing::warn!("clustering_strategy missing, skipping constrained clustering");
+        return;
+    };
 
     // Load user overrides if OverrideStore is available
     let overrides = if let Some(ref store) = ts.override_store {

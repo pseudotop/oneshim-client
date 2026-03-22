@@ -57,6 +57,14 @@ impl SuggestionQueue {
                 if item < *last {
                     let last_clone = last.clone();
                     self.items.remove(&last_clone);
+                    tracing::debug!(
+                        evicted_id = %last_clone.suggestion.suggestion_id,
+                        evicted_priority = ?last_clone.suggestion.priority,
+                        new_id = %item.suggestion.suggestion_id,
+                        new_priority = ?item.suggestion.priority,
+                        queue_size = self.max_size,
+                        "suggestion evicted from full queue to make room for higher priority"
+                    );
                 } else {
                     return false; // queue full and lower priority
                 }

@@ -136,6 +136,10 @@ impl TokenManager {
     }
 
     pub async fn refresh(&self) -> Result<(), CoreError> {
+        const MAX_RETRIES: u32 = 3;
+        const INITIAL_BACKOFF_MS: u64 = 500;
+        const MAX_BACKOFF_MS: u64 = 8_000;
+
         let current = {
             let state = self.state.read().await;
             state.clone()
@@ -147,42 +151,68 @@ impl TokenManager {
             .ok_or_else(|| CoreError::Auth("Refresh token is missing".to_string()))?;
 
         let url = format!("{}/api/v1/auth/tokens/refresh", self.base_url);
-        let body = serde_json::json!({
-            "refresh_token": refresh_token,
-        });
 
-        let resp = self
-            .client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| CoreError::Auth(format!("token refresh request failure: {e}")))?;
+        let mut last_err = CoreError::Auth("token refresh failed".to_string());
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(CoreError::Auth(format!(
-                "token refresh failure ({status}): {text}"
-            )));
+        for attempt in 0..=MAX_RETRIES {
+            let body = serde_json::json!({
+                "refresh_token": refresh_token,
+            });
+
+            let result = self.client.post(&url).json(&body).send().await;
+
+            match result {
+                Ok(resp) => {
+                    let status = resp.status();
+
+                    if status.is_success() {
+                        let token_resp: TokenResponse = resp.json().await.map_err(|e| {
+                            CoreError::Auth(format!("refresh Token parsing failed: {e}"))
+                        })?;
+
+                        let expires_at =
+                            Utc::now() + Duration::seconds(token_resp.expires_in.unwrap_or(3600));
+
+                        let mut state = self.state.write().await;
+                        *state = Some(TokenState {
+                            access_token: token_resp.access_token,
+                            refresh_token: token_resp.refresh_token.or(Some(refresh_token.clone())),
+                            expires_at,
+                        });
+
+                        debug!("token refresh success, expires_at: {expires_at}");
+                        return Ok(());
+                    }
+
+                    // 4xx errors (except 429) are not retryable
+                    let is_retryable = status.is_server_error() || status.as_u16() == 429;
+
+                    let text = resp.text().await.unwrap_or_default();
+                    last_err = CoreError::Auth(format!("token refresh failure ({status}): {text}"));
+
+                    if !is_retryable {
+                        return Err(last_err);
+                    }
+                }
+                Err(e) => {
+                    // Network errors are retryable
+                    last_err = CoreError::Auth(format!("token refresh request failure: {e}"));
+                }
+            }
+
+            if attempt < MAX_RETRIES {
+                let backoff_ms = (INITIAL_BACKOFF_MS * 2u64.pow(attempt)).min(MAX_BACKOFF_MS);
+                warn!(
+                    attempt = attempt + 1,
+                    max = MAX_RETRIES,
+                    backoff_ms,
+                    "token refresh failed, retrying"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+            }
         }
 
-        let token_resp: TokenResponse = resp
-            .json()
-            .await
-            .map_err(|e| CoreError::Auth(format!("refresh Token parsing failed: {e}")))?;
-
-        let expires_at = Utc::now() + Duration::seconds(token_resp.expires_in.unwrap_or(3600));
-
-        let mut state = self.state.write().await;
-        *state = Some(TokenState {
-            access_token: token_resp.access_token,
-            refresh_token: token_resp.refresh_token.or(Some(refresh_token)),
-            expires_at,
-        });
-
-        debug!("token refresh success,: {expires_at}");
-        Ok(())
+        Err(last_err)
     }
 
     pub async fn get_token(&self) -> Result<String, CoreError> {
@@ -228,7 +258,9 @@ impl TokenManager {
 
         if let Some(token) = token {
             let url = format!("{}/api/v1/auth/tokens", self.base_url);
-            let _ = self.client.delete(&url).bearer_auth(&token).send().await;
+            if let Err(e) = self.client.delete(&url).bearer_auth(&token).send().await {
+                tracing::warn!("server-side token revocation failed (local state cleared): {e}");
+            }
         }
 
         let mut state = self.state.write().await;
@@ -412,5 +444,77 @@ mod tests {
         assert!(result.is_err());
         assert!(format!("{}", result.unwrap_err()).contains("Automatic token refresh failed"));
         refresh_mock.assert_async().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_retries_on_transient_failure() {
+        let mut server = mockito::Server::new_async().await;
+
+        // mockito prioritises mocks with missing hits (below their expect count),
+        // then falls back to the last matching mock. Register the failure mock
+        // first with expect(2) so it absorbs the first two requests, then the
+        // success mock (registered second = last) handles the third.
+        let failure_mock = server
+            .mock("POST", "/api/v1/auth/tokens/refresh")
+            .with_status(503)
+            .with_body("Service Unavailable")
+            .expect(2)
+            .create_async()
+            .await;
+
+        let success_mock = server
+            .mock("POST", "/api/v1/auth/tokens/refresh")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"access_token":"new_jwt","refresh_token":"new_ref","expires_in":7200}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let tm = TokenManager::new(&server.url());
+        // Seed state directly so we don't need a login mock
+        {
+            let mut state = tm.state.write().await;
+            *state = Some(TokenState {
+                access_token: "old_jwt".to_string(),
+                refresh_token: Some("ref_tok".to_string()),
+                expires_at: Utc::now() + Duration::hours(1),
+            });
+        }
+
+        let result = tm.refresh().await;
+        assert!(result.is_ok());
+        failure_mock.assert_async().await;
+        success_mock.assert_async().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refresh_gives_up_after_max_retries() {
+        let mut server = mockito::Server::new_async().await;
+
+        // Always return 503 — should exhaust all 4 attempts (initial + 3 retries)
+        let mock = server
+            .mock("POST", "/api/v1/auth/tokens/refresh")
+            .with_status(503)
+            .with_body("Service Unavailable")
+            .expect(4)
+            .create_async()
+            .await;
+
+        let tm = TokenManager::new(&server.url());
+        {
+            let mut state = tm.state.write().await;
+            *state = Some(TokenState {
+                access_token: "old_jwt".to_string(),
+                refresh_token: Some("ref_tok".to_string()),
+                expires_at: Utc::now() + Duration::hours(1),
+            });
+        }
+
+        let result = tm.refresh().await;
+        assert!(result.is_err());
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("token refresh failure"));
+        mock.assert_async().await;
     }
 }
