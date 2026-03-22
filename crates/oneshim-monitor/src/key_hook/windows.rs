@@ -21,7 +21,7 @@ use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+use windows_sys::Win32::UI::Input::{
     GetRawInputData, RegisterRawInputDevices, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
     RIDEV_INPUTSINK, RIDEV_REMOVE, RID_INPUT, RIM_TYPEKEYBOARD,
 };
@@ -78,9 +78,9 @@ pub fn run_raw_input_hook(collector: Arc<InputActivityCollector>, running: Arc<A
             cbClsExtra: 0,
             cbWndExtra: 0,
             hInstance: GetModuleHandleW(std::ptr::null()),
-            hIcon: 0,
-            hCursor: 0,
-            hbrBackground: 0,
+            hIcon: std::ptr::null_mut(),
+            hCursor: std::ptr::null_mut(),
+            hbrBackground: std::ptr::null_mut(),
             lpszMenuName: std::ptr::null(),
             lpszClassName: class_name.as_ptr(),
         };
@@ -104,13 +104,13 @@ pub fn run_raw_input_hook(collector: Arc<InputActivityCollector>, running: Arc<A
             0,
             0,
             0,
-            HWND_MESSAGE, // message-only
-            0,            // no menu
+            HWND_MESSAGE,         // message-only
+            std::ptr::null_mut(), // no menu
             GetModuleHandleW(std::ptr::null()),
             std::ptr::null(),
         );
 
-        if hwnd == 0 {
+        if hwnd.is_null() {
             error!(
                 "CreateWindowExW failed (error={}); Raw Input key hook not started",
                 GetLastError()
