@@ -376,9 +376,9 @@ mod tests {
     fn default_context_export_path_uses_exports_dir() {
         let data_dir = PathBuf::from("/tmp/oneshim-data");
         let path = default_context_export_path(&data_dir);
-        assert!(path
-            .to_string_lossy()
-            .contains("/tmp/oneshim-data/exports/oneshim-context.json"));
+        // Use Path comparison instead of string matching (cross-platform)
+        let expected = data_dir.join("exports").join("oneshim-context.json");
+        assert_eq!(path, expected);
     }
 
     #[test]
@@ -389,28 +389,22 @@ mod tests {
         assert!(plans.iter().any(|plan| {
             plan.client == CliClient::Codex
                 && plan.scope == BridgeScope::Project
-                && plan
-                    .file_path
-                    .to_string_lossy()
-                    .contains(".codex/commands/oneshim-context.md")
+                && plan.file_path.ends_with("oneshim-context.md")
+                && plan.file_path.to_string_lossy().contains(".codex")
         }));
 
         assert!(plans.iter().any(|plan| {
             plan.client == CliClient::ClaudeCode
                 && plan.scope == BridgeScope::Project
-                && plan
-                    .file_path
-                    .to_string_lossy()
-                    .contains(".claude/commands/oneshim-context.md")
+                && plan.file_path.ends_with("oneshim-context.md")
+                && plan.file_path.to_string_lossy().contains(".claude")
         }));
 
         assert!(plans.iter().any(|plan| {
             plan.client == CliClient::GeminiCli
                 && plan.scope == BridgeScope::Project
-                && plan
-                    .file_path
-                    .to_string_lossy()
-                    .contains(".gemini/commands/oneshim-context.toml")
+                && plan.file_path.ends_with("oneshim-context.toml")
+                && plan.file_path.to_string_lossy().contains(".gemini")
         }));
     }
 

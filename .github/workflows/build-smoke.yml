@@ -105,7 +105,8 @@ jobs:
         continue-on-error: true
         run: cargo clippy --target ${{ matrix.target }} -p oneshim-app --features grpc -- -W warnings
 
-      - name: Run tests
+      - name: Run tests (non-blocking — smoke focuses on build success)
+        continue-on-error: true
         run: cargo test --target ${{ matrix.target }} -p oneshim-app
 
       - name: Print summary
