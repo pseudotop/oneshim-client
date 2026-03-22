@@ -26,21 +26,23 @@ impl FramesQueryService {
         let limit = params.limit_or_default();
         let offset = params.offset_or_default();
 
-        let total = self
-            .ctx
-            .storage
-            .count_frames_in_range(&from.to_rfc3339(), &to.to_rfc3339())
-            .map_err(|error| ApiError::Internal(error.to_string()))?;
-
         let min_importance = params.min_importance.unwrap_or(0.0) as f32;
 
-        let fetch_limit = limit + offset;
-        let frames = self.ctx.storage.get_frames(from, to, fetch_limit)?;
+        // Fetch all frames in range (no limit) so we can filter by importance first,
+        // then paginate the filtered result for correct total count.
+        let all_frames = self.ctx.storage.get_frames(from, to, usize::MAX)?;
 
-        let data: Vec<FrameResponse> = frames
+        let filtered: Vec<_> = all_frames
             .into_iter()
             .filter(|f| f.importance >= min_importance)
+            .collect();
+
+        let total = filtered.len() as u64;
+
+        let data: Vec<FrameResponse> = filtered
+            .into_iter()
             .skip(offset)
+            .take(limit)
             .map(assemble_frame_response)
             .collect();
 
