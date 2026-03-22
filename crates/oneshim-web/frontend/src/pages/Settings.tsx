@@ -1367,7 +1367,14 @@ export default function Settings() {
   return (
     <div className="min-h-full space-y-6 p-6 pb-28">
       <div className="flex items-center justify-between">
-        <h1 className={cn(typography.h1, colors.text.pageTitle)}>{t('settings.title')}</h1>
+        <h1 className={cn(typography.h1, colors.text.pageTitle)}>
+          {t('settings.title')}
+          {activeTab !== 'general' && (
+            <span className="text-base font-normal text-gray-400 ml-2">
+              {'›'} {tabs.find(tab => tab.id === activeTab)?.label}
+            </span>
+          )}
+        </h1>
       </div>
 
       {sidebarCollapsed && (

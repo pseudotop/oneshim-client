@@ -993,7 +993,9 @@
     "segments": "Segments",
     "overrideHistory": "Override History",
     "coachingGoals": "Goals",
-    "coachingEvents": "Events"
+    "coachingEvents": "Events",
+    "insight": "Insight",
+    "statistics": "Statistics"
   },
   "coaching": {
     "title": "Coaching History",

@@ -993,7 +993,9 @@
     "segments": "세그먼트",
     "overrideHistory": "오버라이드 기록",
     "coachingGoals": "목표",
-    "coachingEvents": "이벤트"
+    "coachingEvents": "이벤트",
+    "insight": "인사이트",
+    "statistics": "통계"
   },
   "coaching": {
     "title": "코칭 히스토리",

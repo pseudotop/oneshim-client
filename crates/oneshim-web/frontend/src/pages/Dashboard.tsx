@@ -122,7 +122,7 @@ export default function Dashboard() {
 
       {/* UI note */}
       {latestMetrics && (
-        <Card variant="highlight" padding="md">
+        <Card variant="default" padding="md">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <span className={cn('h-2 w-2 animate-pulse rounded-full', colors.primary.signal)} />
@@ -142,23 +142,23 @@ export default function Dashboard() {
           </div>
           <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
             <div>
-              <div className={cn(typography.stat.large, colors.accent.teal)}>{latestMetrics.cpu_usage.toFixed(1)}%</div>
+              <div className={cn(typography.stat.large, colors.primary.text)}>{latestMetrics.cpu_usage.toFixed(1)}%</div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.cpu')}</div>
             </div>
             <div>
-              <div className={cn(typography.stat.large, colors.accent.blue)}>
+              <div className={cn(typography.stat.large, colors.primary.text)}>
                 {latestMetrics.memory_percent.toFixed(1)}%
               </div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.memory')}</div>
             </div>
             <div>
-              <div className={cn(typography.stat.large, colors.accent.purple)}>
+              <div className={cn(typography.stat.large, colors.primary.text)}>
                 {(latestMetrics.memory_used / 1024 / 1024 / 1024).toFixed(1)} GB
               </div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.usedMemory')}</div>
             </div>
             <div>
-              <div className={cn(typography.stat.large, colors.accent.slate)}>{metricsHistory.length}</div>
+              <div className={cn(typography.stat.large, colors.primary.text)}>{metricsHistory.length}</div>
               <div className={cn('text-xs', colors.text.secondary)}>{t('dashboard.collectedData')}</div>
             </div>
           </div>
@@ -241,21 +241,21 @@ export default function Dashboard() {
         <CardTitle className="mb-4">{t('dashboard.systemStatus')}</CardTitle>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div className="text-center">
-            <div className={cn(typography.stat.hero, colors.accent.teal)}>{summary?.cpu_avg?.toFixed(1) ?? '0'}%</div>
+            <div className={cn(typography.stat.hero, colors.primary.text)}>{summary?.cpu_avg?.toFixed(1) ?? '0'}%</div>
             <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.avgCpu')}</div>
           </div>
           <div className="text-center">
-            <div className={cn(typography.stat.hero, colors.accent.blue)}>
+            <div className={cn(typography.stat.hero, colors.primary.text)}>
               {summary?.memory_avg_percent?.toFixed(1) ?? '0'}%
             </div>
             <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.avgMemory')}</div>
           </div>
           <div className="text-center">
-            <div className={cn(typography.stat.hero, colors.accent.purple)}>{summary?.top_apps?.length ?? 0}</div>
+            <div className={cn(typography.stat.hero, colors.primary.text)}>{summary?.top_apps?.length ?? 0}</div>
             <div className={cn('text-sm', colors.text.secondary)}>{t('dashboard.appsUsed')}</div>
           </div>
           <div className="text-center">
-            <div className={cn(typography.stat.hero, colors.accent.green)}>
+            <div className={cn(typography.stat.hero, colors.primary.text)}>
               {(
                 ((summary?.total_active_secs ?? 0) /
                   ((summary?.total_active_secs ?? 0) + (summary?.total_idle_secs ?? 1))) *

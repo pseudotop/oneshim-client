@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, Copy } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { addTagToFrame, type Frame, fetchFrames, fetchFrameTags, fetchTags, removeTagFromFrame } from '../api/client'
 import DateRangePicker from '../components/DateRangePicker'
 import Lightbox from '../components/Lightbox'
@@ -35,7 +35,17 @@ export default function Timeline() {
   const queryClient = useQueryClient()
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number>(-1)
-  const [page, setPage] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const page = Number(searchParams.get('page') || '0')
+  const setPage = useCallback((updater: number | ((prev: number) => number)) => {
+    const next = typeof updater === 'function' ? updater(page) : updater
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      if (next === 0) p.delete('page')
+      else p.set('page', String(next))
+      return p
+    }, { replace: true })
+  }, [page, setSearchParams])
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({})
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
@@ -74,10 +84,13 @@ export default function Timeline() {
     },
   })
 
-  const { data: response, isLoading } = useQuery({
+  const { data: response, isLoading, isPlaceholderData } = useQuery({
     queryKey: ['frames', page, dateRange.from, dateRange.to],
     queryFn: () => fetchFrames(dateRange.from, dateRange.to, pageSize, page * pageSize),
-    staleTime: 10_000, // frame data — 10s stale time
+    staleTime: 120_000, // 2 min stale time — manual refresh for new captures
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    placeholderData: (prev) => prev, // keep previous page data during refetch
   })
 
   const frames = response?.data ?? []
@@ -85,6 +98,7 @@ export default function Timeline() {
 
   const filteredFrames = useMemo(() => {
     return frames.filter((frame) => {
+      // Server-side min_importance=0.3 filters metadata-only frames
       if (appFilter !== 'all' && frame.app_name !== appFilter) return false
       if (importanceFilter === 'high' && frame.importance < 0.7) return false
       if (importanceFilter === 'medium' && (frame.importance < 0.4 || frame.importance >= 0.7)) return false
@@ -185,7 +199,7 @@ export default function Timeline() {
         icon={<Camera className="h-8 w-8" />}
         title={t('emptyState.timeline.title')}
         description={t('emptyState.timeline.description')}
-        action={{ label: t('emptyState.timeline.action'), onClick: () => navigate('/settings') }}
+        action={{ label: t('emptyState.timeline.action'), onClick: () => navigate('/settings?tab=monitoring') }}
       />
     )
   }

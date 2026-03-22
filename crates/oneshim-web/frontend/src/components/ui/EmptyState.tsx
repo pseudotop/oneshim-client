@@ -18,8 +18,8 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-content-muted">
         {icon}
       </div>
-      <h3 className={`mb-2 font-semibold text-lg ${colors.text.pageTitle}`}>{title}</h3>
-      <p className={`mb-4 max-w-md text-center text-sm ${colors.text.pageSubtitle}`}>{description}</p>
+      <h3 className="mb-2 font-semibold text-lg text-gray-800 dark:text-gray-200">{title}</h3>
+      <p className="mb-4 max-w-md text-center text-sm text-gray-500 dark:text-gray-400">{description}</p>
       {action && (
         <Button type="button" variant="primary" size="md" onClick={action.onClick}>
           {action.label}
