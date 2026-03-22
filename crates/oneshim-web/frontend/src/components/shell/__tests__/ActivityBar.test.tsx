@@ -19,10 +19,10 @@ describe('ActivityBar', () => {
     expect(screen.getByRole('navigation')).toBeInTheDocument()
   })
 
-  it('renders 10 nav buttons', () => {
+  it('renders 13 nav buttons', () => {
     renderWithProviders(<ActivityBar {...defaultProps} />)
     const buttons = screen.getAllByRole('button')
-    expect(buttons).toHaveLength(10)
+    expect(buttons).toHaveLength(13)
   })
 
   it('active route has aria-current="page"', () => {
