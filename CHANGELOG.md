@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-23
+
+### Changed
+
+- **Design System Consistency** — Full token adoption across 50+ frontend files
+  - 3-layer color architecture: brand (teal) + semantic (success/warning/error/info) + chart
+  - Removed 7 accent colors; single brand color for all non-semantic UI
+  - Typography tokens: added `label`, `caption`, `mono`, `overline`, atomic `weight.*`
+  - Motion tokens: 4 composite transitions (`colors`/`transform`/`opacity`/`all`)
+  - Spacing scale enforcement: approved steps {0,1,2,3,4,6,8,12} only
+  - Icon size tokens: `iconSize.*` for all Lucide icons
+  - Dark mode: zero `dark:` prefixes — CSS custom properties handle switching
+  - Lint enforcement: shell script CI gate (12 violation categories)
+
+### Fixed
+
+- **Timeline pagination** — total count now reflects importance-filtered frames
+- **DMG installer** — updated background with menu bar hint, correct arrow direction
+
 ## [0.4.0] - 2026-03-22
 
 ### Added
