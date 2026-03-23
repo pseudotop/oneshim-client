@@ -2,6 +2,7 @@ import CoachingPopup from './components/CoachingPopup'
 import FocusHighlight from './components/FocusHighlight'
 import GoalProgressBar from './components/GoalProgressBar'
 import HeatmapGhost from './components/HeatmapGhost'
+import { TrackingBorder } from './components/TrackingBorder'
 import { useOverlayEvents } from './hooks/useOverlayEvents'
 
 export default function OverlayApp() {
@@ -10,6 +11,9 @@ export default function OverlayApp() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
+      {/* Tracking capture border indicator */}
+      <TrackingBorder paused={state.captureState.paused} visible={state.captureState.indicator_visible} />
+
       {/* Focus area highlight (always shown when available) */}
       {state.focusHighlight && <FocusHighlight highlight={state.focusHighlight} />}
 

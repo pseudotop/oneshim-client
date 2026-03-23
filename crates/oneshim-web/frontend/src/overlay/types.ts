@@ -41,6 +41,11 @@ export interface GoalPayload {
   goals: GoalProgressItem[]
 }
 
+export interface CaptureStatePayload {
+  paused: boolean
+  indicator_visible: boolean
+}
+
 export interface ModePayload {
   mode: OverlayMode
 }
@@ -50,4 +55,5 @@ export interface OverlayState {
   coaching: CoachingPayload | null
   focusHighlight: FocusHighlightPayload | null
   goals: GoalProgressItem[]
+  captureState: CaptureStatePayload
 }
