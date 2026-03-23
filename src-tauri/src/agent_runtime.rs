@@ -511,9 +511,14 @@ impl AgentRuntimeBundle {
 
         // --- Suggestion reception ---
         scheduler = scheduler.with_suggestions_enabled(self.suggestions_enabled);
+        // Prefer receiver from support context (built with SSE client);
+        // fall back to externally-injected receiver if present.
         #[cfg(feature = "server")]
-        if let Some(receiver) = self.suggestion_receiver {
-            scheduler = scheduler.with_suggestion_receiver(receiver);
+        {
+            let receiver = support.suggestion_receiver.or(self.suggestion_receiver);
+            if let Some(receiver) = receiver {
+                scheduler = scheduler.with_suggestion_receiver(receiver);
+            }
         }
 
         // --- Phase 2: Accessibility extractor (gated by config + consent) ---

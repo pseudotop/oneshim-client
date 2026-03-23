@@ -164,7 +164,8 @@ impl AppRuntimeLaunchBuilder {
                 update_control.clone(),
                 integration_runtime_status,
             )
-            .with_app_handle(self.app_handle.clone());
+            .with_app_handle(self.app_handle.clone())
+            .with_cli_health_flag(cli_health_flag.clone());
             let builder = WebServerRuntimeBuilder::new(
                 sqlite_storage.clone(),
                 &config,

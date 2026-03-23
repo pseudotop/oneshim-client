@@ -8,6 +8,8 @@ use oneshim_network::auth::TokenManager;
 use oneshim_network::batch_uploader::BatchUploader;
 #[cfg(feature = "server")]
 use oneshim_network::http_client::HttpApiClient;
+#[cfg(feature = "server")]
+use oneshim_network::sse_client::SseStreamClient;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_vision::processor::EdgeFrameProcessor;
 use oneshim_vision::trigger::SmartCaptureTrigger;
@@ -19,6 +21,7 @@ use crate::focus_analyzer::{FocusAnalyzer, FocusStorage};
 use crate::notification_manager::NotificationManager;
 use crate::scheduler::SchedulerConfig;
 
+#[allow(dead_code)] // suggestion_receiver is read only with feature = "server"
 pub(crate) struct AgentSupportContext {
     pub(crate) frame_storage: Arc<FrameFileStorage>,
     pub(crate) system_monitor: Arc<oneshim_monitor::system::SysInfoMonitor>,
@@ -32,10 +35,20 @@ pub(crate) struct AgentSupportContext {
     pub(crate) notification_manager: Arc<NotificationManager>,
     pub(crate) focus_analyzer: Arc<FocusAnalyzer>,
     pub(crate) context_analyzer: Option<Arc<oneshim_analysis::ContextAnalyzer>>,
+    pub(crate) suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
 }
 
 type BatchSinkPort = Arc<dyn oneshim_core::ports::batch_sink::BatchSink>;
 type ApiClientPort = Arc<dyn oneshim_core::ports::api_client::ApiClient>;
+#[cfg(feature = "server")]
+type SseClientPort = Arc<SseStreamClient>;
+#[cfg(feature = "server")]
+type ServerTransportPorts = (
+    Option<BatchSinkPort>,
+    Option<ApiClientPort>,
+    Option<SseClientPort>,
+);
+#[cfg(not(feature = "server"))]
 type ServerTransportPorts = (Option<BatchSinkPort>, Option<ApiClientPort>);
 
 pub(crate) struct AgentSupportContextBuilder<'a> {
@@ -145,6 +158,10 @@ impl<'a> AgentSupportContextBuilder<'a> {
             ));
 
         let session_id = generate_session_id();
+        #[cfg(feature = "server")]
+        let (batch_sink_opt, api_client_opt, sse_client_opt) =
+            build_server_transports(self.config, &session_id)?;
+        #[cfg(not(feature = "server"))]
         let (batch_sink_opt, api_client_opt) = build_server_transports(self.config, &session_id)?;
 
         let notifier: Arc<dyn oneshim_core::ports::notifier::DesktopNotifier> =
@@ -163,6 +180,33 @@ impl<'a> AgentSupportContextBuilder<'a> {
         ));
 
         let context_analyzer = self.build_context_analyzer();
+
+        // Build SuggestionReceiver when SSE client is available and suggestions enabled
+        #[cfg(feature = "server")]
+        let suggestion_receiver = if let Some(sse_client) = sse_client_opt {
+            if self.config.suggestions.enabled {
+                let queue = Arc::new(tokio::sync::Mutex::new(
+                    oneshim_suggestion::queue::SuggestionQueue::new(
+                        self.config.analysis.max_suggestions,
+                    ),
+                ));
+                let (suggestion_tx, _suggestion_rx) = tokio::sync::mpsc::channel(64);
+                Some(Arc::new(
+                    oneshim_suggestion::receiver::SuggestionReceiver::new(
+                        sse_client,
+                        None, // desktop notifier wired separately via notification_manager
+                        queue,
+                        suggestion_tx,
+                    ),
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        #[cfg(not(feature = "server"))]
+        let suggestion_receiver = None;
 
         let scheduler_config = SchedulerConfig {
             poll_interval: Duration::from_millis(self.config.monitor.poll_interval_ms),
@@ -195,6 +239,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             notification_manager,
             focus_analyzer,
             context_analyzer,
+            suggestion_receiver,
         })
     }
 }
@@ -211,7 +256,7 @@ fn build_server_transports(config: &AppConfig, session_id: &str) -> Result<Serve
     );
     let api_client = Arc::new(HttpApiClient::new_with_tls(
         &config.server.base_url,
-        token_manager,
+        token_manager.clone(),
         config.request_timeout(),
         &config.tls,
     )?);
@@ -221,8 +266,17 @@ fn build_server_transports(config: &AppConfig, session_id: &str) -> Result<Serve
         100,
         3,
     ));
+    let sse_client = Arc::new(
+        SseStreamClient::new_with_tls(
+            &config.server.base_url,
+            token_manager,
+            config.server.sse_max_retry_secs,
+            &config.tls,
+        )
+        .map_err(|e| anyhow::anyhow!("failed to build SSE client: {e}"))?,
+    );
 
-    Ok((Some(batch_uploader), Some(api_client)))
+    Ok((Some(batch_uploader), Some(api_client), Some(sse_client)))
 }
 
 #[cfg(not(feature = "server"))]
