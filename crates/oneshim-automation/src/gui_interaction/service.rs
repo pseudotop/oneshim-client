@@ -72,7 +72,15 @@ impl GuiInteractionService {
         }
 
         let weak = Arc::downgrade(self);
-        tokio::spawn(async move {
+        // Guard: tokio::spawn panics if no runtime context exists (e.g., called
+        // from Tauri setup before the async runtime is entered). Use try_spawn
+        // pattern — if Handle::try_current() fails, skip the cleanup task.
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            tracing::warn!("No tokio runtime — GUI cleanup task not started");
+            self.cleanup_started.store(false, Ordering::SeqCst);
+            return;
+        };
+        handle.spawn(async move {
             let mut interval =
                 tokio::time::interval(std::time::Duration::from_secs(CLEANUP_INTERVAL_SECS));
             loop {
