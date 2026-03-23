@@ -169,6 +169,11 @@ pub struct Scheduler {
     pub(super) cli_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// App handle for tray icon sync from the health check loop.
     pub(super) tray_app_handle: Option<tauri::AppHandle>,
+    /// Suggestion receiver for real-time SSE suggestion reception.
+    #[cfg(feature = "server")]
+    pub(super) suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
+    /// Whether suggestion reception is enabled (from SuggestionConfig).
+    pub(super) suggestions_enabled: bool,
 }
 
 impl Scheduler {
@@ -227,6 +232,9 @@ impl Scheduler {
             llm_connected: None,
             cli_connected: None,
             tray_app_handle: None,
+            #[cfg(feature = "server")]
+            suggestion_receiver: None,
+            suggestions_enabled: false,
         }
     }
 
@@ -386,6 +394,20 @@ impl Scheduler {
 
     pub fn with_tray_app_handle(mut self, handle: tauri::AppHandle) -> Self {
         self.tray_app_handle = Some(handle);
+        self
+    }
+
+    #[cfg(feature = "server")]
+    pub fn with_suggestion_receiver(
+        mut self,
+        receiver: Arc<oneshim_suggestion::receiver::SuggestionReceiver>,
+    ) -> Self {
+        self.suggestion_receiver = Some(receiver);
+        self
+    }
+
+    pub fn with_suggestions_enabled(mut self, enabled: bool) -> Self {
+        self.suggestions_enabled = enabled;
         self
     }
 

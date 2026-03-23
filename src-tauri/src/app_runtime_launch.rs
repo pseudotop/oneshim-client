@@ -147,7 +147,8 @@ impl AppRuntimeLaunchBuilder {
                 llm_connected.clone(),
                 cli_connected.clone(),
             )
-            .with_tray_app_handle(self.app_handle.clone());
+            .with_tray_app_handle(self.app_handle.clone())
+            .with_suggestions_enabled(config.suggestions.enabled);
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()

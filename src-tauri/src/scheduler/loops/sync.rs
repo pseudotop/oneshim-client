@@ -328,6 +328,20 @@ impl Scheduler {
             None
         };
 
+        // 15. Suggestion reception loop (SSE-based, server feature only)
+        #[cfg(feature = "server")]
+        let suggestion_task = if self.suggestions_enabled {
+            self.suggestion_receiver.as_ref().map(|receiver| {
+                loops::suggestions::spawn_suggestion_loop(
+                    receiver.clone(),
+                    session_id.clone(),
+                    shutdown_rx.clone(),
+                )
+            })
+        } else {
+            None
+        };
+
         let _ = shutdown_rx.changed().await;
         info!("ended received");
 
@@ -353,6 +367,10 @@ impl Scheduler {
         cross_device_sync_task.abort();
         coaching_task.abort();
         if let Some(t) = health_task {
+            t.abort();
+        }
+        #[cfg(feature = "server")]
+        if let Some(t) = suggestion_task {
             t.abort();
         }
     }

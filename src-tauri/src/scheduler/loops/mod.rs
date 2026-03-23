@@ -4,6 +4,8 @@ mod helpers;
 mod intelligence;
 mod monitor;
 mod network;
+#[cfg(feature = "server")]
+pub(crate) mod suggestions;
 mod sync;
 mod system;
 

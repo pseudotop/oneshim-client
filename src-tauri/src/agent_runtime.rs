@@ -56,6 +56,9 @@ pub(crate) struct AgentRuntimeBundle {
     llm_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
     cli_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
     tray_app_handle: Option<tauri::AppHandle>,
+    #[cfg(feature = "server")]
+    suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
+    suggestions_enabled: bool,
 }
 
 impl AgentRuntimeBundle {
@@ -506,6 +509,13 @@ impl AgentRuntimeBundle {
             scheduler = scheduler.with_tray_app_handle(handle);
         }
 
+        // --- Suggestion reception ---
+        scheduler = scheduler.with_suggestions_enabled(self.suggestions_enabled);
+        #[cfg(feature = "server")]
+        if let Some(receiver) = self.suggestion_receiver {
+            scheduler = scheduler.with_suggestion_receiver(receiver);
+        }
+
         // --- Phase 2: Accessibility extractor (gated by config + consent) ---
         {
             let text_config = self.config.analysis.text_intelligence.clone();
@@ -565,6 +575,9 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     llm_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
     cli_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
     tray_app_handle: Option<tauri::AppHandle>,
+    #[cfg(feature = "server")]
+    suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
+    suggestions_enabled: bool,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -610,6 +623,9 @@ impl<'a> AgentRuntimeBuilder<'a> {
             llm_connected: None,
             cli_connected: None,
             tray_app_handle: None,
+            #[cfg(feature = "server")]
+            suggestion_receiver: None,
+            suggestions_enabled: false,
         }
     }
 
@@ -724,6 +740,20 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    #[cfg(feature = "server")]
+    pub(crate) fn with_suggestion_receiver(
+        mut self,
+        receiver: Arc<oneshim_suggestion::receiver::SuggestionReceiver>,
+    ) -> Self {
+        self.suggestion_receiver = Some(receiver);
+        self
+    }
+
+    pub(crate) fn with_suggestions_enabled(mut self, enabled: bool) -> Self {
+        self.suggestions_enabled = enabled;
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -755,6 +785,9 @@ impl<'a> AgentRuntimeBuilder<'a> {
             llm_connected: self.llm_connected,
             cli_connected: self.cli_connected,
             tray_app_handle: self.tray_app_handle,
+            #[cfg(feature = "server")]
+            suggestion_receiver: self.suggestion_receiver,
+            suggestions_enabled: self.suggestions_enabled,
         }
     }
 }
