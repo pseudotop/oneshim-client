@@ -43,10 +43,10 @@ pub async fn defer_update(state: tauri::State<'_, AppState>) -> Result<(), Strin
         .map_err(|e| e.to_string())
 }
 
-/// 자동화 상태 조회 — 컨트롤러 구성 여부 반환
+/// 자동화 상태 조회 — 사용자 설정 기반 반환
 #[command]
 pub async fn get_automation_status(state: tauri::State<'_, AppState>) -> Result<bool, String> {
-    Ok(state.automation_controller.is_some())
+    Ok(state.config_manager.get().automation.enabled)
 }
 
 /// Secret backend capability snapshot for desktop runtime surfaces.

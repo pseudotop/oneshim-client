@@ -212,6 +212,8 @@ fn build_controller_from_runtime(
         config.automation.sandbox.clone(),
     );
     controller.set_enabled(true);
+    // TODO: Wire cli_health_flag via `.with_health_flag(cli_health_flag.clone())` once
+    // AutomationControllerBuilder carries the flag from app_runtime_launch.rs.
     controller.set_scene_finder(runtime.element_finder.clone());
     controller.set_intent_executor(runtime.intent_executor);
     controller.set_intent_planner(runtime.intent_planner);
