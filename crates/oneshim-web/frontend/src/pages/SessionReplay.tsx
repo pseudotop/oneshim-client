@@ -109,7 +109,7 @@ export default function SessionReplay() {
 
   useEffect(() => {
     setImageLoadFailed(false)
-  }, [])
+  }, [currentFrame?.id])
 
   const { data: currentFrameTags = [] } = useQuery({
     queryKey: ['frameTags', currentFrame?.id],
