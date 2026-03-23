@@ -338,69 +338,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Tauri WebView.
 
 
-## [Unreleased]
-
-## [0.4.1] - 2026-03-23
-
-### Added
-
-- **Control Box Enhancement** — Draggable, expandable tracking panel with quick actions
-  - Drag via `data-tauri-drag-region`, position persistence via SQLite `app_meta`
-  - Expand/collapse with dynamic window resize (`LogicalSize`)
-  - Quick action buttons: Open Dashboard (active), Manual Capture / Scene Analysis / AI Suggestions / Focus Mode (Phase 2 placeholders)
-  - Connection status detail view (Server / LLM / CLI indicators)
-- **Health Check System** — Adapter health flags with 5-second polling loop
-  - `AdapterHealthFlags` / `ConnectionFlags` structs, tray + overlay event emission
-  - CLI health flag wired through `WebServerSupportContext` → `AutomationControllerBuilder` → `AutomationController`
-  - `BatchUploader`, `RemoteLlmProvider` last_request_ok flags
-- **Suggestion Reception** — `SuggestionReceiver` instantiated with `SseStreamClient`
-  - Shared `TokenManager` between `HttpApiClient` and `SseStreamClient`
-  - Gated behind `#[cfg(feature = "server")]` + `suggestions.enabled` config
-  - Scheduler wiring: `spawn_suggestion_loop` with SSE auto-reconnect
-- **First-Run Onboarding** — 4-step guide (Intro → Permissions → Features → Start)
-  - V19 `app_meta` migration, IPC: `get_onboarding_status` / `complete_onboarding` / `reset_onboarding`
-  - Settings: "View Setup Guide" button to re-trigger onboarding
-- **Tray Status Icons** — Shape-based template icons (Active/Paused/Disabled)
-  - Connection status menu items (Server API ✓/✗, Local LLM ✓/✗, CLI Bridge ✓/✗)
-  - `sync_tray_state()` unified icon + menu update
-- **Tracking Indicator** — Capture border overlay + panel with pause/hide controls
-
-### Changed
-
-- **Design System Consistency** — Full token adoption across 50+ frontend files
-  - 3-layer color architecture: brand (teal) + semantic (success/warning/error/info) + chart
-  - Removed 7 accent colors; single brand color for all non-semantic UI
-  - Typography tokens: added `label`, `caption`, `mono`, `overline`, atomic `weight.*`
-  - Motion tokens: 4 composite transitions (`colors`/`transform`/`opacity`/`all`)
-  - Spacing scale enforcement: approved steps {0,1,2,3,4,6,8,12} only
-  - Icon size tokens: `iconSize.*` for all Lucide icons
-  - Dark mode: zero `dark:` prefixes — CSS custom properties handle switching
-  - Lint enforcement: shell script CI gate (12 violation categories)
-
-### Fixed
-
-- **CSP Image Loading** — Added `img-src` directive + `style-src 'unsafe-inline'` to Tauri CSP for frame screenshot loading in Session Replay and Timeline
-- **Replay Image State** — `imageLoadFailed` now resets on frame change (was sticky after first failure)
-- **Self-Detection Filter** — PID-based filtering in macOS osascript skips ONESHIM's own windows (tracking panel, overlay, dashboard)
-- **Light-Mode Background** — `--surface-sunken` corrected from slate-950 to slate-50 in light mode
-- **Standalone Mode** — Default changed to `false` (was `true`, blocked real API)
-- **Automation Status** — `get_automation_status` reads `config.automation.enabled` instead of `controller.is_some()`
-- **Runtime Crash Guards** — `tokio::spawn` in GUI audit forwarder and cleanup task guarded against missing runtime
-- **Multi-Monitor Resize** — MAX_DIM raised to 32768, dimension validation before resize
-- **Timeline pagination** — total count now reflects importance-filtered frames
-- **DMG installer** — updated background with menu bar hint, correct arrow direction
-- **UI/UX overhaul** — 15+ fixes across all dashboard pages
-  - Dashboard metrics: unified brand color (removed rainbow accent per metric)
-  - EmptyState: fixed invisible text on light cards (was using dark-bg-only token)
-  - RecalibrationPage: fixed double text rendering (duplicate i18n key)
-  - Timeline/SessionReplay: `resolveImageUrl()` for Tauri image loading
-  - Reports: pie chart top 5 + Other, label overlap fix
-  - UpdatePanel: hide Approve/Defer when on latest version
-  - Settings: breadcrumb title (Settings > Monitoring)
-  - Timeline: server-side `min_importance=0.3` filtering, `staleTime` 120s
-  - First launch: show main window automatically
-  - DevToolbar: floating dev-only debug panel (standalone toggle, API info)
-
 ## [0.4.0] - 2026-03-22
 
 ### Added
