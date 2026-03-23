@@ -300,14 +300,14 @@ mod tests {
     #[test]
     fn oversized_target_error() {
         let img = make_test_image(100, 100, [100, 100, 100, 255]);
-        let result = fast_resize(&img, 20000, 100);
+        let result = fast_resize(&img, 33000, 100);
         assert!(result.is_err());
     }
 
     #[test]
     fn oversized_target_height_error() {
         let img = make_test_image(100, 100, [100, 100, 100, 255]);
-        let result = fast_resize(&img, 100, 20000);
+        let result = fast_resize(&img, 100, 33000);
         assert!(result.is_err());
     }
 }
