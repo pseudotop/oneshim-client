@@ -79,6 +79,11 @@ impl AppRuntimeLaunchBuilder {
             config.indicator.show_border,
         ));
 
+        // Connection status flags — start disconnected, wired by scheduler health checks.
+        let server_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let llm_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cli_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
         #[cfg(feature = "server")]
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
@@ -180,6 +185,9 @@ impl AppRuntimeLaunchBuilder {
             ),
             capture_paused,
             indicator_visible,
+            server_connected,
+            llm_connected,
+            cli_connected,
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

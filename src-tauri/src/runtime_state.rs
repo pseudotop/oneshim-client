@@ -42,6 +42,12 @@ pub struct AppState {
     pub capture_paused: Arc<AtomicBool>,
     /// Whether the tracking indicator border is visible.
     pub indicator_visible: Arc<AtomicBool>,
+    /// Server API connectivity (REST or gRPC).
+    pub server_connected: Arc<AtomicBool>,
+    /// Local LLM provider connectivity (Ollama, subprocess, etc.).
+    pub llm_connected: Arc<AtomicBool>,
+    /// CLI bridge / automation controller connectivity.
+    pub cli_connected: Arc<AtomicBool>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -243,6 +249,9 @@ mod tests {
             coaching_engine: None,
             capture_paused: Arc::new(AtomicBool::new(false)),
             indicator_visible: Arc::new(AtomicBool::new(true)),
+            server_connected: Arc::new(AtomicBool::new(false)),
+            llm_connected: Arc::new(AtomicBool::new(false)),
+            cli_connected: Arc::new(AtomicBool::new(false)),
         })
         .build();
 

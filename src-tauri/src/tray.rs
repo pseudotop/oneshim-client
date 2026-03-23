@@ -6,6 +6,8 @@ use tauri::{
 };
 use tracing::{info, warn};
 
+use crate::tray_icon::TrayIconState;
+
 fn focus_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         window.show().unwrap_or_default();
@@ -13,8 +15,156 @@ fn focus_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
     }
 }
 
-/// 시스템 트레이 메뉴 설정 — 아이콘 + 메뉴 + 이벤트 핸들러 통합.
-/// tauri.conf.json의 trayIcon은 null로 설정하고 여기서 전부 처리.
+/// Read connection status flags from AppState.
+///
+/// Returns `(server, llm, cli)` booleans. Falls back to `(false, false, false)`
+/// if AppState is not yet registered.
+fn read_connection_status<R: Runtime>(app: &impl Manager<R>) -> (bool, bool, bool) {
+    app.try_state::<crate::runtime_state::AppState>()
+        .map(|s| {
+            let ord = std::sync::atomic::Ordering::Relaxed;
+            (
+                s.server_connected.load(ord),
+                s.llm_connected.load(ord),
+                s.cli_connected.load(ord),
+            )
+        })
+        .unwrap_or((false, false, false))
+}
+
+/// Determine the tray icon state from capture and connection flags.
+fn resolve_icon_state(paused: bool, any_disconnected: bool) -> TrayIconState {
+    if paused {
+        TrayIconState::Paused
+    } else if any_disconnected {
+        TrayIconState::Disabled
+    } else {
+        TrayIconState::Active
+    }
+}
+
+/// Build the connection status menu items (disabled / info-only).
+#[allow(clippy::type_complexity)]
+fn build_connection_items<R: Runtime>(
+    app: &impl Manager<R>,
+    srv: bool,
+    llm: bool,
+    cli: bool,
+) -> Result<(MenuItem<R>, MenuItem<R>, MenuItem<R>), Box<dyn std::error::Error>> {
+    let srv_item = MenuItem::with_id(
+        app,
+        "conn-server",
+        format!(
+            "  Server API    {}",
+            if srv { "\u{2713}" } else { "\u{2717}" }
+        ),
+        false,
+        None::<&str>,
+    )?;
+    let llm_item = MenuItem::with_id(
+        app,
+        "conn-llm",
+        format!(
+            "  Local LLM     {}",
+            if llm { "\u{2713}" } else { "\u{2717}" }
+        ),
+        false,
+        None::<&str>,
+    )?;
+    let cli_item = MenuItem::with_id(
+        app,
+        "conn-cli",
+        format!(
+            "  CLI Bridge    {}",
+            if cli { "\u{2713}" } else { "\u{2717}" }
+        ),
+        false,
+        None::<&str>,
+    )?;
+    Ok((srv_item, llm_item, cli_item))
+}
+
+/// Determine status text from capture/connection state (no emoji — template icon handles visual).
+fn status_text(paused: bool, any_disconnected: bool) -> &'static str {
+    if paused {
+        "Paused"
+    } else if any_disconnected {
+        "Partially Connected"
+    } else {
+        "Active"
+    }
+}
+
+/// Build the full tray menu with connection status items.
+fn build_tray_menu<R: Runtime>(
+    app: &impl Manager<R>,
+    paused: bool,
+    indicator_visible: bool,
+    srv: bool,
+    llm: bool,
+    cli: bool,
+) -> Result<Menu<R>, Box<dyn std::error::Error>> {
+    let any_disconnected = !srv || !llm || !cli;
+
+    let capture_status = MenuItem::with_id(
+        app,
+        "capture-status",
+        status_text(paused, any_disconnected),
+        false,
+        None::<&str>,
+    )?;
+    let (srv_item, llm_item, cli_item) = build_connection_items(app, srv, llm, cli)?;
+
+    let toggle_text = if paused {
+        "Resume Capture"
+    } else {
+        "Pause Capture"
+    };
+    let indicator_text = if indicator_visible {
+        "Hide Indicator"
+    } else {
+        "Show Indicator"
+    };
+
+    let toggle_capture = MenuItem::with_id(app, "toggle-capture", toggle_text, true, None::<&str>)?;
+    let toggle_indicator =
+        MenuItem::with_id(app, "toggle-indicator", indicator_text, true, None::<&str>)?;
+
+    let show = MenuItem::with_id(app, "show", "Toggle Window", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+    let automation =
+        MenuItem::with_id(app, "automation", "Automation Settings", true, None::<&str>)?;
+    let approve = MenuItem::with_id(app, "approve_update", "Apply Update", true, None::<&str>)?;
+    let defer = MenuItem::with_id(app, "defer_update", "Defer Update", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+
+    let menu = Menu::with_items(
+        app,
+        &[
+            &capture_status,
+            &srv_item,
+            &llm_item,
+            &cli_item,
+            &PredefinedMenuItem::separator(app)?,
+            &toggle_capture,
+            &toggle_indicator,
+            &PredefinedMenuItem::separator(app)?,
+            &show,
+            &PredefinedMenuItem::separator(app)?,
+            &settings,
+            &automation,
+            &approve,
+            &defer,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
+
+    Ok(menu)
+}
+
+/// System tray setup — template icon + menu + event handler.
+/// tauri.conf.json trayIcon is null; everything is handled here.
 pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     // Read initial state from AppState (config-driven, registered before tray setup)
     let (paused, indicator_visible) = app
@@ -28,64 +178,18 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
         })
         .unwrap_or((false, true));
 
-    let status_text = if paused {
-        "⏸ Paused"
-    } else {
-        "🟢 Capturing"
-    };
-    let toggle_text = if paused {
-        "Resume Capture"
-    } else {
-        "Pause Capture"
-    };
-    let indicator_text = if indicator_visible {
-        "Hide Indicator"
-    } else {
-        "Show Indicator"
-    };
+    let (srv, llm, cli) = read_connection_status(app);
+    let any_disconnected = !srv || !llm || !cli;
 
-    // Status items (prepended before existing menu items)
-    let capture_status =
-        MenuItem::with_id(app, "capture-status", status_text, false, None::<&str>)?;
-    let toggle_capture = MenuItem::with_id(app, "toggle-capture", toggle_text, true, None::<&str>)?;
-    let toggle_indicator =
-        MenuItem::with_id(app, "toggle-indicator", indicator_text, true, None::<&str>)?;
-    let status_sep = PredefinedMenuItem::separator(app)?;
-
-    // Existing menu items
-    let show = MenuItem::with_id(app, "show", "Toggle Window", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let automation =
-        MenuItem::with_id(app, "automation", "Automation Settings", true, None::<&str>)?;
-    let approve = MenuItem::with_id(app, "approve_update", "Apply Update", true, None::<&str>)?;
-    let defer = MenuItem::with_id(app, "defer_update", "Defer Update", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-
-    let menu = Menu::with_items(
-        app,
-        &[
-            &capture_status,
-            &toggle_capture,
-            &toggle_indicator,
-            &status_sep,
-            &show,
-            &PredefinedMenuItem::separator(app)?,
-            &settings,
-            &automation,
-            &approve,
-            &defer,
-            &PredefinedMenuItem::separator(app)?,
-            &quit,
-        ],
-    )?;
-
-    // Initial icon with status dot (non-template for color support)
-    let (rgba, w, h) = crate::tray_icon::status_icon(paused);
+    let icon_state = resolve_icon_state(paused, any_disconnected);
+    let (rgba, w, h) = crate::tray_icon::status_icon(icon_state);
     let initial_icon = Image::new_owned(rgba, w, h);
+
+    let menu = build_tray_menu(app, paused, indicator_visible, srv, llm, cli)?;
 
     TrayIconBuilder::with_id("main-tray")
         .icon(initial_icon)
-        .icon_as_template(false)
+        .icon_as_template(true)
         .menu(&menu)
         .tooltip("ONESHIM")
         .show_menu_on_left_click(true)
@@ -185,13 +289,13 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
         })
         .build(app)?;
 
-    info!("system tray initialized with status icon");
+    info!("system tray initialized with template icon");
     Ok(())
 }
 
-/// Update tray icon and menu to reflect current capture state.
+/// Update tray icon and menu to reflect current capture/connection state.
 ///
-/// Combines icon swap (colored status dot) with menu text rebuild.
+/// Combines icon swap (template shape overlay) with menu text rebuild.
 /// Called from tray event handlers and IPC commands.
 pub fn sync_tray_state<R: Runtime>(
     app: &tauri::AppHandle<R>,
@@ -199,64 +303,18 @@ pub fn sync_tray_state<R: Runtime>(
     indicator_visible: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(tray) = app.tray_by_id("main-tray") {
-        // Update icon with status dot
-        let (rgba, w, h) = crate::tray_icon::status_icon(paused);
+        let (srv, llm, cli) = read_connection_status(app);
+        let any_disconnected = !srv || !llm || !cli;
+
+        // Update icon with template shape overlay
+        let icon_state = resolve_icon_state(paused, any_disconnected);
+        let (rgba, w, h) = crate::tray_icon::status_icon(icon_state);
         let icon = Image::new_owned(rgba, w, h);
         tray.set_icon(Some(icon))?;
-        tray.set_icon_as_template(false)?;
+        tray.set_icon_as_template(true)?;
 
-        // Rebuild menu text
-        let status_text = if paused {
-            "⏸ Paused"
-        } else {
-            "🟢 Capturing"
-        };
-        let toggle_text = if paused {
-            "Resume Capture"
-        } else {
-            "Pause Capture"
-        };
-        let indicator_text = if indicator_visible {
-            "Hide Indicator"
-        } else {
-            "Show Indicator"
-        };
-
-        // Recreate all menu items (immutable after creation in Tauri v2)
-        let capture_status =
-            MenuItem::with_id(app, "capture-status", status_text, false, None::<&str>)?;
-        let toggle_capture =
-            MenuItem::with_id(app, "toggle-capture", toggle_text, true, None::<&str>)?;
-        let toggle_indicator =
-            MenuItem::with_id(app, "toggle-indicator", indicator_text, true, None::<&str>)?;
-        let status_sep = PredefinedMenuItem::separator(app)?;
-
-        let show = MenuItem::with_id(app, "show", "Toggle Window", true, None::<&str>)?;
-        let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-        let automation =
-            MenuItem::with_id(app, "automation", "Automation Settings", true, None::<&str>)?;
-        let approve = MenuItem::with_id(app, "approve_update", "Apply Update", true, None::<&str>)?;
-        let defer = MenuItem::with_id(app, "defer_update", "Defer Update", true, None::<&str>)?;
-        let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-
-        let menu = Menu::with_items(
-            app,
-            &[
-                &capture_status,
-                &toggle_capture,
-                &toggle_indicator,
-                &status_sep,
-                &show,
-                &PredefinedMenuItem::separator(app)?,
-                &settings,
-                &automation,
-                &approve,
-                &defer,
-                &PredefinedMenuItem::separator(app)?,
-                &quit,
-            ],
-        )?;
-
+        // Rebuild menu with connection status
+        let menu = build_tray_menu(app, paused, indicator_visible, srv, llm, cli)?;
         tray.set_menu(Some(menu))?;
     }
     Ok(())
