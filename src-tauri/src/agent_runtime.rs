@@ -49,6 +49,13 @@ pub(crate) struct AgentRuntimeBundle {
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
     capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
+    server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    server_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    llm_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    cli_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    tray_app_handle: Option<tauri::AppHandle>,
 }
 
 impl AgentRuntimeBundle {
@@ -480,6 +487,25 @@ impl AgentRuntimeBundle {
             scheduler = scheduler.with_capture_paused(capture_paused);
         }
 
+        // --- Health check flags ---
+        if let (Some(s), Some(l), Some(c)) = (
+            self.server_health_flag,
+            self.llm_health_flag,
+            self.cli_health_flag,
+        ) {
+            scheduler = scheduler.with_health_flags(s, l, c);
+        }
+        if let (Some(s), Some(l), Some(c)) = (
+            self.server_connected,
+            self.llm_connected,
+            self.cli_connected,
+        ) {
+            scheduler = scheduler.with_connection_flags(s, l, c);
+        }
+        if let Some(handle) = self.tray_app_handle {
+            scheduler = scheduler.with_tray_app_handle(handle);
+        }
+
         // --- Phase 2: Accessibility extractor (gated by config + consent) ---
         {
             let text_config = self.config.analysis.text_intelligence.clone();
@@ -532,6 +558,13 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
     capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
+    server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    server_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    llm_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    cli_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    tray_app_handle: Option<tauri::AppHandle>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -570,6 +603,13 @@ impl<'a> AgentRuntimeBuilder<'a> {
             coaching_storage: None,
             magic_overlay: None,
             capture_paused: None,
+            server_health_flag: None,
+            llm_health_flag: None,
+            cli_health_flag: None,
+            server_connected: None,
+            llm_connected: None,
+            cli_connected: None,
+            tray_app_handle: None,
         }
     }
 
@@ -655,6 +695,35 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_health_flags(
+        mut self,
+        server: Arc<std::sync::atomic::AtomicBool>,
+        llm: Arc<std::sync::atomic::AtomicBool>,
+        cli: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.server_health_flag = Some(server);
+        self.llm_health_flag = Some(llm);
+        self.cli_health_flag = Some(cli);
+        self
+    }
+
+    pub(crate) fn with_connection_flags(
+        mut self,
+        server: Arc<std::sync::atomic::AtomicBool>,
+        llm: Arc<std::sync::atomic::AtomicBool>,
+        cli: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.server_connected = Some(server);
+        self.llm_connected = Some(llm);
+        self.cli_connected = Some(cli);
+        self
+    }
+
+    pub(crate) fn with_tray_app_handle(mut self, handle: tauri::AppHandle) -> Self {
+        self.tray_app_handle = Some(handle);
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -679,6 +748,13 @@ impl<'a> AgentRuntimeBuilder<'a> {
             coaching_storage: self.coaching_storage,
             magic_overlay: self.magic_overlay,
             capture_paused: self.capture_paused,
+            server_health_flag: self.server_health_flag,
+            llm_health_flag: self.llm_health_flag,
+            cli_health_flag: self.cli_health_flag,
+            server_connected: self.server_connected,
+            llm_connected: self.llm_connected,
+            cli_connected: self.cli_connected,
+            tray_app_handle: self.tray_app_handle,
         }
     }
 }

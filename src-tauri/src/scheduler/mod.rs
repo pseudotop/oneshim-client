@@ -155,6 +155,20 @@ pub struct Scheduler {
     pub(super) coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     /// Shared flag: when `true` the monitor loop skips capture/frame processing.
     pub(super) capture_paused: Arc<std::sync::atomic::AtomicBool>,
+    /// Adapter-side health flag for server (BatchUploader / HttpApiClient).
+    pub(super) server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Adapter-side health flag for LLM provider (RemoteLlmProvider).
+    pub(super) llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Adapter-side health flag for CLI / automation controller.
+    pub(super) cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// UI-facing connection status flag for server.
+    pub(super) server_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// UI-facing connection status flag for LLM.
+    pub(super) llm_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// UI-facing connection status flag for CLI.
+    pub(super) cli_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// App handle for tray icon sync from the health check loop.
+    pub(super) tray_app_handle: Option<tauri::AppHandle>,
 }
 
 impl Scheduler {
@@ -206,6 +220,13 @@ impl Scheduler {
             analysis_provider: None,
             coaching_storage: None,
             capture_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            server_health_flag: None,
+            llm_health_flag: None,
+            cli_health_flag: None,
+            server_connected: None,
+            llm_connected: None,
+            cli_connected: None,
+            tray_app_handle: None,
         }
     }
 
@@ -336,6 +357,35 @@ impl Scheduler {
 
     pub fn with_capture_paused(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
         self.capture_paused = flag;
+        self
+    }
+
+    pub fn with_health_flags(
+        mut self,
+        server: Arc<std::sync::atomic::AtomicBool>,
+        llm: Arc<std::sync::atomic::AtomicBool>,
+        cli: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.server_health_flag = Some(server);
+        self.llm_health_flag = Some(llm);
+        self.cli_health_flag = Some(cli);
+        self
+    }
+
+    pub fn with_connection_flags(
+        mut self,
+        server: Arc<std::sync::atomic::AtomicBool>,
+        llm: Arc<std::sync::atomic::AtomicBool>,
+        cli: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.server_connected = Some(server);
+        self.llm_connected = Some(llm);
+        self.cli_connected = Some(cli);
+        self
+    }
+
+    pub fn with_tray_app_handle(mut self, handle: tauri::AppHandle) -> Self {
+        self.tray_app_handle = Some(handle);
         self
     }
 

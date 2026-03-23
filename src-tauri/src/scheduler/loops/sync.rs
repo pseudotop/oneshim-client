@@ -291,6 +291,43 @@ impl Scheduler {
         // 13. Coaching feedback evaluation loop
         let coaching_task = self.spawn_coaching_loop(shutdown_rx.clone());
 
+        // 14. Health check loop — reads adapter health flags and updates connection flags
+        let health_task = if let (
+            Some(s_flag),
+            Some(l_flag),
+            Some(c_flag),
+            Some(s_conn),
+            Some(l_conn),
+            Some(c_conn),
+            Some(handle),
+        ) = (
+            self.server_health_flag.clone(),
+            self.llm_health_flag.clone(),
+            self.cli_health_flag.clone(),
+            self.server_connected.clone(),
+            self.llm_connected.clone(),
+            self.cli_connected.clone(),
+            self.tray_app_handle.clone(),
+        ) {
+            Some(super::health::spawn_health_check_loop(
+                std::time::Duration::from_secs(5),
+                super::health::AdapterHealthFlags {
+                    server_ok: s_flag,
+                    llm_ok: l_flag,
+                    cli_ok: c_flag,
+                },
+                super::health::ConnectionFlags {
+                    server: s_conn,
+                    llm: l_conn,
+                    cli: c_conn,
+                },
+                handle,
+                shutdown_rx.clone(),
+            ))
+        } else {
+            None
+        };
+
         let _ = shutdown_rx.changed().await;
         info!("ended received");
 
@@ -315,5 +352,8 @@ impl Scheduler {
         analysis_task.abort();
         cross_device_sync_task.abort();
         coaching_task.abort();
+        if let Some(t) = health_task {
+            t.abort();
+        }
     }
 }

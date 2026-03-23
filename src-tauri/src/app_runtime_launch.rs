@@ -79,10 +79,17 @@ impl AppRuntimeLaunchBuilder {
             config.indicator.show_border,
         ));
 
-        // Connection status flags — start disconnected, wired by scheduler health checks.
+        // Connection status flags — start disconnected, updated by health check loop.
         let server_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let llm_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cli_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        // Adapter-side health flags — written by adapters on success/failure,
+        // read by the health check loop. The loop is the single source of truth
+        // for connection status.
+        let server_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let llm_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cli_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         #[cfg(feature = "server")]
         server_context
@@ -129,7 +136,18 @@ impl AppRuntimeLaunchBuilder {
             .with_coaching_engine(coaching_engine.clone())
             .with_coaching_storage(sqlite_storage.clone())
             .with_magic_overlay(magic_overlay.clone())
-            .with_capture_paused(capture_paused.clone());
+            .with_capture_paused(capture_paused.clone())
+            .with_health_flags(
+                server_health_flag.clone(),
+                llm_health_flag.clone(),
+                cli_health_flag.clone(),
+            )
+            .with_connection_flags(
+                server_connected.clone(),
+                llm_connected.clone(),
+                cli_connected.clone(),
+            )
+            .with_tray_app_handle(self.app_handle.clone());
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()
@@ -166,20 +184,9 @@ impl AppRuntimeLaunchBuilder {
             None
         };
 
-        // Wire initial connection status from config / adapter availability.
-        // Server: mark connected when the server feature is compiled in.
-        #[cfg(feature = "server")]
-        server_connected.store(true, std::sync::atomic::Ordering::Relaxed);
-
-        // LLM: mark connected when text intelligence analysis is enabled in config.
-        if config.analysis.text_intelligence.enabled {
-            llm_connected.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-
-        // CLI: mark connected when the automation controller was successfully created.
-        if automation_controller.is_some() {
-            cli_connected.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
+        // Connection status is now driven by the health check loop —
+        // no optimistic initialization. The loop reads adapter health flags
+        // and updates connection flags as the single source of truth.
 
         core_resources.background_runtime.spawn_runtime_bridges();
 

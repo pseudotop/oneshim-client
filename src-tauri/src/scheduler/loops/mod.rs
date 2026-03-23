@@ -1,4 +1,5 @@
 mod events;
+pub(crate) mod health;
 mod helpers;
 mod intelligence;
 mod monitor;
