@@ -10,6 +10,13 @@ pub struct CaptureStatusResponse {
     pub indicator_visible: bool,
 }
 
+#[derive(Serialize)]
+pub struct ConnectionStatusResponse {
+    pub server: bool,
+    pub llm: bool,
+    pub cli: bool,
+}
+
 #[command]
 pub async fn get_capture_status(
     state: State<'_, AppState>,
@@ -64,4 +71,15 @@ pub async fn set_indicator_visible(
     let _ = crate::tray::sync_tray_state(&app, paused, visible);
 
     Ok(())
+}
+
+#[command]
+pub async fn get_connection_status(
+    state: State<'_, AppState>,
+) -> Result<ConnectionStatusResponse, String> {
+    Ok(ConnectionStatusResponse {
+        server: state.server_connected.load(Ordering::Relaxed),
+        llm: state.llm_connected.load(Ordering::Relaxed),
+        cli: state.cli_connected.load(Ordering::Relaxed),
+    })
 }

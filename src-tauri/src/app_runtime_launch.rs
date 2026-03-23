@@ -166,6 +166,21 @@ impl AppRuntimeLaunchBuilder {
             None
         };
 
+        // Wire initial connection status from config / adapter availability.
+        // Server: mark connected when the server feature is compiled in.
+        #[cfg(feature = "server")]
+        server_connected.store(true, std::sync::atomic::Ordering::Relaxed);
+
+        // LLM: mark connected when text intelligence analysis is enabled in config.
+        if config.analysis.text_intelligence.enabled {
+            llm_connected.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        // CLI: mark connected when the automation controller was successfully created.
+        if automation_controller.is_some() {
+            cli_connected.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+
         core_resources.background_runtime.spawn_runtime_bridges();
 
         let state_builder = ManagedStateBuilder::new(AppState {
