@@ -28,6 +28,33 @@ cd src-tauri && cargo tauri build
 cd src-tauri && cargo tauri dev
 ```
 
+## Release Process
+
+**RC 릴리스는 반드시 `release.sh`를 사용한다. 수동 태그 생성 금지.**
+
+```bash
+# RC 릴리스 (CHANGELOG 자동 생성 + 버전 동기화 + 커밋 + 태그)
+./scripts/release.sh 0.4.1-rc.5
+
+# Stable 승격 (검증된 RC → stable 릴리스)
+./scripts/promote-stable.sh 0.4.1-rc.5
+```
+
+### 릴리스 플로우
+
+1. feature 브랜치에서 작업 완료 → PR 생성 → CI 통과 → main 머지
+2. `./scripts/release.sh <version>` 실행:
+   - `[Unreleased]` 비어있으면 `git-cliff`로 CHANGELOG 자동 생성
+   - `Cargo.toml` + `tauri.conf.json` 버전 동기화
+   - 릴리스 커밋 생성 → PR용 브랜치 푸시
+3. PR 머지 후 태그가 CI에 의해 빌드 → GitHub Releases에 인스톨러 업로드
+
+### 주의사항
+
+- **`git tag` 직접 사용 금지** — `release.sh`가 CHANGELOG, 버전 파일, 검증을 모두 처리
+- **CHANGELOG.md는 `git-cliff`가 자동 생성** — 수동 편집 불필요
+- **conventional commit 형식 필수** — `feat:`, `fix:`, `refactor:`, `docs:` 등 (`git-cliff`가 파싱)
+
 ## Workspace Structure
 
 ```
