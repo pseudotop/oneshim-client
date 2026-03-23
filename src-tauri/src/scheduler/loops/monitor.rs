@@ -227,8 +227,14 @@ impl Scheduler {
                                     input_activity_level: input_collector.peek_activity_level(),
                                 };
 
-                                // Skip capture/frame processing when paused
-                                if !capture_paused.load(std::sync::atomic::Ordering::Relaxed) {
+                                // Skip capture when outside active hours (schedule config)
+                                let within_active_hours = config_manager1
+                                    .as_ref()
+                                    .map(|cm| crate::scheduler::should_run_now(&cm.get()))
+                                    .unwrap_or(true);
+
+                                // Skip capture/frame processing when paused or outside active hours
+                                if within_active_hours && !capture_paused.load(std::sync::atomic::Ordering::Relaxed) {
                                 // --- Ring buffer: capture thumbnail every cycle ---
                                 if let Ok(thumb_data) = processor.capture_thumbnail().await {
                                     ring_buffer.push(RingFrame {
