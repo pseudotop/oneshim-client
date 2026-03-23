@@ -7,8 +7,15 @@ interface CaptureState {
   indicator_visible: boolean
 }
 
+interface ConnectionStatus {
+  server: boolean
+  llm: boolean
+  cli: boolean
+}
+
 export function App() {
   const [state, setState] = useState<CaptureState>({ paused: false, indicator_visible: true })
+  const [conn, setConn] = useState<ConnectionStatus>({ server: false, llm: false, cli: false })
 
   useEffect(() => {
     let unlisten: (() => void) | undefined
@@ -17,6 +24,7 @@ export function App() {
     }).then((fn) => { unlisten = fn })
 
     invoke<CaptureState>('get_capture_status').then(setState).catch(() => {})
+    invoke<ConnectionStatus>('get_connection_status').then(setConn).catch(() => {})
 
     return () => unlisten?.()
   }, [])
@@ -26,6 +34,9 @@ export function App() {
   return (
     <div className="flex items-center gap-2 rounded-full bg-black/70 backdrop-blur-sm px-3 py-1 text-white text-xs select-none">
       <span className={`h-2 w-2 rounded-full ${state.paused ? 'bg-yellow-400' : 'bg-green-400 animate-pulse'}`} />
+      {(!conn.server || !conn.llm || !conn.cli) && (
+        <span className="h-2 w-2 rounded-full bg-red-400" title="Some services disconnected" />
+      )}
       <span>{state.paused ? 'Paused' : 'Capturing'}</span>
       <button
         onClick={() => invoke('toggle_capture_pause')}
