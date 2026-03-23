@@ -338,7 +338,7 @@ pub fn create_tracking_panel(app_handle: &AppHandle) -> Result<(), String> {
 
     let scale = monitor.scale_factor();
     let logical_width = monitor.size().width as f64 / scale;
-    let panel_width = 220.0;
+    let panel_width = 260.0;
     let x = (logical_width / 2.0) - (panel_width / 2.0);
 
     WebviewWindowBuilder::new(

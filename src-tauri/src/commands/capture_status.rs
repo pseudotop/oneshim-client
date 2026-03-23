@@ -83,3 +83,26 @@ pub async fn get_connection_status(
         cli: state.cli_connected.load(Ordering::Relaxed),
     })
 }
+
+#[command]
+pub async fn show_main_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        Ok(())
+    } else {
+        Err("main window not found".to_string())
+    }
+}
+
+#[command]
+pub async fn save_panel_position(state: State<'_, AppState>, x: f64, y: f64) -> Result<(), String> {
+    let pos = format!("{x},{y}");
+    state.storage.set_meta("tracking_panel_position", &pos);
+    Ok(())
+}
+
+#[command]
+pub async fn get_panel_position(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    Ok(state.storage.get_meta("tracking_panel_position"))
+}
