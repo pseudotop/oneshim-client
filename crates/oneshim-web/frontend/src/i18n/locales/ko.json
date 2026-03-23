@@ -176,6 +176,8 @@
     "language": "언어",
     "korean": "한국어",
     "english": "English",
+    "viewSetupGuide": "설정 가이드 다시 보기",
+    "viewSetupGuideDesc": "최초 실행 시 표시되는 설정 안내를 다시 엽니다.",
     "storageStats": "저장소 현황",
     "totalSize": "총 사용량",
     "frameCount": "프레임 수",

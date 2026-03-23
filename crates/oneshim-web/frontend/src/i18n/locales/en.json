@@ -176,6 +176,8 @@
     "language": "Language",
     "korean": "한국어",
     "english": "English",
+    "viewSetupGuide": "View Setup Guide",
+    "viewSetupGuideDesc": "Re-open the first-run setup walkthrough.",
     "storageStats": "Storage Stats",
     "totalSize": "Total Size",
     "frameCount": "Frames",

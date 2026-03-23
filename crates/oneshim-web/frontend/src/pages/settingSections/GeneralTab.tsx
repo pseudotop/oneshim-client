@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
   AppSettings,
@@ -10,6 +11,7 @@ import LanguageSelector from '../../components/LanguageSelector'
 import { Button, Card, CardTitle, Input } from '../../components/ui'
 import { DEFAULT_WEB_PORT } from '../../constants'
 import { form, typography } from '../../styles/tokens'
+import { IS_TAURI } from '../../utils/platform'
 import NotificationSettings from './NotificationSettings'
 import ScheduleSettings from './ScheduleSettings'
 import ToggleRow from './ToggleRow'
@@ -193,6 +195,49 @@ export default function GeneralTab({
           </div>
         </div>
       </Card>
+
+      {IS_TAURI && <ViewSetupGuideButton />}
     </div>
+  )
+}
+
+/* ── View Setup Guide (reset onboarding) ── */
+
+function ViewSetupGuideButton() {
+  const { t } = useTranslation()
+  const [loading, setLoading] = useState(false)
+
+  const handleClick = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('reset_onboarding')
+      window.location.reload()
+    } catch {
+      // Standalone / dev mode — no Tauri runtime
+      setLoading(false)
+    }
+  }, [])
+
+  return (
+    <Card variant="default" padding="lg">
+      <div className="flex items-center justify-between">
+        <div>
+          <CardTitle className="mb-1">{t('settings.viewSetupGuide')}</CardTitle>
+          <p className="text-content-secondary text-sm">
+            {t('settings.viewSetupGuideDesc')}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          isLoading={loading}
+          onClick={handleClick}
+        >
+          {t('settings.viewSetupGuide')}
+        </Button>
+      </div>
+    </Card>
   )
 }
