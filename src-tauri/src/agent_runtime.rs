@@ -48,6 +48,17 @@ pub(crate) struct AgentRuntimeBundle {
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
+    server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    server_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    llm_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    cli_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    tray_app_handle: Option<tauri::AppHandle>,
+    #[cfg(feature = "server")]
+    suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
+    suggestions_enabled: bool,
 }
 
 impl AgentRuntimeBundle {
@@ -475,6 +486,40 @@ impl AgentRuntimeBundle {
         if let Some(overlay) = self.magic_overlay {
             scheduler = scheduler.with_magic_overlay(overlay);
         }
+        if let Some(capture_paused) = self.capture_paused {
+            scheduler = scheduler.with_capture_paused(capture_paused);
+        }
+
+        // --- Health check flags ---
+        if let (Some(s), Some(l), Some(c)) = (
+            self.server_health_flag,
+            self.llm_health_flag,
+            self.cli_health_flag,
+        ) {
+            scheduler = scheduler.with_health_flags(s, l, c);
+        }
+        if let (Some(s), Some(l), Some(c)) = (
+            self.server_connected,
+            self.llm_connected,
+            self.cli_connected,
+        ) {
+            scheduler = scheduler.with_connection_flags(s, l, c);
+        }
+        if let Some(handle) = self.tray_app_handle {
+            scheduler = scheduler.with_tray_app_handle(handle);
+        }
+
+        // --- Suggestion reception ---
+        scheduler = scheduler.with_suggestions_enabled(self.suggestions_enabled);
+        // Prefer receiver from support context (built with SSE client);
+        // fall back to externally-injected receiver if present.
+        #[cfg(feature = "server")]
+        {
+            let receiver = support.suggestion_receiver.or(self.suggestion_receiver);
+            if let Some(receiver) = receiver {
+                scheduler = scheduler.with_suggestion_receiver(receiver);
+            }
+        }
 
         // --- Phase 2: Accessibility extractor (gated by config + consent) ---
         {
@@ -527,6 +572,17 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
+    server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
+    server_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    llm_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    cli_connected: Option<Arc<std::sync::atomic::AtomicBool>>,
+    tray_app_handle: Option<tauri::AppHandle>,
+    #[cfg(feature = "server")]
+    suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
+    suggestions_enabled: bool,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -564,6 +620,17 @@ impl<'a> AgentRuntimeBuilder<'a> {
             coaching_engine: None,
             coaching_storage: None,
             magic_overlay: None,
+            capture_paused: None,
+            server_health_flag: None,
+            llm_health_flag: None,
+            cli_health_flag: None,
+            server_connected: None,
+            llm_connected: None,
+            cli_connected: None,
+            tray_app_handle: None,
+            #[cfg(feature = "server")]
+            suggestion_receiver: None,
+            suggestions_enabled: false,
         }
     }
 
@@ -644,6 +711,55 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_capture_paused(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.capture_paused = Some(flag);
+        self
+    }
+
+    pub(crate) fn with_health_flags(
+        mut self,
+        server: Arc<std::sync::atomic::AtomicBool>,
+        llm: Arc<std::sync::atomic::AtomicBool>,
+        cli: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.server_health_flag = Some(server);
+        self.llm_health_flag = Some(llm);
+        self.cli_health_flag = Some(cli);
+        self
+    }
+
+    pub(crate) fn with_connection_flags(
+        mut self,
+        server: Arc<std::sync::atomic::AtomicBool>,
+        llm: Arc<std::sync::atomic::AtomicBool>,
+        cli: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.server_connected = Some(server);
+        self.llm_connected = Some(llm);
+        self.cli_connected = Some(cli);
+        self
+    }
+
+    pub(crate) fn with_tray_app_handle(mut self, handle: tauri::AppHandle) -> Self {
+        self.tray_app_handle = Some(handle);
+        self
+    }
+
+    #[cfg(feature = "server")]
+    #[allow(dead_code)] // retained for external injection; support context is the primary path
+    pub(crate) fn with_suggestion_receiver(
+        mut self,
+        receiver: Arc<oneshim_suggestion::receiver::SuggestionReceiver>,
+    ) -> Self {
+        self.suggestion_receiver = Some(receiver);
+        self
+    }
+
+    pub(crate) fn with_suggestions_enabled(mut self, enabled: bool) -> Self {
+        self.suggestions_enabled = enabled;
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -667,6 +783,17 @@ impl<'a> AgentRuntimeBuilder<'a> {
             coaching_engine: self.coaching_engine,
             coaching_storage: self.coaching_storage,
             magic_overlay: self.magic_overlay,
+            capture_paused: self.capture_paused,
+            server_health_flag: self.server_health_flag,
+            llm_health_flag: self.llm_health_flag,
+            cli_health_flag: self.cli_health_flag,
+            server_connected: self.server_connected,
+            llm_connected: self.llm_connected,
+            cli_connected: self.cli_connected,
+            tray_app_handle: self.tray_app_handle,
+            #[cfg(feature = "server")]
+            suggestion_receiver: self.suggestion_receiver,
+            suggestions_enabled: self.suggestions_enabled,
         }
     }
 }

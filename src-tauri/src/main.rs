@@ -62,6 +62,7 @@ mod storage_runtime;
 mod subprocess_provider;
 mod sync_engine;
 mod tray;
+mod tray_icon;
 mod update_coordinator;
 mod update_runtime;
 mod updater;
@@ -218,6 +219,16 @@ fn main() {
             commands::coaching::get_coaching_history,
             commands::coaching::get_goal_progress,
             commands::coaching::update_regime_goals,
+            commands::capture_status::get_capture_status,
+            commands::capture_status::toggle_capture_pause,
+            commands::capture_status::set_indicator_visible,
+            commands::capture_status::get_connection_status,
+            commands::capture_status::show_main_window,
+            commands::capture_status::save_panel_position,
+            commands::capture_status::get_panel_position,
+            commands::onboarding::get_onboarding_status,
+            commands::onboarding::complete_onboarding,
+            commands::onboarding::reset_onboarding,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

@@ -176,6 +176,8 @@
     "language": "언어",
     "korean": "한국어",
     "english": "English",
+    "viewSetupGuide": "설정 가이드 다시 보기",
+    "viewSetupGuideDesc": "최초 실행 시 표시되는 설정 안내를 다시 엽니다.",
     "storageStats": "저장소 현황",
     "totalSize": "총 사용량",
     "frameCount": "프레임 수",
@@ -1019,5 +1021,25 @@
       "ContextRestore": "컨텍스트 복원",
       "GoalTracker": "목표 추적"
     }
+  },
+  "onboarding": {
+    "step1Title": "ONESHIM에 오신 것을 환영합니다",
+    "step1Desc": "ONESHIM은 데스크탑 활동을 모니터링하고 생산성 향상을 위한 지능형 제안을 제공합니다.",
+    "step2Title": "권한 설정",
+    "step2Desc": "ONESHIM이 효과적으로 작동하려면 일부 권한이 필요합니다.",
+    "step2Accessibility": "접근성",
+    "step2ScreenCapture": "화면 캡처",
+    "step2Notifications": "알림",
+    "step3Title": "주요 기능",
+    "step3Desc": "ONESHIM이 제공하는 기능을 소개합니다.",
+    "step3Capture": "실시간 컨텍스트 캡처",
+    "step3Analysis": "AI 기반 분석",
+    "step3Suggestions": "스마트 제안",
+    "step4Title": "준비 완료",
+    "step4Desc": "모든 설정이 완료되었습니다. ONESHIM을 시작하세요.",
+    "next": "다음",
+    "back": "이전",
+    "skip": "건너뛰기",
+    "complete": "시작하기"
   }
 }

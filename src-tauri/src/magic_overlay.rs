@@ -313,6 +313,56 @@ impl MagicOverlayHandle {
     }
 }
 
+/// Create the tracking panel window — a small, transparent, always-on-top
+/// indicator bar centered horizontally near the top of the primary monitor.
+///
+/// Starts hidden; shown/hidden via the `toggle-indicator` tray menu item
+/// or IPC commands. The panel renders the capture-active border indicator.
+///
+/// Gracefully degrades on Linux/Wayland (panel not supported).
+pub fn create_tracking_panel(app_handle: &AppHandle) -> Result<(), String> {
+    if app_handle.get_webview_window("tracking-panel").is_some() {
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        warn!("Wayland — tracking panel disabled");
+        return Err("Wayland not supported".to_string());
+    }
+
+    let monitor = app_handle
+        .primary_monitor()
+        .map_err(|e| format!("monitor: {e}"))?
+        .ok_or("No monitor")?;
+
+    let scale = monitor.scale_factor();
+    let logical_width = monitor.size().width as f64 / scale;
+    let panel_width = 260.0;
+    let x = (logical_width / 2.0) - (panel_width / 2.0);
+
+    WebviewWindowBuilder::new(
+        app_handle,
+        "tracking-panel",
+        WebviewUrl::App("tracking-panel.html".into()),
+    )
+    .title("ONESHIM Tracking")
+    .inner_size(panel_width, 36.0)
+    .position(x, 8.0)
+    .transparent(true)
+    .always_on_top(true)
+    .decorations(false)
+    .resizable(false)
+    .visible(false)
+    .skip_taskbar(true)
+    .shadow(false)
+    .build()
+    .map_err(|e| format!("panel build: {e}"))?;
+
+    info!("Tracking panel window created");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

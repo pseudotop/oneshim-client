@@ -107,6 +107,7 @@ pub(crate) struct WebServerSupportContext {
     update_control: UpdateControl,
     integration_runtime_status: IntegrationOutboundRuntimeStatus,
     app_handle: Option<tauri::AppHandle>,
+    cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     #[cfg(feature = "server")]
     server: Option<WebServerServerSupport>,
 }
@@ -122,6 +123,7 @@ impl WebServerSupportContext {
             update_control,
             integration_runtime_status,
             app_handle: None,
+            cli_health_flag: None,
             #[cfg(feature = "server")]
             server: None,
         }
@@ -129,6 +131,11 @@ impl WebServerSupportContext {
 
     pub(crate) fn with_app_handle(mut self, handle: tauri::AppHandle) -> Self {
         self.app_handle = Some(handle);
+        self
+    }
+
+    pub(crate) fn with_cli_health_flag(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.cli_health_flag = Some(flag);
         self
     }
 
@@ -142,6 +149,11 @@ impl WebServerSupportContext {
         &self,
         builder: AutomationControllerBuilder<'a>,
     ) -> AutomationControllerBuilder<'a> {
+        let builder = if let Some(ref flag) = self.cli_health_flag {
+            builder.with_cli_health_flag(flag.clone())
+        } else {
+            builder
+        };
         let builder = if let Some(ref handle) = self.app_handle {
             builder.with_app_handle(handle.clone())
         } else {
@@ -359,7 +371,11 @@ fn spawn_gui_audit_forwarder(
 
     let mut rx = gui_service.subscribe();
 
-    tokio::spawn(async move {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        tracing::warn!("No tokio runtime — GUI audit forwarder not started");
+        return;
+    };
+    handle.spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(event) => {

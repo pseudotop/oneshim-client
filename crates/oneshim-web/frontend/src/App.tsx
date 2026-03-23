@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { DevToolbar } from './components/DevToolbar'
@@ -26,8 +26,9 @@ const Updates = lazy(() => import('./pages/Updates'))
 const DashboardDay = lazy(() => import('./pages/DashboardDay'))
 const RecalibrationPage = lazy(() => import('./pages/RecalibrationPage'))
 const Coaching = lazy(() => import('./pages/Coaching'))
+const Onboarding = lazy(() => import('./pages/Onboarding'))
 
-function App() {
+function AppShell() {
   const { t } = useTranslation()
   const { sidebarWidth, sidebarCollapsed, toggleSidebar, onResizeStart, onResizeByKeyboard } = useShellLayout()
   const { isOpen: isPaletteOpen, open: openPalette, close: closePalette, toggle: togglePalette } = useCommandPalette()
@@ -111,6 +112,28 @@ function App() {
       </div>
     </ShellLayoutProvider>
   )
+}
+
+function App() {
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke<{ completed: boolean }>('get_onboarding_status'))
+      .then((r) => setOnboardingDone(r.completed))
+      .catch(() => setOnboardingDone(true)) // standalone/dev mode — skip
+  }, [])
+
+  if (onboardingDone === null) return null
+  if (!onboardingDone) {
+    return (
+      <Suspense fallback={null}>
+        <Onboarding onComplete={() => setOnboardingDone(true)} />
+      </Suspense>
+    )
+  }
+
+  return <AppShell />
 }
 
 export default App

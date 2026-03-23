@@ -100,7 +100,9 @@ impl FrameProcessor for EdgeFrameProcessor {
         let sanitized_title = privacy::sanitize_title(&capture_request.window_title);
         let importance = capture_request.importance;
 
-        let current_frame = self.capture.capture_primary()?;
+        let current_frame = self
+            .capture
+            .capture_for_window(capture_request.window_bounds.as_ref())?;
         let (w, h) = (current_frame.width(), current_frame.height());
 
         let metadata = FrameMetadata {

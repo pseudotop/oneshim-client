@@ -71,6 +71,26 @@ impl AppRuntimeLaunchBuilder {
         // all reference the same AtomicBool so any endpoint can trigger re-clustering.
         let recluster_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+        // Shared capture pause flag: scheduler monitor loop, tray menu, and IPC commands
+        // all reference the same AtomicBool to toggle capture on/off.
+        let capture_paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // Tracking indicator visibility — initialized from persisted config.
+        let indicator_visible = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+            config.indicator.show_border,
+        ));
+
+        // Connection status flags — start disconnected, updated by health check loop.
+        let server_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let llm_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cli_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        // Adapter-side health flags — written by adapters on success/failure,
+        // read by the health check loop. The loop is the single source of truth
+        // for connection status.
+        let server_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let llm_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cli_health_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
         #[cfg(feature = "server")]
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
@@ -115,7 +135,20 @@ impl AppRuntimeLaunchBuilder {
             )))
             .with_coaching_engine(coaching_engine.clone())
             .with_coaching_storage(sqlite_storage.clone())
-            .with_magic_overlay(magic_overlay.clone());
+            .with_magic_overlay(magic_overlay.clone())
+            .with_capture_paused(capture_paused.clone())
+            .with_health_flags(
+                server_health_flag.clone(),
+                llm_health_flag.clone(),
+                cli_health_flag.clone(),
+            )
+            .with_connection_flags(
+                server_connected.clone(),
+                llm_connected.clone(),
+                cli_connected.clone(),
+            )
+            .with_tray_app_handle(self.app_handle.clone())
+            .with_suggestions_enabled(config.suggestions.enabled);
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()
@@ -131,7 +164,8 @@ impl AppRuntimeLaunchBuilder {
                 update_control.clone(),
                 integration_runtime_status,
             )
-            .with_app_handle(self.app_handle.clone());
+            .with_app_handle(self.app_handle.clone())
+            .with_cli_health_flag(cli_health_flag.clone());
             let builder = WebServerRuntimeBuilder::new(
                 sqlite_storage.clone(),
                 &config,
@@ -152,6 +186,10 @@ impl AppRuntimeLaunchBuilder {
             None
         };
 
+        // Connection status is now driven by the health check loop —
+        // no optimistic initialization. The loop reads adapter health flags
+        // and updates connection flags as the single source of truth.
+
         core_resources.background_runtime.spawn_runtime_bridges();
 
         let state_builder = ManagedStateBuilder::new(AppState {
@@ -169,6 +207,11 @@ impl AppRuntimeLaunchBuilder {
             coaching_engine: Some(
                 coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
             ),
+            capture_paused,
+            indicator_visible,
+            server_connected,
+            llm_connected,
+            cli_connected,
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

@@ -32,6 +32,7 @@ pub(crate) struct AutomationControllerBuilder<'a> {
     audit_logger: Arc<RwLock<AuditLogger>>,
     frame_storage: Option<Arc<FrameFileStorage>>,
     app_handle: Option<tauri::AppHandle>,
+    cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     #[cfg(feature = "server")]
     provider_secret_stores: Option<SecretStoreSet>,
     #[cfg(feature = "server")]
@@ -53,11 +54,17 @@ impl<'a> AutomationControllerBuilder<'a> {
             audit_logger,
             frame_storage,
             app_handle: None,
+            cli_health_flag: None,
             #[cfg(feature = "server")]
             provider_secret_stores: None,
             #[cfg(feature = "server")]
             oauth_port: None,
         }
+    }
+
+    pub(crate) fn with_cli_health_flag(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.cli_health_flag = Some(flag);
+        self
     }
 
     #[cfg(feature = "server")]
@@ -138,6 +145,7 @@ impl<'a> AutomationControllerBuilder<'a> {
                     process_monitor,
                     runtime,
                     self.app_handle,
+                    self.cli_health_flag.clone(),
                 ))),
             },
             Err(err) => {
@@ -196,6 +204,7 @@ fn build_controller_from_runtime(
     process_monitor: Arc<ProcessTracker>,
     runtime: crate::automation_runtime::AutomationRuntime,
     app_handle: Option<tauri::AppHandle>,
+    cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> AutomationController {
     info!(
         access_mode = ?runtime.access_mode,
@@ -205,12 +214,22 @@ fn build_controller_from_runtime(
     );
     let policy_client = Arc::new(PolicyClient::new());
     let sandbox = create_platform_sandbox(&config.automation.sandbox);
-    let mut controller = AutomationController::new(
-        policy_client,
-        audit_logger,
-        sandbox,
-        config.automation.sandbox.clone(),
-    );
+    let mut controller = if let Some(flag) = cli_health_flag {
+        AutomationController::new(
+            policy_client,
+            audit_logger,
+            sandbox,
+            config.automation.sandbox.clone(),
+        )
+        .with_health_flag(flag)
+    } else {
+        AutomationController::new(
+            policy_client,
+            audit_logger,
+            sandbox,
+            config.automation.sandbox.clone(),
+        )
+    };
     controller.set_enabled(true);
     controller.set_scene_finder(runtime.element_finder.clone());
     controller.set_intent_executor(runtime.intent_executor);

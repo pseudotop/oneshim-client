@@ -19,7 +19,7 @@
   --surface-elevated: 241 245 249; /* slate-100 */
   --surface-muted: 226 232 240; /* slate-200 */
   --surface-inset: 248 250 252; /* slate-50 */
-  --surface-sunken: 2 6 23; /* slate-950 */
+  --surface-sunken: 248 250 252; /* slate-50 — subtle recessed bg in light mode */
   --surface-overlay: 255 255 255; /* white — modal/popover bg */
 
   /* Content (text / icon fill) */

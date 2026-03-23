@@ -135,6 +135,9 @@ impl CaptureTrigger for SmartCaptureTrigger {
             importance,
             app_name: event.app_name.clone(),
             window_title: event.window_title.clone(),
+            // Window bounds are not available from ContextEvent; the caller
+            // sets this field after receiving the CaptureRequest.
+            window_bounds: None,
         })
     }
 }

@@ -54,8 +54,8 @@ function detectInitialStandaloneMode(): boolean {
     return false
   }
 
-  // Standalone-first default (opt-out via ?standalone=0)
-  return true
+  // Default to connected mode — standalone requires explicit opt-in via ?standalone=1
+  return false
 }
 
 let standaloneMode = detectInitialStandaloneMode()

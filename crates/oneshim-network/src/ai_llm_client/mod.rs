@@ -9,6 +9,8 @@ use oneshim_core::ports::credential_source::CredentialSource;
 use oneshim_core::ports::llm_provider::{
     InterpretedAction, LlmProvider, ScreenContext, SkillContext,
 };
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tracing::{debug, warn};
 mod parsers;
 mod request;
@@ -24,6 +26,9 @@ pub struct RemoteLlmProvider {
     surface_id: Option<String>,
     #[allow(dead_code)]
     timeout_secs: u64,
+    /// Health flag: `true` after a successful LLM request, `false` on failure.
+    /// Read by the health-check loop. `None` when no caller has wired a flag.
+    last_request_ok: Option<Arc<AtomicBool>>,
 }
 impl std::fmt::Debug for RemoteLlmProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -175,7 +180,14 @@ impl RemoteLlmProvider {
             provider_type: config.provider_type,
             surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
+            last_request_ok: None,
         })
+    }
+    /// Attach a shared health flag that is set to `true` on successful LLM request
+    /// and `false` on failure.
+    pub fn with_health_flag(mut self, flag: Arc<AtomicBool>) -> Self {
+        self.last_request_ok = Some(flag);
+        self
     }
     /// Create a provider with a managed credential source (e.g., OAuth).
     pub fn new_with_credential(
@@ -261,6 +273,7 @@ impl RemoteLlmProvider {
             provider_type: config.provider_type,
             surface_id: config.surface_id.clone(),
             timeout_secs: config.timeout_secs,
+            last_request_ok: None,
         })
     }
     fn llm_request_shape(&self) -> Result<ProviderRequestShape, CoreError> {

@@ -38,6 +38,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         overlay: resolve(__dirname, 'overlay.html'),
+        'tracking-panel': resolve(__dirname, 'tracking-panel.html'),
       },
       output: {
         manualChunks: {

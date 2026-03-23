@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tauri::App;
+use tauri::{App, Manager};
 use tracing::info;
 
 use crate::app_runtime_launch::{AppRuntimeLaunchBuilder, AppRuntimeLaunchResult};
@@ -21,11 +21,78 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // Register global overlay toggle shortcut (Cmd+Shift+O / Ctrl+Shift+O)
     register_overlay_shortcut(app);
 
+    // Register capture toggle shortcut (Cmd+Shift+\ / Ctrl+Shift+\)
+    register_capture_shortcut(app);
+
     // 12. Desktop shell startup
     DesktopStartupCoordinator::apply(app, frontend_web_port)?;
 
+    // Create tracking panel window (starts hidden, auto-shown if indicator is configured visible)
+    let _ = crate::magic_overlay::create_tracking_panel(&_app_handle);
+    if let Some(state) = _app_handle.try_state::<crate::runtime_state::AppState>() {
+        if state
+            .indicator_visible
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            if let Some(panel) = _app_handle.get_webview_window("tracking-panel") {
+                let _ = panel.show();
+            }
+        }
+    }
+
     info!("Tauri setup complete");
     Ok(())
+}
+
+/// Register Cmd+Shift+\ (macOS) / Ctrl+Shift+\ (Windows/Linux) to toggle
+/// capture pause state. Emits state change events to overlay and tracking panel,
+/// and rebuilds the tray menu to reflect the new state.
+fn register_capture_shortcut(app: &App) {
+    use tauri::{Emitter, Manager};
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    let result =
+        app.global_shortcut()
+            .on_shortcut("CmdOrCtrl+Shift+\\", |app_handle, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let handle = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(state) = handle.try_state::<crate::runtime_state::AppState>() {
+                            let was_paused = state
+                                .capture_paused
+                                .fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+                            let new_paused = !was_paused;
+                            let indicator_visible = state
+                                .indicator_visible
+                                .load(std::sync::atomic::Ordering::Relaxed);
+                            let payload = serde_json::json!({
+                                "paused": new_paused,
+                                "indicator_visible": indicator_visible
+                            });
+                            let _ = handle.emit_to(
+                                "magic-overlay",
+                                "overlay:capture-state-changed",
+                                &payload,
+                            );
+                            let _ = handle.emit_to(
+                                "tracking-panel",
+                                "overlay:capture-state-changed",
+                                &payload,
+                            );
+                            let _ = crate::tray::sync_tray_state(
+                                &handle,
+                                new_paused,
+                                indicator_visible,
+                            );
+                        }
+                    });
+                }
+            });
+
+    match result {
+        Ok(()) => info!("Global shortcut registered: CmdOrCtrl+Shift+\\ (capture toggle)"),
+        Err(e) => tracing::warn!("Failed to register capture shortcut: {e}"),
+    }
 }
 
 /// Register Cmd+Shift+O (macOS) / Ctrl+Shift+O (Windows/Linux) to toggle

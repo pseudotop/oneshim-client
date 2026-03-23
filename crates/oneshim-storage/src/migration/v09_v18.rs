@@ -10,6 +10,7 @@
 //! V16: IVF index + 2-bit binary codes
 //! V17: coaching engine tables
 //! V18: Korean trigram FTS5 table (search_trigram)
+//! V19: app_meta key-value table (onboarding state, etc.)
 
 use rusqlite::Connection;
 use tracing::{debug, info, warn};
@@ -474,5 +475,20 @@ pub(super) fn migrate_v18(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch("INSERT INTO schema_version (version) VALUES (18);")?;
 
     info!("migration V18 complete: Korean trigram FTS5 table");
+    Ok(())
+}
+
+pub(super) fn migrate_v19(conn: &Connection) -> Result<(), rusqlite::Error> {
+    debug!("migration V19 execution: app_meta key-value table");
+
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS app_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        INSERT INTO schema_version (version) VALUES (19);",
+    )?;
+
+    info!("migration V19 complete: app_meta table");
     Ok(())
 }

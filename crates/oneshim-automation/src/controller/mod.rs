@@ -9,6 +9,7 @@ pub use types::{
     PlannedIntentResult, WorkflowResult, WorkflowStepResult,
 };
 
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -41,6 +42,9 @@ pub struct AutomationController {
     pub(super) intent_planner: Option<Arc<dyn IntentPlanner>>,
     pub(super) scene_finder: Option<Arc<dyn ElementFinder>>,
     pub(super) gui_service: Option<Arc<GuiInteractionService>>,
+    /// Health flag: `true` after a successful command, `false` on failure.
+    /// Read by the health-check loop. `None` when no caller has wired a flag.
+    pub(super) last_command_ok: Option<Arc<AtomicBool>>,
 }
 
 impl AutomationController {
@@ -65,7 +69,15 @@ impl AutomationController {
             intent_planner: None,
             scene_finder: None,
             gui_service: None,
+            last_command_ok: None,
         }
+    }
+
+    /// Attach a shared health flag that is set to `true` on successful command
+    /// execution and `false` on failure.
+    pub fn with_health_flag(mut self, flag: Arc<AtomicBool>) -> Self {
+        self.last_command_ok = Some(flag);
+        self
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {

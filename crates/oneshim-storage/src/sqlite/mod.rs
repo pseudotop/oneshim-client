@@ -192,6 +192,34 @@ impl SqliteStorage {
         .await
         .map_err(|e| CoreError::Internal(format!("spawn_blocking join error: {e}")))?
     }
+
+    // ── app_meta key-value helpers (V19) ────────────────────────────
+
+    /// Retrieve a value from the `app_meta` table, or `None` if the key does not exist.
+    pub fn get_meta(&self, key: &str) -> Option<String> {
+        let conn = self.conn.lock().ok()?;
+        conn.query_row("SELECT value FROM app_meta WHERE key = ?1", [key], |row| {
+            row.get(0)
+        })
+        .ok()
+    }
+
+    /// Insert or replace a value in the `app_meta` table.
+    pub fn set_meta(&self, key: &str, value: &str) {
+        if let Ok(conn) = self.conn.lock() {
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value) VALUES (?1, ?2)",
+                rusqlite::params![key, value],
+            );
+        }
+    }
+
+    /// Delete a key from the `app_meta` table.
+    pub fn delete_meta(&self, key: &str) {
+        if let Ok(conn) = self.conn.lock() {
+            let _ = conn.execute("DELETE FROM app_meta WHERE key = ?1", [key]);
+        }
+    }
 }
 
 /// Apply PRAGMA settings to a freshly opened connection.

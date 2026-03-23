@@ -16,6 +16,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <input
         ref={ref}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         className={cn(
           'w-full border placeholder-content-tertiary',
           radius.md,

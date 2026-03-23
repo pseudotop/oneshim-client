@@ -8,6 +8,7 @@ export default {
   content: [
     "./index.html",
     "./overlay.html",
+    "./tracking-panel.html",
     "./src/**/*.{js,ts,jsx,tsx}",
     "./.storybook/**/*.{js,ts,jsx,tsx}",
   ],
@@ -70,6 +71,15 @@ export default {
         hover: withAlpha('--hover'),
         active: withAlpha('--active'),
         border: withAlpha('--border'),
+      },
+      animation: {
+        'tracking-pulse': 'tracking-pulse 3s ease-in-out infinite',
+      },
+      keyframes: {
+        'tracking-pulse': {
+          '0%, 100%': { opacity: '0.4' },
+          '50%': { opacity: '0.7' },
+        },
       },
       borderColor: {
         DEFAULT: withAlpha('--border'),

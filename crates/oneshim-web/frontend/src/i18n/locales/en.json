@@ -176,6 +176,8 @@
     "language": "Language",
     "korean": "한국어",
     "english": "English",
+    "viewSetupGuide": "View Setup Guide",
+    "viewSetupGuideDesc": "Re-open the first-run setup walkthrough.",
     "storageStats": "Storage Stats",
     "totalSize": "Total Size",
     "frameCount": "Frames",
@@ -1019,5 +1021,25 @@
       "ContextRestore": "Context Restore",
       "GoalTracker": "Goal Tracker"
     }
+  },
+  "onboarding": {
+    "step1Title": "Welcome to ONESHIM",
+    "step1Desc": "ONESHIM monitors your desktop activity and provides intelligent suggestions to boost productivity.",
+    "step2Title": "Permissions",
+    "step2Desc": "ONESHIM needs some permissions to work effectively.",
+    "step2Accessibility": "Accessibility",
+    "step2ScreenCapture": "Screen Capture",
+    "step2Notifications": "Notifications",
+    "step3Title": "Features",
+    "step3Desc": "Here's what ONESHIM can do for you.",
+    "step3Capture": "Real-time context capture",
+    "step3Analysis": "AI-powered analysis",
+    "step3Suggestions": "Smart suggestions",
+    "step4Title": "Ready to Go",
+    "step4Desc": "You're all set. Start using ONESHIM now.",
+    "next": "Next",
+    "back": "Back",
+    "skip": "Skip",
+    "complete": "Get Started"
   }
 }

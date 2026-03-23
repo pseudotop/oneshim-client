@@ -76,6 +76,27 @@ pub fn fast_resize(
     if width == 0 || height == 0 {
         return Err(CoreError::Internal("Target image size is zero".to_string()));
     }
+    // Guard against buffer overflow inside fast_image_resize.
+    // 32768 accommodates triple 6K displays (18048px) and 8K monitors.
+    // The actual crash was from usize::unchecked_add — log dimensions for diagnosis.
+    const MAX_DIM: u32 = 32768;
+    if src_w > MAX_DIM || src_h > MAX_DIM {
+        tracing::warn!(
+            src_w,
+            src_h,
+            target_w = width,
+            target_h = height,
+            "Source image exceeds max resize dimension"
+        );
+        return Err(CoreError::Internal(format!(
+            "Source image too large for resize: {src_w}x{src_h} (max {MAX_DIM})"
+        )));
+    }
+    if width > MAX_DIM || height > MAX_DIM {
+        return Err(CoreError::Internal(format!(
+            "Target size too large: {width}x{height} (max {MAX_DIM})"
+        )));
+    }
 
     let hash = compute_image_hash(image);
     let cache_key = (hash, width, height);
@@ -273,6 +294,20 @@ mod tests {
     fn zero_size_target_error() {
         let img = make_test_image(100, 100, [100, 100, 100, 255]);
         let result = fast_resize(&img, 0, 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn oversized_target_error() {
+        let img = make_test_image(100, 100, [100, 100, 100, 255]);
+        let result = fast_resize(&img, 33000, 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn oversized_target_height_error() {
+        let img = make_test_image(100, 100, [100, 100, 100, 255]);
+        let result = fast_resize(&img, 100, 33000);
         assert!(result.is_err());
     }
 }

@@ -51,6 +51,7 @@ impl Scheduler {
         let overlay_ref = self.magic_overlay.clone();
         let coaching_storage_ref = self.coaching_storage.clone();
         let coaching_analysis_provider = self.analysis_provider.clone();
+        let capture_paused = self.capture_paused.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
@@ -226,6 +227,8 @@ impl Scheduler {
                                     input_activity_level: input_collector.peek_activity_level(),
                                 };
 
+                                // Skip capture/frame processing when paused
+                                if !capture_paused.load(std::sync::atomic::Ordering::Relaxed) {
                                 // --- Ring buffer: capture thumbnail every cycle ---
                                 if let Ok(thumb_data) = processor.capture_thumbnail().await {
                                     ring_buffer.push(RingFrame {
@@ -252,7 +255,11 @@ impl Scheduler {
                                     // Force capture during post-event window (dashcam "after" frames)
                                     let force_post = ring_buffer.should_force_post_capture();
 
-                                    if let Some(capture_req) = capture_req {
+                                    if let Some(mut capture_req) = capture_req {
+                                        // Inject active window bounds so the frame processor
+                                        // captures the correct monitor in multi-monitor setups.
+                                        capture_req.window_bounds = window_bounds;
+
                                         // --- Ring buffer: flush pre-event frames on significant capture ---
                                         if let Some(ref fs) = frame_storage1 {
                                             let flush_frame = RingFrame {
@@ -286,7 +293,6 @@ impl Scheduler {
                                             &frame_storage1,
                                             &sqlite1,
                                             &session1,
-                                            window_bounds.as_ref(),
                                         ).await;
                                         focus_ocr_hint = ocr_hint;
                                         if !regions.is_empty() {
@@ -304,6 +310,7 @@ impl Scheduler {
                                         }
                                     }
                                 }
+                                } // end capture_paused guard
 
                                 let ctx_event = Event::Context(event);
                                 if let Err(e) = storage1.save_event(&ctx_event).await {
