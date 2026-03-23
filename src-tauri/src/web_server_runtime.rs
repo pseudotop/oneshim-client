@@ -359,7 +359,11 @@ fn spawn_gui_audit_forwarder(
 
     let mut rx = gui_service.subscribe();
 
-    tokio::spawn(async move {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        tracing::warn!("No tokio runtime — GUI audit forwarder not started");
+        return;
+    };
+    handle.spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(event) => {
