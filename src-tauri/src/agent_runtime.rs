@@ -746,6 +746,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
     }
 
     #[cfg(feature = "server")]
+    #[allow(dead_code)] // retained for external injection; support context is the primary path
     pub(crate) fn with_suggestion_receiver(
         mut self,
         receiver: Arc<oneshim_suggestion::receiver::SuggestionReceiver>,
