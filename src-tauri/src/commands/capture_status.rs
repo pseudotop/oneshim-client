@@ -33,6 +33,7 @@ pub async fn toggle_capture_pause(
         serde_json::json!({ "paused": new_paused, "indicator_visible": indicator_visible });
     let _ = app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload);
     let _ = app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload);
+    let _ = crate::tray::sync_tray_state(&app, new_paused, indicator_visible);
 
     Ok(CaptureStatusResponse {
         paused: new_paused,
@@ -60,6 +61,7 @@ pub async fn set_indicator_visible(
             let _ = panel.hide();
         }
     }
+    let _ = crate::tray::sync_tray_state(&app, paused, visible);
 
     Ok(())
 }

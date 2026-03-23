@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tauri::App;
+use tauri::{App, Manager};
 use tracing::info;
 
 use crate::app_runtime_launch::{AppRuntimeLaunchBuilder, AppRuntimeLaunchResult};
@@ -27,8 +27,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // 12. Desktop shell startup
     DesktopStartupCoordinator::apply(app, frontend_web_port)?;
 
-    // Create tracking panel window (starts hidden, shown when indicator_visible is true)
+    // Create tracking panel window (starts hidden, auto-shown if indicator is configured visible)
     let _ = crate::magic_overlay::create_tracking_panel(&_app_handle);
+    if let Some(state) = _app_handle.try_state::<crate::runtime_state::AppState>() {
+        if state
+            .indicator_visible
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            if let Some(panel) = _app_handle.get_webview_window("tracking-panel") {
+                let _ = panel.show();
+            }
+        }
+    }
 
     info!("Tauri setup complete");
     Ok(())
@@ -69,7 +79,7 @@ fn register_capture_shortcut(app: &App) {
                                 "overlay:capture-state-changed",
                                 &payload,
                             );
-                            let _ = crate::tray::rebuild_tray_menu(
+                            let _ = crate::tray::sync_tray_state(
                                 &handle,
                                 new_paused,
                                 indicator_visible,

@@ -74,8 +74,10 @@ impl AppRuntimeLaunchBuilder {
         // Shared capture pause flag: scheduler monitor loop, tray menu, and IPC commands
         // all reference the same AtomicBool to toggle capture on/off.
         let capture_paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        // Tracking indicator visibility (default: visible).
-        let indicator_visible = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        // Tracking indicator visibility — initialized from persisted config.
+        let indicator_visible = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+            config.indicator.show_border,
+        ));
 
         #[cfg(feature = "server")]
         server_context

@@ -16,18 +16,40 @@ fn focus_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
 /// 시스템 트레이 메뉴 설정 — 아이콘 + 메뉴 + 이벤트 핸들러 통합.
 /// tauri.conf.json의 trayIcon은 null로 설정하고 여기서 전부 처리.
 pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
+    // Read initial state from AppState (config-driven, registered before tray setup)
+    let (paused, indicator_visible) = app
+        .try_state::<crate::runtime_state::AppState>()
+        .map(|s| {
+            (
+                s.capture_paused.load(std::sync::atomic::Ordering::Relaxed),
+                s.indicator_visible
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            )
+        })
+        .unwrap_or((false, true));
+
+    let status_text = if paused {
+        "⏸ Paused"
+    } else {
+        "🟢 Capturing"
+    };
+    let toggle_text = if paused {
+        "Resume Capture"
+    } else {
+        "Pause Capture"
+    };
+    let indicator_text = if indicator_visible {
+        "Hide Indicator"
+    } else {
+        "Show Indicator"
+    };
+
     // Status items (prepended before existing menu items)
     let capture_status =
-        MenuItem::with_id(app, "capture-status", "🟢 Capturing", false, None::<&str>)?;
-    let toggle_capture =
-        MenuItem::with_id(app, "toggle-capture", "Pause Capture", true, None::<&str>)?;
-    let toggle_indicator = MenuItem::with_id(
-        app,
-        "toggle-indicator",
-        "Hide Indicator",
-        true,
-        None::<&str>,
-    )?;
+        MenuItem::with_id(app, "capture-status", status_text, false, None::<&str>)?;
+    let toggle_capture = MenuItem::with_id(app, "toggle-capture", toggle_text, true, None::<&str>)?;
+    let toggle_indicator =
+        MenuItem::with_id(app, "toggle-indicator", indicator_text, true, None::<&str>)?;
     let status_sep = PredefinedMenuItem::separator(app)?;
 
     // Existing menu items
@@ -57,12 +79,13 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
         ],
     )?;
 
-    let tray_icon = Image::from_bytes(include_bytes!("../icons/tray_icon.png"))
-        .expect("embedded tray_icon.png must be valid");
+    // Initial icon with status dot (non-template for color support)
+    let (rgba, w, h) = crate::tray_icon::status_icon(paused);
+    let initial_icon = Image::new_owned(rgba, w, h);
 
     TrayIconBuilder::with_id("main-tray")
-        .icon(tray_icon)
-        .icon_as_template(true)
+        .icon(initial_icon)
+        .icon_as_template(false)
         .menu(&menu)
         .tooltip("ONESHIM")
         .show_menu_on_left_click(true)
@@ -83,7 +106,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                     let _ = app.emit_to("magic-overlay", "overlay:capture-state-changed", &payload);
                     let _ =
                         app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload);
-                    let _ = rebuild_tray_menu(app, new_paused, indicator_visible);
+                    let _ = sync_tray_state(app, new_paused, indicator_visible);
                 }
             }
             "toggle-indicator" => {
@@ -109,7 +132,7 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                             let _ = panel.hide();
                         }
                     }
-                    let _ = rebuild_tray_menu(app, paused, new_visible);
+                    let _ = sync_tray_state(app, paused, new_visible);
                 }
             }
             "show" => {
@@ -162,20 +185,27 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
         })
         .build(app)?;
 
-    info!("system tray initialized with 9 menu items");
+    info!("system tray initialized with status icon");
     Ok(())
 }
 
-/// Rebuild the tray menu with updated capture/indicator status text.
+/// Update tray icon and menu to reflect current capture state.
 ///
-/// Tauri v2 menu items are immutable after creation, so we recreate
-/// the entire menu with fresh items and set it on the existing tray icon.
-pub fn rebuild_tray_menu<R: Runtime>(
+/// Combines icon swap (colored status dot) with menu text rebuild.
+/// Called from tray event handlers and IPC commands.
+pub fn sync_tray_state<R: Runtime>(
     app: &tauri::AppHandle<R>,
     paused: bool,
     indicator_visible: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(tray) = app.tray_by_id("main-tray") {
+        // Update icon with status dot
+        let (rgba, w, h) = crate::tray_icon::status_icon(paused);
+        let icon = Image::new_owned(rgba, w, h);
+        tray.set_icon(Some(icon))?;
+        tray.set_icon_as_template(false)?;
+
+        // Rebuild menu text
         let status_text = if paused {
             "⏸ Paused"
         } else {

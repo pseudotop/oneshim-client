@@ -62,6 +62,7 @@ mod storage_runtime;
 mod subprocess_provider;
 mod sync_engine;
 mod tray;
+mod tray_icon;
 mod update_coordinator;
 mod update_runtime;
 mod updater;

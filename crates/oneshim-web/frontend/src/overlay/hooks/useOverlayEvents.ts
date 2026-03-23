@@ -16,7 +16,7 @@ const initialState: OverlayState = {
   coaching: null,
   focusHighlight: null,
   goals: [],
-  captureState: { paused: false, indicator_visible: true },
+  captureState: { paused: false, indicator_visible: false },
 }
 
 function reducer(state: OverlayState, action: OverlayAction): OverlayState {
@@ -85,6 +85,13 @@ export function useOverlayEvents() {
       })
 
       unlisten = [u1, u2, u3, u4, u5, u6, u7, u8]
+
+      // Query actual backend state (overlay window may be created after state changes)
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const status = await invoke<CaptureStatePayload>('get_capture_status')
+        dispatch({ type: 'capture-state-changed', payload: status })
+      } catch { /* standalone/dev mode — keep defaults */ }
     }
 
     setup()
