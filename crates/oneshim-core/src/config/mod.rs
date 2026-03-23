@@ -56,6 +56,8 @@ pub struct AppConfig {
     pub sync: SyncConfig,
     #[serde(default)]
     pub coaching: CoachingConfig,
+    #[serde(default)]
+    pub indicator: IndicatorConfig,
 }
 
 // AppConfig impl
@@ -107,6 +109,7 @@ impl AppConfig {
             analysis: AnalysisConfig::default(),
             sync: SyncConfig::default(),
             coaching: CoachingConfig::default(),
+            indicator: IndicatorConfig::default(),
         }
     }
 
