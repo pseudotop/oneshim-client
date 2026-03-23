@@ -60,10 +60,21 @@ fi
 UNRELEASED_CONTENT=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## \[/{exit} found{print}' "${CHANGELOG}" | grep -v '^[[:space:]]*$' || true)
 
 if [[ -z "${UNRELEASED_CONTENT}" ]]; then
-    die "[Unreleased] 섹션이 비어 있습니다. CHANGELOG.md에 변경 내용을 먼저 추가하세요.
-힌트: git-cliff --unreleased --prepend CHANGELOG.md 를 실행하면 자동으로 채워집니다."
+    info "[Unreleased] 섹션이 비어 있습니다. git-cliff로 자동 생성합니다..."
+    if command -v git-cliff &>/dev/null; then
+        git-cliff --unreleased --prepend "${CHANGELOG}"
+        UNRELEASED_CONTENT=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## \[/{exit} found{print}' "${CHANGELOG}" | grep -v '^[[:space:]]*$' || true)
+        if [[ -z "${UNRELEASED_CONTENT}" ]]; then
+            die "git-cliff 실행 후에도 [Unreleased] 섹션이 비어 있습니다. conventional commit이 없는 것 같습니다."
+        fi
+        success "git-cliff로 [Unreleased] 섹션을 자동 생성했습니다"
+    else
+        die "[Unreleased] 섹션이 비어 있고 git-cliff가 설치되지 않았습니다.
+힌트: cargo install git-cliff && git-cliff --unreleased --prepend CHANGELOG.md"
+    fi
+else
+    success "[Unreleased] 섹션에 내용이 있습니다"
 fi
-success "[Unreleased] 섹션에 내용이 있습니다"
 
 # ── 현재 브랜치 검증 ──────────────────────────────────────────────────────────
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
