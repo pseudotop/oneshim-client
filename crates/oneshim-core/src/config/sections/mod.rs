@@ -19,6 +19,7 @@ mod monitoring;
 mod network;
 mod privacy;
 mod storage;
+mod suggestion;
 mod sync;
 
 pub use ai::*;
@@ -31,6 +32,7 @@ pub use monitoring::*;
 pub use network::*;
 pub use privacy::*;
 pub use storage::*;
+pub use suggestion::*;
 pub use sync::*;
 
 // ── pub(super) 재노출 — config/mod.rs 의 AppConfig::default_config() 에서 직접 사용 ──
