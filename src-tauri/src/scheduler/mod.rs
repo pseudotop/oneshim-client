@@ -153,6 +153,8 @@ pub struct Scheduler {
     /// Concrete SQLite storage for coaching event persistence (Phase 2).
     /// The coaching storage methods are on `SqliteStorage` directly, not via a trait.
     pub(super) coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
+    /// Shared flag: when `true` the monitor loop skips capture/frame processing.
+    pub(super) capture_paused: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Scheduler {
@@ -203,6 +205,7 @@ impl Scheduler {
             magic_overlay: None,
             analysis_provider: None,
             coaching_storage: None,
+            capture_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -328,6 +331,11 @@ impl Scheduler {
         storage: Arc<oneshim_storage::sqlite::SqliteStorage>,
     ) -> Self {
         self.coaching_storage = Some(storage);
+        self
+    }
+
+    pub fn with_capture_paused(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.capture_paused = flag;
         self
     }
 

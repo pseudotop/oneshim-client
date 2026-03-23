@@ -7,7 +7,7 @@ use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use serde::Serialize;
-use std::sync::atomic::AtomicU16;
+use std::sync::atomic::{AtomicBool, AtomicU16};
 use std::sync::Arc;
 use tauri::{App, Manager};
 
@@ -38,6 +38,10 @@ pub struct AppState {
     /// Typed as `dyn CoachingPort` so Tauri IPC commands call through the port trait,
     /// keeping the binary crate decoupled from the concrete `CoachingEngine` type.
     pub coaching_engine: Option<Arc<dyn CoachingPort>>,
+    /// Whether capture/monitoring is paused (toggled via tray or IPC).
+    pub capture_paused: Arc<AtomicBool>,
+    /// Whether the tracking indicator border is visible.
+    pub indicator_visible: Arc<AtomicBool>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -237,6 +241,8 @@ mod tests {
             recluster_requested: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             magic_overlay: None,
             coaching_engine: None,
+            capture_paused: Arc::new(AtomicBool::new(false)),
+            indicator_visible: Arc::new(AtomicBool::new(true)),
         })
         .build();
 

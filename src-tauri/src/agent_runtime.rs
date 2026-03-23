@@ -48,6 +48,7 @@ pub(crate) struct AgentRuntimeBundle {
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl AgentRuntimeBundle {
@@ -475,6 +476,9 @@ impl AgentRuntimeBundle {
         if let Some(overlay) = self.magic_overlay {
             scheduler = scheduler.with_magic_overlay(overlay);
         }
+        if let Some(capture_paused) = self.capture_paused {
+            scheduler = scheduler.with_capture_paused(capture_paused);
+        }
 
         // --- Phase 2: Accessibility extractor (gated by config + consent) ---
         {
@@ -527,6 +531,7 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -564,6 +569,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             coaching_engine: None,
             coaching_storage: None,
             magic_overlay: None,
+            capture_paused: None,
         }
     }
 
@@ -644,6 +650,11 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_capture_paused(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.capture_paused = Some(flag);
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -667,6 +678,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             coaching_engine: self.coaching_engine,
             coaching_storage: self.coaching_storage,
             magic_overlay: self.magic_overlay,
+            capture_paused: self.capture_paused,
         }
     }
 }

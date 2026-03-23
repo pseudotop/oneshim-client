@@ -218,6 +218,9 @@ fn main() {
             commands::coaching::get_coaching_history,
             commands::coaching::get_goal_progress,
             commands::coaching::update_regime_goals,
+            commands::capture_status::get_capture_status,
+            commands::capture_status::toggle_capture_pause,
+            commands::capture_status::set_indicator_visible,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

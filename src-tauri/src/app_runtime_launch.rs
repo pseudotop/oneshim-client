@@ -71,6 +71,12 @@ impl AppRuntimeLaunchBuilder {
         // all reference the same AtomicBool so any endpoint can trigger re-clustering.
         let recluster_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+        // Shared capture pause flag: scheduler monitor loop, tray menu, and IPC commands
+        // all reference the same AtomicBool to toggle capture on/off.
+        let capture_paused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // Tracking indicator visibility (default: visible).
+        let indicator_visible = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+
         #[cfg(feature = "server")]
         server_context
             .spawn_integration_loops(&core_resources.background_runtime, sqlite_storage.clone());
@@ -115,7 +121,8 @@ impl AppRuntimeLaunchBuilder {
             )))
             .with_coaching_engine(coaching_engine.clone())
             .with_coaching_storage(sqlite_storage.clone())
-            .with_magic_overlay(magic_overlay.clone());
+            .with_magic_overlay(magic_overlay.clone())
+            .with_capture_paused(capture_paused.clone());
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()
@@ -169,6 +176,8 @@ impl AppRuntimeLaunchBuilder {
             coaching_engine: Some(
                 coaching_engine as Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
             ),
+            capture_paused,
+            indicator_visible,
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);
