@@ -332,7 +332,7 @@ impl Scheduler {
         #[cfg(feature = "server")]
         let suggestion_task = if self.suggestions_enabled {
             self.suggestion_receiver.as_ref().map(|receiver| {
-                loops::suggestions::spawn_suggestion_loop(
+                super::suggestions::spawn_suggestion_loop(
                     receiver.clone(),
                     session_id.clone(),
                     shutdown_rx.clone(),
