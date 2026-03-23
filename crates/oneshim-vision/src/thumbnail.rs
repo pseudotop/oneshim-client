@@ -76,6 +76,20 @@ pub fn fast_resize(
     if width == 0 || height == 0 {
         return Err(CoreError::Internal("Target image size is zero".to_string()));
     }
+    // Guard against extremely large dimensions that cause integer overflow
+    // inside fast_image_resize (usize::unchecked_add precondition failure).
+    // 16384 is a safe upper bound — no real thumbnail needs to be larger.
+    const MAX_DIM: u32 = 16384;
+    if src_w > MAX_DIM || src_h > MAX_DIM {
+        return Err(CoreError::Internal(format!(
+            "Source image too large for resize: {src_w}x{src_h} (max {MAX_DIM}x{MAX_DIM})"
+        )));
+    }
+    if width > MAX_DIM || height > MAX_DIM {
+        return Err(CoreError::Internal(format!(
+            "Target size too large for resize: {width}x{height} (max {MAX_DIM}x{MAX_DIM})"
+        )));
+    }
 
     let hash = compute_image_hash(image);
     let cache_key = (hash, width, height);
@@ -273,6 +287,20 @@ mod tests {
     fn zero_size_target_error() {
         let img = make_test_image(100, 100, [100, 100, 100, 255]);
         let result = fast_resize(&img, 0, 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn oversized_target_error() {
+        let img = make_test_image(100, 100, [100, 100, 100, 255]);
+        let result = fast_resize(&img, 20000, 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn oversized_target_height_error() {
+        let img = make_test_image(100, 100, [100, 100, 100, 255]);
+        let result = fast_resize(&img, 100, 20000);
         assert!(result.is_err());
     }
 }
