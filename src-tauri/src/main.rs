@@ -223,6 +223,9 @@ fn main() {
             commands::capture_status::toggle_capture_pause,
             commands::capture_status::set_indicator_visible,
             commands::capture_status::get_connection_status,
+            commands::onboarding::get_onboarding_status,
+            commands::onboarding::complete_onboarding,
+            commands::onboarding::reset_onboarding,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

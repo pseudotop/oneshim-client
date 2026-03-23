@@ -166,7 +166,7 @@ fn migration_all_versions() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 18);
+    assert_eq!(version, 19);
 
     // V9 tables
     let count: i64 = conn
@@ -366,7 +366,7 @@ fn migration_all_versions() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 18);
+    assert_eq!(version, 19);
 
     // V17 tables
     let count: i64 = conn
@@ -416,13 +416,23 @@ fn migration_all_versions() {
         .unwrap();
     assert_eq!(count, 1);
 
+    // V19 — app_meta table
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='app_meta'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1);
+
     // Final version check
     let version: u32 = conn
         .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 18);
+    assert_eq!(version, 19);
 }
 
 #[test]
@@ -487,5 +497,5 @@ fn migration_idempotent() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 18);
+    assert_eq!(version, 19);
 }

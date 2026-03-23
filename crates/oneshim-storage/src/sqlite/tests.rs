@@ -793,3 +793,29 @@ fn gui_interactions_available_set_after_disk_open() {
         "GUI_INTERACTIONS_AVAILABLE should be true after disk open with migrations"
     );
 }
+
+#[test]
+fn meta_roundtrip() {
+    let storage = SqliteStorage::open_in_memory(30).unwrap();
+
+    // Key does not exist yet
+    assert_eq!(storage.get_meta("onboarding_completed"), None);
+
+    // Set and read back
+    storage.set_meta("onboarding_completed", "true");
+    assert_eq!(
+        storage.get_meta("onboarding_completed"),
+        Some("true".to_string())
+    );
+
+    // Overwrite
+    storage.set_meta("onboarding_completed", "false");
+    assert_eq!(
+        storage.get_meta("onboarding_completed"),
+        Some("false".to_string())
+    );
+
+    // Delete and verify absence
+    storage.delete_meta("onboarding_completed");
+    assert_eq!(storage.get_meta("onboarding_completed"), None);
+}
