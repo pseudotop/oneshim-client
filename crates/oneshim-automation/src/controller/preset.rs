@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use crate::controller::gate::WORKFLOW_STEP_POLICY_TOKEN;
@@ -177,6 +178,13 @@ impl AutomationController {
         cmd: &AutomationCommand,
     ) -> Result<CommandResult, CoreError> {
         self.ensure_enabled()?;
-        self.command_execution_gate().execute(cmd).await
+        let result = self.command_execution_gate().execute(cmd).await;
+        if let Some(ref flag) = self.last_command_ok {
+            match &result {
+                Ok(CommandResult::Success) => flag.store(true, Ordering::Relaxed),
+                Ok(_) | Err(_) => flag.store(false, Ordering::Relaxed),
+            }
+        }
+        result
     }
 }

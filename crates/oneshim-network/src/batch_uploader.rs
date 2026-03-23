@@ -30,6 +30,9 @@ pub struct BatchUploader {
     failed_batches: AtomicUsize,
     /// Cumulative count of events dropped due to queue capacity overflow.
     total_dropped: AtomicUsize,
+    /// Health flag: `true` after a successful upload, `false` after retries exhausted.
+    /// Read by the health-check loop (Task 2). `None` when no caller has wired a flag.
+    last_upload_ok: Option<Arc<AtomicBool>>,
 }
 
 impl BatchUploader {
@@ -51,7 +54,15 @@ impl BatchUploader {
             pressure_warned: AtomicBool::new(false),
             failed_batches: AtomicUsize::new(0),
             total_dropped: AtomicUsize::new(0),
+            last_upload_ok: None,
         }
+    }
+
+    /// Attach a shared health flag that is set to `true` on successful upload
+    /// and `false` when all retries are exhausted.
+    pub fn with_health_flag(mut self, flag: Arc<AtomicBool>) -> Self {
+        self.last_upload_ok = Some(flag);
+        self
     }
 
     pub fn with_dynamic_batch(mut self, enabled: bool) -> Self {
@@ -202,6 +213,9 @@ impl BatchUploader {
         for attempt in 0..=self.max_retries {
             match self.api_client.upload_batch(&batch).await {
                 Ok(()) => {
+                    if let Some(ref flag) = self.last_upload_ok {
+                        flag.store(true, Ordering::Relaxed);
+                    }
                     debug!("batch upload success: {actual_count}items event");
                     return Ok(actual_count);
                 }
@@ -216,6 +230,9 @@ impl BatchUploader {
                         retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
                     } else {
                         error!("batch upload final failure: {e}");
+                        if let Some(ref flag) = self.last_upload_ok {
+                            flag.store(false, Ordering::Relaxed);
+                        }
                         self.failed_batches.fetch_add(1, Ordering::Relaxed);
                         self.requeue_failed_events(batch.events);
                         return Err(e);

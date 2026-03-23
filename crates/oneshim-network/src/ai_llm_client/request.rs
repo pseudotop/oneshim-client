@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use super::parsers;
 use super::RemoteLlmProvider;
 use oneshim_api_contracts::provider_specs::ProviderAuthScheme;
@@ -137,16 +139,21 @@ impl RemoteLlmProvider {
                 }
             }
         }
-        let response = builder
-            .send()
-            .await
-            .map_err(|e| CoreError::Network(format!("LLM API request failed: {}", e)))?;
+        let response = builder.send().await.map_err(|e| {
+            if let Some(ref flag) = self.last_request_ok {
+                flag.store(false, Ordering::Relaxed);
+            }
+            CoreError::Network(format!("LLM API request failed: {}", e))
+        })?;
         let status = response.status();
         let body = response
             .text()
             .await
             .map_err(|e| CoreError::Network(format!("LLM API response read failure: {}", e)))?;
         if !status.is_success() {
+            if let Some(ref flag) = self.last_request_ok {
+                flag.store(false, Ordering::Relaxed);
+            }
             warn!(status = %status, "LLM API error response");
             return Err(CoreError::Network(format!(
                 "LLM API error ({}): {}",
@@ -169,6 +176,9 @@ impl RemoteLlmProvider {
                 ));
             }
         };
+        if let Some(ref flag) = self.last_request_ok {
+            flag.store(true, Ordering::Relaxed);
+        }
         debug!(action_type = %action.action_type, target = ?action.target_text, confidence = action.confidence, "LLM intent interpretation completed");
         Ok(action)
     }
