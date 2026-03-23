@@ -76,18 +76,25 @@ pub fn fast_resize(
     if width == 0 || height == 0 {
         return Err(CoreError::Internal("Target image size is zero".to_string()));
     }
-    // Guard against extremely large dimensions that cause integer overflow
-    // inside fast_image_resize (usize::unchecked_add precondition failure).
-    // 16384 is a safe upper bound — no real thumbnail needs to be larger.
-    const MAX_DIM: u32 = 16384;
+    // Guard against buffer overflow inside fast_image_resize.
+    // 32768 accommodates triple 6K displays (18048px) and 8K monitors.
+    // The actual crash was from usize::unchecked_add — log dimensions for diagnosis.
+    const MAX_DIM: u32 = 32768;
     if src_w > MAX_DIM || src_h > MAX_DIM {
+        tracing::warn!(
+            src_w,
+            src_h,
+            target_w = width,
+            target_h = height,
+            "Source image exceeds max resize dimension"
+        );
         return Err(CoreError::Internal(format!(
-            "Source image too large for resize: {src_w}x{src_h} (max {MAX_DIM}x{MAX_DIM})"
+            "Source image too large for resize: {src_w}x{src_h} (max {MAX_DIM})"
         )));
     }
     if width > MAX_DIM || height > MAX_DIM {
         return Err(CoreError::Internal(format!(
-            "Target size too large for resize: {width}x{height} (max {MAX_DIM}x{MAX_DIM})"
+            "Target size too large: {width}x{height} (max {MAX_DIM})"
         )));
     }
 
