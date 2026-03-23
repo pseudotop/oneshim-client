@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.1-rc.5] - 2026-03-24
+## [0.4.1] - 2026-03-24
 ### Added
 
 - Add last_request_ok health flags to adapters
