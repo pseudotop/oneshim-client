@@ -45,6 +45,7 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> 
                 r#"tell application "System Events"
             set frontApp to first application process whose frontmost is true
             set appName to name of frontApp
+            set appPid to unix id of frontApp
             set winTitle to ""
             set winPos to {0, 0}
             set winSize to {0, 0}
@@ -54,7 +55,7 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> 
                 set winPos to position of frontWin
                 set winSize to size of frontWin
             end try
-            return appName & "|" & winTitle & "|" & (item 1 of winPos as integer) & "|" & (item 2 of winPos as integer) & "|" & (item 1 of winSize as integer) & "|" & (item 2 of winSize as integer)
+            return appName & "|" & winTitle & "|" & (item 1 of winPos as integer) & "|" & (item 2 of winPos as integer) & "|" & (item 1 of winSize as integer) & "|" & (item 2 of winSize as integer) & "|" & (appPid as integer)
         end tell"#,
             )
             .output(),
@@ -104,6 +105,17 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> 
     let app_name = parts[0].to_string();
     let title = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
 
+    // Filter out ONESHIM's own windows (tracking panel, overlay, dashboard)
+    // by comparing the frontmost app's PID with our own process PID.
+    let front_pid = parts
+        .get(6)
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
+    if front_pid > 0 && front_pid == std::process::id() {
+        debug!("skipping own window: {app_name} - {title} (pid={front_pid})");
+        return Ok(None);
+    }
+
     let bounds = if parts.len() >= 6 {
         let x = parts[2].parse::<i32>().unwrap_or(0);
         let y = parts[3].parse::<i32>().unwrap_or(0);
@@ -132,7 +144,7 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> 
     Ok(Some(WindowInfo {
         title,
         app_name,
-        pid: 0, // osascript cannot easily resolve PID
+        pid: front_pid,
         bounds,
     }))
 }
