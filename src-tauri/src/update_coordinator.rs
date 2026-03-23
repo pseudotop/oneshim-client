@@ -71,9 +71,18 @@ pub async fn run_update_coordinator(
         return;
     }
 
+    let check_interval_hours = config.check_interval_hours;
     let updater = Updater::new(config);
 
-    run_update_coordinator_with_executor(updater, state, action_rx, status_tx, auto_install).await;
+    run_update_coordinator_with_executor(
+        updater,
+        state,
+        action_rx,
+        status_tx,
+        auto_install,
+        check_interval_hours,
+    )
+    .await;
 }
 
 pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
@@ -82,40 +91,62 @@ pub async fn run_update_coordinator_with_executor<E: UpdateExecutor + 'static>(
     mut action_rx: mpsc::UnboundedReceiver<UpdateAction>,
     status_tx: Option<broadcast::Sender<UpdateStatus>>,
     auto_install: bool,
+    check_interval_hours: u32,
 ) {
     if let Some(tx) = &status_tx {
         let snapshot = state.read().await.clone();
         let _ = tx.send(snapshot);
     }
 
+    // Initial check on startup
     if updater.should_check_for_updates() {
         run_check(&updater, &state, status_tx.as_ref(), auto_install).await;
     }
 
-    while let Some(action) = action_rx.recv().await {
-        match action {
-            UpdateAction::CheckNow => {
-                run_check(&updater, &state, status_tx.as_ref(), auto_install).await;
-            }
-            UpdateAction::Approve => {
-                if let Err(e) = apply_pending_update(&updater, &state, status_tx.as_ref()).await {
-                    let mut guard = state.write().await;
-                    guard.phase = UpdatePhase::Error;
-                    guard.message = Some(format!("Failed to apply update: {}", e));
-                    guard.touch();
-                    if let Some(tx) = &status_tx {
-                        let _ = tx.send(guard.clone());
+    // Periodic background re-check: use config's check_interval_hours,
+    // clamped to minimum 1 hour to avoid API rate limits.
+    let recheck_secs = (check_interval_hours.max(1) as u64) * 3600;
+    let recheck_interval = std::time::Duration::from_secs(recheck_secs);
+    let mut recheck_timer = tokio::time::interval(recheck_interval);
+    recheck_timer.tick().await; // consume the immediate first tick
+
+    loop {
+        tokio::select! {
+            action = action_rx.recv() => {
+                let Some(action) = action else { break };
+                match action {
+                    UpdateAction::CheckNow => {
+                        run_check(&updater, &state, status_tx.as_ref(), auto_install).await;
+                    }
+                    UpdateAction::Approve => {
+                        if let Err(e) = apply_pending_update(&updater, &state, status_tx.as_ref()).await {
+                            let mut guard = state.write().await;
+                            guard.phase = UpdatePhase::Error;
+                            guard.message = Some(format!("Failed to apply update: {}", e));
+                            guard.touch();
+                            if let Some(tx) = &status_tx {
+                                let _ = tx.send(guard.clone());
+                            }
+                        }
+                    }
+                    UpdateAction::Defer => {
+                        let mut guard = state.write().await;
+                        guard.phase = UpdatePhase::Deferred;
+                        guard.message = Some("Update was deferred".to_string());
+                        guard.pending = None;
+                        guard.touch();
+                        if let Some(tx) = &status_tx {
+                            let _ = tx.send(guard.clone());
+                        }
                     }
                 }
             }
-            UpdateAction::Defer => {
-                let mut guard = state.write().await;
-                guard.phase = UpdatePhase::Deferred;
-                guard.message = Some("Update was deferred".to_string());
-                guard.pending = None;
-                guard.touch();
-                if let Some(tx) = &status_tx {
-                    let _ = tx.send(guard.clone());
+            _ = recheck_timer.tick() => {
+                // Skip re-check if an update is already pending or installing
+                let phase = state.read().await.phase.clone();
+                if matches!(phase, UpdatePhase::Idle | UpdatePhase::Deferred | UpdatePhase::Error) {
+                    info!("periodic update re-check");
+                    run_check(&updater, &state, status_tx.as_ref(), auto_install).await;
                 }
             }
         }
@@ -386,6 +417,7 @@ mod tests {
             rx,
             None,
             false,
+            24,
         ));
 
         tx.send(UpdateAction::CheckNow).expect("send check action");
@@ -416,6 +448,7 @@ mod tests {
             rx,
             None,
             false,
+            24,
         ));
 
         tx.send(UpdateAction::CheckNow).expect("send check action");
@@ -444,6 +477,7 @@ mod tests {
             rx,
             None,
             false,
+            24,
         ));
 
         tx.send(UpdateAction::CheckNow).expect("send check action");
