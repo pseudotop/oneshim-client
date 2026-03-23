@@ -90,6 +90,18 @@ pub async fn set_overlay_mode(
     Ok(())
 }
 
+/// Cycle overlay mode: Minimal → Rich → Adaptive → Minimal.
+#[command]
+pub async fn toggle_overlay_mode(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.toggle_mode().await;
+        let mode = overlay.get_mode().await;
+        Ok(format!("{:?}", mode))
+    } else {
+        Err("overlay not available".to_string())
+    }
+}
+
 /// Get current overlay state (mode and visibility).
 #[command]
 pub async fn get_overlay_state(

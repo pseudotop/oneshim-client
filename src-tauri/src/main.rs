@@ -22,9 +22,6 @@ mod bridge_cli;
 mod cli_subscription_bridge;
 mod commands;
 mod desktop_startup;
-#[cfg(any(feature = "server", test))]
-#[cfg(feature = "server")]
-mod event_bus;
 mod feature_capabilities;
 mod focus_analyzer;
 mod focus_probe_adapter;
@@ -214,6 +211,7 @@ fn main() {
             commands::coaching::dismiss_coaching_message,
             commands::coaching::submit_coaching_feedback,
             commands::coaching::set_overlay_mode,
+            commands::coaching::toggle_overlay_mode,
             commands::coaching::get_overlay_state,
             commands::coaching::toggle_overlay_interactive,
             commands::coaching::get_coaching_history,

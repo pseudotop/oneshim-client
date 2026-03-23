@@ -189,6 +189,21 @@ impl Scheduler {
                                         .await
                                     {
                                         Ok(info) => {
+                                            // Emit focus highlight to overlay (Rich/Adaptive mode)
+                                            if let Some(ref fe) = info {
+                                                if let (Some(ref overlay), Some(ref pos)) = (&overlay_ref, &fe.position) {
+                                                    overlay.update_focus_highlight(crate::magic_overlay::OverlayFocusPayload {
+                                                        x: pos.x as i32,
+                                                        y: pos.y as i32,
+                                                        width: pos.width as u32,
+                                                        height: pos.height as u32,
+                                                        border_color: "#0d9488".to_string(),
+                                                        opacity: 0.6,
+                                                    }).await;
+                                                }
+                                            } else if let Some(ref overlay) = overlay_ref {
+                                                overlay.clear_focus_highlight();
+                                            }
                                             last_focused_element = info;
                                         }
                                         Err(e) => {
