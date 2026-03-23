@@ -5,7 +5,7 @@
   "build": {
     "frontendDist": "../crates/oneshim-web/frontend/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "cd ../crates/oneshim-web/frontend && pnpm dev",
+    "beforeDevCommand": "",
     "beforeBuildCommand": "cd ../crates/oneshim-web/frontend && pnpm build"
   },
   "app": {
