@@ -5,6 +5,7 @@ mod config;
 pub(crate) mod gui_pipeline;
 pub(crate) mod heatmap;
 mod loops;
+pub(crate) mod shared_regime_state;
 
 // ── Public re-exports (external API) ────────────────────────────────
 pub use config::{SchedulerConfig, SchedulerStorage};
@@ -174,6 +175,10 @@ pub struct Scheduler {
     pub(super) suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
     /// Whether suggestion reception is enabled (from SuggestionConfig).
     pub(super) suggestions_enabled: bool,
+    /// Focus mode state — shared with IPC commands and scheduler loops (A4).
+    /// When active, coaching evaluation and notifications are suppressed,
+    /// and capture importance threshold is elevated.
+    pub(super) focus_mode: Arc<crate::focus_mode::FocusModeState>,
 }
 
 impl Scheduler {
@@ -235,6 +240,7 @@ impl Scheduler {
             #[cfg(feature = "server")]
             suggestion_receiver: None,
             suggestions_enabled: false,
+            focus_mode: Arc::new(crate::focus_mode::FocusModeState::new()),
         }
     }
 
@@ -406,6 +412,11 @@ impl Scheduler {
 
     pub fn with_suggestions_enabled(mut self, enabled: bool) -> Self {
         self.suggestions_enabled = enabled;
+        self
+    }
+
+    pub fn with_focus_mode(mut self, focus_mode: Arc<crate::focus_mode::FocusModeState>) -> Self {
+        self.focus_mode = focus_mode;
         self
     }
 

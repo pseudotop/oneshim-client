@@ -96,6 +96,21 @@ impl SuggestionQueue {
         self.items.iter().map(|p| &p.suggestion)
     }
 
+    /// Remove a suggestion by its ID. Returns the removed Suggestion if found.
+    pub fn remove_by_id(&mut self, suggestion_id: &str) -> Option<Suggestion> {
+        let item = self
+            .items
+            .iter()
+            .find(|ps| ps.suggestion.suggestion_id == suggestion_id)
+            .cloned();
+        if let Some(ref found) = item {
+            self.items.remove(found);
+            Some(found.suggestion.clone())
+        } else {
+            None
+        }
+    }
+
     pub fn clear(&mut self) {
         self.items.clear();
     }
@@ -176,6 +191,24 @@ mod tests {
         assert_eq!(queue.len(), 2);
         queue.clear();
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn remove_by_id_returns_and_removes() {
+        let mut queue = SuggestionQueue::new(50);
+        let s = make_suggestion("s1", Priority::High);
+        queue.push(s);
+        assert_eq!(queue.len(), 1);
+        let removed = queue.remove_by_id("s1");
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().suggestion_id, "s1");
+        assert_eq!(queue.len(), 0);
+    }
+
+    #[test]
+    fn remove_by_id_returns_none_if_not_found() {
+        let mut queue = SuggestionQueue::new(50);
+        assert!(queue.remove_by_id("nonexistent").is_none());
     }
 
     #[test]

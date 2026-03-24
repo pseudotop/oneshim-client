@@ -1,10 +1,13 @@
 pub(crate) mod analysis;
+pub(crate) mod capture;
 pub(crate) mod capture_status;
 pub(crate) mod coaching;
 pub(crate) mod dashboard;
+pub(crate) mod focus;
 pub(crate) mod integration;
 pub(crate) mod onboarding;
 pub(crate) mod settings;
+pub(crate) mod suggestions;
 pub(crate) mod system;
 
 /// Recursively merge `patch` into `base`.

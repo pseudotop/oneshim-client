@@ -291,6 +291,14 @@ impl MagicOverlayHandle {
         }
     }
 
+    /// Emit focus mode state change to overlay frontend.
+    pub fn emit_focus_mode(&self, active: bool) {
+        let _ = self.app_handle.emit(
+            "overlay:focus-mode",
+            serde_json::json!({ "active": active }),
+        );
+    }
+
     /// Emit heatmap grid data to the overlay for HeatmapGhost rendering.
     /// `grid` is a flat 50×50 array of normalized [0.0, 1.0] values (row-major).
     pub fn emit_heatmap(&self, grid: Vec<f32>) {

@@ -1,9 +1,14 @@
 use oneshim_automation::controller::AutomationController;
 use oneshim_core::config::{AppConfig, CredentialBackendKind};
 use oneshim_core::config_manager::ConfigManager;
+use oneshim_core::consent::ConsentManager;
+use oneshim_core::ports::accessibility::AccessibilityExtractor;
 use oneshim_core::ports::coaching::CoachingPort;
 use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPort};
+use oneshim_core::ports::monitor::ActivityMonitor;
 use oneshim_core::ports::oauth::OAuthPort;
+use oneshim_core::ports::vision::FrameProcessor;
+use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use serde::Serialize;
@@ -48,6 +53,20 @@ pub struct AppState {
     pub llm_connected: Arc<AtomicBool>,
     /// CLI bridge / automation controller connectivity.
     pub cli_connected: Arc<AtomicBool>,
+    /// Focus mode state — transient, not persisted. Suppresses coaching + notifications.
+    pub focus_mode: Arc<crate::focus_mode::FocusModeState>,
+    /// Frame processor for on-demand capture (A1, A2).
+    pub frame_processor: Option<Arc<dyn FrameProcessor>>,
+    /// Frame file storage for persisting captured images.
+    pub frame_storage: Option<Arc<FrameFileStorage>>,
+    /// Activity monitor for current window context (A1, A2).
+    pub activity_monitor: Option<Arc<dyn ActivityMonitor>>,
+    /// Accessibility extractor for scene analysis (A2).
+    pub accessibility_extractor: Option<Arc<dyn AccessibilityExtractor>>,
+    /// Consent manager for PII level gating in accessibility extraction (A2).
+    pub consent_manager: Option<Arc<ConsentManager>>,
+    /// Suggestion manager for overlay panel (A3). Shares queue with SuggestionReceiver.
+    pub suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -252,6 +271,13 @@ mod tests {
             server_connected: Arc::new(AtomicBool::new(false)),
             llm_connected: Arc::new(AtomicBool::new(false)),
             cli_connected: Arc::new(AtomicBool::new(false)),
+            focus_mode: Arc::new(crate::focus_mode::FocusModeState::new()),
+            frame_processor: None,
+            frame_storage: None,
+            activity_monitor: None,
+            accessibility_extractor: None,
+            consent_manager: None,
+            suggestion_manager: None,
         })
         .build();
 

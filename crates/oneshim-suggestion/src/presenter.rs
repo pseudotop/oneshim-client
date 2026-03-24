@@ -31,7 +31,7 @@ pub fn present_all(suggestions: &[Suggestion]) -> Vec<SuggestionView> {
     suggestions.iter().map(present).collect()
 }
 
-fn type_to_title(st: &SuggestionType) -> String {
+pub fn type_to_title(st: &SuggestionType) -> String {
     match st {
         SuggestionType::WorkGuidance => "Work Guidance".to_string(),
         SuggestionType::EmailDraft => "Email Draft".to_string(),

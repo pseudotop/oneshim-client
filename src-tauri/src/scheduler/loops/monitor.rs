@@ -12,11 +12,13 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 
 use super::super::config::PlatformEgressPolicy;
+use super::super::shared_regime_state::SharedRegimeState;
 use super::super::Scheduler;
 use super::helpers::{
     build_personalization_prompt, build_segment_stats_snapshot, handle_event_analysis,
     handle_frame_capture, COACHING_SYSTEM_PROMPT,
 };
+use crate::focus_mode::FocusModeState;
 
 impl Scheduler {
     #[tracing::instrument(skip_all)]
@@ -29,6 +31,8 @@ impl Scheduler {
         egress_policy: Arc<PlatformEgressPolicy>,
         input_collector: Arc<InputActivityCollector>,
         adaptive_trigger_state: Option<super::super::AdaptiveTriggerState>,
+        shared_regime: Arc<SharedRegimeState>,
+        focus_mode: Arc<FocusModeState>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let act_mon = self.activity_monitor.clone();
@@ -96,6 +100,14 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
+                        // A4: Focus mode auto-expiry check
+                        if focus_mode.check_expiry() {
+                            if let Some(ref overlay) = overlay_ref {
+                                overlay.emit_focus_mode(false);
+                            }
+                            info!("Focus mode expired — auto-deactivated");
+                        }
+
                         let idle_info = idle_tracker.check_idle().await;
                         let prev_state = idle_tracker.previous_state();
 
@@ -119,8 +131,11 @@ impl Scheduler {
                             }
                         }
 
-                        if let Some(ref notif) = notif1 {
-                            notif.check_idle(idle_info.idle_secs).await;
+                        // A4: Suppress idle notification in focus mode
+                        if !focus_mode.is_active() {
+                            if let Some(ref notif) = notif1 {
+                                notif.check_idle(idle_info.idle_secs).await;
+                            }
                         }
 
                         input_collector.estimate_from_idle_change(prev_idle_secs, idle_info.idle_secs);
@@ -276,7 +291,11 @@ impl Scheduler {
                                     // Force capture during post-event window (dashcam "after" frames)
                                     let force_post = ring_buffer.should_force_post_capture();
 
-                                    if let Some(mut capture_req) = capture_req {
+                                    // A4: Elevate capture threshold in focus mode —
+                                    // only process captures with importance >= 0.7
+                                    let focus_threshold: f32 = if focus_mode.is_active() { 0.7 } else { 0.0 };
+
+                                    if let Some(mut capture_req) = capture_req.filter(|r| r.importance >= focus_threshold) {
                                         // Inject active window bounds so the frame processor
                                         // captures the correct monitor in multi-monitor setups.
                                         capture_req.window_bounds = window_bounds;
@@ -400,6 +419,14 @@ impl Scheduler {
                                     analyzer.set_accessibility_text(a11y_text).await;
                                 }
 
+                                // Write current regime state for cross-loop sharing (C1)
+                                shared_regime.update(
+                                    adaptive_trigger_state.as_ref()
+                                        .and_then(|ts| ts.current_regime_id.as_deref()),
+                                    None, // regime_label populated by regime_manager if available
+                                    &app_name,
+                                );
+
                                 // Consume the GUI summary after feeding it to the analysis pipeline
                                 last_gui_summary = None;
 
@@ -469,6 +496,8 @@ impl Scheduler {
                                 // Uses placeholder values for regime data in Phase 1.
                                 // Full integration with AdaptiveTriggerState will use
                                 // regime_classifier and drift_detector outputs.
+                                // A4: Skip coaching when focus mode active
+                                if !focus_mode.is_active() {
                                 if let Some(ref coaching) = coaching_engine_ref {
                                     // Extract regime data from adaptive trigger state
                                     let regime_id_for_coaching: Option<&str> =
@@ -609,6 +638,7 @@ impl Scheduler {
                                         }
                                     }
                                 }
+                                } // end A4: focus_mode coaching guard
 
                                 // Emit goal progress to overlay (every tick when coaching enabled)
                                 if let Some(ref coaching) = coaching_engine_ref {

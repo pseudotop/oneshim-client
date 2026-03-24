@@ -5,6 +5,7 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 
 use super::super::config::PlatformEgressPolicy;
+use super::super::shared_regime_state::SharedRegimeState;
 use super::super::Scheduler;
 
 impl Scheduler {
@@ -233,6 +234,10 @@ impl Scheduler {
             }
         }
 
+        // Shared regime state for cross-loop communication (C1):
+        // monitor loop writes, coaching loop reads.
+        let shared_regime = Arc::new(SharedRegimeState::new());
+
         let monitor_task = self.spawn_monitor_loop(
             poll,
             idle_threshold,
@@ -240,6 +245,8 @@ impl Scheduler {
             egress_policy.clone(),
             shared_input_collector.clone(),
             adaptive_trigger_state,
+            shared_regime.clone(),
+            self.focus_mode.clone(),
             shutdown_rx.clone(),
         );
 
@@ -262,7 +269,8 @@ impl Scheduler {
             shutdown_rx.clone(),
         );
 
-        let notification_task = self.spawn_notification_loop(shutdown_rx.clone());
+        let notification_task =
+            self.spawn_notification_loop(self.focus_mode.clone(), shutdown_rx.clone());
 
         let focus_task = self.spawn_focus_loop(shutdown_rx.clone());
 
@@ -289,7 +297,7 @@ impl Scheduler {
         );
 
         // 13. Coaching feedback evaluation loop
-        let coaching_task = self.spawn_coaching_loop(shutdown_rx.clone());
+        let coaching_task = self.spawn_coaching_loop(shared_regime.clone(), shutdown_rx.clone());
 
         // 14. Health check loop — reads adapter health flags and updates connection flags
         let health_task = if let (
