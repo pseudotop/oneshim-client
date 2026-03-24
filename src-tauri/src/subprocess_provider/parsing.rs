@@ -307,6 +307,16 @@ pub(super) fn append_model_flag(command: &mut Command, surface_id: &str, model: 
     }
 }
 
+// Phase 2: called from run_claude()/run_claude_ocr() when catalog-driven flags replace hardcoded ones
+#[allow(dead_code)]
+pub(super) fn append_oneshot_flags(command: &mut Command, surface_id: &str) {
+    if let Ok(transport) = catalog_subprocess_transport(surface_id) {
+        for flag in &transport.oneshot_flags {
+            command.arg(flag);
+        }
+    }
+}
+
 pub(super) fn find_executable(name: &str) -> Option<PathBuf> {
     if name.contains(std::path::MAIN_SEPARATOR) {
         let path = PathBuf::from(name);

@@ -46,6 +46,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub ai_provider: AiProviderConfig,
     #[serde(default)]
+    pub ai_session: AiSessionConfig,
+    #[serde(default)]
     pub integration: IntegrationConfig,
     /// 아웃바운드 TLS 설정 — 기본값: 활성화
     #[serde(default)]
@@ -106,6 +108,7 @@ impl AppConfig {
             file_access: FileAccessConfig::default(),
             automation: AutomationConfig::default(),
             ai_provider: AiProviderConfig::default(),
+            ai_session: AiSessionConfig::default(),
             integration: IntegrationConfig::default(),
             tls: TlsConfig::default(),
             analysis: AnalysisConfig::default(),

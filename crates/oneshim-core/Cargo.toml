@@ -21,6 +21,7 @@ tracing = { workspace = true }
 base64 = { workspace = true }
 semver = { workspace = true }
 gethostname = { workspace = true }
+futures-core = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

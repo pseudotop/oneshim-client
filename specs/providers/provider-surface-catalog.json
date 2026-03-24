@@ -462,7 +462,9 @@
         "auth_probe_mode": "codex_login_status_text",
         "invocation_mode": "codex_exec_json",
         "model_flag": "--model",
-        "json_output_supported": true
+        "json_output_supported": true,
+        "oneshot_flags": ["--sandbox", "read-only", "--skip-git-repo-check", "--color", "never", "--no-browser-login"],
+        "session_flags": []
       },
       "references": [
         "https://developers.openai.com/codex/auth/"
@@ -539,7 +541,9 @@
         "auth_probe_mode": "claude_auth_status_json",
         "invocation_mode": "claude_print_json",
         "model_flag": "--model",
-        "json_output_supported": true
+        "json_output_supported": true,
+        "oneshot_flags": ["--no-session-persistence", "--permission-mode", "dontAsk", "--tools=", "--output-format", "stream-json"],
+        "session_flags": ["--output-format", "stream-json", "--permission-mode", "dontAsk"]
       },
       "references": [
         "https://docs.anthropic.com/en/docs/claude-code/settings"
@@ -944,7 +948,9 @@
         "auth_probe_mode": "none",
         "invocation_mode": "gemini_cli_prompt",
         "model_flag": "--model",
-        "json_output_supported": true
+        "json_output_supported": true,
+        "oneshot_flags": [],
+        "session_flags": []
       },
       "references": [
         "https://developers.google.com/gemini-code-assist/docs/gemini-cli"

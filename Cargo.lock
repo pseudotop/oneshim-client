@@ -5128,7 +5128,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "oneshim-analysis"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5147,7 +5147,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-api-contracts"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "chrono",
  "oneshim-core",
@@ -5157,7 +5157,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-app"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5215,7 +5215,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-automation"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5234,11 +5234,12 @@ dependencies = [
 
 [[package]]
 name = "oneshim-core"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "futures-core",
  "gethostname 0.4.3",
  "semver",
  "serde",
@@ -5252,7 +5253,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-embedding"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "fastembed",
@@ -5264,14 +5265,14 @@ dependencies = [
 
 [[package]]
 name = "oneshim-lint"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "oneshim-monitor"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5288,7 +5289,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-network"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -5338,7 +5339,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-storage"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -5362,7 +5363,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-suggestion"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5375,7 +5376,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-vision"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "atspi",
@@ -5410,7 +5411,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-web"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "axum",

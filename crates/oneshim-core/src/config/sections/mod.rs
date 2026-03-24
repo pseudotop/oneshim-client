@@ -10,6 +10,7 @@
 //   storage       — 스토리지/무결성/알림/업데이트/텔레메트리 설정
 
 mod ai;
+mod ai_session;
 mod ai_validation;
 mod analysis;
 mod coaching;
@@ -23,6 +24,7 @@ mod suggestion;
 mod sync;
 
 pub use ai::*;
+pub use ai_session::*;
 pub use ai_validation::*;
 pub use analysis::*;
 pub use coaching::*;

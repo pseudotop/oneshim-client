@@ -11,6 +11,7 @@
 mod agent_runtime;
 mod agent_runtime_support;
 mod app_runtime_launch;
+mod auditing_session;
 mod auth_cli;
 mod automation_controller_builder;
 mod automation_runtime;
@@ -54,6 +55,8 @@ mod scheduler;
 mod secret_cli;
 #[cfg(feature = "server")]
 mod server_runtime_context;
+mod session_context;
+mod session_manager;
 mod setup;
 mod skill_loader;
 mod storage_runtime;
