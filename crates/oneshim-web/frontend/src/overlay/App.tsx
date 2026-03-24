@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { CaptureFlash } from './components/CaptureFlash'
 import CoachingPopup from './components/CoachingPopup'
 import FocusHighlight from './components/FocusHighlight'
 import { FocusModeIndicator } from './components/FocusModeIndicator'
@@ -56,6 +57,9 @@ export default function OverlayApp() {
 
       {/* Rich mode: attention heatmap ghost */}
       {isRich && <HeatmapGhost />}
+
+      {/* Manual capture feedback flash */}
+      <CaptureFlash timestamp={state.captureFlashTimestamp} />
     </div>
   )
 }

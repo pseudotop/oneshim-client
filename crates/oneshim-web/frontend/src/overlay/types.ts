@@ -74,4 +74,5 @@ export interface OverlayState {
   captureState: CaptureStatePayload
   suggestionsPanelOpen: boolean
   suggestions: SuggestionViewDto[]
+  captureFlashTimestamp: string | null
 }
