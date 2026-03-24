@@ -72,7 +72,6 @@ export interface OverlayState {
   focusMode: boolean
   goals: GoalProgressItem[]
   captureState: CaptureStatePayload
-  focusMode: boolean
   suggestionsPanelOpen: boolean
   suggestions: SuggestionViewDto[]
 }
