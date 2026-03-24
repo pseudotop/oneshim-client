@@ -490,6 +490,16 @@ impl AgentRuntimeBundle {
             scheduler = scheduler.with_capture_paused(capture_paused);
         }
 
+        // --- Analysis provider for coaching LLM personalization ---
+        #[cfg(feature = "analysis")]
+        if let Some(ref llm_api) = self.config.ai_provider.llm_api {
+            let provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider> =
+                Arc::new(oneshim_network::analysis_client::AnalysisClient::new(
+                    llm_api,
+                ));
+            scheduler = scheduler.with_analysis_provider(provider);
+        }
+
         // --- Health check flags ---
         if let (Some(s), Some(l), Some(c)) = (
             self.server_health_flag,

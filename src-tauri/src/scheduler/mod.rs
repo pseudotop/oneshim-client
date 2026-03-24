@@ -288,13 +288,13 @@ impl Scheduler {
         self
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // awaiting AdaptiveSearchCoordinator implementation
     pub fn with_vector_index(mut self, index: Arc<dyn VectorIndex>) -> Self {
         self.vector_index = Some(index);
         self
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // awaiting AdaptiveSearchCoordinator implementation
     pub fn with_search_coordinator(
         mut self,
         coordinator: Arc<oneshim_analysis::AdaptiveSearchCoordinator>,
@@ -334,7 +334,6 @@ impl Scheduler {
         self
     }
 
-    #[allow(dead_code)]
     pub fn with_coaching_engine(mut self, engine: Arc<oneshim_analysis::CoachingEngine>) -> Self {
         self.coaching_engine = Some(engine);
         self
@@ -345,7 +344,6 @@ impl Scheduler {
         self
     }
 
-    #[allow(dead_code)]
     pub fn with_analysis_provider(
         mut self,
         provider: Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>,
@@ -437,7 +435,6 @@ impl Scheduler {
     }
 }
 
-#[allow(dead_code)]
 pub fn should_run_now(config: &AppConfig) -> bool {
     let schedule = &config.schedule;
     if !schedule.active_hours_enabled {

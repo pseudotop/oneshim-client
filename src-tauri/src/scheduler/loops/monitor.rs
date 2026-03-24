@@ -189,6 +189,21 @@ impl Scheduler {
                                         .await
                                     {
                                         Ok(info) => {
+                                            // Emit focus highlight to overlay (Rich/Adaptive mode)
+                                            if let Some(ref fe) = info {
+                                                if let (Some(ref overlay), Some(ref pos)) = (&overlay_ref, &fe.position) {
+                                                    overlay.update_focus_highlight(crate::magic_overlay::OverlayFocusPayload {
+                                                        x: pos.x as i32,
+                                                        y: pos.y as i32,
+                                                        width: pos.width as u32,
+                                                        height: pos.height as u32,
+                                                        border_color: "#0d9488".to_string(),
+                                                        opacity: 0.6,
+                                                    }).await;
+                                                }
+                                            } else if let Some(ref overlay) = overlay_ref {
+                                                overlay.clear_focus_highlight();
+                                            }
                                             last_focused_element = info;
                                         }
                                         Err(e) => {
@@ -227,8 +242,14 @@ impl Scheduler {
                                     input_activity_level: input_collector.peek_activity_level(),
                                 };
 
-                                // Skip capture/frame processing when paused
-                                if !capture_paused.load(std::sync::atomic::Ordering::Relaxed) {
+                                // Skip capture when outside active hours (schedule config)
+                                let within_active_hours = config_manager1
+                                    .as_ref()
+                                    .map(|cm| crate::scheduler::should_run_now(&cm.get()))
+                                    .unwrap_or(true);
+
+                                // Skip capture/frame processing when paused or outside active hours
+                                if within_active_hours && !capture_paused.load(std::sync::atomic::Ordering::Relaxed) {
                                 // --- Ring buffer: capture thumbnail every cycle ---
                                 if let Ok(thumb_data) = processor.capture_thumbnail().await {
                                     ring_buffer.push(RingFrame {
