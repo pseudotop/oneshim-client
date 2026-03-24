@@ -29,7 +29,6 @@ const initialState: OverlayState = {
   mode: 'minimal',
   coaching: null,
   focusHighlight: null,
-  focusMode: false,
   goals: [],
   captureState: { paused: false, indicator_visible: false },
   focusMode: false,
@@ -63,8 +62,6 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
       return { ...state, focusMode: action.payload }
     case 'capture-state-changed':
       return { ...state, captureState: action.payload }
-    case 'set-focus-mode':
-      return { ...state, focusMode: action.payload }
     case 'toggle-suggestions-panel':
       return {
         ...state,

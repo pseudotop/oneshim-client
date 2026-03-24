@@ -115,7 +115,7 @@ const STEPS = [StepIntro, StepPermissions, StepFeatures, StepReady]
 function StepDots({ current, total }: { current: number; total: number }) {
   const steps = Array.from({ length: total }, (_, i) => ({ id: `step-${i + 1}`, index: i }))
   return (
-    <fieldset className="flex items-center gap-2 border-none p-0 m-0" aria-label="Step indicator">
+    <fieldset className="m-0 flex items-center gap-2 border-none p-0" aria-label="Step indicator">
       {steps.map((step) => (
         <div
           key={step.id}

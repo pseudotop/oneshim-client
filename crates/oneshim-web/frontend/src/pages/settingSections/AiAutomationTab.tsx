@@ -385,7 +385,7 @@ export default function AiAutomationTab({
 
   useEffect(() => {
     setProfileNameDraft(activeSavedProfile?.name ?? '')
-  }, [activeSavedProfile?.profile_id])
+  }, [activeSavedProfile?.name])
 
   const handleSwitchToPreferredCli = (
     endpointKind: EndpointSurfaceKind,

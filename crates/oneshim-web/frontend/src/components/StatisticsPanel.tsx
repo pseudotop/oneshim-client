@@ -140,7 +140,7 @@ export default function StatisticsPanel({ statistics }: StatisticsPanelProps) {
 
       {/* Longest focus highlight */}
       {statistics.longest_focus_mins > 0 && (
-        <Card padding="md" className="border-l-4 border-brand-signal">
+        <Card padding="md" className="border-brand-signal border-l-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg bg-brand-signal/10 p-2">
               <span className="text-xl" aria-hidden="true">

@@ -61,7 +61,7 @@ describe('provider surface defaults', () => {
       placement_kind: 'installed_cli',
       credential_kind: 'cli_bridge',
       supports: {
-        ...openAiDirect!.supports,
+        ...openAiDirect?.supports,
         ocr: true,
       },
       related_surface_ids: ['provider_surface.openai.subprocess_cli'],

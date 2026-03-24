@@ -37,11 +37,10 @@ export function DevToolbar() {
 
   if (!open) {
     return (
-      // biome-ignore lint: DEV-ONLY component — raw colors intentional
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-12 right-4 z-[9999] bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded-full shadow-lg opacity-60 hover:opacity-100"
+        className="fixed right-4 bottom-12 z-[9999] rounded-full bg-yellow-500 px-2 py-1 font-bold text-black text-xs opacity-60 shadow-lg hover:opacity-100"
         title="Open Dev Toolbar"
       >
         DEV
@@ -52,7 +51,7 @@ export function DevToolbar() {
   return (
     // biome-ignore lint: DEV-ONLY component — raw colors intentional
     <div className="fixed bottom-12 right-4 z-[9999] bg-gray-900 text-white text-xs rounded-lg shadow-2xl p-3 w-72 border border-yellow-500/50">
-      <div className="flex justify-between items-center mb-2">
+      <div className="mb-2 flex items-center justify-between">
         <span className="font-bold text-yellow-400">Dev Toolbar</span>
         <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">
           &#x2715;
@@ -60,28 +59,28 @@ export function DevToolbar() {
       </div>
 
       <div className="space-y-2">
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <span>Standalone Mock</span>
           <button
             type="button"
             onClick={toggleStandalone}
-            className={`px-2 py-0.5 rounded text-xs font-bold ${standalone ? 'bg-red-600' : 'bg-green-600'}`}
+            className={`rounded px-2 py-0.5 font-bold text-xs ${standalone ? 'bg-red-600' : 'bg-green-600'}`}
           >
             {standalone ? 'ON (mock)' : 'OFF (real API)'}
           </button>
         </div>
 
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <span>API Base</span>
-          <span className="text-gray-400 truncate ml-2">{apiBase}</span>
+          <span className="ml-2 truncate text-gray-400">{apiBase}</span>
         </div>
 
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <span>Tauri</span>
           <span className="text-gray-400">{'__TAURI_INTERNALS__' in window ? 'Yes' : 'No'}</span>
         </div>
 
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <span>Port</span>
           <span className="text-gray-400">{window.__ONESHIM_WEB_PORT__ ?? 'default'}</span>
         </div>
@@ -92,14 +91,14 @@ export function DevToolbar() {
           <button
             type="button"
             onClick={clearStorage}
-            className="flex-1 bg-red-800 hover:bg-red-700 px-2 py-1 rounded text-xs"
+            className="flex-1 rounded bg-red-800 px-2 py-1 text-xs hover:bg-red-700"
           >
             Clear Storage
           </button>
           <button
             type="button"
             onClick={() => location.reload()}
-            className="flex-1 bg-blue-800 hover:bg-blue-700 px-2 py-1 rounded text-xs"
+            className="flex-1 rounded bg-blue-800 px-2 py-1 text-xs hover:bg-blue-700"
           >
             Reload
           </button>
