@@ -1,7 +1,9 @@
 use chrono::Utc;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
+use super::super::shared_regime_state::SharedRegimeState;
 use super::super::Scheduler;
 
 impl Scheduler {
@@ -153,6 +155,7 @@ impl Scheduler {
     #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_coaching_loop(
         &self,
+        shared_regime: Arc<SharedRegimeState>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let coaching = self.coaching_engine.clone();
@@ -174,11 +177,13 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        // Evaluate implicit feedback for messages past the 5-min window.
-                        // In Phase 1, regime_id and app are placeholders — the monitor
-                        // loop provides the real coaching evaluation with live data.
-                        // TODO(Phase 2): pass real current_regime_id and current_app for accurate implicit feedback classification
-                        engine.evaluate_implicit_feedback(None, "", Utc::now()).await;
+                        // Read current regime context from the monitor loop (C1)
+                        let snap = shared_regime.snapshot();
+                        engine.evaluate_implicit_feedback(
+                            snap.regime_id.as_deref(),
+                            &snap.current_app,
+                            Utc::now(),
+                        ).await;
                     }
                     _ = shutdown_rx.changed() => {
                         info!("coaching loop ended");

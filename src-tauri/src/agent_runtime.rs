@@ -59,6 +59,11 @@ pub(crate) struct AgentRuntimeBundle {
     #[cfg(feature = "server")]
     suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
     suggestions_enabled: bool,
+    focus_mode: Option<Arc<crate::focus_mode::FocusModeState>>,
+    /// Shared suggestion queue — SAME Arc as SuggestionManager's queue,
+    /// so SSE-received suggestions are visible in IPC queries.
+    shared_suggestion_queue:
+        Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
 }
 
 impl AgentRuntimeBundle {
@@ -73,15 +78,17 @@ impl AgentRuntimeBundle {
 
     async fn run(self, shutdown_rx: watch::Receiver<bool>) -> Result<()> {
         info!("Agent initializing");
-        let support = AgentSupportContextBuilder::new(
+        let mut builder = AgentSupportContextBuilder::new(
             &self.data_dir,
             &self.config,
             self.focus_storage.clone(),
         )
         .with_storage(self.storage.clone())
-        .with_app_handle(self.app_handle.clone())
-        .build()
-        .await?;
+        .with_app_handle(self.app_handle.clone());
+        if let Some(ref shared_queue) = self.shared_suggestion_queue {
+            builder = builder.with_shared_suggestion_queue(shared_queue.clone());
+        }
+        let support = builder.build().await?;
 
         let mut scheduler = Scheduler::new(
             support.scheduler_config,
@@ -490,6 +497,11 @@ impl AgentRuntimeBundle {
             scheduler = scheduler.with_capture_paused(capture_paused);
         }
 
+        // --- Focus mode state for coaching/notification suppression (A4) ---
+        if let Some(focus_mode) = self.focus_mode {
+            scheduler = scheduler.with_focus_mode(focus_mode);
+        }
+
         // --- Analysis provider for coaching LLM personalization ---
         #[cfg(feature = "analysis")]
         if let Some(ref llm_api) = self.config.ai_provider.llm_api {
@@ -593,6 +605,11 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     #[cfg(feature = "server")]
     suggestion_receiver: Option<Arc<oneshim_suggestion::receiver::SuggestionReceiver>>,
     suggestions_enabled: bool,
+    focus_mode: Option<Arc<crate::focus_mode::FocusModeState>>,
+    /// Shared suggestion queue — passed through to AgentSupportContextBuilder
+    /// so the SuggestionReceiver uses the same queue as SuggestionManager.
+    shared_suggestion_queue:
+        Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -641,7 +658,17 @@ impl<'a> AgentRuntimeBuilder<'a> {
             #[cfg(feature = "server")]
             suggestion_receiver: None,
             suggestions_enabled: false,
+            focus_mode: None,
+            shared_suggestion_queue: None,
         }
+    }
+
+    pub(crate) fn with_focus_mode(
+        mut self,
+        focus_mode: Arc<crate::focus_mode::FocusModeState>,
+    ) -> Self {
+        self.focus_mode = Some(focus_mode);
+        self
     }
 
     pub(crate) fn with_calibration_writer(mut self, writer: Arc<dyn CalibrationWriter>) -> Self {
@@ -770,6 +797,15 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    #[allow(dead_code)] // used when feature = "server"
+    pub(crate) fn with_shared_suggestion_queue(
+        mut self,
+        queue: Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>,
+    ) -> Self {
+        self.shared_suggestion_queue = Some(queue);
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -804,6 +840,8 @@ impl<'a> AgentRuntimeBuilder<'a> {
             #[cfg(feature = "server")]
             suggestion_receiver: self.suggestion_receiver,
             suggestions_enabled: self.suggestions_enabled,
+            focus_mode: self.focus_mode,
+            shared_suggestion_queue: self.shared_suggestion_queue,
         }
     }
 }

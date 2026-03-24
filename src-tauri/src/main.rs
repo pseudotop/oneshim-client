@@ -24,6 +24,7 @@ mod commands;
 mod desktop_startup;
 mod feature_capabilities;
 mod focus_analyzer;
+mod focus_mode;
 mod focus_probe_adapter;
 #[cfg(feature = "server")]
 mod integration_insight_source;
@@ -57,6 +58,7 @@ mod setup;
 mod skill_loader;
 mod storage_runtime;
 mod subprocess_provider;
+mod suggestion_manager;
 mod sync_engine;
 mod tray;
 mod tray_icon;
@@ -227,6 +229,13 @@ fn main() {
             commands::onboarding::get_onboarding_status,
             commands::onboarding::complete_onboarding,
             commands::onboarding::reset_onboarding,
+            commands::focus::toggle_focus_mode,
+            commands::focus::get_focus_mode_status,
+            commands::capture::trigger_manual_capture,
+            commands::capture::analyze_current_scene,
+            commands::suggestions::get_pending_suggestions,
+            commands::suggestions::get_suggestion_history,
+            commands::suggestions::submit_suggestion_feedback,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ONESHIM");

@@ -57,6 +57,10 @@ pub(crate) struct AgentSupportContextBuilder<'a> {
     focus_storage: Arc<dyn FocusStorage>,
     storage: Option<Arc<dyn oneshim_core::ports::storage::StorageService>>,
     app_handle: Option<tauri::AppHandle>,
+    /// Pre-created shared suggestion queue from SuggestionManager.
+    /// When set, the SuggestionReceiver will use this queue instead of creating its own.
+    shared_suggestion_queue:
+        Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
 }
 
 impl<'a> AgentSupportContextBuilder<'a> {
@@ -71,6 +75,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
             focus_storage,
             storage: None,
             app_handle: None,
+            shared_suggestion_queue: None,
         }
     }
 
@@ -84,6 +89,14 @@ impl<'a> AgentSupportContextBuilder<'a> {
 
     pub(crate) fn with_app_handle(mut self, handle: tauri::AppHandle) -> Self {
         self.app_handle = Some(handle);
+        self
+    }
+
+    pub(crate) fn with_shared_suggestion_queue(
+        mut self,
+        queue: Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>,
+    ) -> Self {
+        self.shared_suggestion_queue = Some(queue);
         self
     }
 
@@ -181,15 +194,19 @@ impl<'a> AgentSupportContextBuilder<'a> {
 
         let context_analyzer = self.build_context_analyzer();
 
-        // Build SuggestionReceiver when SSE client is available and suggestions enabled
+        // Build SuggestionReceiver when SSE client is available and suggestions enabled.
+        // When a shared_suggestion_queue is provided (from SuggestionManager), the receiver
+        // uses it so SSE-received suggestions are visible in IPC queries.
         #[cfg(feature = "server")]
         let suggestion_receiver = if let Some(sse_client) = sse_client_opt {
             if self.config.suggestions.enabled {
-                let queue = Arc::new(tokio::sync::Mutex::new(
-                    oneshim_suggestion::queue::SuggestionQueue::new(
-                        self.config.analysis.max_suggestions,
-                    ),
-                ));
+                let queue = self.shared_suggestion_queue.unwrap_or_else(|| {
+                    Arc::new(tokio::sync::Mutex::new(
+                        oneshim_suggestion::queue::SuggestionQueue::new(
+                            self.config.analysis.max_suggestions,
+                        ),
+                    ))
+                });
                 let (suggestion_tx, _suggestion_rx) = tokio::sync::mpsc::channel(64);
                 Some(Arc::new(
                     oneshim_suggestion::receiver::SuggestionReceiver::new(

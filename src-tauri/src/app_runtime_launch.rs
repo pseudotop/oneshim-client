@@ -84,6 +84,111 @@ impl AppRuntimeLaunchBuilder {
         let llm_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cli_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+        // Focus mode state — transient, not persisted across restarts.
+        let focus_mode = Arc::new(crate::focus_mode::FocusModeState::new());
+
+        // Frame processor, frame storage, and activity monitor for IPC capture commands (A1, A2).
+        // These are separate instances from the ones inside the agent runtime scheduler.
+        let ipc_frame_storage: Option<Arc<oneshim_storage::frame_storage::FrameFileStorage>> =
+            match handle.block_on(oneshim_storage::frame_storage::FrameFileStorage::new(
+                data_dir_path.to_path_buf(),
+                config.storage.max_storage_mb,
+                config.storage.retention_days,
+            )) {
+                Ok(fs) => Some(Arc::new(fs)),
+                Err(e) => {
+                    tracing::warn!("IPC frame storage init failed: {e}");
+                    None
+                }
+            };
+        let ipc_frame_processor: Option<Arc<dyn oneshim_core::ports::vision::FrameProcessor>> = {
+            let ocr_tessdata = std::env::var("ONESHIM_TESSDATA")
+                .ok()
+                .map(std::path::PathBuf::from);
+            Some(Arc::new(
+                oneshim_vision::processor::EdgeFrameProcessor::new(
+                    config.vision.thumbnail_width,
+                    config.vision.thumbnail_height,
+                    ocr_tessdata,
+                ),
+            ))
+        };
+        let ipc_activity_monitor: Option<Arc<dyn oneshim_core::ports::monitor::ActivityMonitor>> = {
+            let process_monitor: Arc<dyn oneshim_core::ports::monitor::ProcessMonitor> =
+                Arc::new(oneshim_monitor::process::ProcessTracker::new());
+            Some(Arc::new(oneshim_monitor::activity::ActivityTracker::new(
+                process_monitor,
+            )))
+        };
+
+        // Accessibility extractor for IPC scene analysis (A2).
+        // Create a separate instance so IPC can call extract_focused_element
+        // independently of the scheduler.
+        let ipc_accessibility_extractor: Option<
+            Arc<dyn oneshim_core::ports::accessibility::AccessibilityExtractor>,
+        > = oneshim_vision::accessibility::create_extractor();
+
+        // Consent manager for IPC — shared read-only instance for PII consent checks (A2).
+        let ipc_consent_manager: Option<Arc<oneshim_core::consent::ConsentManager>> =
+            Some(Arc::new(oneshim_core::consent::ConsentManager::new(
+                data_dir_path.join("consent.json"),
+            )));
+
+        // SuggestionManager for overlay panel (A3).
+        // The queue Arc is created here and passed to BOTH the SuggestionManager
+        // and the agent runtime (which builds SuggestionReceiver). This ensures
+        // SSE-received suggestions appear in IPC queries via get_pending_suggestions.
+        #[cfg(feature = "server")]
+        let shared_suggestion_queue = Arc::new(tokio::sync::Mutex::new(
+            oneshim_suggestion::queue::SuggestionQueue::new(config.analysis.max_suggestions),
+        ));
+        #[cfg(feature = "server")]
+        let suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>> = {
+            use oneshim_network::auth::TokenManager;
+            use oneshim_network::http_client::HttpApiClient;
+            match (
+                TokenManager::new_with_tls(
+                    &config.server.base_url,
+                    &config.tls,
+                    Some(config.request_timeout()),
+                ),
+                HttpApiClient::new_with_tls(
+                    &config.server.base_url,
+                    // TokenManager is needed, create a fresh one
+                    Arc::new(
+                        TokenManager::new_with_tls(
+                            &config.server.base_url,
+                            &config.tls,
+                            Some(config.request_timeout()),
+                        )
+                        .unwrap_or_else(|_| TokenManager::new(&config.server.base_url)),
+                    ),
+                    config.request_timeout(),
+                    &config.tls,
+                ),
+            ) {
+                (_, Ok(api_client)) => {
+                    let api: Arc<dyn oneshim_core::ports::api_client::ApiClient> =
+                        Arc::new(api_client);
+                    let history = Arc::new(tokio::sync::Mutex::new(
+                        oneshim_suggestion::history::SuggestionHistory::new(100),
+                    ));
+                    let feedback = oneshim_suggestion::feedback::FeedbackSender::new(api);
+                    Some(Arc::new(crate::suggestion_manager::SuggestionManager::new(
+                        shared_suggestion_queue.clone(),
+                        history,
+                        feedback,
+                    )))
+                }
+                _ => {
+                    tracing::warn!("SuggestionManager init skipped: server transport unavailable");
+                    None
+                }
+            }
+        };
+        #[cfg(not(feature = "server"))]
+        let suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>> = None;
+
         // Adapter-side health flags — written by adapters on success/failure,
         // read by the health check loop. The loop is the single source of truth
         // for connection status.
@@ -137,6 +242,7 @@ impl AppRuntimeLaunchBuilder {
             .with_coaching_storage(sqlite_storage.clone())
             .with_magic_overlay(magic_overlay.clone())
             .with_capture_paused(capture_paused.clone())
+            .with_focus_mode(focus_mode.clone())
             .with_health_flags(
                 server_health_flag.clone(),
                 llm_health_flag.clone(),
@@ -149,6 +255,8 @@ impl AppRuntimeLaunchBuilder {
             )
             .with_tray_app_handle(self.app_handle.clone())
             .with_suggestions_enabled(config.suggestions.enabled);
+            #[cfg(feature = "server")]
+            let builder = builder.with_shared_suggestion_queue(shared_suggestion_queue);
             #[cfg(feature = "server")]
             let builder = server_context.configure_agent_builder(builder);
             builder.build()
@@ -212,6 +320,13 @@ impl AppRuntimeLaunchBuilder {
             server_connected,
             llm_connected,
             cli_connected,
+            focus_mode,
+            frame_processor: ipc_frame_processor,
+            frame_storage: ipc_frame_storage,
+            activity_monitor: ipc_activity_monitor,
+            accessibility_extractor: ipc_accessibility_extractor,
+            consent_manager: ipc_consent_manager,
+            suggestion_manager,
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

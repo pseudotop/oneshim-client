@@ -7,6 +7,7 @@ use tracing::{debug, info, warn};
 
 use super::super::config::PlatformEgressPolicy;
 use super::super::Scheduler;
+use crate::focus_mode::FocusModeState;
 
 impl Scheduler {
     #[tracing::instrument(skip_all)]
@@ -149,6 +150,7 @@ impl Scheduler {
     #[tracing::instrument(skip_all)]
     pub(in crate::scheduler) fn spawn_notification_loop(
         &self,
+        focus_mode: Arc<FocusModeState>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let notif7 = self.notification_manager.clone();
@@ -166,7 +168,10 @@ impl Scheduler {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        notif.check_long_session().await;
+                        // A4: Suppress notifications when focus mode active
+                        if !focus_mode.is_active() {
+                            notif.check_long_session().await;
+                        }
                     }
                     _ = shutdown_rx.changed() => {
                         info!("notification ended");
