@@ -47,7 +47,8 @@ if ! require_clean_worktree; then
 fi
 success "작업 디렉터리 클린 상태 확인"
 
-git fetch origin main --tags
+# Fetch latest main; --tags can warn about existing tags (non-fatal)
+git fetch origin main --tags 2>&1 | grep -v "would clobber" || true
 MAIN_SHA="$(git rev-parse origin/main)"
 HEAD_SHA="$(git rev-parse HEAD)"
 if [[ "${HEAD_SHA}" != "${MAIN_SHA}" ]]; then
