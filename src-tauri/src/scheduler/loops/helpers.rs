@@ -1,14 +1,21 @@
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+use chrono::Utc;
+use oneshim_core::models::activity::IdleState;
+use oneshim_core::models::event::InputActivityEvent;
 use oneshim_core::models::frame::{ImagePayload, OcrRegion};
 use oneshim_core::models::storage_records::SegmentSummaryRecord;
 use oneshim_core::models::tiered_memory::{ContentActivity, SegmentSummary, TriggerReason};
 use oneshim_core::ports::storage::StorageService;
 use oneshim_core::ports::vision::{CaptureRequest, FrameProcessor};
+use oneshim_monitor::idle::IdleTracker;
+use oneshim_monitor::input_activity::InputActivityCollector;
 use oneshim_storage::frame_storage::FrameFileStorage;
 
 use super::super::config::{base64_decode, SchedulerStorage};
+use crate::magic_overlay::MagicOverlayHandle;
+use crate::notification_manager::NotificationManager;
 
 // ── Coaching LLM personalization ──────────────────────────────────────
 
@@ -171,6 +178,128 @@ pub(super) async fn handle_frame_capture(
             (None, Vec::new())
         }
     }
+}
+
+// ── Idle state tracking ───────────────────────────────────────────────
+
+/// Process idle state transitions: start/end idle periods in storage,
+/// reset notifications on resume, and check idle notification thresholds.
+/// Returns the updated `prev_idle_secs` value for the caller to persist.
+pub(super) async fn handle_idle_tick(
+    idle_tracker: &mut IdleTracker,
+    sqlite: &Arc<dyn SchedulerStorage>,
+    notif: &Option<Arc<NotificationManager>>,
+    input_collector: &InputActivityCollector,
+    prev_idle_secs: u64,
+    focus_mode_active: bool,
+) -> u64 {
+    let idle_info = idle_tracker.check_idle().await;
+    let prev_state = idle_tracker.previous_state();
+
+    if prev_state == IdleState::Active && idle_info.state == IdleState::Idle {
+        match sqlite.start_idle_period(Utc::now()).await {
+            Ok(id) => {
+                idle_tracker.set_idle_period_id(Some(id));
+                debug!("idle period started: id={}", id);
+            }
+            Err(e) => warn!("idle period started record failure: {e}"),
+        }
+    } else if prev_state == IdleState::Idle && idle_info.state == IdleState::Active {
+        if let Some(id) = idle_tracker.idle_period_id() {
+            if let Err(e) = sqlite.end_idle_period(id, Utc::now()).await {
+                warn!("idle period ended record failure: {e}");
+            }
+            idle_tracker.set_idle_period_id(None);
+        }
+        if let Some(ref notif) = notif {
+            notif.reset_session().await;
+        }
+    }
+
+    // A4: Suppress idle notification in focus mode
+    if !focus_mode_active {
+        if let Some(ref notif) = notif {
+            notif.check_idle(idle_info.idle_secs).await;
+        }
+    }
+
+    input_collector.estimate_from_idle_change(prev_idle_secs, idle_info.idle_secs);
+    idle_info.idle_secs
+}
+
+// ── Heatmap & goal-progress overlay emission ─────────────────────────
+
+/// Record click positions into the heatmap aggregator and emit a snapshot
+/// to the overlay when available.  Also emits goal progress.
+pub(super) async fn emit_heatmap_and_goals(
+    adaptive_trigger_state: &mut Option<super::super::AdaptiveTriggerState>,
+    input_snap: &InputActivityEvent,
+    overlay_ref: &Option<MagicOverlayHandle>,
+    coaching_engine_ref: &Option<Arc<oneshim_analysis::CoachingEngine>>,
+) {
+    // Heatmap aggregation
+    if let Some(ref mut ts) = adaptive_trigger_state {
+        if let Some((x, y)) = input_snap.mouse.last_position {
+            ts.heatmap_aggregator
+                .record(x, y, input_snap.mouse.click_count);
+        }
+        if let Some(grid) = ts.heatmap_aggregator.take_snapshot() {
+            if let Some(ref overlay) = overlay_ref {
+                overlay.emit_heatmap(grid);
+            }
+        }
+    }
+
+    // Goal progress emission
+    if let Some(ref coaching) = coaching_engine_ref {
+        if let Some(ref overlay) = overlay_ref {
+            let goals = coaching.all_goal_progress().await;
+            if !goals.is_empty() {
+                overlay.update_goal_progress(goals).await;
+            }
+        }
+    }
+}
+
+// ── Audit: consent & PII level change logging ────────────────────────
+
+/// Log audit events when full_text_extraction consent or PII extraction
+/// level changes between ticks. Returns updated `(prev_consent, prev_pii_level)`.
+pub(super) fn audit_consent_and_pii_changes(
+    full_text_consent: bool,
+    prev_full_text_consent: bool,
+    pii_level: oneshim_core::config::PiiFilterLevel,
+    prev_pii_level: oneshim_core::config::PiiFilterLevel,
+) -> (bool, oneshim_core::config::PiiFilterLevel) {
+    let mut new_consent = prev_full_text_consent;
+    let mut new_pii = prev_pii_level;
+
+    if full_text_consent != prev_full_text_consent {
+        if full_text_consent {
+            info!(
+                event = "full_text_extraction_consent_granted",
+                "User granted full_text_extraction consent — Off PII level now effective"
+            );
+        } else {
+            warn!(
+                event = "full_text_extraction_consent_revoked",
+                "User revoked full_text_extraction consent — falling back to Standard PII level"
+            );
+        }
+        new_consent = full_text_consent;
+    }
+
+    if pii_level != prev_pii_level {
+        info!(
+            event = "pii_extraction_level_changed",
+            old = ?prev_pii_level,
+            new = ?pii_level,
+            "PII extraction level changed"
+        );
+        new_pii = pii_level;
+    }
+
+    (new_consent, new_pii)
 }
 
 /// Convert a SegmentSummaryRecord (storage row) to SegmentSummary (domain model)

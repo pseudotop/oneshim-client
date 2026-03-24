@@ -1,5 +1,14 @@
 import { useEffect, useReducer } from 'react'
-import type { CaptureStatePayload, CoachingPayload, FocusHighlightPayload, FocusModePayload, GoalProgressItem, OverlayMode, OverlayState, SuggestionViewDto } from '../types'
+import type {
+  CaptureStatePayload,
+  CoachingPayload,
+  FocusHighlightPayload,
+  FocusModePayload,
+  GoalProgressItem,
+  OverlayMode,
+  OverlayState,
+  SuggestionViewDto,
+} from '../types'
 
 type OverlayAction =
   | { type: 'show-coaching'; payload: CoachingPayload }
@@ -59,16 +68,14 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
     case 'toggle-suggestions-panel':
       return {
         ...state,
-        suggestionsPanelOpen: action.payload !== undefined
-          ? action.payload
-          : !state.suggestionsPanelOpen,
+        suggestionsPanelOpen: action.payload !== undefined ? action.payload : !state.suggestionsPanelOpen,
       }
     case 'set-suggestions':
       return { ...state, suggestions: action.payload }
     case 'remove-suggestion':
       return {
         ...state,
-        suggestions: state.suggestions.filter(s => s.id !== action.payload),
+        suggestions: state.suggestions.filter((s) => s.id !== action.payload),
       }
     default:
       return state
@@ -126,7 +133,9 @@ export function useOverlayEvents() {
         try {
           const suggestions = await invoke<SuggestionViewDto[]>('get_pending_suggestions')
           dispatch({ type: 'set-suggestions', payload: suggestions })
-        } catch { /* ignore fetch failures */ }
+        } catch {
+          /* ignore fetch failures */
+        }
       })
 
       unlisten = [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11]
@@ -136,7 +145,9 @@ export function useOverlayEvents() {
         const { invoke } = await import('@tauri-apps/api/core')
         const status = await invoke<CaptureStatePayload>('get_capture_status')
         dispatch({ type: 'capture-state-changed', payload: status })
-      } catch { /* standalone/dev mode — keep defaults */ }
+      } catch {
+        /* standalone/dev mode — keep defaults */
+      }
     }
 
     setup()

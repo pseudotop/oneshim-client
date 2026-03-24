@@ -16,6 +16,9 @@
       "suspicious": {
         "noUnknownAtRules": "off"
       },
+      "correctness": {
+        "useExhaustiveDependencies": "warn"
+      },
       "nursery": {
         "useSortedClasses": {
           "level": "warn",

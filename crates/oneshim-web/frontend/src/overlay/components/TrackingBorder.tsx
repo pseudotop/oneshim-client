@@ -8,10 +8,8 @@ export function TrackingBorder({ paused, visible }: Props) {
 
   return (
     <div
-      className={`fixed inset-0 pointer-events-none z-[100] border-[3px] ${
-        paused
-          ? 'border-gray-400/40'
-          : 'border-brand-signal/60 animate-tracking-pulse'
+      className={`pointer-events-none fixed inset-0 z-[100] border-[3px] ${
+        paused ? 'border-gray-400/40' : 'animate-tracking-pulse border-brand-signal/60'
       }`}
     />
   )

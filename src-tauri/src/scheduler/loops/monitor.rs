@@ -1,5 +1,4 @@
 use chrono::Utc;
-use oneshim_core::models::activity::IdleState;
 use oneshim_core::models::event::Event;
 use oneshim_core::models::focused_element::AccessibilityElement;
 use oneshim_core::models::frame::OcrRegion;
@@ -15,7 +14,10 @@ use super::super::config::PlatformEgressPolicy;
 use super::super::shared_regime_state::SharedRegimeState;
 use super::super::Scheduler;
 use super::coaching_helper::{CoachingEvalContext, CoachingTickState};
-use super::helpers::{build_segment_stats_snapshot, handle_event_analysis, handle_frame_capture};
+use super::helpers::{
+    audit_consent_and_pii_changes, build_segment_stats_snapshot, emit_heatmap_and_goals,
+    handle_event_analysis, handle_frame_capture, handle_idle_tick,
+};
 use crate::focus_mode::FocusModeState;
 
 impl Scheduler {
@@ -111,38 +113,14 @@ impl Scheduler {
                             info!("Focus mode expired — auto-deactivated");
                         }
 
-                        let idle_info = idle_tracker.check_idle().await;
-                        let prev_state = idle_tracker.previous_state();
-
-                        if prev_state == IdleState::Active && idle_info.state == IdleState::Idle {
-                            match sqlite1.start_idle_period(Utc::now()).await {
-                                Ok(id) => {
-                                    idle_tracker.set_idle_period_id(Some(id));
-                                    debug!("idle period started: id={}", id);
-                                }
-                                Err(e) => warn!("idle period started record failure: {e}"),
-                            }
-                        } else if prev_state == IdleState::Idle && idle_info.state == IdleState::Active {
-                            if let Some(id) = idle_tracker.idle_period_id() {
-                                if let Err(e) = sqlite1.end_idle_period(id, Utc::now()).await {
-                                    warn!("idle period ended record failure: {e}");
-                                }
-                                idle_tracker.set_idle_period_id(None);
-                            }
-                            if let Some(ref notif) = notif1 {
-                                notif.reset_session().await;
-                            }
-                        }
-
-                        // A4: Suppress idle notification in focus mode
-                        if !focus_mode.is_active() {
-                            if let Some(ref notif) = notif1 {
-                                notif.check_idle(idle_info.idle_secs).await;
-                            }
-                        }
-
-                        input_collector.estimate_from_idle_change(prev_idle_secs, idle_info.idle_secs);
-                        prev_idle_secs = idle_info.idle_secs;
+                        prev_idle_secs = handle_idle_tick(
+                            &mut idle_tracker,
+                            &sqlite1,
+                            &notif1,
+                            &input_collector,
+                            prev_idle_secs,
+                            focus_mode.is_active(),
+                        ).await;
 
                         match act_mon.collect_context().await {
                             Ok(ctx) => {
@@ -172,32 +150,14 @@ impl Scheduler {
                                         .map(|cm| cm.is_permitted(|p| p.full_text_extraction))
                                         .unwrap_or(false);
 
-                                    // Audit: log consent state changes
-                                    if full_text_consent != prev_full_text_consent {
-                                        if full_text_consent {
-                                            info!(
-                                                event = "full_text_extraction_consent_granted",
-                                                "User granted full_text_extraction consent — Off PII level now effective"
-                                            );
-                                        } else {
-                                            warn!(
-                                                event = "full_text_extraction_consent_revoked",
-                                                "User revoked full_text_extraction consent — falling back to Standard PII level"
-                                            );
-                                        }
-                                        prev_full_text_consent = full_text_consent;
-                                    }
-
-                                    // Audit: log PII extraction level config changes
-                                    if text_config.pii_extraction_level != prev_pii_level {
-                                        info!(
-                                            event = "pii_extraction_level_changed",
-                                            old = ?prev_pii_level,
-                                            new = ?text_config.pii_extraction_level,
-                                            "PII extraction level changed"
+                                    // Audit: log consent / PII level changes
+                                    (prev_full_text_consent, prev_pii_level) =
+                                        audit_consent_and_pii_changes(
+                                            full_text_consent,
+                                            prev_full_text_consent,
+                                            text_config.pii_extraction_level,
+                                            prev_pii_level,
                                         );
-                                        prev_pii_level = text_config.pii_extraction_level;
-                                    }
 
                                     match ax
                                         .extract_focused_element(
@@ -533,18 +493,13 @@ impl Scheduler {
                                     }
                                 }
 
-                                // ── Heatmap aggregation ──
-                                // Record click positions and periodically emit to overlay.
-                                if let Some(ref mut ts) = adaptive_trigger_state {
-                                    if let Some((x, y)) = input_snap.mouse.last_position {
-                                        ts.heatmap_aggregator.record(x, y, input_snap.mouse.click_count);
-                                    }
-                                    if let Some(grid) = ts.heatmap_aggregator.take_snapshot() {
-                                        if let Some(ref overlay) = overlay_ref {
-                                            overlay.emit_heatmap(grid);
-                                        }
-                                    }
-                                }
+                                // ── Heatmap aggregation + goal progress ──
+                                emit_heatmap_and_goals(
+                                    &mut adaptive_trigger_state,
+                                    &input_snap,
+                                    &overlay_ref,
+                                    &coaching_engine_ref,
+                                ).await;
 
                                 // ── Coaching evaluation (Phase 1) ──
                                 // A4: Skip coaching when focus mode active
@@ -573,16 +528,6 @@ impl Scheduler {
                                     super::coaching_helper::evaluate_and_deliver(&ctx, &mut coaching_tick_state).await;
                                 }
                                 } // end A4: focus_mode coaching guard
-
-                                // Emit goal progress to overlay (every tick when coaching enabled)
-                                if let Some(ref coaching) = coaching_engine_ref {
-                                    if let Some(ref overlay) = overlay_ref {
-                                        let goals = coaching.all_goal_progress().await;
-                                        if !goals.is_empty() {
-                                            overlay.update_goal_progress(goals).await;
-                                        }
-                                    }
-                                }
 
                                 prev_app = Some(app_name);
                             }

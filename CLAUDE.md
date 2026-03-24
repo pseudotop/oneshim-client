@@ -342,9 +342,42 @@ Manual mock implementation (mockall is not used). Trait implementations inside `
 - Rust edition: **2021**, Minimum version: **1.77.1**
 - Code Formatting: `cargo fmt` (rustfmt default settings)
 - Linting: `cargo clippy` — `dead_code` warnings are allowed only for variants intended for future use
+- Frontend Linting: `pnpm lint` (Biome) — `useExhaustiveDependencies` enabled
 - Testing: Write in `#[cfg(test)] mod tests` at the bottom of each module
 - Logging: `tracing` macros (`debug!`, `info!`, `warn!`, `error!`)
 - Serialization: `serde` derive — `Serialize, Deserialize` for all models
+
+## Architecture Guardrails
+
+Rules to prevent known issues from recurring. Enforced by code review.
+
+### AppState Sub-Structs
+
+`AppState` fields are grouped into sub-structs by concern. When adding new fields:
+- Capture-related → `CaptureContext`
+- Connection status → `ConnectionStatus`
+- Create new sub-struct if 3+ related fields would otherwise be top-level
+
+### Monitor Loop Complexity
+
+`spawn_monitor_loop` in `scheduler/loops/monitor.rs` must stay under 500 lines. When adding functionality, extract into a helper function in the `loops/` directory (like `coaching_helper.rs`).
+
+### Port Instance Sharing
+
+Ports (Arc<dyn T>) created for the Scheduler should be shared with AppState, not duplicated. If a separate instance is intentionally needed (e.g., stateless API), add a comment explaining why.
+
+### Overlay Frontend Patterns
+
+- **State**: All overlay state flows through the `useOverlayEvents` reducer. No local `useState` for data that comes from Rust events.
+- **Event listeners**: Register in `useOverlayEvents.ts` only, with proper cleanup. Never in individual components.
+- **IPC invoke**: Use dynamic `await import('@tauri-apps/api/core')` (not static import) for graceful degradation outside Tauri.
+- **IPC param names**: Tauri v2 auto-converts camelCase JS → snake_case Rust. Use camelCase in JS invoke calls.
+- **Reducer completeness**: Every new Tauri event → needs OverlayAction type + reducer case + OverlayState field. Missing any one causes silent failures.
+
+### Concurrency
+
+- Bounded collections only: use `LruCache` or `VecDeque` with max capacity for any runtime-growing collection.
+- Lock acquisition order: if multiple locks needed, acquire in a single scope or document the ordering.
 
 ## Reference Documents
 

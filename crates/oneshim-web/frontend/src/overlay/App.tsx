@@ -24,7 +24,9 @@ export default function OverlayApp() {
     try {
       const suggestions = await invoke<SuggestionViewDto[]>('get_pending_suggestions')
       dispatch({ type: 'set-suggestions', payload: suggestions })
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [dispatch])
 
   return (

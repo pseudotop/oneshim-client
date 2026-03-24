@@ -28,7 +28,7 @@ export function useAutoDismiss(active: boolean, seconds: number, onDismiss: () =
       clear()
     }
     return clear
-  }, [active, seconds, start, clear])
+  }, [active, start, clear])
 
   return {
     reset: useCallback(() => {
