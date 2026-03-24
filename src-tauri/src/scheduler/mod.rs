@@ -25,6 +25,7 @@ use oneshim_core::ports::api_client::ApiClient;
 use oneshim_core::ports::batch_sink::BatchSink;
 use oneshim_core::ports::calibration_store::{CalibrationReader, CalibrationWriter};
 use oneshim_core::ports::monitor::{ActivityMonitor, ProcessMonitor, SystemMonitor};
+use oneshim_core::ports::overlay_driver::OverlayDriver;
 use oneshim_core::ports::storage::StorageService;
 use oneshim_core::ports::vector_index::VectorIndex;
 use oneshim_core::ports::vision::{CaptureTrigger, FrameProcessor};
@@ -148,6 +149,10 @@ pub struct Scheduler {
     pub(super) coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     /// MagicOverlay handle for coaching message delivery (Phase 2).
     pub(super) magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    /// OverlayDriver port for rendering focus highlights on screen elements.
+    /// Uses `show_highlights()` / `clear_highlights()` to draw bounding boxes
+    /// around the currently focused accessibility element.
+    pub(super) overlay_driver: Option<Arc<dyn OverlayDriver>>,
     /// Analysis provider for LLM personalization of coaching messages (Phase 2).
     pub(super) analysis_provider:
         Option<Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>>,
@@ -227,6 +232,7 @@ impl Scheduler {
             consent_manager: None,
             coaching_engine: None,
             magic_overlay: None,
+            overlay_driver: None,
             analysis_provider: None,
             coaching_storage: None,
             capture_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -347,6 +353,11 @@ impl Scheduler {
 
     pub fn with_magic_overlay(mut self, overlay: crate::magic_overlay::MagicOverlayHandle) -> Self {
         self.magic_overlay = Some(overlay);
+        self
+    }
+
+    pub fn with_overlay_driver(mut self, driver: Arc<dyn OverlayDriver>) -> Self {
+        self.overlay_driver = Some(driver);
         self
     }
 

@@ -48,6 +48,7 @@ pub(crate) struct AgentRuntimeBundle {
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    overlay_driver: Option<Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver>>,
     capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
     server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
@@ -493,6 +494,9 @@ impl AgentRuntimeBundle {
         if let Some(overlay) = self.magic_overlay {
             scheduler = scheduler.with_magic_overlay(overlay);
         }
+        if let Some(driver) = self.overlay_driver {
+            scheduler = scheduler.with_overlay_driver(driver);
+        }
         if let Some(capture_paused) = self.capture_paused {
             scheduler = scheduler.with_capture_paused(capture_paused);
         }
@@ -594,6 +598,7 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     coaching_engine: Option<Arc<oneshim_analysis::CoachingEngine>>,
     coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
+    overlay_driver: Option<Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver>>,
     capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
     server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
@@ -647,6 +652,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             coaching_engine: None,
             coaching_storage: None,
             magic_overlay: None,
+            overlay_driver: None,
             capture_paused: None,
             server_health_flag: None,
             llm_health_flag: None,
@@ -748,6 +754,14 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_overlay_driver(
+        mut self,
+        driver: Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver>,
+    ) -> Self {
+        self.overlay_driver = Some(driver);
+        self
+    }
+
     pub(crate) fn with_capture_paused(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
         self.capture_paused = Some(flag);
         self
@@ -829,6 +843,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             coaching_engine: self.coaching_engine,
             coaching_storage: self.coaching_storage,
             magic_overlay: self.magic_overlay,
+            overlay_driver: self.overlay_driver,
             capture_paused: self.capture_paused,
             server_health_flag: self.server_health_flag,
             llm_health_flag: self.llm_health_flag,

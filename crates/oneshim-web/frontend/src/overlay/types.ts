@@ -50,10 +50,15 @@ export interface ModePayload {
   mode: OverlayMode
 }
 
+export interface FocusModePayload {
+  active: boolean
+}
+
 export interface OverlayState {
   mode: OverlayMode
   coaching: CoachingPayload | null
   focusHighlight: FocusHighlightPayload | null
+  focusMode: boolean
   goals: GoalProgressItem[]
   captureState: CaptureStatePayload
 }

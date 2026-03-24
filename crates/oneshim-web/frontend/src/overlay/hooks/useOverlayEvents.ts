@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react'
-import type { CaptureStatePayload, CoachingPayload, FocusHighlightPayload, GoalProgressItem, OverlayMode, OverlayState } from '../types'
+import type { CaptureStatePayload, CoachingPayload, FocusHighlightPayload, FocusModePayload, GoalProgressItem, OverlayMode, OverlayState } from '../types'
 
 type OverlayAction =
   | { type: 'show-coaching'; payload: CoachingPayload }
@@ -9,12 +9,14 @@ type OverlayAction =
   | { type: 'clear-focus' }
   | { type: 'update-goals'; payload: GoalProgressItem[] }
   | { type: 'set-mode'; payload: OverlayMode }
+  | { type: 'set-focus-mode'; payload: boolean }
   | { type: 'capture-state-changed'; payload: CaptureStatePayload }
 
 const initialState: OverlayState = {
   mode: 'minimal',
   coaching: null,
   focusHighlight: null,
+  focusMode: false,
   goals: [],
   captureState: { paused: false, indicator_visible: false },
 }
@@ -41,6 +43,8 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
       return { ...state, goals: action.payload }
     case 'set-mode':
       return { ...state, mode: action.payload }
+    case 'set-focus-mode':
+      return { ...state, focusMode: action.payload }
     case 'capture-state-changed':
       return { ...state, captureState: action.payload }
     default:
@@ -84,7 +88,11 @@ export function useOverlayEvents() {
         dispatch({ type: 'capture-state-changed', payload: e.payload })
       })
 
-      unlisten = [u1, u2, u3, u4, u5, u6, u7, u8]
+      const u9 = await listen<FocusModePayload>('overlay:focus-mode', (e) => {
+        dispatch({ type: 'set-focus-mode', payload: e.payload.active })
+      })
+
+      unlisten = [u1, u2, u3, u4, u5, u6, u7, u8, u9]
 
       // Query actual backend state (overlay window may be created after state changes)
       try {
