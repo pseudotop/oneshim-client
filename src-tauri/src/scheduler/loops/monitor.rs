@@ -56,6 +56,7 @@ impl Scheduler {
         let coaching_storage_ref = self.coaching_storage.clone();
         let coaching_analysis_provider = self.analysis_provider.clone();
         let capture_paused = self.capture_paused.clone();
+        let overlay_driver_ref = self.overlay_driver.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
@@ -85,6 +86,11 @@ impl Scheduler {
             // pipeline uses these for click-to-element correlation via
             // `GuiElementDetector::correlate_click()`.
             let mut last_ocr_regions: Vec<OcrRegion> = Vec::new();
+
+            // ── Focus highlight debounce state ──
+            // Only re-render when the focused element's identity (role+label) changes.
+            let mut prev_highlight_key: Option<(String, String)> = None;
+            let mut last_highlight_handle_id: Option<String> = None;
 
             // ── Coaching: track real regime dwell time ──
             let mut regime_entered_at: Option<std::time::Instant> = None;
@@ -204,25 +210,76 @@ impl Scheduler {
                                         .await
                                     {
                                         Ok(info) => {
-                                            // Emit focus highlight to overlay (Rich/Adaptive mode)
-                                            if let Some(ref fe) = info {
-                                                if let (Some(ref overlay), Some(ref pos)) = (&overlay_ref, &fe.position) {
-                                                    overlay.update_focus_highlight(crate::magic_overlay::OverlayFocusPayload {
-                                                        x: pos.x as i32,
-                                                        y: pos.y as i32,
-                                                        width: pos.width as u32,
-                                                        height: pos.height as u32,
-                                                        border_color: "#0d9488".to_string(),
-                                                        opacity: 0.6,
-                                                    }).await;
+                                            // Build a key from role+label for debounce comparison
+                                            let current_key = info.as_ref().and_then(|fe| {
+                                                fe.position.filter(|p| p.width > 0.0 && p.height > 0.0)?;
+                                                Some((
+                                                    fe.role.clone(),
+                                                    fe.label.clone().unwrap_or_default(),
+                                                ))
+                                            });
+
+                                            // Only update overlay when focused element identity changed
+                                            if current_key != prev_highlight_key {
+                                                if let Some(ref driver) = overlay_driver_ref {
+                                                    // Clear previous highlight first
+                                                    if let Some(ref prev_id) = last_highlight_handle_id {
+                                                        if let Err(e) = driver.clear_highlights(prev_id).await {
+                                                            debug!("focus highlight clear failed: {e}");
+                                                        }
+                                                        last_highlight_handle_id = None;
+                                                    }
+
+                                                    // Show new highlight if element has valid bounds
+                                                    if let Some(ref fe) = info {
+                                                        if let Some(ref pos) = fe.position {
+                                                            if pos.width > 0.0 && pos.height > 0.0 {
+                                                                let req = oneshim_core::models::gui::HighlightRequest {
+                                                                    session_id: String::new(),
+                                                                    scene_id: String::new(),
+                                                                    targets: vec![
+                                                                        oneshim_core::models::gui::HighlightTarget {
+                                                                            candidate_id: "ax-focus".to_string(),
+                                                                            bbox_abs: oneshim_core::models::intent::ElementBounds {
+                                                                                x: pos.x as i32,
+                                                                                y: pos.y as i32,
+                                                                                width: pos.width as u32,
+                                                                                height: pos.height as u32,
+                                                                            },
+                                                                            color: "#0d9488".to_string(),
+                                                                            label: fe.label.clone(),
+                                                                        },
+                                                                    ],
+                                                                };
+                                                                match driver.show_highlights(req).await {
+                                                                    Ok(handle) => {
+                                                                        last_highlight_handle_id = Some(handle.handle_id);
+                                                                    }
+                                                                    Err(e) => {
+                                                                        debug!("focus highlight show failed: {e}");
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
-                                            } else if let Some(ref overlay) = overlay_ref {
-                                                overlay.clear_focus_highlight();
+                                                prev_highlight_key = current_key;
                                             }
+
                                             last_focused_element = info;
                                         }
                                         Err(e) => {
                                             debug!("accessibility extraction failed: {e}");
+                                            // Clear highlight on extraction failure
+                                            if prev_highlight_key.is_some() {
+                                                if let Some(ref driver) = overlay_driver_ref {
+                                                    if let Some(ref prev_id) = last_highlight_handle_id {
+                                                        let _ = driver.clear_highlights(prev_id).await;
+                                                    }
+                                                }
+                                                last_highlight_handle_id = None;
+                                                prev_highlight_key = None;
+                                            }
                                             last_focused_element = None;
                                         }
                                     }

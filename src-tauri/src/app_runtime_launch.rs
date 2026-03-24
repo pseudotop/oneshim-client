@@ -241,6 +241,9 @@ impl AppRuntimeLaunchBuilder {
             .with_coaching_engine(coaching_engine.clone())
             .with_coaching_storage(sqlite_storage.clone())
             .with_magic_overlay(magic_overlay.clone())
+            .with_overlay_driver(Arc::new(
+                crate::magic_overlay_driver::MagicOverlayDriver::new(self.app_handle.clone()),
+            ))
             .with_capture_paused(capture_paused.clone())
             .with_focus_mode(focus_mode.clone())
             .with_health_flags(

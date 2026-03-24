@@ -25,6 +25,7 @@ pub struct OverlayUpgradePayload {
     pub personalized_text: String,
 }
 
+#[allow(dead_code)] // retained for future IPC command usage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverlayFocusPayload {
     pub x: i32,
@@ -219,6 +220,7 @@ impl MagicOverlayHandle {
     }
 
     /// Update focus highlight overlay element.
+    #[allow(dead_code)] // retained for future IPC command usage
     pub async fn update_focus_highlight(&self, highlight: OverlayFocusPayload) {
         if let Err(e) = self.app_handle.emit("overlay:update-focus", &highlight) {
             warn!("failed to emit overlay:update-focus: {e}");
@@ -226,6 +228,7 @@ impl MagicOverlayHandle {
     }
 
     /// Clear the focus highlight from the overlay.
+    #[allow(dead_code)] // retained for future IPC command usage
     pub fn clear_focus_highlight(&self) {
         let _ = self.app_handle.emit("overlay:clear-focus", ());
     }
