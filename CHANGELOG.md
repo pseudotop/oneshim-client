@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2-rc.1] - 2026-03-24
+### Added
+
+- Add periodic background re-check in update coordinator
+  The update coordinator previously checked for updates only once at
+  startup. Now it runs a periodic re-check using tokio::select! with
+  a timer based on check_interval_hours (clamped to min 1 hour).
+  Skips re-check if an update is already pending or installing.
+
+- Wire active hours schedule gating to monitor loop
+  should_run_now() was implemented and tested but never called.
+  Now the monitor loop checks config.schedule.active_hours_enabled
+  each tick and skips capture/frame processing when outside the
+  configured active hours window (days + hour range). The existing
+  Settings UI toggle already controls this config.
+
+- Wire focus highlight + toggle mode IPC + cleanup
+  - Focus highlight: monitor loop emits overlay:update-focus when
+    accessibility extraction returns a focused element with position.
+    Emits overlay:clear-focus when element is lost. New public method
+    clear_focus_highlight() on MagicOverlayHandle.
+  - Mode toggle: new toggle_overlay_mode IPC command cycles
+    Minimal→Rich→Adaptive→Minimal. Registered in invoke_handler.
+  - Cleanup: delete orphaned event_bus.rs module (83 lines, never
+    instantiated) and remove mod declaration. Remove 5 stale
+    #[allow(dead_code)] annotations from MagicOverlay types and
+    methods now actively used.
+
+- Wire analysis_provider for coaching personalization
+  Wire LLM AnalysisProvider from config into scheduler for coaching
+  message personalization. Remove stale #[allow(dead_code)] from
+  with_coaching_engine and with_analysis_provider (now have callers).
+  Retain dead_code on with_vector_index/with_search_coordinator
+  (awaiting AdaptiveSearchCoordinator implementation).
+
+- Add control box IPC commands and coaching regime context ([#152](https://github.com/pseudotop/oneshim-client/pull/152))
+  Implement 5 features for the desktop control box and coaching pipeline:
+
+  - A1: Manual Capture IPC — trigger_manual_capture command with full+OCR
+    pipeline, base64 decode, frame file storage, SQLite metadata persistence
+  - A2: Scene Analysis IPC — analyze_current_scene command with accessibility
+    extraction, OCR regions, and structured scene response DTOs
+  - A3: AI Suggestions Panel — get_pending_suggestions, get_suggestion_history,
+    submit_suggestion_feedback commands with shared queue (SuggestionManager
+    shares Arc<Mutex<SuggestionQueue>> with SuggestionReceiver)
+  - A4: Focus Mode — FocusModeState with atomic toggle, auto-expiry, coaching
+    suppression, notification suppression, capture threshold elevation,
+    overlay focus-mode event emission
+  - C1: Coaching Regime Context — SharedRegimeState (parking_lot::RwLock)
+    enabling monitor loop to write and coaching loop to read real regime_id
+    and current_app, replacing Phase 1 placeholders
+
+  New files: 7 | Modified files: 14 | +330 lines
+  Tests: 2,469 pass, 0 fail | Clippy: 0 warnings
+
+
+## [Unreleased]
+
 ## [0.4.1] - 2026-03-24
 ### Added
 

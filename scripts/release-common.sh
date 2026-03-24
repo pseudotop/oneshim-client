@@ -19,6 +19,14 @@ base_version() {
   printf '%s\n' "${1%%-rc.*}"
 }
 
+# Increment the patch component of a semver: 0.4.1 -> 0.4.2
+next_patch_version() {
+  local ver="${1}"
+  local major minor patch
+  IFS='.' read -r major minor patch <<< "${ver}"
+  printf '%s.%s.%s\n' "${major}" "${minor}" "$((patch + 1))"
+}
+
 workspace_version() {
   grep -m1 '^version' "${WORKSPACE_CARGO_TOML}" | sed 's/.*"\(.*\)"/\1/'
 }
