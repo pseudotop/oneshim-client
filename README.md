@@ -17,6 +17,23 @@
 
 A desktop client for AI-assisted office productivity — local context capture, real-time suggestions, and a built-in dashboard. Built with Rust and Tauri v2 (WebView shell around a React frontend) for native performance across macOS, Windows, and Linux.
 
+## Table of Contents
+
+- [Install in 30 Seconds](#install-in-30-seconds)
+- [Why ONESHIM](#why-oneshim)
+- [Who It's For](#who-its-for)
+- [2-Minute Quickstart](#2-minute-quickstart)
+- [Safety and Privacy at a Glance](#safety-and-privacy-at-a-glance)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Developer Quick Start](#developer-quick-start-build-from-source)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [Development](#development)
+- [License](#license)
+- [Contributing](#contributing)
+
 ## Install in 30 Seconds
 
 macOS / Linux:
