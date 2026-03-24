@@ -17,8 +17,7 @@ declare global {
   }
 }
 
-let resolvedPort =
-  (typeof window !== 'undefined' && window.__ONESHIM_WEB_PORT__) || DEFAULT_WEB_PORT
+let resolvedPort = (typeof window !== 'undefined' && window.__ONESHIM_WEB_PORT__) || DEFAULT_WEB_PORT
 
 let webPortPromise: Promise<number> | null = null
 

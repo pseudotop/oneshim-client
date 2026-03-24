@@ -55,7 +55,9 @@ function normalizedProviderType(catalog: ProviderSurfaceCatalog, providerType: s
 }
 
 function normalizedVendorId(catalog: ProviderSurfaceCatalog, providerType: string | null | undefined): string {
-  return canonicalVendorSpec(catalog, providerType)?.vendor_id ?? (((providerType ?? '').trim().toLowerCase()) || 'generic')
+  return (
+    canonicalVendorSpec(catalog, providerType)?.vendor_id ?? ((providerType ?? '').trim().toLowerCase() || 'generic')
+  )
 }
 
 function compatibleExecutionKinds(accessMode: string | null | undefined, endpointKind: EndpointSurfaceKind): string[] {
@@ -159,9 +161,7 @@ export function getCompatibleProviderSurfaces(
   const executionKinds = compatibleExecutionKinds(accessMode, endpointKind)
 
   const compatible = catalog.surfaces.filter(
-    (surface) =>
-      executionKinds.includes(surface.execution_kind) &&
-      surfaceSupportsKind(surface, endpointKind),
+    (surface) => executionKinds.includes(surface.execution_kind) && surfaceSupportsKind(surface, endpointKind),
   )
 
   return [...compatible].sort((left, right) => {
@@ -337,11 +337,11 @@ export function surfaceSupportsModelSelection(
     return false
   }
 
-  const defaults =
-    endpointKind === 'ocr_api' ? surface.default_models.ocr_models : surface.default_models.llm_models
-  const modelCatalogSupported = endpointKind === 'ocr_api'
-    ? (surface.model_catalog_transport?.ocr_supported ?? false)
-    : (surface.model_catalog_transport?.llm_supported ?? false)
+  const defaults = endpointKind === 'ocr_api' ? surface.default_models.ocr_models : surface.default_models.llm_models
+  const modelCatalogSupported =
+    endpointKind === 'ocr_api'
+      ? (surface.model_catalog_transport?.ocr_supported ?? false)
+      : (surface.model_catalog_transport?.llm_supported ?? false)
   const knownModels = surface.known_models.some((model) =>
     endpointKind === 'ocr_api' ? model.capabilities.ocr : model.capabilities.llm,
   )
@@ -403,19 +403,15 @@ export function surfaceUnknownModelPolicy(
   }
 
   return endpointKind === 'ocr_api'
-    ? surface.unknown_model_policy?.ocr ?? 'warn'
-    : surface.unknown_model_policy?.llm ?? 'warn'
+    ? (surface.unknown_model_policy?.ocr ?? 'warn')
+    : (surface.unknown_model_policy?.llm ?? 'warn')
 }
 
-export function surfaceLlmStructuredOutput(
-  surface: ProviderSurfaceSpec | undefined,
-): boolean {
+export function surfaceLlmStructuredOutput(surface: ProviderSurfaceSpec | undefined): boolean {
   return surface?.llm_capabilities?.structured_output ?? false
 }
 
-export function surfaceOcrExecutionStrategy(
-  surface: ProviderSurfaceSpec | undefined,
-): OcrExecutionStrategy {
+export function surfaceOcrExecutionStrategy(surface: ProviderSurfaceSpec | undefined): OcrExecutionStrategy {
   const strategy = surface?.ocr_capabilities?.strategy?.trim()
   if (strategy === 'multimodal_llm' || strategy === 'vision_api') {
     return strategy
@@ -423,8 +419,6 @@ export function surfaceOcrExecutionStrategy(
   return 'none'
 }
 
-export function surfaceOcrRequiresStructuredOutputModel(
-  surface: ProviderSurfaceSpec | undefined,
-): boolean {
+export function surfaceOcrRequiresStructuredOutputModel(surface: ProviderSurfaceSpec | undefined): boolean {
   return surface?.ocr_capabilities?.requires_structured_output_model ?? false
 }

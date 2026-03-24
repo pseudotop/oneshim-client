@@ -1,6 +1,6 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { mockIPC, clearMocks } from '@tauri-apps/api/mocks'
 import { invoke } from '@tauri-apps/api/core'
+import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { afterEach, describe, expect, it } from 'vitest'
 
 describe('CRT-MK-M007: update_setting IPC contract', () => {
   afterEach(() => clearMocks())
@@ -38,9 +38,9 @@ describe('CRT-MK-M007: update_setting IPC contract', () => {
         return { ok: true }
       }
     })
-    await expect(
-      invoke('update_setting', { config_json: JSON.stringify({ server: { url: 'x' } }) })
-    ).rejects.toThrow(/not permitted/)
+    await expect(invoke('update_setting', { config_json: JSON.stringify({ server: { url: 'x' } }) })).rejects.toThrow(
+      /not permitted/,
+    )
   })
 
   it('M009: handles malformed JSON', async () => {
@@ -54,8 +54,6 @@ describe('CRT-MK-M007: update_setting IPC contract', () => {
         return { ok: true }
       }
     })
-    await expect(
-      invoke('update_setting', { config_json: 'not-json{' })
-    ).rejects.toThrow(/invalid JSON/)
+    await expect(invoke('update_setting', { config_json: 'not-json{' })).rejects.toThrow(/invalid JSON/)
   })
 })

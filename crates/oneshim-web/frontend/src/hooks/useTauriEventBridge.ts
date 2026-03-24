@@ -2,8 +2,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { addToast } from './useToast'
 import { IS_TAURI } from '../utils/platform'
+import { addToast } from './useToast'
 
 type TauriEventPayload = {
   payload?: unknown
@@ -130,10 +130,8 @@ export function useTauriEventBridge() {
             if (!isIntegrationPromptPayload(event.payload)) {
               return
             }
-            const title =
-              typeof event.payload.title === 'string' ? event.payload.title.trim() : ''
-            const body =
-              typeof event.payload.body === 'string' ? event.payload.body.trim() : ''
+            const title = typeof event.payload.title === 'string' ? event.payload.title.trim() : ''
+            const body = typeof event.payload.body === 'string' ? event.payload.body.trim() : ''
             const message = [title, body].filter(Boolean).join(': ')
             if (message.length > 0) {
               addToast('info', message, 10000)
@@ -145,7 +143,7 @@ export function useTauriEventBridge() {
 
         unlistenCallbacks = pendingUnlistenCallbacks
       } catch {
-        pendingUnlistenCallbacks.forEach((unlisten) => unlisten())
+        for (const unlisten of pendingUnlistenCallbacks) unlisten()
         pendingUnlistenCallbacks = []
         // Browser mode or unavailable Tauri event bridge.
       }
@@ -155,7 +153,7 @@ export function useTauriEventBridge() {
 
     return () => {
       disposed = true
-      unlistenCallbacks.forEach((unlisten) => unlisten())
+      for (const unlisten of unlistenCallbacks) unlisten()
       unlistenCallbacks = []
     }
   }, [])

@@ -37,8 +37,9 @@ export function DevToolbar() {
 
   if (!open) {
     return (
-      // biome-ignore lint/design-tokens: DEV-ONLY component — raw colors intentional
+      // biome-ignore lint: DEV-ONLY component — raw colors intentional
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className="fixed bottom-12 right-4 z-[9999] bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded-full shadow-lg opacity-60 hover:opacity-100"
         title="Open Dev Toolbar"
@@ -49,11 +50,11 @@ export function DevToolbar() {
   }
 
   return (
-    // biome-ignore lint/design-tokens: DEV-ONLY component — raw colors intentional
+    // biome-ignore lint: DEV-ONLY component — raw colors intentional
     <div className="fixed bottom-12 right-4 z-[9999] bg-gray-900 text-white text-xs rounded-lg shadow-2xl p-3 w-72 border border-yellow-500/50">
       <div className="flex justify-between items-center mb-2">
         <span className="font-bold text-yellow-400">Dev Toolbar</span>
-        <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">
+        <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">
           &#x2715;
         </button>
       </div>
@@ -62,6 +63,7 @@ export function DevToolbar() {
         <div className="flex justify-between items-center">
           <span>Standalone Mock</span>
           <button
+            type="button"
             onClick={toggleStandalone}
             className={`px-2 py-0.5 rounded text-xs font-bold ${standalone ? 'bg-red-600' : 'bg-green-600'}`}
           >
@@ -87,10 +89,15 @@ export function DevToolbar() {
         <hr className="border-gray-700" />
 
         <div className="flex gap-2">
-          <button onClick={clearStorage} className="flex-1 bg-red-800 hover:bg-red-700 px-2 py-1 rounded text-xs">
+          <button
+            type="button"
+            onClick={clearStorage}
+            className="flex-1 bg-red-800 hover:bg-red-700 px-2 py-1 rounded text-xs"
+          >
             Clear Storage
           </button>
           <button
+            type="button"
             onClick={() => location.reload()}
             className="flex-1 bg-blue-800 hover:bg-blue-700 px-2 py-1 rounded text-xs"
           >

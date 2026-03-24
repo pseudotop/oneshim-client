@@ -67,10 +67,11 @@ export default function CoachingGoalsTab() {
           {/* Add new goal form */}
           <div className="flex items-end gap-2">
             <div>
-              <label className="mb-1 block text-xs text-content-secondary">
+              <label htmlFor="coaching-regime-label" className="mb-1 block text-xs text-content-secondary">
                 {t('coaching.regimeLabel', 'Regime Label')}
               </label>
               <Input
+                id="coaching-regime-label"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="e.g. Deep Coding"
@@ -78,10 +79,11 @@ export default function CoachingGoalsTab() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-content-secondary">
+              <label htmlFor="coaching-target-minutes" className="mb-1 block text-xs text-content-secondary">
                 {t('coaching.targetMinutes', 'Target (min)')}
               </label>
               <Input
+                id="coaching-target-minutes"
                 type="number"
                 value={newMinutes}
                 onChange={(e) => setNewMinutes(Number(e.target.value))}

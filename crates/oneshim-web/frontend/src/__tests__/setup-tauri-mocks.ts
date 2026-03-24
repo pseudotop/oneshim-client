@@ -1,4 +1,4 @@
-import { mockIPC, mockWindows, clearMocks } from '@tauri-apps/api/mocks'
+import { clearMocks, mockIPC, mockWindows } from '@tauri-apps/api/mocks'
 
 export function setupTauriMocks() {
   beforeEach(() => {

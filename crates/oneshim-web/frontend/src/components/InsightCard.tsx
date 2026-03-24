@@ -43,7 +43,7 @@ export default function InsightCard({ insight }: InsightCardProps) {
             const config = highlightConfig[highlight.highlight_type] ?? highlightConfig.SUGGESTION
             return (
               <span
-                key={`${highlight.highlight_type}-${idx}`}
+                key={`${highlight.highlight_type}-${highlight.text}`}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full px-3 py-1',
                   typography.caption,

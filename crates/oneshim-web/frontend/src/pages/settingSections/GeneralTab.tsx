@@ -224,17 +224,9 @@ function ViewSetupGuideButton() {
       <div className="flex items-center justify-between">
         <div>
           <CardTitle className="mb-1">{t('settings.viewSetupGuide')}</CardTitle>
-          <p className="text-content-secondary text-sm">
-            {t('settings.viewSetupGuideDesc')}
-          </p>
+          <p className="text-content-secondary text-sm">{t('settings.viewSetupGuideDesc')}</p>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          isLoading={loading}
-          onClick={handleClick}
-        >
+        <Button type="button" variant="secondary" size="sm" isLoading={loading} onClick={handleClick}>
           {t('settings.viewSetupGuide')}
         </Button>
       </div>
