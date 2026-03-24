@@ -55,6 +55,7 @@ mod scheduler;
 mod secret_cli;
 #[cfg(feature = "server")]
 mod server_runtime_context;
+mod session_adapters;
 mod session_context;
 mod session_manager;
 mod setup;
@@ -202,6 +203,10 @@ fn main() {
             commands::integration::oauth_cancel_flow,
             commands::integration::oauth_revoke,
             commands::integration::oauth_connection_status,
+            commands::ai_session::create_ai_session,
+            commands::ai_session::send_session_message,
+            commands::ai_session::kill_ai_session,
+            commands::ai_session::list_ai_sessions,
             commands::analysis::get_analysis_config,
             commands::analysis::update_analysis_config,
             commands::analysis::get_analysis_status,
@@ -247,6 +252,13 @@ fn main() {
         RunEvent::Exit => {
             info!("Tauri exit: sending shutdown signal");
             if let Some(state) = app_handle.try_state::<runtime_state::AppState>() {
+                // Terminate all active AI sessions before shutdown.
+                if let Some(ref sm) = state.session_manager {
+                    let sm = sm.clone();
+                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                        handle.block_on(async { sm.shutdown_all().await });
+                    }
+                }
                 if state.shutdown_tx.send(true).is_err() {
                     warn!("shutdown signal send failed (receivers already dropped)");
                 }

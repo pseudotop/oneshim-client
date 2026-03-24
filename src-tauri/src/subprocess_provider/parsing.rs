@@ -307,8 +307,8 @@ pub(super) fn append_model_flag(command: &mut Command, surface_id: &str, model: 
     }
 }
 
-// Phase 2: called from run_claude()/run_claude_ocr() when catalog-driven flags replace hardcoded ones
-#[allow(dead_code)]
+/// Append catalog-driven oneshot flags (e.g. `--bare`, `--no-session-persistence`) to a CLI command.
+/// Callers set `--output-format` separately since LLM/OCR and session modes need different formats.
 pub(super) fn append_oneshot_flags(command: &mut Command, surface_id: &str) {
     if let Ok(transport) = catalog_subprocess_transport(surface_id) {
         for flag in &transport.oneshot_flags {

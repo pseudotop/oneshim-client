@@ -542,7 +542,7 @@
         "invocation_mode": "claude_print_json",
         "model_flag": "--model",
         "json_output_supported": true,
-        "oneshot_flags": ["--no-session-persistence", "--permission-mode", "dontAsk", "--tools=", "--output-format", "stream-json"],
+        "oneshot_flags": ["--bare", "--no-session-persistence", "--permission-mode", "dontAsk", "--tools="],
         "session_flags": ["--output-format", "stream-json", "--permission-mode", "dontAsk"]
       },
       "references": [

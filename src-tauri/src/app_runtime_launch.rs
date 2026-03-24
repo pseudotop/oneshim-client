@@ -9,8 +9,11 @@ use crate::bootstrap_runtime::BootstrapRuntimeBundle;
 use crate::launch_resources::LaunchCoreResourcesBuilder;
 use crate::magic_overlay::MagicOverlayHandle;
 use crate::runtime_state::{AppState, CaptureContext, ConnectionStatus, ManagedStateBuilder};
+use crate::scheduler::shared_regime_state::SharedRegimeState;
 #[cfg(feature = "server")]
 use crate::server_runtime_context::ServerLaunchContext;
+use crate::session_context::SessionContextAssembler;
+use crate::session_manager::SessionManagerImpl;
 use crate::web_server_runtime::{
     WebServerLaunchContext, WebServerRuntimeBuilder, WebServerSupportContext,
 };
@@ -320,6 +323,37 @@ impl AppRuntimeLaunchBuilder {
 
         core_resources.background_runtime.spawn_runtime_bridges();
 
+        // Session manager wiring: AuditLogAdapter + SessionContextAssembler.
+        // Creates a SEPARATE AuditLogger instance (not shared with web_server_runtime)
+        // because the web server's logger is scoped to its own lifecycle and not exposed.
+        // Similarly, SharedRegimeState is a separate instance because the scheduler's
+        // copy is created inside the spawned async task and not accessible here.
+        let session_manager = {
+            let audit_logger = Arc::new(tokio::sync::RwLock::new(
+                oneshim_automation::audit::AuditLogger::new(500, 50),
+            ));
+            let audit_port: Arc<dyn oneshim_core::ports::audit_log::AuditLogPort> = Arc::new(
+                oneshim_automation::audit::AuditLogAdapter::new(audit_logger),
+            );
+
+            let session_config = Arc::new(config.ai_session.clone());
+
+            // Regime state for context assembler — separate instance (see IPC frame
+            // processor comment above for the same rationale).
+            let regime_state = Arc::new(SharedRegimeState::new());
+            let context_assembler = Arc::new(SessionContextAssembler::new(
+                sqlite_storage.clone(),
+                Arc::new(config.clone()),
+                regime_state,
+            ));
+
+            Some(Arc::new(SessionManagerImpl::new(
+                session_config,
+                audit_port,
+                Some(context_assembler),
+            )))
+        };
+
         let state_builder = ManagedStateBuilder::new(AppState {
             runtime_handle: handle,
             config,
@@ -351,6 +385,7 @@ impl AppRuntimeLaunchBuilder {
                 consent_manager: ipc_consent_manager,
             },
             suggestion_manager,
+            session_manager,
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

@@ -10,16 +10,18 @@ use tracing::{info, warn};
 
 use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
-use oneshim_core::models::ai_session::{ConversationSessionInfo, SessionConfig, SessionState};
+use oneshim_core::models::ai_session::{
+    ConversationSessionInfo, SessionConfig, SessionState, SessionTransport,
+};
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::conversation_session::{ConversationSession, SessionManager};
 
-// Phase 2: AuditingSession will wrap adapter sessions in create_session()
-#[allow(unused_imports)]
 use crate::auditing_session::AuditingSession;
+use crate::session_adapters::claude_session::ClaudeSubprocessSession;
 use crate::session_context::SessionContextAssembler;
+use crate::subprocess_provider::detect_known_cli_surfaces;
 
-// Phase 2: used when session adapters are implemented
+// Phase 2b: state/created_at/last_active/retry_count used by idle reaper + crash recovery
 #[allow(dead_code)]
 struct ManagedSession {
     session: Arc<dyn ConversationSession>,
@@ -29,17 +31,15 @@ struct ManagedSession {
     retry_count: u32,
 }
 
-// Phase 2: wired into AppState and Tauri commands when adapters are ready
-#[allow(dead_code)]
 pub struct SessionManagerImpl {
     sessions: RwLock<HashMap<String, ManagedSession>>,
     config: Arc<AiSessionConfig>,
     audit: Arc<dyn AuditLogPort>,
-    // context_assembler is Option to allow unit testing without real dependencies
+    // Phase 2b: used by session adapters for system prompt generation
+    #[allow(dead_code)]
     context_assembler: Option<Arc<SessionContextAssembler>>,
 }
 
-#[allow(dead_code)]
 impl SessionManagerImpl {
     pub fn new(
         config: Arc<AiSessionConfig>,
@@ -52,6 +52,18 @@ impl SessionManagerImpl {
             audit,
             context_assembler,
         }
+    }
+
+    /// Retrieve a session by ID.
+    pub async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<dyn ConversationSession>, CoreError> {
+        let sessions = self.sessions.read().await;
+        sessions
+            .get(session_id)
+            .map(|m| m.session.clone())
+            .ok_or_else(|| CoreError::Internal(format!("session not found: {session_id}")))
     }
 
     /// Terminate all sessions (called during app shutdown).
@@ -71,6 +83,8 @@ impl SessionManagerImpl {
     }
 
     /// Background task: check for idle sessions and terminate them.
+    /// Phase 2b: wired into scheduler loop for periodic idle reaping.
+    #[allow(dead_code)]
     pub async fn reap_idle_sessions(&self) {
         let idle_timeout = std::time::Duration::from_secs(self.config.idle_timeout_secs);
         let mut to_reap = vec![];
@@ -107,13 +121,44 @@ impl SessionManager for SessionManagerImpl {
             )));
         }
 
-        // TODO(Phase 2): Create actual session adapter based on config.transport
-        // SubprocessSession, HttpApiSession, LocalLlmSession adapters are deferred
-        // to a follow-up plan (see spec Section 4.1 for adapter definitions).
-        Err(CoreError::Internal(format!(
-            "session adapter for {:?} not yet implemented",
-            config.transport
-        )))
+        match config.transport {
+            SessionTransport::Subprocess => {
+                let surfaces = detect_known_cli_surfaces();
+                let surface = surfaces
+                    .into_iter()
+                    .find(|s| s.surface_id == "provider_surface.anthropic.subprocess_cli")
+                    .ok_or_else(|| {
+                        CoreError::Internal("no Claude CLI detected on this system".to_string())
+                    })?;
+
+                let inner: Arc<dyn ConversationSession> = Arc::new(ClaudeSubprocessSession::new(
+                    surface,
+                    &config,
+                    self.config.clone(),
+                ));
+
+                let wrapped: Arc<dyn ConversationSession> =
+                    Arc::new(AuditingSession::new(inner, self.audit.clone()));
+
+                let session_id = wrapped.session_id().to_string();
+                info!(session_id = %session_id, "created Claude subprocess session");
+
+                let managed = ManagedSession {
+                    session: wrapped.clone(),
+                    state: SessionState::Active,
+                    created_at: Instant::now(),
+                    last_active: Instant::now(),
+                    retry_count: 0,
+                };
+                self.sessions.write().await.insert(session_id, managed);
+
+                Ok(wrapped)
+            }
+            _ => Err(CoreError::Internal(format!(
+                "session adapter for {:?} not yet implemented",
+                config.transport,
+            ))),
+        }
     }
 
     async fn kill_session(&self, session_id: &str) -> Result<(), CoreError> {
@@ -141,7 +186,6 @@ impl SessionManager for SessionManagerImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oneshim_core::models::ai_session::*;
 
     fn test_config() -> Arc<AiSessionConfig> {
         Arc::new(AiSessionConfig {
@@ -151,34 +195,130 @@ mod tests {
         })
     }
 
-    #[tokio::test]
-    async fn list_sessions_empty() {
-        let mgr = SessionManagerImpl::new(
+    fn test_manager() -> SessionManagerImpl {
+        SessionManagerImpl::new(
             test_config(),
             Arc::new(crate::auditing_session::tests::MockAudit::default()),
-            None, // no context_assembler needed for list/kill tests
-        );
+            None,
+        )
+    }
+
+    /// Helper: extract error message from a Result whose Ok type is not Debug.
+    fn expect_err_msg(result: Result<Arc<dyn ConversationSession>, CoreError>) -> String {
+        match result {
+            Err(e) => format!("{e}"),
+            Ok(_) => panic!("expected Err, got Ok"),
+        }
+    }
+
+    fn has_claude_cli() -> bool {
+        detect_known_cli_surfaces()
+            .iter()
+            .any(|s| s.surface_id == "provider_surface.anthropic.subprocess_cli")
+    }
+
+    #[tokio::test]
+    async fn list_sessions_empty() {
+        let mgr = test_manager();
         assert!(mgr.list_sessions().await.is_empty());
     }
 
     #[tokio::test]
     async fn kill_nonexistent_session_returns_error() {
-        let mgr = SessionManagerImpl::new(
-            test_config(),
-            Arc::new(crate::auditing_session::tests::MockAudit::default()),
-            None,
-        );
+        let mgr = test_manager();
         let result = mgr.kill_session("nonexistent").await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn create_session_rejects_when_adapter_not_implemented() {
-        let mgr = SessionManagerImpl::new(
-            test_config(),
-            Arc::new(crate::auditing_session::tests::MockAudit::default()),
-            None,
-        );
+    async fn get_session_not_found() {
+        let mgr = test_manager();
+        let err_msg = expect_err_msg(mgr.get_session("no-such-id").await);
+        assert!(err_msg.contains("session not found"));
+    }
+
+    #[tokio::test]
+    async fn create_subprocess_session_succeeds_when_claude_detected() {
+        // detect_known_cli_surfaces checks the filesystem for installed CLIs.
+        // If Claude CLI is not installed (e.g. CI), the test gracefully verifies
+        // the "no Claude CLI detected" error instead.
+        let mgr = test_manager();
+        let config = SessionConfig {
+            transport: SessionTransport::Subprocess,
+            surface_id: None,
+            model: None,
+            system_prompt: Some("You are a test assistant.".to_string()),
+            tools_enabled: false,
+        };
+        let result = mgr.create_session(config).await;
+
+        if has_claude_cli() {
+            let session = match result {
+                Ok(s) => s,
+                Err(e) => panic!("should create session when Claude CLI is present: {e}"),
+            };
+            assert_eq!(session.provider_name(), "claude");
+            assert!(!session.session_id().is_empty());
+
+            // Verify it was stored and is retrievable
+            let retrieved = mgr.get_session(session.session_id()).await;
+            assert!(retrieved.is_ok());
+
+            // Verify it appears in list
+            let list = mgr.list_sessions().await;
+            assert_eq!(list.len(), 1);
+            assert_eq!(list[0].session_id, session.session_id());
+        } else {
+            let err_msg = expect_err_msg(result);
+            assert!(
+                err_msg.contains("no Claude CLI detected"),
+                "unexpected error: {err_msg}",
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn create_session_rejects_unsupported_transport() {
+        let mgr = test_manager();
+        let config = SessionConfig {
+            transport: SessionTransport::HttpApi,
+            surface_id: None,
+            model: None,
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let err_msg = expect_err_msg(mgr.create_session(config).await);
+        assert!(err_msg.contains("not yet implemented"));
+    }
+
+    #[tokio::test]
+    async fn create_session_enforces_max_concurrent_limit() {
+        if !has_claude_cli() {
+            return; // skip in environments without Claude CLI
+        }
+
+        let mgr = test_manager(); // max_concurrent_sessions = 2
+        let make_config = || SessionConfig {
+            transport: SessionTransport::Subprocess,
+            surface_id: None,
+            model: None,
+            system_prompt: None,
+            tools_enabled: false,
+        };
+
+        let _s1 = mgr.create_session(make_config()).await.expect("session 1");
+        let _s2 = mgr.create_session(make_config()).await.expect("session 2");
+        let err_msg = expect_err_msg(mgr.create_session(make_config()).await);
+        assert!(err_msg.contains("max concurrent sessions"));
+    }
+
+    #[tokio::test]
+    async fn kill_session_removes_from_map() {
+        if !has_claude_cli() {
+            return;
+        }
+
+        let mgr = test_manager();
         let config = SessionConfig {
             transport: SessionTransport::Subprocess,
             surface_id: None,
@@ -186,7 +326,12 @@ mod tests {
             system_prompt: None,
             tools_enabled: false,
         };
-        let result = mgr.create_session(config).await;
-        assert!(result.is_err());
+        let session = mgr.create_session(config).await.expect("create session");
+        let id = session.session_id().to_string();
+
+        assert!(mgr.get_session(&id).await.is_ok());
+        mgr.kill_session(&id).await.unwrap();
+        assert!(mgr.get_session(&id).await.is_err());
+        assert!(mgr.list_sessions().await.is_empty());
     }
 }

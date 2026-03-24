@@ -81,6 +81,7 @@ anyhow = "1"
 
 # 비동기 trait (dyn Trait + async fn 지원)
 async-trait = "0.1"
+async-stream = "0.3"
 
 # 로깅
 tracing = "0.1"
