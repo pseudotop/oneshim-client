@@ -24,6 +24,9 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // Register capture toggle shortcut (Cmd+Shift+\ / Ctrl+Shift+\)
     register_capture_shortcut(app);
 
+    // Register suggestions panel toggle shortcut (Cmd+Shift+S / Ctrl+Shift+S)
+    register_suggestions_shortcut(app);
+
     // 12. Desktop shell startup
     DesktopStartupCoordinator::apply(app, frontend_web_port)?;
 
@@ -120,6 +123,35 @@ fn register_overlay_shortcut(app: &App) {
     match result {
         Ok(()) => info!("Global shortcut registered: CmdOrCtrl+Shift+O (overlay toggle)"),
         Err(e) => tracing::warn!("Failed to register overlay shortcut: {e}"),
+    }
+}
+
+/// Register Cmd+Shift+S (macOS) / Ctrl+Shift+S (Windows/Linux) to toggle
+/// the suggestions panel in the MagicOverlay. Makes the overlay interactive
+/// so the user can accept/reject/defer suggestions.
+fn register_suggestions_shortcut(app: &App) {
+    use tauri::Manager;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    let result =
+        app.global_shortcut()
+            .on_shortcut("CmdOrCtrl+Shift+S", |app_handle, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let handle = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(state) = handle.try_state::<crate::runtime_state::AppState>() {
+                            if let Some(ref overlay) = state.magic_overlay {
+                                overlay.emit_toggle_suggestions();
+                                overlay.set_interactive(true).await;
+                            }
+                        }
+                    });
+                }
+            });
+
+    match result {
+        Ok(()) => info!("Global shortcut registered: CmdOrCtrl+Shift+S (suggestions panel)"),
+        Err(e) => tracing::warn!("Failed to register suggestions shortcut: {e}"),
     }
 }
 

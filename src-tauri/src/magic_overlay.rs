@@ -302,6 +302,19 @@ impl MagicOverlayHandle {
         );
     }
 
+    /// Notify overlay that the suggestion queue changed (item added/removed/feedback).
+    pub fn emit_suggestions_changed(&self, count: usize) {
+        let _ = self.app_handle.emit(
+            "overlay:suggestions-changed",
+            serde_json::json!({ "count": count }),
+        );
+    }
+
+    /// Toggle the suggestions panel from keyboard shortcut (Cmd+Shift+S).
+    pub fn emit_toggle_suggestions(&self) {
+        let _ = self.app_handle.emit("overlay:toggle-suggestions", ());
+    }
+
     /// Emit heatmap grid data to the overlay for HeatmapGhost rendering.
     /// `grid` is a flat 50×50 array of normalized [0.0, 1.0] values (row-major).
     pub fn emit_heatmap(&self, grid: Vec<f32>) {
