@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3-rc.1] - 2026-03-24
+### Added
+
+- Add capture feedback flash on manual capture ([#160](https://github.com/pseudotop/oneshim-client/pull/160))
+  - MagicOverlayHandle: emit_capture_feedback() emits overlay:capture-feedback
+  - commands/capture.rs: emit feedback after successful manual capture
+  - CaptureFlash.tsx: brief full-screen border flash (400ms, brand color)
+  - Wired through useOverlayEvents reducer (captureFlashTimestamp state)
+  - Also fixed duplicate set-focus-mode action type in reducer
+
+
+### Fixed
+
+- Update navigation selector after redundant role removal ([#159](https://github.com/pseudotop/oneshim-client/pull/159))
+  ActivityBar.tsx changed <nav role="navigation"> to <nav> (Biome
+  lint fix: role="navigation" is redundant on nav element). The E2E
+  test selector nav[role="navigation"] no longer matches. Updated to
+  plain nav selector.
+
+
+## [Unreleased]
+
 ## [0.4.2] - 2026-03-24
 ### Added
 
