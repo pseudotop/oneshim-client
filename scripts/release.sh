@@ -49,8 +49,33 @@ info "RC 릴리스 준비 시작: ${TAG}"
 cd "${REPO_ROOT}"
 info "레포 루트: ${REPO_ROOT}"
 
-# ── [Unreleased] 섹션 내용 검증 (모든 검사 중 가장 먼저) ─────────────────────
-# CI가 실행되기 전에 조기 종료해야 함
+# ── 태그 중복 검증 (파일 수정 전에 조기 종료) ──────────────────────────────
+if git rev-parse "${TAG}" &>/dev/null; then
+    die "태그 '${TAG}'가 이미 존재합니다"
+fi
+if git rev-parse "v${BASE_VERSION}" &>/dev/null; then
+    die "stable 태그 'v${BASE_VERSION}'가 이미 존재합니다. stable 이후에는 새 RC를 만들 수 없습니다.
+힌트: 다음 패치 버전으로 RC를 생성하세요 (예: v$(next_patch_version "${BASE_VERSION}")-rc.1)"
+fi
+
+# ── 작업 디렉터리 클린 상태 검증 (파일 수정 전에 확인) ──────────────────────
+if ! require_clean_worktree; then
+    die "커밋되지 않았거나 스테이징된 변경사항이 있습니다. 먼저 정리하세요."
+fi
+success "작업 디렉터리 클린 상태 확인"
+
+# ── 현재 브랜치 검증 ──────────────────────────────────────────────────────────
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "${CURRENT_BRANCH}" == "HEAD" ]]; then
+    die "detached HEAD 상태에서는 RC 준비 커밋을 만들 수 없습니다"
+fi
+if [[ "${CURRENT_BRANCH}" == "main" ]]; then
+    warn "main 브랜치는 PR 보호 대상입니다. 이 커밋은 로컬에서만 준비되고, PR용 브랜치로 푸시해야 합니다"
+else
+    success "브랜치 확인: ${CURRENT_BRANCH}"
+fi
+
+# ── [Unreleased] 섹션 내용 검증 ─────────────────────────────────────────────
 CHANGELOG="CHANGELOG.md"
 if [[ ! -f "${CHANGELOG}" ]]; then
     die "${CHANGELOG} 파일이 없습니다"
@@ -74,31 +99,6 @@ if [[ -z "${UNRELEASED_CONTENT}" ]]; then
     fi
 else
     success "[Unreleased] 섹션에 내용이 있습니다"
-fi
-
-# ── 현재 브랜치 검증 ──────────────────────────────────────────────────────────
-CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-if [[ "${CURRENT_BRANCH}" == "HEAD" ]]; then
-    die "detached HEAD 상태에서는 RC 준비 커밋을 만들 수 없습니다"
-fi
-if [[ "${CURRENT_BRANCH}" == "main" ]]; then
-    warn "main 브랜치는 PR 보호 대상입니다. 이 커밋은 로컬에서만 준비되고, PR용 브랜치로 푸시해야 합니다"
-else
-    success "브랜치 확인: ${CURRENT_BRANCH}"
-fi
-
-# ── 작업 디렉터리 클린 상태 검증 ──────────────────────────────────────────────
-if ! require_clean_worktree; then
-    die "커밋되지 않았거나 스테이징된 변경사항이 있습니다. 먼저 정리하세요."
-fi
-success "작업 디렉터리 클린 상태 확인"
-
-# ── 태그 중복 검증 ────────────────────────────────────────────────────────────
-if git rev-parse "${TAG}" &>/dev/null; then
-    die "태그 '${TAG}'가 이미 존재합니다"
-fi
-if git rev-parse "v${BASE_VERSION}" &>/dev/null; then
-    die "stable 태그 'v${BASE_VERSION}'가 이미 존재합니다. stable 이후에는 새 RC를 만들 수 없습니다"
 fi
 
 # ── CHANGELOG.md 승격 ([Unreleased] -> [VERSION]) ────────────────────────────
