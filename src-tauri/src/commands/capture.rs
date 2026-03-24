@@ -128,10 +128,16 @@ pub async fn trigger_manual_capture(
             .map(|row_id| row_id.to_string())
     });
 
+    // Emit capture feedback flash to overlay
+    let ts = frame.metadata.timestamp.to_rfc3339();
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.emit_capture_feedback(&ts);
+    }
+
     Ok(ManualCaptureResponse {
         success: true,
         frame_id,
-        timestamp: frame.metadata.timestamp.to_rfc3339(),
+        timestamp: ts,
         resolution: Some(frame.metadata.resolution),
         ocr_text,
     })

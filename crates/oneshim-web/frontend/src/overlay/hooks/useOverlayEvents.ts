@@ -20,8 +20,8 @@ type OverlayAction =
   | { type: 'set-mode'; payload: OverlayMode }
   | { type: 'set-focus-mode'; payload: boolean }
   | { type: 'capture-state-changed'; payload: CaptureStatePayload }
-  | { type: 'set-focus-mode'; payload: boolean }
   | { type: 'toggle-suggestions-panel'; payload?: boolean }
+  | { type: 'capture-feedback'; payload: string }
   | { type: 'set-suggestions'; payload: SuggestionViewDto[] }
   | { type: 'remove-suggestion'; payload: string }
 
@@ -34,6 +34,7 @@ const initialState: OverlayState = {
   focusMode: false,
   suggestionsPanelOpen: false,
   suggestions: [],
+  captureFlashTimestamp: null,
 }
 
 function reducer(state: OverlayState, action: OverlayAction): OverlayState {
@@ -74,6 +75,8 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
         ...state,
         suggestions: state.suggestions.filter((s) => s.id !== action.payload),
       }
+    case 'capture-feedback':
+      return { ...state, captureFlashTimestamp: action.payload }
     default:
       return state
   }
@@ -135,7 +138,12 @@ export function useOverlayEvents() {
         }
       })
 
-      unlisten = [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11]
+      // u12: Capture feedback flash
+      const u12 = await listen<{ timestamp: string }>('overlay:capture-feedback', (e) => {
+        dispatch({ type: 'capture-feedback', payload: e.payload.timestamp })
+      })
+
+      unlisten = [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12]
 
       // Query actual backend state (overlay window may be created after state changes)
       try {

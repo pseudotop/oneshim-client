@@ -315,6 +315,14 @@ impl MagicOverlayHandle {
         let _ = self.app_handle.emit("overlay:toggle-suggestions", ());
     }
 
+    /// Emit a brief capture feedback flash to the overlay.
+    pub fn emit_capture_feedback(&self, timestamp: &str) {
+        let _ = self.app_handle.emit(
+            "overlay:capture-feedback",
+            serde_json::json!({ "timestamp": timestamp }),
+        );
+    }
+
     /// Emit heatmap grid data to the overlay for HeatmapGhost rendering.
     /// `grid` is a flat 50×50 array of normalized [0.0, 1.0] values (row-major).
     pub fn emit_heatmap(&self, grid: Vec<f32>) {
