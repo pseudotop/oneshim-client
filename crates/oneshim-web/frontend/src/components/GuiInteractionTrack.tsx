@@ -21,7 +21,7 @@ export default function GuiInteractionTrack({ start, end }: Props) {
 
   return (
     <div className="mt-2">
-      <span className="text-xs text-muted-foreground">{t('stats.guiInteractions') ?? 'GUI Interactions'}</span>
+      <span className="text-muted-foreground text-xs">{t('stats.guiInteractions') ?? 'GUI Interactions'}</span>
       <div className="flex h-6 w-full gap-px rounded bg-surface-elevated">
         {cells.map((cell) => {
           const intensity = cell.count / max

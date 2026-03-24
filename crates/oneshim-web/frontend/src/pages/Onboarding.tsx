@@ -113,19 +113,21 @@ const STEPS = [StepIntro, StepPermissions, StepFeatures, StepReady]
 /* ── Step indicator dots ── */
 
 function StepDots({ current, total }: { current: number; total: number }) {
+  const steps = Array.from({ length: total }, (_, i) => ({ id: `step-${i + 1}`, index: i }))
   return (
-    <div className="flex items-center gap-2" role="group" aria-label="Step indicator">
-      {Array.from({ length: total }, (_, i) => (
+    <fieldset className="m-0 flex items-center gap-2 border-none p-0" aria-label="Step indicator">
+      {steps.map((step) => (
         <div
-          key={i}
+          key={step.id}
           className={cn(
-            'h-2 rounded-full transition-all duration-300',
-            i === current ? 'w-6 bg-brand-signal' : 'w-2 bg-surface-muted',
+            'h-2 rounded-full',
+            motion.all,
+            step.index === current ? 'w-6 bg-brand-signal' : 'w-2 bg-surface-muted',
           )}
-          aria-current={i === current ? 'step' : undefined}
+          aria-current={step.index === current ? 'step' : undefined}
         />
       ))}
-    </div>
+    </fieldset>
   )
 }
 

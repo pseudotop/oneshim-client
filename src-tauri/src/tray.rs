@@ -24,9 +24,9 @@ fn read_connection_status<R: Runtime>(app: &impl Manager<R>) -> (bool, bool, boo
         .map(|s| {
             let ord = std::sync::atomic::Ordering::Relaxed;
             (
-                s.server_connected.load(ord),
-                s.llm_connected.load(ord),
-                s.cli_connected.load(ord),
+                s.connection.server_connected.load(ord),
+                s.connection.llm_connected.load(ord),
+                s.connection.cli_connected.load(ord),
             )
         })
         .unwrap_or((false, false, false))

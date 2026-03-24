@@ -1,6 +1,6 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { mockIPC, clearMocks } from '@tauri-apps/api/mocks'
 import { invoke } from '@tauri-apps/api/core'
+import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { afterEach, describe, expect, it } from 'vitest'
 
 describe('CRT-MK-M040: get_allowed_setting_keys IPC contract', () => {
   afterEach(() => clearMocks())
@@ -9,8 +9,16 @@ describe('CRT-MK-M040: get_allowed_setting_keys IPC contract', () => {
     mockIPC((cmd) => {
       if (cmd === 'get_allowed_setting_keys') {
         return [
-          'monitoring', 'capture', 'notification', 'web', 'schedule',
-          'telemetry', 'privacy', 'update', 'language', 'theme',
+          'monitoring',
+          'capture',
+          'notification',
+          'web',
+          'schedule',
+          'telemetry',
+          'privacy',
+          'update',
+          'language',
+          'theme',
         ]
       }
     })
@@ -28,8 +36,16 @@ describe('CRT-MK-M040: get_allowed_setting_keys IPC contract', () => {
     mockIPC((cmd) => {
       if (cmd === 'get_allowed_setting_keys') {
         return [
-          'monitoring', 'capture', 'notification', 'web', 'schedule',
-          'telemetry', 'privacy', 'update', 'language', 'theme',
+          'monitoring',
+          'capture',
+          'notification',
+          'web',
+          'schedule',
+          'telemetry',
+          'privacy',
+          'update',
+          'language',
+          'theme',
         ]
       }
     })

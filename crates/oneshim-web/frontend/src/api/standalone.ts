@@ -1,5 +1,4 @@
 import { DEFAULT_WEB_PORT } from '../constants'
-import { DEFAULT_PROVIDER_SURFACE_CATALOG } from './defaultProviderSurfaceCatalog'
 import type {
   AppSettings,
   AutomationSettings,
@@ -22,6 +21,8 @@ import type {
   UpdateStatus,
   WorkflowPreset,
 } from './client'
+import { DEFAULT_PROVIDER_SURFACE_CATALOG } from './defaultProviderSurfaceCatalog'
+
 const API_BASE = '/api'
 const STANDALONE_STORAGE_KEY = 'oneshim-web-standalone-mode'
 const STANDALONE_QUERY_KEY = 'standalone'
@@ -577,7 +578,13 @@ export async function handleStandaloneRequest(
     }
     if (provider === 'google' || provider === 'gemini') {
       return jsonResponse({
-        models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview', 'gemini-3-pro-preview'],
+        models: [
+          'gemini-2.5-flash',
+          'gemini-2.5-pro',
+          'gemini-2.5-flash-lite',
+          'gemini-3-flash-preview',
+          'gemini-3-pro-preview',
+        ],
       })
     }
     return jsonResponse({

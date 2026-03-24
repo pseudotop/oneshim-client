@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
+import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 interface CaptureState {
   paused: boolean
@@ -32,26 +32,41 @@ export function App() {
 
     listen<CaptureState>('overlay:capture-state-changed', (e) => {
       setState(e.payload)
-    }).then((fn) => { unlistenCapture = fn })
+    }).then((fn) => {
+      unlistenCapture = fn
+    })
 
     listen<ConnectionStatus>('overlay:connection-changed', (e) => {
       setConn(e.payload)
-    }).then((fn) => { unlistenConn = fn })
+    }).then((fn) => {
+      unlistenConn = fn
+    })
 
-    invoke<CaptureState>('get_capture_status').then(setState).catch(() => {})
-    invoke<ConnectionStatus>('get_connection_status').then(setConn).catch(() => {})
+    invoke<CaptureState>('get_capture_status')
+      .then(setState)
+      .catch(() => {})
+    invoke<ConnectionStatus>('get_connection_status')
+      .then(setConn)
+      .catch(() => {})
 
     // Restore saved position
-    invoke<string | null>('get_panel_position').then((pos) => {
-      if (pos) {
-        const [x, y] = pos.split(',').map(Number)
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-          getCurrentWindow().setPosition(new LogicalPosition(x, y)).catch(() => {})
+    invoke<string | null>('get_panel_position')
+      .then((pos) => {
+        if (pos) {
+          const [x, y] = pos.split(',').map(Number)
+          if (Number.isFinite(x) && Number.isFinite(y)) {
+            getCurrentWindow()
+              .setPosition(new LogicalPosition(x, y))
+              .catch(() => {})
+          }
         }
-      }
-    }).catch(() => {})
+      })
+      .catch(() => {})
 
-    return () => { unlistenCapture?.(); unlistenConn?.() }
+    return () => {
+      unlistenCapture?.()
+      unlistenConn?.()
+    }
   }, [])
 
   // Save position on window move (debounced)
@@ -65,7 +80,9 @@ export function App() {
           invoke('save_panel_position', { x: payload.x, y: payload.y }).catch(() => {})
         }, 1000)
       }
-    }).then((fn) => { unlisten = fn })
+    }).then((fn) => {
+      unlisten = fn
+    })
     return () => unlisten?.()
   }, [])
 
@@ -73,10 +90,9 @@ export function App() {
     const next = !expanded
     setExpanded(next)
     try {
-      await getCurrentWindow().setSize(new LogicalSize(
-        next ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
-        next ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT,
-      ))
+      await getCurrentWindow().setSize(
+        new LogicalSize(next ? EXPANDED_WIDTH : COLLAPSED_WIDTH, next ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT),
+      )
     } catch {
       // setSize may fail on non-resizable windows — degrade gracefully
     }
@@ -88,44 +104,39 @@ export function App() {
   const allConnected = connCount === 3
 
   return (
-    <div className="flex flex-col bg-black/80 backdrop-blur-md text-white text-xs select-none rounded-xl overflow-hidden shadow-2xl">
+    <div className="flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs shadow-2xl backdrop-blur-md">
       {/* Collapsed bar */}
-      <div
-        data-tauri-drag-region
-        className="flex items-center gap-2 px-3 py-2 cursor-move"
-      >
+      <div data-tauri-drag-region className="flex cursor-move items-center gap-2 px-3 py-2">
         <span
-          className={`h-2 w-2 rounded-full shrink-0 ${
-            state.paused ? 'bg-yellow-400' : 'bg-green-400 animate-pulse'
-          }`}
+          className={`h-2 w-2 shrink-0 rounded-full ${state.paused ? 'bg-yellow-400' : 'animate-pulse bg-green-400'}`}
         />
         {!allConnected && (
-          <span
-            className="h-2 w-2 rounded-full shrink-0 bg-red-400"
-            title={`${connCount}/3 connected`}
-          />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-red-400" title={`${connCount}/3 connected`} />
         )}
         <span data-tauri-drag-region className="flex-1 truncate">
           {state.paused ? 'Paused' : 'Capturing'}
         </span>
 
         <button
+          type="button"
           onClick={() => invoke('toggle_capture_pause')}
-          className="px-1.5 py-0.5 rounded hover:bg-white/20 transition-colors"
+          className="rounded px-1.5 py-0.5 transition-colors hover:bg-white/20"
           title={state.paused ? 'Resume' : 'Pause'}
         >
           {state.paused ? '\u25B6' : '\u23F8'}
         </button>
         <button
+          type="button"
           onClick={toggleExpanded}
-          className="px-1.5 py-0.5 rounded hover:bg-white/20 transition-colors"
+          className="rounded px-1.5 py-0.5 transition-colors hover:bg-white/20"
           title={expanded ? 'Collapse' : 'Expand'}
         >
           {expanded ? '\u2501' : '\u229E'}
         </button>
         <button
+          type="button"
           onClick={() => invoke('set_indicator_visible', { visible: false })}
-          className="px-1 py-0.5 rounded hover:bg-white/20 transition-colors"
+          className="rounded px-1 py-0.5 transition-colors hover:bg-white/20"
           title="Hide"
         >
           {'\u2715'}
@@ -134,19 +145,15 @@ export function App() {
 
       {/* Expanded panel */}
       {expanded && (
-        <div className="flex flex-col gap-1 px-3 pb-3 pt-1 border-t border-white/10">
-          <ActionButton
-            icon="📊"
-            label="Open Dashboard"
-            onClick={() => invoke('show_main_window')}
-          />
+        <div className="flex flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
+          <ActionButton icon="📊" label="Open Dashboard" onClick={() => invoke('show_main_window')} />
           <ActionButton icon="📷" label="Manual Capture" disabled />
           <ActionButton icon="🧠" label="Scene Analysis" disabled />
           <ActionButton icon="💡" label="AI Suggestions" disabled />
           <ActionButton icon="🎯" label="Focus Mode" disabled />
 
           {/* Connection status detail */}
-          <div className="mt-2 pt-2 border-t border-white/10">
+          <div className="mt-2 border-white/10 border-t pt-2">
             <div className="flex items-center gap-3 text-[10px] text-white/60">
               <StatusDot connected={conn.server} label="Server" />
               <StatusDot connected={conn.llm} label="LLM" />
@@ -172,12 +179,11 @@ function ActionButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-left ${
-        disabled
-          ? 'opacity-40 cursor-not-allowed'
-          : 'hover:bg-white/10 active:bg-white/20'
+      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
+        disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-white/10 active:bg-white/20'
       }`}
       title={disabled ? 'Coming soon' : label}
     >

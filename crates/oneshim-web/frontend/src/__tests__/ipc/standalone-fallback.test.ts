@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 describe('CRT-MK-M030: Standalone fallback detection', () => {
   it('M030: without Tauri context, __TAURI_INTERNALS__ is undefined', () => {

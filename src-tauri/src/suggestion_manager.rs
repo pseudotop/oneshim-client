@@ -1,9 +1,15 @@
+use lru::LruCache;
 use oneshim_suggestion::feedback::FeedbackSender;
 use oneshim_suggestion::history::SuggestionHistory;
 use oneshim_suggestion::queue::SuggestionQueue;
-use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+/// Maximum number of read-status entries to track. More than enough for
+/// max 50 queue items + some history overlap. Using an LRU cache prevents
+/// unbounded growth when suggestions are continuously received.
+const READ_IDS_CAPACITY: usize = 200;
 
 /// Thin wrapper providing unified access to suggestion pipeline components.
 /// CRITICAL: `queue` and `history` must be the SAME Arc instances passed
@@ -13,7 +19,7 @@ pub struct SuggestionManager {
     queue: Arc<Mutex<SuggestionQueue>>,
     history: Arc<Mutex<SuggestionHistory>>,
     feedback: FeedbackSender,
-    read_ids: Mutex<HashSet<String>>,
+    read_ids: Mutex<LruCache<String, ()>>,
 }
 
 #[allow(dead_code)]
@@ -27,7 +33,9 @@ impl SuggestionManager {
             queue,
             history,
             feedback,
-            read_ids: Mutex::new(HashSet::new()),
+            read_ids: Mutex::new(LruCache::new(
+                NonZeroUsize::new(READ_IDS_CAPACITY).expect("non-zero capacity"),
+            )),
         }
     }
 
@@ -44,7 +52,10 @@ impl SuggestionManager {
     }
 
     pub async fn mark_read(&self, suggestion_id: &str) {
-        self.read_ids.lock().await.insert(suggestion_id.to_string());
+        self.read_ids
+            .lock()
+            .await
+            .put(suggestion_id.to_string(), ());
     }
 
     pub async fn is_read(&self, suggestion_id: &str) -> bool {

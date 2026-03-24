@@ -63,6 +63,10 @@ jobs:
         working-directory: crates/oneshim-web/frontend
         run: pnpm install --frozen-lockfile
 
+      - name: Lint frontend
+        working-directory: crates/oneshim-web/frontend
+        run: pnpm lint
+
       - name: Build frontend bundle
         working-directory: crates/oneshim-web/frontend
         run: pnpm build

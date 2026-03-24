@@ -36,7 +36,6 @@ function surfaceStabilityToMaturity(stability: string | null | undefined): Featu
       return 'beta'
     case 'deprecated':
       return 'deprecated'
-    case 'experimental':
     default:
       return 'experimental'
   }

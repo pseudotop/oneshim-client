@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { mockIPC, clearMocks } from '@tauri-apps/api/mocks'
 import { invoke } from '@tauri-apps/api/core'
+import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { afterEach, describe, expect, it } from 'vitest'
 
 describe('CRT-MK-M051: get_feature_capabilities IPC contract', () => {
   afterEach(() => clearMocks())

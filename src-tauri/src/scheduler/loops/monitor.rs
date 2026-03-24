@@ -1,5 +1,4 @@
 use chrono::Utc;
-use oneshim_core::models::activity::IdleState;
 use oneshim_core::models::event::Event;
 use oneshim_core::models::focused_element::AccessibilityElement;
 use oneshim_core::models::frame::OcrRegion;
@@ -14,9 +13,10 @@ use tracing::{debug, info, warn};
 use super::super::config::PlatformEgressPolicy;
 use super::super::shared_regime_state::SharedRegimeState;
 use super::super::Scheduler;
+use super::coaching_helper::{CoachingEvalContext, CoachingTickState};
 use super::helpers::{
-    build_personalization_prompt, build_segment_stats_snapshot, handle_event_analysis,
-    handle_frame_capture, COACHING_SYSTEM_PROMPT,
+    audit_consent_and_pii_changes, build_segment_stats_snapshot, emit_heatmap_and_goals,
+    handle_event_analysis, handle_frame_capture, handle_idle_tick,
 };
 use crate::focus_mode::FocusModeState;
 
@@ -93,8 +93,7 @@ impl Scheduler {
             let mut last_highlight_handle_id: Option<String> = None;
 
             // ── Coaching: track real regime dwell time ──
-            let mut regime_entered_at: Option<std::time::Instant> = None;
-            let mut prev_coaching_regime_id: Option<String> = None;
+            let mut coaching_tick_state = CoachingTickState::new();
 
             // ── Audit tracking: consent and PII level changes (Task 7) ──
             let mut prev_full_text_consent = false;
@@ -114,38 +113,14 @@ impl Scheduler {
                             info!("Focus mode expired — auto-deactivated");
                         }
 
-                        let idle_info = idle_tracker.check_idle().await;
-                        let prev_state = idle_tracker.previous_state();
-
-                        if prev_state == IdleState::Active && idle_info.state == IdleState::Idle {
-                            match sqlite1.start_idle_period(Utc::now()).await {
-                                Ok(id) => {
-                                    idle_tracker.set_idle_period_id(Some(id));
-                                    debug!("idle period started: id={}", id);
-                                }
-                                Err(e) => warn!("idle period started record failure: {e}"),
-                            }
-                        } else if prev_state == IdleState::Idle && idle_info.state == IdleState::Active {
-                            if let Some(id) = idle_tracker.idle_period_id() {
-                                if let Err(e) = sqlite1.end_idle_period(id, Utc::now()).await {
-                                    warn!("idle period ended record failure: {e}");
-                                }
-                                idle_tracker.set_idle_period_id(None);
-                            }
-                            if let Some(ref notif) = notif1 {
-                                notif.reset_session().await;
-                            }
-                        }
-
-                        // A4: Suppress idle notification in focus mode
-                        if !focus_mode.is_active() {
-                            if let Some(ref notif) = notif1 {
-                                notif.check_idle(idle_info.idle_secs).await;
-                            }
-                        }
-
-                        input_collector.estimate_from_idle_change(prev_idle_secs, idle_info.idle_secs);
-                        prev_idle_secs = idle_info.idle_secs;
+                        prev_idle_secs = handle_idle_tick(
+                            &mut idle_tracker,
+                            &sqlite1,
+                            &notif1,
+                            &input_collector,
+                            prev_idle_secs,
+                            focus_mode.is_active(),
+                        ).await;
 
                         match act_mon.collect_context().await {
                             Ok(ctx) => {
@@ -175,32 +150,14 @@ impl Scheduler {
                                         .map(|cm| cm.is_permitted(|p| p.full_text_extraction))
                                         .unwrap_or(false);
 
-                                    // Audit: log consent state changes
-                                    if full_text_consent != prev_full_text_consent {
-                                        if full_text_consent {
-                                            info!(
-                                                event = "full_text_extraction_consent_granted",
-                                                "User granted full_text_extraction consent — Off PII level now effective"
-                                            );
-                                        } else {
-                                            warn!(
-                                                event = "full_text_extraction_consent_revoked",
-                                                "User revoked full_text_extraction consent — falling back to Standard PII level"
-                                            );
-                                        }
-                                        prev_full_text_consent = full_text_consent;
-                                    }
-
-                                    // Audit: log PII extraction level config changes
-                                    if text_config.pii_extraction_level != prev_pii_level {
-                                        info!(
-                                            event = "pii_extraction_level_changed",
-                                            old = ?prev_pii_level,
-                                            new = ?text_config.pii_extraction_level,
-                                            "PII extraction level changed"
+                                    // Audit: log consent / PII level changes
+                                    (prev_full_text_consent, prev_pii_level) =
+                                        audit_consent_and_pii_changes(
+                                            full_text_consent,
+                                            prev_full_text_consent,
+                                            text_config.pii_extraction_level,
+                                            prev_pii_level,
                                         );
-                                        prev_pii_level = text_config.pii_extraction_level;
-                                    }
 
                                     match ax
                                         .extract_focused_element(
@@ -536,176 +493,41 @@ impl Scheduler {
                                     }
                                 }
 
-                                // ── Heatmap aggregation ──
-                                // Record click positions and periodically emit to overlay.
-                                if let Some(ref mut ts) = adaptive_trigger_state {
-                                    if let Some((x, y)) = input_snap.mouse.last_position {
-                                        ts.heatmap_aggregator.record(x, y, input_snap.mouse.click_count);
-                                    }
-                                    if let Some(grid) = ts.heatmap_aggregator.take_snapshot() {
-                                        if let Some(ref overlay) = overlay_ref {
-                                            overlay.emit_heatmap(grid);
-                                        }
-                                    }
-                                }
+                                // ── Heatmap aggregation + goal progress ──
+                                emit_heatmap_and_goals(
+                                    &mut adaptive_trigger_state,
+                                    &input_snap,
+                                    &overlay_ref,
+                                    &coaching_engine_ref,
+                                ).await;
 
                                 // ── Coaching evaluation (Phase 1) ──
-                                // Uses placeholder values for regime data in Phase 1.
-                                // Full integration with AdaptiveTriggerState will use
-                                // regime_classifier and drift_detector outputs.
                                 // A4: Skip coaching when focus mode active
                                 if !focus_mode.is_active() {
                                 if let Some(ref coaching) = coaching_engine_ref {
-                                    // Extract regime data from adaptive trigger state
                                     let regime_id_for_coaching: Option<&str> =
                                         adaptive_trigger_state.as_ref().and_then(|ts| {
                                             ts.current_regime_id.as_deref()
                                         });
-                                    let regime_label_for_coaching =
-                                        regime_id_for_coaching.unwrap_or("Unknown");
-                                    let avg_regime_duration_secs: u64 = coaching
-                                        .avg_regime_duration_secs(regime_label_for_coaching)
-                                        .await;
                                     let drift_detected = adaptive_trigger_state
                                         .as_ref()
                                         .map(|ts| ts.last_drift_detected.swap(false, std::sync::atomic::Ordering::Relaxed))
                                         .unwrap_or(false);
 
-                                    // Track real regime dwell time: reset timer on regime change
-                                    let current_coaching_regime = regime_id_for_coaching.map(String::from);
-                                    if current_coaching_regime != prev_coaching_regime_id {
-                                        regime_entered_at = Some(std::time::Instant::now());
-                                        prev_coaching_regime_id = current_coaching_regime;
-                                    }
-                                    let regime_duration_secs: u64 = regime_entered_at
-                                        .map(|t| t.elapsed().as_secs())
-                                        .unwrap_or(0);
-
-                                    // Record elapsed minutes for goal tracking
-                                    let elapsed_minutes =
-                                        (poll.as_secs() as f32 / 60.0).max(0.0) as u32;
-                                    if elapsed_minutes > 0 {
-                                        coaching
-                                            .record_minutes(
-                                                regime_label_for_coaching,
-                                                elapsed_minutes,
-                                            )
-                                            .await;
-                                    }
-
-                                    // Evaluate coaching triggers
-                                    if let Some(message) = coaching
-                                        .evaluate(
-                                            regime_id_for_coaching,
-                                            regime_label_for_coaching,
-                                            regime_duration_secs,
-                                            avg_regime_duration_secs,
-                                            drift_detected,
-                                            prev_app.as_deref().unwrap_or(""),
-                                        )
-                                        .await
-                                    {
-                                        // 1. Show on MagicOverlay (primary delivery)
-                                        if let Some(ref overlay) = overlay_ref {
-                                            overlay.show_coaching(&message).await;
-                                        }
-
-                                        // 2. Also send desktop notification (fallback)
-                                        if let Some(ref notif) = notif1 {
-                                            notif
-                                                .notify_coaching(&message.template_text)
-                                                .await;
-                                        }
-
-                                        // 3. Persist coaching event to storage
-                                        if let Some(ref cs) = coaching_storage_ref {
-                                            let event_row = oneshim_core::models::coaching::CoachingEventRow {
-                                                event_id: message.message_id.clone(),
-                                                trigger_type: oneshim_core::models::coaching::trigger_type_name(&message.trigger),
-                                                profile_name: format!("{:?}", message.profile),
-                                                regime_id: regime_id_for_coaching.map(String::from),
-                                                message_template: message.template_text.clone(),
-                                                personalized_message: None,
-                                                shown_at: chrono::Utc::now().to_rfc3339(),
-                                                dismissed_at: None,
-                                                dismiss_action: None,
-                                                feedback_type: None,
-                                                feedback_score: None,
-                                            };
-                                            if let Err(e) = cs.insert_coaching_event(&event_row) {
-                                                warn!("coaching event persist failure: {e}");
-                                            }
-                                        }
-
-                                        // 4. Register for feedback tracking
-                                        coaching
-                                            .register_pending_feedback(
-                                                &message.message_id,
-                                                &format!("{:?}", message.profile),
-                                                &oneshim_core::models::coaching::trigger_type_name(
-                                                    &message.trigger,
-                                                ),
-                                                regime_id_for_coaching,
-                                                prev_app.as_deref().unwrap_or(""),
-                                            )
-                                            .await;
-
-                                        info!(
-                                            profile = ?message.profile,
-                                            trigger = ?message.trigger,
-                                            "coaching message: {}",
-                                            message.template_text,
-                                        );
-
-                                        // 5. Spawn background LLM personalization
-                                        if let Some(ref provider) = coaching_analysis_provider {
-                                            let msg_clone = message.clone();
-                                            let provider_clone = provider.clone();
-                                            let overlay_clone = overlay_ref.clone();
-                                            let storage_clone = coaching_storage_ref.clone();
-                                            let regime = regime_label_for_coaching.to_string();
-                                            tokio::spawn(async move {
-                                                let prompt = build_personalization_prompt(
-                                                    &msg_clone.template_text,
-                                                    &regime,
-                                                );
-                                                match provider_clone.analyze(&prompt, COACHING_SYSTEM_PROMPT).await {
-                                                    Ok(suggestions) if !suggestions.is_empty() => {
-                                                        let personalized = &suggestions[0].content;
-                                                        // Upgrade overlay if still visible
-                                                        if let Some(ref overlay) = overlay_clone {
-                                                            overlay.upgrade_message(&msg_clone.message_id, personalized).await;
-                                                        }
-                                                        // Persist personalized text to storage
-                                                        if let Some(ref cs) = storage_clone {
-                                                            if let Err(e) = cs.update_coaching_event_personalized(
-                                                                &msg_clone.message_id,
-                                                                personalized,
-                                                            ) {
-                                                                debug!("coaching personalization persist: {e}");
-                                                            }
-                                                        }
-                                                    }
-                                                    Ok(_) => { /* No suggestions returned — template remains */ }
-                                                    Err(e) => {
-                                                        debug!("LLM coaching personalization failed: {e}");
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    }
+                                    let ctx = CoachingEvalContext {
+                                        coaching_engine: coaching,
+                                        overlay: &overlay_ref,
+                                        notifier: &notif1,
+                                        coaching_storage: &coaching_storage_ref,
+                                        analysis_provider: &coaching_analysis_provider,
+                                        regime_id: regime_id_for_coaching,
+                                        prev_app: prev_app.as_deref(),
+                                        drift_detected,
+                                        poll_secs: poll.as_secs(),
+                                    };
+                                    super::coaching_helper::evaluate_and_deliver(&ctx, &mut coaching_tick_state).await;
                                 }
                                 } // end A4: focus_mode coaching guard
-
-                                // Emit goal progress to overlay (every tick when coaching enabled)
-                                if let Some(ref coaching) = coaching_engine_ref {
-                                    if let Some(ref overlay) = overlay_ref {
-                                        let goals = coaching.all_goal_progress().await;
-                                        if !goals.is_empty() {
-                                            overlay.update_goal_progress(goals).await;
-                                        }
-                                    }
-                                }
 
                                 prev_app = Some(app_name);
                             }

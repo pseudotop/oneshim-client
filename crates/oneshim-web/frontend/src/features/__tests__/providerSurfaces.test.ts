@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../../api/defaultProviderSurfaceCatalog'
 import type { FeatureCapabilitySnapshot, ProviderSurfaceCatalog, ProviderSurfaceSpec } from '../../api/contracts'
+import { DEFAULT_PROVIDER_SURFACE_CATALOG } from '../../api/defaultProviderSurfaceCatalog'
 import {
   deriveDefaultProviderSurfaceId,
   getCompatibleProviderSurfaces,
   preferredRelatedProviderSurface,
   resolveProviderTypeForSurface,
+  sortProviderSurfaces,
   surfaceKnownModel,
   surfaceModelSupportsCapability,
   surfaceSupportsModelSelection,
-  sortProviderSurfaces,
 } from '../providerSurfaces'
 
 describe('provider surface defaults', () => {
@@ -21,7 +21,12 @@ describe('provider surface defaults', () => {
 
   it('uses subprocess surface for subscription cli mode', () => {
     expect(
-      deriveDefaultProviderSurfaceId(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderSubscriptionCli', 'llm_api', 'Anthropic'),
+      deriveDefaultProviderSurfaceId(
+        DEFAULT_PROVIDER_SURFACE_CATALOG,
+        'ProviderSubscriptionCli',
+        'llm_api',
+        'Anthropic',
+      ),
     ).toBe('provider_surface.anthropic.subprocess_cli')
   })
 
@@ -87,17 +92,15 @@ describe('provider surface defaults', () => {
         (surface) => surface.surface_id === ocrCliSurface.surface_id,
       ),
     ).toBe(true)
-    expect(
-      getCompatibleProviderSurfaces(catalog, 'ProviderSubscriptionCli', 'ocr_api')[0]?.surface_id,
-    ).not.toBe('provider_surface.openai.direct_api')
+    expect(getCompatibleProviderSurfaces(catalog, 'ProviderSubscriptionCli', 'ocr_api')[0]?.surface_id).not.toBe(
+      'provider_surface.openai.direct_api',
+    )
   })
 
   it('falls back to direct api for generic provider types', () => {
     expect(
       deriveDefaultProviderSurfaceId(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderApiKey', 'llm_api', 'Generic'),
-    ).toBe(
-      'provider_surface.generic.direct_api',
-    )
+    ).toBe('provider_surface.generic.direct_api')
   })
 
   it('matches provider aliases from the vendor catalog when deriving default surfaces', () => {
@@ -129,9 +132,7 @@ describe('provider surface defaults', () => {
   it('allows direct and managed OCR surfaces in oauth mode', () => {
     const surfaces = getCompatibleProviderSurfaces(DEFAULT_PROVIDER_SURFACE_CATALOG, 'ProviderOAuth', 'ocr_api')
     expect(surfaces.some((surface) => surface.execution_kind === 'direct_http')).toBe(true)
-    expect(
-      surfaces.some((surface) => surface.surface_id === 'provider_surface.google.managed_oauth'),
-    ).toBe(true)
+    expect(surfaces.some((surface) => surface.surface_id === 'provider_surface.google.managed_oauth')).toBe(true)
   })
 
   it('prefers higher-stability preferred surfaces within the same compatibility set', () => {

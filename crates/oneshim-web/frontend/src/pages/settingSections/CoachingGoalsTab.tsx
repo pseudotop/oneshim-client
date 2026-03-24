@@ -49,7 +49,7 @@ export default function CoachingGoalsTab() {
               {goals.map((g) => (
                 <div key={g.regime_label} className="flex items-center gap-3">
                   <span className={`w-32 truncate text-sm ${typography.weight.medium}`}>{g.regime_label}</span>
-                  <span className="text-sm text-content-secondary">
+                  <span className="text-content-secondary text-sm">
                     {g.target_minutes} {t('coaching.perDay', 'min/day')}
                   </span>
                   <Button variant="ghost" size="sm" onClick={() => handleDelete(g.regime_label)}>
@@ -59,7 +59,7 @@ export default function CoachingGoalsTab() {
               ))}
             </div>
           ) : (
-            <p className="mb-4 text-sm text-content-secondary">
+            <p className="mb-4 text-content-secondary text-sm">
               {t('coaching.noGoals', 'No goals set. Add a regime goal below.')}
             </p>
           )}
@@ -67,10 +67,11 @@ export default function CoachingGoalsTab() {
           {/* Add new goal form */}
           <div className="flex items-end gap-2">
             <div>
-              <label className="mb-1 block text-xs text-content-secondary">
+              <label htmlFor="coaching-regime-label" className="mb-1 block text-content-secondary text-xs">
                 {t('coaching.regimeLabel', 'Regime Label')}
               </label>
               <Input
+                id="coaching-regime-label"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="e.g. Deep Coding"
@@ -78,10 +79,11 @@ export default function CoachingGoalsTab() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-content-secondary">
+              <label htmlFor="coaching-target-minutes" className="mb-1 block text-content-secondary text-xs">
                 {t('coaching.targetMinutes', 'Target (min)')}
               </label>
               <Input
+                id="coaching-target-minutes"
                 type="number"
                 value={newMinutes}
                 onChange={(e) => setNewMinutes(Number(e.target.value))}

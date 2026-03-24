@@ -54,6 +54,17 @@ export interface FocusModePayload {
   active: boolean
 }
 
+export interface SuggestionViewDto {
+  id: string
+  title: string
+  body: string
+  priority: string
+  category: string | null
+  source: string
+  created_at: string
+  is_read: boolean
+}
+
 export interface OverlayState {
   mode: OverlayMode
   coaching: CoachingPayload | null
@@ -61,4 +72,6 @@ export interface OverlayState {
   focusMode: boolean
   goals: GoalProgressItem[]
   captureState: CaptureStatePayload
+  suggestionsPanelOpen: boolean
+  suggestions: SuggestionViewDto[]
 }

@@ -1377,7 +1377,7 @@ export default function Settings() {
         <h1 className={cn(typography.h1, colors.text.pageTitle)}>
           {t('settings.title')}
           {activeTab !== 'general' && (
-            <span className="text-base font-normal text-content-tertiary ml-2">
+            <span className="ml-2 font-normal text-base text-content-tertiary">
               {'›'} {tabs.find((tab) => tab.id === activeTab)?.label}
             </span>
           )}

@@ -113,7 +113,7 @@ export default function Lightbox({
       )}
 
       {/* UI note */}
-      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-4 text-sm text-content-inverse/50">
+      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-4 text-content-inverse/50 text-sm">
         <span>ESC 닫기</span>
         {(hasPrev || hasNext) && <span>← → 이동</span>}
       </div>

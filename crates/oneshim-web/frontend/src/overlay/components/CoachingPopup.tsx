@@ -70,11 +70,11 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
   // click-through mode automatically.
 
   return (
-    <div className="fixed right-4 top-4 z-50">
+    <div className="fixed top-4 right-4 z-50">
       <div className="w-80 rounded-xl border border-content-inverse/10 bg-surface-sunken/90 p-4 shadow-2xl backdrop-blur-md">
         {/* Message text with transition */}
         <p
-          className={`mb-3 text-sm leading-relaxed text-content ${motion.opacity}${
+          className={`mb-3 text-content text-sm leading-relaxed ${motion.opacity}${
             transitioning ? 'opacity-0' : 'opacity-100'
           }`}
         >
@@ -137,6 +137,7 @@ function ThumbsUpIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
+      <title>Thumbs up</title>
       <path d="M7 10v12" />
       <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
     </svg>
@@ -155,6 +156,7 @@ function ThumbsDownIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
+      <title>Thumbs down</title>
       <path d="M17 14V2" />
       <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22h0a3.13 3.13 0 0 1-3-3.88Z" />
     </svg>

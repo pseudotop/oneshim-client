@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { mockWindows, mockIPC, clearMocks } from '@tauri-apps/api/mocks'
+import { clearMocks, mockIPC, mockWindows } from '@tauri-apps/api/mocks'
+import { afterEach, describe, expect, it } from 'vitest'
 
 describe('CRT-MK-M021: Window API contract', () => {
   afterEach(() => clearMocks())

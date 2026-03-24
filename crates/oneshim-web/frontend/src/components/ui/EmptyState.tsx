@@ -15,7 +15,7 @@ export interface EmptyStateProps {
 
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
-    <div role="region" aria-label={title} className="flex flex-col items-center justify-center px-6 py-16">
+    <section aria-label={title} className="flex flex-col items-center justify-center px-6 py-16">
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-content-muted">
         {icon}
       </div>
@@ -26,6 +26,6 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
           {action.label}
         </Button>
       )}
-    </div>
+    </section>
   )
 }

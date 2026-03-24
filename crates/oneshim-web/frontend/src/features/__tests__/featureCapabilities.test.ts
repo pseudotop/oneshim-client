@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProviderSurfaceSpec } from '../../api/contracts'
-import {
-  findFeatureCapability,
-  maturityBadgeColor,
-  providerSurfaceAvailability,
-} from '../featureCapabilities'
+import { findFeatureCapability, maturityBadgeColor, providerSurfaceAvailability } from '../featureCapabilities'
 
 describe('featureCapabilities helpers', () => {
   it('finds a feature by id', () => {

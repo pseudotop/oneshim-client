@@ -75,6 +75,24 @@ post-merge:
 pre-commit:
   parallel: true
   commands:
+    conflict-markers:
+      # Prevent committing unresolved merge conflicts (checks staged source files only)
+      run: |
+        MARKERS=$(git diff --cached --name-only -- '*.rs' '*.ts' '*.tsx' '*.js' '*.json' '*.toml' '*.md' | xargs grep -ln '^<<<<<<< \|^=======$\|^>>>>>>> ' 2>/dev/null || true)
+        if [ -n "$MARKERS" ]; then
+          echo "❌ Unresolved merge conflict markers found:"
+          echo "$MARKERS"
+          exit 1
+        fi
+    monitor-loop-size:
+      # Prevent monitor loop from exceeding 500 lines (extract helpers instead)
+      glob: "src-tauri/src/scheduler/loops/monitor.rs"
+      run: |
+        LINES=$(wc -l < src-tauri/src/scheduler/loops/monitor.rs)
+        if [ "$LINES" -gt 500 ]; then
+          echo "❌ monitor.rs is $LINES lines (max 500). Extract into a helper."
+          exit 1
+        fi
     cargo-fmt:
       glob: "*.rs"
       run: cargo fmt --check

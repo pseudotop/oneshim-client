@@ -125,15 +125,33 @@ pub async fn submit_suggestion_feedback(
                 .defer(&suggestion_id, None)
                 .await
                 .map_err(|e| e.to_string())?;
+            // Notify overlay that suggestions changed (defer keeps item in queue)
+            if let Some(ref overlay) = state.magic_overlay {
+                let count = mgr.queue().lock().await.len();
+                overlay.emit_suggestions_changed(count);
+            }
             return Ok(()); // defer keeps item in queue, no history transfer
         }
         _ => return Err(format!("Unknown action: {action}. Use accept/reject/defer")),
     }
 
     // Move accepted/rejected suggestion from queue to history.
-    let removed = mgr.queue().lock().await.remove_by_id(&suggestion_id);
+    // Acquire queue lock once to both remove the item and get the remaining count,
+    // avoiding a redundant second lock acquisition.
+    let (removed, remaining_count) = {
+        let mut queue = mgr.queue().lock().await;
+        let removed = queue.remove_by_id(&suggestion_id);
+        let count = queue.len();
+        (removed, count)
+    }; // queue lock dropped here
+
     if let Some(suggestion) = removed {
         mgr.history().lock().await.add(suggestion);
+    }
+
+    // Notify overlay that suggestions changed (item removed from queue)
+    if let Some(ref overlay) = state.magic_overlay {
+        overlay.emit_suggestions_changed(remaining_count);
     }
 
     Ok(())

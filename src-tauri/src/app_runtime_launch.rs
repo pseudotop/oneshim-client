@@ -8,7 +8,7 @@ use crate::agent_runtime::AgentRuntimeBuilder;
 use crate::bootstrap_runtime::BootstrapRuntimeBundle;
 use crate::launch_resources::LaunchCoreResourcesBuilder;
 use crate::magic_overlay::MagicOverlayHandle;
-use crate::runtime_state::{AppState, ManagedStateBuilder};
+use crate::runtime_state::{AppState, CaptureContext, ConnectionStatus, ManagedStateBuilder};
 #[cfg(feature = "server")]
 use crate::server_runtime_context::ServerLaunchContext;
 use crate::web_server_runtime::{
@@ -88,7 +88,24 @@ impl AppRuntimeLaunchBuilder {
         let focus_mode = Arc::new(crate::focus_mode::FocusModeState::new());
 
         // Frame processor, frame storage, and activity monitor for IPC capture commands (A1, A2).
-        // These are separate instances from the ones inside the agent runtime scheduler.
+        // These are INTENTIONALLY separate instances from the scheduler's copies.
+        //
+        // Why not share? The scheduler's instances are created inside AgentRuntimeBuilder
+        // and moved into the spawned async task — they are not accessible after spawn.
+        // Sharing would require either:
+        //   (a) creating instances before the builder and passing Arc to both, or
+        //   (b) exposing scheduler internals through a handle.
+        // Both approaches couple the IPC layer to scheduler lifetime/wiring.
+        //
+        // Tradeoffs of separate instances:
+        //   - FrameProcessor: stateless except for a Mutex<Option<prev_frame>> used for
+        //     delta encoding. IPC manual captures always use importance=1.0 (Full mode),
+        //     so delta state is irrelevant — no functional difference.
+        //   - FrameFileStorage: manages the same directory (data_dir/frames). Concurrent
+        //     writes are safe because file names are timestamp-based UUIDs.
+        //   - ActivityTracker: wraps ProcessTracker which queries OS APIs. No shared state.
+        //   - AccessibilityExtractor: stateless OS API wrapper.
+        //   - ConsentManager: reads the same consent.json file. Read-only from IPC.
         let ipc_frame_storage: Option<Arc<oneshim_storage::frame_storage::FrameFileStorage>> =
             match handle.block_on(oneshim_storage::frame_storage::FrameFileStorage::new(
                 data_dir_path.to_path_buf(),
@@ -320,15 +337,19 @@ impl AppRuntimeLaunchBuilder {
             ),
             capture_paused,
             indicator_visible,
-            server_connected,
-            llm_connected,
-            cli_connected,
+            connection: ConnectionStatus {
+                server_connected,
+                llm_connected,
+                cli_connected,
+            },
             focus_mode,
-            frame_processor: ipc_frame_processor,
-            frame_storage: ipc_frame_storage,
-            activity_monitor: ipc_activity_monitor,
-            accessibility_extractor: ipc_accessibility_extractor,
-            consent_manager: ipc_consent_manager,
+            capture: CaptureContext {
+                frame_processor: ipc_frame_processor,
+                frame_storage: ipc_frame_storage,
+                activity_monitor: ipc_activity_monitor,
+                accessibility_extractor: ipc_accessibility_extractor,
+                consent_manager: ipc_consent_manager,
+            },
             suggestion_manager,
         });
         #[cfg(feature = "server")]

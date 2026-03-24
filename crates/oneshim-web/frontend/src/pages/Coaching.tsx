@@ -34,7 +34,7 @@ export default function Coaching() {
                   </div>
                   <div className="mt-2 flex items-baseline gap-1">
                     <span className={`text-2xl ${typography.weight.bold}`}>{g.percentage}%</span>
-                    <span className="text-xs text-content-secondary">
+                    <span className="text-content-secondary text-xs">
                       {g.current_minutes}/{g.target_minutes}m
                     </span>
                   </div>
@@ -90,17 +90,17 @@ export default function Coaching() {
                       >
                         {evt.profile_name}
                       </span>
-                      <span className="text-xs text-content-secondary">{evt.trigger_type}</span>
+                      <span className="text-content-secondary text-xs">{evt.trigger_type}</span>
                     </div>
-                    <span className="text-xs text-content-secondary">
+                    <span className="text-content-secondary text-xs">
                       {new Date(evt.shown_at).toLocaleTimeString()}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-content">{evt.personalized_message || evt.message_template}</p>
+                  <p className="mt-1 text-content text-sm">{evt.personalized_message || evt.message_template}</p>
                   {evt.feedback_type && (
                     <div className="mt-1 flex items-center gap-1">
                       <TrendingUp className={`${iconSize.xs}`} />
-                      <span className="text-xs text-content-secondary">{evt.feedback_type}</span>
+                      <span className="text-content-secondary text-xs">{evt.feedback_type}</span>
                     </div>
                   )}
                 </CardContent>

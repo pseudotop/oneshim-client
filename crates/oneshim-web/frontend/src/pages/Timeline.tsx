@@ -60,10 +60,13 @@ export default function Timeline() {
   const [tagFilter, setTagFilter] = useState<number | 'all'>('all')
   const pageSize = 50
 
-  const handleRangeChange = useCallback((from: string | undefined, to: string | undefined) => {
-    setDateRange({ from, to })
-    setPage(0)
-  }, [])
+  const handleRangeChange = useCallback(
+    (from: string | undefined, to: string | undefined) => {
+      setDateRange({ from, to })
+      setPage(0)
+    },
+    [setPage],
+  )
 
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],

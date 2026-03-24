@@ -64,6 +64,7 @@ base64 = { workspace = true }
 thiserror = { workspace = true }
 keyring = { workspace = true }
 image = { workspace = true }
+lru = { workspace = true }
 
 [features]
 default = ["custom-protocol", "analysis"]

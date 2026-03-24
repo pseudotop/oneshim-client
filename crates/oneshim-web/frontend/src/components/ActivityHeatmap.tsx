@@ -94,7 +94,7 @@ export function ActivityHeatmap({ days = 7, className = '' }: ActivityHeatmapPro
                 <div
                   key={HOUR_LABELS[hourIndex]}
                   className={cn(
-                    'h-4 flex-1 rounded-sm cursor-pointer hover:ring-2 hover:ring-brand-signal',
+                    'h-4 flex-1 cursor-pointer rounded-sm hover:ring-2 hover:ring-brand-signal',
                     motion.colors,
                     getColor(ratio),
                   )}

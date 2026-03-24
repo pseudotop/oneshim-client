@@ -90,7 +90,7 @@ export default function FocusWidget() {
         }
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [t])
 
   if (loading) {
     return (

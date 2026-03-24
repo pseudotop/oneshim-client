@@ -16,6 +16,9 @@
       "suspicious": {
         "noUnknownAtRules": "off"
       },
+      "correctness": {
+        "useExhaustiveDependencies": "warn"
+      },
       "nursery": {
         "useSortedClasses": {
           "level": "warn",
@@ -40,6 +43,21 @@
       "semicolons": "asNeeded"
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ],
   "files": {
     "includes": [
       "**",
