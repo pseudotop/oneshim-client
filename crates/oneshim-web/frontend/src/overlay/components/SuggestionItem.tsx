@@ -1,3 +1,5 @@
+import { motion, typography } from '../../styles/tokens'
+import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
 
 interface SuggestionItemProps {
@@ -18,9 +20,13 @@ export function SuggestionItem({ item, onAction }: SuggestionItemProps) {
   return (
     <div className="border-content-inverse/5 border-b px-4 py-3">
       <div className="flex items-start justify-between gap-2">
-        <span className="font-medium text-content text-sm leading-tight">{item.title}</span>
+        <span className={cn('text-content text-sm leading-tight', typography.weight.medium)}>{item.title}</span>
         <span
-          className={`inline-flex shrink-0 items-center rounded px-1.5 py-0.5 font-semibold text-[10px] ${badgeClass}`}
+          className={cn(
+            'inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px]',
+            typography.weight.semibold,
+            badgeClass,
+          )}
         >
           {item.priority}
         </span>
@@ -30,21 +36,30 @@ export function SuggestionItem({ item, onAction }: SuggestionItemProps) {
         <button
           type="button"
           onClick={() => onAction(item.id, 'accept')}
-          className="rounded-md bg-semantic-success/15 px-2 py-1 text-semantic-success text-xs transition-colors hover:bg-semantic-success/25"
+          className={cn(
+            'rounded-md bg-semantic-success/15 px-2 py-1 text-semantic-success text-xs hover:bg-semantic-success/25',
+            motion.colors,
+          )}
         >
           Accept
         </button>
         <button
           type="button"
           onClick={() => onAction(item.id, 'reject')}
-          className="rounded-md bg-semantic-error/15 px-2 py-1 text-semantic-error text-xs transition-colors hover:bg-semantic-error/25"
+          className={cn(
+            'rounded-md bg-semantic-error/15 px-2 py-1 text-semantic-error text-xs hover:bg-semantic-error/25',
+            motion.colors,
+          )}
         >
           Reject
         </button>
         <button
           type="button"
           onClick={() => onAction(item.id, 'defer')}
-          className="rounded-md bg-content-inverse/10 px-2 py-1 text-content-secondary text-xs transition-colors hover:bg-content-inverse/15"
+          className={cn(
+            'rounded-md bg-content-inverse/10 px-2 py-1 text-content-secondary text-xs hover:bg-content-inverse/15',
+            motion.colors,
+          )}
         >
           Later
         </button>

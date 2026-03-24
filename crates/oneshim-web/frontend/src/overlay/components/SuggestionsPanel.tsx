@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { motion, typography } from '../../styles/tokens'
+import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
 import { SuggestionItem } from './SuggestionItem'
 
@@ -37,17 +39,21 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
 
   return (
     <div
-      className={`fixed top-20 right-4 z-[45] max-h-[calc(100vh-10rem)] w-80 transform rounded-xl border border-content-inverse/10 bg-surface-sunken/90 shadow-2xl backdrop-blur-md transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'}`}
+      className={cn(
+        'fixed top-20 right-4 z-[45] max-h-[calc(100vh-10rem)] w-80 transform rounded-xl border border-content-inverse/10 bg-surface-sunken/90 shadow-2xl backdrop-blur-md',
+        motion.transform,
+        open ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]',
+      )}
     >
       {/* Header */}
       <div className="flex items-center justify-between border-content-inverse/5 border-b px-4 py-3">
-        <span className="font-semibold text-content-secondary text-xs uppercase tracking-wider">
+        <span className={cn('text-content-secondary text-xs uppercase tracking-wider', typography.weight.semibold)}>
           Suggestions ({suggestions.length})
         </span>
         <button
           type="button"
           onClick={onClose}
-          className="text-content-tertiary text-sm transition-colors hover:text-content"
+          className={cn('text-content-tertiary text-sm hover:text-content', motion.colors)}
         >
           &times;
         </button>

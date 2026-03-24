@@ -120,7 +120,8 @@ function StepDots({ current, total }: { current: number; total: number }) {
         <div
           key={step.id}
           className={cn(
-            'h-2 rounded-full transition-all duration-300',
+            'h-2 rounded-full',
+            motion.all,
             step.index === current ? 'w-6 bg-brand-signal' : 'w-2 bg-surface-muted',
           )}
           aria-current={step.index === current ? 'step' : undefined}
