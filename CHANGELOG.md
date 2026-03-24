@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2-rc.2] - 2026-03-24
+### Added
+
+- Wire focus highlight + add focus mode indicator ([#155](https://github.com/pseudotop/oneshim-client/pull/155))
+  Focus Highlight Wiring:
+  - Add OverlayDriver port to Scheduler struct with builder method
+  - Wire MagicOverlayDriver through AgentRuntimeBuilder to scheduler
+  - Monitor loop calls show_highlights() when accessibility extractor
+    returns a focused element with valid position/bounds
+  - Debounce: only update overlay when element identity (role+label)
+    changes between ticks
+  - Clear highlights when focus lost or extraction fails
+
+  Focus Mode Indicator:
+  - New FocusModeIndicator.tsx component — pill badge at top-left
+    with pulsing dot, fade in/out animation, pointer-events: none
+  - Listens to overlay:focus-mode event via useOverlayEvents reducer
+  - Uses existing design tokens (surface-sunken, brand-signal, etc.)
+
+- Add AI suggestions panel ([#156](https://github.com/pseudotop/oneshim-client/pull/156))
+  * feat(overlay): add AI suggestions panel with slide animation
+
+  - SuggestionsPanel: right-side sliding panel (z-45) with priority badges,
+    accept/reject/defer action buttons, and empty state
+  - SuggestionItem: individual card component with semantic color tokens
+  - Keyboard shortcut: Cmd+Shift+S toggles panel open/closed
+  - Pull-based architecture: IPC fetch on open + event-driven refresh on
+    overlay:suggestions-changed (emitted after feedback or SSE arrival)
+  - All state flows through useOverlayEvents reducer (no local useState)
+  - Escape key closes panel and returns to click-through mode
+
+
+### Fixed
+
+- Handle tag clobber warning in publish-rc-tag.sh ([#154](https://github.com/pseudotop/oneshim-client/pull/154))
+  git fetch --tags can emit non-fatal "would clobber existing tag"
+  warnings that cause the script to exit under set -euo pipefail.
+  Filter these warnings to prevent false failures.
+
+
+## [Unreleased]
+
 ## [0.4.2-rc.1] - 2026-03-24
 ### Added
 
