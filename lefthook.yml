@@ -75,6 +75,15 @@ post-merge:
 pre-commit:
   parallel: true
   commands:
+    conflict-markers:
+      # Prevent committing unresolved merge conflicts (checks staged source files only)
+      run: |
+        MARKERS=$(git diff --cached --name-only -- '*.rs' '*.ts' '*.tsx' '*.js' '*.json' '*.toml' '*.md' | xargs grep -ln '^<<<<<<< \|^=======$\|^>>>>>>> ' 2>/dev/null || true)
+        if [ -n "$MARKERS" ]; then
+          echo "❌ Unresolved merge conflict markers found:"
+          echo "$MARKERS"
+          exit 1
+        fi
     cargo-fmt:
       glob: "*.rs"
       run: cargo fmt --check

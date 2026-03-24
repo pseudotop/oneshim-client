@@ -63,12 +63,13 @@ pub async fn trigger_manual_capture(
     state: tauri::State<'_, AppState>,
 ) -> Result<ManualCaptureResponse, String> {
     let frame_processor = state
+        .capture
         .frame_processor
         .as_ref()
         .ok_or("Capture not available")?;
 
     // Get current window context for CaptureRequest
-    let (app_name, window_title) = if let Some(ref monitor) = state.activity_monitor {
+    let (app_name, window_title) = if let Some(ref monitor) = state.capture.activity_monitor {
         match monitor.collect_context().await {
             Ok(ctx) => match ctx.active_window {
                 Some(ref w) => (w.app_name.clone(), w.title.clone()),
@@ -105,7 +106,7 @@ pub async fn trigger_manual_capture(
 
     // Persist frame image if storage available — capture file path for metadata
     let file_path: Option<String> =
-        if let (Some(ref fs), Some(ref bytes)) = (&state.frame_storage, &image_bytes) {
+        if let (Some(ref fs), Some(ref bytes)) = (&state.capture.frame_storage, &image_bytes) {
             fs.save_frame(frame.metadata.timestamp, bytes)
                 .await
                 .ok()
@@ -144,6 +145,7 @@ pub async fn analyze_current_scene(
 ) -> Result<SceneAnalysisResponse, String> {
     // 1. Get current window context
     let monitor = state
+        .capture
         .activity_monitor
         .as_ref()
         .ok_or("Activity monitor not available")?;
@@ -165,9 +167,10 @@ pub async fn analyze_current_scene(
     };
 
     // 2. Accessibility extraction (optional)
-    let accessibility = if let Some(ref extractor) = state.accessibility_extractor {
+    let accessibility = if let Some(ref extractor) = state.capture.accessibility_extractor {
         let pii_level = state.config.privacy.pii_filter_level;
         let has_consent = state
+            .capture
             .consent_manager
             .as_ref()
             .map(|cm| cm.is_permitted(|p| p.full_text_extraction))
@@ -195,7 +198,7 @@ pub async fn analyze_current_scene(
     };
 
     // 3. Capture frame for OCR regions
-    let ocr_regions = if let Some(ref fp) = state.frame_processor {
+    let ocr_regions = if let Some(ref fp) = state.capture.frame_processor {
         let request = CaptureRequest {
             trigger_type: "scene_analysis".to_string(),
             importance: 0.8,

@@ -1,6 +1,7 @@
+import { useCallback } from 'react'
 import CoachingPopup from './components/CoachingPopup'
 import FocusHighlight from './components/FocusHighlight'
-import FocusModeIndicator from './components/FocusModeIndicator'
+import { FocusModeIndicator } from './components/FocusModeIndicator'
 import GoalProgressBar from './components/GoalProgressBar'
 import HeatmapGhost from './components/HeatmapGhost'
 import { SuggestionsPanel } from './components/SuggestionsPanel'
@@ -18,20 +19,20 @@ export default function OverlayApp() {
     await invoke('toggle_overlay_interactive', { interactive: false })
   }
 
-  async function handleRefreshSuggestions() {
+  const handleRefreshSuggestions = useCallback(async () => {
     const { invoke } = await import('@tauri-apps/api/core')
     try {
       const suggestions = await invoke<SuggestionViewDto[]>('get_pending_suggestions')
       dispatch({ type: 'set-suggestions', payload: suggestions })
     } catch { /* ignore */ }
-  }
+  }, [dispatch])
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
       {/* Tracking capture border indicator */}
       <TrackingBorder paused={state.captureState.paused} visible={state.captureState.indicator_visible} />
 
-      {/* Focus mode indicator badge (top-left) */}
+      {/* Focus mode pill indicator (top center) */}
       <FocusModeIndicator active={state.focusMode} />
 
       {/* Focus area highlight (always shown when available) */}

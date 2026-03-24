@@ -5171,6 +5171,7 @@ dependencies = [
  "futures",
  "image",
  "keyring",
+ "lru",
  "mockito",
  "objc",
  "oneshim-analysis",

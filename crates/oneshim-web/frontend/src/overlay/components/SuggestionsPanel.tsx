@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import type { SuggestionViewDto } from '../types'
 import { SuggestionItem } from './SuggestionItem'
 
@@ -14,7 +13,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
   // Fetch when panel opens
   useEffect(() => {
     if (open) onRefresh()
-  }, [open])
+  }, [open, onRefresh])
 
   // Escape key closes panel
   useEffect(() => {
@@ -27,6 +26,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
 
   async function handleAction(id: string, action: 'accept' | 'reject' | 'defer') {
     try {
+      const { invoke } = await import('@tauri-apps/api/core')
       // Tauri v2 auto-converts camelCase JS -> snake_case Rust params
       await invoke('submit_suggestion_feedback', { suggestionId: id, action })
       onRefresh()

@@ -24,6 +24,33 @@ pub(crate) type OAuthCoordinator =
 #[cfg(not(feature = "server"))]
 pub(crate) type OAuthCoordinator = Option<()>;
 
+/// Groups frame processor, frame storage, activity monitor, accessibility
+/// extractor, and consent manager used by IPC capture commands (A1, A2).
+#[allow(dead_code)]
+pub struct CaptureContext {
+    /// Frame processor for on-demand capture (A1, A2).
+    pub frame_processor: Option<Arc<dyn FrameProcessor>>,
+    /// Frame file storage for persisting captured images.
+    pub frame_storage: Option<Arc<FrameFileStorage>>,
+    /// Activity monitor for current window context (A1, A2).
+    pub activity_monitor: Option<Arc<dyn ActivityMonitor>>,
+    /// Accessibility extractor for scene analysis (A2).
+    pub accessibility_extractor: Option<Arc<dyn AccessibilityExtractor>>,
+    /// Consent manager for PII level gating in accessibility extraction (A2).
+    pub consent_manager: Option<Arc<ConsentManager>>,
+}
+
+/// Groups connectivity flags for server, LLM, and CLI connections.
+#[allow(dead_code)]
+pub struct ConnectionStatus {
+    /// Server API connectivity (REST or gRPC).
+    pub server_connected: Arc<AtomicBool>,
+    /// Local LLM provider connectivity (Ollama, subprocess, etc.).
+    pub llm_connected: Arc<AtomicBool>,
+    /// CLI bridge / automation controller connectivity.
+    pub cli_connected: Arc<AtomicBool>,
+}
+
 #[allow(dead_code)]
 pub struct AppState {
     pub runtime_handle: tokio::runtime::Handle,
@@ -47,24 +74,12 @@ pub struct AppState {
     pub capture_paused: Arc<AtomicBool>,
     /// Whether the tracking indicator border is visible.
     pub indicator_visible: Arc<AtomicBool>,
-    /// Server API connectivity (REST or gRPC).
-    pub server_connected: Arc<AtomicBool>,
-    /// Local LLM provider connectivity (Ollama, subprocess, etc.).
-    pub llm_connected: Arc<AtomicBool>,
-    /// CLI bridge / automation controller connectivity.
-    pub cli_connected: Arc<AtomicBool>,
+    /// Connection status flags for server, LLM, and CLI.
+    pub connection: ConnectionStatus,
     /// Focus mode state — transient, not persisted. Suppresses coaching + notifications.
     pub focus_mode: Arc<crate::focus_mode::FocusModeState>,
-    /// Frame processor for on-demand capture (A1, A2).
-    pub frame_processor: Option<Arc<dyn FrameProcessor>>,
-    /// Frame file storage for persisting captured images.
-    pub frame_storage: Option<Arc<FrameFileStorage>>,
-    /// Activity monitor for current window context (A1, A2).
-    pub activity_monitor: Option<Arc<dyn ActivityMonitor>>,
-    /// Accessibility extractor for scene analysis (A2).
-    pub accessibility_extractor: Option<Arc<dyn AccessibilityExtractor>>,
-    /// Consent manager for PII level gating in accessibility extraction (A2).
-    pub consent_manager: Option<Arc<ConsentManager>>,
+    /// Capture-related resources for IPC commands (A1, A2).
+    pub capture: CaptureContext,
     /// Suggestion manager for overlay panel (A3). Shares queue with SuggestionReceiver.
     pub suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
 }
@@ -268,15 +283,19 @@ mod tests {
             coaching_engine: None,
             capture_paused: Arc::new(AtomicBool::new(false)),
             indicator_visible: Arc::new(AtomicBool::new(true)),
-            server_connected: Arc::new(AtomicBool::new(false)),
-            llm_connected: Arc::new(AtomicBool::new(false)),
-            cli_connected: Arc::new(AtomicBool::new(false)),
+            connection: ConnectionStatus {
+                server_connected: Arc::new(AtomicBool::new(false)),
+                llm_connected: Arc::new(AtomicBool::new(false)),
+                cli_connected: Arc::new(AtomicBool::new(false)),
+            },
             focus_mode: Arc::new(crate::focus_mode::FocusModeState::new()),
-            frame_processor: None,
-            frame_storage: None,
-            activity_monitor: None,
-            accessibility_extractor: None,
-            consent_manager: None,
+            capture: CaptureContext {
+                frame_processor: None,
+                frame_storage: None,
+                activity_monitor: None,
+                accessibility_extractor: None,
+                consent_manager: None,
+            },
             suggestion_manager: None,
         })
         .build();

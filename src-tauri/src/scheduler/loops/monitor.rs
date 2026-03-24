@@ -14,10 +14,8 @@ use tracing::{debug, info, warn};
 use super::super::config::PlatformEgressPolicy;
 use super::super::shared_regime_state::SharedRegimeState;
 use super::super::Scheduler;
-use super::helpers::{
-    build_personalization_prompt, build_segment_stats_snapshot, handle_event_analysis,
-    handle_frame_capture, COACHING_SYSTEM_PROMPT,
-};
+use super::coaching_helper::{CoachingEvalContext, CoachingTickState};
+use super::helpers::{build_segment_stats_snapshot, handle_event_analysis, handle_frame_capture};
 use crate::focus_mode::FocusModeState;
 
 impl Scheduler {
@@ -93,8 +91,7 @@ impl Scheduler {
             let mut last_highlight_handle_id: Option<String> = None;
 
             // ── Coaching: track real regime dwell time ──
-            let mut regime_entered_at: Option<std::time::Instant> = None;
-            let mut prev_coaching_regime_id: Option<String> = None;
+            let mut coaching_tick_state = CoachingTickState::new();
 
             // ── Audit tracking: consent and PII level changes (Task 7) ──
             let mut prev_full_text_consent = false;
@@ -550,150 +547,30 @@ impl Scheduler {
                                 }
 
                                 // ── Coaching evaluation (Phase 1) ──
-                                // Uses placeholder values for regime data in Phase 1.
-                                // Full integration with AdaptiveTriggerState will use
-                                // regime_classifier and drift_detector outputs.
                                 // A4: Skip coaching when focus mode active
                                 if !focus_mode.is_active() {
                                 if let Some(ref coaching) = coaching_engine_ref {
-                                    // Extract regime data from adaptive trigger state
                                     let regime_id_for_coaching: Option<&str> =
                                         adaptive_trigger_state.as_ref().and_then(|ts| {
                                             ts.current_regime_id.as_deref()
                                         });
-                                    let regime_label_for_coaching =
-                                        regime_id_for_coaching.unwrap_or("Unknown");
-                                    let avg_regime_duration_secs: u64 = coaching
-                                        .avg_regime_duration_secs(regime_label_for_coaching)
-                                        .await;
                                     let drift_detected = adaptive_trigger_state
                                         .as_ref()
                                         .map(|ts| ts.last_drift_detected.swap(false, std::sync::atomic::Ordering::Relaxed))
                                         .unwrap_or(false);
 
-                                    // Track real regime dwell time: reset timer on regime change
-                                    let current_coaching_regime = regime_id_for_coaching.map(String::from);
-                                    if current_coaching_regime != prev_coaching_regime_id {
-                                        regime_entered_at = Some(std::time::Instant::now());
-                                        prev_coaching_regime_id = current_coaching_regime;
-                                    }
-                                    let regime_duration_secs: u64 = regime_entered_at
-                                        .map(|t| t.elapsed().as_secs())
-                                        .unwrap_or(0);
-
-                                    // Record elapsed minutes for goal tracking
-                                    let elapsed_minutes =
-                                        (poll.as_secs() as f32 / 60.0).max(0.0) as u32;
-                                    if elapsed_minutes > 0 {
-                                        coaching
-                                            .record_minutes(
-                                                regime_label_for_coaching,
-                                                elapsed_minutes,
-                                            )
-                                            .await;
-                                    }
-
-                                    // Evaluate coaching triggers
-                                    if let Some(message) = coaching
-                                        .evaluate(
-                                            regime_id_for_coaching,
-                                            regime_label_for_coaching,
-                                            regime_duration_secs,
-                                            avg_regime_duration_secs,
-                                            drift_detected,
-                                            prev_app.as_deref().unwrap_or(""),
-                                        )
-                                        .await
-                                    {
-                                        // 1. Show on MagicOverlay (primary delivery)
-                                        if let Some(ref overlay) = overlay_ref {
-                                            overlay.show_coaching(&message).await;
-                                        }
-
-                                        // 2. Also send desktop notification (fallback)
-                                        if let Some(ref notif) = notif1 {
-                                            notif
-                                                .notify_coaching(&message.template_text)
-                                                .await;
-                                        }
-
-                                        // 3. Persist coaching event to storage
-                                        if let Some(ref cs) = coaching_storage_ref {
-                                            let event_row = oneshim_core::models::coaching::CoachingEventRow {
-                                                event_id: message.message_id.clone(),
-                                                trigger_type: oneshim_core::models::coaching::trigger_type_name(&message.trigger),
-                                                profile_name: format!("{:?}", message.profile),
-                                                regime_id: regime_id_for_coaching.map(String::from),
-                                                message_template: message.template_text.clone(),
-                                                personalized_message: None,
-                                                shown_at: chrono::Utc::now().to_rfc3339(),
-                                                dismissed_at: None,
-                                                dismiss_action: None,
-                                                feedback_type: None,
-                                                feedback_score: None,
-                                            };
-                                            if let Err(e) = cs.insert_coaching_event(&event_row) {
-                                                warn!("coaching event persist failure: {e}");
-                                            }
-                                        }
-
-                                        // 4. Register for feedback tracking
-                                        coaching
-                                            .register_pending_feedback(
-                                                &message.message_id,
-                                                &format!("{:?}", message.profile),
-                                                &oneshim_core::models::coaching::trigger_type_name(
-                                                    &message.trigger,
-                                                ),
-                                                regime_id_for_coaching,
-                                                prev_app.as_deref().unwrap_or(""),
-                                            )
-                                            .await;
-
-                                        info!(
-                                            profile = ?message.profile,
-                                            trigger = ?message.trigger,
-                                            "coaching message: {}",
-                                            message.template_text,
-                                        );
-
-                                        // 5. Spawn background LLM personalization
-                                        if let Some(ref provider) = coaching_analysis_provider {
-                                            let msg_clone = message.clone();
-                                            let provider_clone = provider.clone();
-                                            let overlay_clone = overlay_ref.clone();
-                                            let storage_clone = coaching_storage_ref.clone();
-                                            let regime = regime_label_for_coaching.to_string();
-                                            tokio::spawn(async move {
-                                                let prompt = build_personalization_prompt(
-                                                    &msg_clone.template_text,
-                                                    &regime,
-                                                );
-                                                match provider_clone.analyze(&prompt, COACHING_SYSTEM_PROMPT).await {
-                                                    Ok(suggestions) if !suggestions.is_empty() => {
-                                                        let personalized = &suggestions[0].content;
-                                                        // Upgrade overlay if still visible
-                                                        if let Some(ref overlay) = overlay_clone {
-                                                            overlay.upgrade_message(&msg_clone.message_id, personalized).await;
-                                                        }
-                                                        // Persist personalized text to storage
-                                                        if let Some(ref cs) = storage_clone {
-                                                            if let Err(e) = cs.update_coaching_event_personalized(
-                                                                &msg_clone.message_id,
-                                                                personalized,
-                                                            ) {
-                                                                debug!("coaching personalization persist: {e}");
-                                                            }
-                                                        }
-                                                    }
-                                                    Ok(_) => { /* No suggestions returned — template remains */ }
-                                                    Err(e) => {
-                                                        debug!("LLM coaching personalization failed: {e}");
-                                                    }
-                                                }
-                                            });
-                                        }
-                                    }
+                                    let ctx = CoachingEvalContext {
+                                        coaching_engine: coaching,
+                                        overlay: &overlay_ref,
+                                        notifier: &notif1,
+                                        coaching_storage: &coaching_storage_ref,
+                                        analysis_provider: &coaching_analysis_provider,
+                                        regime_id: regime_id_for_coaching,
+                                        prev_app: prev_app.as_deref(),
+                                        drift_detected,
+                                        poll_secs: poll.as_secs(),
+                                    };
+                                    super::coaching_helper::evaluate_and_deliver(&ctx, &mut coaching_tick_state).await;
                                 }
                                 } // end A4: focus_mode coaching guard
 

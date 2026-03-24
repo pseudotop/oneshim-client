@@ -78,9 +78,9 @@ pub async fn get_connection_status(
     state: State<'_, AppState>,
 ) -> Result<ConnectionStatusResponse, String> {
     Ok(ConnectionStatusResponse {
-        server: state.server_connected.load(Ordering::Relaxed),
-        llm: state.llm_connected.load(Ordering::Relaxed),
-        cli: state.cli_connected.load(Ordering::Relaxed),
+        server: state.connection.server_connected.load(Ordering::Relaxed),
+        llm: state.connection.llm_connected.load(Ordering::Relaxed),
+        cli: state.connection.cli_connected.load(Ordering::Relaxed),
     })
 }
 

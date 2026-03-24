@@ -136,15 +136,22 @@ pub async fn submit_suggestion_feedback(
     }
 
     // Move accepted/rejected suggestion from queue to history.
-    let removed = mgr.queue().lock().await.remove_by_id(&suggestion_id);
+    // Acquire queue lock once to both remove the item and get the remaining count,
+    // avoiding a redundant second lock acquisition.
+    let (removed, remaining_count) = {
+        let mut queue = mgr.queue().lock().await;
+        let removed = queue.remove_by_id(&suggestion_id);
+        let count = queue.len();
+        (removed, count)
+    }; // queue lock dropped here
+
     if let Some(suggestion) = removed {
         mgr.history().lock().await.add(suggestion);
     }
 
     // Notify overlay that suggestions changed (item removed from queue)
     if let Some(ref overlay) = state.magic_overlay {
-        let count = mgr.queue().lock().await.len();
-        overlay.emit_suggestions_changed(count);
+        overlay.emit_suggestions_changed(remaining_count);
     }
 
     Ok(())
