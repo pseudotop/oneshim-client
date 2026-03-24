@@ -13,7 +13,7 @@ test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
     // ActivityBar uses buttons with title attribute for navigation
-    await expect(page.locator('nav[role="navigation"]')).toBeVisible()
+    await expect(page.locator('nav')).toBeVisible()
   })
 
   test('should display navigation buttons in ActivityBar', async ({ page }) => {
