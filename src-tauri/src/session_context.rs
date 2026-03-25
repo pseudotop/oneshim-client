@@ -7,7 +7,7 @@ use chrono::{Duration, Utc};
 use oneshim_core::config::AppConfig;
 use oneshim_core::models::ai_session::{
     ActivitySummary, MessageRole, SessionMessage, SuggestionPatterns, SystemInfo,
-    SystemPromptContext, UserProfileSummary,
+    SystemPromptContext, ToolDefinition, UserProfileSummary,
 };
 use oneshim_core::models::event::Event;
 use oneshim_core::ports::storage::StorageService;
@@ -24,7 +24,6 @@ const SUGGESTION_HISTORY_LIMIT: usize = 100;
 
 pub struct SessionContextAssembler {
     storage: Arc<SqliteStorage>,
-    #[allow(dead_code)] // Future: user profile extraction from config
     config: Arc<AppConfig>,
     regime_state: Arc<SharedRegimeState>,
 }
@@ -72,9 +71,54 @@ impl SessionContextAssembler {
                 "You are ONESHIM's AI assistant. Here is the current user context:\n\n{content}"
             ),
             attachments: vec![],
-            tools: None,
+            tools: Some(self.build_tool_definitions()),
             context: None,
         }
+    }
+
+    /// Build tool definitions for key oneshim-web REST API endpoints.
+    ///
+    /// Included in the system message so CLI sessions can discover and query
+    /// local data (metrics, sessions, events, focus, suggestions).
+    fn build_tool_definitions(&self) -> Vec<ToolDefinition> {
+        let base = format!("http://localhost:{}/api", self.config.web.port);
+        vec![
+            ToolDefinition {
+                name: "get_metrics".to_string(),
+                description: "Query raw activity metrics".to_string(),
+                endpoint: format!("{base}/metrics"),
+            },
+            ToolDefinition {
+                name: "get_stats_summary".to_string(),
+                description: "Get summary statistics (app usage, session counts)".to_string(),
+                endpoint: format!("{base}/stats/summary"),
+            },
+            ToolDefinition {
+                name: "get_sessions".to_string(),
+                description: "List work sessions".to_string(),
+                endpoint: format!("{base}/sessions"),
+            },
+            ToolDefinition {
+                name: "get_events".to_string(),
+                description: "Query recent activity events".to_string(),
+                endpoint: format!("{base}/events"),
+            },
+            ToolDefinition {
+                name: "get_suggestions".to_string(),
+                description: "List pending suggestions".to_string(),
+                endpoint: format!("{base}/suggestions"),
+            },
+            ToolDefinition {
+                name: "get_focus_metrics".to_string(),
+                description: "Get focus and productivity metrics".to_string(),
+                endpoint: format!("{base}/focus/metrics"),
+            },
+            ToolDefinition {
+                name: "search".to_string(),
+                description: "Full-text search across events".to_string(),
+                endpoint: format!("{base}/search"),
+            },
+        ]
     }
 
     /// Query recent events from storage and summarize into top apps + active/idle minutes.
@@ -273,5 +317,10 @@ mod tests {
         assert!(matches!(message.role, MessageRole::System));
         assert!(message.content.contains("ONESHIM's AI assistant"));
         assert!(message.content.contains("unknown")); // default regime
+        assert!(message.tools.is_some());
+        let tools = message.tools.unwrap();
+        assert!(!tools.is_empty());
+        assert!(tools.iter().any(|t| t.name == "get_metrics"));
+        assert!(tools.iter().all(|t| t.endpoint.contains("localhost")));
     }
 }
