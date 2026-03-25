@@ -346,7 +346,7 @@ impl AppRuntimeLaunchBuilder {
         if let Some(ref sm) = session_manager {
             let sm_clone = sm.clone();
             let mut shutdown_rx = reaper_shutdown_rx;
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let interval =
                     std::time::Duration::from_secs(sm_clone.config.health_check_interval_secs);
                 loop {
