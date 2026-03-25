@@ -22,6 +22,8 @@ pub struct AiSessionConfig {
     pub max_history_turns: u32,
     #[serde(default = "default_permission_mode")]
     pub permission_mode: String,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
 }
 
 impl Default for AiSessionConfig {
@@ -36,6 +38,7 @@ impl Default for AiSessionConfig {
             health_check_interval_secs: default_health_check(),
             max_history_turns: default_max_history(),
             permission_mode: default_permission_mode(),
+            max_retries: default_max_retries(),
         }
     }
 }
@@ -66,4 +69,7 @@ fn default_max_history() -> u32 {
 }
 fn default_permission_mode() -> String {
     "dontAsk".to_string()
+}
+fn default_max_retries() -> u32 {
+    3
 }

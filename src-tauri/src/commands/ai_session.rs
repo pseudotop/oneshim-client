@@ -121,6 +121,25 @@ pub async fn kill_ai_session(
         .map_err(|e| e.to_string())
 }
 
+/// Retry (recover) a failed or errored session. Increments retry_count and
+/// returns the session info if successful. Fails when max retries exceeded.
+#[command]
+pub async fn retry_ai_session(
+    state: tauri::State<'_, AppState>,
+    session_id: String,
+) -> Result<ConversationSessionInfo, String> {
+    let mgr = state
+        .session_manager
+        .as_ref()
+        .ok_or_else(|| "session manager not available".to_string())?;
+
+    let session = mgr
+        .recover_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(session.info())
+}
+
 /// List all active AI sessions.
 #[command]
 pub async fn list_ai_sessions(

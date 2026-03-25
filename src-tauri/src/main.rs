@@ -207,6 +207,7 @@ fn main() {
             commands::ai_session::send_session_message,
             commands::ai_session::kill_ai_session,
             commands::ai_session::list_ai_sessions,
+            commands::ai_session::retry_ai_session,
             commands::analysis::get_analysis_config,
             commands::analysis::update_analysis_config,
             commands::analysis::get_analysis_status,

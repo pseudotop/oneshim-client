@@ -1,8 +1,10 @@
 use oneshim_core::config::UpdateConfig;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
 use tokio::runtime::Handle;
+use tracing::{debug, info};
 
 use crate::update_coordinator;
+use crate::updater::{UpdateCheckResult, Updater};
 
 pub(crate) struct UpdateRuntimeBundle {
     pub(crate) update_control: UpdateControl,
@@ -32,6 +34,28 @@ impl<'a> UpdateRuntimeBuilder<'a> {
         );
 
         if self.config.enabled {
+            // Fire-and-forget startup update check (non-blocking, 3s timeout)
+            let startup_config = self.config.clone();
+            self.runtime_handle.spawn(async move {
+                let updater = Updater::new(startup_config);
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(3),
+                    updater.check_for_updates(),
+                )
+                .await
+                {
+                    Ok(Ok(UpdateCheckResult::Available { latest, .. })) => {
+                        info!("startup update check: v{latest} available");
+                    }
+                    Ok(Ok(UpdateCheckResult::UpToDate { .. })) => {
+                        debug!("startup update check: up to date");
+                    }
+                    _ => {
+                        debug!("startup update check: skipped");
+                    }
+                }
+            });
+
             let update_config = self.config.clone();
             let update_state = update_control.state.clone();
             let update_status_tx = Some(update_control.event_tx.clone());

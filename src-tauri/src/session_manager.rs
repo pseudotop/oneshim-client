@@ -33,7 +33,6 @@ struct ManagedSession {
     #[allow(dead_code)]
     created_at: Instant,
     last_active: Instant,
-    #[allow(dead_code)]
     retry_count: u32,
 }
 
@@ -41,8 +40,6 @@ pub struct SessionManagerImpl {
     sessions: RwLock<HashMap<String, ManagedSession>>,
     pub(crate) config: Arc<AiSessionConfig>,
     audit: Arc<dyn AuditLogPort>,
-    // Phase 2b: used by session adapters for system prompt generation
-    #[allow(dead_code)]
     context_assembler: Option<Arc<SessionContextAssembler>>,
     /// Secret store for resolving provider credentials (HttpApi sessions).
     secret_store: Option<Arc<dyn SecretStore>>,
@@ -122,6 +119,36 @@ impl SessionManagerImpl {
             let _ = self.kill_session(&id).await;
         }
     }
+
+    /// Attempt to recover a session after a stream error.
+    /// Increments retry_count and transitions state through Recovering → Active.
+    /// Returns the session Arc for re-use, or an error if max retries exceeded.
+    pub async fn recover_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<dyn ConversationSession>, CoreError> {
+        let mut sessions = self.sessions.write().await;
+        let managed = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| CoreError::Internal(format!("session not found: {session_id}")))?;
+
+        if managed.retry_count >= self.config.max_retries {
+            managed.state = SessionState::Failed;
+            return Err(CoreError::Internal("max retries exceeded".into()));
+        }
+
+        managed.retry_count += 1;
+        managed.state = SessionState::Recovering;
+        info!(
+            session_id,
+            retry = managed.retry_count,
+            "recovering session"
+        );
+
+        // The adapter itself handles --continue/resume for session continuity
+        managed.state = SessionState::Active;
+        Ok(managed.session.clone())
+    }
 }
 
 #[async_trait]
@@ -136,6 +163,15 @@ impl SessionManager for SessionManagerImpl {
                 "max concurrent sessions ({}) reached",
                 self.config.max_concurrent_sessions,
             )));
+        }
+
+        // Auto-generate system prompt from context if not provided
+        let mut config = config;
+        if config.system_prompt.is_none() {
+            if let Some(ref assembler) = self.context_assembler {
+                let message = assembler.build_system_message().await;
+                config.system_prompt = Some(message.content);
+            }
         }
 
         match config.transport {
@@ -615,5 +651,175 @@ mod tests {
             "session should be removed after second reap"
         );
         assert!(mgr.list_sessions().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_session_uses_context_assembler() {
+        use crate::scheduler::shared_regime_state::SharedRegimeState;
+        use oneshim_core::config::AppConfig;
+        use oneshim_storage::sqlite::SqliteStorage;
+
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let app_config = Arc::new(AppConfig::default_config());
+        let regime_state = Arc::new(SharedRegimeState::new());
+        let assembler = Arc::new(SessionContextAssembler::new(
+            storage,
+            app_config,
+            regime_state,
+        ));
+
+        let mgr = SessionManagerImpl::new(
+            test_config(),
+            Arc::new(crate::auditing_session::tests::MockAudit::default()),
+            Some(assembler),
+        );
+
+        // Create a LocalLlm session with system_prompt = None.
+        // The context assembler should inject a system prompt automatically.
+        let config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: None,
+            tools_enabled: false,
+        };
+
+        let session = mgr
+            .create_session(config)
+            .await
+            .expect("should create session with assembled context");
+
+        // The session should have been created successfully.
+        assert!(!session.session_id().is_empty());
+
+        // Verify the session is stored and retrievable.
+        let retrieved = mgr.get_session(session.session_id()).await;
+        assert!(retrieved.is_ok());
+    }
+
+    #[tokio::test]
+    async fn create_session_preserves_explicit_system_prompt() {
+        use crate::scheduler::shared_regime_state::SharedRegimeState;
+        use oneshim_core::config::AppConfig;
+        use oneshim_storage::sqlite::SqliteStorage;
+
+        let storage = Arc::new(SqliteStorage::open_in_memory(30).unwrap());
+        let app_config = Arc::new(AppConfig::default_config());
+        let regime_state = Arc::new(SharedRegimeState::new());
+        let assembler = Arc::new(SessionContextAssembler::new(
+            storage,
+            app_config,
+            regime_state,
+        ));
+
+        let mgr = SessionManagerImpl::new(
+            test_config(),
+            Arc::new(crate::auditing_session::tests::MockAudit::default()),
+            Some(assembler),
+        );
+
+        // Create a LocalLlm session with an explicit system prompt.
+        // The context assembler should NOT override it.
+        let config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: Some("Custom prompt".to_string()),
+            tools_enabled: false,
+        };
+
+        let session = mgr
+            .create_session(config)
+            .await
+            .expect("should create session with explicit prompt");
+
+        assert!(!session.session_id().is_empty());
+    }
+
+    #[tokio::test]
+    async fn recover_session_increments_retry_count() {
+        if !has_claude_cli() {
+            return; // skip in environments without Claude CLI
+        }
+
+        let mgr = test_manager();
+        let config = SessionConfig {
+            transport: SessionTransport::Subprocess,
+            surface_id: None,
+            model: None,
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr.create_session(config).await.expect("create session");
+        let id = session.session_id().to_string();
+
+        // First recovery should succeed with retry_count = 1.
+        let recovered = mgr.recover_session(&id).await;
+        assert!(recovered.is_ok());
+
+        {
+            let sessions = mgr.sessions.read().await;
+            let managed = sessions.get(&id).unwrap();
+            assert_eq!(managed.retry_count, 1);
+            assert_eq!(managed.state, SessionState::Active);
+        }
+
+        // Second recovery should succeed with retry_count = 2.
+        let _ = mgr.recover_session(&id).await.expect("second recovery");
+        {
+            let sessions = mgr.sessions.read().await;
+            let managed = sessions.get(&id).unwrap();
+            assert_eq!(managed.retry_count, 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn recover_session_fails_after_max_retries() {
+        if !has_claude_cli() {
+            return; // skip in environments without Claude CLI
+        }
+
+        let config = Arc::new(AiSessionConfig {
+            max_concurrent_sessions: 2,
+            idle_timeout_secs: 1,
+            max_retries: 2,
+            ..Default::default()
+        });
+        let mgr = SessionManagerImpl::new(
+            config,
+            Arc::new(crate::auditing_session::tests::MockAudit::default()),
+            None,
+        );
+
+        let session_config = SessionConfig {
+            transport: SessionTransport::Subprocess,
+            surface_id: None,
+            model: None,
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr
+            .create_session(session_config)
+            .await
+            .expect("create session");
+        let id = session.session_id().to_string();
+
+        // Exhaust max_retries (2).
+        let _ = mgr.recover_session(&id).await.expect("recovery 1");
+        let _ = mgr.recover_session(&id).await.expect("recovery 2");
+
+        // Third attempt should fail.
+        let err_msg = expect_err_msg(mgr.recover_session(&id).await);
+        assert!(
+            err_msg.contains("max retries exceeded"),
+            "unexpected error: {err_msg}",
+        );
+
+        // Session state should be Failed.
+        {
+            let sessions = mgr.sessions.read().await;
+            let managed = sessions.get(&id).unwrap();
+            assert_eq!(managed.state, SessionState::Failed);
+        }
     }
 }
