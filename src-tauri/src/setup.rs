@@ -43,6 +43,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Create MagicOverlay window so TrackingBorder renders immediately.
+    // The window is transparent + click-through, so showing it is harmless.
+    if let Some(state) = _app_handle.try_state::<crate::runtime_state::AppState>() {
+        if let Some(ref overlay) = state.magic_overlay {
+            if let Ok(()) = overlay.ensure_window() {
+                if let Some(w) = _app_handle.get_webview_window("magic-overlay") {
+                    let _ = w.show();
+                }
+            }
+        }
+    }
+
     info!("Tauri setup complete");
     Ok(())
 }

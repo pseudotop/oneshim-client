@@ -226,7 +226,7 @@ impl AppRuntimeLaunchBuilder {
             config.coaching.clone(),
         ));
 
-        // Create MagicOverlay handle (window is lazily created on first coaching message)
+        // Create MagicOverlay handle (window created at startup in setup.rs)
         let magic_overlay =
             MagicOverlayHandle::new(self.app_handle.clone(), config.coaching.overlay_mode);
 
