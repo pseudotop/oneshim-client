@@ -7,6 +7,159 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3-rc.2] - 2026-03-25
+### Added
+
+- Add AI session manager foundation (Phase 1)
+  Add unified AI conversation session management infrastructure:
+
+  - Domain models: JSONL protocol types, session metadata, context assembly
+  - Port traits: ConversationSession, SessionManager with ResponseStream
+  - AuditLogPort extension: record_session_event (best-effort)
+  - AiSessionConfig: concurrent limits, timeouts, retention settings
+  - SQLite migration V20: session_audit_log table
+  - AuditingSession decorator: transparent audit logging wrapper
+  - SessionContextAssembler: system prompt builder from local data
+  - SessionManagerImpl: session lifecycle with idle reaping
+  - One-shot CLI optimization: oneshot_flags/session_flags in catalog
+  - Spec: docs/specs/AI-SESSION-MANAGER-SPEC.md v1.3
+
+  Phase 2 (deferred): SubprocessSession, HttpApiSession, LocalLlmSession
+  adapters pending CLI interactive mode verification.
+
+- Add Claude subprocess session adapter + one-shot flag optimization (Phase 2a)
+  Phase 2a of AI Session Manager — connects the Phase 1 foundation to real adapters:
+
+  - ClaudeSubprocessSession: serial -p calls with --session-id/--continue
+    for multi-turn conversations, --bare flag for startup optimization,
+    stream-json output normalized to OutboundMessage via JSONL parser
+  - One-shot flag wiring: replace hardcoded CLI flags in run_claude/run_claude_ocr
+    with catalog-driven append_oneshot_flags (--bare added to catalog)
+  - SessionContextAssembler async: real SQLite queries for activity summary
+    and suggestion history (spawn_blocking for sync storage calls)
+  - SessionManagerImpl: wire create_session for Claude, add get_session,
+    store managed sessions with AuditingSession decorator wrapping
+  - Tauri IPC commands: create/send/kill/list AI sessions with Tauri event
+    streaming (ai-session:<id> events for real-time response delivery)
+  - AppState DI wiring: SessionManagerImpl constructed in app_runtime_launch
+    with AuditLogger + SessionContextAssembler, shutdown hook in RunEvent::Exit
+
+- Add HTTP API/Ollama adapters + web REST endpoints (Phase 2b)
+  Phase 2b of AI Session Manager — HTTP-based session adapters and web API:
+
+  - HttpApiSession: Anthropic/OpenAI direct API with SSE streaming,
+    self-managed conversation history with system prompt preservation,
+    provider-specific request building (Messages API / Responses API),
+    CredentialSource-based auth (same as RemoteLlmProvider)
+  - LocalLlmSession: Ollama /api/chat with NDJSON streaming,
+    eval_count/prompt_eval_count → TokenUsage mapping,
+    same history management pattern as HttpApiSession
+  - ChatMessage/ChatRole types for HTTP API conversation history
+  - SessionManager trait: added get_session for web handler access
+  - SessionManager wiring: HttpApi + LocalLlm transports in create_session
+  - Web REST endpoints: 5 Axum routes for session CRUD + SSE streaming
+    (POST/GET /ai/sessions, GET/DELETE /ai/sessions/{id},
+     POST /ai/sessions/{id}/messages → SSE events)
+  - Web AppState threading: SessionManager → WebServerRuntimeBindings → AppState
+  - Spec: docs/specs/AI-SESSION-MANAGER-PHASE2B-SPEC.md v1.1
+
+- State machine, shared regime, auto mode, dead_code cleanup (Phase 3)
+  Phase 3 of AI Session Manager:
+
+  - Session state machine: two-phase idle (Active→Idle→Terminated) with
+    touch_session resetting state on user messages
+  - Idle reaper: background task with configurable interval, graceful
+    shutdown via watch receiver, integrated into app_runtime_launch
+  - SharedRegimeState sharing: single instance threaded through 4 layers
+    (app_runtime → AgentRuntimeBundle → Scheduler → sync loops) so
+    SessionContextAssembler sees real regime updates
+  - Auto permission mode: AiSessionConfig.permission_mode field replaces
+    hardcoded "dontAsk" in ClaudeSubprocessSession, supports "auto" mode
+  - Catalog session_flags: removed hardcoded --permission-mode from
+    session_flags (now config-driven)
+  - Dead code cleanup: removed #[allow(dead_code)] from wired items
+    (AuditingSession, ClaudeSubprocessSession, ManagedSession fields)
+
+- Context assembler wiring, startup update check, crash recovery (P2-P3 batch)
+  - Wire context_assembler into SessionManager.create_session: auto-generates
+    system prompt from local context (regime, activity, suggestions) when
+    config.system_prompt is None
+  - Add non-blocking startup update check in UpdateRuntimeBuilder: fires
+    Updater.check_for_updates() with 3s timeout on app launch, logs result
+  - Add crash recovery: SessionManagerImpl.recover_session() increments
+    retry_count, transitions Recovering→Active, fails after max_retries (3)
+  - Add retry_ai_session Tauri IPC command for manual session recovery
+  - Add max_retries field to AiSessionConfig (default: 3)
+  - Remove dead_code annotations from wired context_assembler and retry_count
+
+- Emit Tauri event on startup update check
+  The startup update check in UpdateRuntimeBuilder previously only logged
+  when an update was available. Now it writes PendingApproval to shared
+  state and publishes to the UpdateControl broadcast channel.
+
+  A new spawn_update_event_bridge() in RuntimeBridgeSpawner subscribes to
+  this channel and forwards all UpdateStatus changes to the main window
+  via emit_to("main", "update:status-changed", &status), following the
+  established spawn_realtime_event_bridge pattern.
+
+- Wire SecretStore into SessionManager for credential resolution
+  SessionManagerImpl.with_secret_store() was defined but never called in
+  production. HttpApiSession could only work with no-auth surfaces or
+  inline plaintext keys.
+
+  Now app_runtime_launch resolves the provider secret backend (keychain,
+  file, or env) using the same pattern as server_runtime_context, and
+  chains with_secret_store() so HttpApi sessions can resolve API keys
+  via CredentialSource::StoredSecret.
+
+- Add tool definitions for oneshim-web endpoints
+  SessionContextAssembler.build_system_message() now populates the tools
+  field with 7 key oneshim-web REST API endpoint definitions (metrics,
+  stats, sessions, events, suggestions, focus, search).
+
+  This allows CLI sessions to discover and query local desktop data
+  through the tool definitions included in the system message.
+
+
+### Changed
+
+- Deduplicate truncate_history, fix activity estimation, actual last_active
+  - Extract truncate_chat_history() to oneshim-core as shared utility,
+    remove duplicate implementations from http_api_session and local_llm_session
+  - Fix idle_minutes estimation: use ~3 events/minute rate instead of 1:1
+    (200 events no longer maps to 60 active minutes)
+  - Store actual last_active timestamp in all 3 adapters instead of Utc::now(),
+    computed from Instant elapsed for accurate idle tracking
+
+
+### Fixed
+
+- Wire web SessionManager DI + review fixes
+  - Wire SessionManager into web server via WebServerRuntimeBuilder
+    (REST endpoints were returning ServiceUnavailable due to missing DI)
+  - Document SharedRegimeState limitation (separate from scheduler's instance)
+  - Add Phase 3 TODO for state tracking in all 3 adapters
+  - Fix SSE error handler JSON escaping (serde_json instead of format!)
+
+- Override adapter state with manager's authoritative state in list_sessions
+  list_sessions now returns the manager-tracked state (Active/Idle/Failed/Recovering)
+  instead of the adapter's always-Active info(). This ensures idle/failed sessions
+  are correctly reported to consumers of the list API and web REST endpoints.
+
+- Address P2 review feedback (4 minor issues)
+  - update_runtime: split wildcard catch-all into separate error/timeout
+    arms with distinct debug messages
+  - app_runtime_launch: log debug message when secret store resolution
+    fails instead of silently swallowing error via .ok()
+  - ai_session: add method field to ToolDefinition (default "GET") so
+    CLI sessions know the HTTP method for each tool endpoint
+  - session_context: include method on all tool definitions, add query
+    param hint to search endpoint description
+  - spec: fix emit() → emit_to("main") in P2-1 spec document
+
+
+## [Unreleased]
+
 ## [0.4.3-rc.1] - 2026-03-24
 ### Added
 
