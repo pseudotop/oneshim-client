@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3-rc.4] - 2026-03-25
+### Fixed
+
+- Enable programmatic resize for tracking panel expand/collapse
+  The tracking panel's expand/collapse called setSize() but silently failed
+  because create_tracking_panel used .resizable(false). Changed to
+  .resizable(true) with CSS resize:none to prevent user drag-resize while
+  allowing programmatic resize.
+
+  Also adds ONESHIM_AGENT=subagent skip condition to lefthook cargo-clippy
+  hook to reduce ~90s overhead in subagent commits.
+
+- Add min/max inner size constraints to tracking panel
+  CSS resize:none does not prevent native window drag-resize. Added
+  min_inner_size(260, 36) and max_inner_size(320, 260) to constrain
+  the window to its two programmatic sizes (collapsed/expanded).
+  Combined with decorations(false), this prevents user resize.
+
+
+## [Unreleased]
+
 ## [0.4.3-rc.3] - 2026-03-25
 ### Changed
 
