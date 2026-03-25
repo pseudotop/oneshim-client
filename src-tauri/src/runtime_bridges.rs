@@ -1,3 +1,4 @@
+use oneshim_web::update_control::UpdateControl;
 use oneshim_web::RealtimeEvent;
 use tauri::{AppHandle, Emitter};
 use tokio::runtime::Handle;
@@ -29,6 +30,26 @@ impl RuntimeBridgeSpawner {
                 if let Err(error) = app_handle_for_events.emit_to("main", "realtime-event", &event)
                 {
                     tracing::debug!("emit error (window may be hidden): {error}");
+                }
+            }
+        });
+    }
+
+    /// Forward update status changes from broadcast channel to Tauri frontend.
+    ///
+    /// Uses `emit_to("main", ...)` to target only the main window, matching
+    /// the pattern used by `spawn_realtime_event_bridge` and tray update events.
+    pub(crate) fn spawn_update_event_bridge(
+        handle: &Handle,
+        app_handle: &AppHandle,
+        update_control: &UpdateControl,
+    ) {
+        let app = app_handle.clone();
+        let mut rx = update_control.subscribe();
+        handle.spawn(async move {
+            while let Ok(status) = rx.recv().await {
+                if let Err(e) = app.emit_to("main", "update:status-changed", &status) {
+                    tracing::debug!("update event emit error (window may be hidden): {e}");
                 }
             }
         });

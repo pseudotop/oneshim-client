@@ -8,6 +8,7 @@ use crate::agent_runtime::AgentRuntimeBuilder;
 use crate::bootstrap_runtime::BootstrapRuntimeBundle;
 use crate::launch_resources::LaunchCoreResourcesBuilder;
 use crate::magic_overlay::MagicOverlayHandle;
+use crate::runtime_bridges::RuntimeBridgeSpawner;
 use crate::runtime_state::{AppState, CaptureContext, ConnectionStatus, ManagedStateBuilder};
 use crate::scheduler::shared_regime_state::SharedRegimeState;
 #[cfg(feature = "server")]
@@ -380,6 +381,9 @@ impl AppRuntimeLaunchBuilder {
         // and updates connection flags as the single source of truth.
 
         core_resources.background_runtime.spawn_runtime_bridges();
+
+        // Forward update status changes to Tauri frontend via broadcast → emit bridge.
+        RuntimeBridgeSpawner::spawn_update_event_bridge(&handle, &self.app_handle, &update_control);
 
         let state_builder = ManagedStateBuilder::new(AppState {
             runtime_handle: handle,
