@@ -229,6 +229,13 @@ impl AppRuntimeLaunchBuilder {
         let magic_overlay =
             MagicOverlayHandle::new(self.app_handle.clone(), config.coaching.overlay_mode);
 
+        // Shared SharedRegimeState — single instance used by both SessionManager (context
+        // assembler) and Scheduler (monitor/coaching loops). Created before both consumers.
+        let shared_regime_state = Arc::new(SharedRegimeState::new());
+
+        // Obtain shutdown receiver for idle reaper before core_resources is consumed.
+        let reaper_shutdown_rx = core_resources.background_runtime.shutdown_rx();
+
         let agent_runtime = {
             let builder = AgentRuntimeBuilder::new(
                 sqlite_storage.clone(),
@@ -266,6 +273,7 @@ impl AppRuntimeLaunchBuilder {
             ))
             .with_capture_paused(capture_paused.clone())
             .with_focus_mode(focus_mode.clone())
+            .with_shared_regime(shared_regime_state.clone())
             .with_health_flags(
                 server_health_flag.clone(),
                 llm_health_flag.clone(),
@@ -300,14 +308,10 @@ impl AppRuntimeLaunchBuilder {
 
             let session_config = Arc::new(config.ai_session.clone());
 
-            // Known limitation: This SharedRegimeState is separate from the scheduler's instance.
-            // Current regime will always be "unknown" until the DI chain is refactored to share
-            // a single instance. See AI-SESSION-MANAGER-PHASE2-SPEC.md Section 6.
-            let regime_state = Arc::new(SharedRegimeState::new());
             let context_assembler = Arc::new(SessionContextAssembler::new(
                 sqlite_storage.clone(),
                 Arc::new(config.clone()),
-                regime_state,
+                shared_regime_state.clone(),
             ));
 
             Some(Arc::new(SessionManagerImpl::new(
@@ -316,6 +320,26 @@ impl AppRuntimeLaunchBuilder {
                 Some(context_assembler),
             )))
         };
+
+        // Spawn idle reaper background task — periodically calls reap_idle_sessions
+        // to transition Active→Idle→Terminated for sessions that exceed the idle timeout.
+        if let Some(ref sm) = session_manager {
+            let sm_clone = sm.clone();
+            let mut shutdown_rx = reaper_shutdown_rx;
+            tokio::spawn(async move {
+                let interval =
+                    std::time::Duration::from_secs(sm_clone.config.health_check_interval_secs);
+                loop {
+                    tokio::select! {
+                        _ = tokio::time::sleep(interval) => {
+                            sm_clone.reap_idle_sessions().await;
+                        }
+                        _ = shutdown_rx.changed() => break,
+                    }
+                }
+            });
+            info!("idle reaper background task started");
+        }
 
         let automation_controller = if config.web.enabled {
             let launch_context =

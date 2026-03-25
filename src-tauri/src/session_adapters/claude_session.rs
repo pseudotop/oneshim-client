@@ -23,7 +23,6 @@ use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStr
 use crate::session_adapters::claude_normalizer::normalize_claude_stream_event;
 use crate::subprocess_provider::DetectedSubprocessCli;
 
-#[allow(dead_code)]
 pub struct ClaudeSubprocessSession {
     session_id: String,
     cli_session_id: String,
@@ -36,7 +35,6 @@ pub struct ClaudeSubprocessSession {
     config: Arc<AiSessionConfig>,
 }
 
-#[allow(dead_code)]
 impl ClaudeSubprocessSession {
     pub fn new(
         surface: DetectedSubprocessCli,
@@ -61,7 +59,8 @@ impl ClaudeSubprocessSession {
         cmd.arg("-p");
         cmd.arg("--output-format").arg("stream-json");
         cmd.arg("--bare");
-        cmd.arg("--permission-mode").arg("dontAsk");
+        cmd.arg("--permission-mode")
+            .arg(&self.config.permission_mode);
         cmd.arg("--model").arg(&self.model);
         cmd.arg("--session-id").arg(&self.cli_session_id);
 

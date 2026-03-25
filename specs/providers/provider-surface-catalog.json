@@ -543,7 +543,7 @@
         "model_flag": "--model",
         "json_output_supported": true,
         "oneshot_flags": ["--bare", "--no-session-persistence", "--permission-mode", "dontAsk", "--tools="],
-        "session_flags": ["--output-format", "stream-json", "--permission-mode", "dontAsk"]
+        "session_flags": ["--output-format", "stream-json"]
       },
       "references": [
         "https://docs.anthropic.com/en/docs/claude-code/settings"

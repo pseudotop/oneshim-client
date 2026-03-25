@@ -51,6 +51,11 @@ pub async fn send_session_message(
         .await
         .map_err(|e| e.to_string())?;
 
+    // Reset idle timer — keeps the session in Active state.
+    if let Some(ref sm) = state.session_manager {
+        sm.touch_session(&session_id).await;
+    }
+
     let msg = SessionMessage {
         role: MessageRole::User,
         content: message,

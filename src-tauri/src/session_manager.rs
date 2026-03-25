@@ -27,19 +27,19 @@ use crate::subprocess_provider::detect_known_cli_surfaces;
 use oneshim_network::http_api_session::HttpApiSession;
 use oneshim_network::local_llm_session::LocalLlmSession;
 
-// Phase 2b: state/created_at/last_active/retry_count used by idle reaper + crash recovery
-#[allow(dead_code)]
 struct ManagedSession {
     session: Arc<dyn ConversationSession>,
     state: SessionState,
+    #[allow(dead_code)]
     created_at: Instant,
     last_active: Instant,
+    #[allow(dead_code)]
     retry_count: u32,
 }
 
 pub struct SessionManagerImpl {
     sessions: RwLock<HashMap<String, ManagedSession>>,
-    config: Arc<AiSessionConfig>,
+    pub(crate) config: Arc<AiSessionConfig>,
     audit: Arc<dyn AuditLogPort>,
     // Phase 2b: used by session adapters for system prompt generation
     #[allow(dead_code)]
@@ -86,20 +86,33 @@ impl SessionManagerImpl {
         info!("all AI sessions terminated");
     }
 
+    /// Touch a session to reset its idle timer and mark it as Active.
+    /// Called on every send_message to keep the session alive.
+    pub async fn touch_session(&self, session_id: &str) {
+        if let Some(managed) = self.sessions.write().await.get_mut(session_id) {
+            managed.last_active = Instant::now();
+            managed.state = SessionState::Active;
+        }
+    }
+
     /// Background task: check for idle sessions and terminate them.
-    /// Phase 2b: wired into scheduler loop for periodic idle reaping.
-    #[allow(dead_code)]
+    /// Two-phase idle: Active→Idle (warning) on first timeout, Idle→Terminated on second.
     pub async fn reap_idle_sessions(&self) {
         let idle_timeout = std::time::Duration::from_secs(self.config.idle_timeout_secs);
         let mut to_reap = vec![];
 
         {
-            let sessions = self.sessions.read().await;
-            for (id, managed) in sessions.iter() {
-                if managed.state == SessionState::Idle
-                    && managed.last_active.elapsed() > idle_timeout
-                {
-                    to_reap.push(id.clone());
+            let mut sessions = self.sessions.write().await;
+            for (id, managed) in sessions.iter_mut() {
+                if managed.last_active.elapsed() > idle_timeout {
+                    if managed.state == SessionState::Active {
+                        // First pass: mark Active → Idle (grace period)
+                        managed.state = SessionState::Idle;
+                        warn!(session_id = %id, "session marked idle");
+                    } else if managed.state == SessionState::Idle {
+                        // Second pass: Idle past timeout → collect for reaping
+                        to_reap.push(id.clone());
+                    }
                 }
             }
         }
@@ -520,6 +533,87 @@ mod tests {
         assert!(mgr.get_session(&id).await.is_ok());
         mgr.kill_session(&id).await.unwrap();
         assert!(mgr.get_session(&id).await.is_err());
+        assert!(mgr.list_sessions().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn touch_session_resets_state_to_active() {
+        let mgr = test_manager();
+
+        // Create a LocalLlm session (no CLI dependency).
+        let config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr.create_session(config).await.expect("create session");
+        let id = session.session_id().to_string();
+
+        // Manually mark the session as Idle to simulate idle timeout.
+        {
+            let mut sessions = mgr.sessions.write().await;
+            let managed = sessions.get_mut(&id).unwrap();
+            managed.state = SessionState::Idle;
+            assert_eq!(managed.state, SessionState::Idle);
+        }
+
+        // touch_session should reset state to Active.
+        mgr.touch_session(&id).await;
+
+        {
+            let sessions = mgr.sessions.read().await;
+            let managed = sessions.get(&id).unwrap();
+            assert_eq!(managed.state, SessionState::Active);
+        }
+    }
+
+    #[tokio::test]
+    async fn reap_marks_idle_then_terminates() {
+        // Use a very short idle timeout (1 second from test_config).
+        let mgr = test_manager();
+
+        let config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr.create_session(config).await.expect("create session");
+        let id = session.session_id().to_string();
+
+        // Force last_active to be in the past (beyond idle_timeout_secs=1).
+        {
+            let mut sessions = mgr.sessions.write().await;
+            let managed = sessions.get_mut(&id).unwrap();
+            managed.last_active = Instant::now() - std::time::Duration::from_secs(5);
+        }
+
+        // First reap: Active → Idle (should NOT remove from map).
+        mgr.reap_idle_sessions().await;
+        {
+            let sessions = mgr.sessions.read().await;
+            let managed = sessions
+                .get(&id)
+                .expect("session should still exist after first reap");
+            assert_eq!(managed.state, SessionState::Idle);
+        }
+
+        // Force last_active again so the Idle session also exceeds timeout.
+        {
+            let mut sessions = mgr.sessions.write().await;
+            let managed = sessions.get_mut(&id).unwrap();
+            managed.last_active = Instant::now() - std::time::Duration::from_secs(5);
+        }
+
+        // Second reap: Idle → Terminated (removed from map).
+        mgr.reap_idle_sessions().await;
+        assert!(
+            mgr.get_session(&id).await.is_err(),
+            "session should be removed after second reap"
+        );
         assert!(mgr.list_sessions().await.is_empty());
     }
 }

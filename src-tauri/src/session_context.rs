@@ -17,12 +17,14 @@ use tracing::warn;
 use crate::scheduler::shared_regime_state::SharedRegimeState;
 
 /// Maximum number of recent events to query for activity summary.
+#[allow(dead_code)]
 const RECENT_EVENTS_LIMIT: usize = 200;
 
 /// Maximum number of suggestions to query for pattern analysis.
+#[allow(dead_code)]
 const SUGGESTION_HISTORY_LIMIT: usize = 100;
 
-// Phase 2: wired into SessionManagerImpl for system prompt generation
+// Transitively dead: SessionManagerImpl.context_assembler is not read yet.
 #[allow(dead_code)]
 pub struct SessionContextAssembler {
     storage: Arc<SqliteStorage>,

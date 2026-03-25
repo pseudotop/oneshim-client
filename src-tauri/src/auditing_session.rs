@@ -14,13 +14,11 @@ use oneshim_core::models::ai_session::{
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
-#[allow(dead_code)]
 pub struct AuditingSession {
     inner: Arc<dyn ConversationSession>,
     audit: Arc<dyn AuditLogPort>,
 }
 
-#[allow(dead_code)]
 impl AuditingSession {
     pub fn new(inner: Arc<dyn ConversationSession>, audit: Arc<dyn AuditLogPort>) -> Self {
         Self { inner, audit }

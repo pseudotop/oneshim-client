@@ -20,6 +20,8 @@ pub struct AiSessionConfig {
     pub health_check_interval_secs: u64,
     #[serde(default = "default_max_history")]
     pub max_history_turns: u32,
+    #[serde(default = "default_permission_mode")]
+    pub permission_mode: String,
 }
 
 impl Default for AiSessionConfig {
@@ -33,6 +35,7 @@ impl Default for AiSessionConfig {
             max_attachment_bytes: default_max_attachment(),
             health_check_interval_secs: default_health_check(),
             max_history_turns: default_max_history(),
+            permission_mode: default_permission_mode(),
         }
     }
 }
@@ -60,4 +63,7 @@ fn default_health_check() -> u64 {
 }
 fn default_max_history() -> u32 {
     100
+}
+fn default_permission_mode() -> String {
+    "dontAsk".to_string()
 }
