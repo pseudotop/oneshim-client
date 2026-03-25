@@ -148,7 +148,7 @@ impl ConversationSession for ClaudeSubprocessSession {
             session_id: self.session_id.clone(),
             provider_name: "claude".to_string(),
             model: self.model.clone(),
-            state: SessionState::Active,
+            state: SessionState::Active, // TODO(Phase 3): State tracked by SessionManager, not by adapter
             transport: SessionTransport::Subprocess,
             created_at: self.created_at,
             last_active: Utc::now(),

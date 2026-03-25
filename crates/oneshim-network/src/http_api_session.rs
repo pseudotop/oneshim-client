@@ -353,7 +353,7 @@ impl ConversationSession for HttpApiSession {
             session_id: self.session_id.clone(),
             provider_name: format!("{:?}", self.provider_type).to_lowercase(),
             model: self.model.clone(),
-            state: SessionState::Active,
+            state: SessionState::Active, // TODO(Phase 3): State tracked by SessionManager, not by adapter
             transport: SessionTransport::HttpApi,
             created_at: self.created_at,
             last_active: Utc::now(),

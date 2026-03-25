@@ -124,10 +124,16 @@ pub async fn send_message(
                     .json_data(&outbound)
                     .unwrap_or_else(|_| Event::default().event("error").data("serialize error")),
             },
-            Err(err) => Event::default().event("error").data(format!(
-                "{{\"type\":\"error\",\"code\":\"stream\",\"message\":\"{}\",\"retryable\":false}}",
-                err
-            )),
+            Err(err) => {
+                let error_msg = OutboundMessage::Error {
+                    code: "stream".to_string(),
+                    message: err.to_string(),
+                    retryable: false,
+                };
+                Event::default()
+                    .event("error")
+                    .data(serde_json::to_string(&error_msg).unwrap_or_default())
+            }
         })
     });
 

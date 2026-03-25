@@ -287,47 +287,9 @@ impl AppRuntimeLaunchBuilder {
         agent_runtime.spawn_on(&handle, core_resources.background_runtime.shutdown_rx());
         info!("Agent started");
 
-        let automation_controller = if config.web.enabled {
-            let launch_context =
-                WebServerLaunchContext::new(&handle, &shutdown_tx, event_tx, web_port.clone());
-            let support_context = WebServerSupportContext::new(
-                config_manager.clone(),
-                update_control.clone(),
-                integration_runtime_status,
-            )
-            .with_app_handle(self.app_handle.clone())
-            .with_cli_health_flag(cli_health_flag.clone());
-            let builder = WebServerRuntimeBuilder::new(
-                sqlite_storage.clone(),
-                &config,
-                &data_dir_path,
-                launch_context,
-                support_context,
-            )
-            .with_override_store(sqlite_storage.clone())
-            .with_recluster_requested(recluster_requested.clone())
-            .with_coaching_engine(
-                coaching_engine.clone() as Arc<dyn oneshim_core::ports::coaching::CoachingPort>
-            );
-            #[cfg(feature = "server")]
-            let builder = server_context.configure_web_server_builder(builder);
-            let web_server_runtime = builder.build_and_spawn();
-            web_server_runtime.automation_controller
-        } else {
-            None
-        };
-
-        // Connection status is now driven by the health check loop —
-        // no optimistic initialization. The loop reads adapter health flags
-        // and updates connection flags as the single source of truth.
-
-        core_resources.background_runtime.spawn_runtime_bridges();
-
         // Session manager wiring: AuditLogAdapter + SessionContextAssembler.
         // Creates a SEPARATE AuditLogger instance (not shared with web_server_runtime)
         // because the web server's logger is scoped to its own lifecycle and not exposed.
-        // Similarly, SharedRegimeState is a separate instance because the scheduler's
-        // copy is created inside the spawned async task and not accessible here.
         let session_manager = {
             let audit_logger = Arc::new(tokio::sync::RwLock::new(
                 oneshim_automation::audit::AuditLogger::new(500, 50),
@@ -338,8 +300,9 @@ impl AppRuntimeLaunchBuilder {
 
             let session_config = Arc::new(config.ai_session.clone());
 
-            // Regime state for context assembler — separate instance (see IPC frame
-            // processor comment above for the same rationale).
+            // Known limitation: This SharedRegimeState is separate from the scheduler's instance.
+            // Current regime will always be "unknown" until the DI chain is refactored to share
+            // a single instance. See AI-SESSION-MANAGER-PHASE2-SPEC.md Section 6.
             let regime_state = Arc::new(SharedRegimeState::new());
             let context_assembler = Arc::new(SessionContextAssembler::new(
                 sqlite_storage.clone(),
@@ -353,6 +316,46 @@ impl AppRuntimeLaunchBuilder {
                 Some(context_assembler),
             )))
         };
+
+        let automation_controller = if config.web.enabled {
+            let launch_context =
+                WebServerLaunchContext::new(&handle, &shutdown_tx, event_tx, web_port.clone());
+            let support_context = WebServerSupportContext::new(
+                config_manager.clone(),
+                update_control.clone(),
+                integration_runtime_status,
+            )
+            .with_app_handle(self.app_handle.clone())
+            .with_cli_health_flag(cli_health_flag.clone());
+            let mut builder = WebServerRuntimeBuilder::new(
+                sqlite_storage.clone(),
+                &config,
+                &data_dir_path,
+                launch_context,
+                support_context,
+            )
+            .with_override_store(sqlite_storage.clone())
+            .with_recluster_requested(recluster_requested.clone())
+            .with_coaching_engine(
+                coaching_engine.clone() as Arc<dyn oneshim_core::ports::coaching::CoachingPort>
+            );
+            if let Some(ref sm) = session_manager {
+                builder = builder.with_session_manager(sm.clone()
+                    as Arc<dyn oneshim_core::ports::conversation_session::SessionManager>);
+            }
+            #[cfg(feature = "server")]
+            let builder = server_context.configure_web_server_builder(builder);
+            let web_server_runtime = builder.build_and_spawn();
+            web_server_runtime.automation_controller
+        } else {
+            None
+        };
+
+        // Connection status is now driven by the health check loop —
+        // no optimistic initialization. The loop reads adapter health flags
+        // and updates connection flags as the single source of truth.
+
+        core_resources.background_runtime.spawn_runtime_bridges();
 
         let state_builder = ManagedStateBuilder::new(AppState {
             runtime_handle: handle,

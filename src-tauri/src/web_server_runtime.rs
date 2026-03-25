@@ -225,6 +225,7 @@ pub(crate) struct WebServerRuntimeBuilder<'a> {
     override_store: Option<Arc<dyn oneshim_core::ports::override_store::OverrideStore>>,
     recluster_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
     coaching_engine: Option<Arc<dyn oneshim_core::ports::coaching::CoachingPort>>,
+    session_manager: Option<Arc<dyn oneshim_core::ports::conversation_session::SessionManager>>,
 }
 
 impl<'a> WebServerRuntimeBuilder<'a> {
@@ -244,6 +245,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
             override_store: None,
             recluster_requested: None,
             coaching_engine: None,
+            session_manager: None,
         }
     }
 
@@ -274,6 +276,14 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         engine: Arc<dyn oneshim_core::ports::coaching::CoachingPort>,
     ) -> Self {
         self.coaching_engine = Some(engine);
+        self
+    }
+
+    pub(crate) fn with_session_manager(
+        mut self,
+        manager: Arc<dyn oneshim_core::ports::conversation_session::SessionManager>,
+    ) -> Self {
+        self.session_manager = Some(manager);
         self
     }
 
@@ -322,6 +332,7 @@ impl<'a> WebServerRuntimeBuilder<'a> {
         runtime_bindings.override_store = self.override_store;
         runtime_bindings.recluster_requested = self.recluster_requested;
         runtime_bindings.coaching_engine = self.coaching_engine;
+        runtime_bindings.session_manager = self.session_manager;
 
         // Spawn GUI audit forwarder if the automation controller has a GUI service
         if let Some(ref controller) = automation_controller {
