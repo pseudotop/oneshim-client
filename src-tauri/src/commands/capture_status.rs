@@ -96,10 +96,13 @@ pub async fn show_main_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[command]
-pub async fn open_devtools(app: AppHandle) -> Result<(), String> {
+pub async fn open_devtools(app: AppHandle, label: Option<String>) -> Result<(), String> {
     #[cfg(debug_assertions)]
-    if let Some(window) = app.get_webview_window("main") {
-        window.open_devtools();
+    {
+        let target = label.as_deref().unwrap_or("main");
+        if let Some(window) = app.get_webview_window(target) {
+            window.open_devtools();
+        }
     }
     Ok(())
 }

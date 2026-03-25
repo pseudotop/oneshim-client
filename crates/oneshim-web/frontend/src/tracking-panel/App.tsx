@@ -89,12 +89,14 @@ export function App() {
   const toggleExpanded = useCallback(async () => {
     const next = !expanded
     setExpanded(next)
+    const w = next ? EXPANDED_WIDTH : COLLAPSED_WIDTH
+    const h = next ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT
     try {
-      await getCurrentWindow().setSize(
-        new LogicalSize(next ? EXPANDED_WIDTH : COLLAPSED_WIDTH, next ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT),
-      )
-    } catch {
-      // setSize may fail on non-resizable windows — degrade gracefully
+      console.log(`[tracking-panel] setSize(${w}, ${h})`)
+      await getCurrentWindow().setSize(new LogicalSize(w, h))
+      console.log('[tracking-panel] setSize OK')
+    } catch (e) {
+      console.error('[tracking-panel] setSize failed:', e)
     }
   }, [expanded])
 
