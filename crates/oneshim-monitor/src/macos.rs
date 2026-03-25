@@ -105,14 +105,19 @@ pub async fn get_active_window_macos() -> Result<Option<WindowInfo>, CoreError> 
     let app_name = parts[0].to_string();
     let title = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
 
-    // Filter out ONESHIM's own windows (tracking panel, overlay, dashboard)
-    // by comparing the frontmost app's PID with our own process PID.
+    // Filter out ONESHIM's own windows (tracking panel, overlay, dashboard).
+    // App name check catches WebView child processes whose PID differs from
+    // the main binary (Tauri v2 may spawn separate WebKit processes).
+    if app_name == "ONESHIM" {
+        debug!("skipping own ONESHIM window: {app_name} - {title}");
+        return Ok(None);
+    }
     let front_pid = parts
         .get(6)
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(0);
     if front_pid > 0 && front_pid == std::process::id() {
-        debug!("skipping own window: {app_name} - {title} (pid={front_pid})");
+        debug!("skipping own window by PID: {app_name} - {title} (pid={front_pid})");
         return Ok(None);
     }
 
