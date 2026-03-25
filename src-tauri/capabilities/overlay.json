@@ -2,6 +2,7 @@
   "identifier": "overlay",
   "windows": ["magic-overlay"],
   "permissions": [
+    "core:default",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-set-ignore-cursor-events",
