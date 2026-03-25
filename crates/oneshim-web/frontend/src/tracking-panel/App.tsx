@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
+import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -56,7 +56,7 @@ export function App() {
           const [x, y] = pos.split(',').map(Number)
           if (Number.isFinite(x) && Number.isFinite(y)) {
             getCurrentWindow()
-              .setPosition(new LogicalPosition(x, y))
+              .setPosition(new PhysicalPosition(x, y))
               .catch(() => {})
           }
         }
