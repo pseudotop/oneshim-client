@@ -12,7 +12,6 @@ pub struct SuggestionReceiver {
     sse_client: Arc<dyn SseClient>,
     notifier: Option<Arc<dyn DesktopNotifier>>,
     queue: Arc<Mutex<SuggestionQueue>>,
-    suggestion_tx: mpsc::Sender<Suggestion>,
 }
 
 impl SuggestionReceiver {
@@ -20,13 +19,11 @@ impl SuggestionReceiver {
         sse_client: Arc<dyn SseClient>,
         notifier: Option<Arc<dyn DesktopNotifier>>,
         queue: Arc<Mutex<SuggestionQueue>>,
-        suggestion_tx: mpsc::Sender<Suggestion>,
     ) -> Self {
         Self {
             sse_client,
             notifier,
             queue,
-            suggestion_tx,
         }
     }
 
@@ -85,10 +82,6 @@ impl SuggestionReceiver {
                 warn!("notification display failure: {e}");
             }
         }
-
-        if self.suggestion_tx.send(suggestion).await.is_err() {
-            tracing::debug!("suggestion channel full or closed — suggestion dropped");
-        }
     }
 
     pub async fn queue_size(&self) -> usize {
@@ -103,11 +96,90 @@ impl SuggestionReceiver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneshim_core::models::suggestion::{Priority, SuggestionSource, SuggestionType};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn suggestion_queue_default_size() {
         let queue = SuggestionQueue::new(50);
         assert!(queue.is_empty());
         assert_eq!(queue.len(), 0);
+    }
+
+    struct MockSseClient;
+    #[async_trait::async_trait]
+    impl SseClient for MockSseClient {
+        async fn connect(
+            &self,
+            _session_id: &str,
+            _tx: tokio::sync::mpsc::Sender<SseEvent>,
+        ) -> Result<(), CoreError> {
+            Ok(())
+        }
+    }
+
+    struct CountingNotifier {
+        count: AtomicUsize,
+    }
+    #[async_trait::async_trait]
+    impl DesktopNotifier for CountingNotifier {
+        async fn show_suggestion(&self, _suggestion: &Suggestion) -> Result<(), CoreError> {
+            self.count.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        async fn show_notification(&self, _title: &str, _body: &str) -> Result<(), CoreError> {
+            Ok(())
+        }
+        async fn show_error(&self, _message: &str) -> Result<(), CoreError> {
+            Ok(())
+        }
+    }
+
+    fn make_suggestion() -> Suggestion {
+        Suggestion {
+            suggestion_id: "test-1".to_string(),
+            suggestion_type: SuggestionType::WorkGuidance,
+            content: "Test suggestion content".to_string(),
+            priority: Priority::Medium,
+            confidence_score: 0.8,
+            relevance_score: 0.9,
+            is_actionable: true,
+            created_at: chrono::Utc::now(),
+            expires_at: None,
+            source: SuggestionSource::RuleBased,
+            reasoning: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_suggestion_calls_notifier() {
+        let notifier = Arc::new(CountingNotifier {
+            count: AtomicUsize::new(0),
+        });
+        let queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+        let receiver = SuggestionReceiver::new(
+            Arc::new(MockSseClient) as Arc<dyn SseClient>,
+            Some(notifier.clone() as Arc<dyn DesktopNotifier>),
+            queue.clone(),
+        );
+
+        receiver.handle_suggestion(make_suggestion()).await;
+
+        assert_eq!(notifier.count.load(Ordering::SeqCst), 1);
+        assert_eq!(queue.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn handle_suggestion_works_without_notifier() {
+        let queue = Arc::new(Mutex::new(SuggestionQueue::new(50)));
+        let receiver = SuggestionReceiver::new(
+            Arc::new(MockSseClient) as Arc<dyn SseClient>,
+            None,
+            queue.clone(),
+        );
+
+        receiver.handle_suggestion(make_suggestion()).await;
+
+        assert_eq!(queue.lock().await.len(), 1);
     }
 }
