@@ -3,6 +3,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_stream::try_stream;
 use async_trait::async_trait;
@@ -18,8 +19,8 @@ use oneshim_api_contracts::provider_specs::{
 use oneshim_core::config::{AiProviderType, AiSessionConfig};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
-    ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage, SessionMessage, SessionState,
-    SessionTransport, TokenUsage,
+    truncate_chat_history, ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage,
+    SessionMessage, SessionState, SessionTransport, TokenUsage,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 use oneshim_core::ports::credential_source::CredentialSource;
@@ -38,6 +39,7 @@ pub struct HttpApiSession {
     system_prompt: Option<String>,
     turn_count: AtomicU32,
     created_at: DateTime<Utc>,
+    last_active: parking_lot::Mutex<Instant>,
     http_client: reqwest::Client,
     config: Arc<AiSessionConfig>,
 }
@@ -75,6 +77,7 @@ impl HttpApiSession {
             system_prompt,
             turn_count: AtomicU32::new(0),
             created_at: Utc::now(),
+            last_active: parking_lot::Mutex::new(Instant::now()),
             http_client,
             config,
         }
@@ -180,16 +183,7 @@ impl HttpApiSession {
     /// Truncate history to keep the system prompt (first message) + last (max-1) messages.
     #[cfg(test)]
     fn truncate_history(history: &mut Vec<ChatMessage>, max_turns: u32) {
-        truncate_history_vec(history, max_turns);
-    }
-}
-
-/// Free function for history truncation — usable inside `try_stream!` where `Self::` is unavailable.
-fn truncate_history_vec(history: &mut Vec<ChatMessage>, max_turns: u32) {
-    let max = max_turns as usize;
-    if history.len() > max {
-        let drain_end = history.len() - max + 1;
-        history.drain(1..drain_end);
+        truncate_chat_history(history, max_turns);
     }
 }
 
@@ -241,6 +235,7 @@ impl ConversationSession for HttpApiSession {
         let max_turns = self.config.max_history_turns;
         let turn_count = &self.turn_count;
         turn_count.fetch_add(1, Ordering::Relaxed);
+        *self.last_active.lock() = Instant::now();
 
         // Build the ResponseStream using SSE parsing
         let stream: ResponseStream = Box::pin(try_stream! {
@@ -279,7 +274,7 @@ impl ConversationSession for HttpApiSession {
                                         };
                                         let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                                         hist.push(assistant_msg);
-                                        truncate_history_vec(&mut hist, max_turns);
+                                        truncate_chat_history(&mut hist, max_turns);
                                     }
                                     _ => {}
                                 }
@@ -297,7 +292,7 @@ impl ConversationSession for HttpApiSession {
                                         };
                                         let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                                         hist.push(assistant_msg);
-                                        truncate_history_vec(&mut hist, max_turns);
+                                        truncate_chat_history(&mut hist, max_turns);
                                     }
                                     _ => {}
                                 }
@@ -314,7 +309,7 @@ impl ConversationSession for HttpApiSession {
                             };
                             let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                             hist.push(assistant_msg);
-                            truncate_history_vec(&mut hist, max_turns);
+                            truncate_chat_history(&mut hist, max_turns);
                         }
                         Err(CoreError::Network(format!("SSE stream error: {e}")))?;
                     }
@@ -334,7 +329,7 @@ impl ConversationSession for HttpApiSession {
                     };
                     let mut hist: tokio::sync::RwLockWriteGuard<'_, Vec<ChatMessage>> = history.write().await;
                     hist.push(assistant_msg);
-                    truncate_history_vec(&mut hist, max_turns);
+                    truncate_chat_history(&mut hist, max_turns);
 
                     yield OutboundMessage::Result {
                         content: accumulated,
@@ -349,6 +344,8 @@ impl ConversationSession for HttpApiSession {
     }
 
     fn info(&self) -> ConversationSessionInfo {
+        let elapsed = self.last_active.lock().elapsed();
+        let last_active_utc = Utc::now() - chrono::Duration::from_std(elapsed).unwrap_or_default();
         ConversationSessionInfo {
             session_id: self.session_id.clone(),
             provider_name: format!("{:?}", self.provider_type).to_lowercase(),
@@ -356,7 +353,7 @@ impl ConversationSession for HttpApiSession {
             state: SessionState::Active, // TODO(Phase 3): State tracked by SessionManager, not by adapter
             transport: SessionTransport::HttpApi,
             created_at: self.created_at,
-            last_active: Utc::now(),
+            last_active: last_active_utc,
             turn_count: self.turn_count.load(Ordering::Relaxed),
         }
     }

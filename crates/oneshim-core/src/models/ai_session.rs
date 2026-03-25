@@ -268,6 +268,17 @@ pub enum ChatRole {
     Assistant,
 }
 
+/// Truncate conversation history while preserving the system prompt (first message).
+/// Keeps at most `max_turns` messages total. If the first message has role `System`,
+/// it is always preserved.
+pub fn truncate_chat_history(history: &mut Vec<ChatMessage>, max_turns: u32) {
+    let max = max_turns as usize;
+    if history.len() > max && max > 0 {
+        let drain_end = history.len() - max + 1;
+        history.drain(1..drain_end);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -144,6 +144,8 @@ impl ConversationSession for ClaudeSubprocessSession {
     }
 
     fn info(&self) -> ConversationSessionInfo {
+        let elapsed = self.last_active.lock().elapsed();
+        let last_active_utc = Utc::now() - chrono::Duration::from_std(elapsed).unwrap_or_default();
         ConversationSessionInfo {
             session_id: self.session_id.clone(),
             provider_name: "claude".to_string(),
@@ -151,7 +153,7 @@ impl ConversationSession for ClaudeSubprocessSession {
             state: SessionState::Active, // TODO(Phase 3): State tracked by SessionManager, not by adapter
             transport: SessionTransport::Subprocess,
             created_at: self.created_at,
-            last_active: Utc::now(),
+            last_active: last_active_utc,
             turn_count: self.turn_count.load(Ordering::Relaxed),
         }
     }

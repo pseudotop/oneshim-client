@@ -139,9 +139,9 @@ impl SessionContextAssembler {
             .map(|(name, _)| name)
             .collect();
 
-        // Estimate active minutes from event density (heuristic: each event ~ some active time)
-        // With events spanning 1 hour, estimate proportionally
-        let active_minutes = (active_event_count).min(60);
+        // Estimate active minutes from event density (heuristic: ~3 events per active minute)
+        let events_per_minute: u32 = 3;
+        let active_minutes = (active_event_count / events_per_minute).min(60);
         let idle_minutes = 60_u32.saturating_sub(active_minutes);
 
         ActivitySummary {

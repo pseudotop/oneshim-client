@@ -6,6 +6,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_stream::try_stream;
 use async_trait::async_trait;
@@ -18,8 +19,8 @@ use tracing::{debug, warn};
 use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
-    ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage, SessionMessage, SessionState,
-    SessionTransport, TokenUsage,
+    truncate_chat_history, ChatMessage, ChatRole, ConversationSessionInfo, OutboundMessage,
+    SessionMessage, SessionState, SessionTransport, TokenUsage,
 };
 use oneshim_core::ports::conversation_session::{ConversationSession, ResponseStream};
 
@@ -58,6 +59,7 @@ pub struct LocalLlmSession {
     system_prompt: Option<String>,
     turn_count: AtomicU32,
     created_at: DateTime<Utc>,
+    last_active: parking_lot::Mutex<Instant>,
     http_client: reqwest::Client,
     config: Arc<AiSessionConfig>,
 }
@@ -87,21 +89,10 @@ impl LocalLlmSession {
             system_prompt,
             turn_count: AtomicU32::new(0),
             created_at: Utc::now(),
+            last_active: parking_lot::Mutex::new(Instant::now()),
             http_client: reqwest::Client::new(),
             config,
         }
-    }
-}
-
-/// Truncate conversation history, preserving the system prompt (first message).
-///
-/// If the history exceeds `max_turns`, keeps message[0] (system prompt) plus
-/// the most recent `max_turns - 1` messages.
-fn truncate_history(history: &mut Vec<ChatMessage>, max_turns: u32) {
-    let max = max_turns as usize;
-    if history.len() > max {
-        let drain_end = history.len() - max + 1;
-        history.drain(1..drain_end);
     }
 }
 
@@ -179,6 +170,7 @@ impl ConversationSession for LocalLlmSession {
 
         // Pre-increment turn count.
         turn_count.fetch_add(1, Ordering::Relaxed);
+        *self.last_active.lock() = Instant::now();
 
         // We need to move owned values into the stream closure.
         let session_id = self.session_id.clone();
@@ -221,7 +213,7 @@ impl ConversationSession for LocalLlmSession {
                                 role: ChatRole::Assistant,
                                 content: accumulated.clone(),
                             });
-                            truncate_history(&mut hist, max_history);
+                            truncate_chat_history(&mut hist, max_history);
                         }
 
                         debug!(
@@ -269,7 +261,7 @@ impl ConversationSession for LocalLlmSession {
                                     role: ChatRole::Assistant,
                                     content: accumulated.clone(),
                                 });
-                                truncate_history(&mut hist, max_history);
+                                truncate_chat_history(&mut hist, max_history);
                             }
 
                             yield OutboundMessage::Result {
@@ -298,6 +290,8 @@ impl ConversationSession for LocalLlmSession {
     }
 
     fn info(&self) -> ConversationSessionInfo {
+        let elapsed = self.last_active.lock().elapsed();
+        let last_active_utc = Utc::now() - chrono::Duration::from_std(elapsed).unwrap_or_default();
         ConversationSessionInfo {
             session_id: self.session_id.clone(),
             provider_name: "ollama".to_string(),
@@ -305,7 +299,7 @@ impl ConversationSession for LocalLlmSession {
             state: SessionState::Active, // TODO(Phase 3): State tracked by SessionManager, not by adapter
             transport: SessionTransport::LocalLlm,
             created_at: self.created_at,
-            last_active: Utc::now(),
+            last_active: last_active_utc,
             turn_count: self.turn_count.load(Ordering::Relaxed),
         }
     }
@@ -395,7 +389,7 @@ mod tests {
         ];
 
         // Keep max 4 messages: system + last 3
-        truncate_history(&mut history, 4);
+        truncate_chat_history(&mut history, 4);
 
         assert_eq!(history.len(), 4);
         // First message is always the system prompt.
@@ -420,7 +414,7 @@ mod tests {
             },
         ];
 
-        truncate_history(&mut history, 10);
+        truncate_chat_history(&mut history, 10);
         assert_eq!(history.len(), 2);
     }
 
@@ -441,7 +435,7 @@ mod tests {
             },
         ];
 
-        truncate_history(&mut history, 3);
+        truncate_chat_history(&mut history, 3);
         assert_eq!(history.len(), 3);
     }
 
