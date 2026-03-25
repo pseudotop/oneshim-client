@@ -321,12 +321,16 @@ impl AppRuntimeLaunchBuilder {
                 let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
                     .unwrap_or_else(|_| data_dir_path.to_path_buf());
                 let os_store = crate::provider_secret_backend::create_os_secret_store(&config_dir);
-                crate::provider_secret_backend::resolve_provider_secret_backend(
+                match crate::provider_secret_backend::resolve_provider_secret_backend(
                     &config_dir,
                     os_store,
-                )
-                .ok()
-                .and_then(|r| r.secret_store)
+                ) {
+                    Ok(r) => r.secret_store,
+                    Err(e) => {
+                        tracing::debug!("provider secret backend unavailable: {e}");
+                        None
+                    }
+                }
             };
 
             let mut manager =

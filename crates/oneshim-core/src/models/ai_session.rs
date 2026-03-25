@@ -129,6 +129,12 @@ pub struct ToolDefinition {
     pub name: String,
     pub description: String,
     pub endpoint: String,
+    #[serde(default = "default_http_method")]
+    pub method: String,
+}
+
+fn default_http_method() -> String {
+    "GET".to_string()
 }
 
 // ── JSONL Outbound Messages ───────────────────────────────────

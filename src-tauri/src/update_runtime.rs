@@ -76,8 +76,11 @@ impl<'a> UpdateRuntimeBuilder<'a> {
                     Ok(Ok(UpdateCheckResult::UpToDate { .. })) => {
                         debug!("startup update check: up to date");
                     }
-                    _ => {
-                        debug!("startup update check: skipped");
+                    Ok(Err(e)) => {
+                        debug!("startup update check failed: {e}");
+                    }
+                    Err(_) => {
+                        debug!("startup update check: timed out");
                     }
                 }
             });

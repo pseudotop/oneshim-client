@@ -82,41 +82,49 @@ impl SessionContextAssembler {
     /// local data (metrics, sessions, events, focus, suggestions).
     fn build_tool_definitions(&self) -> Vec<ToolDefinition> {
         let base = format!("http://localhost:{}/api", self.config.web.port);
+        let get = "GET".to_string();
         vec![
             ToolDefinition {
                 name: "get_metrics".to_string(),
                 description: "Query raw activity metrics".to_string(),
                 endpoint: format!("{base}/metrics"),
+                method: get.clone(),
             },
             ToolDefinition {
                 name: "get_stats_summary".to_string(),
                 description: "Get summary statistics (app usage, session counts)".to_string(),
                 endpoint: format!("{base}/stats/summary"),
+                method: get.clone(),
             },
             ToolDefinition {
                 name: "get_sessions".to_string(),
                 description: "List work sessions".to_string(),
                 endpoint: format!("{base}/sessions"),
+                method: get.clone(),
             },
             ToolDefinition {
                 name: "get_events".to_string(),
                 description: "Query recent activity events".to_string(),
                 endpoint: format!("{base}/events"),
+                method: get.clone(),
             },
             ToolDefinition {
                 name: "get_suggestions".to_string(),
                 description: "List pending suggestions".to_string(),
                 endpoint: format!("{base}/suggestions"),
+                method: get.clone(),
             },
             ToolDefinition {
                 name: "get_focus_metrics".to_string(),
                 description: "Get focus and productivity metrics".to_string(),
                 endpoint: format!("{base}/focus/metrics"),
+                method: get.clone(),
             },
             ToolDefinition {
                 name: "search".to_string(),
-                description: "Full-text search across events".to_string(),
+                description: "Full-text search across events (query param: ?q=...)".to_string(),
                 endpoint: format!("{base}/search"),
+                method: get,
             },
         ]
     }
