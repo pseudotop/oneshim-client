@@ -384,7 +384,7 @@ pub fn create_tracking_panel(app_handle: &AppHandle) -> Result<(), String> {
     .transparent(true)
     .always_on_top(true)
     .decorations(false)
-    .resizable(false)
+    .resizable(true)
     .visible(false)
     .skip_taskbar(true)
     .shadow(false)
