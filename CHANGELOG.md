@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3-rc.3] - 2026-03-25
+### Changed
+
+- Remove vestigial mpsc channel from SuggestionReceiver
+  The suggestion_tx/suggestion_rx channel had no consumer — _suggestion_rx
+  was dropped immediately after creation, causing every send to fail silently.
+  The shared SuggestionQueue is the authoritative path for suggestion delivery.
+
+  Also adds unit tests for handle_suggestion with and without notifier.
+
+
+### Fixed
+
+- Wire DesktopNotifier into SuggestionReceiver for SSE notifications
+  Previously, SuggestionReceiver received None for the notifier parameter,
+  so SSE-received suggestions were silently added to the queue without
+  triggering desktop notifications. Now the TauriNotifier (or LogOnlyNotifier)
+  is passed through, enabling notification display on suggestion arrival.
+
+
+## [Unreleased]
+
 ## [0.4.3-rc.2] - 2026-03-25
 ### Added
 
