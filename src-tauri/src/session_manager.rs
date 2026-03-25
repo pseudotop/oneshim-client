@@ -358,7 +358,12 @@ impl SessionManager for SessionManagerImpl {
         let sessions = self.sessions.read().await;
         sessions
             .values()
-            .map(|managed| managed.session.info())
+            .map(|managed| {
+                let mut info = managed.session.info();
+                // Override adapter's always-Active state with manager's authoritative state
+                info.state = managed.state;
+                info
+            })
             .collect()
     }
 
