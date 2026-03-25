@@ -315,11 +315,26 @@ impl AppRuntimeLaunchBuilder {
                 shared_regime_state.clone(),
             ));
 
-            Some(Arc::new(SessionManagerImpl::new(
-                session_config,
-                audit_port,
-                Some(context_assembler),
-            )))
+            // Resolve provider secret backend so HttpApi sessions can look up
+            // API keys via CredentialSource::StoredSecret (keychain / file / env).
+            let secret_store = {
+                let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
+                    .unwrap_or_else(|_| data_dir_path.to_path_buf());
+                let os_store = crate::provider_secret_backend::create_os_secret_store(&config_dir);
+                crate::provider_secret_backend::resolve_provider_secret_backend(
+                    &config_dir,
+                    os_store,
+                )
+                .ok()
+                .and_then(|r| r.secret_store)
+            };
+
+            let mut manager =
+                SessionManagerImpl::new(session_config, audit_port, Some(context_assembler));
+            if let Some(store) = secret_store {
+                manager = manager.with_secret_store(store);
+            }
+            Some(Arc::new(manager))
         };
 
         // Spawn idle reaper background task — periodically calls reap_idle_sessions

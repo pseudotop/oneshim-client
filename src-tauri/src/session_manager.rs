@@ -61,7 +61,6 @@ impl SessionManagerImpl {
     }
 
     /// Attach a secret store for resolving provider credentials.
-    #[allow(dead_code)]
     pub fn with_secret_store(mut self, store: Arc<dyn SecretStore>) -> Self {
         self.secret_store = Some(store);
         self
