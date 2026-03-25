@@ -189,7 +189,7 @@ impl<'a> AgentSupportContextBuilder<'a> {
         ));
         let focus_analyzer = Arc::new(FocusAnalyzer::with_defaults(
             self.focus_storage.clone(),
-            notifier,
+            notifier.clone(),
         ));
 
         let context_analyzer = self.build_context_analyzer();
@@ -207,13 +207,11 @@ impl<'a> AgentSupportContextBuilder<'a> {
                         ),
                     ))
                 });
-                let (suggestion_tx, _suggestion_rx) = tokio::sync::mpsc::channel(64);
                 Some(Arc::new(
                     oneshim_suggestion::receiver::SuggestionReceiver::new(
                         sse_client,
-                        None, // desktop notifier wired separately via notification_manager
+                        Some(notifier),
                         queue,
-                        suggestion_tx,
                     ),
                 ))
             } else {
