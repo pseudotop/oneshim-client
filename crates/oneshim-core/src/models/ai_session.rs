@@ -252,6 +252,22 @@ pub enum SessionAuditCategory {
     PullApi,
 }
 
+// ── HTTP API conversation history ─────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: ChatRole,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatRole {
+    System,
+    User,
+    Assistant,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,6 +321,18 @@ mod tests {
             }
             _ => panic!("expected Error variant"),
         }
+    }
+
+    #[test]
+    fn chat_message_roundtrip() {
+        let msg = ChatMessage {
+            role: ChatRole::Assistant,
+            content: "hi".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"assistant\""));
+        let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.role, ChatRole::Assistant);
     }
 
     #[test]

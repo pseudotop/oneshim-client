@@ -214,6 +214,7 @@ async fn update_settings_rejects_api_key_write_for_env_backend() {
         override_store: None,
         recluster_requested: None,
         coaching_engine: None,
+        session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
     };
 

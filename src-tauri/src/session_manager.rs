@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
+use oneshim_api_contracts::provider_specs::{self, ProviderTransportKind, SurfaceCapabilityKind};
 use oneshim_core::config::AiSessionConfig;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::ai_session::{
@@ -15,11 +16,16 @@ use oneshim_core::models::ai_session::{
 };
 use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::conversation_session::{ConversationSession, SessionManager};
+use oneshim_core::ports::credential_source::CredentialSource;
+use oneshim_core::ports::secret_store::SecretStore;
 
 use crate::auditing_session::AuditingSession;
 use crate::session_adapters::claude_session::ClaudeSubprocessSession;
 use crate::session_context::SessionContextAssembler;
 use crate::subprocess_provider::detect_known_cli_surfaces;
+
+use oneshim_network::http_api_session::HttpApiSession;
+use oneshim_network::local_llm_session::LocalLlmSession;
 
 // Phase 2b: state/created_at/last_active/retry_count used by idle reaper + crash recovery
 #[allow(dead_code)]
@@ -38,6 +44,8 @@ pub struct SessionManagerImpl {
     // Phase 2b: used by session adapters for system prompt generation
     #[allow(dead_code)]
     context_assembler: Option<Arc<SessionContextAssembler>>,
+    /// Secret store for resolving provider credentials (HttpApi sessions).
+    secret_store: Option<Arc<dyn SecretStore>>,
 }
 
 impl SessionManagerImpl {
@@ -51,19 +59,15 @@ impl SessionManagerImpl {
             config,
             audit,
             context_assembler,
+            secret_store: None,
         }
     }
 
-    /// Retrieve a session by ID.
-    pub async fn get_session(
-        &self,
-        session_id: &str,
-    ) -> Result<Arc<dyn ConversationSession>, CoreError> {
-        let sessions = self.sessions.read().await;
-        sessions
-            .get(session_id)
-            .map(|m| m.session.clone())
-            .ok_or_else(|| CoreError::Internal(format!("session not found: {session_id}")))
+    /// Attach a secret store for resolving provider credentials.
+    #[allow(dead_code)]
+    pub fn with_secret_store(mut self, store: Arc<dyn SecretStore>) -> Self {
+        self.secret_store = Some(store);
+        self
     }
 
     /// Terminate all sessions (called during app shutdown).
@@ -154,10 +158,137 @@ impl SessionManager for SessionManagerImpl {
 
                 Ok(wrapped)
             }
-            _ => Err(CoreError::Internal(format!(
-                "session adapter for {:?} not yet implemented",
-                config.transport,
-            ))),
+            SessionTransport::HttpApi => {
+                let surface_id = config.surface_id.as_deref().ok_or_else(|| {
+                    CoreError::InvalidArguments(
+                        "surface_id is required for HttpApi sessions".to_string(),
+                    )
+                })?;
+
+                // Resolve surface spec from the provider catalog.
+                let surface_spec = provider_specs::provider_surface_spec(surface_id)
+                    .map_err(CoreError::Internal)?;
+                let provider_type = oneshim_core::provider_surface::provider_type_from_vendor_id(
+                    &surface_spec.provider_type,
+                )
+                .ok_or_else(|| {
+                    CoreError::Internal(format!(
+                        "unknown provider_type for vendor '{}'",
+                        surface_spec.vendor_id
+                    ))
+                })?;
+
+                // Resolve the LLM transport endpoint from the catalog.
+                let transport_spec = provider_specs::resolved_transport_spec(
+                    provider_type,
+                    Some(surface_id),
+                    ProviderTransportKind::Llm,
+                )
+                .map_err(CoreError::Internal)?;
+
+                // Model: explicit > catalog default > error.
+                let model = config
+                    .model
+                    .clone()
+                    .or_else(|| {
+                        provider_specs::resolved_default_model(
+                            provider_type,
+                            Some(surface_id),
+                            SurfaceCapabilityKind::Llm,
+                        )
+                        .ok()
+                        .flatten()
+                    })
+                    .ok_or_else(|| {
+                        CoreError::InvalidArguments(format!(
+                            "no model specified and surface '{surface_id}' has no default LLM model"
+                        ))
+                    })?;
+
+                // Build credential source from the secret store.
+                let credential = CredentialSource::from_api_key_endpoint(
+                    &oneshim_core::config::ExternalApiEndpoint {
+                        endpoint: transport_spec.url.clone(),
+                        api_key: String::new(),
+                        model: Some(model.clone()),
+                        timeout_secs: 30,
+                        provider_type,
+                        surface_id: Some(surface_id.to_string()),
+                        credential: None,
+                    },
+                    self.secret_store.clone(),
+                )
+                .or_else(|_| {
+                    // Fallback: no-auth surfaces (e.g. Ollama local_http).
+                    if oneshim_core::provider_surface::provider_surface_uses_no_auth(surface_id) {
+                        Ok(CredentialSource::NoAuth)
+                    } else {
+                        Err(CoreError::Auth(format!(
+                            "no credential available for surface '{surface_id}'"
+                        )))
+                    }
+                })?;
+
+                let inner: Arc<dyn ConversationSession> = Arc::new(HttpApiSession::new(
+                    surface_id.to_string(),
+                    model,
+                    transport_spec.url.clone(),
+                    credential,
+                    provider_type,
+                    config.system_prompt.clone(),
+                    self.config.clone(),
+                ));
+
+                let wrapped: Arc<dyn ConversationSession> =
+                    Arc::new(AuditingSession::new(inner, self.audit.clone()));
+
+                let session_id = wrapped.session_id().to_string();
+                info!(session_id = %session_id, surface_id = %surface_id, "created HttpApi session");
+
+                let managed = ManagedSession {
+                    session: wrapped.clone(),
+                    state: SessionState::Active,
+                    created_at: Instant::now(),
+                    last_active: Instant::now(),
+                    retry_count: 0,
+                };
+                self.sessions.write().await.insert(session_id, managed);
+
+                Ok(wrapped)
+            }
+            SessionTransport::LocalLlm => {
+                // Resolve Ollama base URL: use the Ollama surface spec probe URL,
+                // stripping the path to get the base.
+                let base_url = "http://localhost:11434".to_string();
+
+                let model = config.model.clone().unwrap_or_else(|| "llama3".to_string());
+                let session_id = uuid::Uuid::new_v4().to_string();
+
+                let inner: Arc<dyn ConversationSession> = Arc::new(LocalLlmSession::new(
+                    session_id.clone(),
+                    model,
+                    base_url,
+                    config.system_prompt.clone(),
+                    self.config.clone(),
+                ));
+
+                let wrapped: Arc<dyn ConversationSession> =
+                    Arc::new(AuditingSession::new(inner, self.audit.clone()));
+
+                let session_id = wrapped.session_id().to_string();
+                info!(session_id = %session_id, "created LocalLlm (Ollama) session");
+
+                let managed = ManagedSession {
+                    session: wrapped.clone(),
+                    state: SessionState::Active,
+                    created_at: Instant::now(),
+                    last_active: Instant::now(),
+                    retry_count: 0,
+                };
+                self.sessions.write().await.insert(session_id, managed);
+
+                Ok(wrapped)
+            }
         }
     }
 
@@ -180,6 +311,17 @@ impl SessionManager for SessionManagerImpl {
             .values()
             .map(|managed| managed.session.info())
             .collect()
+    }
+
+    async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<dyn ConversationSession>, CoreError> {
+        let sessions = self.sessions.read().await;
+        sessions
+            .get(session_id)
+            .map(|m| m.session.clone())
+            .ok_or_else(|| CoreError::Internal(format!("session not found: {session_id}")))
     }
 }
 
@@ -278,7 +420,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_session_rejects_unsupported_transport() {
+    async fn create_http_api_session_requires_surface_id() {
         let mgr = test_manager();
         let config = SessionConfig {
             transport: SessionTransport::HttpApi,
@@ -288,7 +430,53 @@ mod tests {
             tools_enabled: false,
         };
         let err_msg = expect_err_msg(mgr.create_session(config).await);
-        assert!(err_msg.contains("not yet implemented"));
+        assert!(
+            err_msg.contains("surface_id is required"),
+            "expected surface_id error, got: {err_msg}",
+        );
+    }
+
+    #[tokio::test]
+    async fn create_local_llm_session_succeeds() {
+        let mgr = test_manager();
+        let config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: Some("llama3".to_string()),
+            system_prompt: Some("Be concise.".to_string()),
+            tools_enabled: false,
+        };
+        let session = mgr
+            .create_session(config)
+            .await
+            .expect("should create LocalLlm session");
+        assert_eq!(session.provider_name(), "ollama");
+        assert!(!session.session_id().is_empty());
+
+        // Verify stored and retrievable.
+        let retrieved = mgr.get_session(session.session_id()).await;
+        assert!(retrieved.is_ok());
+
+        let list = mgr.list_sessions().await;
+        assert_eq!(list.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn create_local_llm_session_uses_default_model() {
+        let mgr = test_manager();
+        let config = SessionConfig {
+            transport: SessionTransport::LocalLlm,
+            surface_id: None,
+            model: None,
+            system_prompt: None,
+            tools_enabled: false,
+        };
+        let session = mgr
+            .create_session(config)
+            .await
+            .expect("should create LocalLlm session");
+        let info = session.info();
+        assert_eq!(info.model, "llama3");
     }
 
     #[tokio::test]

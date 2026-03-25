@@ -43,4 +43,10 @@ pub trait SessionManager: Send + Sync {
 
     /// List active sessions.
     async fn list_sessions(&self) -> Vec<ConversationSessionInfo>;
+
+    /// Retrieve a session by ID.
+    async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<dyn ConversationSession>, CoreError>;
 }

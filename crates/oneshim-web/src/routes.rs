@@ -34,6 +34,18 @@ pub fn api_routes() -> Router<AppState> {
             post(handlers::ai_models::discover_provider_models),
         )
         .route(
+            "/ai/sessions",
+            post(handlers::ai_session::create_session).get(handlers::ai_session::list_sessions),
+        )
+        .route(
+            "/ai/sessions/{id}",
+            get(handlers::ai_session::get_session).delete(handlers::ai_session::delete_session),
+        )
+        .route(
+            "/ai/sessions/{id}/messages",
+            post(handlers::ai_session::send_message),
+        )
+        .route(
             "/integration/status",
             get(handlers::integration::get_status),
         )
@@ -326,6 +338,7 @@ mod tests {
             override_store: None,
             recluster_requested: None,
             coaching_engine: None,
+            session_manager: None,
             pomodoro: Arc::new(Mutex::new(None)),
         };
         let _app: Router<()> = api_routes().with_state(state);
@@ -361,6 +374,7 @@ mod tests {
             override_store: None,
             recluster_requested: None,
             coaching_engine: None,
+            session_manager: None,
             pomodoro: Arc::new(Mutex::new(None)),
         };
         let _app: Router<()> = integration_routes().with_state(state);

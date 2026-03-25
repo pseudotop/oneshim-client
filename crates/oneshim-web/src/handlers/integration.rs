@@ -611,6 +611,7 @@ mod tests {
             override_store: None,
             recluster_requested: None,
             coaching_engine: None,
+            session_manager: None,
             pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
         }
     }

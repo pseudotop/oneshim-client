@@ -122,6 +122,7 @@ async fn web_server_router_resolves_focus_routes() {
         override_store: None,
         recluster_requested: None,
         coaching_engine: None,
+        session_manager: None,
         pomodoro: Arc::new(std::sync::Mutex::new(None)),
     };
 
