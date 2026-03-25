@@ -103,6 +103,23 @@ export function DevToolbar() {
             Reload
           </button>
         </div>
+
+        {'__TAURI_INTERNALS__' in window && (
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const { invoke } = await import('@tauri-apps/api/core')
+                await invoke('open_devtools')
+              } catch {
+                // Cmd+Option+I fallback
+              }
+            }}
+            className="w-full rounded bg-purple-800 px-2 py-1 text-xs hover:bg-purple-700"
+          >
+            Open DevTools
+          </button>
+        )}
       </div>
     </div>
   )

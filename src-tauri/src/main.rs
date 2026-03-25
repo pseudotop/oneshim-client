@@ -233,6 +233,7 @@ fn main() {
             commands::capture_status::set_indicator_visible,
             commands::capture_status::get_connection_status,
             commands::capture_status::show_main_window,
+            commands::capture_status::open_devtools,
             commands::capture_status::save_panel_position,
             commands::capture_status::get_panel_position,
             commands::onboarding::get_onboarding_status,
