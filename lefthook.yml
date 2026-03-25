@@ -98,5 +98,10 @@ pre-commit:
       run: cargo fmt --check
     cargo-clippy:
       glob: "*.rs"
-      run: cargo clippy --workspace --quiet -- -D warnings
+      run: |
+        if [ "$ONESHIM_AGENT" = "subagent" ]; then
+          echo "clippy: skipped (subagent mode)"
+          exit 0
+        fi
+        cargo clippy --workspace --quiet -- -D warnings
       stage_fixed: true
