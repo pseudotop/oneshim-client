@@ -332,19 +332,22 @@ oneshim-client/
 │   ├── src/
 │   │   ├── main.rs         # Tauri app builder + DI wiring
 │   │   ├── tray.rs         # System tray menu
-│   │   ├── commands.rs     # Tauri IPC commands
+│   │   ├── commands/       # Tauri IPC commands (directory module)
 │   │   └── scheduler/      # 9-loop background scheduler
 │   └── tauri.conf.json     # Tauri configuration
 ├── crates/
-│   ├── oneshim-core/       # Domain models + port traits + errors
-│   ├── oneshim-network/    # HTTP/SSE/WebSocket/gRPC adapters
+│   ├── oneshim-core/       # Domain models + port traits + errors + config
+│   ├── oneshim-network/    # HTTP/SSE/WebSocket/gRPC, compression, auth
 │   ├── oneshim-suggestion/ # Suggestion reception and processing
-│   ├── oneshim-storage/    # SQLite local storage
-│   ├── oneshim-monitor/    # System monitoring
-│   ├── oneshim-vision/     # Image processing (Edge)
-│   ├── oneshim-web/        # Local web dashboard (Axum + React)
-│   ├── oneshim-automation/ # Automation control
-│   └── oneshim-app/        # Legacy adapter crate (CLI entry, standalone mode)
+│   ├── oneshim-storage/    # SQLite local storage + schema migration
+│   ├── oneshim-monitor/    # System metrics, active window, activity tracking
+│   ├── oneshim-vision/     # Screen capture, delta encoding, OCR, PII filter
+│   ├── oneshim-web/        # Local web dashboard (Axum REST + React frontend)
+│   ├── oneshim-automation/ # Automation control, policy, audit logging
+│   ├── oneshim-analysis/   # LLM analysis pipeline, regime classification
+│   ├── oneshim-embedding/  # Vector embedding + INT8 quantization
+│   ├── oneshim-api-contracts/ # Shared API type contracts
+│   └── oneshim-lint/       # Workspace lint tool (language-check binary)
 └── docs/
     ├── crates/             # Per-crate detailed documentation
     ├── architecture/       # ADR documents (ADR-001~ADR-004)
@@ -355,16 +358,18 @@ oneshim-client/
 
 | Crate | Role | Docs |
 |----------|------|------|
-| oneshim-core | Domain models, port interfaces | [Details](./docs/crates/oneshim-core.md) |
+| oneshim-core | Domain models, port interfaces, config | [Details](./docs/crates/oneshim-core.md) |
 | oneshim-network | HTTP/SSE/WebSocket/gRPC, compression, auth | [Details](./docs/crates/oneshim-network.md) |
-| oneshim-vision | Capture, delta encoding, OCR | [Details](./docs/crates/oneshim-vision.md) |
-| oneshim-monitor | System metrics, active windows | [Details](./docs/crates/oneshim-monitor.md) |
-| oneshim-storage | SQLite, offline storage | [Details](./docs/crates/oneshim-storage.md) |
-| oneshim-suggestion | Suggestion queue, feedback | [Details](./docs/crates/oneshim-suggestion.md) |
-| oneshim-web | Local web dashboard, REST API | [Details](./docs/crates/oneshim-web.md) |
-| oneshim-automation | Automation control, audit logging | [Details](./docs/crates/oneshim-automation.md) |
-| oneshim-app | Legacy CLI entry, standalone mode | [Details](./docs/crates/oneshim-app.md) |
-| ~~oneshim-ui~~ | ~~Desktop UI (iced)~~ — removed in v0.1.5 (Tauri v2) | [Deprecated](./docs/crates/oneshim-ui.md) |
+| oneshim-vision | Screen capture, delta encoding, OCR, PII filter | [Details](./docs/crates/oneshim-vision.md) |
+| oneshim-monitor | System metrics, active windows, activity tracking | [Details](./docs/crates/oneshim-monitor.md) |
+| oneshim-storage | SQLite storage, schema migration | [Details](./docs/crates/oneshim-storage.md) |
+| oneshim-suggestion | Suggestion queue, SSE reception, feedback | [Details](./docs/crates/oneshim-suggestion.md) |
+| oneshim-web | Local web dashboard (Axum REST + React) | [Details](./docs/crates/oneshim-web.md) |
+| oneshim-automation | Automation control, policy, audit logging | [Details](./docs/crates/oneshim-automation.md) |
+| oneshim-analysis | LLM analysis pipeline, regime classification | — |
+| oneshim-embedding | Vector embedding, INT8 quantization | — |
+| oneshim-api-contracts | Shared API type contracts | — |
+| oneshim-lint | Workspace lint tool (language-check) | — |
 
 Full documentation index: [docs/crates/README.md](./docs/crates/README.md)
 
