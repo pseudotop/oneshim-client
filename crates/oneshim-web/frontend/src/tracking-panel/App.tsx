@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb } from 'lucide-react'
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -106,7 +107,7 @@ export function App() {
   const allConnected = connCount === 3
 
   return (
-    <div className="flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs shadow-2xl backdrop-blur-md">
+    <div data-tauri-drag-region className="flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs shadow-2xl backdrop-blur-md">
       {/* Collapsed bar */}
       <div data-tauri-drag-region className="flex cursor-move items-center gap-2 px-3 py-2">
         <span
@@ -147,16 +148,16 @@ export function App() {
 
       {/* Expanded panel */}
       {expanded && (
-        <div className="flex flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
-          <ActionButton icon="📊" label="Open Dashboard" onClick={() => invoke('show_main_window')} />
-          <ActionButton icon="📷" label="Manual Capture" disabled />
-          <ActionButton icon="🧠" label="Scene Analysis" disabled />
-          <ActionButton icon="💡" label="AI Suggestions" disabled />
-          <ActionButton icon="🎯" label="Focus Mode" disabled />
+        <div data-tauri-drag-region className="flex cursor-move flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
+          <ActionButton icon={<LayoutDashboard size={14} />} label="Open Dashboard" onClick={() => invoke('show_main_window')} />
+          <ActionButton icon={<Camera size={14} />} label="Manual Capture" disabled />
+          <ActionButton icon={<Brain size={14} />} label="Scene Analysis" disabled />
+          <ActionButton icon={<Lightbulb size={14} />} label="AI Suggestions" disabled />
+          <ActionButton icon={<Crosshair size={14} />} label="Focus Mode" disabled />
 
           {/* Connection status detail */}
-          <div className="mt-2 border-white/10 border-t pt-2">
-            <div className="flex items-center gap-3 text-[10px] text-white/60">
+          <div data-tauri-drag-region className="mt-2 border-white/10 border-t pt-2">
+            <div data-tauri-drag-region className="flex items-center gap-3 text-[10px] text-white/60">
               <StatusDot connected={conn.server} label="Server" />
               <StatusDot connected={conn.llm} label="LLM" />
               <StatusDot connected={conn.cli} label="CLI" />
@@ -174,7 +175,7 @@ function ActionButton({
   onClick,
   disabled,
 }: {
-  icon: string
+  icon: React.ReactNode
   label: string
   onClick?: () => void
   disabled?: boolean
@@ -184,12 +185,12 @@ function ActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
+      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-white/80 transition-colors ${
         disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-white/10 active:bg-white/20'
       }`}
       title={disabled ? 'Coming soon' : label}
     >
-      <span className="w-5 text-center">{icon}</span>
+      <span className="flex w-5 items-center justify-center">{icon}</span>
       <span>{label}</span>
     </button>
   )
