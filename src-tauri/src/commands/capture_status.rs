@@ -96,6 +96,15 @@ pub async fn show_main_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[command]
+pub async fn open_devtools(app: AppHandle) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    if let Some(window) = app.get_webview_window("main") {
+        window.open_devtools();
+    }
+    Ok(())
+}
+
+#[command]
 pub async fn save_panel_position(state: State<'_, AppState>, x: f64, y: f64) -> Result<(), String> {
     let pos = format!("{x},{y}");
     state.storage.set_meta("tracking_panel_position", &pos);
