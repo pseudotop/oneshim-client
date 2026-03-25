@@ -105,20 +105,32 @@ export function DevToolbar() {
         </div>
 
         {'__TAURI_INTERNALS__' in window && (
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const { invoke } = await import('@tauri-apps/api/core')
-                await invoke('open_devtools')
-              } catch {
-                // Cmd+Option+I fallback
-              }
-            }}
-            className="w-full rounded bg-purple-800 px-2 py-1 text-xs hover:bg-purple-700"
-          >
-            Open DevTools
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { invoke } = await import('@tauri-apps/api/core')
+                  await invoke('open_devtools')
+                } catch { /* fallback */ }
+              }}
+              className="flex-1 rounded bg-purple-800 px-2 py-1 text-xs hover:bg-purple-700"
+            >
+              Main DevTools
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { invoke } = await import('@tauri-apps/api/core')
+                  await invoke('open_devtools', { label: 'tracking-panel' })
+                } catch { /* fallback */ }
+              }}
+              className="flex-1 rounded bg-indigo-800 px-2 py-1 text-xs hover:bg-indigo-700"
+            >
+              Panel DevTools
+            </button>
+          </div>
         )}
       </div>
     </div>
