@@ -10,6 +10,7 @@ pub mod change_extractor;
 pub mod change_merger;
 pub mod coaching;
 pub mod compressor;
+pub mod conversation_session;
 pub mod credential_source;
 pub mod element_finder;
 pub mod embedding_provider;

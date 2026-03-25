@@ -427,6 +427,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-stream"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "async-task"
 version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5128,7 +5150,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "oneshim-analysis"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5147,7 +5169,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-api-contracts"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "chrono",
  "oneshim-core",
@@ -5157,9 +5179,10 @@ dependencies = [
 
 [[package]]
 name = "oneshim-app"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "axum",
  "base64 0.22.1",
@@ -5215,7 +5238,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-automation"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5234,11 +5257,12 @@ dependencies = [
 
 [[package]]
 name = "oneshim-core"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "futures-core",
  "gethostname 0.4.3",
  "semver",
  "serde",
@@ -5252,7 +5276,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-embedding"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "fastembed",
@@ -5264,14 +5288,14 @@ dependencies = [
 
 [[package]]
 name = "oneshim-lint"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "oneshim-monitor"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5288,10 +5312,11 @@ dependencies = [
 
 [[package]]
 name = "oneshim-network"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "async-stream",
  "async-trait",
  "axum",
  "axum-server",
@@ -5338,7 +5363,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-storage"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -5362,7 +5387,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-suggestion"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5375,7 +5400,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-vision"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "atspi",
@@ -5410,7 +5435,7 @@ dependencies = [
 
 [[package]]
 name = "oneshim-web"
-version = "0.4.2-rc.1"
+version = "0.4.3-rc.1"
 dependencies = [
  "async-trait",
  "axum",

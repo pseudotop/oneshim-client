@@ -1,0 +1,52 @@
+//! Conversation session ports — defines contracts for AI conversation
+//! session management across CLI subprocess, HTTP API, and local LLM backends.
+
+use std::pin::Pin;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use futures_core::Stream;
+
+use crate::error::CoreError;
+use crate::models::ai_session::{
+    ConversationSessionInfo, OutboundMessage, SessionConfig, SessionMessage,
+};
+
+/// Streaming response from a conversation session.
+pub type ResponseStream = Pin<Box<dyn Stream<Item = Result<OutboundMessage, CoreError>> + Send>>;
+
+#[async_trait]
+pub trait ConversationSession: Send + Sync {
+    /// Send a message with optional attachments, receive streaming response.
+    async fn send_message(&self, message: &SessionMessage) -> Result<ResponseStream, CoreError>;
+
+    /// Current session info (synchronous — returns locally held state).
+    fn info(&self) -> ConversationSessionInfo;
+
+    /// Unique session identifier.
+    fn session_id(&self) -> &str;
+
+    /// Provider display name.
+    fn provider_name(&self) -> &str;
+}
+
+#[async_trait]
+pub trait SessionManager: Send + Sync {
+    /// Create a new session with the given provider.
+    async fn create_session(
+        &self,
+        config: SessionConfig,
+    ) -> Result<Arc<dyn ConversationSession>, CoreError>;
+
+    /// Terminate a session.
+    async fn kill_session(&self, session_id: &str) -> Result<(), CoreError>;
+
+    /// List active sessions.
+    async fn list_sessions(&self) -> Vec<ConversationSessionInfo>;
+
+    /// Retrieve a session by ID.
+    async fn get_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<dyn ConversationSession>, CoreError>;
+}

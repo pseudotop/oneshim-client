@@ -184,6 +184,10 @@ pub struct Scheduler {
     /// When active, coaching evaluation and notifications are suppressed,
     /// and capture importance threshold is elevated.
     pub(super) focus_mode: Arc<crate::focus_mode::FocusModeState>,
+    /// SharedRegimeState injected from app_runtime — shares a single instance
+    /// with SessionManager's context assembler. Falls back to a local instance
+    /// in run_scheduler_loops if not provided.
+    pub(super) shared_regime: Option<Arc<shared_regime_state::SharedRegimeState>>,
 }
 
 impl Scheduler {
@@ -247,6 +251,7 @@ impl Scheduler {
             suggestion_receiver: None,
             suggestions_enabled: false,
             focus_mode: Arc::new(crate::focus_mode::FocusModeState::new()),
+            shared_regime: None,
         }
     }
 
@@ -428,6 +433,14 @@ impl Scheduler {
 
     pub fn with_focus_mode(mut self, focus_mode: Arc<crate::focus_mode::FocusModeState>) -> Self {
         self.focus_mode = focus_mode;
+        self
+    }
+
+    pub fn with_shared_regime(
+        mut self,
+        regime: Arc<shared_regime_state::SharedRegimeState>,
+    ) -> Self {
+        self.shared_regime = Some(regime);
         self
     }
 

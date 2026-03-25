@@ -8,9 +8,13 @@ use crate::agent_runtime::AgentRuntimeBuilder;
 use crate::bootstrap_runtime::BootstrapRuntimeBundle;
 use crate::launch_resources::LaunchCoreResourcesBuilder;
 use crate::magic_overlay::MagicOverlayHandle;
+use crate::runtime_bridges::RuntimeBridgeSpawner;
 use crate::runtime_state::{AppState, CaptureContext, ConnectionStatus, ManagedStateBuilder};
+use crate::scheduler::shared_regime_state::SharedRegimeState;
 #[cfg(feature = "server")]
 use crate::server_runtime_context::ServerLaunchContext;
+use crate::session_context::SessionContextAssembler;
+use crate::session_manager::SessionManagerImpl;
 use crate::web_server_runtime::{
     WebServerLaunchContext, WebServerRuntimeBuilder, WebServerSupportContext,
 };
@@ -226,6 +230,13 @@ impl AppRuntimeLaunchBuilder {
         let magic_overlay =
             MagicOverlayHandle::new(self.app_handle.clone(), config.coaching.overlay_mode);
 
+        // Shared SharedRegimeState — single instance used by both SessionManager (context
+        // assembler) and Scheduler (monitor/coaching loops). Created before both consumers.
+        let shared_regime_state = Arc::new(SharedRegimeState::new());
+
+        // Obtain shutdown receiver for idle reaper before core_resources is consumed.
+        let reaper_shutdown_rx = core_resources.background_runtime.shutdown_rx();
+
         let agent_runtime = {
             let builder = AgentRuntimeBuilder::new(
                 sqlite_storage.clone(),
@@ -263,6 +274,7 @@ impl AppRuntimeLaunchBuilder {
             ))
             .with_capture_paused(capture_paused.clone())
             .with_focus_mode(focus_mode.clone())
+            .with_shared_regime(shared_regime_state.clone())
             .with_health_flags(
                 server_health_flag.clone(),
                 llm_health_flag.clone(),
@@ -284,6 +296,71 @@ impl AppRuntimeLaunchBuilder {
         agent_runtime.spawn_on(&handle, core_resources.background_runtime.shutdown_rx());
         info!("Agent started");
 
+        // Session manager wiring: AuditLogAdapter + SessionContextAssembler.
+        // Creates a SEPARATE AuditLogger instance (not shared with web_server_runtime)
+        // because the web server's logger is scoped to its own lifecycle and not exposed.
+        let session_manager = {
+            let audit_logger = Arc::new(tokio::sync::RwLock::new(
+                oneshim_automation::audit::AuditLogger::new(500, 50),
+            ));
+            let audit_port: Arc<dyn oneshim_core::ports::audit_log::AuditLogPort> = Arc::new(
+                oneshim_automation::audit::AuditLogAdapter::new(audit_logger),
+            );
+
+            let session_config = Arc::new(config.ai_session.clone());
+
+            let context_assembler = Arc::new(SessionContextAssembler::new(
+                sqlite_storage.clone(),
+                Arc::new(config.clone()),
+                shared_regime_state.clone(),
+            ));
+
+            // Resolve provider secret backend so HttpApi sessions can look up
+            // API keys via CredentialSource::StoredSecret (keychain / file / env).
+            let secret_store = {
+                let config_dir = oneshim_core::config_manager::ConfigManager::config_dir()
+                    .unwrap_or_else(|_| data_dir_path.to_path_buf());
+                let os_store = crate::provider_secret_backend::create_os_secret_store(&config_dir);
+                match crate::provider_secret_backend::resolve_provider_secret_backend(
+                    &config_dir,
+                    os_store,
+                ) {
+                    Ok(r) => r.secret_store,
+                    Err(e) => {
+                        tracing::debug!("provider secret backend unavailable: {e}");
+                        None
+                    }
+                }
+            };
+
+            let mut manager =
+                SessionManagerImpl::new(session_config, audit_port, Some(context_assembler));
+            if let Some(store) = secret_store {
+                manager = manager.with_secret_store(store);
+            }
+            Some(Arc::new(manager))
+        };
+
+        // Spawn idle reaper background task — periodically calls reap_idle_sessions
+        // to transition Active→Idle→Terminated for sessions that exceed the idle timeout.
+        if let Some(ref sm) = session_manager {
+            let sm_clone = sm.clone();
+            let mut shutdown_rx = reaper_shutdown_rx;
+            tokio::spawn(async move {
+                let interval =
+                    std::time::Duration::from_secs(sm_clone.config.health_check_interval_secs);
+                loop {
+                    tokio::select! {
+                        _ = tokio::time::sleep(interval) => {
+                            sm_clone.reap_idle_sessions().await;
+                        }
+                        _ = shutdown_rx.changed() => break,
+                    }
+                }
+            });
+            info!("idle reaper background task started");
+        }
+
         let automation_controller = if config.web.enabled {
             let launch_context =
                 WebServerLaunchContext::new(&handle, &shutdown_tx, event_tx, web_port.clone());
@@ -294,7 +371,7 @@ impl AppRuntimeLaunchBuilder {
             )
             .with_app_handle(self.app_handle.clone())
             .with_cli_health_flag(cli_health_flag.clone());
-            let builder = WebServerRuntimeBuilder::new(
+            let mut builder = WebServerRuntimeBuilder::new(
                 sqlite_storage.clone(),
                 &config,
                 &data_dir_path,
@@ -306,6 +383,10 @@ impl AppRuntimeLaunchBuilder {
             .with_coaching_engine(
                 coaching_engine.clone() as Arc<dyn oneshim_core::ports::coaching::CoachingPort>
             );
+            if let Some(ref sm) = session_manager {
+                builder = builder.with_session_manager(sm.clone()
+                    as Arc<dyn oneshim_core::ports::conversation_session::SessionManager>);
+            }
             #[cfg(feature = "server")]
             let builder = server_context.configure_web_server_builder(builder);
             let web_server_runtime = builder.build_and_spawn();
@@ -319,6 +400,9 @@ impl AppRuntimeLaunchBuilder {
         // and updates connection flags as the single source of truth.
 
         core_resources.background_runtime.spawn_runtime_bridges();
+
+        // Forward update status changes to Tauri frontend via broadcast → emit bridge.
+        RuntimeBridgeSpawner::spawn_update_event_bridge(&handle, &self.app_handle, &update_control);
 
         let state_builder = ManagedStateBuilder::new(AppState {
             runtime_handle: handle,
@@ -351,6 +435,7 @@ impl AppRuntimeLaunchBuilder {
                 consent_manager: ipc_consent_manager,
             },
             suggestion_manager,
+            session_manager,
         });
         #[cfg(feature = "server")]
         let state_builder = server_context.configure_state_builder(state_builder);

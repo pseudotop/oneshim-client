@@ -1,5 +1,6 @@
 pub mod ai_models;
 pub mod ai_provider_surfaces;
+pub mod ai_session;
 pub mod automation;
 pub mod automation_gui;
 pub mod daily_digest;

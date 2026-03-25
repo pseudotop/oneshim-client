@@ -17,6 +17,7 @@ use std::sync::Arc;
 use tauri::{App, Manager};
 
 use crate::magic_overlay::MagicOverlayHandle;
+use crate::session_manager::SessionManagerImpl;
 
 #[cfg(feature = "server")]
 pub(crate) type OAuthCoordinator =
@@ -82,6 +83,8 @@ pub struct AppState {
     pub capture: CaptureContext,
     /// Suggestion manager for overlay panel (A3). Shares queue with SuggestionReceiver.
     pub suggestion_manager: Option<Arc<crate::suggestion_manager::SuggestionManager>>,
+    /// AI conversation session manager for Tauri IPC commands.
+    pub session_manager: Option<Arc<SessionManagerImpl>>,
 }
 
 pub struct OAuthState(pub Option<Arc<dyn OAuthPort>>);
@@ -297,6 +300,7 @@ mod tests {
                 consent_manager: None,
             },
             suggestion_manager: None,
+            session_manager: None,
         })
         .build();
 

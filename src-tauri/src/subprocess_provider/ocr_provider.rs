@@ -11,7 +11,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use super::{
-    append_model_flag, build_codex_ocr_prompt, build_path_based_ocr_prompt,
+    append_model_flag, append_oneshot_flags, build_codex_ocr_prompt, build_path_based_ocr_prompt,
     classify_subprocess_error, default_llm_model_for_surface, default_ocr_model_for_surface,
     invocation_runtime_for_surface, is_gemini_json_flag_error, parse_ocr_output,
     provider_name_for_surface_id, write_subprocess_ocr_image, BoxFuture, DetectedSubprocessCli,
@@ -152,13 +152,9 @@ impl SubprocessOcrProvider {
     ) -> Result<String, CoreError> {
         let prompt = build_path_based_ocr_prompt(image_path, &self.model);
         let mut command = Command::new(&self.surface.executable_path);
+        command.arg("-p");
+        append_oneshot_flags(&mut command, &self.surface.surface_id);
         command
-            .arg("-p")
-            .arg("--permission-mode")
-            .arg("dontAsk")
-            .arg("--tools")
-            .arg("")
-            .arg("--no-session-persistence")
             .arg("--output-format")
             .arg("text")
             .arg("--json-schema")

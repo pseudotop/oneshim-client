@@ -45,6 +45,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
+async-stream = { workspace = true }
+futures = { workspace = true }
 semver = { workspace = true }
 sha2 = { workspace = true }
 uuid = { workspace = true }
@@ -119,5 +121,4 @@ mockito = { workspace = true }
 tokio-test = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
-futures = { workspace = true }
 zeroize = { workspace = true }

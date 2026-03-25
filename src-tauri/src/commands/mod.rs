@@ -1,3 +1,4 @@
+pub(crate) mod ai_session;
 pub(crate) mod analysis;
 pub(crate) mod capture;
 pub(crate) mod capture_status;

@@ -91,6 +91,7 @@ pub(super) fn test_state_without_config_manager() -> AppState {
         override_store: None,
         recluster_requested: None,
         coaching_engine: None,
+        session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
     }
 }
@@ -127,6 +128,7 @@ pub(super) fn test_state_with_config_manager(
         override_store: None,
         recluster_requested: None,
         coaching_engine: None,
+        session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
     }
 }

@@ -180,6 +180,10 @@ pub struct SubprocessTransportSpec {
     pub model_flag: Option<String>,
     #[serde(default)]
     pub json_output_supported: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub oneshot_flags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub session_flags: Vec<String>,
 }
 
 fn default_true() -> bool {

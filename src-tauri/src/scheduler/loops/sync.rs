@@ -236,7 +236,11 @@ impl Scheduler {
 
         // Shared regime state for cross-loop communication (C1):
         // monitor loop writes, coaching loop reads.
-        let shared_regime = Arc::new(SharedRegimeState::new());
+        // Uses the injected instance (shared with SessionManager) or creates a local fallback.
+        let shared_regime = self
+            .shared_regime
+            .clone()
+            .unwrap_or_else(|| Arc::new(SharedRegimeState::new()));
 
         let monitor_task = self.spawn_monitor_loop(
             poll,

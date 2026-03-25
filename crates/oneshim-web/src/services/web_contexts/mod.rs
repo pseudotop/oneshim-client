@@ -9,6 +9,8 @@ use oneshim_core::ports::audit_log::AuditLogPort;
 use oneshim_core::ports::automation::AutomationPort;
 use oneshim_core::ports::secret_store::{SecretStore, SecretStoreSet};
 
+use oneshim_core::ports::conversation_session::SessionManager;
+
 use crate::services::integration_assembler::IntegrationStatusConfigSnapshot;
 use crate::storage_port::WebStorage;
 use crate::update_control::UpdateControl;
@@ -284,6 +286,25 @@ impl IntegrationWebContext {
 }
 
 impl FromRef<AppState> for IntegrationWebContext {
+    fn from_ref(state: &AppState) -> Self {
+        Self::from_state(state)
+    }
+}
+
+#[derive(Clone)]
+pub struct AiSessionWebContext {
+    pub session_manager: Option<Arc<dyn SessionManager>>,
+}
+
+impl AiSessionWebContext {
+    pub fn from_state(state: &AppState) -> Self {
+        Self {
+            session_manager: state.session_manager.clone(),
+        }
+    }
+}
+
+impl FromRef<AppState> for AiSessionWebContext {
     fn from_ref(state: &AppState) -> Self {
         Self::from_state(state)
     }

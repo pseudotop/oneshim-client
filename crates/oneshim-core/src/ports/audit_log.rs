@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 
+use crate::models::ai_session::SessionAuditEntry;
 use crate::models::audit::{AuditEntry, AuditLevel, AuditStats, AuditStatus};
 
 /// 감사 로그 포트 — oneshim-web 핸들러가 사용하는 감사 로그 인터페이스
@@ -63,4 +64,11 @@ pub trait AuditLogPort: Send + Sync {
 
     /// 전체 드레인
     async fn drain_all(&self) -> Vec<AuditEntry>;
+
+    // ── Session audit (best-effort) ──
+
+    /// AI 대화 세션 감사 이벤트 기록 (best-effort: 실패 시 경고만, 에러 전파 안 함)
+    async fn record_session_event(&self, _entry: SessionAuditEntry) {
+        // Default no-op — 구현체에서 세션 감사 지원 시 override
+    }
 }

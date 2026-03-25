@@ -19,6 +19,7 @@ use oneshim_core::error::CoreError;
 
 use crate::agent_runtime_support::AgentSupportContextBuilder;
 use crate::focus_analyzer::FocusStorage;
+use crate::scheduler::shared_regime_state::SharedRegimeState;
 use crate::scheduler::{AdaptiveTriggerState, Scheduler, SchedulerStorage};
 use crate::sync_engine::SyncEngine;
 
@@ -65,6 +66,9 @@ pub(crate) struct AgentRuntimeBundle {
     /// so SSE-received suggestions are visible in IPC queries.
     shared_suggestion_queue:
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
+    /// SharedRegimeState passed through to the Scheduler so it shares the same
+    /// instance as the SessionManager's context assembler.
+    shared_regime: Option<Arc<SharedRegimeState>>,
 }
 
 impl AgentRuntimeBundle {
@@ -506,6 +510,11 @@ impl AgentRuntimeBundle {
             scheduler = scheduler.with_focus_mode(focus_mode);
         }
 
+        // --- SharedRegimeState: thread through to scheduler for single-instance sharing ---
+        if let Some(shared_regime) = self.shared_regime {
+            scheduler = scheduler.with_shared_regime(shared_regime);
+        }
+
         // --- Analysis provider for coaching LLM personalization ---
         #[cfg(feature = "analysis")]
         if let Some(ref llm_api) = self.config.ai_provider.llm_api {
@@ -615,6 +624,9 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     /// so the SuggestionReceiver uses the same queue as SuggestionManager.
     shared_suggestion_queue:
         Option<Arc<tokio::sync::Mutex<oneshim_suggestion::queue::SuggestionQueue>>>,
+    /// SharedRegimeState — passed through to the Scheduler so it shares the same
+    /// instance as the SessionManager's context assembler.
+    shared_regime: Option<Arc<SharedRegimeState>>,
 }
 
 impl<'a> AgentRuntimeBuilder<'a> {
@@ -666,6 +678,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             suggestions_enabled: false,
             focus_mode: None,
             shared_suggestion_queue: None,
+            shared_regime: None,
         }
     }
 
@@ -820,6 +833,11 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_shared_regime(mut self, regime: Arc<SharedRegimeState>) -> Self {
+        self.shared_regime = Some(regime);
+        self
+    }
+
     pub(crate) fn build(self) -> AgentRuntimeBundle {
         AgentRuntimeBundle {
             storage: self.storage,
@@ -857,6 +875,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             suggestions_enabled: self.suggestions_enabled,
             focus_mode: self.focus_mode,
             shared_suggestion_queue: self.shared_suggestion_queue,
+            shared_regime: self.shared_regime,
         }
     }
 }

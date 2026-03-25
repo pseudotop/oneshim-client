@@ -235,6 +235,7 @@ fn make_state_with(controller: Arc<AutomationController>) -> AppState {
         override_store: None,
         recluster_requested: None,
         coaching_engine: None,
+        session_manager: None,
         pomodoro: std::sync::Arc::new(std::sync::Mutex::new(None)),
     }
 }
