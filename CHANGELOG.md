@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4-rc.4] - 2026-03-27
+### Added
+
+- Windows native OCR via WinRT Media.Ocr.OcrEngine
+
+- Implement Linux AT-SPI focused element extraction
+
+
+### Changed
+
+- Switch to PrismLight for smaller markdown chunk
+
+
+### Fixed
+
+- Add busy_timeout PRAGMA for write contention
+  Set PRAGMA busy_timeout=5000 (5 seconds) immediately after journal_mode=WAL
+  to prevent SQLITE_BUSY errors when multiple threads compete for write locks.
+
+
+## [Unreleased]
+
 ## [0.4.4-rc.3] - 2026-03-26
 ### Added
 
