@@ -48,6 +48,7 @@ export default defineConfig({
           ui: ['lucide-react'],
           router: ['react-router-dom'],
           i18n: ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
+          markdown: ['react-markdown', 'remark-gfm', 'react-syntax-highlighter'],
         },
       },
     },
