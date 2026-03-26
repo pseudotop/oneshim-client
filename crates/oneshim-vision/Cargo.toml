@@ -13,6 +13,7 @@ authors.workspace = true
 default = []
 ocr = ["leptess"]
 linux-atspi = ["atspi", "atspi-common", "futures"]
+native-vision = []
 
 [dependencies]
 oneshim-core = { workspace = true }
@@ -39,6 +40,9 @@ zeroize = { workspace = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = { workspace = true }
 core-foundation-sys = { workspace = true }
+objc2 = { workspace = true }
+objc2-foundation = { workspace = true, features = ["NSArray", "NSData", "NSDictionary", "NSString"] }
+objc2-core-foundation = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { workspace = true }
