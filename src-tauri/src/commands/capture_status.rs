@@ -150,6 +150,18 @@ pub async fn show_main_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[command]
+pub async fn open_devtools(app: AppHandle, label: Option<String>) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    {
+        let target = label.as_deref().unwrap_or("main");
+        if let Some(window) = app.get_webview_window(target) {
+            window.open_devtools();
+        }
+    }
+    Ok(())
+}
+
+#[command]
 pub async fn save_panel_position(state: State<'_, AppState>, x: f64, y: f64) -> Result<(), String> {
     let pos = format!("{x},{y}");
     state.storage.set_meta("tracking_panel_position", &pos);

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
-import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi'
+import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb } from 'lucide-react'
+import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -62,7 +63,7 @@ export function App() {
           const [x, y] = pos.split(',').map(Number)
           if (Number.isFinite(x) && Number.isFinite(y)) {
             getCurrentWindow()
-              .setPosition(new PhysicalPosition(x, y))
+              .setPosition(new LogicalPosition(x, y))
               .catch(() => {})
           }
         }
@@ -95,12 +96,14 @@ export function App() {
   const toggleExpanded = useCallback(async () => {
     const next = !expanded
     setExpanded(next)
+    const w = next ? EXPANDED_WIDTH : COLLAPSED_WIDTH
+    const h = next ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT
     try {
-      await getCurrentWindow().setSize(
-        new LogicalSize(next ? EXPANDED_WIDTH : COLLAPSED_WIDTH, next ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT),
-      )
-    } catch {
-      // setSize may fail on non-resizable windows — degrade gracefully
+      console.log(`[tracking-panel] setSize(${w}, ${h})`)
+      await getCurrentWindow().setSize(new LogicalSize(w, h))
+      console.log('[tracking-panel] setSize OK')
+    } catch (e) {
+      console.error('[tracking-panel] setSize failed:', e)
     }
   }, [expanded])
 
@@ -111,6 +114,7 @@ export function App() {
 
   return (
     <div
+      data-tauri-drag-region
       className={`flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs backdrop-blur-md ${state.paused ? '' : 'animate-panel-glow'}`}
       style={state.paused ? { boxShadow: 'inset 0 0 12px 3px rgba(156,163,175,0.25)', border: '1.5px solid rgba(156,163,175,0.3)' } : undefined}
     >
@@ -154,16 +158,16 @@ export function App() {
 
       {/* Expanded panel */}
       {expanded && (
-        <div className="flex flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
-          <ActionButton icon={'\u229E'} label="Open Dashboard" onClick={() => invoke('show_main_window')} />
-          <ActionButton icon={'\u25CE'} label="Manual Capture" disabled />
-          <ActionButton icon={'\u25C7'} label="Scene Analysis" disabled />
-          <ActionButton icon={'\u2606'} label="AI Suggestions" disabled />
-          <ActionButton icon={'\u25C9'} label="Focus Mode" disabled />
+        <div data-tauri-drag-region className="flex cursor-move flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
+          <ActionButton icon={<LayoutDashboard size={14} />} label="Open Dashboard" onClick={() => invoke('show_main_window')} />
+          <ActionButton icon={<Camera size={14} />} label="Manual Capture" disabled />
+          <ActionButton icon={<Brain size={14} />} label="Scene Analysis" disabled />
+          <ActionButton icon={<Lightbulb size={14} />} label="AI Suggestions" disabled />
+          <ActionButton icon={<Crosshair size={14} />} label="Focus Mode" disabled />
 
           {/* Connection status detail */}
-          <div className="mt-2 border-white/10 border-t pt-2">
-            <div className="flex items-center gap-3 text-[10px] text-white/60">
+          <div data-tauri-drag-region className="mt-2 border-white/10 border-t pt-2">
+            <div data-tauri-drag-region className="flex items-center gap-3 text-[10px] text-white/60">
               <StatusDot connected={conn.server} label="Server" />
               <StatusDot connected={conn.llm} label="LLM" />
               <StatusDot connected={conn.cli} label="CLI" />
@@ -181,7 +185,7 @@ function ActionButton({
   onClick,
   disabled,
 }: {
-  icon: string
+  icon: React.ReactNode
   label: string
   onClick?: () => void
   disabled?: boolean
@@ -191,12 +195,12 @@ function ActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
+      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-white/80 transition-colors ${
         disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-white/10 active:bg-white/20'
       }`}
       title={disabled ? 'Coming soon' : label}
     >
-      <span className="w-5 text-center">{icon}</span>
+      <span className="flex w-5 items-center justify-center">{icon}</span>
       <span>{label}</span>
     </button>
   )
