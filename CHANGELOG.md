@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4-rc.3] - 2026-03-26
+### Added
+
+- AI chat page + tracking panel suggestions bridge + scene analysis display
+  - Add /chat dashboard page with session management, streaming message display,
+    tool use rendering, and error handling (Chat.tsx)
+  - Bridge tracking panel "AI Suggestions" button to overlay SuggestionsPanel
+    via Tauri event emit (core:event:allow-emit capability added)
+  - Display scene analysis results inline in tracking panel with auto-dismiss
+  - Fix overlay set_interactive(true) to ensure window exists and is visible
+
+- Add WorkTypeClassifier port trait
+
+- Add RectangleDetector port trait
+
+- Add RuleBasedClassifier with 10 unit tests
+
+- Wire gui_elements + work_type into scene analysis
+
+- MacOS Vision.framework native OCR via raw objc2 FFI
+
+- MacOS VNDetectRectangles + cross-platform fallback
+
+- Enhance Chat with markdown rendering, code highlighting, i18n, and session cache
+
+
+## [Unreleased]
+
 ## [0.4.4-rc.2] - 2026-03-26
 ### Added
 
