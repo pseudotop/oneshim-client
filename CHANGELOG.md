@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4-rc.1] - 2026-03-26
+### Added
+
+- Multi-monitor border + Dock-aware panel positioning
+  - Multi-monitor: create border window per screen via NSScreen::screens()
+    with mirrored display dedup by frame coordinates
+  - Screen change detection: periodic 5s fingerprint check with automatic
+    rebuild preserving visible/paused state
+  - Dock-aware panel Y: use NSScreen::visibleFrame() instead of hardcoded 80px
+  - Anchor-bottom expand: panel grows upward when expanding, shrinks downward
+    when collapsing, with physical→logical coordinate conversion
+
+
+### Fixed
+
+- Move tracking panel default position to bottom-center
+  Standard recording indicator position (OBS, Loom, macOS native).
+  Bottom-center avoids menu bar/notch collision and keeps work area clear.
+
+
+## [Unreleased]
+
 ## [0.4.3] - 2026-03-26
 ### Added
 
