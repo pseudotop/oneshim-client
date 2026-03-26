@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4-rc.2] - 2026-03-26
+### Added
+
+- Activate all action buttons + offline mode indicator
+
+
+## [Unreleased]
+
 ## [0.4.4-rc.1] - 2026-03-26
 ### Added
 
