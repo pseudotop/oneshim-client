@@ -18,3 +18,4 @@ pub mod ring_buffer;
 pub mod thumbnail;
 pub mod timeline;
 pub mod trigger;
+pub mod work_classifier;
