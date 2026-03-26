@@ -26,6 +26,7 @@ const Updates = lazy(() => import('./pages/Updates'))
 const DashboardDay = lazy(() => import('./pages/DashboardDay'))
 const RecalibrationPage = lazy(() => import('./pages/RecalibrationPage'))
 const Coaching = lazy(() => import('./pages/Coaching'))
+const Chat = lazy(() => import('./pages/Chat'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
 
 function AppShell() {
@@ -96,6 +97,7 @@ function AppShell() {
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/recalibration" element={<RecalibrationPage />} />
                 <Route path="/coaching" element={<Coaching />} />
+                <Route path="/chat" element={<Chat />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

@@ -16,6 +16,15 @@ interface ConnectionStatus {
   cli: boolean
 }
 
+interface SceneAnalysisResult {
+  app_name: string
+  window_title: string
+  accessibility?: { focused_element?: { role: string; label?: string }; element_count: number }
+  ocr_regions: Array<{ text: string }>
+  gui_elements: Array<{ role: string }>
+  work_type?: string
+}
+
 const COLLAPSED_WIDTH = 260
 const COLLAPSED_HEIGHT = 36
 const EXPANDED_WIDTH = 320
@@ -26,6 +35,7 @@ export function App() {
   const [conn, setConn] = useState<ConnectionStatus>({ server: false, llm: false, cli: false })
   const [expanded, setExpanded] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [sceneResult, setSceneResult] = useState<SceneAnalysisResult | null>(null)
   const positionSaveTimer = useRef<number | null>(null)
   const feedbackTimer = useRef<number | null>(null)
 
@@ -140,8 +150,11 @@ export function App() {
   const handleSceneAnalysis = useCallback(async () => {
     try {
       showFeedback('Analyzing...')
-      await invoke('analyze_current_scene')
-      showFeedback('Analysis complete')
+      const result = await invoke<SceneAnalysisResult>('analyze_current_scene')
+      setSceneResult(result)
+      showFeedback(`${result.app_name} — ${result.accessibility?.element_count ?? 0} elements`)
+      // Auto-dismiss scene result after 10s
+      setTimeout(() => setSceneResult(null), 10000)
     } catch {
       showFeedback('Analysis failed')
     }
@@ -159,8 +172,10 @@ export function App() {
 
   const handleSuggestions = useCallback(async () => {
     try {
-      const suggestions = await invoke<unknown[]>('get_pending_suggestions')
-      showFeedback(suggestions.length > 0 ? `${suggestions.length} suggestions` : 'No suggestions')
+      const { emit } = await import('@tauri-apps/api/event')
+      await emit('overlay:toggle-suggestions')
+      await invoke('toggle_overlay_interactive', { interactive: true })
+      showFeedback('Suggestions panel opened')
     } catch {
       showFeedback('Suggestions unavailable')
     }
@@ -249,6 +264,29 @@ export function App() {
               </button>
             </div>
           </div>
+
+          {/* Scene analysis result (auto-dismisses after 10s) */}
+          {sceneResult && (
+            <div className="mt-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px]">
+              <div className="flex items-center justify-between">
+                <span className="text-white/90 font-medium truncate">
+                  {sceneResult.app_name} — {sceneResult.window_title}
+                </span>
+                <button type="button" onClick={() => setSceneResult(null)} className="text-white/40 hover:text-white/80 ml-1">&times;</button>
+              </div>
+              <div className="mt-1 flex gap-3 text-white/50">
+                <span>{sceneResult.accessibility?.element_count ?? 0} elements</span>
+                <span>{sceneResult.ocr_regions.length} OCR</span>
+                {sceneResult.work_type && <span>{sceneResult.work_type}</span>}
+              </div>
+              {sceneResult.accessibility?.focused_element && (
+                <div className="mt-0.5 text-white/40 truncate">
+                  Focus: {sceneResult.accessibility.focused_element.role}
+                  {sceneResult.accessibility.focused_element.label && ` "${sceneResult.accessibility.focused_element.label}"`}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

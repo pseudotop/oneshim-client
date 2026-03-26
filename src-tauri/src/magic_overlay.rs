@@ -289,11 +289,17 @@ impl MagicOverlayHandle {
     ///   - Coaching popup dismissed: return to click-through
     ///   - 5-second no-interaction timeout: return to click-through
     pub async fn set_interactive(&self, interactive: bool) {
-        if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
-            // set_ignore_cursor_events is the inverse of "interactive"
-            let _ = window.set_ignore_cursor_events(!interactive);
-            debug!("Overlay interactive={interactive}");
+        if interactive {
+            // Ensure overlay window exists and is visible when making interactive
+            let _ = self.ensure_window();
+            if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
+                let _ = window.show();
+                let _ = window.set_ignore_cursor_events(false);
+            }
+        } else if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
+            let _ = window.set_ignore_cursor_events(true);
         }
+        debug!("Overlay interactive={interactive}");
     }
 
     /// Emit focus mode state change to overlay frontend.
