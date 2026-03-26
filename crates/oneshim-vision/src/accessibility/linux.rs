@@ -271,17 +271,6 @@ mod inner {
             }
         }
 
-        /// Extract focused element via AT-SPI2 (stub).
-        ///
-        /// The `extract_window_elements` method provides the full tree traversal.
-        /// This single-element extraction remains a stub pending AT-SPI focus
-        /// tracking integration.
-        fn extract_raw() -> Option<FocusedElementInfo> {
-            // Stub: single-element focus tracking not yet implemented.
-            // Use extract_window_elements() for full tree traversal.
-            None
-        }
-
         // ── Focus event listener ──────────────────────────────────────
 
         /// Start the AT-SPI focus event listener.
@@ -510,36 +499,151 @@ mod inner {
 
             None
         }
+
+        /// Walk immediate children of the active window looking for `State::Focused`.
+        ///
+        /// Returns owned `FocusedElementInfo` (not a proxy) to avoid lifetime issues.
+        /// Uses the same proxy-building pattern as `traverse_tree`.
+        #[cfg(feature = "linux-atspi")]
+        async fn find_focused_in_window(
+            conn: &atspi::connection::AccessibilityConnection,
+            window: &atspi::proxy::accessible::AccessibleProxy<'_>,
+            pii_level: PiiFilterLevel,
+        ) -> Option<FocusedElementInfo> {
+            use atspi_common::State;
+
+            // Check if the window itself is focused
+            if let Ok(states) = window.get_state().await {
+                if states.contains(State::Focused) {
+                    return Self::proxy_to_focused_info(conn, window, pii_level).await;
+                }
+            }
+
+            // Walk immediate children (shallow -- O(children) not O(tree))
+            let children = window.get_children().await.ok()?;
+            for child_ref in &children {
+                let child_proxy =
+                    match atspi::proxy::accessible::AccessibleProxy::builder(conn.connection())
+                        .destination(child_ref.name())
+                        .ok()
+                        .and_then(|b| b.path(child_ref.path()).ok())
+                    {
+                        Some(builder) => match builder.build().await {
+                            Ok(p) => p,
+                            Err(_) => continue,
+                        },
+                        None => continue,
+                    };
+
+                if let Ok(states) = child_proxy.get_state().await {
+                    if states.contains(State::Focused) {
+                        return Self::proxy_to_focused_info(conn, &child_proxy, pii_level).await;
+                    }
+                }
+            }
+
+            None
+        }
+
+        /// Extract `FocusedElementInfo` from an `AccessibleProxy`.
+        ///
+        /// Extracts role, label (suppressed at Strict PII level), and bounds.
+        /// Returns owned data so the proxy can be dropped afterward.
+        #[cfg(feature = "linux-atspi")]
+        async fn proxy_to_focused_info(
+            conn: &atspi::connection::AccessibilityConnection,
+            proxy: &atspi::proxy::accessible::AccessibleProxy<'_>,
+            pii_level: PiiFilterLevel,
+        ) -> Option<FocusedElementInfo> {
+            let role = proxy
+                .get_role()
+                .await
+                .map(|r| format!("{r:?}"))
+                .unwrap_or_else(|_| "Unknown".to_string());
+
+            let label = if pii_level != PiiFilterLevel::Strict {
+                Some(proxy.name().await.unwrap_or_default())
+            } else {
+                None
+            };
+
+            let position = Self::get_element_bounds(conn, proxy).await;
+
+            Some(FocusedElementInfo {
+                role,
+                position,
+                label,
+                value_length: None,
+                extracted_text: None,
+            })
+        }
     }
 
     #[async_trait]
     impl AccessibilityExtractor for LinuxAccessibility {
+        #[cfg(feature = "linux-atspi")]
         async fn extract_focused_element(
             &self,
-            _pii_level: PiiFilterLevel,
-            _has_full_text_consent: bool,
+            pii_level: PiiFilterLevel,
+            has_full_text_consent: bool,
         ) -> Result<Option<FocusedElementInfo>, CoreError> {
+            use atspi::connection::AccessibilityConnection;
+
             if !Self::circuit_allows() {
                 debug!("LinuxAccessibility: circuit breaker open");
                 return Ok(None);
             }
 
-            let result = tokio::task::spawn_blocking(Self::extract_raw)
-                .await
-                .map_err(|e| CoreError::Internal(format!("AT-SPI2 blocking task failed: {e}")))?;
+            let effective_level = if pii_level == PiiFilterLevel::Off && !has_full_text_consent {
+                PiiFilterLevel::Standard
+            } else {
+                pii_level
+            };
 
-            match result {
+            // AT-SPI is async-native -- no spawn_blocking needed
+            let conn = match AccessibilityConnection::new().await {
+                Ok(c) => c,
+                Err(e) => {
+                    Self::record_failure();
+                    debug!("AT-SPI2 connection failed: {e}");
+                    return Ok(None); // graceful degradation, not an error
+                }
+            };
+
+            // Find active window (reuse existing helper)
+            let active_window = match Self::find_active_window(&conn).await {
+                Some(w) => w,
+                None => {
+                    Self::record_success(); // no window is not a failure
+                    return Ok(None);
+                }
+            };
+
+            // Walk active window's immediate children looking for State::Focused
+            let focused_info =
+                Self::find_focused_in_window(&conn, &active_window, effective_level).await;
+
+            match focused_info {
                 Some(info) => {
                     Self::record_success();
                     debug!(role = %info.role, "AT-SPI2 focused element extracted");
                     Ok(Some(info))
                 }
                 None => {
-                    Self::record_failure();
-                    debug!("LinuxAccessibility: AT-SPI2 stub -- returning None");
+                    // No focused element found -- not a failure (user may have no focus)
+                    Self::record_success();
                     Ok(None)
                 }
             }
+        }
+
+        #[cfg(not(feature = "linux-atspi"))]
+        async fn extract_focused_element(
+            &self,
+            _pii_level: PiiFilterLevel,
+            _has_full_text_consent: bool,
+        ) -> Result<Option<FocusedElementInfo>, CoreError> {
+            Ok(None)
         }
 
         #[cfg(feature = "linux-atspi")]
@@ -646,14 +750,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stub_returns_none() {
+    async fn test_extract_focused_element() {
         let extractor = LinuxAccessibility::new();
         let result = extractor
             .extract_focused_element(PiiFilterLevel::Standard, false)
-            .await
-            .unwrap();
-        // Stub always returns None until AT-SPI2 is wired
-        assert!(result.is_none());
+            .await;
+        // On CI without D-Bus/AT-SPI2, Ok(None) is valid (connection fails gracefully).
+        // On desktop Linux with AT-SPI2, may return Ok(Some(...)).
+        assert!(result.is_ok());
     }
 
     #[cfg(feature = "linux-atspi")]
