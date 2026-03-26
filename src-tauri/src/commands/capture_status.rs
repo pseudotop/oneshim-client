@@ -82,6 +82,11 @@ pub async fn toggle_capture_pause(
     let _ = app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload);
     let _ = crate::tray::sync_tray_state(&app, new_paused, indicator_visible);
 
+    #[cfg(target_os = "macos")]
+    if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>() {
+        border.0.set_paused(new_paused);
+    }
+
     Ok(CaptureStatusResponse {
         paused: new_paused,
         indicator_visible,
@@ -109,6 +114,15 @@ pub async fn set_indicator_visible(
         }
     }
     let _ = crate::tray::sync_tray_state(&app, paused, visible);
+
+    #[cfg(target_os = "macos")]
+    if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>() {
+        if visible {
+            border.0.show();
+        } else {
+            border.0.hide();
+        }
+    }
 
     Ok(())
 }

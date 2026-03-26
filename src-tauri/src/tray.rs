@@ -211,6 +211,11 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                     let _ =
                         app.emit_to("tracking-panel", "overlay:capture-state-changed", &payload);
                     let _ = sync_tray_state(app, new_paused, indicator_visible);
+                    #[cfg(target_os = "macos")]
+                    if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>()
+                    {
+                        border.0.set_paused(new_paused);
+                    }
                 }
             }
             "toggle-indicator" => {
@@ -237,6 +242,15 @@ pub fn setup_tray<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::er
                         }
                     }
                     let _ = sync_tray_state(app, paused, new_visible);
+                    #[cfg(target_os = "macos")]
+                    if let Some(border) = app.try_state::<crate::native_border::NativeBorderState>()
+                    {
+                        if new_visible {
+                            border.0.show();
+                        } else {
+                            border.0.hide();
+                        }
+                    }
                 }
             }
             "show" => {

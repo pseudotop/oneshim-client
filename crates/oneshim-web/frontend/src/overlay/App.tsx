@@ -6,7 +6,6 @@ import { FocusModeIndicator } from './components/FocusModeIndicator'
 import GoalProgressBar from './components/GoalProgressBar'
 import HeatmapGhost from './components/HeatmapGhost'
 import { SuggestionsPanel } from './components/SuggestionsPanel'
-import { TrackingBorder } from './components/TrackingBorder'
 import { useOverlayEvents } from './hooks/useOverlayEvents'
 import type { SuggestionViewDto } from './types'
 
@@ -32,9 +31,6 @@ export default function OverlayApp() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-      {/* Tracking capture border indicator */}
-      <TrackingBorder paused={state.captureState.paused} visible={state.captureState.indicator_visible} />
-
       {/* Focus mode pill indicator (top center) */}
       <FocusModeIndicator active={state.focusMode} />
 

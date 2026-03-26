@@ -26,6 +26,12 @@ export function App() {
   const [expanded, setExpanded] = useState(false)
   const positionSaveTimer = useRef<number | null>(null)
 
+  // Explicit drag initiation — backup for data-tauri-drag-region
+  const handleDragMouseDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return
+    getCurrentWindow().startDragging().catch(() => {})
+  }, [])
+
   useEffect(() => {
     let unlistenCapture: (() => void) | undefined
     let unlistenConn: (() => void) | undefined
@@ -104,9 +110,12 @@ export function App() {
   const allConnected = connCount === 3
 
   return (
-    <div className="flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs shadow-2xl backdrop-blur-md">
+    <div
+      className={`flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs backdrop-blur-md ${state.paused ? '' : 'animate-panel-glow'}`}
+      style={state.paused ? { boxShadow: 'inset 0 0 12px 3px rgba(156,163,175,0.25)', border: '1.5px solid rgba(156,163,175,0.3)' } : undefined}
+    >
       {/* Collapsed bar */}
-      <div data-tauri-drag-region className="flex cursor-move items-center gap-2 px-3 py-2">
+      <div data-tauri-drag-region onMouseDown={handleDragMouseDown} className="flex cursor-move items-center gap-2 px-3 py-2">
         <span
           className={`h-2 w-2 shrink-0 rounded-full ${state.paused ? 'bg-yellow-400' : 'animate-pulse bg-green-400'}`}
         />
@@ -146,11 +155,11 @@ export function App() {
       {/* Expanded panel */}
       {expanded && (
         <div className="flex flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
-          <ActionButton icon="📊" label="Open Dashboard" onClick={() => invoke('show_main_window')} />
-          <ActionButton icon="📷" label="Manual Capture" disabled />
-          <ActionButton icon="🧠" label="Scene Analysis" disabled />
-          <ActionButton icon="💡" label="AI Suggestions" disabled />
-          <ActionButton icon="🎯" label="Focus Mode" disabled />
+          <ActionButton icon={'\u229E'} label="Open Dashboard" onClick={() => invoke('show_main_window')} />
+          <ActionButton icon={'\u25CE'} label="Manual Capture" disabled />
+          <ActionButton icon={'\u25C7'} label="Scene Analysis" disabled />
+          <ActionButton icon={'\u2606'} label="AI Suggestions" disabled />
+          <ActionButton icon={'\u25C9'} label="Focus Mode" disabled />
 
           {/* Connection status detail */}
           <div className="mt-2 border-white/10 border-t pt-2">
