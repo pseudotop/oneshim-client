@@ -74,11 +74,16 @@ export default {
       },
       animation: {
         'tracking-pulse': 'tracking-pulse 3s ease-in-out infinite',
+        'tracking-blink': 'tracking-blink 2s ease-in-out infinite',
       },
       keyframes: {
         'tracking-pulse': {
           '0%, 100%': { opacity: '0.4' },
           '50%': { opacity: '0.7' },
+        },
+        'tracking-blink': {
+          '0%, 100%': { opacity: '0.3' },
+          '50%': { opacity: '1' },
         },
       },
       borderColor: {

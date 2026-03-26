@@ -67,6 +67,7 @@ thiserror = { workspace = true }
 keyring = { workspace = true }
 image = { workspace = true }
 lru = { workspace = true }
+raw-window-handle = "0.6"
 
 [features]
 default = ["custom-protocol", "analysis"]
@@ -80,7 +81,13 @@ lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc = "0.2"
+objc2 = { workspace = true }
+objc2-foundation = { workspace = true }
+objc2-core-foundation = { workspace = true }
+objc2-core-graphics = { workspace = true }
+objc2-app-kit = { workspace = true }
+objc2-quartz-core = { workspace = true }
+dispatch2 = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }

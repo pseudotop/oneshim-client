@@ -10,51 +10,27 @@
 /// a generic "exec" icon in the dock. This fixes that by calling
 /// `[NSApplication setApplicationIconImage:]` with the brand icon.
 pub fn set_dock_icon() {
-    use objc::runtime::{Class, Object};
-    use objc::{msg_send, sel, sel_impl};
+    use objc2::{AnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
 
     let icon_bytes: &[u8] = include_bytes!("../icons/dock_icon.png");
 
-    // SAFETY: ObjC msg_send calls to NSData, NSImage, and NSApplication.
-    // - Class::get returns None if the class doesn't exist (checked before use).
-    // - NSData dataWithBytes receives a valid pointer and length from include_bytes!.
-    // - All returned object pointers are null-checked before subsequent msg_send.
-    // - NSImage alloc+initWithData follows standard ObjC two-phase init.
-    // - sharedApplication returns a singleton; setApplicationIconImage does not
-    //   take ownership. No manual release needed (autorelease pool handles it).
-    // - Must run on the main thread (guaranteed by Tauri's app lifecycle).
+    // MainThreadMarker::new() returns Some only when called from the main thread.
+    // set_dock_icon() is called during Tauri setup, which runs on the main thread.
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+
+    let data = NSData::with_bytes(icon_bytes);
+    let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) else {
+        return;
+    };
+
+    let app = NSApplication::sharedApplication(mtm);
+    // SAFETY: setApplicationIconImage is safe to call with a valid NSImage.
+    // The method retains the image internally.
     unsafe {
-        let ns_data_class = match Class::get("NSData") {
-            Some(c) => c,
-            None => return,
-        };
-        let ns_image_class = match Class::get("NSImage") {
-            Some(c) => c,
-            None => return,
-        };
-        let ns_app_class = match Class::get("NSApplication") {
-            Some(c) => c,
-            None => return,
-        };
-
-        let data: *mut Object = msg_send![
-            ns_data_class,
-            dataWithBytes:icon_bytes.as_ptr()
-            length:icon_bytes.len()
-        ];
-        if data.is_null() {
-            return;
-        }
-
-        let image: *mut Object = msg_send![ns_image_class, alloc];
-        let image: *mut Object = msg_send![image, initWithData:data];
-        if image.is_null() {
-            return;
-        }
-
-        let app: *mut Object = msg_send![ns_app_class, sharedApplication];
-        if !app.is_null() {
-            let _: () = msg_send![app, setApplicationIconImage:image];
-        }
+        app.setApplicationIconImage(Some(&image));
     }
 }

@@ -43,6 +43,65 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Pre-create MagicOverlay window (hidden). Shown on-demand when coaching
+    // popups, suggestions, or focus highlights are triggered.
+    // NOTE: Do NOT show() here — a visible full-screen overlay at the same
+    // window level blocks tracking panel drag on macOS.
+    if let Some(state) = _app_handle.try_state::<crate::runtime_state::AppState>() {
+        if let Some(ref overlay) = state.magic_overlay {
+            let _ = overlay.ensure_window();
+        }
+    }
+
+    // Create native border indicator (macOS only, main thread)
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::MainThreadMarker;
+        if let Some(mtm) = MainThreadMarker::new() {
+            info!("Native border: MainThreadMarker acquired");
+            match crate::native_border::NativeBorderIndicator::new(mtm) {
+                Some(border) => {
+                    let visible = _app_handle
+                        .try_state::<crate::runtime_state::AppState>()
+                        .map(|s| {
+                            s.indicator_visible
+                                .load(std::sync::atomic::Ordering::Relaxed)
+                        })
+                        .unwrap_or(false);
+                    if visible {
+                        border.show();
+                    }
+                    app.manage(crate::native_border::NativeBorderState(border));
+                    info!("Native border indicator created (visible={visible})");
+                }
+                None => {
+                    tracing::warn!("Native border: window creation failed");
+                }
+            }
+        } else {
+            tracing::warn!("Native border: not on main thread");
+        }
+    }
+
+    // macOS: enable native drag on tracking panel (workaround for -webkit-app-region
+    // not working on transparent borderless windows with WKWebView)
+    #[cfg(target_os = "macos")]
+    {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        if let Some(panel) = _app_handle.get_webview_window("tracking-panel") {
+            if let Ok(handle) = panel.window_handle() {
+                if let RawWindowHandle::AppKit(appkit) = handle.as_raw() {
+                    let ns_view =
+                        unsafe { &*(appkit.ns_view.as_ptr() as *const objc2_app_kit::NSView) };
+                    if let Some(ns_window) = ns_view.window() {
+                        ns_window.setMovableByWindowBackground(true);
+                        info!("Tracking panel: movableByWindowBackground enabled");
+                    }
+                }
+            }
+        }
+    }
+
     info!("Tauri setup complete");
     Ok(())
 }
@@ -87,6 +146,12 @@ fn register_capture_shortcut(app: &App) {
                                 new_paused,
                                 indicator_visible,
                             );
+                            #[cfg(target_os = "macos")]
+                            if let Some(border) =
+                                handle.try_state::<crate::native_border::NativeBorderState>()
+                            {
+                                border.0.set_paused(new_paused);
+                            }
                         }
                     });
                 }

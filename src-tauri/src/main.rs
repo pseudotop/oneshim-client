@@ -1,6 +1,4 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// Allow `cfg(feature = "cargo-clippy")` inside `objc::msg_send!` macro from the `objc` crate.
-// See: https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html
 #![allow(unexpected_cfgs)]
 
 //! ONESHIM Desktop Agent — Tauri v2 진입점
@@ -43,6 +41,7 @@ mod macos_integration;
 mod magic_overlay;
 mod magic_overlay_driver;
 mod memory_profiler;
+mod native_border;
 mod notification_manager;
 mod oauth_provider_registry;
 mod platform_accessibility;

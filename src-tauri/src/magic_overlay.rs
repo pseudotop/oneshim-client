@@ -55,8 +55,9 @@ struct OverlayState {
 
 /// Handle for managing the MagicOverlay Tauri WebView window.
 ///
-/// Created once during app setup. The overlay window is lazily created
-/// on the first `show_coaching()` call and kept alive (hidden when idle).
+/// Created during app setup. The overlay window is created and shown at
+/// startup so persistent components (TrackingBorder, CaptureFlash) render
+/// immediately. The window is transparent and click-through by default.
 ///
 /// # TODO: CoachingOverlayPort consideration
 ///
@@ -94,7 +95,7 @@ impl MagicOverlayHandle {
     /// Gracefully degrades on Linux/Wayland (overlay not supported).
     /// macOS requires `macos-private-api` feature flag for transparent windows.
     /// Windows requires `shadow: false` to avoid rendering artifacts.
-    fn ensure_window(&self) -> Result<(), String> {
+    pub fn ensure_window(&self) -> Result<(), String> {
         // Wayland graceful degradation: skip overlay creation entirely
         #[cfg(target_os = "linux")]
         if std::env::var("WAYLAND_DISPLAY").is_ok() {
@@ -201,7 +202,9 @@ impl MagicOverlayHandle {
 
     /// Dismiss a coaching message from the overlay.
     ///
-    /// Clears the current message ID and hides the window.
+    /// Clears the current message ID. The window stays visible for persistent
+    /// components (TrackingBorder, CaptureFlash). The React layer handles
+    /// hiding the coaching popup via the 'dismiss' event.
     pub async fn dismiss(&self, message_id: &str, _action: DismissAction) {
         let mut state = self.state.write().await;
         if state.current_message_id.as_deref() == Some(message_id) {
@@ -210,9 +213,8 @@ impl MagicOverlayHandle {
         state.visible = false;
         drop(state);
 
-        if let Some(window) = self.app_handle.get_webview_window(OVERLAY_LABEL) {
-            let _ = window.hide();
-        }
+        // Window stays visible — persistent components need it.
+        // The React dismiss reducer clears the coaching popup from the DOM.
 
         if let Err(e) = self.app_handle.emit("overlay:dismiss", message_id) {
             warn!("failed to emit overlay:dismiss: {e}");
