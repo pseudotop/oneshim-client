@@ -26,14 +26,14 @@ import rust from 'react-syntax-highlighter/dist/esm/languages/prism/rust'
 import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql'
 import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript'
 import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml'
-import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-async-light'
+import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import remarkGfm from 'remark-gfm'
 import { Button, Card, CardContent, Select } from '../components/ui'
 import { colors, iconSize, interaction, radius, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
-// Register languages with PrismAsyncLight (ships with zero languages by default)
+// Register languages with PrismLight (ships with zero languages by default)
 SyntaxHighlighter.registerLanguage('javascript', javascript)
 SyntaxHighlighter.registerLanguage('js', javascript)
 SyntaxHighlighter.registerLanguage('jsx', javascript)
