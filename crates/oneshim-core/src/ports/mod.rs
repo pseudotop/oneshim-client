@@ -25,6 +25,7 @@ pub mod oauth;
 pub mod ocr_provider;
 pub mod overlay_driver;
 pub mod override_store;
+pub mod rectangle_detector;
 pub mod sandbox;
 pub mod secret_projection;
 pub mod secret_store;
