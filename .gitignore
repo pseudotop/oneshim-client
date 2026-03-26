@@ -38,3 +38,4 @@ wdio-logs/
 .serena/
 .claude/worktrees/
 docs/superpowers/
+.claude/ralph-loop.local.md
