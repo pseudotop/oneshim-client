@@ -36,3 +36,4 @@ pub mod vector_index;
 pub mod vector_store;
 pub mod vision;
 pub mod web_storage;
+pub mod work_classifier;
