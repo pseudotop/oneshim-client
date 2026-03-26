@@ -409,7 +409,7 @@ pub fn create_tracking_panel(app_handle: &AppHandle) -> Result<(), String> {
     .decorations(false)
     .resizable(true)
     .min_inner_size(260.0, 36.0)
-    .max_inner_size(320.0, 260.0)
+    .max_inner_size(320.0, 310.0)
     .visible(false)
     .skip_taskbar(true)
     .shadow(false)
