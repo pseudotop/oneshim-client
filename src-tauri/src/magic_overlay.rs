@@ -372,8 +372,12 @@ pub fn create_tracking_panel(app_handle: &AppHandle) -> Result<(), String> {
 
     let scale = monitor.scale_factor();
     let logical_width = monitor.size().width as f64 / scale;
+    let logical_height = monitor.size().height as f64 / scale;
     let panel_width = 260.0;
+    let panel_height = 36.0;
     let x = (logical_width / 2.0) - (panel_width / 2.0);
+    // Bottom-center: 8px above the Dock area (standard recording indicator position)
+    let y = logical_height - panel_height - 80.0;
 
     WebviewWindowBuilder::new(
         app_handle,
@@ -381,8 +385,8 @@ pub fn create_tracking_panel(app_handle: &AppHandle) -> Result<(), String> {
         WebviewUrl::App("tracking-panel.html".into()),
     )
     .title("ONESHIM Tracking")
-    .inner_size(panel_width, 36.0)
-    .position(x, 8.0)
+    .inner_size(panel_width, panel_height)
+    .position(x, y)
     .transparent(true)
     .always_on_top(true)
     .decorations(false)
