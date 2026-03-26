@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb } from 'lucide-react'
+import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb, Settings, Wifi, WifiOff } from 'lucide-react'
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -19,13 +19,21 @@ interface ConnectionStatus {
 const COLLAPSED_WIDTH = 260
 const COLLAPSED_HEIGHT = 36
 const EXPANDED_WIDTH = 320
-const EXPANDED_HEIGHT = 260
+const EXPANDED_HEIGHT = 310
 
 export function App() {
   const [state, setState] = useState<CaptureState>({ paused: false, indicator_visible: true })
   const [conn, setConn] = useState<ConnectionStatus>({ server: false, llm: false, cli: false })
   const [expanded, setExpanded] = useState(false)
+  const [feedback, setFeedback] = useState<string | null>(null)
   const positionSaveTimer = useRef<number | null>(null)
+  const feedbackTimer = useRef<number | null>(null)
+
+  const showFeedback = useCallback((msg: string) => {
+    setFeedback(msg)
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
+    feedbackTimer.current = window.setTimeout(() => setFeedback(null), 2000)
+  }, [])
 
   // Explicit drag initiation — backup for data-tauri-drag-region
   const handleDragMouseDown = useCallback((e: React.MouseEvent) => {
@@ -105,28 +113,64 @@ export function App() {
       const scale = await win.scaleFactor()
 
       if (next) {
-        // Expanding: move UP first so bottom edge stays anchored
         const pos = await win.outerPosition()
         await win.setPosition(new LogicalPosition(pos.x / scale, pos.y / scale - heightDiff))
         await win.setSize(new LogicalSize(w, h))
       } else {
-        // Collapsing: resize first, then move DOWN
         await win.setSize(new LogicalSize(w, h))
         const pos = await win.outerPosition()
         await win.setPosition(new LogicalPosition(pos.x / scale, pos.y / scale + heightDiff))
       }
     } catch {
-      // Fallback: just resize without repositioning
       try {
         await win.setSize(new LogicalSize(w, h))
       } catch {}
     }
   }, [expanded])
 
+  const handleManualCapture = useCallback(async () => {
+    try {
+      await invoke('trigger_manual_capture')
+      showFeedback('Captured')
+    } catch {
+      showFeedback('Capture failed')
+    }
+  }, [showFeedback])
+
+  const handleSceneAnalysis = useCallback(async () => {
+    try {
+      showFeedback('Analyzing...')
+      await invoke('analyze_current_scene')
+      showFeedback('Analysis complete')
+    } catch {
+      showFeedback('Analysis failed')
+    }
+  }, [showFeedback])
+
+  const handleToggleFocus = useCallback(async () => {
+    try {
+      const status = await invoke<{ active: boolean }>('get_focus_mode_status')
+      await invoke('toggle_focus_mode', { active: !status.active, durationMinutes: 25 })
+      showFeedback(status.active ? 'Focus off' : 'Focus 25m')
+    } catch {
+      showFeedback('Focus toggle failed')
+    }
+  }, [showFeedback])
+
+  const handleSuggestions = useCallback(async () => {
+    try {
+      const suggestions = await invoke<unknown[]>('get_pending_suggestions')
+      showFeedback(suggestions.length > 0 ? `${suggestions.length} suggestions` : 'No suggestions')
+    } catch {
+      showFeedback('Suggestions unavailable')
+    }
+  }, [showFeedback])
+
   if (!state.indicator_visible) return null
 
   const connCount = [conn.server, conn.llm, conn.cli].filter(Boolean).length
   const allConnected = connCount === 3
+  const isOffline = connCount === 0
 
   return (
     <div
@@ -143,7 +187,7 @@ export function App() {
           <span className="h-2 w-2 shrink-0 rounded-full bg-red-400" title={`${connCount}/3 connected`} />
         )}
         <span data-tauri-drag-region className="flex-1 truncate">
-          {state.paused ? 'Paused' : 'Capturing'}
+          {state.paused ? 'Paused' : feedback ?? 'Capturing'}
         </span>
 
         <button
@@ -176,17 +220,33 @@ export function App() {
       {expanded && (
         <div data-tauri-drag-region className="flex cursor-move flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
           <ActionButton icon={<LayoutDashboard size={14} />} label="Open Dashboard" onClick={() => invoke('show_main_window')} />
-          <ActionButton icon={<Camera size={14} />} label="Manual Capture" disabled />
-          <ActionButton icon={<Brain size={14} />} label="Scene Analysis" disabled />
-          <ActionButton icon={<Lightbulb size={14} />} label="AI Suggestions" disabled />
-          <ActionButton icon={<Crosshair size={14} />} label="Focus Mode" disabled />
+          <ActionButton icon={<Camera size={14} />} label="Manual Capture" onClick={handleManualCapture} />
+          <ActionButton icon={<Brain size={14} />} label="Scene Analysis" onClick={handleSceneAnalysis} />
+          <ActionButton icon={<Lightbulb size={14} />} label="AI Suggestions" onClick={handleSuggestions} />
+          <ActionButton icon={<Crosshair size={14} />} label="Focus Mode" onClick={handleToggleFocus} />
 
-          {/* Connection status detail */}
+          {/* Connection status + offline mode indicator */}
           <div data-tauri-drag-region className="mt-2 border-white/10 border-t pt-2">
-            <div data-tauri-drag-region className="flex items-center gap-3 text-[10px] text-white/60">
-              <StatusDot connected={conn.server} label="Server" />
-              <StatusDot connected={conn.llm} label="LLM" />
-              <StatusDot connected={conn.cli} label="CLI" />
+            {isOffline && (
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-400/80">
+                <WifiOff size={10} />
+                <span>Offline — local capture + analysis available</span>
+              </div>
+            )}
+            <div data-tauri-drag-region className="flex items-center justify-between text-[10px] text-white/60">
+              <div className="flex items-center gap-3">
+                <StatusDot connected={conn.server} label="Server" />
+                <StatusDot connected={conn.llm} label="LLM" />
+                <StatusDot connected={conn.cli} label="CLI" />
+              </div>
+              <button
+                type="button"
+                onClick={() => invoke('show_main_window')}
+                className="rounded p-0.5 transition-colors hover:bg-white/10"
+                title="Open Settings"
+              >
+                <Settings size={10} />
+              </button>
             </div>
           </div>
         </div>
