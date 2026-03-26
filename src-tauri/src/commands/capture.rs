@@ -231,13 +231,53 @@ pub async fn analyze_current_scene(
         Vec::new()
     };
 
+    // GUI elements from OCR regions via GuiElementDetector
+    let gui_elements: Vec<GuiElementDto> = if !ocr_regions.is_empty() {
+        let resolution = (1920_u32, 1080_u32);
+        let pii_level = state.config.privacy.pii_filter_level;
+        let detector = oneshim_vision::gui_detector::GuiElementDetector::new(resolution, pii_level);
+
+        ocr_regions
+            .iter()
+            .map(|r| {
+                let bbox = oneshim_core::models::frame::BoundingBox {
+                    x: r.x,
+                    y: r.y,
+                    width: r.width,
+                    height: r.height,
+                };
+                let element_type = detector.infer_element_type(&r.text, &bbox);
+                GuiElementDto {
+                    role: format!("{element_type:?}"),
+                    label: Some(r.text.clone()),
+                    bounds: Some((r.x as i32, r.y as i32, r.width, r.height)),
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Work type classification
+    let work_type = state.capture.work_classifier.as_ref().map(|clf| {
+        let focused_role = accessibility
+            .as_ref()
+            .and_then(|a| a.focused_element.as_ref())
+            .map(|f| f.role.as_str());
+        let ocr_sample = ocr_regions.first().map(|r| r.text.as_str());
+        format!(
+            "{:?}",
+            clf.classify(&app_name, &window_title, focused_role, ocr_sample)
+        )
+    });
+
     Ok(SceneAnalysisResponse {
         app_name,
         window_title,
         timestamp: chrono::Utc::now().to_rfc3339(),
         accessibility,
         ocr_regions,
-        gui_elements: Vec::new(), // populated when full GUI pipeline is wired
-        work_type: None,          // TODO: classify from context
+        gui_elements,
+        work_type,
     })
 }

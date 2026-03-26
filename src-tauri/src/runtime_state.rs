@@ -8,6 +8,7 @@ use oneshim_core::ports::integration::{IntegrationAuthPort, IntegrationSessionPo
 use oneshim_core::ports::monitor::ActivityMonitor;
 use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::vision::FrameProcessor;
+use oneshim_core::ports::work_classifier::WorkTypeClassifier;
 use oneshim_storage::frame_storage::FrameFileStorage;
 use oneshim_storage::sqlite::SqliteStorage;
 use oneshim_web::update_control::{UpdateAction, UpdateControl};
@@ -39,6 +40,8 @@ pub struct CaptureContext {
     pub accessibility_extractor: Option<Arc<dyn AccessibilityExtractor>>,
     /// Consent manager for PII level gating in accessibility extraction (A2).
     pub consent_manager: Option<Arc<ConsentManager>>,
+    /// Work type classifier for scene analysis (A2).
+    pub work_classifier: Option<Arc<dyn WorkTypeClassifier>>,
 }
 
 /// Groups connectivity flags for server, LLM, and CLI connections.
@@ -298,6 +301,7 @@ mod tests {
                 activity_monitor: None,
                 accessibility_extractor: None,
                 consent_manager: None,
+                work_classifier: None,
             },
             suggestion_manager: None,
             session_manager: None,

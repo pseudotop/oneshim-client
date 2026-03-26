@@ -433,6 +433,9 @@ impl AppRuntimeLaunchBuilder {
                 activity_monitor: ipc_activity_monitor,
                 accessibility_extractor: ipc_accessibility_extractor,
                 consent_manager: ipc_consent_manager,
+                work_classifier: Some(Arc::new(
+                    oneshim_vision::work_classifier::RuleBasedClassifier,
+                )),
             },
             suggestion_manager,
             session_manager,

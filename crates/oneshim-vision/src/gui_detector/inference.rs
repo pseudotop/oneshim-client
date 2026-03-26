@@ -7,7 +7,7 @@ use oneshim_core::models::gui_interaction::{GuiElement, GuiElementType};
 use super::{GuiElementDetector, TAB_LABEL_MAX_LEN};
 
 impl GuiElementDetector {
-    pub(super) fn infer_element_type(&self, text: &str, bbox: &BoundingBox) -> GuiElementType {
+    pub fn infer_element_type(&self, text: &str, bbox: &BoundingBox) -> GuiElementType {
         let lower = text.to_lowercase();
         let (screen_w, screen_h) = self.screen_resolution;
 
