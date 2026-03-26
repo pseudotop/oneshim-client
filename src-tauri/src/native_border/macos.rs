@@ -26,10 +26,53 @@ pub(super) struct BorderInner {
     pub(super) glow_layers: Vec<Retained<CAShapeLayer>>,
 }
 
-/// Create the native border window with stroke + gradient glow layers.
-pub(super) fn create_border_window(mtm: MainThreadMarker) -> Option<BorderInner> {
-    let screen = NSScreen::mainScreen(mtm)?;
-    let frame = screen.frame();
+/// Create border windows for all connected screens.
+/// Deduplicates mirrored displays by frame coordinates.
+pub(super) fn create_all_border_windows(mtm: MainThreadMarker) -> Vec<BorderInner> {
+    let screens = NSScreen::screens(mtm);
+    let mut borders = Vec::new();
+    let mut seen_frames = std::collections::HashSet::new();
+
+    for screen in screens.iter() {
+        let frame = screen.frame();
+        let key = (
+            frame.origin.x as i64,
+            frame.origin.y as i64,
+            frame.size.width as i64,
+            frame.size.height as i64,
+        );
+        if !seen_frames.insert(key) {
+            continue; // skip mirrored display
+        }
+        if let Some(border) = create_border_window(mtm, frame) {
+            borders.push(border);
+        }
+    }
+
+    tracing::info!("Native border: created {} border window(s)", borders.len());
+    borders
+}
+
+/// Compute a hash of all screen frames for topology change detection.
+pub(super) fn screen_fingerprint(mtm: MainThreadMarker) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let screens = NSScreen::screens(mtm);
+    let mut hasher = DefaultHasher::new();
+    for screen in screens.iter() {
+        let f = screen.frame();
+        (f.origin.x as i64).hash(&mut hasher);
+        (f.origin.y as i64).hash(&mut hasher);
+        (f.size.width as i64).hash(&mut hasher);
+        (f.size.height as i64).hash(&mut hasher);
+    }
+    screens.count().hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Create a single border window for the given screen frame.
+fn create_border_window(mtm: MainThreadMarker, frame: CGRect) -> Option<BorderInner> {
     tracing::info!(
         "Native border frame: origin=({}, {}), size={}x{}",
         frame.origin.x,

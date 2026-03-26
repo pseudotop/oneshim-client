@@ -98,12 +98,28 @@ export function App() {
     setExpanded(next)
     const w = next ? EXPANDED_WIDTH : COLLAPSED_WIDTH
     const h = next ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT
+    const win = getCurrentWindow()
+    const heightDiff = EXPANDED_HEIGHT - COLLAPSED_HEIGHT
+
     try {
-      console.log(`[tracking-panel] setSize(${w}, ${h})`)
-      await getCurrentWindow().setSize(new LogicalSize(w, h))
-      console.log('[tracking-panel] setSize OK')
-    } catch (e) {
-      console.error('[tracking-panel] setSize failed:', e)
+      const scale = await win.scaleFactor()
+
+      if (next) {
+        // Expanding: move UP first so bottom edge stays anchored
+        const pos = await win.outerPosition()
+        await win.setPosition(new LogicalPosition(pos.x / scale, pos.y / scale - heightDiff))
+        await win.setSize(new LogicalSize(w, h))
+      } else {
+        // Collapsing: resize first, then move DOWN
+        await win.setSize(new LogicalSize(w, h))
+        const pos = await win.outerPosition()
+        await win.setPosition(new LogicalPosition(pos.x / scale, pos.y / scale + heightDiff))
+      }
+    } catch {
+      // Fallback: just resize without repositioning
+      try {
+        await win.setSize(new LogicalSize(w, h))
+      } catch {}
     }
   }, [expanded])
 

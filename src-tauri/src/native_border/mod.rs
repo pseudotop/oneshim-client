@@ -1,6 +1,7 @@
 //! Native screen recording border indicator.
 //!
 //! Platform: macOS only (Phase 1). Other platforms gracefully degrade (no border).
+//! Supports multiple monitors — one NSWindow per screen.
 
 #[cfg(target_os = "macos")]
 mod colors;
@@ -11,114 +12,168 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Native screen recording border indicator.
 ///
-/// Creates a dedicated NSWindow with a CAShapeLayer border on macOS.
-/// Completely independent of the WebView overlay pipeline.
+/// Creates a dedicated NSWindow with CAShapeLayer border per connected screen.
+/// Supports multi-monitor, periodic screen topology change detection, and
+/// graceful rebuild when displays are connected/disconnected.
 ///
-/// Thread safety: `MainThreadBound` wraps the NSWindow/CAShapeLayer.
+/// Thread safety: `MainThreadBound<RefCell<Vec<BorderInner>>>` wraps the NSWindows.
 /// AtomicBool tracks visible/paused state from any thread.
 /// All native mutations dispatch to the main thread via `get_on_main`.
 pub struct NativeBorderIndicator {
     #[cfg(target_os = "macos")]
-    inner: dispatch2::MainThreadBound<macos::BorderInner>,
+    inner: dispatch2::MainThreadBound<std::cell::RefCell<Vec<macos::BorderInner>>>,
+    #[cfg(target_os = "macos")]
+    fingerprint: std::sync::atomic::AtomicU64,
     visible: AtomicBool,
     paused: AtomicBool,
 }
 
 impl NativeBorderIndicator {
-    /// Create the border indicator on macOS.
-    ///
-    /// Uses `NSScreen::mainScreen()` to get screen bounds in native points.
-    /// Returns `None` if window creation fails.
+    /// Create border indicators for all connected screens.
+    /// Returns `None` if no screens are available.
     #[cfg(target_os = "macos")]
     pub fn new(mtm: objc2::MainThreadMarker) -> Option<Self> {
-        let inner = macos::create_border_window(mtm)?;
+        let borders = macos::create_all_border_windows(mtm);
+        if borders.is_empty() {
+            return None;
+        }
+        let fp = macos::screen_fingerprint(mtm);
         Some(Self {
-            inner: dispatch2::MainThreadBound::new(inner, mtm),
+            inner: dispatch2::MainThreadBound::new(std::cell::RefCell::new(borders), mtm),
+            fingerprint: std::sync::atomic::AtomicU64::new(fp),
             visible: AtomicBool::new(false),
             paused: AtomicBool::new(false),
         })
     }
 
-    /// Non-macOS stub — always returns `None`.
     #[cfg(not(target_os = "macos"))]
     pub fn new() -> Option<Self> {
         None
     }
 
-    /// Show the border window (capturing state — teal with pulse animation).
-    /// No-op if already visible.
+    /// Show border on all screens. No-op if already visible.
     pub fn show(&self) {
         if self.visible.swap(true, Ordering::Relaxed) {
             return;
         }
         #[cfg(target_os = "macos")]
-        self.inner.get_on_main(|inner| {
-            inner.window.orderFront(None);
+        self.inner.get_on_main(|cell| {
+            for border in cell.borrow().iter() {
+                border.window.orderFront(None);
+            }
         });
     }
 
-    /// Hide the border window. No-op if already hidden.
+    /// Hide border on all screens. No-op if already hidden.
     pub fn hide(&self) {
         if !self.visible.swap(false, Ordering::Relaxed) {
             return;
         }
         #[cfg(target_os = "macos")]
-        self.inner.get_on_main(|inner| {
-            inner.window.orderOut(None);
+        self.inner.get_on_main(|cell| {
+            for border in cell.borrow().iter() {
+                border.window.orderOut(None);
+            }
         });
     }
 
-    /// Update paused state. Switches between:
-    /// - `false` (capturing): teal border with pulse animation
-    /// - `true`  (paused): gray border, static (no animation)
+    /// Update paused state on all screens.
     pub fn set_paused(&self, paused: bool) {
         self.paused.store(paused, Ordering::Relaxed);
         #[cfg(target_os = "macos")]
-        self.inner.get_on_main(|inner| {
+        self.inner.get_on_main(|cell| {
             use objc2_foundation::ns_string;
-            if paused {
-                // Border stroke → gray, static
-                inner
-                    .border_layer
-                    .removeAnimationForKey(ns_string!("borderPulse"));
-                let gray = colors::gray_cgcolor();
-                inner.border_layer.setStrokeColor(Some(&gray));
-
-                // Glow bands → gray, static (keep relative opacity)
-                for glow in &inner.glow_layers {
-                    glow.removeAnimationForKey(ns_string!("glowPulse"));
+            for border in cell.borrow().iter() {
+                if paused {
+                    border
+                        .border_layer
+                        .removeAnimationForKey(ns_string!("borderPulse"));
                     let gray = colors::gray_cgcolor();
-                    glow.setStrokeColor(Some(&gray));
-                }
-            } else {
-                // Border stroke → teal, pulsing
-                let anim = macos::create_stroke_pulse_animation();
-                inner
-                    .border_layer
-                    .addAnimation_forKey(&anim, Some(ns_string!("borderPulse")));
-                let teal = colors::teal_cgcolor_full();
-                inner.border_layer.setStrokeColor(Some(&teal));
-
-                // Glow bands → teal, pulsing
-                for (i, glow) in inner.glow_layers.iter().enumerate() {
+                    border.border_layer.setStrokeColor(Some(&gray));
+                    for glow in &border.glow_layers {
+                        glow.removeAnimationForKey(ns_string!("glowPulse"));
+                        let gray = colors::gray_cgcolor();
+                        glow.setStrokeColor(Some(&gray));
+                    }
+                } else {
+                    let anim = macos::create_stroke_pulse_animation();
+                    border
+                        .border_layer
+                        .addAnimation_forKey(&anim, Some(ns_string!("borderPulse")));
                     let teal = colors::teal_cgcolor_full();
-                    glow.setStrokeColor(Some(&teal));
-                    let base = macos::GLOW_OPACITIES[i];
-                    glow.setOpacity(base);
-                    let anim = macos::create_opacity_pulse(base, base * 0.25);
-                    glow.addAnimation_forKey(&anim, Some(ns_string!("glowPulse")));
+                    border.border_layer.setStrokeColor(Some(&teal));
+                    for (i, glow) in border.glow_layers.iter().enumerate() {
+                        let teal = colors::teal_cgcolor_full();
+                        glow.setStrokeColor(Some(&teal));
+                        let base = macos::GLOW_OPACITIES[i];
+                        glow.setOpacity(base);
+                        let anim = macos::create_opacity_pulse(base, base * 0.25);
+                        glow.addAnimation_forKey(&anim, Some(ns_string!("glowPulse")));
+                    }
                 }
             }
         });
     }
 
-    /// Query current visibility (lock-free atomic read).
+    /// Check if screen topology changed and rebuild border windows if needed.
+    /// Called periodically from a Tokio task (every 5 seconds).
+    #[cfg(target_os = "macos")]
+    pub fn check_and_rebuild(&self) {
+        self.inner.get_on_main(|cell| {
+            let mtm = objc2::MainThreadMarker::new().expect("get_on_main guarantees main thread");
+            let new_fp = macos::screen_fingerprint(mtm);
+            let old_fp = self.fingerprint.load(Ordering::Relaxed);
+            if new_fp == old_fp {
+                return;
+            }
+
+            tracing::info!("Screen topology changed, rebuilding border windows");
+            self.fingerprint.store(new_fp, Ordering::Relaxed);
+
+            let is_visible = self.visible.load(Ordering::Relaxed);
+            let is_paused = self.paused.load(Ordering::Relaxed);
+
+            // Tear down old windows
+            {
+                let borders = cell.borrow();
+                for border in borders.iter() {
+                    border.window.orderOut(None);
+                }
+            }
+
+            // Create new windows for current screens
+            let new_borders = macos::create_all_border_windows(mtm);
+
+            // Restore state
+            for border in &new_borders {
+                if is_visible {
+                    border.window.orderFront(None);
+                }
+                if is_paused {
+                    use objc2_foundation::ns_string;
+                    border
+                        .border_layer
+                        .removeAnimationForKey(ns_string!("borderPulse"));
+                    let gray = colors::gray_cgcolor();
+                    border.border_layer.setStrokeColor(Some(&gray));
+                    for glow in &border.glow_layers {
+                        glow.removeAnimationForKey(ns_string!("glowPulse"));
+                        let gray = colors::gray_cgcolor();
+                        glow.setStrokeColor(Some(&gray));
+                    }
+                }
+            }
+
+            // Replace vec contents
+            *cell.borrow_mut() = new_borders;
+        });
+    }
+
     #[allow(dead_code)]
     pub fn is_visible(&self) -> bool {
         self.visible.load(Ordering::Relaxed)
     }
 
-    /// Query current paused state (lock-free atomic read).
     #[allow(dead_code)]
     pub fn is_paused(&self) -> bool {
         self.paused.load(Ordering::Relaxed)
@@ -128,15 +183,13 @@ impl NativeBorderIndicator {
 #[cfg(target_os = "macos")]
 impl Drop for NativeBorderIndicator {
     fn drop(&mut self) {
-        self.inner.get_on_main(|inner| {
-            inner.window.orderOut(None);
+        self.inner.get_on_main(|cell| {
+            for border in cell.borrow().iter() {
+                border.window.orderOut(None);
+            }
         });
     }
 }
 
-/// Tauri managed state wrapper for the native border indicator.
-///
-/// Separate from AppState to avoid ordering issues — AppState is registered
-/// before `setup.rs` runs, but the border window must be created during setup
-/// on the main thread.
-pub struct NativeBorderState(pub NativeBorderIndicator);
+/// Tauri managed state wrapper. Uses `Arc` for sharing with the screen monitor task.
+pub struct NativeBorderState(pub std::sync::Arc<NativeBorderIndicator>);

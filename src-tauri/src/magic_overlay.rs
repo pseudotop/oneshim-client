@@ -376,7 +376,24 @@ pub fn create_tracking_panel(app_handle: &AppHandle) -> Result<(), String> {
     let panel_width = 260.0;
     let panel_height = 36.0;
     let x = (logical_width / 2.0) - (panel_width / 2.0);
-    // Bottom-center: 8px above the Dock area (standard recording indicator position)
+
+    // Dock-aware Y: use NSScreen::visibleFrame() to avoid Dock overlap.
+    // macOS coords: bottom-left origin. Tauri coords: top-left origin.
+    // visibleFrame().origin.y = distance from screen bottom to Dock top (in points).
+    #[cfg(target_os = "macos")]
+    let y = {
+        use objc2::MainThreadMarker;
+        MainThreadMarker::new()
+            .and_then(|mtm| {
+                let screen = objc2_app_kit::NSScreen::mainScreen(mtm)?;
+                let vf = screen.visibleFrame();
+                // Convert macOS bottom-up to Tauri top-down:
+                // tauri_y = logical_height - (macos_y / scale) - panel_height - margin
+                Some(logical_height - vf.origin.y / scale - panel_height - 8.0)
+            })
+            .unwrap_or(logical_height - panel_height - 80.0)
+    };
+    #[cfg(not(target_os = "macos"))]
     let y = logical_height - panel_height - 80.0;
 
     WebviewWindowBuilder::new(
