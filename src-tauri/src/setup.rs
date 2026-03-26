@@ -61,6 +61,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             info!("Native border: MainThreadMarker acquired");
             match crate::native_border::NativeBorderIndicator::new(mtm) {
                 Some(border) => {
+                    let border = std::sync::Arc::new(border);
                     let visible = _app_handle
                         .try_state::<crate::runtime_state::AppState>()
                         .map(|s| {
@@ -71,6 +72,17 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     if visible {
                         border.show();
                     }
+
+                    // Spawn periodic screen topology monitor (every 5s)
+                    let border_for_task = border.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+                        loop {
+                            interval.tick().await;
+                            border_for_task.check_and_rebuild();
+                        }
+                    });
+
                     app.manage(crate::native_border::NativeBorderState(border));
                     info!("Native border indicator created (visible={visible})");
                 }
