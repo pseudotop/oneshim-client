@@ -32,7 +32,8 @@
     "coaching": "코칭",
     "recalibration": "재보정",
     "dashboardDay": "일별 보기",
-    "mainNavLabel": "메인 내비게이션"
+    "mainNavLabel": "메인 내비게이션",
+    "chat": "채팅"
   },
   "dashboard": {
     "title": "활동 요약",
@@ -1033,5 +1034,19 @@
     "back": "이전",
     "skip": "건너뛰기",
     "complete": "시작하기"
+  },
+  "chat": {
+    "title": "AI 세션",
+    "no_sessions": "세션 없음",
+    "create_hint": "전송 방식을 선택하고 +를 누르세요.",
+    "create_session": "세션을 만들어 채팅을 시작하세요",
+    "input_placeholder": "메시지를 입력하세요...",
+    "thinking": "생각 중...",
+    "retry": "재시도",
+    "turns": "턴",
+    "copy": "복사",
+    "copied": "복사됨",
+    "advanced": "고급 설정",
+    "system_prompt_placeholder": "시스템 프롬프트 (선택)"
   }
 }

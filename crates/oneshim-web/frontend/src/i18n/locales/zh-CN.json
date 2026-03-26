@@ -32,7 +32,8 @@
     "dashboardDay": "日视图",
     "mainNavLabel": "主导航",
     "coaching": "教练",
-    "recalibration": "重新校准"
+    "recalibration": "重新校准",
+    "chat": "聊天"
   },
   "dashboard": {
     "title": "活动概览",

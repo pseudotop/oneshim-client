@@ -32,7 +32,8 @@
     "dashboardDay": "日別ビュー",
     "mainNavLabel": "メインナビゲーション",
     "coaching": "コーチング",
-    "recalibration": "再キャリブレーション"
+    "recalibration": "再キャリブレーション",
+    "chat": "チャット"
   },
   "dashboard": {
     "title": "アクティビティサマリー",

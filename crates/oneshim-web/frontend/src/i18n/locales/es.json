@@ -32,7 +32,8 @@
     "mainNavLabel": "Navegación principal",
     "coaching": "Coaching",
     "recalibration": "Recalibración",
-    "dashboardDay": "Vista diaria"
+    "dashboardDay": "Vista diaria",
+    "chat": "Chat"
   },
   "dashboard": {
     "title": "Resumen de actividad",
