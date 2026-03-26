@@ -32,7 +32,8 @@
     "coaching": "Coaching",
     "recalibration": "Recalibration",
     "dashboardDay": "Day View",
-    "mainNavLabel": "Main Navigation"
+    "mainNavLabel": "Main Navigation",
+    "chat": "Chat"
   },
   "dashboard": {
     "title": "Activity Summary",
@@ -1033,5 +1034,19 @@
     "back": "Back",
     "skip": "Skip",
     "complete": "Get Started"
+  },
+  "chat": {
+    "title": "AI Sessions",
+    "no_sessions": "No sessions",
+    "create_hint": "Select a transport and press + in the sidebar.",
+    "create_session": "Create a session to start chatting",
+    "input_placeholder": "Type a message...",
+    "thinking": "Thinking...",
+    "retry": "Retry",
+    "turns": "turns",
+    "copy": "Copy",
+    "copied": "Copied",
+    "advanced": "Advanced",
+    "system_prompt_placeholder": "System prompt (optional)"
   }
 }
