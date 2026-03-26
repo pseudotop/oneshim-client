@@ -234,6 +234,7 @@ fn configure_connection(conn: &Connection, is_disk: bool) -> Result<(), CoreErro
         conn.execute_batch(
             "
             PRAGMA journal_mode=WAL;
+            PRAGMA busy_timeout=5000;
             PRAGMA synchronous=NORMAL;
             PRAGMA cache_size=8000;
             PRAGMA temp_store=MEMORY;
