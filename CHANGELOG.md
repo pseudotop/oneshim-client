@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-26
+### Added
+
+- Enhance TrackingBorder with 10px inset shadow and blink animation
+  - Add inset box-shadow (10px) using brand-signal color for visibility
+  - Replace subtle pulse (opacity 0.4-0.7, 3s) with blink (0.3-1.0, 2s)
+  - Full opacity border-brand-signal when active (no /60 modifier)
+
+- Native macOS border indicator with 5-band gradient glow
+  Replace CSS TrackingBorder (unreliable in transparent WebView) with a
+  dedicated NSWindow + CAShapeLayer native border indicator.
+
+  - native_border module: NativeBorderIndicator with MainThreadBound<BorderInner>
+    for thread-safe NSWindow access, AtomicBool visibility/pause state
+  - 5-band gradient glow (100px depth, 20px bands, decreasing opacity)
+    using stacked CAShapeLayers with opacity pulse animation
+  - 3px teal stroke with strokeColor pulse animation
+  - Migrate macos_integration.rs from objc 0.2 to objc2 0.6 (type-safe API)
+  - Wire state changes in capture_status, tray, setup, keyboard shortcut
+  - Tracking panel: inset CSS glow animation, native drag via
+    movableByWindowBackground, emoji icons replaced with unicode symbols
+  - MagicOverlay no longer shown at startup (fixes panel drag blocking)
+
+- Add Open DevTools button to Dev Toolbar
+  Adds IPC command open_devtools (debug builds only) and a purple button
+  in the Dev Toolbar that opens Chrome DevTools for the main window.
+  Uses dynamic import for @tauri-apps/api/core with graceful degradation.
+
+
+### Fixed
+
+- Filter ONESHIM windows by app name + update README crate table
+  Add app name filter ("ONESHIM") before existing PID check in macOS
+  active window detection. Tauri v2 WebView child processes may have
+  different PIDs, bypassing the PID-only filter.
+
+  Also updates README architecture diagram and crate documentation table
+  to include oneshim-analysis, oneshim-embedding, oneshim-api-contracts,
+  oneshim-lint, and removes deprecated oneshim-app/oneshim-ui entries.
+
+- Add position validation and fix HiDPI restore bug
+  - Add monitor bounds validation to get_panel_position: saved position is
+    checked against available_monitors() physical bounds before restoring.
+    Returns None (falls back to center-top default) if off-screen.
+  - Fix physical/logical pixel mismatch: tauri://move emits PhysicalPosition
+    but restore used LogicalPosition, causing drift on HiDPI. Now uses
+    PhysicalPosition consistently.
+  - Add missing Tauri capabilities: set-position and set-size were not
+    granted to tracking-panel window, causing silent failures.
+  - 19 unit tests for parse_position and is_position_valid pure helpers.
+
+- Create MagicOverlay window at startup for TrackingBorder
+  - Make ensure_window() public and call it during app setup so the
+    overlay window exists immediately, enabling TrackingBorder and
+    CaptureFlash components to render from startup.
+  - Remove window.hide() from dismiss() — the React layer handles
+    coaching popup visibility via the dismiss event. Hiding the OS
+    window would kill persistent overlay components.
+  - Update stale doc comments about lazy window creation.
+
+- Use tauri::async_runtime::spawn for idle reaper task
+
+- Add core:default capability for IPC invoke support
+  The overlay window was missing core:default, causing invoke calls
+  like get_capture_status to silently fail. This left indicator_visible
+  at its default false, preventing TrackingBorder from rendering.
+
+- Use inline styles for TrackingBorder + add overlay capabilities
+  - Replace Tailwind arbitrary classes with inline styles to avoid CSS
+    purging issues (border-[3px] was not compiled into overlay CSS)
+  - Add CSS variables (--brand-signal) to overlay/index.css
+  - Add @keyframes tracking-blink directly in overlay CSS
+  - Add core:default + notification:default to overlay capabilities
+    (fixes silent IPC failures for get_capture_status)
+  - Remove debug devtools and console.log
+
+- Use runtime handle for idle reaper spawn
+
+- Add set-size permission to tracking panel capability
+  The expand/collapse setSize() was silently rejected because
+  tracking-panel.json capability lacked core:window:allow-set-size.
+  The resizable(true) change was never the issue — it was always a
+  Tauri v2 permission gap.
+
+  Also improves DevToolbar: separate Main/Panel DevTools buttons,
+  open_devtools accepts optional label parameter, and toggleExpanded
+  now logs setSize calls for debugging.
+
+- Tracking panel drag + expand permissions, Lucide icons, DevTools
+  - Add core:window:allow-start-dragging and allow-set-position to
+    tracking-panel capability (was preventing drag movement)
+  - Replace emoji icons with Lucide React icons in expanded panel
+  - Add data-tauri-drag-region to expanded panel area for full-panel drag
+  - DevToolbar: separate Main/Panel DevTools buttons
+  - open_devtools IPC accepts optional label parameter
+  - toggleExpanded logs setSize calls for debugging
+
+
 ## [0.4.3-rc.5] - 2026-03-26
 ### Added
 
