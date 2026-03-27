@@ -213,7 +213,8 @@ mod inner {
     /// Consecutive AT-SPI2 failures before the circuit breaker opens.
     static CONSECUTIVE_FAILURES: AtomicU32 = AtomicU32::new(0);
     const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
-    const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 60;
+    /// Retry every 10 ticks (~30s at 3s poll) after circuit opens.
+    const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 10;
 
     /// Linux AT-SPI2 accessibility extractor.
     ///
@@ -254,7 +255,10 @@ mod inner {
         }
 
         fn record_failure() {
-            CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
+            let prev = CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
+            if prev + 1 == CIRCUIT_BREAKER_THRESHOLD {
+                warn!("LinuxAccessibility: circuit breaker tripped after {CIRCUIT_BREAKER_THRESHOLD} consecutive failures");
+            }
         }
 
         /// Check if the AT-SPI2 D-Bus service is reachable.

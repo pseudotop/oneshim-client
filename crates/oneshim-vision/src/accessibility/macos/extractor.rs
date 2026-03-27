@@ -27,7 +27,8 @@ use crate::privacy::sanitize_title_with_level;
 /// Circuit breaker: skip AX calls after consecutive failures.
 static CONSECUTIVE_FAILURES: AtomicU32 = AtomicU32::new(0);
 const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
-const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 60;
+/// Retry every 10 ticks (~30s at 3s poll) after circuit opens.
+const CIRCUIT_BREAKER_RETRY_INTERVAL: u32 = 10;
 
 /// Raw data extracted from the accessibility API before PII filtering.
 struct RawFocusedElement {
@@ -87,7 +88,12 @@ impl MacOsNativeAccessibility {
     }
 
     fn record_failure() {
-        CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
+        let prev = CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
+        if prev + 1 == CIRCUIT_BREAKER_THRESHOLD {
+            warn!(
+                "MacOsNativeAccessibility: circuit breaker tripped after {CIRCUIT_BREAKER_THRESHOLD} consecutive failures"
+            );
+        }
     }
 
     /// Extract the focused element via AXUIElement API (synchronous).
