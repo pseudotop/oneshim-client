@@ -1,6 +1,6 @@
 use tracing::{debug, warn};
 
-async fn try_build_tls_config(
+pub(super) async fn try_build_tls_config(
     cert_pem: &[u8],
     key_pem: &[u8],
 ) -> Option<axum_server::tls_rustls::RustlsConfig> {

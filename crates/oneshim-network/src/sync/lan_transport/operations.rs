@@ -13,7 +13,7 @@ impl LanSyncTransport {
     ///
     /// Authenticates first (from cache or fresh handshake), then pushes.
     /// If push gets 401, invalidates the cached token and retries once.
-    async fn push_to_peer(
+    pub(super) async fn push_to_peer(
         &self,
         peer_id: &str,
         peer: &LanPeerInfo,
@@ -99,7 +99,7 @@ impl LanSyncTransport {
     /// Pull encrypted changesets from a single peer. Returns decrypted changeset(s).
     ///
     /// Authenticates first, then pulls. Retries once on 401.
-    async fn pull_from_peer(
+    pub(super) async fn pull_from_peer(
         &self,
         peer_id: &str,
         peer: &LanPeerInfo,

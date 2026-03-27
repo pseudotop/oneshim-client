@@ -34,6 +34,7 @@ mod handlers;
 mod session;
 mod tls;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -43,6 +44,7 @@ use tracing::{debug, error, info, warn};
 use oneshim_core::error::CoreError;
 use oneshim_core::models::sync::ChangeSet;
 
+use handlers::build_router;
 use session::SessionStore;
 use tls::try_build_tls_config;
 

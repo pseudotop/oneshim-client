@@ -6,6 +6,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
+use oneshim_core::models::sync::ChangeSet;
 use oneshim_core::sync::Hlc;
 
 use super::session::SessionStore;
@@ -60,7 +61,7 @@ pub struct PullQuery {
     pub device_id: Option<String>,
 }
 
-fn build_router(state: ServerState) -> Router {
+pub(super) fn build_router(state: ServerState) -> Router {
     Router::new()
         // Public endpoints (no auth required)
         .route("/sync/info", get(handle_info))
