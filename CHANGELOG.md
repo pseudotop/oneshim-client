@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-03-28
+### Fixed
+
+- Restore lan-sync feature build + add 5 integration tests ([#217](https://github.com/pseudotop/oneshim-client/pull/217))
+  ADR-003 directory module refactoring left private items that need
+  pub(super) visibility. Fixed across 8 files in lan_server/ and
+  lan_transport/ modules.
+
+  Build fix:
+  - SessionStore, TokenCache: pub(super) struct
+  - build_router, try_build_tls_config: pub(super) fn
+  - authenticate_with_peer, push_to_peer, pull_from_peer: pub(super) async fn
+  - Missing imports: ChangeSet, SocketAddr
+
+  New tests (333 total, +5):
+  - pull_watermark_filtering: HLC-based changeset filtering
+  - multiple_changesets_ordering: verify FIFO ordering on pull
+  - server_restart_same_port: stop + restart lifecycle
+  - push_to_offline_peer_is_graceful: best-effort fanout
+  - pull_from_offline_peer_returns_none: graceful degradation
+
+- Resolve Linux AT-SPI type inference errors + add lan-sync to CI ([#218](https://github.com/pseudotop/oneshim-client/pull/218))
+  AT-SPI fixes (linux.rs):
+  - Add explicit type annotations for zbus 5.x proxy methods (E0282)
+  - proxy.get_role() → Result<Role, _>, proxy.name() → String
+  - AccessibilityConnection::new() → explicit type
+
+  CI improvements (ci.yml):
+  - Add lan-sync clippy check to Check job
+  - Add lan-sync test run to Test job
+
+
 ## [0.4.5-rc.5] - 2026-03-28
 ### Fixed
 
