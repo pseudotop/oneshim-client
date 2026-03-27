@@ -13,7 +13,7 @@ mod v09_v18;
 mod v19_v20;
 
 use rusqlite::Connection;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 pub(crate) const CURRENT_VERSION: u32 = 20;
 
@@ -63,7 +63,12 @@ fn run_migration_step(
         }
         Err(e) => {
             warn!("migration v{version} failed, rolling back: {e}");
-            let _ = conn.execute_batch(&format!("ROLLBACK TO SAVEPOINT {sp_name}"));
+            if let Err(rb_err) = conn.execute_batch(&format!("ROLLBACK TO SAVEPOINT {sp_name}")) {
+                error!(
+                    version,
+                    "ROLLBACK TO SAVEPOINT failed — database may be in inconsistent state: {rb_err}"
+                );
+            }
             Err(e)
         }
     }
@@ -80,7 +85,9 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     let current = get_version(conn)?;
     info!("current schema version: {current}, target: {CURRENT_VERSION}");
 
-    backup_if_needed(conn, current);
+    if current < CURRENT_VERSION && backup_if_needed(conn, current).is_none() {
+        warn!("proceeding with migration without backup");
+    }
 
     if current < 1 {
         run_migration_step(conn, 1, v01_v08::migrate_v1)?;
