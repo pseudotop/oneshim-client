@@ -12,6 +12,7 @@ use oneshim_core::models::tiered_memory::{
 ///
 /// Discovers activity regimes by clustering `RegimeFeatures` vectors.
 /// Uses silhouette score to select optimal k in [2, max_k].
+#[derive(Clone)]
 pub struct RegimeDetector {
     max_k: usize,
     max_iterations: usize,
