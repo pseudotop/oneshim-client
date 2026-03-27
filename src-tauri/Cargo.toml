@@ -70,7 +70,7 @@ lru = { workspace = true }
 raw-window-handle = "0.6"
 
 [features]
-default = ["custom-protocol", "analysis", "native-vision"]
+default = ["custom-protocol", "analysis", "native-vision", "linux-atspi"]
 custom-protocol = ["tauri/custom-protocol"]
 analysis = ["dep:oneshim-network"]
 server = ["analysis"]
@@ -78,6 +78,7 @@ grpc = ["server", "oneshim-network/grpc"]
 embedding = ["dep:oneshim-embedding"]
 native-vision = ["oneshim-vision/native-vision"]
 hnsw = ["oneshim-analysis/hnsw"]
+linux-atspi = ["oneshim-vision/linux-atspi"]
 lan-sync = ["oneshim-network/lan-sync"]
 webdriver = ["dep:tauri-plugin-webdriver"]
 
