@@ -381,6 +381,11 @@ export default function Chat() {
 
   const active = sessions.find((s) => s.session_id === activeId)
 
+  // Virtualization guard: only render the last 500 messages to prevent DOM bloat
+  const MAX_VISIBLE_MESSAGES = 500
+  const isTruncated = messages.length > MAX_VISIBLE_MESSAGES
+  const visibleMessages = isTruncated ? messages.slice(-MAX_VISIBLE_MESSAGES) : messages
+
   return (
     <div className="flex h-full min-h-0">
       {/* Sidebar */}
@@ -543,7 +548,23 @@ export default function Chat() {
               </div>
             </div>
             <div ref={scrollRef} onScroll={handleScroll} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-              {messages.map((msg) => {
+              {isTruncated && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Scroll-to-top hint; full history is in memory
+                    scrollRef.current?.scrollTo({ top: 0 })
+                  }}
+                  className={cn(
+                    'mx-auto block rounded-full border px-3 py-1 text-xs',
+                    'border-muted bg-surface-elevated text-content-secondary',
+                    interaction.interactive,
+                  )}
+                >
+                  {messages.length - MAX_VISIBLE_MESSAGES} earlier messages not shown
+                </button>
+              )}
+              {visibleMessages.map((msg) => {
                 const matches = searchQuery && msg.content.toLowerCase().includes(searchQuery.toLowerCase())
                 const dimmed = searchQuery && !matches
                 return (
