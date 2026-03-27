@@ -63,3 +63,37 @@ export const Default: Story = {
 export const WithDisabledTab: Story = {
   render: () => <TabsDemo tabs={tabsWithDisabledItem} />,
 }
+
+export const ManyTabs: Story = {
+  render: () => {
+    const manyTabs: Tab[] = [
+      { id: 'general', label: 'General' },
+      { id: 'appearance', label: 'Appearance' },
+      { id: 'privacy', label: 'Privacy' },
+      { id: 'notifications', label: 'Notifications' },
+      { id: 'keyboard', label: 'Keyboard' },
+      { id: 'ai-models', label: 'AI Models' },
+      { id: 'automation', label: 'Automation' },
+      { id: 'advanced', label: 'Advanced' },
+    ]
+    return <TabsDemo tabs={manyTabs} />
+  },
+}
+
+export const SingleTab: Story = {
+  render: () => {
+    const single: Tab[] = [{ id: 'only', label: 'Only Tab', icon: <Settings className="h-4 w-4" aria-hidden="true" /> }]
+    return <TabsDemo tabs={single} />
+  },
+}
+
+export const AllDisabled: Story = {
+  render: () => {
+    const disabled: Tab[] = [
+      { id: 'a', label: 'Tab A', disabled: true },
+      { id: 'b', label: 'Tab B', disabled: true },
+      { id: 'c', label: 'Tab C', disabled: true },
+    ]
+    return <TabsDemo tabs={disabled} />
+  },
+}

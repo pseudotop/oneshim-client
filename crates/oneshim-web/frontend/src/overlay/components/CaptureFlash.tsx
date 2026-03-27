@@ -19,7 +19,7 @@ export function CaptureFlash({ timestamp }: CaptureFlashProps) {
 
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[60] border-4 border-brand"
+      className="pointer-events-none fixed inset-0 z-tooltip border-4 border-brand"
       style={{ opacity: visible ? 1 : 0, transition: 'opacity 200ms ease-out' }}
     />
   )

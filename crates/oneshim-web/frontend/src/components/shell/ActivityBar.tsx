@@ -160,7 +160,7 @@ export default function ActivityBar({ onToggleSidebar, sidebarCollapsed }: Activ
       {tooltip && (
         <div
           id={TOOLTIP_ID}
-          className={cn('pointer-events-none fixed z-50', layout.activityBar.tooltip)}
+          className={cn('pointer-events-none fixed z-tooltip', layout.activityBar.tooltip)}
           style={{ left: ACTIVITYBAR_WIDTH_PX + 8, top: tooltipY + 4 }}
           role="tooltip"
         >

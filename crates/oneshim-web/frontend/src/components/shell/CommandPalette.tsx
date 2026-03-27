@@ -251,7 +251,7 @@ export default function CommandPalette({ isOpen, onClose, onToggleSidebar }: Com
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled via input onKeyDown handler
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-start justify-center',
+        'fixed inset-0 z-overlay flex items-start justify-center',
         layout.commandPalette.position,
         layout.commandPalette.overlay,
       )}

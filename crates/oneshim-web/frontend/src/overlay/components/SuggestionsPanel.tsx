@@ -41,7 +41,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
     <aside
       aria-label="Suggestions panel"
       className={cn(
-        'fixed top-20 right-4 z-[45] max-h-[calc(100vh-10rem)] w-80 transform rounded-xl border border-content-inverse/10 bg-surface-sunken/90 shadow-2xl backdrop-blur-md',
+        'fixed top-20 right-4 z-panel max-h-[calc(100vh-10rem)] w-80 transform rounded-xl border border-content-inverse/10 bg-surface-sunken/90 shadow-2xl backdrop-blur-md',
         motion.transform,
         open ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]',
       )}

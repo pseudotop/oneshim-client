@@ -59,7 +59,7 @@ function AppShell() {
         {/* Skip navigation link for keyboard users (WCAG 2.4.1) */}
         <a
           href="#main-content"
-          className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-2 focus-visible:left-2 focus-visible:z-[60] focus-visible:rounded focus-visible:bg-brand-signal focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:text-white"
+          className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:top-2 focus-visible:left-2 focus-visible:z-tooltip focus-visible:rounded focus-visible:bg-brand-signal focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:text-white"
         >
           {t('shell.skipToContent', 'Skip to main content')}
         </a>
