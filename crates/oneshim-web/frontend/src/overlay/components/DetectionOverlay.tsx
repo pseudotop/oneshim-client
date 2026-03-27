@@ -82,6 +82,7 @@ export default function DetectionOverlay({ scene, selectedId, onSelect }: Detect
           <button
             type="button"
             key={el.element_id}
+            aria-label={`${getRoleLabel(el.role)}: ${el.label || 'unlabeled'}`}
             className="fixed cursor-pointer"
             style={{
               left: el.x,

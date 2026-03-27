@@ -38,7 +38,8 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
   }
 
   return (
-    <div
+    <aside
+      aria-label="Suggestions panel"
       className={cn(
         'fixed top-20 right-4 z-[45] max-h-[calc(100vh-10rem)] w-80 transform rounded-xl border border-content-inverse/10 bg-surface-sunken/90 shadow-2xl backdrop-blur-md',
         motion.transform,
@@ -53,6 +54,7 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
         <button
           type="button"
           onClick={onClose}
+          aria-label="Close suggestions panel"
           className={cn('text-content-tertiary text-sm hover:text-content', motion.colors)}
         >
           &times;
@@ -67,6 +69,6 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
           <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
         )}
       </div>
-    </div>
+    </aside>
   )
 }

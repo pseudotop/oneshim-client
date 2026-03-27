@@ -133,8 +133,8 @@ function CopyButton({ text }: { text: string }) {
       await navigator.clipboard.writeText(text)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Clipboard API may be unavailable in some Tauri WebView contexts
+    } catch (e) {
+      console.warn('clipboard.writeText failed:', e)
     }
   }, [text])
   return (
@@ -295,8 +295,8 @@ export default function Chat() {
       setSessions((p) => [info, ...p])
       setActiveId(info.session_id)
       setMessages([])
-    } catch {
-      /* noop */
+    } catch (e) {
+      console.warn('create_ai_session failed:', e)
     }
     setCreating(false)
   }, [transport, systemPrompt])
@@ -311,8 +311,8 @@ export default function Chat() {
           setActiveId(null)
           setMessages([])
         }
-      } catch {
-        /* noop */
+      } catch (e) {
+        console.warn('kill_ai_session failed:', e)
       }
     },
     [activeId],
@@ -356,7 +356,8 @@ export default function Chat() {
     setSending(true)
     try {
       await ipc('send_session_message', { sessionId: activeId, message: text })
-    } catch {
+    } catch (e) {
+      console.warn('send_session_message failed:', e)
       setSending(false)
     }
   }, [input, activeId, sending, attachments])
@@ -366,8 +367,8 @@ export default function Chat() {
     try {
       const info = await ipc<SessionInfo>('retry_ai_session', { sessionId: activeId })
       setSessions((p) => p.map((s) => (s.session_id === info.session_id ? info : s)))
-    } catch {
-      /* noop */
+    } catch (e) {
+      console.warn('retry_ai_session failed:', e)
     }
   }, [activeId])
 

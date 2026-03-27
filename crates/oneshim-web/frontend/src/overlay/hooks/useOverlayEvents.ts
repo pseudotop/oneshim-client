@@ -151,8 +151,8 @@ export function useOverlayEvents() {
         try {
           const suggestions = await invoke<SuggestionViewDto[]>('get_pending_suggestions')
           dispatch({ type: 'set-suggestions', payload: suggestions })
-        } catch {
-          /* ignore fetch failures */
+        } catch (e) {
+          console.warn('get_pending_suggestions failed:', e)
         }
       })
 
@@ -176,8 +176,8 @@ export function useOverlayEvents() {
         const { invoke } = await import('@tauri-apps/api/core')
         const status = await invoke<CaptureStatePayload>('get_capture_status')
         dispatch({ type: 'capture-state-changed', payload: status })
-      } catch {
-        /* standalone/dev mode — keep defaults */
+      } catch (e) {
+        console.warn('get_capture_status failed:', e)
       }
     }
 

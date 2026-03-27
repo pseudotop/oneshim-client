@@ -15,7 +15,13 @@ export default function GoalProgressBar({ goals }: GoalProgressBarProps) {
           {goals.map((goal) => (
             <div key={goal.regime_label} className="flex min-w-[180px] flex-1 items-center gap-2">
               <span className="w-20 truncate text-content-secondary text-xs">{goal.regime_label}</span>
-              <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-content-inverse/10">
+              <div
+                className="relative h-2 flex-1 overflow-hidden rounded-full bg-content-inverse/10"
+                role="progressbar"
+                aria-label={`${goal.regime_label} progress`}
+                aria-valuenow={goal.current_minutes}
+                aria-valuemax={goal.target_minutes}
+              >
                 <div
                   className={`absolute inset-y-0 left-0 rounded-full ${motion.all}`}
                   style={{

@@ -26,8 +26,8 @@ export default function OverlayApp() {
     try {
       const suggestions = await invoke<SuggestionViewDto[]>('get_pending_suggestions')
       dispatch({ type: 'set-suggestions', payload: suggestions })
-    } catch {
-      /* ignore */
+    } catch (e) {
+      console.warn('get_pending_suggestions failed:', e)
     }
   }, [dispatch])
 
@@ -42,8 +42,8 @@ export default function OverlayApp() {
     const { invoke } = await import('@tauri-apps/api/core')
     try {
       await invoke('refresh_detection_overlay')
-    } catch {
-      /* ignore */
+    } catch (e) {
+      console.warn('refresh_detection_overlay failed:', e)
     }
   }, [])
 
@@ -51,8 +51,8 @@ export default function OverlayApp() {
     const { invoke } = await import('@tauri-apps/api/core')
     try {
       await invoke('toggle_detection_overlay', { active: false })
-    } catch {
-      /* ignore */
+    } catch (e) {
+      console.warn('toggle_detection_overlay failed:', e)
     }
   }, [])
 
