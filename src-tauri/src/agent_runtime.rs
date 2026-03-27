@@ -51,6 +51,7 @@ pub(crate) struct AgentRuntimeBundle {
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
     overlay_driver: Option<Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver>>,
     capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
+    detection_active: Option<Arc<std::sync::atomic::AtomicBool>>,
     server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
@@ -504,6 +505,9 @@ impl AgentRuntimeBundle {
         if let Some(capture_paused) = self.capture_paused {
             scheduler = scheduler.with_capture_paused(capture_paused);
         }
+        if let Some(detection_active) = self.detection_active {
+            scheduler = scheduler.with_detection_active(detection_active);
+        }
 
         // --- Focus mode state for coaching/notification suppression (A4) ---
         if let Some(focus_mode) = self.focus_mode {
@@ -609,6 +613,7 @@ pub(crate) struct AgentRuntimeBuilder<'a> {
     magic_overlay: Option<crate::magic_overlay::MagicOverlayHandle>,
     overlay_driver: Option<Arc<dyn oneshim_core::ports::overlay_driver::OverlayDriver>>,
     capture_paused: Option<Arc<std::sync::atomic::AtomicBool>>,
+    detection_active: Option<Arc<std::sync::atomic::AtomicBool>>,
     server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     llm_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     cli_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
@@ -666,6 +671,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             magic_overlay: None,
             overlay_driver: None,
             capture_paused: None,
+            detection_active: None,
             server_health_flag: None,
             llm_health_flag: None,
             cli_health_flag: None,
@@ -780,6 +786,14 @@ impl<'a> AgentRuntimeBuilder<'a> {
         self
     }
 
+    pub(crate) fn with_detection_active(
+        mut self,
+        flag: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.detection_active = Some(flag);
+        self
+    }
+
     pub(crate) fn with_health_flags(
         mut self,
         server: Arc<std::sync::atomic::AtomicBool>,
@@ -863,6 +877,7 @@ impl<'a> AgentRuntimeBuilder<'a> {
             magic_overlay: self.magic_overlay,
             overlay_driver: self.overlay_driver,
             capture_paused: self.capture_paused,
+            detection_active: self.detection_active,
             server_health_flag: self.server_health_flag,
             llm_health_flag: self.llm_health_flag,
             cli_health_flag: self.cli_health_flag,
