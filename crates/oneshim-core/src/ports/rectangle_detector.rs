@@ -1,8 +1,12 @@
+//! Rectangle detection port — defines the contract for detecting rectangular
+//! UI element boundaries in screen images. Implemented by platform-specific
+//! adapters (macOS Vision.framework, future Core ML models).
+
 use crate::error::CoreError;
 use crate::models::intent::ElementBounds;
 use crate::models::ui_scene::NormalizedBounds;
 
-/// Detected rectangular GUI boundary from image analysis.
+/// A rectangle detected by a vision framework or ML model.
 #[derive(Debug, Clone)]
 pub struct DetectedRectangle {
     pub bounds: ElementBounds,
@@ -11,8 +15,7 @@ pub struct DetectedRectangle {
     pub classification: Option<String>,
 }
 
-/// Detects rectangular GUI element boundaries in a screen capture.
-/// Synchronous — callers wrap in spawn_blocking if needed.
+/// Synchronous rectangle detection from image data.
 pub trait RectangleDetector: Send + Sync {
     fn detect_rectangles(
         &self,

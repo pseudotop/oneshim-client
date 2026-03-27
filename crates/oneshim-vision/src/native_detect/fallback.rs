@@ -1,6 +1,7 @@
 use oneshim_core::error::CoreError;
 use oneshim_core::ports::rectangle_detector::{DetectedRectangle, RectangleDetector};
 
+#[allow(dead_code)] // used on non-macOS platforms only
 pub struct OcrBboxFallback;
 
 impl RectangleDetector for OcrBboxFallback {
