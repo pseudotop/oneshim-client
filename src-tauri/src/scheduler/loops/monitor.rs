@@ -57,9 +57,12 @@ impl Scheduler {
         let coaching_analysis_provider = self.analysis_provider.clone();
         let capture_paused = self.capture_paused.clone();
         let overlay_driver_ref = self.overlay_driver.clone();
+        let detection_active = self.detection_active.clone();
+        let scene_finder_ref = self.scene_finder.clone();
 
         tokio::spawn(async move {
             let mut prev_app: Option<String> = None;
+            let mut prev_window_title: Option<String> = None;
             let mut prev_idle_secs: u64 = 0;
             let mut interval = tokio::time::interval(poll);
             let mut idle_tracker = IdleTracker::new(Some(idle_threshold));
@@ -88,9 +91,7 @@ impl Scheduler {
             let mut last_ocr_regions: Vec<OcrRegion> = Vec::new();
 
             // ── Focus highlight debounce state ──
-            // Only re-render when the focused element's identity (role+label) changes.
-            let mut prev_highlight_key: Option<(String, String)> = None;
-            let mut last_highlight_handle_id: Option<String> = None;
+            let mut focus_hl = super::detection_helper::FocusHighlightState::new();
 
             // ── Coaching: track real regime dwell time ──
             let mut coaching_tick_state = CoachingTickState::new();
@@ -167,76 +168,15 @@ impl Scheduler {
                                         .await
                                     {
                                         Ok(info) => {
-                                            // Build a key from role+label for debounce comparison
-                                            let current_key = info.as_ref().and_then(|fe| {
-                                                fe.position.filter(|p| p.width > 0.0 && p.height > 0.0)?;
-                                                Some((
-                                                    fe.role.clone(),
-                                                    fe.label.clone().unwrap_or_default(),
-                                                ))
-                                            });
-
-                                            // Only update overlay when focused element identity changed
-                                            if current_key != prev_highlight_key {
-                                                if let Some(ref driver) = overlay_driver_ref {
-                                                    // Clear previous highlight first
-                                                    if let Some(ref prev_id) = last_highlight_handle_id {
-                                                        if let Err(e) = driver.clear_highlights(prev_id).await {
-                                                            debug!("focus highlight clear failed: {e}");
-                                                        }
-                                                        last_highlight_handle_id = None;
-                                                    }
-
-                                                    // Show new highlight if element has valid bounds
-                                                    if let Some(ref fe) = info {
-                                                        if let Some(ref pos) = fe.position {
-                                                            if pos.width > 0.0 && pos.height > 0.0 {
-                                                                let req = oneshim_core::models::gui::HighlightRequest {
-                                                                    session_id: String::new(),
-                                                                    scene_id: String::new(),
-                                                                    targets: vec![
-                                                                        oneshim_core::models::gui::HighlightTarget {
-                                                                            candidate_id: "ax-focus".to_string(),
-                                                                            bbox_abs: oneshim_core::models::intent::ElementBounds {
-                                                                                x: pos.x as i32,
-                                                                                y: pos.y as i32,
-                                                                                width: pos.width as u32,
-                                                                                height: pos.height as u32,
-                                                                            },
-                                                                            color: "#0d9488".to_string(),
-                                                                            label: fe.label.clone(),
-                                                                        },
-                                                                    ],
-                                                                };
-                                                                match driver.show_highlights(req).await {
-                                                                    Ok(handle) => {
-                                                                        last_highlight_handle_id = Some(handle.handle_id);
-                                                                    }
-                                                                    Err(e) => {
-                                                                        debug!("focus highlight show failed: {e}");
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                prev_highlight_key = current_key;
-                                            }
-
-                                            last_focused_element = info;
+                                            last_focused_element = super::detection_helper::update_focus_highlight(
+                                                info, &mut focus_hl, &overlay_driver_ref,
+                                            ).await;
                                         }
                                         Err(e) => {
                                             debug!("accessibility extraction failed: {e}");
-                                            // Clear highlight on extraction failure
-                                            if prev_highlight_key.is_some() {
-                                                if let Some(ref driver) = overlay_driver_ref {
-                                                    if let Some(ref prev_id) = last_highlight_handle_id {
-                                                        let _ = driver.clear_highlights(prev_id).await;
-                                                    }
-                                                }
-                                                last_highlight_handle_id = None;
-                                                prev_highlight_key = None;
-                                            }
+                                            super::detection_helper::clear_focus_highlight(
+                                                &mut focus_hl, &overlay_driver_ref,
+                                            ).await;
                                             last_focused_element = None;
                                         }
                                     }
@@ -529,6 +469,14 @@ impl Scheduler {
                                 }
                                 } // end A4: focus_mode coaching guard
 
+                                // ── Detection overlay: re-analyze on window change ──
+                                let title_changed = prev_window_title.as_ref() != Some(&focus_window_title);
+                                super::detection_helper::maybe_reanalyze_detection(
+                                    &detection_active, app_changed, title_changed,
+                                    &scene_finder_ref, &overlay_ref,
+                                );
+
+                                prev_window_title = Some(focus_window_title);
                                 prev_app = Some(app_name);
                             }
                             Err(e) => {

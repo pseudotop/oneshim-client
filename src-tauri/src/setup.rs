@@ -27,6 +27,12 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     // Register suggestions panel toggle shortcut (Cmd+Shift+S / Ctrl+Shift+S)
     register_suggestions_shortcut(app);
 
+    // Register detection overlay toggle shortcut (Cmd+Shift+D / Ctrl+Shift+D)
+    register_detection_shortcut(app);
+
+    // Register detection overlay refresh shortcut (Cmd+Shift+R / Ctrl+Shift+R)
+    register_detection_refresh_shortcut(app);
+
     // 12. Desktop shell startup
     DesktopStartupCoordinator::apply(app, frontend_web_port)?;
 
@@ -229,6 +235,73 @@ fn register_suggestions_shortcut(app: &App) {
     match result {
         Ok(()) => info!("Global shortcut registered: CmdOrCtrl+Shift+S (suggestions panel)"),
         Err(e) => tracing::warn!("Failed to register suggestions shortcut: {e}"),
+    }
+}
+
+fn register_detection_shortcut(app: &App) {
+    use tauri::Manager;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    if let Err(e) =
+        app.global_shortcut()
+            .on_shortcut("CmdOrCtrl+Shift+D", |app_handle, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let handle = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let state: tauri::State<'_, crate::runtime_state::AppState> =
+                            handle.state();
+                        let was_active = state
+                            .detection_active
+                            .fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+                        let now_active = !was_active;
+
+                        if now_active {
+                            tracing::info!("detection overlay toggled ON via shortcut");
+                            if let Some(ref overlay) = state.magic_overlay {
+                                overlay.set_interactive(true).await;
+                            }
+                            crate::commands::detection::spawn_detection_analysis_from_state(&state)
+                                .await;
+                        } else {
+                            tracing::info!("detection overlay toggled OFF via shortcut");
+                            if let Some(ref overlay) = state.magic_overlay {
+                                overlay.clear_detection_scene().await;
+                                overlay.set_interactive(false).await;
+                            }
+                        }
+                    });
+                }
+            })
+    {
+        tracing::warn!("failed to register detection shortcut: {e}");
+    }
+}
+
+fn register_detection_refresh_shortcut(app: &App) {
+    use tauri::Manager;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+    if let Err(e) =
+        app.global_shortcut()
+            .on_shortcut("CmdOrCtrl+Shift+R", |app_handle, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let handle = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let state: tauri::State<'_, crate::runtime_state::AppState> =
+                            handle.state();
+                        if state
+                            .detection_active
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            tracing::info!("detection overlay refresh via shortcut");
+                            crate::commands::detection::spawn_detection_analysis_from_state(&state)
+                                .await;
+                        }
+                    });
+                }
+            })
+    {
+        tracing::warn!("failed to register detection refresh shortcut: {e}");
     }
 }
 

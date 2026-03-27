@@ -4,6 +4,7 @@ pub(crate) mod capture;
 pub(crate) mod capture_status;
 pub(crate) mod coaching;
 pub(crate) mod dashboard;
+pub(crate) mod detection;
 pub(crate) mod focus;
 pub(crate) mod integration;
 pub(crate) mod onboarding;
