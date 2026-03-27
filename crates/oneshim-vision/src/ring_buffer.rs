@@ -8,7 +8,7 @@
 use chrono::{DateTime, Utc};
 use oneshim_core::models::focused_element::AccessibilityElement;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 use tracing::{debug, error};
 
@@ -42,6 +42,8 @@ pub struct CaptureRingBuffer {
     post_event_count: u32,
     /// Minimum importance threshold to trigger a flush.
     flush_threshold: f32,
+    /// Cumulative count of frames evicted due to buffer being full.
+    evicted_count: AtomicU64,
 }
 
 impl CaptureRingBuffer {
@@ -57,6 +59,7 @@ impl CaptureRingBuffer {
             post_event_remaining: AtomicU32::new(0),
             post_event_count,
             flush_threshold,
+            evicted_count: AtomicU64::new(0),
         }
     }
 
@@ -67,7 +70,15 @@ impl CaptureRingBuffer {
             return;
         };
         if buf.len() >= self.capacity {
-            buf.pop_front();
+            if let Some(evicted) = buf.pop_front() {
+                debug!(
+                    evicted_ts = %evicted.timestamp,
+                    app = %evicted.app_name,
+                    buffer_cap = self.capacity,
+                    "ring buffer full — evicted oldest frame"
+                );
+            }
+            self.evicted_count.fetch_add(1, Ordering::Relaxed);
         }
         buf.push_back(frame);
     }
@@ -136,6 +147,17 @@ impl CaptureRingBuffer {
     /// Current post-event remaining count (for diagnostics).
     pub fn post_event_remaining(&self) -> u32 {
         self.post_event_remaining.load(Ordering::Relaxed)
+    }
+
+    /// Return the cumulative eviction count without resetting it.
+    pub fn evicted_count(&self) -> u64 {
+        self.evicted_count.load(Ordering::Relaxed)
+    }
+
+    /// Atomically read and reset the eviction counter (swap to 0).
+    /// Useful for periodic metric reporting in the scheduler.
+    pub fn take_evicted_count(&self) -> u64 {
+        self.evicted_count.swap(0, Ordering::Relaxed)
     }
 }
 
@@ -288,5 +310,39 @@ mod tests {
         rb.push(make_frame("app", "c"));
         let flush2 = rb.check_and_flush(0.7, make_frame("app", "t2")).unwrap();
         assert_eq!(flush2.pre_event_frames.len(), 2);
+    }
+
+    #[test]
+    fn evicted_count_increments_on_full_buffer() {
+        let rb = CaptureRingBuffer::new(3, 2, 0.5);
+        // Push 5 frames into capacity-3 buffer → 2 evictions
+        for i in 0..5 {
+            rb.push(make_frame("app", &format!("f-{i}")));
+        }
+        assert_eq!(rb.evicted_count(), 2);
+        assert_eq!(rb.len(), 3);
+    }
+
+    #[test]
+    fn take_evicted_count_resets() {
+        let rb = CaptureRingBuffer::new(2, 1, 0.5);
+        // Push 4 frames → 2 evictions
+        for i in 0..4 {
+            rb.push(make_frame("app", &format!("f-{i}")));
+        }
+        assert_eq!(rb.take_evicted_count(), 2);
+        // Counter should be reset to 0 after take
+        assert_eq!(rb.evicted_count(), 0);
+        assert_eq!(rb.take_evicted_count(), 0);
+    }
+
+    #[test]
+    fn no_evictions_under_capacity() {
+        let rb = CaptureRingBuffer::new(10, 2, 0.5);
+        for i in 0..10 {
+            rb.push(make_frame("app", &format!("f-{i}")));
+        }
+        assert_eq!(rb.evicted_count(), 0);
+        assert_eq!(rb.len(), 10);
     }
 }

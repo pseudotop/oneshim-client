@@ -179,7 +179,7 @@ objc2-quartz-core = { version = "0.3", features = [
 ] }
 
 # Windows 플랫폼 API
-windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_Foundation", "Win32_System_Threading", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Diagnostics_Debug"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_Foundation", "Win32_System_Threading", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Diagnostics_Debug", "Win32_Storage_FileSystem"] }
 windows = { version = "0.62", features = ["Win32_UI_Accessibility", "Win32_System_Com", "Win32_Foundation", "Win32_System_Variant", "Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation"] }
 
 # 내부 크레이트
@@ -194,6 +194,9 @@ oneshim-web = { path = "crates/oneshim-web" }
 oneshim-automation = { path = "crates/oneshim-automation" }
 oneshim-analysis = { path = "crates/oneshim-analysis" }
 oneshim-embedding = { path = "crates/oneshim-embedding" }
+
+# POSIX 디스크 공간 조회 (statvfs)
+libc = "0.2"
 
 # 테스트 의존성 (각 crate의 [dev-dependencies]에서 workspace = true로 참조)
 mockito = "1"

@@ -476,6 +476,8 @@ impl Scheduler {
                                     &scene_finder_ref, &overlay_ref,
                                 );
 
+                                super::vision_helper::log_ring_buffer_evictions(&ring_buffer);
+
                                 prev_window_title = Some(focus_window_title);
                                 prev_app = Some(app_name);
                             }

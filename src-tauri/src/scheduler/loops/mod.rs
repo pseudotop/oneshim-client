@@ -10,6 +10,7 @@ mod network;
 pub(crate) mod suggestions;
 mod sync;
 mod system;
+mod vision_helper;
 
 // ── Public re-exports ────────────────────────────────────────────────
 pub(crate) use helpers::record_to_segment_summary;

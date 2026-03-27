@@ -1,3 +1,4 @@
+use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
 use crossbeam::queue::SegQueue;
 use oneshim_core::error::CoreError;
 use oneshim_core::models::event::{Event, EventBatch};
@@ -13,6 +14,9 @@ pub const MAX_UPLOAD_QUEUE_SIZE: usize = 10_000;
 
 /// Threshold ratio (80%) at which a capacity warning is emitted.
 const QUEUE_PRESSURE_WARN_RATIO: f64 = 0.80;
+
+/// Threshold ratio (90%) at which a critical error is emitted.
+const QUEUE_PRESSURE_CRITICAL_RATIO: f64 = 0.90;
 
 pub struct BatchUploader {
     api_client: Arc<dyn ApiClient>,
@@ -33,6 +37,10 @@ pub struct BatchUploader {
     /// Health flag: `true` after a successful upload, `false` after retries exhausted.
     /// Read by the health-check loop (Task 2). `None` when no caller has wired a flag.
     last_upload_ok: Option<Arc<AtomicBool>>,
+    /// Circuit breaker for system-level fast-fail when server is persistently unavailable.
+    circuit_breaker: CircuitBreaker,
+    /// Events dropped during the current flush cycle. Reset by take_dropped_since_last().
+    cycle_dropped: AtomicUsize,
 }
 
 impl BatchUploader {
@@ -55,6 +63,8 @@ impl BatchUploader {
             failed_batches: AtomicUsize::new(0),
             total_dropped: AtomicUsize::new(0),
             last_upload_ok: None,
+            circuit_breaker: CircuitBreaker::new(CircuitBreakerConfig::default()),
+            cycle_dropped: AtomicUsize::new(0),
         }
     }
 
@@ -134,6 +144,7 @@ impl BatchUploader {
         if dropped > 0 {
             self.queue_size.fetch_sub(dropped, Ordering::Relaxed);
             self.total_dropped.fetch_add(dropped, Ordering::Relaxed);
+            self.cycle_dropped.fetch_add(dropped, Ordering::Relaxed);
             warn!(
                 dropped,
                 total_dropped = self.total_dropped.load(Ordering::Relaxed),
@@ -143,22 +154,29 @@ impl BatchUploader {
         }
     }
 
-    /// Emit a warning once when the queue reaches the 80% pressure threshold.
-    /// The warning flag resets when the queue drops below the threshold.
+    /// Emit a warning once when the queue reaches the 80% pressure threshold,
+    /// or an error at the 90% critical threshold. The warning flag resets when
+    /// the queue drops below the warn threshold.
     fn check_pressure(&self, current_size: usize) {
-        let threshold = (self.max_queue_size as f64 * QUEUE_PRESSURE_WARN_RATIO) as usize;
+        let ratio = current_size as f64 / self.max_queue_size as f64;
 
-        if current_size >= threshold {
-            // Only warn once per pressure episode.
+        if ratio >= QUEUE_PRESSURE_CRITICAL_RATIO {
+            error!(
+                queue_size = current_size,
+                max = self.max_queue_size,
+                dropped = self.total_dropped.load(Ordering::Relaxed),
+                "upload queue critical — events being dropped"
+            );
+            self.pressure_warned.store(true, Ordering::Relaxed);
+        } else if ratio >= QUEUE_PRESSURE_WARN_RATIO {
             if !self.pressure_warned.swap(true, Ordering::Relaxed) {
                 warn!(
                     "upload queue pressure: {current_size}/{max} ({pct:.0}% full)",
                     max = self.max_queue_size,
-                    pct = (current_size as f64 / self.max_queue_size as f64) * 100.0,
+                    pct = ratio * 100.0,
                 );
             }
         } else {
-            // Reset the flag so we warn again next time we cross the threshold.
             self.pressure_warned.store(false, Ordering::Relaxed);
         }
     }
@@ -182,6 +200,18 @@ impl BatchUploader {
 
         if current_size == 0 {
             return Ok(0);
+        }
+
+        // Circuit breaker fast-fail
+        match self.circuit_breaker.check() {
+            CircuitState::Open { .. } => {
+                debug!("circuit open — skipping flush");
+                return Ok(0);
+            }
+            CircuitState::HalfOpen => {
+                debug!("circuit half-open — probe flush");
+            }
+            CircuitState::Closed => {}
         }
 
         let batch_size = self.compute_batch_size(current_size);
@@ -216,6 +246,7 @@ impl BatchUploader {
                     if let Some(ref flag) = self.last_upload_ok {
                         flag.store(true, Ordering::Relaxed);
                     }
+                    self.circuit_breaker.record_success();
                     debug!("batch upload success: {actual_count}items event");
                     return Ok(actual_count);
                 }
@@ -233,6 +264,7 @@ impl BatchUploader {
                         if let Some(ref flag) = self.last_upload_ok {
                             flag.store(false, Ordering::Relaxed);
                         }
+                        self.circuit_breaker.record_failure();
                         self.failed_batches.fetch_add(1, Ordering::Relaxed);
                         self.requeue_failed_events(batch.events);
                         return Err(e);
@@ -277,6 +309,10 @@ impl oneshim_core::ports::batch_sink::BatchSink for BatchUploader {
     async fn flush(&self) -> Result<usize, CoreError> {
         BatchUploader::flush(self).await
     }
+
+    fn take_dropped_since_last(&self) -> usize {
+        BatchUploader::take_dropped_since_last(self)
+    }
 }
 
 impl BatchUploader {
@@ -297,14 +333,24 @@ impl BatchUploader {
         self.total_dropped.load(Ordering::Relaxed)
     }
 
+    /// Returns events dropped since last call and resets the counter.
+    pub fn take_dropped_since_last(&self) -> usize {
+        self.cycle_dropped.swap(0, Ordering::Relaxed)
+    }
+
     pub fn stats(&self) -> BatchStats {
+        let cb = self.circuit_breaker.stats();
+        let qs = self.queue_size();
         BatchStats {
-            queue_size: self.queue_size(),
+            queue_size: qs,
             max_batch_size: self.max_batch_size,
             max_queue_size: self.max_queue_size,
             dynamic_batch_enabled: self.dynamic_batch,
             failed_batches: self.failed_batches(),
             total_dropped: self.total_dropped(),
+            circuit_state: cb.state,
+            circuit_failures: cb.consecutive_failures,
+            queue_pressure: qs as f64 / self.max_queue_size as f64,
         }
     }
 }
@@ -321,6 +367,12 @@ pub struct BatchStats {
     /// Cumulative number of events dropped due to queue capacity overflow.
     /// Monotonically increasing; never resets.
     pub total_dropped: usize,
+    /// Current circuit breaker state: "closed", "open", or "half_open".
+    pub circuit_state: &'static str,
+    /// Consecutive failure count tracked by the circuit breaker.
+    pub circuit_failures: u32,
+    /// Queue fill ratio (0.0–1.0).
+    pub queue_pressure: f64,
 }
 
 #[cfg(test)]

@@ -92,6 +92,9 @@ pub enum CoreError {
 
     #[error("Analysis error: {0}")]
     Analysis(String),
+
+    #[error("Storage error: {0}")]
+    Storage(String),
 }
 
 /// GUI 상호작용 전용 에러 (AutomationPort GUI 메서드에서 사용)
