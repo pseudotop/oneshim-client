@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion } from '../../styles/tokens'
 import type { FocusHighlightPayload } from '../types'
 
@@ -5,7 +6,7 @@ interface FocusHighlightProps {
   highlight: FocusHighlightPayload
 }
 
-export default function FocusHighlight({ highlight }: FocusHighlightProps) {
+export default memo(function FocusHighlight({ highlight }: FocusHighlightProps) {
   return (
     <>
       {highlight.targets.map((target) => (
@@ -35,4 +36,4 @@ export default function FocusHighlight({ highlight }: FocusHighlightProps) {
       ))}
     </>
   )
-}
+})

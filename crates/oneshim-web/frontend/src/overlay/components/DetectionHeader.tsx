@@ -1,10 +1,12 @@
+import { memo } from 'react'
+
 interface DetectionHeaderProps {
   elementCount: number
   onRefresh: () => void
   onClose: () => void
 }
 
-export default function DetectionHeader({ elementCount, onRefresh, onClose }: DetectionHeaderProps) {
+export default memo(function DetectionHeader({ elementCount, onRefresh, onClose }: DetectionHeaderProps) {
   const isMac = navigator.platform.startsWith('Mac')
   const refreshKey = isMac ? '\u2318\u21e7R' : 'Ctrl+Shift+R'
   const closeKey = isMac ? '\u2318\u21e7D' : 'Ctrl+Shift+D'
@@ -40,4 +42,4 @@ export default function DetectionHeader({ elementCount, onRefresh, onClose }: De
       </div>
     </div>
   )
-}
+})

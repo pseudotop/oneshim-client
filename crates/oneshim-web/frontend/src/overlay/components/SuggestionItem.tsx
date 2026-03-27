@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion, typography } from '../../styles/tokens'
 import { cn } from '../../utils/cn'
 import type { SuggestionViewDto } from '../types'
@@ -14,7 +15,7 @@ const priorityClasses: Record<string, string> = {
   low: 'bg-content-secondary/20 text-content-secondary',
 }
 
-export function SuggestionItem({ item, onAction }: SuggestionItemProps) {
+export const SuggestionItem = memo(function SuggestionItem({ item, onAction }: SuggestionItemProps) {
   const badgeClass = priorityClasses[item.priority] ?? priorityClasses.low
 
   return (
@@ -67,4 +68,4 @@ export function SuggestionItem({ item, onAction }: SuggestionItemProps) {
       </div>
     </li>
   )
-}
+})

@@ -531,6 +531,25 @@ activity without a capacity check.
 event handler, periodic task) must have a documented capacity bound or an
 explanation of why it is safe (e.g., bounded by a fixed enum variant count).
 
+### Dependency Update Policy
+
+**Rust (Cargo):**
+- **Security patches**: Apply immediately via `cargo update`
+- **Minor versions**: Review monthly, batch in a single PR
+- **Major versions**: Evaluate individually — check breaking changes, migration guide
+- **Audit**: Run `cargo audit` before each release
+
+**Frontend (pnpm):**
+- **Security patches**: `pnpm audit fix` immediately
+- **Minor versions**: Review monthly
+- **Major versions**: Evaluate individually (especially React, Vite, Tailwind)
+- **Lockfile**: Always commit `pnpm-lock.yaml`
+
+**Toolchain:**
+- **Rust**: Track latest stable, minimum version in `Cargo.toml` (`rust-version`)
+- **Node.js**: LTS only
+- **Dependabot**: Configured for Cargo dependencies (auto-PRs)
+
 ## License
 
 By contributing to this project, you agree that your contributions are licensed under the [Apache License 2.0](LICENSE).
