@@ -45,7 +45,11 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
     [message.message_id, message.profile],
   )
 
-  const { reset } = useAutoDismiss(true, autoDismissSecs, () => void dismiss('timeout'))
+  const { reset } = useAutoDismiss(
+    true,
+    autoDismissSecs,
+    () => void dismiss('timeout').catch((e) => console.warn('dismiss_coaching_message(timeout) failed:', e)),
+  )
 
   // Reset auto-dismiss when LLM upgrade arrives
   useEffect(() => {
@@ -86,7 +90,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => void dismiss('ok')}
+              onClick={() => void dismiss('ok').catch((e) => console.warn('dismiss_coaching_message(ok) failed:', e))}
               aria-label="Dismiss coaching message"
               className={`rounded-md bg-content-inverse/10 px-3 py-1 text-xs ${typography.weight.medium} text-content-secondary ${motion.colors} hover:bg-content-inverse/20`}
             >
@@ -94,7 +98,9 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             </button>
             <button
               type="button"
-              onClick={() => void dismiss('later')}
+              onClick={() =>
+                void dismiss('later').catch((e) => console.warn('dismiss_coaching_message(later) failed:', e))
+              }
               aria-label="Remind me later"
               className={`rounded-md bg-content-inverse/5 px-3 py-1 text-xs ${typography.weight.medium} text-content-tertiary ${motion.colors} hover:bg-content-inverse/10`}
             >
@@ -106,7 +112,9 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
           <div className="flex gap-1">
             <button
               type="button"
-              onClick={() => void feedback(true)}
+              onClick={() =>
+                void feedback(true).catch((e) => console.warn('submit_coaching_feedback(positive) failed:', e))
+              }
               className={`rounded p-1 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-success hover:opacity-100`.trim()}
               aria-label="Helpful"
             >
@@ -114,7 +122,9 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             </button>
             <button
               type="button"
-              onClick={() => void feedback(false)}
+              onClick={() =>
+                void feedback(false).catch((e) => console.warn('submit_coaching_feedback(negative) failed:', e))
+              }
               className={`rounded p-1 text-content-muted opacity-30 ${motion.opacity} hover:text-semantic-error hover:opacity-100`.trim()}
               aria-label="Not helpful"
             >

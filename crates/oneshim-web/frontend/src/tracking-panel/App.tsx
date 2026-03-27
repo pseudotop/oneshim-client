@@ -48,7 +48,9 @@ export function App() {
   // Explicit drag initiation — backup for data-tauri-drag-region
   const handleDragMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
-    getCurrentWindow().startDragging().catch(() => {})
+    getCurrentWindow()
+      .startDragging()
+      .catch((e) => console.debug('startDragging failed:', e))
   }, [])
 
   useEffect(() => {
@@ -69,10 +71,10 @@ export function App() {
 
     invoke<CaptureState>('get_capture_status')
       .then(setState)
-      .catch(() => {})
+      .catch((e) => console.warn('get_capture_status failed:', e))
     invoke<ConnectionStatus>('get_connection_status')
       .then(setConn)
-      .catch(() => {})
+      .catch((e) => console.warn('get_connection_status failed:', e))
 
     // Restore saved position
     invoke<string | null>('get_panel_position')
@@ -82,11 +84,11 @@ export function App() {
           if (Number.isFinite(x) && Number.isFinite(y)) {
             getCurrentWindow()
               .setPosition(new LogicalPosition(x, y))
-              .catch(() => {})
+              .catch((e) => console.debug('setPosition failed:', e))
           }
         }
       })
-      .catch(() => {})
+      .catch((e) => console.warn('get_panel_position failed:', e))
 
     return () => {
       unlistenCapture?.()
@@ -102,7 +104,9 @@ export function App() {
       const payload = e.payload as { x?: number; y?: number } | undefined
       if (payload && typeof payload.x === 'number' && typeof payload.y === 'number') {
         positionSaveTimer.current = window.setTimeout(() => {
-          invoke('save_panel_position', { x: payload.x, y: payload.y }).catch(() => {})
+          invoke('save_panel_position', { x: payload.x, y: payload.y }).catch((e) =>
+            console.debug('save_panel_position failed:', e),
+          )
         }, 1000)
       }
     }).then((fn) => {

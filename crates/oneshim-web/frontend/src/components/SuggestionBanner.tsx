@@ -71,7 +71,7 @@ export default function SuggestionBanner() {
         const pending = data.filter((s) => !s.acted_at && !s.dismissed_at)
         setSuggestions(pending)
       })
-      .catch(() => {})
+      .catch((e) => console.warn('fetchLocalSuggestions failed:', e))
       .finally(() => setLoading(false))
   }, [])
 
@@ -82,7 +82,9 @@ export default function SuggestionBanner() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally keyed on id and shown_at only — full object would cause unnecessary re-fires
   useEffect(() => {
     if (currentSuggestion && !currentSuggestion.shown_at) {
-      submitSuggestionFeedback(currentSuggestion.id, 'shown').catch(() => {})
+      submitSuggestionFeedback(currentSuggestion.id, 'shown').catch((e) =>
+        console.warn('submitSuggestionFeedback(shown) failed:', e),
+      )
     }
   }, [currentSuggestion?.id, currentSuggestion?.shown_at])
 
@@ -96,7 +98,9 @@ export default function SuggestionBanner() {
   const handleDismiss = async () => {
     try {
       await submitSuggestionFeedback(currentSuggestion.id, 'dismissed')
-    } catch {}
+    } catch (e) {
+      console.warn('submitSuggestionFeedback(dismissed) failed:', e)
+    }
     setDismissed(new Set(dismissed).add(currentSuggestion.id))
     if (currentIndex >= pendingSuggestions.length - 1) {
       setCurrentIndex(Math.max(0, currentIndex - 1))
@@ -106,7 +110,9 @@ export default function SuggestionBanner() {
   const handleAct = async () => {
     try {
       await submitSuggestionFeedback(currentSuggestion.id, 'acted')
-    } catch {}
+    } catch (e) {
+      console.warn('submitSuggestionFeedback(acted) failed:', e)
+    }
     setDismissed(new Set(dismissed).add(currentSuggestion.id))
     if (currentIndex >= pendingSuggestions.length - 1) {
       setCurrentIndex(Math.max(0, currentIndex - 1))

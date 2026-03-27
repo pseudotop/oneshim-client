@@ -123,7 +123,10 @@ function App() {
     import('@tauri-apps/api/core')
       .then(({ invoke }) => invoke<{ completed: boolean }>('get_onboarding_status'))
       .then((r) => setOnboardingDone(r.completed))
-      .catch(() => setOnboardingDone(true)) // standalone/dev mode — skip
+      .catch((e) => {
+        console.debug('get_onboarding_status failed (standalone/dev mode):', e)
+        setOnboardingDone(true)
+      })
   }, [])
 
   if (onboardingDone === null) return null
