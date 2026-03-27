@@ -1,17 +1,98 @@
 use chrono::{DateTime, Utc};
 use crossbeam::queue::ArrayQueue;
 use oneshim_core::error::CoreError;
+use parking_lot::Mutex as ParkingMutex;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering, Ordering as AtomicOrdering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::fs;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 const BUFFER_POOL_SIZE: usize = 16;
 
 const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
 const PARALLEL_DELETE_LIMIT: usize = 8;
+
+const DISK_CHECK_INTERVAL: Duration = Duration::from_secs(5);
+const DISK_SPACE_WARN_MB: u64 = 100;
+const DISK_SPACE_CRITICAL_MB: u64 = 50;
+
+struct DiskSpaceCache {
+    last_check: ParkingMutex<Option<Instant>>,
+    cached_free_mb: AtomicU64,
+}
+
+impl DiskSpaceCache {
+    fn new() -> Self {
+        Self {
+            last_check: ParkingMutex::new(None),
+            cached_free_mb: AtomicU64::new(u64::MAX),
+        }
+    }
+
+    fn get_free_mb(&self, path: &Path) -> u64 {
+        let mut last = self.last_check.lock();
+        let now = Instant::now();
+        if last.is_some_and(|t| now.duration_since(t) < DISK_CHECK_INTERVAL) {
+            return self.cached_free_mb.load(AtomicOrdering::Relaxed);
+        }
+        let free = query_disk_free_mb(path);
+        self.cached_free_mb.store(free, AtomicOrdering::Relaxed);
+        *last = Some(now);
+        free
+    }
+}
+
+fn query_disk_free_mb(path: &Path) -> u64 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+            return u64::MAX;
+        };
+        let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) } == 0 {
+            (stat.f_bavail as u64 * stat.f_frsize) / (1024 * 1024)
+        } else {
+            u64::MAX
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+        let wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut free_bytes: u64 = 0;
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                wide.as_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut free_bytes as *mut u64 as *mut _,
+            )
+        };
+        if ok != 0 {
+            free_bytes / (1024 * 1024)
+        } else {
+            u64::MAX
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        u64::MAX
+    }
+}
+
+pub struct DiskStatus {
+    pub free_mb: u64,
+    pub healthy: bool,
+}
 
 struct BufferPool {
     pool: ArrayQueue<Vec<u8>>,
@@ -44,6 +125,7 @@ pub struct FrameFileStorage {
     retention_days: u32,
     frame_counter: AtomicU32,
     buffer_pool: Arc<BufferPool>,
+    disk_cache: DiskSpaceCache,
 }
 
 impl FrameFileStorage {
@@ -72,18 +154,31 @@ impl FrameFileStorage {
             retention_days,
             frame_counter: AtomicU32::new(0),
             buffer_pool: Arc::new(BufferPool::new(BUFFER_POOL_SIZE, DEFAULT_BUFFER_SIZE)),
+            disk_cache: DiskSpaceCache::new(),
         })
     }
 
     /// Save a frame image to disk.
     ///
-    /// Note: No pre-flight disk space check is performed. If the disk is full,
-    /// the write will fail and the error is propagated to the caller.
+    /// Returns `CoreError::Storage` if free disk space is below the critical threshold (50 MB).
+    /// Logs a warning if free space is below the warn threshold (100 MB).
     pub async fn save_frame(
         &self,
         timestamp: DateTime<Utc>,
         webp_data: &[u8],
     ) -> Result<PathBuf, CoreError> {
+        let free_mb = self.disk_cache.get_free_mb(&self.base_dir);
+        if free_mb < DISK_SPACE_CRITICAL_MB {
+            error!(free_mb, "disk space critical — skipping frame save");
+            return Err(CoreError::Storage("disk space critical".into()));
+        }
+        if free_mb < DISK_SPACE_WARN_MB {
+            warn!(
+                free_mb,
+                "disk space low — frame save proceeding with caution"
+            );
+        }
+
         let date_str = timestamp.format("%Y-%m-%d").to_string();
         let day_dir = self.base_dir.join("frames").join(&date_str);
         fs::create_dir_all(&day_dir)
@@ -117,6 +212,19 @@ impl FrameFileStorage {
         &self,
         frames: Vec<(DateTime<Utc>, Vec<u8>)>,
     ) -> Vec<Result<PathBuf, CoreError>> {
+        let free_mb = self.disk_cache.get_free_mb(&self.base_dir);
+        if free_mb < DISK_SPACE_CRITICAL_MB {
+            error!(
+                free_mb,
+                batch_size = frames.len(),
+                "disk space critical — skipping batch save"
+            );
+            return frames
+                .iter()
+                .map(|_| Err(CoreError::Storage("disk space critical".into())))
+                .collect();
+        }
+
         let mut handles = Vec::with_capacity(frames.len());
 
         for (timestamp, webp_data) in frames {
@@ -469,6 +577,15 @@ impl FrameFileStorage {
             buffer_size: DEFAULT_BUFFER_SIZE,
         }
     }
+
+    /// Query current disk health status for scheduler event emission.
+    pub fn disk_status(&self) -> DiskStatus {
+        let free_mb = self.disk_cache.get_free_mb(&self.base_dir);
+        DiskStatus {
+            free_mb,
+            healthy: free_mb >= DISK_SPACE_CRITICAL_MB,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -746,5 +863,32 @@ mod tests {
         // Verify frames directory is now empty (no date dirs left)
         let remaining = list_date_dirs(&frames_dir).await.unwrap();
         assert!(remaining.is_empty());
+    }
+
+    #[test]
+    fn disk_space_cache_returns_max_for_nonexistent_path() {
+        let cache = DiskSpaceCache::new();
+        let free = cache.get_free_mb(Path::new("/nonexistent/path/that/does/not/exist"));
+        // statvfs fails on non-existent path → returns u64::MAX
+        assert_eq!(free, u64::MAX);
+    }
+
+    #[test]
+    fn disk_space_cache_returns_real_value_for_temp_dir() {
+        let cache = DiskSpaceCache::new();
+        let free = cache.get_free_mb(&std::env::temp_dir());
+        // Should return actual disk space, not u64::MAX
+        assert!(free < u64::MAX);
+        assert!(free > 0);
+    }
+
+    #[test]
+    fn disk_space_cache_caches_within_interval() {
+        let cache = DiskSpaceCache::new();
+        let path = std::env::temp_dir();
+        let first = cache.get_free_mb(&path);
+        let second = cache.get_free_mb(&path);
+        // Both should return the same cached value
+        assert_eq!(first, second);
     }
 }

@@ -5369,6 +5369,7 @@ dependencies = [
  "getrandom 0.4.2",
  "hex",
  "keyring",
+ "libc",
  "oneshim-core",
  "parking_lot",
  "rusqlite",
@@ -5378,6 +5379,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

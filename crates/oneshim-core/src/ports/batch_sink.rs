@@ -17,4 +17,9 @@ pub trait BatchSink: Send + Sync {
 
     /// 큐에 쌓인 이벤트를 서버로 플러시. 전송된 건수 반환.
     async fn flush(&self) -> Result<usize, CoreError>;
+
+    /// 마지막 호출 이후 드롭된 이벤트 수를 반환하고 카운터 리셋.
+    fn take_dropped_since_last(&self) -> usize {
+        0
+    }
 }

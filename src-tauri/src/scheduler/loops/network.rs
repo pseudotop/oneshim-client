@@ -43,6 +43,14 @@ impl Scheduler {
                             }
                         }
 
+                        // Log events dropped during this flush cycle
+                        if let Some(ref sink) = uploader4 {
+                            let dropped = sink.take_dropped_since_last();
+                            if dropped > 0 {
+                                warn!(count = dropped, "events dropped during flush cycle");
+                            }
+                        }
+
                         if let Err(e) = storage4.enforce_retention().await {
                             warn!("event policy failure: {e}");
                         }
