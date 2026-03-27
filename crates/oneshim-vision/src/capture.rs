@@ -4,6 +4,7 @@ use oneshim_core::models::context::WindowBounds;
 use tracing::debug;
 use xcap::Monitor;
 
+#[derive(Clone)]
 pub struct ScreenCapture;
 
 impl ScreenCapture {
