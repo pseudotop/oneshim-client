@@ -92,6 +92,10 @@ pub(crate) struct AdaptiveTriggerState {
     pub(crate) gui_pipeline_state: Option<gui_pipeline::GuiPipelineState>,
     pub(crate) gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
 
+    /// Optional LLM-based work type refinement. When present, refines rule-based
+    /// classification using AnalysisProvider. Background prefetch + LRU cache.
+    pub(crate) llm_work_type_refiner: Option<Arc<oneshim_analysis::LlmWorkTypeRefiner>>,
+
     // --- Application classification ---
     /// Centralized app registry for subcategory classification.
     /// Replaces the hardcoded `infer_subcategory()` fallback.

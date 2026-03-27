@@ -126,7 +126,27 @@ pub(super) async fn run_analysis_tick(
         work_type
     };
 
-    // 4d. Enrich terminal commands with accessibility text
+    // 4d. LLM refinement (async, optional — background prefetch + cached result)
+    let work_type = if let Some(ref refiner) = ts.llm_work_type_refiner {
+        let ocr_text: Option<String> = focused_element
+            .and_then(|fe| fe.extracted_text.as_ref())
+            .map(|s| s.to_string());
+        refiner
+            .refine(
+                work_type,
+                app_name,
+                window_title,
+                focused_element.map(|fe| fe.role.as_str()),
+                ocr_text.as_deref(),
+                engagement.keystrokes_per_min,
+            )
+            .await
+            .unwrap_or(work_type)
+    } else {
+        work_type
+    };
+
+    // 4e. Enrich terminal commands with accessibility text
     let app_subcategory = ts.app_registry.classify(app_name).1;
 
     let terminal_command = focused_element
@@ -146,7 +166,7 @@ pub(super) async fn run_analysis_tick(
         );
     }
 
-    // 4e. Extract document heading from accessibility text for document editors
+    // 4f. Extract document heading from accessibility text for document editors
     let doc_heading = focused_element
         .and_then(|fe| fe.extracted_text.as_deref())
         .and_then(|text| {

@@ -130,6 +130,9 @@ impl AgentRuntimeBundle {
         // These are created early so they can be wired into AdaptiveTriggerState below.
         let mut embedding_pipeline_arc: Option<Arc<oneshim_analysis::EmbeddingPipeline>> = None;
         let mut llm_summarizer_arc: Option<Arc<oneshim_analysis::LlmSegmentSummarizer>> = None;
+        let mut llm_refiner_provider: Option<
+            Arc<dyn oneshim_core::ports::analysis_provider::AnalysisProvider>,
+        > = None;
 
         if self.config.analysis.embedding.enabled {
             let embedding_config = &self.config.analysis.embedding;
@@ -211,6 +214,7 @@ impl AgentRuntimeBundle {
                         > = Arc::new(oneshim_network::analysis_client::AnalysisClient::new(
                             llm_api,
                         ));
+                        llm_refiner_provider = Some(analysis_provider.clone());
                         let pii_level_summ = self.config.privacy.pii_filter_level;
                         let pii_filter_summ: oneshim_analysis::PiiFilter =
                             Box::new(move |text: &str| {
@@ -277,6 +281,8 @@ impl AgentRuntimeBundle {
                 let params = preset.default_params();
                 let buf_cap = self.config.analysis.tiered_memory.buffer_capacity;
                 let tm_config = &self.config.analysis.tiered_memory;
+                let llm_work_type_refiner = llm_refiner_provider
+                    .map(|provider| Arc::new(oneshim_analysis::LlmWorkTypeRefiner::new(provider)));
                 let state = AdaptiveTriggerState {
                     trigger: oneshim_analysis::AdaptiveTrigger::new(),
                     segment_buffer: oneshim_analysis::SegmentBuffer::new(buf_cap),
@@ -336,6 +342,7 @@ impl AgentRuntimeBundle {
                     embedding_pipeline: embedding_pipeline_arc,
                     gui_pipeline_state: None,
                     gui_work_type_refiner: oneshim_analysis::GuiWorkTypeRefiner,
+                    llm_work_type_refiner,
                     app_registry: Arc::new(oneshim_core::app_registry::AppRegistry::new()),
                     heatmap_aggregator: crate::scheduler::heatmap::HeatmapAggregator::new(),
                 };
