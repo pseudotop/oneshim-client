@@ -2,7 +2,7 @@ use chrono::Utc;
 use oneshim_monitor::input_activity::InputActivityCollector;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::super::config::PlatformEgressPolicy;
 use super::super::shared_regime_state::SharedRegimeState;
@@ -362,28 +362,62 @@ impl Scheduler {
             warn!("session ended record failure: {e}");
         }
 
-        monitor_task.abort();
-        metrics_task.abort();
-        process_task.abort();
-        sync_task.abort();
-        heartbeat_task.abort();
-        aggregation_task.abort();
-        notification_task.abort();
-        focus_task.abort();
-        event_snapshot_task.abort();
+        // Abort all loops and check for panics
+        let tasks: Vec<(&str, tokio::task::JoinHandle<()>)> = vec![
+            ("monitor", monitor_task),
+            ("metrics", metrics_task),
+            ("process", process_task),
+            ("sync", sync_task),
+            ("heartbeat", heartbeat_task),
+            ("aggregation", aggregation_task),
+            ("notification", notification_task),
+            ("focus", focus_task),
+            ("event_snapshot", event_snapshot_task),
+            ("analysis", analysis_task),
+            ("cross_device_sync", cross_device_sync_task),
+            ("coaching", coaching_task),
+        ];
+
+        for (name, task) in tasks {
+            task.abort();
+            match task.await {
+                Ok(()) => {}
+                Err(e) if e.is_cancelled() => {}
+                Err(e) => {
+                    error!(
+                        loop_name = name,
+                        "scheduler loop panicked during shutdown: {e}"
+                    );
+                }
+            }
+        }
+
+        // Feature-gated optional tasks
         #[cfg(feature = "server")]
         if let Some(task) = oauth_task {
             task.abort();
+            if let Err(e) = task.await {
+                if !e.is_cancelled() {
+                    error!("oauth_refresh loop panicked: {e}");
+                }
+            }
         }
-        analysis_task.abort();
-        cross_device_sync_task.abort();
-        coaching_task.abort();
-        if let Some(t) = health_task {
-            t.abort();
+        if let Some(task) = health_task {
+            task.abort();
+            if let Err(e) = task.await {
+                if !e.is_cancelled() {
+                    error!("health_check loop panicked: {e}");
+                }
+            }
         }
         #[cfg(feature = "server")]
-        if let Some(t) = suggestion_task {
-            t.abort();
+        if let Some(task) = suggestion_task {
+            task.abort();
+            if let Err(e) = task.await {
+                if !e.is_cancelled() {
+                    error!("suggestion loop panicked: {e}");
+                }
+            }
         }
     }
 }
