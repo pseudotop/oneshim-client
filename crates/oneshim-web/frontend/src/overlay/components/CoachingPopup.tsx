@@ -87,6 +87,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             <button
               type="button"
               onClick={() => void dismiss('ok')}
+              aria-label="Dismiss coaching message"
               className={`rounded-md bg-content-inverse/10 px-3 py-1 text-xs ${typography.weight.medium} text-content-secondary ${motion.colors} hover:bg-content-inverse/20`}
             >
               OK
@@ -94,6 +95,7 @@ export default function CoachingPopup({ message, autoDismissSecs }: CoachingPopu
             <button
               type="button"
               onClick={() => void dismiss('later')}
+              aria-label="Remind me later"
               className={`rounded-md bg-content-inverse/5 px-3 py-1 text-xs ${typography.weight.medium} text-content-tertiary ${motion.colors} hover:bg-content-inverse/10`}
             >
               Later

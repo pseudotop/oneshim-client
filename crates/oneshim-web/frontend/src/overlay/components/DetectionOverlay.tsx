@@ -61,9 +61,11 @@ export default function DetectionOverlay({ scene, selectedId, onSelect }: Detect
         if (selectedId) {
           onSelect(null)
         } else {
-          import('@tauri-apps/api/core').then(({ invoke }) => {
-            invoke('toggle_detection_overlay', { active: false })
-          })
+          import('@tauri-apps/api/core')
+            .then(({ invoke }) => {
+              invoke('toggle_detection_overlay', { active: false })
+            })
+            .catch((e) => console.warn('toggle_detection_overlay failed:', e))
         }
       }
     }
@@ -82,6 +84,7 @@ export default function DetectionOverlay({ scene, selectedId, onSelect }: Detect
           <button
             type="button"
             key={el.element_id}
+            aria-label={`${getRoleLabel(el.role)}: ${el.label || 'unlabeled'}`}
             className="fixed cursor-pointer"
             style={{
               left: el.x,

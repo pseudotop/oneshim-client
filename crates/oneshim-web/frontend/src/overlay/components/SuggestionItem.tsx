@@ -18,7 +18,7 @@ export function SuggestionItem({ item, onAction }: SuggestionItemProps) {
   const badgeClass = priorityClasses[item.priority] ?? priorityClasses.low
 
   return (
-    <div className="border-content-inverse/5 border-b px-4 py-3">
+    <li aria-label={`Suggestion: ${item.title}`} className="list-none border-content-inverse/5 border-b px-4 py-3">
       <div className="flex items-start justify-between gap-2">
         <span className={cn('text-content text-sm leading-tight', typography.weight.medium)}>{item.title}</span>
         <span
@@ -65,6 +65,6 @@ export function SuggestionItem({ item, onAction }: SuggestionItemProps) {
         </button>
         <span className="ml-auto text-[10px] text-content-tertiary">{item.source}</span>
       </div>
-    </div>
+    </li>
   )
 }

@@ -24,6 +24,7 @@ export default function DetectionHeader({ elementCount, onRefresh, onClose }: De
           className="rounded px-1.5 py-0.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
           onClick={onRefresh}
           title={`Refresh (${refreshKey})`}
+          aria-label={`Refresh detection (${refreshKey})`}
         >
           Refresh {refreshKey}
         </button>
@@ -32,6 +33,7 @@ export default function DetectionHeader({ elementCount, onRefresh, onClose }: De
           className="rounded px-1.5 py-0.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
           onClick={onClose}
           title={`Close (${closeKey})`}
+          aria-label={`Close detection overlay (${closeKey})`}
         >
           Close
         </button>

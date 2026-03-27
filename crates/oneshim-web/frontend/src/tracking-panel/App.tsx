@@ -131,10 +131,13 @@ export function App() {
         const pos = await win.outerPosition()
         await win.setPosition(new LogicalPosition(pos.x / scale, pos.y / scale + heightDiff))
       }
-    } catch {
+    } catch (e) {
+      console.warn('toggleExpanded position failed:', e)
       try {
         await win.setSize(new LogicalSize(w, h))
-      } catch {}
+      } catch (e2) {
+        console.warn('toggleExpanded setSize fallback failed:', e2)
+      }
     }
   }, [expanded])
 
@@ -142,7 +145,8 @@ export function App() {
     try {
       await invoke('trigger_manual_capture')
       showFeedback('Captured')
-    } catch {
+    } catch (e) {
+      console.warn('trigger_manual_capture failed:', e)
       showFeedback('Capture failed')
     }
   }, [showFeedback])
@@ -155,7 +159,8 @@ export function App() {
       showFeedback(`${result.app_name} — ${result.accessibility?.element_count ?? 0} elements`)
       // Auto-dismiss scene result after 10s
       setTimeout(() => setSceneResult(null), 10000)
-    } catch {
+    } catch (e) {
+      console.warn('analyze_current_scene failed:', e)
       showFeedback('Analysis failed')
     }
   }, [showFeedback])
@@ -165,7 +170,8 @@ export function App() {
       const status = await invoke<{ active: boolean }>('get_focus_mode_status')
       await invoke('toggle_focus_mode', { active: !status.active, durationMinutes: 25 })
       showFeedback(status.active ? 'Focus off' : 'Focus 25m')
-    } catch {
+    } catch (e) {
+      console.warn('toggle_focus_mode failed:', e)
       showFeedback('Focus toggle failed')
     }
   }, [showFeedback])
@@ -176,7 +182,8 @@ export function App() {
       await emit('overlay:toggle-suggestions')
       await invoke('toggle_overlay_interactive', { interactive: true })
       showFeedback('Suggestions panel opened')
-    } catch {
+    } catch (e) {
+      console.warn('toggle_overlay_interactive failed:', e)
       showFeedback('Suggestions unavailable')
     }
   }, [showFeedback])
