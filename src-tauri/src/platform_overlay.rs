@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use oneshim_core::error::CoreError;
 use oneshim_core::models::gui::{HighlightHandle, HighlightRequest};
+use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::overlay_driver::OverlayDriver;
 
 #[derive(Debug)]
@@ -76,6 +77,19 @@ impl OverlayDriver for PlatformOverlayDriver {
         let _ = process.child.wait();
         let _ = fs::remove_file(process.payload_path);
 
+        Ok(())
+    }
+
+    async fn show_detection(&self, scene: &UiScene) -> Result<(), CoreError> {
+        tracing::debug!(
+            scene_id = %scene.scene_id,
+            element_count = scene.elements.len(),
+            "PlatformOverlayDriver: detection not supported on platform overlay"
+        );
+        Ok(())
+    }
+
+    async fn clear_detection(&self) -> Result<(), CoreError> {
         Ok(())
     }
 }

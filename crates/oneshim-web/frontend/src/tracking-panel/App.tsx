@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb, Settings, Wifi, WifiOff } from 'lucide-react'
+import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb, Settings, WifiOff } from 'lucide-react'
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
