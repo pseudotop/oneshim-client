@@ -64,7 +64,11 @@ export function SuggestionsPanel({ open, suggestions, onClose, onRefresh }: Sugg
       {/* List */}
       <div className="max-h-[calc(100vh-14rem)] overflow-y-auto">
         {suggestions.length > 0 ? (
-          suggestions.map((s) => <SuggestionItem key={s.id} item={s} onAction={handleAction} />)
+          <ul className="list-none">
+            {suggestions.map((s) => (
+              <SuggestionItem key={s.id} item={s} onAction={handleAction} />
+            ))}
+          </ul>
         ) : (
           <div className="px-4 py-8 text-center text-content-tertiary text-xs">No suggestions yet</div>
         )}

@@ -208,7 +208,7 @@ export default function Chat() {
   useEffect(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
       .then(setSessions)
-      .catch(() => {})
+      .catch((e) => console.warn('list_ai_sessions failed:', e))
   }, [])
 
   useEffect(() => {
@@ -264,7 +264,7 @@ export default function Chat() {
   const refresh = useCallback(() => {
     ipc<SessionInfo[]>('list_ai_sessions')
       .then(setSessions)
-      .catch(() => {})
+      .catch((e) => console.warn('list_ai_sessions failed:', e))
   }, [])
 
   const handleSelectSession = useCallback(

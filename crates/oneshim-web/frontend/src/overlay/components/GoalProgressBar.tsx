@@ -19,6 +19,7 @@ export default function GoalProgressBar({ goals }: GoalProgressBarProps) {
                 className="relative h-2 flex-1 overflow-hidden rounded-full bg-content-inverse/10"
                 role="progressbar"
                 aria-label={`${goal.regime_label} progress`}
+                aria-valuemin={0}
                 aria-valuenow={goal.current_minutes}
                 aria-valuemax={goal.target_minutes}
               >
