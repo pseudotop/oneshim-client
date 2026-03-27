@@ -9,7 +9,7 @@
 use async_trait::async_trait;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use oneshim_core::error::CoreError;
 use oneshim_core::models::sync::{ChangeSet, ChangeSetKind, SyncResult};
@@ -276,6 +276,14 @@ fn merge_regime(
                 device_id: ld,
             };
             if remote_hlc.is_after(&local_hlc) {
+                warn!(
+                    regime_id = %id,
+                    local_device = %local_hlc.device_id,
+                    remote_device = %remote_hlc.device_id,
+                    local_hlc_ms = local_hlc.wall_ms,
+                    remote_hlc_ms = remote_hlc.wall_ms,
+                    "sync conflict: regime overwritten by remote (LWW)"
+                );
                 conn.execute(
                     "UPDATE regimes SET label=?2, detected_at=?3, last_seen_at=?4, \
                      occurrence_count=?5, avg_density=?6, avg_importance=?7, \
@@ -310,6 +318,12 @@ fn merge_regime(
                     result.applied += 1;
                 }
             } else {
+                debug!(
+                    regime_id = %id,
+                    local_device = %local_hlc.device_id,
+                    remote_device = %remote_hlc.device_id,
+                    "sync conflict: remote regime discarded (local wins LWW)"
+                );
                 result.skipped_lww += 1;
             }
         }
@@ -415,6 +429,13 @@ fn merge_embedding(
                 device_id: ld,
             };
             if remote_hlc.is_after(&local_hlc) {
+                warn!(
+                    segment_id = %segment_id,
+                    model_id = %model_id,
+                    local_device = %local_hlc.device_id,
+                    remote_device = %remote_hlc.device_id,
+                    "sync conflict: embedding overwritten by remote (LWW)"
+                );
                 let vector_hex = json_str(row, "vector")?;
                 let vector_bytes = hex::decode(vector_hex).unwrap_or_default();
 
