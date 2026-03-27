@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5-rc.4] - 2026-03-28
+### Fixed
+
+- Offload regime clustering to spawn_blocking ([#210](https://github.com/pseudotop/oneshim-client/pull/210))
+  * docs: add Storybook & design system completeness spec
+
+  Phase 1 plan: DESIGN.md + TOKENS.md documentation, z-index token
+  scale, expand 5 primitive stories, add 5 domain component stories.
+  Based on design system audit (7.5/10 maturity score).
+
+- Log rollback failures in migration and warn on missing backup ([#211](https://github.com/pseudotop/oneshim-client/pull/211))
+  Previously, ROLLBACK TO SAVEPOINT errors were silently discarded with
+  `let _ =`, potentially hiding inconsistent database state. Now logs
+  the rollback error at error! level. Also warns when proceeding without
+  a pre-migration backup.
+
+- Log suggestion queue overflow and skip notification for rejected items ([#212](https://github.com/pseudotop/oneshim-client/pull/212))
+  Eviction logging promoted from debug! to warn! for visibility. Added
+  warn! for rejected suggestions (queue full, priority too low). Receiver
+  now checks push() return value and skips desktop notification for
+  rejected suggestions.
+
+- Reduce accessibility circuit breaker retry interval and add trip logging ([#213](https://github.com/pseudotop/oneshim-client/pull/213))
+  All 3 platforms (macOS/Windows/Linux): CIRCUIT_BREAKER_RETRY_INTERVAL
+  reduced from 60 to 10 ticks (~30s recovery instead of ~180s). Added
+  warn! logging when circuit breaker trips, so accessibility failures
+  are visible in production logs.
+
+- Detect and log scheduler loop panics during shutdown ([#214](https://github.com/pseudotop/oneshim-client/pull/214))
+  Previously, all 15 scheduler loops were .abort()'d without awaiting
+  the JoinHandles, making panics invisible. Now each handle is awaited
+  after abort, and panics are logged at error! level with the loop name.
+
+- Add warn! logging for LWW sync conflicts in regime and embedding merges ([#215](https://github.com/pseudotop/oneshim-client/pull/215))
+  Previously, LWW overwrites were silent (only aggregate skipped_lww count).
+  Now logs per-row conflict details: entity ID, local/remote device, HLC
+  timestamps. Helps diagnose cross-device data loss from concurrent edits.
+
+
+## [Unreleased]
+
 ## [0.4.5-rc.3] - 2026-03-27
 ### Added
 
