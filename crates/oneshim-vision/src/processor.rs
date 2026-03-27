@@ -116,58 +116,92 @@ impl FrameProcessor for EdgeFrameProcessor {
 
         let mut ocr_regions = Vec::new();
 
-        let image_payload = if importance >= 0.8 {
-            debug!("frame (in progress {:.1})", importance);
-            let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::High)?;
-            let ocr_text = extract_ocr_text(&current_frame, self);
-            ocr_regions = extract_ocr_regions(&current_frame, self);
-            Some(ImagePayload::Full {
-                data: encoded,
-                format: "webp".to_string(),
-                ocr_text,
-            })
-        } else if importance >= 0.5 {
-            debug!("(in progress {:.1})", importance);
-            let prev = self
-                .prev_frame
-                .lock()
-                .map_err(|e| CoreError::Internal(format!("prev_frame lock poisoned: {e}")))?;
-            if let Some(prev) = prev.as_ref() {
-                if let Some(delta_region) = delta::compute_delta(prev, &current_frame) {
-                    let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::Medium)?;
-                    Some(ImagePayload::Delta {
-                        data: encoded,
-                        region: delta_region.region,
-                        changed_ratio: delta_region.changed_ratio,
-                    })
-                } else {
-                    None // no meaningful change
-                }
-            } else {
-                let encoded = encoder::encode_webp_base64(&current_frame, WebPQuality::Medium)?;
+        let image_payload =
+            if importance >= 0.8 {
+                debug!("frame (in progress {:.1})", importance);
+                // Offload heavy High-quality encoding to blocking thread
+                let frame_clone = current_frame.clone();
+                let encoded = tokio::task::spawn_blocking(move || {
+                    encoder::encode_webp_base64(&frame_clone, WebPQuality::High)
+                })
+                .await
+                .map_err(|e| CoreError::Internal(format!("encode task panicked: {e}")))??;
+                let ocr_text = extract_ocr_text(&current_frame, self);
+                ocr_regions = extract_ocr_regions(&current_frame, self);
                 Some(ImagePayload::Full {
                     data: encoded,
                     format: "webp".to_string(),
-                    ocr_text: None,
+                    ocr_text,
                 })
-            }
-        } else if importance >= 0.3 {
-            debug!("(in progress {:.1})", importance);
-            let thumb = thumbnail::fast_resize(
-                &current_frame,
-                self.thumbnail_width,
-                self.thumbnail_height,
-            )?;
-            let encoded = encoder::encode_webp_base64(&thumb, WebPQuality::Low)?;
-            Some(ImagePayload::Thumbnail {
-                data: encoded,
-                width: self.thumbnail_width,
-                height: self.thumbnail_height,
-            })
-        } else {
-            debug!("(in progress {:.1})", importance);
-            None
-        };
+            } else if importance >= 0.5 {
+                debug!("(in progress {:.1})", importance);
+                // Compute delta while holding the lock, then drop before .await
+                let delta_result = {
+                    let prev = self.prev_frame.lock().map_err(|e| {
+                        CoreError::Internal(format!("prev_frame lock poisoned: {e}"))
+                    })?;
+                    match prev.as_ref() {
+                        Some(prev) => delta::compute_delta(prev, &current_frame),
+                        None => None, // marker: no prev frame
+                    }
+                }; // MutexGuard dropped here
+
+                let has_prev = {
+                    let prev = self.prev_frame.lock().map_err(|e| {
+                        CoreError::Internal(format!("prev_frame lock poisoned: {e}"))
+                    })?;
+                    prev.is_some()
+                };
+
+                if has_prev {
+                    if let Some(delta_region) = delta_result {
+                        let frame_clone = current_frame.clone();
+                        let encoded = tokio::task::spawn_blocking(move || {
+                            encoder::encode_webp_base64(&frame_clone, WebPQuality::Medium)
+                        })
+                        .await
+                        .map_err(|e| CoreError::Internal(format!("encode task panicked: {e}")))??;
+                        Some(ImagePayload::Delta {
+                            data: encoded,
+                            region: delta_region.region,
+                            changed_ratio: delta_region.changed_ratio,
+                        })
+                    } else {
+                        None // no meaningful change
+                    }
+                } else {
+                    let frame_clone = current_frame.clone();
+                    let encoded = tokio::task::spawn_blocking(move || {
+                        encoder::encode_webp_base64(&frame_clone, WebPQuality::Medium)
+                    })
+                    .await
+                    .map_err(|e| CoreError::Internal(format!("encode task panicked: {e}")))??;
+                    Some(ImagePayload::Full {
+                        data: encoded,
+                        format: "webp".to_string(),
+                        ocr_text: None,
+                    })
+                }
+            } else if importance >= 0.3 {
+                debug!("(in progress {:.1})", importance);
+                let tw = self.thumbnail_width;
+                let th = self.thumbnail_height;
+                let frame_clone = current_frame.clone();
+                let encoded = tokio::task::spawn_blocking(move || {
+                    let thumb = thumbnail::fast_resize(&frame_clone, tw, th)?;
+                    encoder::encode_webp_base64(&thumb, WebPQuality::Low)
+                })
+                .await
+                .map_err(|e| CoreError::Internal(format!("encode task panicked: {e}")))??;
+                Some(ImagePayload::Thumbnail {
+                    data: encoded,
+                    width: self.thumbnail_width,
+                    height: self.thumbnail_height,
+                })
+            } else {
+                debug!("(in progress {:.1})", importance);
+                None
+            };
 
         *self
             .prev_frame
@@ -183,14 +217,20 @@ impl FrameProcessor for EdgeFrameProcessor {
     }
 
     async fn capture_thumbnail(&self) -> Result<Vec<u8>, CoreError> {
-        let frame = self.capture.capture_primary()?;
-        let thumb = thumbnail::fast_resize(&frame, self.thumbnail_width, self.thumbnail_height)?;
-        let encoded = encoder::encode_webp_base64(&thumb, WebPQuality::Low)?;
-        use base64::Engine;
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(&encoded)
-            .map_err(|e| CoreError::Internal(format!("base64 decode failed: {e}")))?;
-        Ok(bytes)
+        let capture = self.capture.clone();
+        let tw = self.thumbnail_width;
+        let th = self.thumbnail_height;
+        tokio::task::spawn_blocking(move || {
+            let frame = capture.capture_primary()?;
+            let thumb = thumbnail::fast_resize(&frame, tw, th)?;
+            let encoded = encoder::encode_webp_base64(&thumb, WebPQuality::Low)?;
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD
+                .decode(&encoded)
+                .map_err(|e| CoreError::Internal(format!("base64 decode failed: {e}")))
+        })
+        .await
+        .map_err(|e| CoreError::Internal(format!("thumbnail task panicked: {e}")))?
     }
 }
 
