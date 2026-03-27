@@ -72,9 +72,14 @@ impl SuggestionReceiver {
     }
 
     async fn handle_suggestion(&self, suggestion: Suggestion) {
-        {
+        let accepted = {
             let mut queue = self.queue.lock().await;
-            queue.push(suggestion.clone());
+            queue.push(suggestion.clone())
+        };
+
+        if !accepted {
+            // Queue full and this suggestion has lower priority — skip notification
+            return;
         }
 
         if let Some(notifier) = &self.notifier {
