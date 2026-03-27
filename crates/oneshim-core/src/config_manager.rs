@@ -3,7 +3,7 @@ use crate::error::CoreError;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
@@ -36,7 +36,20 @@ impl ConfigManager {
         }
 
         let config = if config_path.exists() {
-            Self::load_from_file(&config_path)?
+            match Self::load_from_file(&config_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(
+                        path = %config_path.display(),
+                        error = %e,
+                        "config file corrupted, falling back to defaults"
+                    );
+                    let default_config = AppConfig::default_config();
+                    // Overwrite the corrupt file so the next launch is clean.
+                    let _ = Self::save_to_file(&config_path, &default_config);
+                    default_config
+                }
+            }
         } else {
             let default_config = AppConfig::default_config();
             Self::save_to_file(&config_path, &default_config)?;
@@ -376,28 +389,28 @@ mod tests {
     }
 
     #[test]
-    fn load_corrupt_file_returns_error_or_default() {
+    fn load_corrupt_file_falls_back_to_defaults() {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
 
         // Write garbage content before the manager tries to load.
         fs::write(&config_path, "<<<NOT JSON>>>").unwrap();
 
-        let result = ConfigManager::with_path(config_path);
-        assert!(
-            result.is_err(),
-            "loading a corrupt config file should return an error"
+        // Should NOT crash — falls back to default config.
+        let manager = ConfigManager::with_path(config_path.clone()).unwrap();
+        let config = manager.get();
+        assert_eq!(
+            config.web.port,
+            crate::config::DEFAULT_WEB_PORT,
+            "corrupt config should fall back to defaults"
         );
 
-        // Verify the error is a Config variant.
-        match result.unwrap_err() {
-            CoreError::Config(msg) => {
-                assert!(
-                    msg.contains("Failed to parse config file"),
-                    "error message should mention parse failure, got: {msg}"
-                );
-            }
-            other => panic!("expected CoreError::Config, got {other:?}"),
-        }
+        // The corrupt file should have been overwritten with valid defaults.
+        let reloaded = ConfigManager::with_path(config_path).unwrap();
+        assert_eq!(
+            reloaded.get().web.port,
+            crate::config::DEFAULT_WEB_PORT,
+            "overwritten file should contain valid defaults"
+        );
     }
 }

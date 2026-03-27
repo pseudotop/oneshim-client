@@ -484,13 +484,18 @@ impl Scheduler {
         app_handle: Option<tauri::AppHandle>,
     ) {
         info!(
-            "스케줄러 started: 모니터링={}ms, 메트릭={}ms, 프로세스={}ms, 동기화={}ms, heartbeat={}ms, 집계={}ms",
-            self.config.poll_interval.as_millis(),
-            self.config.metrics_interval.as_millis(),
-            self.config.process_interval.as_millis(),
-            self.config.sync_interval.as_millis(),
-            self.config.heartbeat_interval.as_millis(),
-            self.config.aggregation_interval.as_millis(),
+            monitor_poll_ms = self.config.poll_interval.as_millis() as u64,
+            metrics_ms = self.config.metrics_interval.as_millis() as u64,
+            process_ms = self.config.process_interval.as_millis() as u64,
+            detailed_process_ms = self.config.detailed_process_interval.as_millis() as u64,
+            input_activity_ms = self.config.input_activity_interval.as_millis() as u64,
+            sync_ms = self.config.sync_interval.as_millis() as u64,
+            heartbeat_ms = self.config.heartbeat_interval.as_millis() as u64,
+            aggregation_ms = self.config.aggregation_interval.as_millis() as u64,
+            health_check_secs = 60,
+            coaching_secs = config::COACHING_INTERVAL_SECS,
+            sqlite_maintenance_mins = config::SQLITE_MAINTENANCE_INTERVAL_MINS,
+            "scheduler loops starting"
         );
         self.run_scheduler_loops(shutdown_rx, app_handle).await;
     }
