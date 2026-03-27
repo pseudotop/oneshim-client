@@ -80,8 +80,16 @@ pub(in crate::scheduler) async fn run_periodic_regime_detection(
             if has_strategy {
                 run_constrained_clustering(ts, &features, now).await;
             } else {
-                // Fallback: legacy k-means regime detection
-                let detected = ts.regime_detector.detect(&features);
+                // Offload heavy k-means to blocking thread to avoid stalling monitor loop
+                let detector = ts.regime_detector.clone();
+                let features_owned = features;
+                let detected =
+                    tokio::task::spawn_blocking(move || detector.detect(&features_owned))
+                        .await
+                        .unwrap_or_else(|e| {
+                            warn!("regime detection task panicked: {e}");
+                            vec![]
+                        });
                 if !detected.is_empty() {
                     info!(
                         count = detected.len(),
@@ -144,15 +152,10 @@ async fn run_constrained_clustering(
         vec![]
     };
 
-    let result = if overrides.is_empty() {
-        // No overrides — standard detection
-        strategy.as_ref().detect(features)
+    // Build constraints (fast, uses async I/O)
+    let constraints = if overrides.is_empty() {
+        vec![]
     } else {
-        // Build feature_indices: map segment_id → feature vector index.
-        // Query activity_segments for the lookback window, then for each
-        // segment find the first calibration entry whose timestamp falls
-        // within [segment.start, segment.end]. That entry's index in the
-        // feature vector array becomes the segment's feature index.
         let lookback = now - ChronoDuration::days(7);
         let segment_ranges = match ts
             .calibration_reader
@@ -166,10 +169,6 @@ async fn run_constrained_clustering(
             }
         };
 
-        // Also need the calibration entries' timestamps to correlate indices.
-        // Re-fetch entries with timestamps (they were already fetched by the
-        // caller but we only received the derived feature vectors, not
-        // timestamps). We query them again; this is once-per-detection.
         let entries_with_ts = match ts.calibration_reader.get_entries(lookback, now, true).await {
             Ok(entries) => entries,
             Err(e) => {
@@ -181,8 +180,6 @@ async fn run_constrained_clustering(
         let feature_indices: HashMap<String, usize> = segment_ranges
             .iter()
             .filter_map(|(seg_id, seg_start, seg_end)| {
-                // Find the first calibration entry whose timestamp falls within
-                // this segment's time range. Its position = feature vector index.
                 entries_with_ts
                     .iter()
                     .position(|e| e.timestamp >= *seg_start && e.timestamp <= *seg_end)
@@ -198,34 +195,47 @@ async fn run_constrained_clustering(
             .map(|(i, r)| (r.regime_id.clone(), i as i32))
             .collect();
 
-        let constraints = constraint_builder::build_constraints(
-            &overrides,
-            &feature_indices,
-            &regime_cluster_map,
-        );
+        constraint_builder::build_constraints(&overrides, &feature_indices, &regime_cluster_map)
+    };
 
-        if constraints.is_empty() {
-            strategy.as_ref().detect(features)
+    if !constraints.is_empty() {
+        info!(
+            count = constraints.len(),
+            "applying constraints to re-clustering"
+        );
+    }
+
+    // Offload heavy clustering to blocking thread to avoid stalling monitor loop
+    let features_owned = features.to_vec();
+    let detector_clone = ts.regime_detector.clone();
+    let blocking_result = tokio::task::spawn_blocking(move || {
+        let r = if constraints.is_empty() {
+            strategy.as_ref().detect(&features_owned)
         } else {
-            info!(
-                count = constraints.len(),
-                "applying constraints to re-clustering"
-            );
             strategy
                 .as_ref()
-                .detect_with_constraints(features, &constraints)
+                .detect_with_constraints(&features_owned, &constraints)
+        };
+        (strategy, r, features_owned)
+    })
+    .await;
+
+    let (strategy_back, result, features_owned) = match blocking_result {
+        Ok(tuple) => tuple,
+        Err(e) => {
+            warn!("constrained clustering task panicked: {e}");
+            return;
         }
     };
 
-    let algo_name = strategy.algorithm_name().to_string();
+    let algo_name = strategy_back.algorithm_name().to_string();
 
-    // Put strategy back before mutating ts
-    ts.clustering_strategy = Some(strategy);
+    // Put strategy back
+    ts.clustering_strategy = Some(strategy_back);
 
     match result {
         Ok(clustering_result) if clustering_result.cluster_count > 0 => {
-            // Convert ClusteringResult to Regime vec for RegimeManager
-            let detected = build_regimes_from_clustering(&clustering_result, features, now);
+            let detected = build_regimes_from_clustering(&clustering_result, &features_owned, now);
             if !detected.is_empty() {
                 info!(
                     count = detected.len(),
@@ -247,8 +257,14 @@ async fn run_constrained_clustering(
                 algorithm = algo_name,
                 "constrained clustering failure: {e} — falling back to legacy"
             );
-            // Fallback to legacy k-means
-            let detected = ts.regime_detector.detect(features);
+            // Fallback to legacy k-means (also offloaded)
+            let detected =
+                tokio::task::spawn_blocking(move || detector_clone.detect(&features_owned))
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!("fallback k-means task panicked: {e}");
+                        vec![]
+                    });
             if !detected.is_empty() {
                 info!(
                     count = detected.len(),
