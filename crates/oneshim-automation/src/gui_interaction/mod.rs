@@ -1,6 +1,7 @@
 mod crypto;
 mod helpers;
 mod service;
+mod service_execution;
 mod types;
 
 // ── Public re-exports (external API) ────────────────────────────────
