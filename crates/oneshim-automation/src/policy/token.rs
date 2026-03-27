@@ -1,3 +1,10 @@
+//! Execution ticket generation, parsing, and signature verification.
+//!
+//! Policy tokens are time-limited tickets that authorize a specific automation
+//! command. The TTL is governed by `PolicyCache.ttl_seconds` (default: 300s / 5min).
+//! Under high load, a 5-second grace window in `PolicyClient::validate_command()`
+//! absorbs clock skew. Tokens are single-use and SHA-256 signed.
+
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
