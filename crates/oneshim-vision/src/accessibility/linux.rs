@@ -559,14 +559,17 @@ mod inner {
             proxy: &atspi::proxy::accessible::AccessibleProxy<'_>,
             pii_level: PiiFilterLevel,
         ) -> Option<FocusedElementInfo> {
-            let role = proxy
-                .get_role()
-                .await
+            use atspi_common::Role;
+
+            // Explicit type annotation avoids E0282 inference errors with zbus 5.x proxy methods
+            let role_result: Result<Role, _> = proxy.get_role().await;
+            let role = role_result
                 .map(|r| format!("{r:?}"))
                 .unwrap_or_else(|_| "Unknown".to_string());
 
             let label = if pii_level != PiiFilterLevel::Strict {
-                Some(proxy.name().await.unwrap_or_default())
+                let name: String = proxy.name().await.unwrap_or_default();
+                Some(name)
             } else {
                 None
             };
@@ -670,13 +673,15 @@ mod inner {
                 pii_level
             };
 
-            // AT-SPI is async-native, no spawn_blocking needed
-            let conn = AccessibilityConnection::new().await.map_err(|e| {
-                Self::record_failure();
-                CoreError::PermissionDenied(format!(
-                    "AT-SPI2 D-Bus connection failed. Ensure at-spi2-core is installed: {e}"
-                ))
-            })?;
+            // AT-SPI is async-native, no spawn_blocking needed.
+            // Explicit type annotation avoids E0282 inference errors with zbus 5.x.
+            let conn: AccessibilityConnection =
+                AccessibilityConnection::new().await.map_err(|e| {
+                    Self::record_failure();
+                    CoreError::PermissionDenied(format!(
+                        "AT-SPI2 D-Bus connection failed. Ensure at-spi2-core is installed: {e}"
+                    ))
+                })?;
 
             // Find the active window by walking registry → apps → frames
             let active_window = match Self::find_active_window(&conn).await {

@@ -191,6 +191,9 @@ jobs:
       - name: Run clippy (grpc features)
         run: ./scripts/cargo-cache.sh clippy --workspace --all-targets --features grpc -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
 
+      - name: Run clippy (lan-sync features)
+        run: ./scripts/cargo-cache.sh clippy -p oneshim-network --all-targets --features lan-sync -- -D warnings -A clippy::empty_docs -A clippy::derivable_impls -A clippy::type_complexity
+
   perf-gates:
     name: Performance Gates
     needs: [changes, check]
@@ -313,6 +316,10 @@ jobs:
       - name: Run tests (grpc features)
         if: env.RUN_HEAVY_TESTS == 'true'
         run: ./scripts/cargo-cache.sh test --workspace --features grpc
+
+      - name: Run tests (lan-sync features)
+        if: env.RUN_HEAVY_TESTS == 'true'
+        run: ./scripts/cargo-cache.sh test -p oneshim-network --features lan-sync
 
   build:
     name: Build (${{ matrix.target }})
