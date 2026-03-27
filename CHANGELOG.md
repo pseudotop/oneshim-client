@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5-rc.1] - 2026-03-27
+### Fixed
+
+- I18n completeness + enable Linux AT-SPI by default
+  - Add missing chat + onboarding i18n sections to es/ja/zh-CN
+    (30 keys × 3 languages = 90 translations, now 100% parity)
+  - Enable linux-atspi feature in src-tauri default features
+    (Linux users get AT-SPI accessibility without manual flag)
+
+
+## [Unreleased]
+
 ## [0.4.4] - 2026-03-27
 ### Added
 
