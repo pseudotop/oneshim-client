@@ -1,8 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
-import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb, Settings, WifiOff } from 'lucide-react'
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { Brain, Camera, Crosshair, LayoutDashboard, Lightbulb, Settings, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 interface CaptureState {
@@ -202,10 +202,19 @@ export function App() {
     <div
       data-tauri-drag-region
       className={`flex select-none flex-col overflow-hidden rounded-xl bg-black/80 text-white text-xs backdrop-blur-md ${state.paused ? '' : 'animate-panel-glow'}`}
-      style={state.paused ? { boxShadow: 'inset 0 0 12px 3px rgba(156,163,175,0.25)', border: '1.5px solid rgba(156,163,175,0.3)' } : undefined}
+      style={
+        state.paused
+          ? { boxShadow: 'inset 0 0 12px 3px rgba(156,163,175,0.25)', border: '1.5px solid rgba(156,163,175,0.3)' }
+          : undefined
+      }
     >
       {/* Collapsed bar */}
-      <div data-tauri-drag-region onMouseDown={handleDragMouseDown} className="flex cursor-move items-center gap-2 px-3 py-2">
+      <div
+        role="toolbar"
+        data-tauri-drag-region
+        onMouseDown={handleDragMouseDown}
+        className="flex cursor-move items-center gap-2 px-3 py-2"
+      >
         <span
           className={`h-2 w-2 shrink-0 rounded-full ${state.paused ? 'bg-yellow-400' : 'animate-pulse bg-green-400'}`}
         />
@@ -213,7 +222,7 @@ export function App() {
           <span className="h-2 w-2 shrink-0 rounded-full bg-red-400" title={`${connCount}/3 connected`} />
         )}
         <span data-tauri-drag-region className="flex-1 truncate">
-          {state.paused ? 'Paused' : feedback ?? 'Capturing'}
+          {state.paused ? 'Paused' : (feedback ?? 'Capturing')}
         </span>
 
         <button
@@ -245,7 +254,11 @@ export function App() {
       {/* Expanded panel */}
       {expanded && (
         <div data-tauri-drag-region className="flex cursor-move flex-col gap-1 border-white/10 border-t px-3 pt-1 pb-3">
-          <ActionButton icon={<LayoutDashboard size={14} />} label="Open Dashboard" onClick={() => invoke('show_main_window')} />
+          <ActionButton
+            icon={<LayoutDashboard size={14} />}
+            label="Open Dashboard"
+            onClick={() => invoke('show_main_window')}
+          />
           <ActionButton icon={<Camera size={14} />} label="Manual Capture" onClick={handleManualCapture} />
           <ActionButton icon={<Brain size={14} />} label="Scene Analysis" onClick={handleSceneAnalysis} />
           <ActionButton icon={<Lightbulb size={14} />} label="AI Suggestions" onClick={handleSuggestions} />
@@ -280,10 +293,16 @@ export function App() {
           {sceneResult && (
             <div className="mt-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px]">
               <div className="flex items-center justify-between">
-                <span className="text-white/90 font-medium truncate">
+                <span className="truncate font-medium text-white/90">
                   {sceneResult.app_name} — {sceneResult.window_title}
                 </span>
-                <button type="button" onClick={() => setSceneResult(null)} className="text-white/40 hover:text-white/80 ml-1">&times;</button>
+                <button
+                  type="button"
+                  onClick={() => setSceneResult(null)}
+                  className="ml-1 text-white/40 hover:text-white/80"
+                >
+                  &times;
+                </button>
               </div>
               <div className="mt-1 flex gap-3 text-white/50">
                 <span>{sceneResult.accessibility?.element_count ?? 0} elements</span>
@@ -291,9 +310,10 @@ export function App() {
                 {sceneResult.work_type && <span>{sceneResult.work_type}</span>}
               </div>
               {sceneResult.accessibility?.focused_element && (
-                <div className="mt-0.5 text-white/40 truncate">
+                <div className="mt-0.5 truncate text-white/40">
                   Focus: {sceneResult.accessibility.focused_element.role}
-                  {sceneResult.accessibility.focused_element.label && ` "${sceneResult.accessibility.focused_element.label}"`}
+                  {sceneResult.accessibility.focused_element.label &&
+                    ` "${sceneResult.accessibility.focused_element.label}"`}
                 </div>
               )}
             </div>

@@ -72,12 +72,12 @@ import {
   PrivacyTab,
 } from './setting-tabs'
 import {
-  type SettingsTabId,
   backendAllowsSecretEditing,
   cloneAiProviderProfileConfig,
   isSettingsTabId,
   modelDiscoverySensitiveField,
   normalizeSavedProfileName,
+  type SettingsTabId,
   slugifySavedProfileId,
   supportsProjectionFor,
 } from './settings-utils'

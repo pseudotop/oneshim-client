@@ -33,7 +33,7 @@ import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import remarkGfm from 'remark-gfm'
 import { Button, Card, CardContent, Select } from '../components/ui'
-import { colors, iconSize, interaction, radius, typography } from '../styles/tokens'
+import { colors, iconSize, interaction, motion, radius, typography } from '../styles/tokens'
 import { cn } from '../utils/cn'
 
 // Register languages with PrismLight (ships with zero languages by default)
@@ -141,7 +141,10 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="absolute top-2 right-2 rounded bg-white/10 p-1 text-white/60 opacity-0 transition-opacity hover:bg-white/20 group-hover:opacity-100"
+      className={cn(
+        'absolute top-2 right-2 rounded bg-surface-elevated/40 p-1 text-content-inverse/60 opacity-0 hover:bg-surface-elevated/60 group-hover:opacity-100',
+        motion.opacity,
+      )}
       title="Copy"
     >
       {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -422,7 +425,7 @@ export default function Chat() {
             colors.text.secondary,
           )}
         >
-          <ChevronDown className={cn('h-3 w-3 transition-transform', showAdvanced && 'rotate-180')} />
+          <ChevronDown className={cn(iconSize.xs, motion.transform, showAdvanced && 'rotate-180')} />
           {t('chat.advanced')}
         </button>
         {showAdvanced && (
@@ -568,10 +571,7 @@ export default function Chat() {
                 const matches = searchQuery && msg.content.toLowerCase().includes(searchQuery.toLowerCase())
                 const dimmed = searchQuery && !matches
                 return (
-                  <div
-                    key={`${msg.timestamp}-${msg.role}`}
-                    className={cn(dimmed && 'opacity-30', 'transition-opacity')}
-                  >
+                  <div key={`${msg.timestamp}-${msg.role}`} className={cn(dimmed && 'opacity-30', motion.opacity)}>
                     <Bubble msg={msg} onRetry={handleRetry} highlight={matches ? searchQuery : undefined} />
                   </div>
                 )
@@ -591,7 +591,7 @@ export default function Chat() {
                     className="flex items-center gap-1 rounded-full bg-surface-elevated px-2 py-0.5"
                   >
                     {a.type.startsWith('image/') && (
-                      <img src={a.data} alt={a.name} className="h-5 w-5 rounded object-cover" />
+                      <img src={a.data} alt={a.name} className={cn(iconSize.md, 'rounded object-cover')} />
                     )}
                     <span className={cn('max-w-[120px] truncate text-[10px]', colors.text.primary)}>{a.name}</span>
                     <button
@@ -599,7 +599,7 @@ export default function Chat() {
                       onClick={() => setAttachments((prev) => prev.filter((x) => x !== a))}
                       className="text-content-muted hover:text-semantic-error"
                     >
-                      <X className="h-3 w-3" />
+                      <X className={iconSize.xs} />
                     </button>
                   </div>
                 ))}
@@ -668,7 +668,11 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
         if (match) {
           // During streaming: plain pre (avoid repeated highlighting runs)
           if (msg.streaming) {
-            return <pre className="my-2 overflow-x-auto rounded bg-surface-sunken p-3 font-mono text-xs">{code}</pre>
+            return (
+              <pre className={cn('my-2 overflow-x-auto rounded bg-surface-sunken p-3 text-xs', typography.family.mono)}>
+                {code}
+              </pre>
+            )
           }
           // After done: full syntax highlighting
           return (
@@ -688,7 +692,7 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
 
         // Inline code
         return (
-          <code className="rounded bg-surface-sunken px-1 py-0.5 font-mono text-xs" {...props}>
+          <code className={cn('rounded bg-surface-sunken px-1 py-0.5 text-xs', typography.family.mono)} {...props}>
             {children}
           </code>
         )
@@ -697,7 +701,9 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
       ul: ({ children }: { children?: React.ReactNode }) => <ul className="mb-2 ml-4 list-disc">{children}</ul>,
       ol: ({ children }: { children?: React.ReactNode }) => <ol className="mb-2 ml-4 list-decimal">{children}</ol>,
       li: ({ children }: { children?: React.ReactNode }) => <li className="mb-0.5">{children}</li>,
-      h3: ({ children }: { children?: React.ReactNode }) => <h3 className="mt-2 mb-1 font-semibold">{children}</h3>,
+      h3: ({ children }: { children?: React.ReactNode }) => (
+        <h3 className={cn('mt-2 mb-1', typography.weight.semibold)}>{children}</h3>
+      ),
       a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
         <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-text underline">
           {children}
@@ -712,7 +718,7 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
         </div>
       ),
       th: ({ children }: { children?: React.ReactNode }) => (
-        <th className="border border-muted px-2 py-1 font-medium">{children}</th>
+        <th className={cn('border border-muted px-2 py-1', typography.weight.medium)}>{children}</th>
       ),
       td: ({ children }: { children?: React.ReactNode }) => (
         <td className="border border-muted px-2 py-1">{children}</td>
@@ -728,7 +734,7 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
           <div className="flex items-start gap-2">
             <AlertTriangle className={cn(iconSize.base, 'mt-0.5 shrink-0 text-semantic-error')} />
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-semantic-error text-xs">{msg.error.code}</p>
+              <p className={cn('text-semantic-error text-xs', typography.weight.medium)}>{msg.error.code}</p>
               <p className="mt-0.5 text-content-secondary text-xs">{msg.error.message}</p>
               {msg.error.retryable && (
                 <Button variant="ghost" size="sm" onClick={onRetry} className="mt-1 text-xs">
@@ -758,7 +764,7 @@ function Bubble({ msg, onRetry, highlight }: { msg: ChatMessage; onRetry: () => 
             ) : (
               <Wrench className={iconSize.xs} />
             )}
-            <span className="font-medium text-xs">{msg.tool_use.tool}</span>
+            <span className={cn('text-xs', typography.weight.medium)}>{msg.tool_use.tool}</span>
           </div>
           <span className={cn('rounded px-1.5 py-0.5 text-[10px]', statusCls)}>{msg.tool_use.status}</span>
         </div>
