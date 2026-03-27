@@ -171,7 +171,7 @@ export default function PomodoroTimer() {
       } else if (prevStatusRef.current === 'on_break' && loc.status === 'completed') {
         notifyCompletion('break')
         // Auto-complete on server
-        completePomodoro().catch(() => {})
+        completePomodoro().catch((e) => console.warn('completePomodoro failed:', e))
       }
       prevStatusRef.current = loc.status
     }, 1000)
@@ -190,7 +190,7 @@ export default function PomodoroTimer() {
           prevStatusRef.current = s.status
         }
       })
-      .catch(() => {})
+      .catch((e) => console.warn('fetchCurrentPomodoro failed:', e))
   }, [])
 
   // Request notification permission eagerly

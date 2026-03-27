@@ -57,7 +57,8 @@ export async function resolveWebPort(): Promise<number> {
     webPortPromise = import('@tauri-apps/api/core')
       .then(({ invoke }) => invoke<number>('get_web_port'))
       .then(setResolvedPort)
-      .catch(() => {
+      .catch((e) => {
+        console.debug('get_web_port failed, using fallback port:', e)
         webPortPromise = null
         return resolvedPort
       })
@@ -87,7 +88,7 @@ export function resolveImageUrl(url: string | null | undefined): string | null {
 }
 
 if (IS_TAURI) {
-  void resolveWebPort().catch(() => {
-    /* fallback to eval-injected or default port */
+  void resolveWebPort().catch((e) => {
+    console.debug('resolveWebPort init failed, using default port:', e)
   })
 }

@@ -38,9 +38,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers = {}, enabled = 
           // Close-to-tray: hide window instead of closing the app
           import('@tauri-apps/api/window')
             .then((m) => m.getCurrentWindow().hide())
-            .catch(() => {
-              /* browser fallback — no-op */
-            })
+            .catch((e) => console.debug('window.hide failed (browser fallback):', e))
           return
         }
         if (event.key === 'b') {
