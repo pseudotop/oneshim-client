@@ -1,6 +1,8 @@
 import { useCallback } from 'react'
 import { CaptureFlash } from './components/CaptureFlash'
 import CoachingPopup from './components/CoachingPopup'
+import DetectionHeader from './components/DetectionHeader'
+import DetectionOverlay from './components/DetectionOverlay'
 import FocusHighlight from './components/FocusHighlight'
 import { FocusModeIndicator } from './components/FocusModeIndicator'
 import GoalProgressBar from './components/GoalProgressBar'
@@ -29,13 +31,56 @@ export default function OverlayApp() {
     }
   }, [dispatch])
 
+  const handleDetectionSelect = useCallback(
+    (id: string | null) => {
+      dispatch({ type: 'detection-select', payload: id })
+    },
+    [dispatch],
+  )
+
+  const handleDetectionRefresh = useCallback(async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    try {
+      await invoke('refresh_detection_overlay')
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const handleDetectionClose = useCallback(async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    try {
+      await invoke('toggle_detection_overlay', { active: false })
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   return (
     <div className="relative h-screen w-screen overflow-hidden">
+      {/* Detection mode header */}
+      {state.detectionScene && (
+        <DetectionHeader
+          elementCount={state.detectionScene.element_count}
+          onRefresh={handleDetectionRefresh}
+          onClose={handleDetectionClose}
+        />
+      )}
+
+      {/* Detection overlay boxes */}
+      {state.detectionScene && (
+        <DetectionOverlay
+          scene={state.detectionScene}
+          selectedId={state.detectionSelectedId}
+          onSelect={handleDetectionSelect}
+        />
+      )}
+
       {/* Focus mode pill indicator (top center) */}
       <FocusModeIndicator active={state.focusMode} />
 
-      {/* Focus area highlight (always shown when available) */}
-      {state.focusHighlight && <FocusHighlight highlight={state.focusHighlight} />}
+      {/* Focus area highlight (when no detection mode) */}
+      {!state.detectionScene && state.focusHighlight && <FocusHighlight highlight={state.focusHighlight} />}
 
       {/* Coaching popup (shown when a message is active) */}
       {state.coaching && <CoachingPopup message={state.coaching} autoDismissSecs={state.coaching.auto_dismiss_secs} />}
