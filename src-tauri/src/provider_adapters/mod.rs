@@ -12,6 +12,7 @@ pub use types::{AiProviderAdapters, ExternalOcrPrivacyGuard, ProviderSource};
 
 use std::sync::Arc;
 
+use ocr_resolver::best_local_ocr_provider;
 use oneshim_automation::local_llm::LocalLlmProvider;
 use oneshim_core::config::{AiAccessMode, AiProviderConfig, PiiFilterLevel};
 use oneshim_core::error::CoreError;
@@ -20,7 +21,6 @@ use oneshim_core::ports::oauth::OAuthPort;
 use oneshim_core::ports::secret_store::SecretStoreSet;
 #[cfg(feature = "server")]
 use oneshim_core::provider_surface::ProviderSurfaceTransport;
-use oneshim_vision::local_ocr_provider::LocalOcrProvider;
 
 use llm_resolver::resolve_cli_subscription_llm_provider_with_detected;
 #[cfg(feature = "server")]
@@ -44,7 +44,7 @@ pub fn resolve_ai_provider_adapters(
 ) -> Result<AiProviderAdapters, CoreError> {
     match config.access_mode.normalized_for_ai_surfaces() {
         AiAccessMode::LocalModel => Ok(AiProviderAdapters {
-            ocr: Arc::new(LocalOcrProvider::new()),
+            ocr: best_local_ocr_provider(),
             llm: Arc::new(LocalLlmProvider::new()),
             ocr_source: PS::Local,
             llm_source: PS::Local,
