@@ -78,6 +78,8 @@ pub struct AppState {
     pub capture_paused: Arc<AtomicBool>,
     /// Whether the tracking indicator border is visible.
     pub indicator_visible: Arc<AtomicBool>,
+    /// Whether detection overlay mode is active (toggled via Cmd+Shift+D).
+    pub detection_active: Arc<AtomicBool>,
     /// Connection status flags for server, LLM, and CLI.
     pub connection: ConnectionStatus,
     /// Focus mode state — transient, not persisted. Suppresses coaching + notifications.
@@ -289,6 +291,7 @@ mod tests {
             coaching_engine: None,
             capture_paused: Arc::new(AtomicBool::new(false)),
             indicator_visible: Arc::new(AtomicBool::new(true)),
+            detection_active: Arc::new(AtomicBool::new(false)),
             connection: ConnectionStatus {
                 server_connected: Arc::new(AtomicBool::new(false)),
                 llm_connected: Arc::new(AtomicBool::new(false)),

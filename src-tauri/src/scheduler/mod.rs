@@ -161,6 +161,12 @@ pub struct Scheduler {
     pub(super) coaching_storage: Option<Arc<oneshim_storage::sqlite::SqliteStorage>>,
     /// Shared flag: when `true` the monitor loop skips capture/frame processing.
     pub(super) capture_paused: Arc<std::sync::atomic::AtomicBool>,
+    /// Whether detection overlay is active. When `true`, the monitor loop
+    /// re-triggers scene analysis on window focus changes.
+    pub(super) detection_active: Arc<std::sync::atomic::AtomicBool>,
+    /// Element finder for detection overlay re-analysis on window change.
+    /// `None` when automation controller is not configured or has no scene_finder.
+    pub(super) scene_finder: Option<Arc<dyn oneshim_core::ports::element_finder::ElementFinder>>,
     /// Adapter-side health flag for server (BatchUploader / HttpApiClient).
     pub(super) server_health_flag: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Adapter-side health flag for LLM provider (RemoteLlmProvider).
@@ -240,6 +246,8 @@ impl Scheduler {
             analysis_provider: None,
             coaching_storage: None,
             capture_paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            detection_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            scene_finder: None,
             server_health_flag: None,
             llm_health_flag: None,
             cli_health_flag: None,
@@ -385,6 +393,20 @@ impl Scheduler {
 
     pub fn with_capture_paused(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
         self.capture_paused = flag;
+        self
+    }
+
+    pub fn with_detection_active(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.detection_active = flag;
+        self
+    }
+
+    #[allow(dead_code)] // wired when automation controller provides a scene_finder
+    pub fn with_scene_finder(
+        mut self,
+        finder: Arc<dyn oneshim_core::ports::element_finder::ElementFinder>,
+    ) -> Self {
+        self.scene_finder = Some(finder);
         self
     }
 

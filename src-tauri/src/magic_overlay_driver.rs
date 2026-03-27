@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use oneshim_core::error::CoreError;
 use oneshim_core::models::gui::{HighlightHandle, HighlightRequest};
+use oneshim_core::models::ui_scene::UiScene;
 use oneshim_core::ports::overlay_driver::OverlayDriver;
 
 /// Serializable highlight data emitted to the overlay WebView.
@@ -93,6 +94,22 @@ impl OverlayDriver for MagicOverlayDriver {
             .map_err(|e| CoreError::Internal(format!("Failed to emit overlay:clear-focus: {e}")))?;
 
         tracing::debug!(handle_id, "MagicOverlayDriver: cleared highlights");
+        Ok(())
+    }
+
+    async fn show_detection(&self, scene: &UiScene) -> Result<(), CoreError> {
+        // Detection scene emission is handled by MagicOverlayHandle.emit_detection_scene(),
+        // not by OverlayDriver. This stub exists for trait completeness.
+        tracing::debug!(
+            scene_id = %scene.scene_id,
+            element_count = scene.elements.len(),
+            "MagicOverlayDriver: detection scene (handled by MagicOverlayHandle)"
+        );
+        Ok(())
+    }
+
+    async fn clear_detection(&self) -> Result<(), CoreError> {
+        tracing::debug!("MagicOverlayDriver: clear detection (handled by MagicOverlayHandle)");
         Ok(())
     }
 }

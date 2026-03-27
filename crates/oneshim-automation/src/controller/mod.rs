@@ -96,6 +96,10 @@ impl AutomationController {
         self.scene_finder = Some(finder);
     }
 
+    pub fn scene_finder(&self) -> Option<&Arc<dyn ElementFinder>> {
+        self.scene_finder.as_ref()
+    }
+
     pub fn set_action_dispatcher(&mut self, dispatcher: Arc<dyn AutomationActionDispatcher>) {
         self.action_dispatcher = dispatcher;
     }

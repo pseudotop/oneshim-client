@@ -46,11 +46,37 @@ pub struct OverlayModePayload {
     pub mode: OverlayMode,
 }
 
+#[allow(dead_code)] // used by detection overlay IPC commands
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectionElementPayload {
+    pub element_id: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub label: String,
+    pub role: Option<String>,
+    pub confidence: f64,
+    pub source: String,
+}
+
+#[allow(dead_code)] // used by detection overlay IPC commands
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectionScenePayload {
+    pub scene_id: String,
+    pub app_name: Option<String>,
+    pub screen_width: u32,
+    pub screen_height: u32,
+    pub element_count: usize,
+    pub elements: Vec<DetectionElementPayload>,
+}
+
 #[derive(Debug)]
 struct OverlayState {
     mode: OverlayMode,
     visible: bool,
     current_message_id: Option<String>,
+    detection_active: bool,
 }
 
 /// Handle for managing the MagicOverlay Tauri WebView window.
@@ -86,6 +112,7 @@ impl MagicOverlayHandle {
                 mode: initial_mode,
                 visible: false,
                 current_message_id: None,
+                detection_active: false,
             })),
         }
     }
@@ -233,6 +260,61 @@ impl MagicOverlayHandle {
     #[allow(dead_code)] // retained for future IPC command usage
     pub fn clear_focus_highlight(&self) {
         let _ = self.app_handle.emit("overlay:clear-focus", ());
+    }
+
+    /// Emit a full UiScene to the detection overlay. Clears any active
+    /// focus highlight first (mutual exclusion).
+    #[allow(dead_code)]
+    pub async fn emit_detection_scene(&self, scene: &oneshim_core::models::ui_scene::UiScene) {
+        self.clear_focus_highlight();
+
+        let elements: Vec<DetectionElementPayload> = scene
+            .elements
+            .iter()
+            .take(200)
+            .map(|el| DetectionElementPayload {
+                element_id: el.element_id.clone(),
+                x: el.bbox_abs.x,
+                y: el.bbox_abs.y,
+                width: el.bbox_abs.width,
+                height: el.bbox_abs.height,
+                label: el.label.clone(),
+                role: el.role.clone(),
+                confidence: el.confidence,
+                source: "composite".to_string(),
+            })
+            .collect();
+
+        let payload = DetectionScenePayload {
+            scene_id: scene.scene_id.clone(),
+            app_name: scene.app_name.clone(),
+            screen_width: scene.screen_width,
+            screen_height: scene.screen_height,
+            element_count: elements.len(),
+            elements,
+        };
+
+        let _ = self.ensure_window();
+        if let Err(e) = self.app_handle.emit("overlay:detection-update", &payload) {
+            warn!("failed to emit overlay:detection-update: {e}");
+        }
+
+        let mut state = self.state.write().await;
+        state.detection_active = true;
+        info!(
+            scene_id = %scene.scene_id,
+            element_count = payload.element_count,
+            "detection overlay updated"
+        );
+    }
+
+    /// Clear the detection overlay.
+    #[allow(dead_code)]
+    pub async fn clear_detection_scene(&self) {
+        let _ = self.app_handle.emit("overlay:detection-clear", ());
+        let mut state = self.state.write().await;
+        state.detection_active = false;
+        debug!("detection overlay cleared");
     }
 
     /// Update goal progress data on the overlay.
@@ -436,10 +518,12 @@ mod tests {
             mode: OverlayMode::Minimal,
             visible: false,
             current_message_id: None,
+            detection_active: false,
         };
         assert_eq!(state.mode, OverlayMode::Minimal);
         assert!(!state.visible);
         assert!(state.current_message_id.is_none());
+        assert!(!state.detection_active);
     }
 
     #[test]

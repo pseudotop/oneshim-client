@@ -2,6 +2,7 @@ import { useEffect, useReducer } from 'react'
 import type {
   CaptureStatePayload,
   CoachingPayload,
+  DetectionScenePayload,
   FocusHighlightPayload,
   FocusModePayload,
   GoalProgressItem,
@@ -24,6 +25,9 @@ type OverlayAction =
   | { type: 'capture-feedback'; payload: string }
   | { type: 'set-suggestions'; payload: SuggestionViewDto[] }
   | { type: 'remove-suggestion'; payload: string }
+  | { type: 'detection-update'; payload: DetectionScenePayload }
+  | { type: 'detection-clear' }
+  | { type: 'detection-select'; payload: string | null }
 
 const initialState: OverlayState = {
   mode: 'minimal',
@@ -35,6 +39,8 @@ const initialState: OverlayState = {
   suggestionsPanelOpen: false,
   suggestions: [],
   captureFlashTimestamp: null,
+  detectionScene: null,
+  detectionSelectedId: null,
 }
 
 function reducer(state: OverlayState, action: OverlayAction): OverlayState {
@@ -52,6 +58,7 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
     case 'dismiss':
       return { ...state, coaching: null }
     case 'update-focus':
+      if (state.detectionScene) return state
       return { ...state, focusHighlight: action.payload }
     case 'clear-focus':
       return { ...state, focusHighlight: null }
@@ -77,6 +84,17 @@ function reducer(state: OverlayState, action: OverlayAction): OverlayState {
       }
     case 'capture-feedback':
       return { ...state, captureFlashTimestamp: action.payload }
+    case 'detection-update':
+      return {
+        ...state,
+        detectionScene: action.payload,
+        detectionSelectedId: null,
+        focusHighlight: null,
+      }
+    case 'detection-clear':
+      return { ...state, detectionScene: null, detectionSelectedId: null }
+    case 'detection-select':
+      return { ...state, detectionSelectedId: action.payload }
     default:
       return state
   }
@@ -143,7 +161,15 @@ export function useOverlayEvents() {
         dispatch({ type: 'capture-feedback', payload: e.payload.timestamp })
       })
 
-      unlisten = [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12]
+      const u13 = await listen<DetectionScenePayload>('overlay:detection-update', (e) => {
+        dispatch({ type: 'detection-update', payload: e.payload })
+      })
+
+      const u14 = await listen('overlay:detection-clear', () => {
+        dispatch({ type: 'detection-clear' })
+      })
+
+      unlisten = [u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13, u14]
 
       // Query actual backend state (overlay window may be created after state changes)
       try {

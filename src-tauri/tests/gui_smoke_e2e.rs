@@ -176,6 +176,17 @@ impl OverlayDriver for E2eOverlay {
         self.clear.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
+
+    async fn show_detection(
+        &self,
+        _scene: &oneshim_core::models::ui_scene::UiScene,
+    ) -> Result<(), oneshim_core::error::CoreError> {
+        Ok(())
+    }
+
+    async fn clear_detection(&self) -> Result<(), oneshim_core::error::CoreError> {
+        Ok(())
+    }
 }
 
 // ── Harness ─────────────────────────────────────────────────────────

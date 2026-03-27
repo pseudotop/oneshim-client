@@ -1,4 +1,5 @@
 mod coaching_helper;
+pub(super) mod detection_helper;
 mod events;
 pub(crate) mod health;
 mod helpers;

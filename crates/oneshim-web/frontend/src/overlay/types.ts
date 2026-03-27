@@ -65,6 +65,27 @@ export interface SuggestionViewDto {
   is_read: boolean
 }
 
+export interface DetectionElementPayload {
+  element_id: string
+  x: number
+  y: number
+  width: number
+  height: number
+  label: string
+  role: string | null
+  confidence: number
+  source: string
+}
+
+export interface DetectionScenePayload {
+  scene_id: string
+  app_name: string | null
+  screen_width: number
+  screen_height: number
+  element_count: number
+  elements: DetectionElementPayload[]
+}
+
 export interface OverlayState {
   mode: OverlayMode
   coaching: CoachingPayload | null
@@ -75,4 +96,6 @@ export interface OverlayState {
   suggestionsPanelOpen: boolean
   suggestions: SuggestionViewDto[]
   captureFlashTimestamp: string | null
+  detectionScene: DetectionScenePayload | null
+  detectionSelectedId: string | null
 }

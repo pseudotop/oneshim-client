@@ -82,6 +82,7 @@ impl AppRuntimeLaunchBuilder {
         let indicator_visible = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
             config.indicator.show_border,
         ));
+        let detection_active = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         // Connection status flags — start disconnected, updated by health check loop.
         let server_connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -273,6 +274,7 @@ impl AppRuntimeLaunchBuilder {
                 crate::magic_overlay_driver::MagicOverlayDriver::new(self.app_handle.clone()),
             ))
             .with_capture_paused(capture_paused.clone())
+            .with_detection_active(detection_active.clone())
             .with_focus_mode(focus_mode.clone())
             .with_shared_regime(shared_regime_state.clone())
             .with_health_flags(
@@ -421,6 +423,7 @@ impl AppRuntimeLaunchBuilder {
             ),
             capture_paused,
             indicator_visible,
+            detection_active,
             connection: ConnectionStatus {
                 server_connected,
                 llm_connected,
