@@ -12,9 +12,11 @@ use oneshim_core::models::ui_scene::{
 };
 use oneshim_core::ports::element_finder::ElementFinder;
 use oneshim_core::ports::ocr_provider::{OcrProvider, OcrResult};
+use oneshim_core::ports::rectangle_detector::{DetectedRectangle, RectangleDetector};
 
 pub struct OcrElementFinder {
     ocr_provider: Arc<dyn OcrProvider>,
+    rectangle_detector: Option<Arc<dyn RectangleDetector>>,
     last_image: tokio::sync::RwLock<Option<(Vec<u8>, String)>>,
 }
 
@@ -22,8 +24,14 @@ impl OcrElementFinder {
     pub fn new(ocr_provider: Arc<dyn OcrProvider>) -> Self {
         Self {
             ocr_provider,
+            rectangle_detector: None,
             last_image: tokio::sync::RwLock::new(None),
         }
+    }
+
+    pub fn with_rectangle_detector(mut self, detector: Arc<dyn RectangleDetector>) -> Self {
+        self.rectangle_detector = Some(detector);
+        self
     }
 
     pub async fn set_image(&self, image_data: Vec<u8>, format: String) {
@@ -119,13 +127,34 @@ impl OcrElementFinder {
             .extract_elements(&image_data, &image_format)
             .await?;
 
-        let elements = Self::ocr_to_scene_elements(
+        let mut elements = Self::ocr_to_scene_elements(
             &ocr_results,
             screen_width,
             screen_height,
             app_name,
             screen_id,
         );
+
+        // Run rectangle detection if available
+        if let Some(ref detector) = self.rectangle_detector {
+            let det = detector.clone();
+            let img = image_data.clone();
+            let rects = tokio::task::spawn_blocking(move || {
+                det.detect_rectangles(&img, screen_width, screen_height, 0.02, 100)
+            })
+            .await
+            .map_err(|e| CoreError::Internal(format!("spawn_blocking failed: {e}")))?;
+
+            if let Ok(rects) = rects {
+                let merged = merge_rectangles(&rects, &elements, screen_width, screen_height);
+                debug!(
+                    rect_count = rects.len(),
+                    new_elements = merged.len(),
+                    "merged rectangle detection results"
+                );
+                elements.extend(merged);
+            }
+        }
 
         Ok(UiScene {
             schema_version: UI_SCENE_SCHEMA_VERSION.to_string(),
@@ -364,6 +393,68 @@ impl ElementFinder for ChainedElementFinder {
 
     fn name(&self) -> &str {
         "chained"
+    }
+}
+
+fn merge_rectangles(
+    rects: &[DetectedRectangle],
+    ocr_elements: &[UiSceneElement],
+    screen_width: u32,
+    screen_height: u32,
+) -> Vec<UiSceneElement> {
+    let w = screen_width.max(1) as f32;
+    let h = screen_height.max(1) as f32;
+    let mut new_elements = Vec::new();
+
+    for rect in rects {
+        let max_iou = ocr_elements
+            .iter()
+            .map(|el| compute_iou(&rect.bounds, &el.bbox_abs))
+            .fold(0.0_f32, f32::max);
+
+        if max_iou < 0.2 {
+            new_elements.push(UiSceneElement {
+                element_id: format!("rect_{}", Uuid::new_v4().simple()),
+                bbox_abs: rect.bounds.clone(),
+                bbox_norm: NormalizedBounds::new(
+                    rect.bounds.x as f32 / w,
+                    rect.bounds.y as f32 / h,
+                    rect.bounds.width as f32 / w,
+                    rect.bounds.height as f32 / h,
+                ),
+                label: String::new(),
+                role: Some("region".to_string()),
+                intent: None,
+                state: None,
+                confidence: rect.confidence,
+                text_masked: None,
+                parent_id: None,
+            });
+        }
+    }
+
+    new_elements
+}
+
+fn compute_iou(a: &ElementBounds, b: &ElementBounds) -> f32 {
+    let x1 = a.x.max(b.x);
+    let y1 = a.y.max(b.y);
+    let x2 = (a.x + a.width as i32).min(b.x + b.width as i32);
+    let y2 = (a.y + a.height as i32).min(b.y + b.height as i32);
+
+    if x2 <= x1 || y2 <= y1 {
+        return 0.0;
+    }
+
+    let intersection = (x2 - x1) as f32 * (y2 - y1) as f32;
+    let area_a = a.width as f32 * a.height as f32;
+    let area_b = b.width as f32 * b.height as f32;
+    let union = area_a + area_b - intersection;
+
+    if union <= 0.0 {
+        0.0
+    } else {
+        intersection / union
     }
 }
 

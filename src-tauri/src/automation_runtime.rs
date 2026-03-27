@@ -146,11 +146,23 @@ pub fn build_automation_runtime(
     let ocr_provider_name = adapters.ocr.provider_name().to_string();
     let llm_provider_name = adapters.llm.provider_name().to_string();
 
+    #[cfg(feature = "native-vision")]
+    let rect_detector: Option<
+        Arc<dyn oneshim_core::ports::rectangle_detector::RectangleDetector>,
+    > = oneshim_vision::native_detect::create_rectangle_detector();
+    #[cfg(not(feature = "native-vision"))]
+    let rect_detector: Option<
+        Arc<dyn oneshim_core::ports::rectangle_detector::RectangleDetector>,
+    > = None;
+
     let ocr_finder: Arc<dyn ElementFinder> = if let Some(frame_storage) = frame_storage {
-        Arc::new(LatestFrameOcrElementFinder::new(
-            frame_storage,
-            adapters.ocr.clone(),
-        ))
+        let finder = LatestFrameOcrElementFinder::new(frame_storage, adapters.ocr.clone());
+        let finder = if let Some(det) = rect_detector {
+            finder.with_rectangle_detector(det)
+        } else {
+            finder
+        };
+        Arc::new(finder)
     } else {
         warn!("frame save settings: NoOpElementFinder");
         Arc::new(NoOpElementFinder)
@@ -211,6 +223,14 @@ impl LatestFrameOcrElementFinder {
             frame_storage,
             inner: OcrElementFinder::new(ocr_provider),
         }
+    }
+
+    pub fn with_rectangle_detector(
+        mut self,
+        detector: Arc<dyn oneshim_core::ports::rectangle_detector::RectangleDetector>,
+    ) -> Self {
+        self.inner = self.inner.with_rectangle_detector(detector);
+        self
     }
 
     async fn refresh_latest_frame(&self) -> Result<bool, CoreError> {

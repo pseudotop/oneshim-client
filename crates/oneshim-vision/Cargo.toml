@@ -10,7 +10,7 @@ homepage.workspace = true
 authors.workspace = true
 
 [features]
-default = []
+default = ["native-vision"]
 ocr = ["leptess"]
 linux-atspi = ["atspi", "atspi-common", "futures"]
 native-vision = []
